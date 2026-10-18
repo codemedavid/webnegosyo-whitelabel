@@ -9,7 +9,6 @@
 
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { ArrowLeft, Receipt } from 'lucide-react'
-import { getCartPalette } from '@/lib/branding-utils'
 import {
   CartItemRow,
   CartBundleRow,
@@ -17,6 +16,8 @@ import {
   CartCheckoutButton,
   CartContinueShopping,
   CartEmptyState,
+  cartColorVars,
+  getCartColors,
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import { CartOffers } from './cart-shared'
@@ -24,7 +25,7 @@ import { CartOffers } from './cart-shared'
 export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
   if (!cart.tenant) return null
 
-  const palette = getCartPalette(cart.tenant, cart.branding)
+  const palette = getCartColors(cart.tenant, cart.branding)
   const accent = palette.accent
   const accentSoft = palette.accentSoft
 
@@ -33,21 +34,22 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
   const itemCount = cart.items.length + bundles.length
 
   return (
-    <div className="min-h-screen bg-gray-100" style={{ backgroundColor: palette.background }}>
+    <div className="min-h-screen" style={{ ...cartColorVars(palette), backgroundColor: palette.background }}>
       {/* Page header with back button + title */}
-      <header data-senior-hidden className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+      <header data-senior-hidden className="sticky top-0 z-50 border-b backdrop-blur-sm" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
         <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
           <button
             type="button"
             onClick={cart.exitToMenu}
             aria-label="Go back"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[var(--cart-soft)]"
+            style={{ color: palette.text }}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
             <Receipt className="h-5 w-5" style={{ color: accent }} />
-            <h1 className="text-lg font-bold text-gray-900"><StoreLabel name="cart.title" fallback="Your Cart" /></h1>
+            <h1 className="text-lg font-bold" style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Your Cart" /></h1>
           </div>
         </div>
       </header>
@@ -64,7 +66,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
                 className="h-3 w-full"
                 style={{
                   backgroundImage:
-                    'linear-gradient(135deg, #ffffff 50%, transparent 50%), linear-gradient(225deg, #ffffff 50%, transparent 50%)',
+                    `linear-gradient(135deg, ${palette.card} 50%, transparent 50%), linear-gradient(225deg, ${palette.card} 50%, transparent 50%)`,
                   backgroundSize: '16px 16px',
                   backgroundPosition: 'top',
                   backgroundRepeat: 'repeat-x',
@@ -74,27 +76,27 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
               />
 
               <div
-                className="-mt-px rounded-b-xl bg-white px-4 pb-6 pt-5 shadow-xl sm:px-7 sm:pb-8"
-                style={{ backgroundColor: palette.cardBackground }}
+                className="-mt-px rounded-b-xl px-4 pb-6 pt-5 shadow-xl sm:px-7 sm:pb-8"
+                style={{ backgroundColor: palette.card }}
               >
                 {/* Receipt masthead */}
                 <div className="mb-5 text-center">
                   <p
-                    className="text-base font-bold uppercase tracking-[0.18em] text-gray-900"
+                    className="text-base font-bold uppercase tracking-[0.18em]"
                     style={{ color: palette.text }}
                   >
                     {cart.tenant.name}
                   </p>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-[0.3em] text-gray-400">
+                  <p className="mt-1 text-xs font-medium uppercase tracking-[0.3em]" style={{ color: palette.muted }}>
                     Order Receipt
                   </p>
-                  <p className="mt-3 text-xs font-mono text-gray-500">
+                  <p className="mt-3 text-xs font-mono" style={{ color: palette.muted }}>
                     {itemCount} item{itemCount !== 1 ? 's' : ''} in your cart
                   </p>
                 </div>
 
                 {/* Dashed separator */}
-                <div className="border-t border-dashed border-gray-300" aria-hidden="true" />
+                <div className="border-t border-dashed" style={{ borderColor: palette.border }} aria-hidden="true" />
 
                 {/* Line items + bundles */}
                 <div className="space-y-3 py-5">
@@ -108,7 +110,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
                 <CartOffers cart={cart} className="pb-5" />
 
                 {/* Dashed separator before totals */}
-                <div className="border-t border-dashed border-gray-300" aria-hidden="true" />
+                <div className="border-t border-dashed" style={{ borderColor: palette.border }} aria-hidden="true" />
 
                 {/* Totals styled as a receipt total (monospace amounts) */}
                 <div
@@ -119,7 +121,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
                 </div>
 
                 {/* Receipt footer flourish */}
-                <p className="mt-5 text-center text-[11px] font-mono uppercase tracking-[0.25em] text-gray-400">
+                <p className="mt-5 text-center text-[11px] font-mono uppercase tracking-[0.25em]" style={{ color: palette.muted }}>
                   * * * Thank you * * *
                 </p>
               </div>
@@ -129,7 +131,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
                 className="h-3 w-full"
                 style={{
                   backgroundImage:
-                    'linear-gradient(45deg, #ffffff 50%, transparent 50%), linear-gradient(-45deg, #ffffff 50%, transparent 50%)',
+                    `linear-gradient(45deg, ${palette.card} 50%, transparent 50%), linear-gradient(-45deg, ${palette.card} 50%, transparent 50%)`,
                   backgroundSize: '16px 16px',
                   backgroundPosition: 'bottom',
                   backgroundRepeat: 'repeat-x',

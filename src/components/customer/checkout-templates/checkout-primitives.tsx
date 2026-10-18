@@ -11,8 +11,8 @@
  * useCheckout() hook and themes itself from `checkout.branding`, so designs get
  * tenant colors for free. Layout/chrome is left to each design.
  *
- * The Classic design intentionally does NOT use these — it preserves the
- * original orange markup verbatim.
+ * The Classic design intentionally does NOT use these — it keeps its original
+ * markup, themed from the same `--co-*` variables (./checkout-theme).
  */
 
 import { useId } from 'react'
@@ -33,6 +33,7 @@ import {
 } from '@/lib/checkout/customer-field-input'
 import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { getCheckoutPalette } from '@/lib/branding-utils'
+import { CO, checkoutThemeStyle } from './checkout-theme'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
@@ -42,7 +43,7 @@ import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
 const AddressAutocomplete = dynamic(
   () => import('@/components/shared/address-autocomplete').then(mod => ({ default: mod.AddressAutocomplete })),
   {
-    loading: () => <input className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Loading address field..." disabled />,
+    loading: () => <input className={`w-full px-3 py-2 rounded-lg ${CO.input}`} placeholder="Loading address field..." disabled />,
     ssr: false,
   }
 )
@@ -68,16 +69,14 @@ function useAccent(checkout: UseCheckoutReturn) {
  */
 export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckoutReturn; columns?: 1 | 2 }) {
   const { formFields, customerData, setCustomerData, tenant } = checkout
-  const { accent } = useAccent(checkout)
   const reactId = useId()
 
   if (!formFields.length) return null
 
-  const inputClass =
-    'w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[color:var(--checkout-accent)] focus:border-[color:var(--checkout-accent)] transition-shadow'
+  const inputClass = `w-full px-3 py-2.5 rounded-lg transition-shadow ${CO.input}`
 
   return (
-    <div style={{ ['--checkout-accent' as string]: accent }}>
+    <div style={checkoutThemeStyle(checkout)}>
     <div
       className={`grid gap-4 ${columns === 2 ? 'md:grid-cols-2' : 'grid-cols-1'}`}
     >
@@ -86,9 +85,9 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
         const fullWidth = field.field_type === 'textarea' || isDeliveryAddressField(field)
         return (
           <div key={field.id} className={fullWidth && columns === 2 ? 'md:col-span-2' : ''}>
-            <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label htmlFor={fieldId} className={`block text-sm font-medium mb-1.5 ${CO.text}`}>
               {field.field_label}
-              {field.is_required && <span className="text-red-500 ml-1">*</span>}
+              {field.is_required && <span className={`ml-1 ${CO.error}`}>*</span>}
             </label>
 
             {isDeliveryAddressField(field) ? (
@@ -125,7 +124,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
               </select>
             ) : field.field_type === 'phone' && (tenant?.lalamove_market || '').toUpperCase() === 'PH' ? (
               <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700 font-medium pointer-events-none">
+                <div className={`absolute left-3 top-1/2 -translate-y-1/2 font-medium pointer-events-none ${CO.text}`}>
                   +63
                 </div>
                 <input
@@ -140,7 +139,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
                   maxLength={PH_PHONE_MAX_DIGITS}
                   className={`${inputClass} pl-12`}
                 />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">
+                <div className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none ${CO.muted}`}>
                   {`${phPhoneDigitCount(customerData[field.field_name] || '')}/${PH_PHONE_MAX_DIGITS}`}
                 </div>
               </div>
@@ -156,7 +155,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
             )}
 
             {isDeliveryAddressField(field) && checkout.deliveryOutOfRange && (
-              <p className="mt-1.5 text-sm font-medium text-red-600">
+              <p className={`mt-1.5 text-sm font-medium ${CO.error}`}>
                 This address is outside the delivery area
                 {checkout.tenant?.delivery_radius_km ? ` (${checkout.tenant.delivery_radius_km} km)` : ''}.
                 {' '}Please choose a closer address or switch to pickup.
@@ -166,7 +165,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
               !checkout.deliveryOutOfRange &&
               checkout.deliveryFee !== null &&
               checkout.deliveryDistanceKm !== null && (
-                <p className="mt-1.5 text-xs text-gray-500">
+                <p className={`mt-1.5 text-xs ${CO.muted}`}>
                   {checkout.deliveryDistanceKm.toFixed(1)} km away
                 </p>
               )}
@@ -205,14 +204,15 @@ export function SmsOptInCheckbox({ checkout }: { checkout: UseCheckoutReturn }) 
   return (
     <label
       htmlFor={id}
-      className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-gray-600"
+      className={`mt-4 flex cursor-pointer items-start gap-2.5 text-sm ${CO.muted}`}
+      style={checkoutThemeStyle(checkout)}
     >
       <input
         id={id}
         type="checkbox"
         checked={isSmsOptedIn}
         onChange={(e) => setIsSmsOptedIn(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-gray-300"
+        className={`mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded ${CO.border}`}
         style={{ accentColor: accent }}
       />
       <span>
@@ -230,11 +230,13 @@ export function SmsOptInCheckbox({ checkout }: { checkout: UseCheckoutReturn }) 
 export function OrderTypeSelector({ checkout, compact = false }: { checkout: UseCheckoutReturn; compact?: boolean }) {
   const { orderTypes, orderType, setOrderType } = checkout
   const { accent, accentText, accentSoft, accentBorder } = useAccent(checkout)
+  // Unselected colours come from the theme variables set on this root.
+  const tileBorder = 'var(--co-border)'
 
   if (!orderTypes.length) return null
 
   return (
-    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+    <div className="grid grid-cols-3 gap-2.5 sm:gap-3" style={checkoutThemeStyle(checkout)}>
       {orderTypes.map((ot) => {
         const isSelected = orderType === ot.id
         const Icon = orderTypeIconMap[ot.type] ?? Package
@@ -246,11 +248,11 @@ export function OrderTypeSelector({ checkout, compact = false }: { checkout: Use
             aria-pressed={isSelected}
             className={`relative flex flex-col items-center justify-start text-center rounded-2xl border-2 transition-all ${compact ? 'p-2.5' : 'p-3 sm:p-4'} ${isSelected ? 'shadow-sm' : 'hover:shadow-sm'}`}
             style={{
-              borderColor: isSelected ? accent : '#e5e7eb',
-              backgroundColor: isSelected ? accentSoft : '#ffffff',
+              borderColor: isSelected ? accent : tileBorder,
+              backgroundColor: isSelected ? accentSoft : 'var(--co-card)',
             }}
             onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = accentBorder }}
-            onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = '#e5e7eb' }}
+            onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = tileBorder }}
           >
             {isSelected && (
               <span
@@ -262,13 +264,13 @@ export function OrderTypeSelector({ checkout, compact = false }: { checkout: Use
             )}
             <span
               className={`inline-flex items-center justify-center rounded-full mb-2 ${compact ? 'h-9 w-9' : 'h-10 w-10 sm:h-12 sm:w-12'}`}
-              style={isSelected ? { backgroundColor: accent, color: accentText } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}
+              style={isSelected ? { backgroundColor: accent, color: accentText } : { backgroundColor: 'var(--co-subtle-strong)', color: 'var(--co-muted)' }}
             >
               <Icon className={compact ? 'h-4.5 w-4.5' : 'h-5 w-5 sm:h-6 sm:w-6'} />
             </span>
-            <span className="font-semibold text-xs sm:text-sm text-gray-900 leading-tight">{ot.name}</span>
+            <span className={`font-semibold text-xs sm:text-sm leading-tight ${CO.text}`}>{ot.name}</span>
             {!compact && ot.description && (
-              <span className="hidden sm:block text-[11px] text-gray-500 mt-0.5 line-clamp-2">{ot.description}</span>
+              <span className={`hidden sm:block text-[11px] mt-0.5 line-clamp-2 ${CO.muted}`}>{ot.description}</span>
             )}
             {ot.advance_order_enabled && (
               <span
@@ -319,7 +321,11 @@ export function MinimumOrderNotice({
   if (!message) return null
 
   return (
-    <p className={`text-sm font-medium text-red-600 ${className}`} role="alert">
+    <p
+      className={`text-sm font-medium ${CO.error} ${className}`}
+      style={checkoutThemeStyle(checkout)}
+      role="alert"
+    >
       {message}
     </p>
   )

@@ -43,7 +43,7 @@ export function VoucherField({
 
   return (
     <div className="space-y-2">
-      <label htmlFor="voucher-code-input" className="text-sm font-medium">
+      <label htmlFor="voucher-code-input" className="text-sm font-medium text-[color:var(--co-text)]">
         <StoreLabel name="checkout.voucher" fallback="Have a voucher?" />
       </label>
 
@@ -62,14 +62,14 @@ export function VoucherField({
           autoCapitalize="characters"
           autoComplete="off"
           spellCheck={false}
-          className="min-w-0 flex-1 h-10 rounded-md border border-gray-300 px-3 font-mono text-sm uppercase"
+          className="min-w-0 flex-1 h-10 rounded-md border border-[color:var(--co-border)] bg-[var(--co-card)] px-3 font-mono text-sm uppercase text-[color:var(--co-text)] placeholder:text-[color:var(--co-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--co-accent)] focus:border-[color:var(--co-accent)]"
           disabled={isChecking}
         />
         <button
           type="button"
           onClick={() => void submit()}
           disabled={isChecking || draft.trim() === ''}
-          className="h-10 shrink-0 rounded-md border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
+          className="h-10 shrink-0 rounded-md border border-[color:var(--co-border)] bg-[var(--co-card)] px-4 text-sm font-medium text-[color:var(--co-text)] hover:bg-[var(--co-subtle)] disabled:opacity-50"
         >
           {isChecking ? 'Checking…' : 'Apply'}
         </button>
@@ -85,21 +85,21 @@ export function VoucherField({
               <li key={code} className="text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono font-medium">{code}</span>
+                    <span className="font-mono font-medium text-[color:var(--co-text)]">{code}</span>
                     {accepted && (
-                      <span className="text-green-700">−{formatPrice(accepted.amount)}</span>
+                      <span className="text-[color:var(--co-success)]">−{formatPrice(accepted.amount)}</span>
                     )}
                   </span>
                   <button
                     type="button"
                     onClick={() => void onRemove(code)}
                     aria-label={`Remove voucher ${code}`}
-                    className="shrink-0 rounded p-1 text-gray-500 hover:text-gray-900"
+                    className="shrink-0 rounded p-1 text-[color:var(--co-muted)] hover:text-[color:var(--co-text)]"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                {rejected && <p className="text-red-600">{rejected.message}</p>}
+                {rejected && <p className="text-[color:var(--co-error)]">{rejected.message}</p>}
               </li>
             )
           })}

@@ -60,9 +60,9 @@ describe('issue labels', () => {
 })
 
 describe('only what the storefront really draws', () => {
-    it('measures cart text on the white template card when the card colour is blank', () => {
-        // Dark store cards don't reach the cart: blank cart columns keep the template's white.
-        expect(tenantContrastIssue('cart_text_color', { cart_text_color: '#000000' }, { cards_color: '#171717' })).toBeNull()
+    it('measures cart text on the store cards when the cart card colour is blank', () => {
+        // Blank cart colours follow the brand (2026-10-18): black text on dark cards is unreadable.
+        expect(tenantContrastIssue('cart_text_color', { cart_text_color: '#000000' }, { cards_color: '#171717' })).not.toBeNull()
     })
 
     it('leaves blank cart button text alone — the cart prints readable ink itself', () => {

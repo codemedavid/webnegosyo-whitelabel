@@ -4,6 +4,7 @@
  */
 
 import { readSectionScheme, schemeColors } from '@/lib/section-schemes'
+import { readableTextOn } from '@/lib/color-contrast'
 import { AUTO_CARD_STYLE, readCardStyleSettings, type CardStyleSettings } from '@/lib/card-style'
 import { resolveFontPair, resolveRoundness, resolvePalette } from '@/lib/storefront-theme'
 
@@ -284,10 +285,10 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
  *
  * `accent`/`accentText`/`accentSoft`/`accentBorder` are always present — the
  * accent resolves cart_accent_color → button_primary_color → primary_color, so
- * an unset tenant keeps today's look. Every OTHER field is an explicit override:
- * `undefined` unless the merchant set that specific cart/checkout color.
- * Designs apply these via inline `style` so `undefined` is a no-op and the
- * design's own neutral default (Tailwind class) wins — no regression when unset.
+ * an unset tenant keeps today's look. Every other colour follows the store's
+ * brand when its cart/checkout column is blank (owner decision 2026-10-18):
+ * a dark store gets a dark cart, not the template's own white. `button` stays
+ * an explicit override; call sites fall back to `accent`.
  */
 export interface SurfacePalette {
   accent: string
@@ -312,6 +313,15 @@ function rawTenantColor(tenant: Record<string, unknown> | null | undefined, key:
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+/**
+ * Cart/checkout text made readable on the cards it sits on. Cards follow the
+ * brand when blank (2026-10-18), so text a store set for the old always-white
+ * cards (e.g. black) must not vanish on a dark store's cards.
+ */
+function readableSurfaceText(text: string, mutedText: string, cardBackground: string): { text: string; mutedText: string } {
+  return { text: readableTextOn(text, cardBackground), mutedText: readableTextOn(mutedText, cardBackground) }
+}
+
 /** Resolve the Cart page palette from a tenant record + its resolved branding. */
 export function getCartPalette(
   tenant: Record<string, unknown> | null | undefined,
@@ -319,18 +329,23 @@ export function getCartPalette(
 ): SurfacePalette {
   const accent = branding.cartAccent || branding.buttonPrimary || branding.primary || '#111111'
   const buttonText = rawTenantColor(tenant, 'cart_button_text_color')
+  const buttonFill = rawTenantColor(tenant, 'cart_button_color') ?? accent
   return {
     accent,
-    accentText: buttonText || getContrastColor(accent),
+    // The owner's button text, kept readable on the button it sits on.
+    accentText: readableTextOn(buttonText || getContrastColor(buttonFill), buttonFill),
     accentSoft: setAlpha(accent, 0.08),
     accentBorder: setAlpha(accent, 0.4),
     button: rawTenantColor(tenant, 'cart_button_color'),
-    background: rawTenantColor(tenant, 'cart_background_color'),
-    cardBackground: rawTenantColor(tenant, 'cart_card_background_color'),
-    text: rawTenantColor(tenant, 'cart_text_color'),
-    mutedText: rawTenantColor(tenant, 'cart_muted_text_color'),
-    border: rawTenantColor(tenant, 'cart_border_color'),
-    summaryBackground: rawTenantColor(tenant, 'cart_summary_background_color'),
+    background: rawTenantColor(tenant, 'cart_background_color') ?? branding.background,
+    cardBackground: rawTenantColor(tenant, 'cart_card_background_color') ?? branding.cards,
+    ...readableSurfaceText(
+      rawTenantColor(tenant, 'cart_text_color') ?? branding.textPrimary,
+      rawTenantColor(tenant, 'cart_muted_text_color') ?? branding.textSecondary,
+      rawTenantColor(tenant, 'cart_card_background_color') ?? branding.cards
+    ),
+    border: rawTenantColor(tenant, 'cart_border_color') ?? branding.border,
+    summaryBackground: rawTenantColor(tenant, 'cart_summary_background_color') ?? branding.cards,
   }
 }
 
@@ -341,19 +356,24 @@ export function getCheckoutPalette(
 ): SurfacePalette {
   const accent = branding.checkoutAccent || branding.buttonPrimary || branding.primary || '#111111'
   const buttonText = rawTenantColor(tenant, 'checkout_button_text_color')
+  const buttonFill = rawTenantColor(tenant, 'checkout_button_color') ?? accent
   return {
     accent,
-    accentText: buttonText || getContrastColor(accent),
+    // The owner's button text, kept readable on the button it sits on.
+    accentText: readableTextOn(buttonText || getContrastColor(buttonFill), buttonFill),
     accentSoft: setAlpha(accent, 0.08),
     accentSofter: setAlpha(accent, 0.04),
     accentBorder: setAlpha(accent, 0.45),
     button: rawTenantColor(tenant, 'checkout_button_color'),
-    background: rawTenantColor(tenant, 'checkout_background_color'),
-    cardBackground: rawTenantColor(tenant, 'checkout_card_background_color'),
-    text: rawTenantColor(tenant, 'checkout_text_color'),
-    mutedText: rawTenantColor(tenant, 'checkout_muted_text_color'),
-    border: rawTenantColor(tenant, 'checkout_border_color'),
-    summaryBackground: rawTenantColor(tenant, 'checkout_summary_background_color'),
+    background: rawTenantColor(tenant, 'checkout_background_color') ?? branding.background,
+    cardBackground: rawTenantColor(tenant, 'checkout_card_background_color') ?? branding.cards,
+    ...readableSurfaceText(
+      rawTenantColor(tenant, 'checkout_text_color') ?? branding.textPrimary,
+      rawTenantColor(tenant, 'checkout_muted_text_color') ?? branding.textSecondary,
+      rawTenantColor(tenant, 'checkout_card_background_color') ?? branding.cards
+    ),
+    border: rawTenantColor(tenant, 'checkout_border_color') ?? branding.border,
+    summaryBackground: rawTenantColor(tenant, 'checkout_summary_background_color') ?? branding.cards,
   }
 }
 

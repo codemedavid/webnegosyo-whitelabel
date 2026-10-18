@@ -12,6 +12,7 @@
  * ./page.tsx — so nothing waits on a browser fetch.
  */
 
+import { checkoutThemeStyle } from '@/components/customer/checkout-templates/checkout-theme'
 import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { useCheckout, type UseCheckoutInput } from '@/hooks/useCheckout'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
@@ -64,7 +65,7 @@ export function CheckoutView({ tenantSlug, initialTenant, config }: UseCheckoutI
 
   return (
     <StorefrontLabelsProvider tenant={checkout.tenant}>
-      <div data-branding-scope="checkout/colors">
+      <div data-branding-scope="checkout/colors" style={checkoutThemeStyle(checkout)}>
         <SeniorOrderSteps
           current="checkout"
           branding={checkout.branding}

@@ -1,10 +1,11 @@
 'use client'
 
 /**
- * Classic cart design — the original two-column layout, preserved verbatim and
- * wired to the shared useCartView() hook. Default design; must remain
- * pixel-identical to the pre-template cart. The remove dialog and upsell
- * interstitial are rendered by the page shell (shared).
+ * Classic cart design — the original two-column layout wired to the shared
+ * useCartView() hook. Default design. Every colour comes from the cart palette
+ * (getCartColors), which inherits the store's brand, so a store that never set
+ * cart colours gets a clean light cart and a dark store gets a dark one. The
+ * remove dialog and upsell interstitial are rendered by the page shell.
  */
 
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
@@ -15,12 +16,11 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, Trash2, Pencil, ArrowLeft, ShoppingBag, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { EmptyState } from '@/components/shared/empty-state'
 import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
-import { getCartPalette } from '@/lib/branding-utils'
 import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import { CartOffers } from './cart-shared'
+import { CartEmptyPanel, cartColorVars, getCartColors } from './cart-primitives'
 
 export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
   const {
@@ -35,19 +35,21 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
   if (!tenant) return null
 
-  const palette = getCartPalette(tenant, cart.branding)
-  const accentColor = typeof tenant?.cart_accent_color === 'string' && tenant.cart_accent_color ? tenant.cart_accent_color : undefined
+  const palette = getCartColors(tenant, cart.branding)
+  const accentColor = palette.accent
+  // Outline/ghost controls: palette border + text, accent-tinted hover.
+  const outlineControl = { borderColor: palette.border, color: palette.text }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20" style={{ background: palette.background }}>
-      <header data-senior-hidden className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+    <div className="min-h-screen" style={{ ...cartColorVars(palette), background: palette.background }}>
+      <header data-senior-hidden className="sticky top-0 z-50 backdrop-blur-sm border-b" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
         <div className="container mx-auto flex h-20 items-center gap-4 px-4">
-          <Button variant="ghost" size="icon" onClick={exitToMenu} aria-label="Back to menu" className="hover:bg-orange-50">
+          <Button variant="ghost" size="icon" onClick={exitToMenu} aria-label="Back to menu" className="hover:bg-[var(--cart-soft)]" style={{ color: palette.text }}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900" style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Your Cart" /></h1>
-            <p className="text-sm text-gray-500" style={{ color: palette.mutedText }}>Review your delicious selection</p>
+            <h1 className="text-2xl font-bold" style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Your Cart" /></h1>
+            <p className="text-sm" style={{ color: palette.muted }}>Review your delicious selection</p>
           </div>
         </div>
       </header>
@@ -55,8 +57,9 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
       <main className="container mx-auto px-4 py-8">
         {items.length === 0 && bundleItems.length === 0 ? (
           <div className="flex min-h-[60vh] items-center justify-center">
-            <div className="rounded-3xl bg-white p-16 shadow-lg text-center max-w-md">
-              <EmptyState
+            <div className="rounded-3xl p-16 shadow-lg text-center max-w-md" style={{ backgroundColor: palette.card }}>
+              <CartEmptyPanel
+                colors={palette}
                 icon={ShoppingBag}
                 title={<StoreLabel name="cart.empty" fallback="Your cart is empty" />}
                 description="Add some items from the menu to get started"
@@ -69,14 +72,14 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
           <div className="grid gap-8 lg:grid-cols-3">
             <div className="space-y-6 lg:col-span-2">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-900" style={{ color: palette.text }}>Cart Items</h2>
-                <span className="text-sm text-gray-500" style={{ color: palette.mutedText }}>{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                <h2 className="text-xl md:text-2xl font-bold" style={{ color: palette.text }}>Cart Items</h2>
+                <span className="text-sm" style={{ color: palette.muted }}>{items.length} item{items.length !== 1 ? 's' : ''}</span>
               </div>
 
               {items.map((item, index) => (
-                <div key={item.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+                <div key={item.id} className="group rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
                   <div className="flex gap-4 md:gap-6">
-                    <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                    <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl" style={{ backgroundColor: palette.accentSoft }}>
                       <OptimizedImage
                         src={item.menu_item.image_url}
                         alt={item.menu_item.name}
@@ -92,13 +95,13 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                       <div>
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="flex-1">
-                            <h3 className={`text-lg font-bold text-gray-900 ${isSeniorMode ? 'line-clamp-2' : 'line-clamp-1'}`} style={{ color: palette.text }}>
+                            <h3 className={`text-lg font-bold ${isSeniorMode ? 'line-clamp-2' : 'line-clamp-1'}`} style={{ color: palette.text }}>
                               {item.menu_item.name}
                             </h3>
 
                             {/* Legacy single variation */}
                             {item.selected_variation && (
-                              <Badge variant="outline" className="mt-2 border-orange-200 text-orange-700 bg-orange-50">
+                              <Badge variant="outline" className="mt-2" style={{ borderColor: palette.accentBorder, color: palette.accent, backgroundColor: palette.accentSoft }}>
                                 {item.selected_variation.name}
                               </Badge>
                             )}
@@ -110,7 +113,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                                   <Badge
                                     key={idx}
                                     variant="outline"
-                                    className="border-orange-200 text-orange-700 bg-orange-50"
+                                    style={{ borderColor: palette.accentBorder, color: palette.accent, backgroundColor: palette.accentSoft }}
                                   >
                                     {option.name}
                                   </Badge>
@@ -123,7 +126,8 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-10 w-10 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full touch-manipulation"
+                                className="h-10 w-10 hover:bg-[var(--cart-soft)] rounded-full touch-manipulation"
+                                style={{ color: palette.muted }}
                                 onClick={() => setItemToEdit(item)}
                                 aria-label="Edit item"
                               >
@@ -133,7 +137,8 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-10 w-10 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-full touch-manipulation"
+                              className="h-10 w-10 hover:bg-[var(--cart-danger-soft)] rounded-full touch-manipulation"
+                              style={{ color: palette.danger }}
                               onClick={() => setItemToRemove(item)}
                               aria-label="Remove item"
                             >
@@ -143,20 +148,20 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                         </div>
 
                         {item.selected_addons.length > 0 && (
-                          <p className="text-sm text-gray-600 mb-1" style={{ color: palette.mutedText }}>
+                          <p className="text-sm mb-1" style={{ color: palette.muted }}>
                             <span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}
                           </p>
                         )}
 
                         {item.special_instructions && (
-                          <p className="text-sm italic text-gray-500" style={{ color: palette.mutedText }}>
+                          <p className="text-sm italic" style={{ color: palette.muted }}>
                             <span className="font-medium">Note:</span> {item.special_instructions}
                           </p>
                         )}
                         {item.presell_date && (
                           <p className="text-sm" style={{ color: palette.accent }}>
                             <span className="font-medium">Pre-order for:</span> {formatPresellDateLabel(item.presell_date)}
-                            {presellHintFor(item) && <span className="ml-2 text-xs" style={{ color: palette.mutedText }}>{presellHintFor(item)}</span>}
+                            {presellHintFor(item) && <span className="ml-2 text-xs" style={{ color: palette.muted }}>{presellHintFor(item)}</span>}
                           </p>
                         )}
                       </div>
@@ -166,18 +171,20 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300 touch-manipulation"
+                            className="h-10 w-10 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
+                            style={outlineControl}
                             onClick={() => handleDecreaseQuantity(item)}
                           >
                             <Minus className="h-4 w-4" />
                           </Button>
-                          <span className="w-12 text-center font-bold text-lg text-gray-900" style={{ color: palette.text }}>
+                          <span className="w-12 text-center font-bold text-lg" style={{ color: palette.text }}>
                             {item.quantity}
                           </span>
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300 touch-manipulation"
+                            className="h-10 w-10 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
+                            style={outlineControl}
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                             disabled={!canIncreaseItem(item)}
                           >
@@ -185,11 +192,11 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                           </Button>
                         </div>
                         <div className="ml-auto text-right">
-                          <span className="text-xl font-bold text-orange-600" style={{ color: accentColor }}>
+                          <span className="text-xl font-bold" style={{ color: accentColor }}>
                             {formatPrice(item.subtotal)}
                           </span>
                           {item.quantity > 1 && (
-                            <p className="text-xs text-gray-500" style={{ color: palette.mutedText }}>
+                            <p className="text-xs" style={{ color: palette.muted }}>
                               {formatPrice(item.subtotal / item.quantity)} each
                             </p>
                           )}
@@ -208,41 +215,41 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                 )
 
                 return (
-                  <div key={bundleItem.id} className="group rounded-2xl bg-white p-4 md:p-6 shadow-sm border border-orange-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+                  <div key={bundleItem.id} className="group rounded-2xl p-4 md:p-6 shadow-sm border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
                     {/* Bundle header */}
                     <div className="flex items-center gap-2 mb-3">
-                      <Package className="h-4 w-4 text-orange-500" style={{ color: accentColor }} />
-                      <span className="font-bold text-gray-900" style={{ color: palette.text }}>{bundleItem.bundleName}</span>
+                      <Package className="h-4 w-4" style={{ color: accentColor }} />
+                      <span className="font-bold" style={{ color: palette.text }}>{bundleItem.bundleName}</span>
                       {savings > 0 && (
-                        <Badge className="bg-green-100 text-green-700 text-xs">
+                        <Badge className="text-xs border-transparent" style={{ backgroundColor: palette.successSoft, color: palette.success }}>
                           Save {formatPrice(savings)}
                         </Badge>
                       )}
                     </div>
 
                     {/* Bundle slots list */}
-                    <div className="space-y-2 mb-3 pl-6 border-l-2 border-orange-100">
+                    <div className="space-y-2 mb-3 pl-6 border-l-2" style={{ borderColor: palette.accentSoft }}>
                       {bundleItem.slots.map((slot, idx) => (
                         <div key={idx} className="text-sm">
-                          <span className="font-medium text-gray-800" style={{ color: palette.text }}>
+                          <span className="font-medium" style={{ color: palette.text }}>
                             {slot.quantity > 1 ? `${slot.quantity}x ` : ''}{slot.menuItemName}
                           </span>
                           {slot.selectedVariations && Object.values(slot.selectedVariations).length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-0.5">
                               {Object.values(slot.selectedVariations).map((opt, i) => (
-                                <Badge key={i} variant="secondary" className="text-xs">
+                                <Badge key={i} variant="secondary" className="text-xs" style={{ backgroundColor: palette.accentSoft, color: palette.muted }}>
                                   {opt.name}
                                 </Badge>
                               ))}
                             </div>
                           )}
                           {slot.selectedVariation && (
-                            <Badge variant="secondary" className="text-xs mt-0.5">
+                            <Badge variant="secondary" className="text-xs mt-0.5" style={{ backgroundColor: palette.accentSoft, color: palette.muted }}>
                               {slot.selectedVariation.name}
                             </Badge>
                           )}
                           {slot.selectedAddons.length > 0 && (
-                            <p className="text-xs text-gray-500 mt-0.5" style={{ color: palette.mutedText }}>
+                            <p className="text-xs mt-0.5" style={{ color: palette.muted }}>
                               + {slot.selectedAddons.map(addonLabel).join(', ')}
                             </p>
                           )}
@@ -253,29 +260,29 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                     {/* Bundle pricing and controls */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 bg-gray-50 rounded-full px-2 py-1">
+                        <div className="flex items-center gap-2 rounded-full px-2 py-1" style={{ backgroundColor: palette.accentSoft, color: palette.text }}>
                           <button onClick={() => updateBundleQuantity(bundleItem.id, bundleItem.quantity - 1)}
-                            className="p-1 rounded-full hover:bg-gray-200 transition-colors">
+                            className="p-1 rounded-full hover:bg-[var(--cart-soft)] transition-colors" aria-label="Decrease quantity">
                             <Minus className="h-3 w-3" />
                           </button>
                           <span className="text-sm font-semibold w-6 text-center">{bundleItem.quantity}</span>
                           <button onClick={() => updateBundleQuantity(bundleItem.id, bundleItem.quantity + 1)}
-                            className="p-1 rounded-full hover:bg-gray-200 transition-colors">
+                            className="p-1 rounded-full hover:bg-[var(--cart-soft)] transition-colors" aria-label="Increase quantity">
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
                         <button onClick={() => removeBundleFromCart(bundleItem.id)}
-                          className="p-1.5 rounded-full text-red-400 hover:bg-red-50 transition-colors">
+                          className="p-1.5 rounded-full hover:bg-[var(--cart-danger-soft)] transition-colors" style={{ color: palette.danger }} aria-label="Remove bundle">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                       <div className="text-right">
                         {savings > 0 && (
-                          <span className="text-xs text-gray-400 line-through block">
+                          <span className="text-xs line-through block" style={{ color: palette.muted }}>
                             {formatPrice(originalTotal * bundleItem.quantity)}
                           </span>
                         )}
-                        <span className="font-bold text-orange-600" style={{ color: accentColor }}>
+                        <span className="font-bold" style={{ color: accentColor }}>
                           {formatPrice(bundleItem.subtotal)}
                         </span>
                       </div>
@@ -287,45 +294,45 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
             </div>
 
             <div className="lg:col-span-1">
-              <div className="sticky top-20 rounded-2xl bg-white p-6 md:p-8 shadow-lg border border-gray-100" style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}>
+              <div className="sticky top-20 rounded-2xl p-6 md:p-8 shadow-lg border" style={{ backgroundColor: palette.summary, borderColor: palette.border }}>
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
-                    <span className="text-orange-600 font-bold" style={{ color: accentColor }}>₱</span>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: palette.accentSoft }}>
+                    <span className="font-bold" style={{ color: accentColor }}>₱</span>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900" style={{ color: palette.text }}>Order Summary</h3>
+                  <h3 className="text-xl font-bold" style={{ color: palette.text }}>Order Summary</h3>
                 </div>
 
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-gray-600" style={{ color: palette.mutedText }}>Items ({items.length})</span>
-                    <span className="font-semibold text-gray-900" style={{ color: palette.text }}>{formatPrice(total)}</span>
+                    <span style={{ color: palette.muted }}>Items ({items.length})</span>
+                    <span className="font-semibold" style={{ color: palette.text }}>{formatPrice(total)}</span>
                   </div>
 
                   {calculateTotalSlotBundleSavings(bundleItems) > 0 && (
-                    <div className="flex justify-between items-center text-green-600 text-sm">
+                    <div className="flex justify-between items-center text-sm" style={{ color: palette.success }}>
                       <span>Bundle savings</span>
                       <span>-{formatPrice(calculateTotalSlotBundleSavings(bundleItems))}</span>
                     </div>
                   )}
 
-                  <div className="border-t border-gray-200 pt-4" style={{ borderColor: palette.border }}>
+                  <div className="border-t pt-4" style={{ borderColor: palette.border }}>
                     <div className="flex justify-between items-center">
-                      <span className="text-lg font-bold text-gray-900" style={{ color: palette.text }}>Total</span>
-                      <span className="text-2xl font-bold text-orange-600" style={{ color: accentColor }}>{formatPrice(total)}</span>
+                      <span className="text-lg font-bold" style={{ color: palette.text }}>Total</span>
+                      <span className="text-2xl font-bold" style={{ color: accentColor }}>{formatPrice(total)}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <Button
-                    className="w-full h-14 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ background: palette.button, color: palette.button ? palette.accentText : undefined }}
+                    className="w-full h-14 font-bold rounded-xl shadow-lg hover:shadow-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: palette.button, color: palette.buttonText }}
                     onClick={requestCheckout}
                     disabled={isNavigating}
                   >
                     {isNavigating ? (
                       <>
-                        <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+                        <div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin mr-3"></div>
                         <span className="text-lg">Loading...</span>
                       </>
                     ) : (
@@ -333,7 +340,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                     )}
                   </Button>
                   <Link href={`/${tenantSlug}/menu`} className="w-full">
-                    <Button variant="outline" className="w-full h-12 border-2 border-gray-200 hover:bg-orange-50 hover:border-orange-200 rounded-xl font-semibold">
+                    <Button variant="outline" className="w-full h-12 border-2 bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] rounded-xl font-semibold" style={outlineControl}>
                       Continue Shopping
                     </Button>
                   </Link>

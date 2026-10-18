@@ -16,6 +16,7 @@ import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { ArrowLeft, Lock, ShoppingBag, User, CreditCard } from 'lucide-react'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { checkoutThemeStyle } from './checkout-theme'
 import {
   OrderTypeSelector,
   AdvanceOrderScheduler,
@@ -38,7 +39,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const accentSoft = palette.accentSoft
 
   const sectionCard =
-    'rounded-2xl bg-white border border-gray-200/80 shadow-sm shadow-gray-200/40 p-5 sm:p-6 md:p-7'
+    'rounded-2xl bg-[var(--co-card)] border border-[color:var(--co-border)] shadow-sm shadow-black/5 p-5 sm:p-6 md:p-7'
 
   const numberBadge = (icon: React.ReactNode) => (
     <span
@@ -53,23 +54,23 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const showCustomerInfo = !!orderType && formFields.length > 0
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]" style={{ backgroundColor: palette.background }}>
+    <div className="min-h-screen bg-[var(--co-bg)] text-[color:var(--co-text)]" style={checkoutThemeStyle(checkout)}>
       {/* Sticky header */}
-      <header data-senior-hidden className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <header data-senior-hidden className="sticky top-0 z-50 border-b border-[color:var(--co-border)] bg-[var(--co-card)]/95 backdrop-blur supports-[backdrop-filter]:bg-[var(--co-card)]/80">
         <div className="container mx-auto flex h-16 items-center gap-3 px-4">
           <button
             type="button"
             onClick={() => router.back()}
             aria-label="Go back"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[color:var(--co-text)] transition-colors hover:bg-[var(--co-subtle-strong)]"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-none truncate"><StoreLabel name="checkout.title" fallback="Checkout" /></h1>
-            <p className="text-xs text-gray-500 mt-0.5 truncate">{tenant.name}</p>
+            <h1 className="text-lg sm:text-xl font-bold text-[color:var(--co-text)] leading-none truncate"><StoreLabel name="checkout.title" fallback="Checkout" /></h1>
+            <p className="text-xs text-[color:var(--co-muted)] mt-0.5 truncate">{tenant.name}</p>
           </div>
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-[color:var(--co-muted)]">
             <Lock className="h-3.5 w-3.5" />
             Secure checkout
           </span>
@@ -90,10 +91,10 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   <div className="mb-4 sm:mb-5 flex items-start gap-3">
                     {numberBadge(<ShoppingBag className="h-5 w-5" />)}
                     <div className="min-w-0">
-                      <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">
+                      <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)] leading-tight">
                         <StoreLabel name="checkout.order_type" fallback="How would you like to receive your order?" />
                       </h2>
-                      <p className="text-sm text-gray-500 mt-0.5">
+                      <p className="text-sm text-[color:var(--co-muted)] mt-0.5">
                         Choose a fulfillment method{advanceConfig.enabled ? ' and when you want it' : ''}.
                       </p>
                     </div>
@@ -102,7 +103,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   <OrderTypeSelector checkout={checkout} />
 
                   {advanceConfig.enabled && (
-                    <div className="mt-5 border-t border-gray-100 pt-5">
+                    <div className="mt-5 border-t border-[color:var(--co-border)] pt-5">
                       <AdvanceOrderScheduler checkout={checkout} />
                     </div>
                   )}
@@ -118,8 +119,8 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   <div className="mb-5 flex items-start gap-3">
                     {numberBadge(<User className="h-5 w-5" />)}
                     <div className="min-w-0">
-                      <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">Your details</h2>
-                      <p className="text-sm text-gray-500 mt-0.5">Tell us where to reach you.</p>
+                      <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)] leading-tight">Your details</h2>
+                      <p className="text-sm text-[color:var(--co-muted)] mt-0.5">Tell us where to reach you.</p>
                     </div>
                   </div>
 
@@ -135,8 +136,8 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                 <div className="mb-5 flex items-start gap-3">
                   {numberBadge(<CreditCard className="h-5 w-5" />)}
                   <div className="min-w-0">
-                    <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">Payment</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Select how you&apos;d like to pay.</p>
+                    <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)] leading-tight">Payment</h2>
+                    <p className="text-sm text-[color:var(--co-muted)] mt-0.5">Select how you&apos;d like to pay.</p>
                   </div>
                 </div>
 
@@ -148,14 +149,14 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <aside className="lg:col-span-1">
               <div className="lg:sticky lg:top-24">
                 <div
-                  className="overflow-hidden rounded-2xl bg-white border border-gray-200/80 shadow-md shadow-gray-200/50"
+                  className="overflow-hidden rounded-2xl bg-[var(--co-card)] border border-[color:var(--co-border)] shadow-md shadow-black/5"
                   style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}
                 >
                   <div
-                    className="px-5 sm:px-6 py-4 border-b border-gray-100"
+                    className="px-5 sm:px-6 py-4 border-b border-[color:var(--co-border)]"
                     style={{ backgroundColor: setAlpha(accent, 0.05) }}
                   >
-                    <h2 className="text-base sm:text-lg font-bold text-gray-900" style={{ color: palette.text }}>Order summary</h2>
+                    <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)]" style={{ color: palette.text }}>Order summary</h2>
                   </div>
 
                   <div className="px-5 sm:px-6 py-5">
@@ -166,11 +167,11 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                       <CheckoutCTA checkout={checkout} />
                     </div>
 
-                    <p className="mt-3 text-center text-xs text-gray-500">
+                    <p className="mt-3 text-center text-xs text-[color:var(--co-muted)]">
                       Your order is sent to the restaurant for confirmation.
                     </p>
 
-                    <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+                    <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-[color:var(--co-muted)]">
                       <Lock className="h-3 w-3" />
                       <span>Encrypted &amp; secure</span>
                     </div>
@@ -182,7 +183,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   style={{ backgroundColor: accentSoft }}
                 >
                   <span style={{ color: accent }}>Almost there</span>
-                  <span className="text-gray-500"> — review and confirm your order.</span>
+                  <span className="text-[color:var(--co-muted)]"> — review and confirm your order.</span>
                 </div>
               </div>
             </aside>

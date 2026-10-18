@@ -28,18 +28,18 @@ export function CheckoutOutletSummary({ outlet }: CheckoutOutletSummaryProps) {
   if (!chosen) return null
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-current/15 p-3">
       <div className="flex min-w-0 items-center gap-2">
-        <MapPin className="h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
+        <MapPin className="h-4 w-4 shrink-0 opacity-60" aria-hidden="true" />
         <div className="min-w-0">
-          <p className="text-xs text-gray-500">Ordering from</p>
-          <p className="truncate font-medium text-gray-900">{chosen.outlet.name}</p>
+          <p className="text-xs opacity-60">Ordering from</p>
+          <p className="truncate font-medium">{chosen.outlet.name}</p>
         </div>
       </div>
       <button
         type="button"
         onClick={outlet.clearSelection}
-        className="shrink-0 text-sm font-medium text-gray-600 underline underline-offset-4 hover:text-gray-900"
+        className="shrink-0 text-sm font-medium underline underline-offset-4 opacity-75 hover:opacity-100"
       >
         Change
       </button>

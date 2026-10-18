@@ -10,6 +10,7 @@
  * bridge — see preview-frame.tsx / use-branding-preview.ts).
  */
 
+import { JourneyBar } from './journey-bar'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -71,6 +72,9 @@ import type { GalleryContext } from './template-gallery'
 import type { Category, MenuItem, Tenant } from '@/types/database'
 
 const PUBLISHED_TOAST_MS = 2500
+const NO_SAMPLE_DISHES: readonly MenuItem[] = []
+/** Screens whose preview needs a cart with something in it. */
+const CART_SURFACES = new Set<BrandingSurface['id']>(['cart', 'upsell', 'checkout'])
 
 interface BrandingStudioProps {
   tenant: Tenant
@@ -87,6 +91,8 @@ interface BrandingStudioProps {
   sampleMenuItem?: MenuItem | null
   /** Surface to open first (e.g. "product" from a dish's "Edit look"). */
   initialSurfaceId?: BrandingSurface['id']
+  /** Dishes for the cart/checkout previews when the owner's own cart is empty. */
+  sampleCartItems?: readonly MenuItem[]
 }
 
 /** Stand-in dish for the card gallery when the menu is still empty. */
@@ -101,7 +107,7 @@ const PLACEHOLDER_SAMPLE_ITEM = {
   is_available: true,
 } as unknown as MenuItem
 
-export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettings, products = [], categories = [], sampleMenuItem, initialSurfaceId }: BrandingStudioProps) {
+export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettings, products = [], categories = [], sampleMenuItem, initialSurfaceId, sampleCartItems = [] }: BrandingStudioProps) {
   const productOptions = useMemo(
     () => products.map((p) => ({ value: p.id, label: p.name })),
     [products]
@@ -138,6 +144,9 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   // samples stay on so the change stays visible after the pointer moves).
   const [chosenStates, setChosenStates] = useState<ReadonlySet<ProductPreviewState>>(() => new Set())
   const [lastEditedFieldId, setLastEditedFieldId] = useState<string | null>(null)
+  // Cart preview: sample dishes, or the empty cart.
+  const [isCartEmptyPreview, setIsCartEmptyPreview] = useState(false)
+  const [cartView, setCartView] = useState<'drawer' | 'page'>('drawer')
   const searchInputRef = useRef<HTMLInputElement>(null)
   const selectedScopeRef = useRef(selectedScope)
   selectedScopeRef.current = selectedScope
@@ -701,9 +710,45 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           selectedScope={isEditing ? selectedScope : null}
           hoveredFieldId={isEditing ? hoveredFieldId : null}
           previewStates={previewStates}
+          sampleCart={
+            !CART_SURFACES.has(surface.id) || (isCartEmptyPreview && surface.id === 'cart') ? NO_SAMPLE_DISHES : sampleCartItems
+          }
+          cartView={cartView}
+          journey={<JourneyBar surfaceId={surface.id} onPick={pickSurface} />}
           stateControls={
             isProductSurface ? (
               <PreviewStateBar chosen={chosenStates} automatic={automaticStates} onToggle={toggleState} />
+            ) : surface.id === 'cart' ? (
+              <div className="mx-auto mt-3 flex items-center gap-1.5" role="group" aria-label="Show in preview">
+                <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">Show</span>
+                {[false, true].map((isEmpty) => (
+                  <button
+                    key={String(isEmpty)}
+                    type="button"
+                    aria-pressed={isCartEmptyPreview === isEmpty}
+                    onClick={() => setIsCartEmptyPreview(isEmpty)}
+                    className={`rounded-full border px-2.5 py-1 text-[11.5px] font-bold ${
+                      isCartEmptyPreview === isEmpty ? 'border-[#2A6FDB] bg-[#2A6FDB] text-white' : 'border-[#D8D2C6] bg-white text-[#5E574C]'
+                    }`}
+                  >
+                    {isEmpty ? 'Empty cart' : 'With items'}
+                  </button>
+                ))}
+                <span aria-hidden="true" className="mx-1 text-[#D8D2C6]">|</span>
+                {(['drawer', 'page'] as const).map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    aria-pressed={cartView === view}
+                    onClick={() => setCartView(view)}
+                    className={`rounded-full border px-2.5 py-1 text-[11.5px] font-bold ${
+                      cartView === view ? 'border-[#2A6FDB] bg-[#2A6FDB] text-white' : 'border-[#D8D2C6] bg-white text-[#5E574C]'
+                    }`}
+                  >
+                    {view === 'drawer' ? 'Cart drawer' : 'Cart page'}
+                  </button>
+                ))}
+              </div>
             ) : null
           }
         />

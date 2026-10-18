@@ -1,5 +1,7 @@
 'use client'
 
+import { buildSampleCart, SAMPLE_CART_KEY } from '@/lib/branding-studio/sample-cart'
+import { useBrandingPreviewDraft } from '@/hooks/use-branding-preview'
 import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react'
 import type { CartItem, MenuItem, Variation, Addon, Cart, VariationOption, CartBundleItem } from '@/types/database'
 import {
@@ -800,14 +802,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
-  const total = useMemo(() => calculateFullCartTotal(items, bundleItems), [items, bundleItems])
-  const item_count = useMemo(() => getFullCartItemCount(items, bundleItems), [items, bundleItems])
+  // Branding Studio preview only: sample dishes while this browser's own cart is
+  // empty, so the cart and checkout previews have something to style. Never saved.
+  const previewDraft = useBrandingPreviewDraft()
+  const shownItems = useMemo(() => {
+    if (items.length > 0 || bundleItems.length > 0) return items
+    const sample = buildSampleCart(previewDraft?.[SAMPLE_CART_KEY])
+    return sample.length > 0 ? sample : items
+  }, [items, bundleItems, previewDraft])
+
+  const total = useMemo(() => calculateFullCartTotal(shownItems, bundleItems), [shownItems, bundleItems])
+  const item_count = useMemo(() => getFullCartItemCount(shownItems, bundleItems), [shownItems, bundleItems])
 
   // Memoize the context value to avoid triggering all consumers on every render.
   // Only changes when one of the actual values changes.
   const contextValue = useMemo<CartContextType>(() => ({
     isHydrated: isInitialized,
-    items,
+    items: shownItems,
     total,
     item_count,
     orderType,
@@ -829,7 +840,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     updateBundleQuantity,
   }), [
     isInitialized,
-    items,
+    shownItems,
     total,
     item_count,
     orderType,

@@ -26,13 +26,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { CartOffersSection } from '@/components/customer/offers/cart-offers-section'
 import { cartOfferThemeFromBranding } from '@/components/customer/offers/offer-theme'
 import { ItemDetailModal } from '@/components/customer/item-detail-modal'
-import { getCartPalette, type BrandingColors } from '@/lib/branding-utils'
+import { type BrandingColors } from '@/lib/branding-utils'
+import { CartEmptyPanel, cartColorVars, getCartColors } from '@/components/customer/cart-templates/cart-primitives'
 import type { Tenant } from '@/types/database'
 import Link from 'next/link'
 
@@ -64,12 +64,15 @@ export function CartDrawer({
   checkoutUpsellSubtitle,
   checkoutUpsellMaxItems = 4,
 }: CartDrawerProps) {
-  // Cart page palette: accent is always resolved (falls back to brand colors);
-  // the override fields (background/cardBackground/summaryBackground/text/…)
-  // are undefined unless the merchant set that cart_* color, so they no-op into
-  // the drawer's existing defaults — zero change for tenants who set nothing.
-  const palette = getCartPalette(tenant ?? null, branding)
+  // Cart page palette: every field is resolved (blank cart_* colours inherit
+  // the store's brand), so every surface, text, border and control below
+  // paints from it — a dark store gets a dark drawer, a default store a light one.
+  const palette = getCartColors(tenant ?? null, branding)
   const accent = palette.accent
+  const badgeStyle = { borderColor: palette.accentBorder, color: accent, backgroundColor: palette.accentSoft }
+  const outlineControl = { borderColor: palette.border, color: palette.text }
+  const dialogStyle = { ...cartColorVars(palette), backgroundColor: palette.card, borderColor: palette.border, color: palette.text }
+  const dangerAction = { backgroundColor: palette.danger, color: palette.dangerText }
   const cart = useCart()
   const { items, total, updateQuantity, bundleItems, updateBundleQuantity } = cart
   const {
@@ -89,8 +92,8 @@ export function CartDrawer({
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
-        <SheetContent hideCloseButton data-branding-scope="cart/colors" className="flex w-full flex-col sm:max-w-lg bg-gradient-to-b from-gray-50 to-gray-100 p-0 h-full" style={{ background: palette.background }}>
-          <SheetHeader className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b px-4 py-2" style={{ borderColor: `${accent}20` }}>
+        <SheetContent hideCloseButton data-branding-scope="cart/colors" className="flex w-full flex-col sm:max-w-lg p-0 h-full" style={{ ...cartColorVars(palette), background: palette.background, color: palette.text, borderColor: palette.border }}>
+          <SheetHeader className="flex-shrink-0 backdrop-blur-sm border-b px-4 py-2" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
             <SheetTitle className="flex items-center gap-2 text-base">
               {/* Explicit back control: the default corner X is easy to miss on a
                   phone, so the drawer owns a labelled affordance instead. */}
@@ -98,7 +101,8 @@ export function CartDrawer({
                 variant="ghost"
                 size="icon"
                 aria-label="Back to menu"
-                className="h-8 w-8 -ml-2 flex-shrink-0 text-gray-600 hover:bg-gray-100 touch-manipulation"
+                className="h-8 w-8 -ml-2 flex-shrink-0 hover:bg-[var(--cart-soft)] touch-manipulation"
+                style={{ color: palette.text }}
                 onClick={onClose}
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -107,18 +111,19 @@ export function CartDrawer({
                 className="flex h-8 w-8 items-center justify-center rounded-full flex-shrink-0"
                 style={{ backgroundColor: accent }}
               >
-                <ShoppingCart className="h-4 w-4 text-white" />
+                <ShoppingCart className="h-4 w-4" style={{ color: palette.accentText }} />
               </div>
               <div>
-                <span className="text-gray-900"><StoreLabel name="cart.title" fallback="Your Cart" /></span>
-                <p className="text-[11px] font-normal text-gray-500 leading-tight">({items.length + bundleItems.length} items)</p>
+                <span style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Your Cart" /></span>
+                <p className="text-[11px] font-normal leading-tight" style={{ color: palette.muted }}>({items.length + bundleItems.length} items)</p>
               </div>
             </SheetTitle>
           </SheetHeader>
 
           {items.length === 0 && bundleItems.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">
-              <EmptyState
+              <CartEmptyPanel
+                colors={palette}
                 icon={ShoppingCart}
                 title={<StoreLabel name="cart.empty" fallback="Your cart is empty" />}
                 description="Add some delicious items to get started"
@@ -129,8 +134,8 @@ export function CartDrawer({
               <ScrollArea className="flex-1 overflow-y-auto px-4">
                 <div className="space-y-3 pt-3 pb-4">
                   {items.map((item, index) => (
-                    <div key={item.id} data-branding-scope="cart/item" className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
-                      <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                    <div key={item.id} data-branding-scope="cart/item" className="group flex gap-3 rounded-xl p-4 shadow-sm border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
+                      <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg" style={{ backgroundColor: palette.accentSoft }}>
                         <OptimizedImage
                           src={item.menu_item.image_url}
                           alt={item.menu_item.name}
@@ -145,7 +150,7 @@ export function CartDrawer({
                       <div className="flex flex-1 flex-col min-w-0">
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-sm line-clamp-1 text-gray-900" style={{ color: palette.text }}>
+                            <h4 className="font-semibold text-sm line-clamp-1" style={{ color: palette.text }}>
                               {item.menu_item.name}
                             </h4>
 
@@ -154,11 +159,7 @@ export function CartDrawer({
                               <Badge
                                 variant="outline"
                                 className="mt-1 text-xs"
-                                style={{
-                                  borderColor: `${accent}40`,
-                                  color: accent,
-                                  backgroundColor: `${accent}10`
-                                }}
+                                style={badgeStyle}
                               >
                                 {item.selected_variation.name}
                               </Badge>
@@ -172,11 +173,7 @@ export function CartDrawer({
                                     key={idx}
                                     variant="outline"
                                     className="text-xs"
-                                    style={{
-                                      borderColor: `${accent}40`,
-                                      color: accent,
-                                      backgroundColor: `${accent}10`
-                                    }}
+                                    style={badgeStyle}
                                   >
                                     {option.name}
                                   </Badge>
@@ -189,7 +186,7 @@ export function CartDrawer({
                               variant="ghost"
                               size="icon"
                               aria-label={`Edit item ${item.menu_item.name}`}
-                              className="h-8 w-8 text-gray-500 hover:bg-gray-100 touch-manipulation"
+                              className="h-8 w-8 hover:bg-[var(--cart-soft)] touch-manipulation"
                               style={{ color: accent }}
                               onClick={() => setItemToEdit(item)}
                             >
@@ -199,7 +196,8 @@ export function CartDrawer({
                               variant="ghost"
                               size="icon"
                               aria-label={`Remove item ${item.menu_item.name}`}
-                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 touch-manipulation"
+                              className="h-8 w-8 hover:bg-[var(--cart-danger-soft)] touch-manipulation"
+                              style={{ color: palette.danger }}
                               onClick={() => setItemToRemove(item)}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -210,11 +208,11 @@ export function CartDrawer({
                         {item.presell_date && (
                           <p className="text-xs mb-1" style={{ color: accent }}>
                             <span className="font-medium">Pre-order for:</span> {formatPresellDateLabel(item.presell_date)}
-                            {presellHintFor(item) && <span className="ml-2 text-gray-500">{presellHintFor(item)}</span>}
+                            {presellHintFor(item) && <span className="ml-2" style={{ color: palette.muted }}>{presellHintFor(item)}</span>}
                           </p>
                         )}
                         {(item.selected_addons.length > 0 || item.special_instructions) && (
-                          <div className="text-xs text-gray-500 mb-2 space-y-0.5">
+                          <div className="text-xs mb-2 space-y-0.5" style={{ color: palette.muted }}>
                             {item.selected_addons.length > 0 && (
                               <p className="line-clamp-2">
                                 <span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}
@@ -233,18 +231,20 @@ export function CartDrawer({
                             <Button
                               variant="outline"
                               size="icon"
-                              className="h-9 w-9 rounded-full hover:bg-orange-50 border-gray-200 touch-manipulation"
+                              className="h-9 w-9 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
+                              style={outlineControl}
                               onClick={() => handleDecreaseQuantity(item)}
                             >
                               <Minus className="h-4 w-4" />
                             </Button>
-                            <span className="w-8 text-center text-sm font-bold text-gray-900">
+                            <span className="w-8 text-center text-sm font-bold" style={{ color: palette.text }}>
                               {item.quantity}
                             </span>
                             <Button
                               variant="outline"
                               size="icon"
-                              className="h-9 w-9 rounded-full hover:bg-orange-50 border-gray-200 touch-manipulation"
+                              className="h-9 w-9 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
+                              style={outlineControl}
                               onClick={() => updateQuantity(item.id, item.quantity + 1)}
                               disabled={!canIncreaseItem(item)}
                             >
@@ -260,8 +260,8 @@ export function CartDrawer({
                   ))}
 
                   {bundleItems.filter(bi => Array.isArray(bi.slots)).map((bundleItem, index) => (
-                    <div key={bundleItem.id} data-branding-scope="cart/item" className="group flex gap-3 rounded-xl bg-white p-4 shadow-sm border border-gray-100" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
-                      <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                    <div key={bundleItem.id} data-branding-scope="cart/item" className="group flex gap-3 rounded-xl p-4 shadow-sm border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
+                      <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg" style={{ backgroundColor: palette.accentSoft }}>
                         {(bundleItem.bundleImageUrl || bundleItem.slots?.[0]?.menuItemImage) ? (
                           <OptimizedImage
                             src={bundleItem.bundleImageUrl || bundleItem.slots[0].menuItemImage!}
@@ -273,7 +273,7 @@ export function CartDrawer({
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center">
-                            <Package className="h-6 w-6 text-gray-400" />
+                            <Package className="h-6 w-6" style={{ color: palette.muted }} />
                           </div>
                         )}
                       </div>
@@ -281,17 +281,13 @@ export function CartDrawer({
                       <div className="flex flex-1 flex-col min-w-0">
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-sm line-clamp-1 text-gray-900" style={{ color: palette.text }}>
+                            <h4 className="font-semibold text-sm line-clamp-1" style={{ color: palette.text }}>
                               {bundleItem.bundleName}
                             </h4>
                             <Badge
                               variant="outline"
                               className="mt-1 text-xs"
-                              style={{
-                                borderColor: `${accent}40`,
-                                color: accent,
-                                backgroundColor: `${accent}10`
-                              }}
+                              style={badgeStyle}
                             >
                               {bundleItem.slots?.length ?? 0} items
                             </Badge>
@@ -299,7 +295,9 @@ export function CartDrawer({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 touch-manipulation"
+                            aria-label={`Remove bundle ${bundleItem.bundleName}`}
+                            className="h-8 w-8 hover:bg-[var(--cart-danger-soft)] touch-manipulation"
+                            style={{ color: palette.danger }}
                             onClick={() => setBundleToRemove(bundleItem)}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -311,18 +309,20 @@ export function CartDrawer({
                             <Button
                               variant="outline"
                               size="icon"
-                              className="h-9 w-9 rounded-full hover:bg-orange-50 border-gray-200 touch-manipulation"
+                              className="h-9 w-9 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
+                              style={outlineControl}
                               onClick={() => handleDecreaseBundleQuantity(bundleItem)}
                             >
                               <Minus className="h-4 w-4" />
                             </Button>
-                            <span className="w-8 text-center text-sm font-bold text-gray-900">
+                            <span className="w-8 text-center text-sm font-bold" style={{ color: palette.text }}>
                               {bundleItem.quantity}
                             </span>
                             <Button
                               variant="outline"
                               size="icon"
-                              className="h-9 w-9 rounded-full hover:bg-orange-50 border-gray-200 touch-manipulation"
+                              className="h-9 w-9 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
+                              style={outlineControl}
                               onClick={() => updateBundleQuantity(bundleItem.id, bundleItem.quantity + 1)}
                             >
                               <Plus className="h-4 w-4" />
@@ -352,9 +352,9 @@ export function CartDrawer({
                 </div>
               </ScrollArea>
 
-              <div data-branding-scope="cart/summary" className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: `${accent}20`, backgroundColor: palette.summaryBackground }}>
+              <div data-branding-scope="cart/summary" className="flex-shrink-0 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: palette.border, backgroundColor: palette.summary }}>
                 <div className="flex items-center justify-between">
-                  <span className="text-base font-bold text-gray-900" style={{ color: palette.text }}>Total</span>
+                  <span className="text-base font-bold" style={{ color: palette.text }}>Total</span>
                   <span className="text-lg font-bold" style={{ color: accent }}>{formatPrice(total)}</span>
                 </div>
 
@@ -362,33 +362,23 @@ export function CartDrawer({
                   <Link href={`/${tenantSlug}/cart`} className="w-full hidden md:block" onClick={onClose}>
                     <Button
                       variant="outline"
-                      className="w-full h-11 border-2 border-gray-200 rounded-xl font-semibold transition-colors"
-                      style={{
-                        borderColor: `${accent}40`
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = `${accent}10`
-                        e.currentTarget.style.borderColor = `${accent}60`
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent'
-                        e.currentTarget.style.borderColor = `${accent}40`
-                      }}
+                      className="w-full h-11 border-2 rounded-xl font-semibold transition-colors bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent)]"
+                      style={{ borderColor: palette.accentBorder, color: palette.text }}
                     >
                       Review Cart
                     </Button>
                   </Link>
                   <Button
                     data-branding-scope="cart/checkout-button"
-                    className="w-full h-11 text-white font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: palette.button ?? accent, color: palette.accentText }}
+                    className="w-full h-11 font-bold rounded-xl shadow-lg transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: palette.button, color: palette.buttonText }}
                     onClick={handleCheckoutClick}
                   >
                     <StoreLabel name="cart.checkout" fallback="Proceed to Checkout" />
                   </Button>
                 </div>
 
-                <p className="text-xs text-center text-gray-500 pt-2 pb-10">
+                <p className="text-xs text-center pt-2 pb-10" style={{ color: palette.muted }}>
                   {items.length + bundleItems.length} item{items.length + bundleItems.length !== 1 ? 's' : ''} in cart
                 </p>
               </div>
@@ -415,19 +405,20 @@ export function CartDrawer({
 
       {/* Remove Item Confirmation Dialog */}
       <AlertDialog open={!!itemToRemove} onOpenChange={(open) => !open && handleCancelRemove()}>
-        <AlertDialogContent className="max-w-sm rounded-2xl">
+        <AlertDialogContent className="max-w-sm rounded-2xl" style={dialogStyle}>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-center">Remove Item?</AlertDialogTitle>
-            <AlertDialogDescription className="text-center">
-              Do you want to remove <span className="font-semibold text-gray-900">{itemToRemove?.menu_item.name}</span> from your cart?
+            <AlertDialogTitle className="text-center" style={{ color: palette.text }}>Remove Item?</AlertDialogTitle>
+            <AlertDialogDescription className="text-center" style={{ color: palette.muted }}>
+              Do you want to remove <span className="font-semibold" style={{ color: palette.text }}>{itemToRemove?.menu_item.name}</span> from your cart?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row gap-3 sm:justify-center">
-            <AlertDialogCancel className="flex-1 mt-0 rounded-xl">
+            <AlertDialogCancel className="flex-1 mt-0 rounded-xl bg-transparent hover:bg-[var(--cart-soft)]" style={outlineControl}>
               Keep Item
             </AlertDialogCancel>
             <AlertDialogAction
-              className="flex-1 bg-red-500 hover:bg-red-600 rounded-xl"
+              className="flex-1 rounded-xl hover:opacity-90"
+              style={dangerAction}
               onClick={handleConfirmRemove}
             >
               Remove
@@ -437,19 +428,20 @@ export function CartDrawer({
       </AlertDialog>
 
       <AlertDialog open={!!bundleToRemove} onOpenChange={(open) => !open && setBundleToRemove(null)}>
-        <AlertDialogContent className="max-w-sm rounded-2xl">
+        <AlertDialogContent className="max-w-sm rounded-2xl" style={dialogStyle}>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-center">Remove Bundle?</AlertDialogTitle>
-            <AlertDialogDescription className="text-center">
-              Do you want to remove <span className="font-semibold text-gray-900">{bundleToRemove?.bundleName}</span> from your cart?
+            <AlertDialogTitle className="text-center" style={{ color: palette.text }}>Remove Bundle?</AlertDialogTitle>
+            <AlertDialogDescription className="text-center" style={{ color: palette.muted }}>
+              Do you want to remove <span className="font-semibold" style={{ color: palette.text }}>{bundleToRemove?.bundleName}</span> from your cart?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row gap-3 sm:justify-center">
-            <AlertDialogCancel className="flex-1 mt-0 rounded-xl">
+            <AlertDialogCancel className="flex-1 mt-0 rounded-xl bg-transparent hover:bg-[var(--cart-soft)]" style={outlineControl}>
               Keep Bundle
             </AlertDialogCancel>
             <AlertDialogAction
-              className="flex-1 bg-red-500 hover:bg-red-600 rounded-xl"
+              className="flex-1 rounded-xl hover:opacity-90"
+              style={dangerAction}
               onClick={handleConfirmBundleRemove}
             >
               Remove

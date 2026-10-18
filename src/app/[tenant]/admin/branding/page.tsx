@@ -36,11 +36,17 @@ export default async function BrandingStudioPage({
   let sampleItemId: string | null = null
   let products: { id: string; name: string }[] = []
   let sampleMenuItem: MenuItem | null = null
+  let sampleCartItems: MenuItem[] = []
   try {
     const items = await getMenuItemsByTenant(tenantData.id)
     // Preview the dish the owner came from, else the one with the most to style.
     sampleItemId = pickPreviewItemId(items, requestedItemId)
     products = items.map((item) => ({ id: item.id, name: item.name }))
+    // A few orderable dishes (photos first) fill the cart/checkout previews.
+    sampleCartItems = [...items]
+      .filter((item) => item.is_available !== false)
+      .sort((a, b) => Number(Boolean(b.image_url)) - Number(Boolean(a.image_url)))
+      .slice(0, 3)
     // The card gallery previews each design on a real dish — ideally one
     // with a photo and a description, so every template has content to show.
     sampleMenuItem =
@@ -77,6 +83,7 @@ export default async function BrandingStudioPage({
       categories={categories}
       sampleMenuItem={sampleMenuItem}
       initialSurfaceId={surfaceFrom(query.surface)}
+      sampleCartItems={sampleCartItems}
     />
   )
 }

@@ -20,12 +20,11 @@ interface TenantPair {
     fill: string
     minRatio: number
     /**
-     * Cart and checkout read their own columns raw — a blank one is the
-     * template's own look (white cards, auto-contrast button ink), not an
-     * inherited store colour. For these: only check text the owner set, and
-     * measure it against the owner's fill or the template's.
+     * Cart and checkout buttons: blank button text is auto-contrast ink the
+     * storefront picks itself, so only text the owner set is checked, against
+     * the owner's button colour or the cart/checkout accent.
      */
-    pageColumns?: { fillWhenBlank: 'white' | 'cartAccent' | 'checkoutAccent' }
+    pageColumns?: { fillWhenBlank: 'cartAccent' | 'checkoutAccent' }
     /** Only meaningful while the fill column is set (e.g. the hero band). */
     onlyWhenFillSet?: boolean
 }
@@ -43,9 +42,9 @@ export const TENANT_READABLE_PAIRS: readonly TenantPair[] = [
     { text: 'modal_description_color', fill: 'modal_background_color', minRatio: MIN_TEXT_CONTRAST },
     { text: 'hero_title_color', fill: 'hero_background_color', minRatio: LARGE_TEXT_CONTRAST, onlyWhenFillSet: true },
     { text: 'hero_description_color', fill: 'hero_background_color', minRatio: MIN_TEXT_CONTRAST, onlyWhenFillSet: true },
-    { text: 'cart_text_color', fill: 'cart_card_background_color', minRatio: MIN_TEXT_CONTRAST, pageColumns: { fillWhenBlank: 'white' } },
+    { text: 'cart_text_color', fill: 'cart_card_background_color', minRatio: MIN_TEXT_CONTRAST },
     { text: 'cart_button_text_color', fill: 'cart_button_color', minRatio: MIN_TEXT_CONTRAST, pageColumns: { fillWhenBlank: 'cartAccent' } },
-    { text: 'checkout_text_color', fill: 'checkout_card_background_color', minRatio: MIN_TEXT_CONTRAST, pageColumns: { fillWhenBlank: 'white' } },
+    { text: 'checkout_text_color', fill: 'checkout_card_background_color', minRatio: MIN_TEXT_CONTRAST },
     { text: 'checkout_button_text_color', fill: 'checkout_button_color', minRatio: MIN_TEXT_CONTRAST, pageColumns: { fillWhenBlank: 'checkoutAccent' } },
     { text: 'checkout_modal_title_color', fill: 'checkout_modal_background_color', minRatio: MIN_TEXT_CONTRAST },
     { text: 'checkout_modal_button_text_color', fill: 'checkout_modal_button_color', minRatio: MIN_TEXT_CONTRAST },
@@ -56,7 +55,6 @@ const CARD_TEMPLATES_WITH_OWN_FILL = new Set(['neon', 'glass'])
 const CARD_TEXT_FIELDS = new Set(['card_title_color', 'card_description_color', 'card_price_color'])
 // Heroes that ignore the hero colour columns.
 const HEROES_WITHOUT_COLOR_COLUMNS = new Set(['custom', 'legacy'])
-const WHITE = '#ffffff'
 
 export interface TenantContrastIssue {
     fieldId: string
@@ -99,7 +97,7 @@ function pairColors(pair: TenantPair, colors: ColorLookup): { text?: string; fil
     const { fillWhenBlank } = pair.pageColumns
     return {
         text: colors.raw(pair.text),
-        fill: colors.raw(pair.fill) ?? (fillWhenBlank === 'white' ? WHITE : colors.accent(fillWhenBlank)),
+        fill: colors.raw(pair.fill) ?? colors.accent(fillWhenBlank),
     }
 }
 

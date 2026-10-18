@@ -10,6 +10,7 @@
  * that design's chunk ships. Unknown values fall back to 'classic'.
  */
 
+import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { useCartView } from '@/hooks/useCartView'
 import { CartTemplateRenderer } from '@/components/customer/cart-templates'
@@ -42,6 +43,8 @@ export default function CartPage() {
       {/* Shared overlays — rendered for every design */}
       <CartRemoveDialog cart={cart} />
       <CartEditDialog cart={cart} />
+      {/* Branding Studio tap-to-edit (dormant outside the editor iframe) */}
+      <BrandingInspector />
     </StorefrontLabelsProvider>
   )
 }

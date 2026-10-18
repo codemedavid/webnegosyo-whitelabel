@@ -8,6 +8,7 @@
  * mobile toggle exercises real responsive breakpoints.
  */
 
+import { SAMPLE_CART_KEY } from '@/lib/branding-studio/sample-cart'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BRANDING_DRAFT_MESSAGE,
@@ -62,6 +63,12 @@ interface PreviewFrameProps {
   previewStates?: readonly string[]
   /** Toggles for those samples, shown under the preview. */
   stateControls?: React.ReactNode
+  /** Sample dishes for the cart and checkout previews (used only when the cart is empty). */
+  sampleCart?: readonly unknown[]
+  /** Screen switcher shown above the preview. */
+  journey?: React.ReactNode
+  /** Cart surfaces: the drawer over the menu or the full cart page. */
+  cartView?: 'drawer' | 'page'
 }
 
 function postOutlines(
@@ -92,6 +99,9 @@ export function PreviewFrame({
   hoveredFieldId = null,
   previewStates = NO_STATES,
   stateControls,
+  sampleCart = NO_STATES,
+  journey,
+  cartView = 'drawer',
 }: PreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
@@ -101,15 +111,17 @@ export function PreviewFrame({
   const productMobileOverridesRef = useRef(productMobileOverrides)
   const surfaceRef = useRef(surfaceId)
   const previewStatesRef = useRef(previewStates)
+  const sampleCartRef = useRef(sampleCart)
+  sampleCartRef.current = sampleCart
   const inspectModeRef = useRef(inspectMode)
   const outlineRef = useRef({ selectedScope, hoveredFieldId })
   outlineRef.current = { selectedScope, hoveredFieldId }
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const previewPath = useMemo(() => {
-    const { path } = getPreviewTarget(tenantSlug, surfaceId, sampleItemId)
+    const { path } = getPreviewTarget(tenantSlug, surfaceId, sampleItemId, cartView)
     return `${path}?${BRANDING_PREVIEW_PARAM}=1`
-  }, [tenantSlug, surfaceId, sampleItemId])
+  }, [tenantSlug, surfaceId, sampleItemId, cartView])
 
   // Which load the storefront last said "ready" for. Keyed by path plus a
   // retry counter so switching surface, or pressing retry, starts the clock
@@ -148,6 +160,7 @@ export function PreviewFrame({
           __mobileOverrides: mobileOverridesRef.current ?? {},
           __productMobileOverrides: productMobileOverridesRef.current ?? {},
           [PREVIEW_STATES_KEY]: previewStatesRef.current,
+          [SAMPLE_CART_KEY]: sampleCartRef.current,
         },
       },
       window.location.origin
@@ -219,6 +232,7 @@ export function PreviewFrame({
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col overflow-auto p-6 [background-image:radial-gradient(circle,rgba(0,0,0,0.07)_1px,transparent_1px)] [background-size:18px_18px]">
+      {journey}
       <div
         className={`mx-auto flex min-h-0 flex-1 flex-col overflow-hidden bg-white shadow-[0_18px_50px_rgba(30,22,12,0.18)] ${
           isMobile
