@@ -1,4 +1,5 @@
 import type { BrandingColors } from '@/lib/branding-utils'
+import type { ProductDetailColors } from '@/lib/product-detail-theme'
 
 /**
  * The handful of colours every diner-facing offer needs, resolved from the
@@ -15,6 +16,8 @@ export interface OfferTheme {
   accent: string
   accentText: string
   success: string
+  /** Offer prices; falls back to `muted`. */
+  price?: string
 }
 
 export const NEUTRAL_OFFER_THEME: OfferTheme = {
@@ -65,5 +68,23 @@ export function cartOfferThemeFromBranding(branding: ThemeSource): OfferTheme {
     border: pick(b.checkoutModalBorder, base.border) ?? base.border,
     accent: pick(b.checkoutModalButton, b.cartAccent, base.accent) ?? base.accent,
     accentText: pick(b.checkoutModalButtonText, base.accentText) ?? base.accentText,
+  }
+}
+
+/**
+ * The product page's "just added" sheet: the Studio's Product Detail →
+ * Pairing pop-up colours over the item page's offer theme. Unset pop-up
+ * colours already fall back to the same brand modal colours.
+ */
+export function addedSheetThemeFrom(base: OfferTheme, colors: ProductDetailColors): OfferTheme {
+  return {
+    ...base,
+    surface: colors.popupModalBackground,
+    text: colors.popupModalTitle,
+    muted: colors.popupModalDescription,
+    price: colors.popupModalPrice,
+    accent: colors.popupModalButton,
+    accentText: colors.popupModalButtonText,
+    border: colors.popupModalBorder,
   }
 }

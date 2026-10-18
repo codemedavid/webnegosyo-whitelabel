@@ -63,7 +63,7 @@ export function OfferProductCard({
       <span className="mt-2 line-clamp-2 block text-[13px] font-medium leading-snug" style={{ color: theme.text }}>
         {name}
       </span>
-      <span className="block text-[13px] font-semibold" style={{ color: isAdded ? theme.success : theme.muted }}>
+      <span className="block text-[13px] font-semibold" style={{ color: isAdded ? theme.success : (theme.price ?? theme.muted) }}>
         {isAdded ? 'Added' : priceLabel}
       </span>
     </button>

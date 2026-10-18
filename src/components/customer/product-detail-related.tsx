@@ -112,7 +112,7 @@ export function RelatedItemsSection({ relatedItems, tenantSlug, onSelectItem }: 
             <h3
                 className="text-lg font-bold mb-4"
                 style={{
-                    color: 'var(--pd-related-title)',
+                    color: 'var(--pd-related-title)', fontFamily: 'var(--pd-font-heading)',
                     fontSize: 'var(--pd-related-title-font-size)'
                 }}
             >

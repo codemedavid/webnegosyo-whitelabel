@@ -16,7 +16,15 @@
 
 import type { BrandingField, BrandingSection } from '@/lib/branding-registry'
 import { isFieldSet } from '@/lib/branding-registry'
-import { DEFAULT_PRODUCT_DETAIL_SETTINGS } from '@/lib/product-detail-theme'
+import type { BrandingColors } from '@/lib/branding-utils'
+import {
+  DEFAULT_PRODUCT_DETAIL_SETTINGS,
+  mergeSettingsWithBranding,
+  PRODUCT_READABLE_PAIRS,
+  resolveProductDetailColors,
+  type ProductDetailSettings,
+} from '@/lib/product-detail-theme'
+import { contrastRatio, readableTextOn } from '@/lib/color-contrast'
 import { VALID_DB_COLUMNS } from '@/lib/product-detail-settings-utils'
 
 // ---------- field constructors (local — product store is independent) ----------
@@ -162,18 +170,9 @@ export const PRODUCT_DETAIL_SECTIONS: BrandingSection[] = [
       color('popup_modal_border_color', 'Border'),
     ],
   },
-  {
-    title: 'Checkout upsell sheet',
-    fields: [
-      color('checkout_modal_background_color', 'Background'),
-      color('checkout_modal_title_color', 'Title'),
-      color('checkout_modal_description_color', 'Description'),
-      color('checkout_modal_price_color', 'Price'),
-      color('checkout_modal_button_color', 'Button'),
-      color('checkout_modal_button_text_color', 'Button text'),
-      color('checkout_modal_border_color', 'Border'),
-    ],
-  },
+  // No "Checkout upsell sheet" section: the cart's last-call row reads the
+  // store's own checkout_modal_* colours, edited under Upsell Modal. The
+  // product_detail_settings copies were saved and never shown to diners.
 ]
 
 /** Every editable product-detail field keyed by its column name. */
@@ -216,6 +215,136 @@ export function resolveProductField(fieldId: string, draft: ValueBag, saved: Val
 /** True when the field holds an explicit value (draft clear beats saved). */
 export function isProductFieldSet(fieldId: string, draft: ValueBag, saved: ValueBag): boolean {
   return isFieldSet(fieldId, draft, saved)
+}
+
+// Columns whose ProductDetailColors key is not the camelCased column name.
+const COLOR_KEY_EXCEPTIONS: Record<string, string> = {
+  page_background_gradient: 'pageGradient',
+}
+
+function toColorsKey(fieldId: string): string {
+  return COLOR_KEY_EXCEPTIONS[fieldId]
+    ?? fieldId.replace(/_color$/, '').replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase())
+}
+
+/** Saved settings with the draft on top; a cleared draft entry removes the value. */
+function mergeDraftOverSaved(draft: ValueBag, saved: ValueBag): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...(saved ?? {}) }
+  for (const [key, value] of Object.entries(draft ?? {})) {
+    if (isBlank(value)) delete merged[key]
+    else merged[key] = value
+  }
+  return merged
+}
+
+// Every brand colour replaced by a marker: a merged value carrying the marker
+// came from the store's brand, whatever colour the brand happens to be.
+const BRAND_MARKER = '\u0000brand:'
+const MARKED_BRANDING = new Proxy({} as BrandingColors, {
+  get: (_target, key) => `${BRAND_MARKER}${String(key)}`,
+})
+
+function followsBrand(colorsKey: string, merged: Record<string, unknown>): boolean {
+  const probe = mergeSettingsWithBranding(merged as unknown as ProductDetailSettings, MARKED_BRANDING) as unknown as Record<string, unknown>
+  const value = probe[colorsKey]
+  return typeof value === 'string' && value.startsWith(BRAND_MARKER)
+}
+
+export interface EffectiveProductField {
+  /** What the product page renders for this field right now. */
+  value: unknown
+  /** True only when the owner's own value is what renders. */
+  isSet: boolean
+  /** Where an unset field's value comes from: the store's brand or a fixed default. */
+  inheritLabel: 'Brand' | 'Default'
+}
+
+/**
+ * Resolve a field exactly as the product page does — through
+ * resolveProductDetailColors — so the Studio never shows a colour the page
+ * doesn't render. A saved value the page ignores (one equal to the table
+ * default, on fields that follow the brand) reads as not set.
+ */
+export function resolveProductFieldEffective(
+  fieldId: string,
+  draft: ValueBag,
+  saved: ValueBag,
+  branding: BrandingColors,
+): EffectiveProductField {
+  return createProductFieldResolver(draft, saved, branding).effective(fieldId)
+}
+
+export interface ProductContrastIssue {
+  /** Current contrast of the text on its fill (1–21). */
+  ratio: number
+  minRatio: number
+  /** The nearest readable ink to switch to. */
+  fix: string
+}
+
+/**
+ * A text colour that is hard to read on the fill it sits on, or null. The
+ * page already shows readable ink instead; this tells the owner, and `fix`
+ * makes their setting match.
+ */
+export function productContrastIssue(
+  fieldId: string,
+  draft: ValueBag,
+  saved: ValueBag,
+  branding: BrandingColors,
+): ProductContrastIssue | null {
+  return createProductFieldResolver(draft, saved, branding).contrastIssue(fieldId)
+}
+
+export interface ProductFieldResolver {
+  effective: (fieldId: string) => EffectiveProductField
+  contrastIssue: (fieldId: string) => ProductContrastIssue | null
+}
+
+/**
+ * Both Studio lookups over one draft: the page's merges run once here, not
+ * once per field row (the panel has ~80 rows and re-renders on every drag).
+ */
+export function createProductFieldResolver(
+  draft: ValueBag,
+  saved: ValueBag,
+  branding: BrandingColors,
+): ProductFieldResolver {
+  const merged = mergeDraftOverSaved(draft, saved)
+  const settings = merged as unknown as ProductDetailSettings
+  const chosen = mergeSettingsWithBranding(settings, branding) as unknown as Record<string, unknown>
+  const shown = resolveProductDetailColors(settings, branding) as unknown as Record<string, unknown>
+
+  const effective = (fieldId: string): EffectiveProductField => {
+    const key = toColorsKey(fieldId)
+    const ownValue = merged[fieldId]
+    // The owner's pick counts when the page uses it — a saved value the page
+    // ignores (equal to the table default) does not.
+    const isSet = key in chosen
+      ? !isBlank(ownValue) && ownValue === chosen[key] && !followsBrand(key, merged)
+      : !isBlank(ownValue)
+    // A pick shows as picked (an unreadable one is flagged by contrastIssue);
+    // anything else shows what the diner sees.
+    const value = isSet ? ownValue : (key in shown ? shown[key] : resolveProductField(fieldId, draft, saved))
+    // Where the value comes from once the owner's own value is cleared.
+    const withoutOwn = Object.fromEntries(Object.entries(merged).filter(([name]) => name !== fieldId))
+    return { value, isSet, inheritLabel: followsBrand(key, withoutOwn) ? 'Brand' : 'Default' }
+  }
+
+  const contrastIssue = (fieldId: string): ProductContrastIssue | null => {
+    const pair = PRODUCT_READABLE_PAIRS.find((candidate) => candidate.field === fieldId)
+    if (!pair) return null
+    // The owner's own pick against the fill the diner sees.
+    const text = chosen[pair.text] as string
+    // Text the owner left blank is the page's job, not theirs.
+    if (isBlank(merged[fieldId]) || merged[fieldId] !== text) return null
+    const fill = shown[pair.fill] as string
+    const ratio = contrastRatio(text, fill)
+    if (ratio === null || ratio >= pair.minRatio) return null
+    return { ratio, minRatio: pair.minRatio, fix: readableTextOn(text, fill, pair.minRatio) }
+  }
+
+  return { effective, contrastIssue }
 }
 
 /**

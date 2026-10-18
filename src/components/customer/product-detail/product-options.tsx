@@ -47,7 +47,7 @@ export const ProductVariations = memo(function ProductVariations({
                             <h3
                                 className="text-base font-semibold"
                                 style={{
-                                    color: 'var(--pd-variation-title)',
+                                    color: 'var(--pd-variation-title)', fontFamily: 'var(--pd-font-heading)',
                                     fontSize: 'var(--pd-variation-title-font-size)'
                                 }}
                             >
@@ -93,7 +93,7 @@ export const ProductVariations = memo(function ProductVariations({
                         <h3
                             className="text-base font-semibold"
                             style={{
-                                color: 'var(--pd-variation-title)',
+                                color: 'var(--pd-variation-title)', fontFamily: 'var(--pd-font-heading)',
                                 fontSize: 'var(--pd-variation-title-font-size)'
                             }}
                         >
@@ -153,7 +153,7 @@ export const ProductAddons = memo(function ProductAddons({
                     <h3
                         className="text-base font-semibold"
                         style={{
-                            color: 'var(--pd-addon-title)',
+                            color: 'var(--pd-addon-title)', fontFamily: 'var(--pd-font-heading)',
                             fontSize: 'var(--pd-addon-title-font-size)'
                         }}
                     >
@@ -166,7 +166,7 @@ export const ProductAddons = memo(function ProductAddons({
                     />
                 </div>
 
-                <p className="mb-3 text-xs opacity-70">Quantities are per item.</p>
+                <p className="mb-3 text-xs" style={{ color: 'var(--pd-text-muted)' }}>Quantities are per item.</p>
                 <div className="space-y-2">
                     {addons.map((addon) => (
                         <AddonQuantityControl
@@ -176,6 +176,7 @@ export const ProductAddons = memo(function ProductAddons({
                             quantity={quantities.get(addon.id) ?? 0}
                             onChange={value => onQuantityChange(addon, value)}
                             hideCurrencySymbol={hideCurrencySymbol}
+                            freeLabel={themeColors.addonPriceFreeText}
                         />
                     ))}
                 </div>
@@ -224,8 +225,8 @@ const VariationOptionButton = memo(function VariationOptionButton({
                 <span
         className="ml-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
         style={{
-            backgroundColor: 'var(--pd-button-primary, var(--button-primary))',
-            color: 'var(--pd-button-primary-text, #fff)',
+            backgroundColor: 'var(--pd-add-cart-bg)',
+            color: 'var(--pd-add-cart-text)',
             opacity: 0.85,
         }}
                 >

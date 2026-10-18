@@ -131,6 +131,20 @@ export interface SelectionValidationResult {
   error?: string
 }
 
+/** A store's own words for the rule prefix (Branding Studio → Product Detail). */
+export interface SelectionRuleLabels {
+  required?: string
+  optional?: string
+  /** Optional quantity (add-on) groups; falls back to `optional`. */
+  quantityOptional?: string
+}
+
+function rulePrefix(group: ModifierGroup, labels: SelectionRuleLabels): string {
+  if (group.min_select > 0) return labels.required || 'Required'
+  if (group.selection_mode === 'quantity') return labels.quantityOptional || labels.optional || 'Optional'
+  return labels.optional || 'Optional'
+}
+
 /**
  * Customer-facing wording for a group's min/max rule, e.g. "Required — choose 2
  * to 3". Rendered above the options so the count rule is visible *before* the
@@ -138,9 +152,9 @@ export interface SelectionValidationResult {
  *
  * `max_select === null` means unlimited.
  */
-export function describeSelectionRule(group: ModifierGroup): string {
+export function describeSelectionRule(group: ModifierGroup, labels: SelectionRuleLabels = {}): string {
   const { min_select: min, max_select: max } = group
-  const prefix = min > 0 ? 'Required' : 'Optional'
+  const prefix = rulePrefix(group, labels)
   if (group.selection_mode === 'quantity') {
     if (min === 0) return max === null ? `${prefix} — add any extras` : `${prefix} — up to ${max} portions`
     return max === null ? `${prefix} — at least ${min} portions`

@@ -26,6 +26,13 @@ export interface FieldRowProps {
   productOptions?: readonly { value: string; label: string }[]
   /** Sample dish + live branding for `card-gallery` / `layout-gallery` selects. */
   gallery?: GalleryContext
+  /** A chosen colour that is hard to read on its fill, with the one-tap fix. */
+  contrastIssue?: { ratio: number; minRatio: number; fix: string } | null
+}
+
+const INHERIT_SOURCE_TEXT: Record<string, string> = {
+  Brand: "Follows your store's brand",
+  Default: 'Standard colour',
 }
 
 const HEX_COLOR_PATTERN = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -34,14 +41,19 @@ function toPickerHex(value: unknown): string {
   return typeof value === 'string' && HEX_COLOR_PATTERN.test(value) ? value : '#000000'
 }
 
-function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear }: FieldRowProps) {
+function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear, contrastIssue }: FieldRowProps) {
   const hex = toPickerHex(value)
+  const sourceText = INHERIT_SOURCE_TEXT[inheritLabel]
   return (
+    <div>
     <div className="flex min-h-[30px] items-center gap-2">
       <div className="min-w-0 flex-1">
         <div className="text-[12.5px] font-semibold leading-tight">{field.label}</div>
         {!isSet && field.inheritsFrom && (
           <div className="mt-0.5 text-[10.5px] text-neutral-400">↳ Inherits · {inheritLabel}</div>
+        )}
+        {!isSet && !field.inheritsFrom && sourceText && (
+          <div className="mt-0.5 text-[10.5px] text-neutral-400">↳ {sourceText}</div>
         )}
       </div>
       {isSet && (
@@ -69,6 +81,21 @@ function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear }: Fiel
           className="absolute -inset-2 h-12 w-14 cursor-pointer border-none p-0"
         />
       </label>
+    </div>
+    {contrastIssue && (
+      <div role="status" className="mt-1 flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900">
+        <span className="flex-1">
+          Hard to read on its background ({contrastIssue.ratio.toFixed(1)}:1). Customers see {contrastIssue.fix} instead.
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(contrastIssue.fix)}
+          className="rounded bg-amber-900 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-amber-800"
+        >
+          Fix
+        </button>
+      </div>
+    )}
     </div>
   )
 }

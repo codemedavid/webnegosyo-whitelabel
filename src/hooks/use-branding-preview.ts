@@ -120,6 +120,20 @@ function subscribeDraft(listener: () => void): () => void {
   }
 }
 
+const notInPreview = () => false
+// The preview flag lingers in the tab's sessionStorage after the Studio
+// closes, so editor-only decisions also require actually being framed.
+const isFramedPreview = () => window.parent !== window && isPreviewModeActive()
+
+/**
+ * True when the page runs inside the Branding Studio preview iframe — from the
+ * first render, before any draft arrives. Editor-only storefront tools (the
+ * old in-page pencils) hide on this: the Studio is the editor there.
+ */
+export function useIsBrandingPreview(): boolean {
+  return useSyncExternalStore(noSubscription, isFramedPreview, notInPreview)
+}
+
 export function useBrandingPreviewDraft(): BrandingPreviewDraft | null {
   const [isEnabled] = useState(isPreviewModeActive)
   return useSyncExternalStore(

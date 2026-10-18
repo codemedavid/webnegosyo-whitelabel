@@ -34,7 +34,7 @@ import type { BrandingInput } from '@/lib/branding-service'
 import {
   PRODUCT_DETAIL_SECTIONS,
   getProductDetailFieldIds,
-  resolveProductField,
+  createProductFieldResolver,
   isProductFieldSet,
   buildProductSettingsPayload,
 } from '@/lib/product-detail-registry'
@@ -157,6 +157,14 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const savedMobileProduct = useMemo<OverrideMap>(
     () => publishedMobileProduct ?? ((productSettings?.mobile_overrides as OverrideMap) ?? {}),
     [publishedMobileProduct, productSettings]
+  )
+
+  // Product Detail rows resolve through the product page's own merge, against
+  // the desktop brand the merchant is editing right now.
+  const desktopBranding = useMemo(() => getTenantBranding({ ...savedTenant, ...draft }), [savedTenant, draft])
+  const productFields = useMemo(
+    () => createProductFieldResolver(productDraft, savedProduct, desktopBranding),
+    [productDraft, savedProduct, desktopBranding]
   )
 
   // The card gallery previews with the colors and card-style knobs the
@@ -657,14 +665,17 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                       {visibleFields.map((field) => {
                         // Desktop-resolved value first — mobile rows fall back
                         // to it when they have no override of their own.
-                        const desktopValue = isProductSurface
-                          ? resolveProductField(field.id, productDraft, savedProduct)
+                        const productField = isProductSurface
+                          ? productFields.effective(field.id)
+                          : null
+                        const desktopValue = productField
+                          ? productField.value
                           : resolveFieldValue(field.id, draft, savedTenant)
-                        const desktopIsSet = isProductSurface
-                          ? isProductFieldSet(field.id, productDraft, savedProduct)
+                        const desktopIsSet = productField
+                          ? productField.isSet
                           : isFieldSet(field.id, draft, savedTenant)
-                        const desktopInherit = isProductSurface
-                          ? 'Brand default'
+                        const desktopInherit = productField
+                          ? productField.inheritLabel
                           : getInheritSourceLabel(field.id, draft, savedTenant)
 
                         const activeMobileDraft = isProductSurface ? mobileProductDraft : mobileDraft
@@ -703,6 +714,11 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                               usesMobilePath
                                 ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
                                 : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
+                            }
+                            contrastIssue={
+                              productField && !usesMobilePath
+                                ? productFields.contrastIssue(field.id)
+                                : null
                             }
                           />
                           </div>

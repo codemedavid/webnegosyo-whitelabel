@@ -109,7 +109,6 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'product/sticky-footer': scope('product', 'Sticky footer & actions', 'Sticky footer'),
   'product/layout': scope('product', 'Layout & motion', 'Page layout'),
   'product/pairing': scope('product', 'Pairing pop-up ("Perfect with…")', 'Pairing pop-up'),
-  'product/checkout-upsell': scope('product', 'Checkout upsell sheet', 'Upsell sheet'),
 
   // Product detail elements — each maps to its exact product_detail_settings field.
   'product/name': scope('product', 'Product info', 'Product name', 'product_name_color'),
@@ -117,6 +116,7 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'product/sale-badge': scope('product', 'Image & lightbox', 'Sale badge', 'sale_badge_background_color'),
   'product/variation-option': scope('product', 'Variations', 'Variation option', 'variation_option_background_color'),
   'product/addon-option': scope('product', 'Add-ons', 'Add-on option', 'addon_background_color'),
+  'product/presell': scope('product', 'Variations', 'Pickup date', 'variation_section_title_color'),
   'product/related-item': scope('product', 'Related items', 'Related item', 'related_item_background_color'),
   'product/quantity': scope('product', 'Sticky footer & actions', 'Quantity controls', 'quantity_controls_background'),
   'product/add-to-cart': scope('product', 'Sticky footer & actions', 'Add to Cart button', 'add_to_cart_button_background'),

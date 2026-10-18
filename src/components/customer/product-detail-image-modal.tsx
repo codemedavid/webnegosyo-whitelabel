@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type CSSProperties } from 'react'
 import Image from 'next/image'
 import { X } from 'lucide-react'
 import { Dialog, DialogContent, DialogClose, DialogTitle } from '@/components/ui/dialog'
@@ -11,9 +11,11 @@ interface ImageModalProps {
     onOpenChange: (open: boolean) => void
     imageUrl: string | null
     itemName: string
+    /** The product page's --pd-* variables: the dialog portals to <body>, outside their scope. */
+    themeVariables?: CSSProperties
 }
 
-export function ImageModal({ isOpen, onOpenChange, imageUrl, itemName }: ImageModalProps) {
+export function ImageModal({ isOpen, onOpenChange, imageUrl, itemName, themeVariables }: ImageModalProps) {
     const [isImageLoaded, setIsImageLoaded] = useState(false)
 
     const handleImageLoad = useCallback(() => {
@@ -27,7 +29,8 @@ export function ImageModal({ isOpen, onOpenChange, imageUrl, itemName }: ImageMo
             <DialogContent
                 className="max-w-4xl w-[95vw] h-[90vh] p-0 border-none overflow-hidden z-[110]"
                 overlayClassName="z-[110]"
-                style={{ backgroundColor: 'var(--pd-modal-bg)' }}
+                showCloseButton={false}
+                style={{ ...themeVariables, backgroundColor: 'var(--pd-modal-bg)' }}
             >
                 {/* Hidden title for accessibility */}
                 <DialogTitle className="sr-only">{itemName} - Image Preview</DialogTitle>

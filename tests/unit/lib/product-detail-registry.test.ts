@@ -50,15 +50,16 @@ describe('product detail registry structure', () => {
     )
   })
 
-  it('covers the upsell bottom-sheet modal fields (popup + checkout)', () => {
-    for (const id of [
-      'popup_modal_background_color',
-      'popup_modal_button_color',
-      'checkout_modal_background_color',
-      'checkout_modal_button_text_color',
-    ]) {
+  it('covers the pairing pop-up fields', () => {
+    for (const id of ['popup_modal_background_color', 'popup_modal_button_color', 'popup_modal_price_color']) {
       expect(PRODUCT_DETAIL_FIELD_INDEX[id]).toBeDefined()
     }
+  })
+
+  it('leaves the cart last-call colours to the store columns (Upsell Modal)', () => {
+    // The product_detail_settings copies were saved and never shown to diners.
+    expect(PRODUCT_DETAIL_FIELD_INDEX.checkout_modal_background_color).toBeUndefined()
+    expect(PRODUCT_DETAIL_FIELD_INDEX.checkout_modal_button_text_color).toBeUndefined()
   })
 })
 

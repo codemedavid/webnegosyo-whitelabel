@@ -76,3 +76,24 @@ describe('isSelectionAtMax', () => {
     expect(isSelectionAtMax(group({ max_select: 1 }), 1)).toBe(false)
   })
 })
+
+describe('describeSelectionRule with the store\'s own labels', () => {
+  const single: ModifierGroup = { id: 'g', name: 'Size', display_order: 0, min_select: 1, max_select: 1, options: [] }
+
+  it('uses the store\'s required label as the prefix', () => {
+    expect(describeSelectionRule(single, { required: 'Kailangan' })).toBe('Kailangan — choose 1')
+  })
+
+  it('uses the store\'s optional label for optional choice groups', () => {
+    expect(describeSelectionRule({ ...single, min_select: 0, max_select: null }, { optional: 'Pwede' })).toBe('Pwede — choose any')
+  })
+
+  it('uses the add-on optional label for optional quantity groups', () => {
+    const quantity: ModifierGroup = { ...single, min_select: 0, max_select: null, selection_mode: 'quantity' }
+    expect(describeSelectionRule(quantity, { optional: 'Pwede', quantityOptional: 'Extras' })).toBe('Extras — add any extras')
+  })
+
+  it('keeps the standard wording without labels', () => {
+    expect(describeSelectionRule(single)).toBe('Required — choose 1')
+  })
+})
