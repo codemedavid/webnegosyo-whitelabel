@@ -38,7 +38,7 @@ function Section({
   children,
   surfaceColor,
 }: {
-  title: string
+  title: React.ReactNode
   subtitle?: string
   children: React.ReactNode
   surfaceColor?: string
@@ -89,7 +89,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {/* Order type + scheduling */}
           {checkout.shouldAskFulfillment && (
             <Section
-              title="How do you want it?"
+              title={<StoreLabel name="checkout.order_type" fallback="How do you want it?" />}
               subtitle={advanceConfig.enabled ? 'Pick a method and when' : 'Pick a fulfillment method'}
               surfaceColor={palette.cardBackground}
             >
@@ -104,18 +104,18 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
           {/* Customer information */}
           {orderType && formFields.length > 0 && (
-            <Section title="Your details" subtitle="So we can prepare your order" surfaceColor={palette.cardBackground}>
+            <Section title={<StoreLabel name="checkout.customer" fallback="Your details" />} subtitle="So we can prepare your order" surfaceColor={palette.cardBackground}>
               <CheckoutFields checkout={checkout} columns={1} />
             </Section>
           )}
 
           {/* Payment methods — stays mounted for scroll-to-error anchor */}
-          <Section title="Payment" subtitle="Choose how you'd like to pay" surfaceColor={palette.cardBackground}>
+          <Section title={<StoreLabel name="checkout.payment" fallback="Payment" />} subtitle="Choose how you'd like to pay" surfaceColor={palette.cardBackground}>
             <PaymentMethodList checkout={checkout} />
           </Section>
 
           {/* Order summary */}
-          <Section title="Order summary" subtitle="Review before you confirm" surfaceColor={palette.summaryBackground ?? palette.cardBackground}>
+          <Section title={<StoreLabel name="checkout.summary" fallback="Order summary" />} subtitle="Review before you confirm" surfaceColor={palette.summaryBackground ?? palette.cardBackground}>
             <OrderSummaryLines checkout={checkout} />
           </Section>
 
@@ -139,7 +139,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
         >
           <div className="mb-2.5 flex items-baseline justify-between">
-            <span className="text-sm font-medium text-[color:var(--co-muted)]">Total</span>
+            <span className="text-sm font-medium text-[color:var(--co-muted)]"><StoreLabel name="cart.total" fallback="Total" /></span>
             <span className="text-xl font-bold" style={{ color: accent }}>
               {checkout.isFetchingDeliveryFee ? (
                 <span className="animate-pulse">Calculating...</span>

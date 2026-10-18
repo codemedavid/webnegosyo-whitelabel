@@ -49,7 +49,7 @@ export function BiteSpeedHeader({ tenantSlug, storeName }: { tenantSlug: string;
 }
 
 interface SectionProps {
-  title: string
+  title: ReactNode
   icon: LucideIcon
   action?: ReactNode
   children: ReactNode

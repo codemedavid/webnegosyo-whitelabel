@@ -46,8 +46,7 @@ export const STOREFRONT_LABELS = {
     'checkout.summary': { screen: 'checkout', label: 'Order summary title', example: 'Order Summary', maxLength: MEDIUM },
     'checkout.payment': { screen: 'checkout', label: 'Payment title', example: 'Payment', maxLength: MEDIUM },
     'checkout.voucher': { screen: 'checkout', label: 'Voucher prompt', example: 'Have a voucher?', maxLength: MEDIUM },
-    'checkout.place_order': { screen: 'checkout', label: 'Place order button', example: 'Place Order', maxLength: SHORT },
-    'confirmation.title': { screen: 'confirmation', label: 'Order sent title', example: 'Order sent!', maxLength: MEDIUM },
+    'confirmation.title': { screen: 'confirmation', label: 'Order placed title', example: 'Order Placed!', maxLength: MEDIUM },
 } as const satisfies Record<string, StorefrontLabelDefinition>
 
 export type StorefrontLabelKey = keyof typeof STOREFRONT_LABELS

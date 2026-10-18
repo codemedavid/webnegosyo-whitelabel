@@ -174,17 +174,14 @@ export function useMobileOverrides(tenant: { mobile_overrides?: unknown } | null
 }
 
 /**
- * The page's tenant object with the live Branding Studio draft merged over
- * its columns. Outside preview mode (or before the first draft arrives) the
- * original reference is returned so there is zero behavioural change.
+ * The tenant object with the live Branding Studio draft (and, on a phone, the
+ * mobile overrides) merged over its columns — with no side effects, so any
+ * number of components may call it. Outside preview mode on desktop the
+ * original reference is returned.
  */
-export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T {
+export function useBrandingPreviewColumns<T extends object | null>(tenant: T): T {
   const draft = useBrandingPreviewDraft()
   const isMobile = useIsMobileViewport()
-  // Called from here rather than from each page: every surface that takes part
-  // in the preview already calls this hook, so a new one cannot forget and
-  // render a drafted pairing in the fallback typeface.
-  useStorefrontFontPreview()
   return useMemo(() => {
     if (!tenant) return tenant
     let result = { ...(tenant as Record<string, unknown>) }
@@ -203,6 +200,21 @@ export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T 
     if (!draft && !isMobile) return tenant
     return result as T
   }, [tenant, draft, isMobile])
+}
+
+/**
+ * The page's tenant object with the live Branding Studio draft merged over
+ * its columns. Outside preview mode (or before the first draft arrives) the
+ * original reference is returned so there is zero behavioural change.
+ * Also loads the preview typefaces — for page-level surfaces; leaf helpers
+ * use `useBrandingPreviewColumns`.
+ */
+export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T {
+  // Called from here rather than from each page: every surface that takes part
+  // in the preview already calls this hook, so a new one cannot forget and
+  // render a drafted pairing in the fallback typeface.
+  useStorefrontFontPreview()
+  return useBrandingPreviewColumns(tenant)
 }
 
 /**

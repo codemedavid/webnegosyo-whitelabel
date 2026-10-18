@@ -31,7 +31,7 @@ describe('readStorefrontLabels', () => {
 
 describe('storefrontLabelsSchema', () => {
     it('accepts known labels', () => {
-        expect(storefrontLabelsSchema.parse({ 'checkout.place_order': 'Order na!' })).toEqual({ 'checkout.place_order': 'Order na!' })
+        expect(storefrontLabelsSchema.parse({ 'checkout.payment': 'Bayad' })).toEqual({ 'checkout.payment': 'Bayad' })
     })
 
     it('refuses unknown keys and over-long text', () => {

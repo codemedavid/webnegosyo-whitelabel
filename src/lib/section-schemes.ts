@@ -29,11 +29,16 @@ export interface SchemeColors {
 const LIGHT = '#ffffff'
 const DARK = '#141414'
 const TINT_PERCENT = 0.12
-const HEX = /^#([0-9a-f]{6})$/i
+const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
+
+/** `#abc` → `#aabbcc`; other values unchanged. */
+function expandHex(color: string): string {
+    return /^#[0-9a-f]{3}$/i.test(color) ? `#${color.slice(1).split('').map((c) => c + c).join('')}` : color
+}
 
 function tint(color: string, amount: number): string {
     if (!HEX.test(color)) return LIGHT
-    const value = parseInt(color.slice(1), 16)
+    const value = parseInt(expandHex(color).slice(1), 16)
     const channel = (shift: number) => {
         const c = (value >> shift) & 255
         return Math.round(255 + (c - 255) * amount).toString(16).padStart(2, '0')
@@ -46,7 +51,7 @@ export function schemeColors(scheme: Exclude<SectionScheme, 'auto'>, brand: stri
     const background = scheme === 'light' ? LIGHT
         : scheme === 'dark' ? DARK
             : scheme === 'tinted' ? tint(brand, TINT_PERCENT)
-                : HEX.test(brand) ? brand : DARK
+                : HEX.test(brand) ? expandHex(brand) : DARK
     const text = readableTextOn(background === DARK || scheme === 'brand' ? '#ffffff' : '#1a1a1a', background)
     const muted = readableTextOn(text === '#ffffff' ? '#d4d4d4' : '#525252', background)
     return { background, text, muted }

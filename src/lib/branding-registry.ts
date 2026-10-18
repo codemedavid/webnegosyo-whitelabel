@@ -51,6 +51,8 @@ export interface BrandingField {
    */
   bannerFormats?: boolean
   placeholder?: string
+  /** Text fields only: the longest value the store may save. */
+  maxLength?: number
   min?: number
   max?: number
   /** Select fields only: render as a visual gallery instead of chips. */
@@ -96,6 +98,7 @@ function labelFields(screens: readonly LabelScreen[]): BrandingField[] {
     type: 'text',
     default: '',
     placeholder: STOREFRONT_LABELS[key].example,
+    maxLength: STOREFRONT_LABELS[key].maxLength,
     columnBacked: true,
   }))
 }

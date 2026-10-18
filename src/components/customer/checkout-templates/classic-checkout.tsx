@@ -366,7 +366,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {/* Payment method: the shared wallet-style picker (branded). */}
           {(paymentMethods.length > 0 || (orderType && tenant)) && (
             <div className="rounded-2xl bg-[var(--co-card)] p-6 sm:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
-              <h2 className="text-2xl font-bold text-[color:var(--co-text)] mb-2" style={{ color: palette.text }}>Payment</h2>
+              <h2 className="text-2xl font-bold text-[color:var(--co-text)] mb-2" style={{ color: palette.text }}><StoreLabel name="checkout.payment" fallback="Payment" /></h2>
               <p className="text-[color:var(--co-muted)] mb-6" style={{ color: palette.mutedText }}>
                 Choose how you would like to pay
               </p>

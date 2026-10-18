@@ -296,7 +296,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           {/* Payment Method */}
           {completedOrderData.paymentMethodName && (
             <div className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
-              <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-2">Payment Method</h2>
+              <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-2"><StoreLabel name="checkout.payment" fallback="Payment Method" /></h2>
               <p className="font-medium text-[color:var(--co-text)]">{completedOrderData.paymentMethodName}</p>
               {completedOrderData.paymentMethodDetails && (
                 <p className="text-sm text-[color:var(--co-muted)] mt-1">{completedOrderData.paymentMethodDetails}</p>

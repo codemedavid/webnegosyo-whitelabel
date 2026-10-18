@@ -317,7 +317,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
                   <div className="border-t pt-4" style={{ borderColor: palette.border }}>
                     <div className="flex justify-between items-center">
-                      <span className="text-lg font-bold" style={{ color: palette.text }}>Total</span>
+                      <span className="text-lg font-bold" style={{ color: palette.text }}><StoreLabel name="cart.total" fallback="Total" /></span>
                       <span className="text-2xl font-bold" style={{ color: accentColor }}>{formatPrice(total)}</span>
                     </div>
                   </div>

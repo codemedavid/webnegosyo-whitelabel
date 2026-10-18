@@ -353,7 +353,7 @@ export function CartTotalsRows({ cart }: { cart: UseCartViewReturn }) {
       )}
       <div className="border-t pt-3" style={{ borderColor: p.border }}>
         <div className="flex justify-between items-center">
-          <span className="text-lg font-bold" style={{ color: p.text }}>Total</span>
+          <span className="text-lg font-bold" style={{ color: p.text }}><StoreLabel name="cart.total" fallback="Total" /></span>
           <span className="text-2xl font-bold" style={{ color: p.accent }}>{formatPrice(total)}</span>
         </div>
       </div>

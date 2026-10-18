@@ -23,6 +23,7 @@ import { checkoutThemeStyle } from './checkout-theme'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { CartItem } from '@/types/database'
 import { VoucherField } from './voucher-field'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export type OrderSummaryVariant = 'default' | 'classic'
 
@@ -341,7 +342,7 @@ export function OrderSummaryLines({
       {skin.totalLeadingBreak}
 
       <div className={skin.totalRow}>
-        <span className={skin.totalLabel} style={{ color: text }}>Total</span>
+        <span className={skin.totalLabel} style={{ color: text }}><StoreLabel name="cart.total" fallback="Total" /></span>
         <span className={skin.totalValue} style={{ color: accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>

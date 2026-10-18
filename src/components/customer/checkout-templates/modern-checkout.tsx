@@ -119,7 +119,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                   <div className="mb-5 flex items-start gap-3">
                     {numberBadge(<User className="h-5 w-5" />)}
                     <div className="min-w-0">
-                      <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)] leading-tight">Your details</h2>
+                      <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)] leading-tight"><StoreLabel name="checkout.customer" fallback="Your details" /></h2>
                       <p className="text-sm text-[color:var(--co-muted)] mt-0.5">Tell us where to reach you.</p>
                     </div>
                   </div>
@@ -136,7 +136,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                 <div className="mb-5 flex items-start gap-3">
                   {numberBadge(<CreditCard className="h-5 w-5" />)}
                   <div className="min-w-0">
-                    <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)] leading-tight">Payment</h2>
+                    <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)] leading-tight"><StoreLabel name="checkout.payment" fallback="Payment" /></h2>
                     <p className="text-sm text-[color:var(--co-muted)] mt-0.5">Select how you&apos;d like to pay.</p>
                   </div>
                 </div>
@@ -156,7 +156,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                     className="px-5 sm:px-6 py-4 border-b border-[color:var(--co-border)]"
                     style={{ backgroundColor: setAlpha(accent, 0.05) }}
                   >
-                    <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)]" style={{ color: palette.text }}>Order summary</h2>
+                    <h2 className="text-base sm:text-lg font-bold text-[color:var(--co-text)]" style={{ color: palette.text }}><StoreLabel name="checkout.summary" fallback="Order summary" /></h2>
                   </div>
 
                   <div className="px-5 sm:px-6 py-5">

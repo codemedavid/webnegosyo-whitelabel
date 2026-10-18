@@ -354,7 +354,7 @@ export function CartDrawer({
 
               <div data-branding-scope="cart/summary" className="flex-shrink-0 backdrop-blur-sm border-t px-4 py-4 space-y-3" style={{ borderColor: palette.border, backgroundColor: palette.summary }}>
                 <div className="flex items-center justify-between">
-                  <span className="text-base font-bold" style={{ color: palette.text }}>Total</span>
+                  <span className="text-base font-bold" style={{ color: palette.text }}><StoreLabel name="cart.total" fallback="Total" /></span>
                   <span className="text-lg font-bold" style={{ color: accent }}>{formatPrice(total)}</span>
                 </div>
 

@@ -22,6 +22,7 @@ jest.mock('next/dynamic', () => {
 jest.mock('@/hooks/use-branding-preview', () => ({
   useBrandingPreviewDraft: () => mockDraft.current,
   useBrandingPreviewTenant: <T,>(tenant: T) => tenant,
+  useBrandingPreviewColumns: <T,>(tenant: T) => tenant,
 }))
 jest.mock('@/components/customer/product-detail-sheet', () => ({
   ProductDetailSheet: (props: { open: boolean }) => (props.open ? <div data-testid="product-sheet" /> : null),

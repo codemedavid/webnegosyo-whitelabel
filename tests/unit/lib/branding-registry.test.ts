@@ -18,6 +18,7 @@ import {
   generatePaletteFromColor,
   isFieldVisible,
 } from '@/lib/branding-registry'
+import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS } from '@/lib/storefront-labels'
 
 describe('branding registry structure', () => {
   it('defines the eleven editor surfaces in rail order', () => {
@@ -131,6 +132,22 @@ describe('branding registry structure', () => {
     expect(BRANDING_FIELD_INDEX['category_nav_style'].options).toEqual(
       expect.arrayContaining(['theme', 'pills', 'chips', 'underline'])
     )
+  })
+})
+
+describe('label fields', () => {
+  const labelFields = BRANDING_SURFACES.flatMap((surface) => surface.sections.flatMap((section) => section.fields))
+    .filter((field) => field.id.startsWith('storefront_labels.'))
+
+  it('offers every storefront label exactly once', () => {
+    expect(labelFields.map((field) => field.id.slice('storefront_labels.'.length)).sort()).toEqual([...STOREFRONT_LABEL_KEYS].sort())
+  })
+
+  it('stops typing at the longest wording the store may save', () => {
+    for (const field of labelFields) {
+      const key = field.id.slice('storefront_labels.'.length) as keyof typeof STOREFRONT_LABELS
+      expect(field.maxLength).toBe(STOREFRONT_LABELS[key].maxLength)
+    }
   })
 })
 

@@ -180,6 +180,7 @@ function TextRow({ field, value, onChange }: FieldRowProps) {
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
+        maxLength={field.maxLength}
         aria-label={field.label}
         className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12.5px] outline-none focus:border-neutral-800"
       />

@@ -8,14 +8,15 @@
  */
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
+import { useBrandingPreviewColumns } from '@/hooks/use-branding-preview'
 import { readStorefrontLabels, type StorefrontLabelKey, type StorefrontLabels } from '@/lib/storefront-labels'
 
 const StorefrontLabelsContext = createContext<StorefrontLabels>({})
+const NO_TENANT: Record<string, unknown> = {}
 
 export function StorefrontLabelsProvider({ tenant, children }: { tenant: object | null | undefined; children: ReactNode }) {
-    const previewTenant = useBrandingPreviewTenant((tenant ?? {}) as Record<string, unknown>)
-    const labels = useMemo(() => readStorefrontLabels(previewTenant as Record<string, unknown>), [previewTenant])
+    const previewTenant = useBrandingPreviewColumns((tenant ?? NO_TENANT) as Record<string, unknown>)
+    const labels = useMemo(() => readStorefrontLabels(previewTenant), [previewTenant])
     return <StorefrontLabelsContext.Provider value={labels}>{children}</StorefrontLabelsContext.Provider>
 }
 

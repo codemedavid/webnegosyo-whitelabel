@@ -8,7 +8,7 @@
  * screen and payment/QR dialogs are rendered by the page shell (shared).
  */
 
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { useState } from 'react'
 import { ArrowLeft, Check, ChevronLeft } from 'lucide-react'
 import { getCheckoutPalette } from '@/lib/branding-utils'
@@ -32,6 +32,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     customerData, paymentMethods, selectedPaymentMethod,
     scheduleMode, scheduledForLabel, isScheduleValid,
   } = checkout
+  const receiveTitle = useStorefrontLabel('checkout.order_type', 'How would you like to receive your order?')
+  const detailsTitle = useStorefrontLabel('checkout.customer', 'Your information')
+  const paymentTitle = useStorefrontLabel('checkout.payment', 'How would you like to pay?')
+  const reviewTitle = useStorefrontLabel('checkout.summary', 'Review your order')
 
   const [step, setStep] = useState(0)
 
@@ -82,10 +86,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     : null
 
   const stepTitles: Record<WizardStep, string> = {
-    Receive: 'How would you like to receive your order?',
-    Details: 'Your information',
-    Payment: 'How would you like to pay?',
-    Review: 'Review your order',
+    Receive: receiveTitle,
+    Details: detailsTitle,
+    Payment: paymentTitle,
+    Review: reviewTitle,
   }
   const stepSubtitles: Record<WizardStep, string> = {
     Receive: 'Choose a fulfillment method' + (advanceConfig.enabled ? ' and when you want it.' : '.'),

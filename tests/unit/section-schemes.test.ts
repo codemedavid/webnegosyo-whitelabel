@@ -28,6 +28,13 @@ describe('section schemes', () => {
     })
 })
 
+describe('short hex brand colours', () => {
+    it('reads #abc the same as #aabbcc', () => {
+        expect(schemeColors('brand', '#e8b').background).toBe('#ee88bb')
+        expect(schemeColors('tinted', '#e8b')).toEqual(schemeColors('tinted', '#ee88bb'))
+    })
+})
+
 describe('header colour style on the storefront', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getTenantBranding } = require('@/lib/branding-utils') as typeof import('@/lib/branding-utils')

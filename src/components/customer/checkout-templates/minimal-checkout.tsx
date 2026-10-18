@@ -25,6 +25,7 @@ import {
   CheckoutCTA,
   MinimumOrderNotice,
 } from './checkout-primitives'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
@@ -53,7 +54,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
         </header>
 
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[color:var(--co-text)] pb-2" style={{ color: palette.text }}>
-          Checkout
+          <StoreLabel name="checkout.title" fallback="Checkout" />
         </h1>
         <p className="text-sm text-[color:var(--co-muted)] pb-8 sm:pb-10" style={{ color: palette.mutedText }}>
           Complete your order with {tenant.name}.
@@ -64,7 +65,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {checkout.shouldAskFulfillment && (
             <section className="py-8 sm:py-10">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[color:var(--co-text)] mb-1" style={{ color: palette.text }}>
-                How would you like it?
+                <StoreLabel name="checkout.order_type" fallback="How would you like it?" />
               </h2>
               <p className="text-sm text-[color:var(--co-muted)] mb-5" style={{ color: palette.mutedText }}>
                 Choose a fulfillment method
@@ -83,7 +84,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {orderType && formFields.length > 0 && (
             <section className="border-t border-[color:var(--co-border)] py-8 sm:py-10" style={{ borderColor: palette.border }}>
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[color:var(--co-text)] mb-1" style={{ color: palette.text }}>
-                Your details
+                <StoreLabel name="checkout.customer" fallback="Your details" />
               </h2>
               <p className="text-sm text-[color:var(--co-muted)] mb-5" style={{ color: palette.mutedText }}>
                 Where should we reach you?
@@ -95,7 +96,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {/* Payment — always mounted so the hook can scroll to errors */}
           <section className="border-t border-[color:var(--co-border)] py-8 sm:py-10" style={{ borderColor: palette.border }}>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[color:var(--co-text)] mb-5" style={{ color: palette.text }}>
-              Payment
+              <StoreLabel name="checkout.payment" fallback="Payment" />
             </h2>
             <PaymentMethodList checkout={checkout} />
           </section>
@@ -103,7 +104,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {/* Summary — always rendered */}
           <section className="border-t border-[color:var(--co-border)] py-8 sm:py-10" style={{ borderColor: palette.border }}>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[color:var(--co-text)] mb-5" style={{ color: palette.text }}>
-              Order summary
+              <StoreLabel name="checkout.summary" fallback="Order summary" />
             </h2>
             <OrderSummaryLines checkout={checkout} />
           </section>

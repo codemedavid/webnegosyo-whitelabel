@@ -24,6 +24,7 @@ import {
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import { CartOffers } from './cart-shared'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
   const { tenant, items, bundleItems, total } = cart
@@ -51,7 +52,7 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <h1 className="flex-1 text-base font-bold" style={{ color: palette.text }}>
-            Your Cart
+            <StoreLabel name="cart.title" fallback="Your Cart" />
           </h1>
           {!isEmpty && (
             <span
@@ -113,7 +114,7 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
             <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
               <div className="flex shrink-0 flex-col">
                 <span className="text-xs font-medium" style={{ color: palette.muted }}>
-                  Total
+                  <StoreLabel name="cart.total" fallback="Total" />
                 </span>
                 <span className="text-lg font-bold" style={{ color: accent }}>
                   {formatPrice(total)}

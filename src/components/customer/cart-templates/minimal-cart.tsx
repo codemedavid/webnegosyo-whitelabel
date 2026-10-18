@@ -23,6 +23,7 @@ import {
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import { CartOffers } from './cart-shared'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
   const { tenant, items, bundleItems } = cart
@@ -61,7 +62,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
           <>
             {/* Large bold heading */}
             <div className="mb-8 md:mb-10">
-              <h1 className="text-3xl font-bold tracking-tight md:text-4xl" style={{ color: palette.text }}>Cart</h1>
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl" style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Cart" /></h1>
               {itemCount > 0 && (
                 <p className="mt-1.5 text-sm" style={{ color: palette.muted }}>
                   {itemCount} item{itemCount !== 1 ? 's' : ''} in your bag
