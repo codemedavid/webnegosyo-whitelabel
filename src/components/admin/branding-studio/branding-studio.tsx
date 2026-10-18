@@ -57,6 +57,8 @@ import { createTenantColorResolver } from '@/lib/branding-studio/tenant-field-ef
 import { listTenantContrastIssues } from '@/lib/branding-studio/tenant-contrast'
 import type { StoreColor } from './color-picker'
 import { ContrastSummary } from './contrast-summary'
+import { PreviewStateBar } from './preview-state-bar'
+import { previewStatesForField, type ProductPreviewState } from '@/lib/branding-studio/preview-states'
 import { componentBreadcrumb, getBrandingComponent } from '@/lib/branding-components'
 import { FieldRow } from './field-row'
 import { ComponentPanel, EditModeToggle, SettingsSearch, matchesSettingQuery } from './component-panel'
@@ -131,6 +133,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const [selectedScope, setSelectedScope] = useState<string | null>(null)
   const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null)
   const [settingQuery, setSettingQuery] = useState('')
+  // Item-page samples the owner switched on, and the setting last edited (its
+  // samples stay on so the change stays visible after the pointer moves).
+  const [chosenStates, setChosenStates] = useState<ReadonlySet<ProductPreviewState>>(() => new Set())
+  const [lastEditedFieldId, setLastEditedFieldId] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const selectedScopeRef = useRef(selectedScope)
   selectedScopeRef.current = selectedScope
@@ -334,6 +340,23 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const [logoColor, setLogoColor] = useState('#E4572E')
 
   const panelSections = isProductSurface ? PRODUCT_DETAIL_SECTIONS : surface.sections
+  const automaticStates = new Set<ProductPreviewState>(
+    isProductSurface
+      ? [hoveredFieldId, lastEditedFieldId, ...(selectedScope ? getBrandingComponent(selectedScope)?.fieldIds ?? [] : [])]
+          .filter((fieldId): fieldId is string => Boolean(fieldId))
+          .flatMap(previewStatesForField)
+      : []
+  )
+  // A stable list (by content), so the preview isn't re-posted on every render.
+  const previewStatesKey = isProductSurface ? [...new Set([...chosenStates, ...automaticStates])].sort().join(',') : ''
+  const previewStates = useMemo(() => (previewStatesKey ? previewStatesKey.split(',') : []), [previewStatesKey])
+  const toggleState = (state: ProductPreviewState) =>
+    setChosenStates((current) => {
+      const next = new Set(current)
+      if (next.has(state)) next.delete(state)
+      else next.add(state)
+      return next
+    })
   const tappedComponent = selectedScope ? getBrandingComponent(selectedScope) : null
   const selectedComponent = tappedComponent?.surfaceId === surface.id ? tappedComponent : null
   const isFieldShown = (field: BrandingField) =>
@@ -374,11 +397,12 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           }
           isSet={usesMobilePath ? isFieldSet(field.id, activeMobileDraft, activeSavedMobile) : desktopIsSet}
           inheritLabel={usesMobilePath ? 'Desktop' : desktopInherit}
-          onChange={(value) =>
-            usesMobilePath
+          onChange={(value) => {
+            if (isProductSurface) setLastEditedFieldId(field.id)
+            return usesMobilePath
               ? (isProductSurface ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
               : (isProductSurface ? setProductFieldValue : setFieldValue)(field.id, value)
-          }
+          }}
           onClear={() =>
             usesMobilePath
               ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
@@ -672,6 +696,12 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           onScopeSelected={handleScopeSelected}
           selectedScope={isEditing ? selectedScope : null}
           hoveredFieldId={isEditing ? hoveredFieldId : null}
+          previewStates={previewStates}
+          stateControls={
+            isProductSurface ? (
+              <PreviewStateBar chosen={chosenStates} automatic={automaticStates} onToggle={toggleState} />
+            ) : null
+          }
         />
       </div>
     </div>

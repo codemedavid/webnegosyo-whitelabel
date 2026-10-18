@@ -39,6 +39,10 @@ import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
 import { resolveProductDetailColors, getProductDetailThemeCSS, computeProductDetailStyles, productMotionSeconds } from '@/lib/product-detail-theme'
 import { modifierLabelsFrom } from '@/lib/product-detail-labels'
+import { applyPreviewStates, parsePreviewStates, PREVIEW_STATES_KEY } from '@/lib/branding-studio/preview-states'
+
+/** Ids for the Studio's sample "You might also like" cards. */
+const SAMPLE_RELATED_IDS = ['sample-1', 'sample-2', 'sample-3'] as const
 import { transformImageUrl as transformCloudinaryUrl, isOptimizableImageUrl as isCloudinaryUrl } from '@/lib/imagekit-utils'
 import { UpsellOrchestratorProvider } from '@/lib/upsell-orchestrator'
 import dynamic from 'next/dynamic'
@@ -163,10 +167,29 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // branch is applied here — to the dish, and to everything else on the page
     // that carries a price. A tenant without branches gets identity back.
     const branchPricing = useBranchPricing({ tenant: tenantProp, tenantSlug: tenantProp.slug })
-    const item = useMemo(() => branchPricing.resolve(storeWideItem), [branchPricing, storeWideItem])
-    const relatedItems = useMemo(
-        () => branchPricing.resolveAll(storeWideRelatedItems),
-        [branchPricing, storeWideRelatedItems]
+    const previewDraft = useBrandingPreviewDraft()
+    // Inside the Branding Studio the Studio is the editor: the old in-page
+    // pencils and customizer would sit over the preview and do nothing.
+    const isBrandingPreview = useIsBrandingPreview()
+    // Studio-only samples (sale price, option prices, photo viewer…) so every
+    // item-page setting shows on whatever dish is previewed. Never for diners.
+    const previewStates = useMemo(
+        () => parsePreviewStates(isBrandingPreview ? previewDraft?.[PREVIEW_STATES_KEY] : undefined),
+        [isBrandingPreview, previewDraft]
+    )
+    const item = useMemo(
+        () => branchPricing.resolve(applyPreviewStates(storeWideItem, previewStates)),
+        [branchPricing, storeWideItem, previewStates]
+    )
+    const relatedItems = useMemo(() => {
+        const resolved = branchPricing.resolveAll(storeWideRelatedItems)
+        if (resolved.length > 0 || !previewStates.has('related')) return resolved
+        return SAMPLE_RELATED_IDS.map((suffix) => ({ ...item, id: `${item.id}-${suffix}` }))
+    }, [branchPricing, storeWideRelatedItems, previewStates, item])
+    // Studio sample for the "just added" sheet (the added dish itself is never suggested).
+    const sampleSuggestions = useMemo(
+        () => SAMPLE_RELATED_IDS.map((suffix) => ({ ...item, id: `${item.id}-${suffix}` })),
+        [item]
     )
     const complementaryUpsells = useMemo(
         () => branchPricing.resolveAll(storeWideComplementaryUpsells),
@@ -176,10 +199,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // the closed notice and the disabled actions appear a frame after hydration.
     const openStatus = useStoreOpenStatus(tenant)
     const isOrderable = isMenuItemOrderable(item)
-    const previewDraft = useBrandingPreviewDraft()
-    // Inside the Branding Studio the Studio is the editor: the old in-page
-    // pencils and customizer would sit over the preview and do nothing.
-    const isBrandingPreview = useIsBrandingPreview()
     const showEditTools = isBrandAdmin && !isBrandingPreview
     const branding = useMemo(
         () => (previewDraft ? getTenantBranding(tenant as unknown as Record<string, unknown>) : brandingProp),
@@ -457,8 +476,11 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             tags.push({ label: 'Healthy', icon: Heart })
         }
 
+        if (tags.length === 0 && previewStates.has('dietary')) {
+            return [{ label: 'Vegetarian', icon: Leaf }, { label: 'Spicy', icon: Flame }]
+        }
         return tags
-    }, [item.name, item.description])
+    }, [item.name, item.description, previewStates])
 
     // Memoized event handlers
     const handleGoBack = useCallback(() => {
@@ -809,7 +831,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {hasDiscount && (
                         <div
                             data-branding-scope="product/sale-badge"
-                            className="absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-semibold shadow-lg"
+                            // Bottom corner: the top of the photo sits under the floating back/share buttons.
+                            className="absolute bottom-4 left-4 px-3 py-1 rounded-full text-sm font-semibold shadow-lg"
                             style={{
                                 backgroundColor: 'var(--pd-sale-badge-bg)',
                                 color: 'var(--pd-sale-badge-text)'
@@ -1011,7 +1034,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
             {/* Image Modal / Lightbox */}
             <LazyImageModal
-                isOpen={isImageModalOpen}
+                isOpen={isImageModalOpen || (previewStates.has('lightbox') && Boolean(hasImage))}
                 onOpenChange={handleCloseImageModal}
                 imageUrl={item.image_url}
                 itemName={item.name}
@@ -1020,9 +1043,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
             {/* Right after adding: "Goes well with" */}
             <AddedSheet
-                open={isPostAddUpsellOpen}
+                open={isPostAddUpsellOpen || previewStates.has('added')}
                 addedItem={item}
-                suggestions={addedSheetOffers}
+                suggestions={addedSheetOffers.length > 0 || !previewStates.has('added') ? addedSheetOffers : sampleSuggestions}
                 theme={addedSheetTheme}
                 tenantId={tenant.id}
                 hideCurrencySymbol={hideCurrencySymbol}

@@ -22,9 +22,11 @@ import {
   BRANDING_SELECT_MESSAGE,
 } from '@/lib/branding-inspect'
 import { getPreviewTarget } from './preview-routes'
+import { PREVIEW_STATES_KEY } from '@/lib/branding-studio/preview-states'
 import type { BrandingSurface } from '@/lib/branding-registry'
 
 const DRAFT_POST_DEBOUNCE_MS = 60
+const NO_STATES: readonly string[] = []
 const MOBILE_PREVIEW_WIDTH_PX = 390
 /**
  * How long the storefront gets to announce itself before the pane admits it
@@ -56,6 +58,10 @@ interface PreviewFrameProps {
   selectedScope?: string | null
   /** The setting under the owner's pointer — everything it changes is outlined. */
   hoveredFieldId?: string | null
+  /** Studio-only samples the item page shows (sale price, photo viewer…). */
+  previewStates?: readonly string[]
+  /** Toggles for those samples, shown under the preview. */
+  stateControls?: React.ReactNode
 }
 
 function postOutlines(
@@ -84,6 +90,8 @@ export function PreviewFrame({
   onScopeSelected,
   selectedScope = null,
   hoveredFieldId = null,
+  previewStates = NO_STATES,
+  stateControls,
 }: PreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
@@ -92,6 +100,7 @@ export function PreviewFrame({
   const mobileOverridesRef = useRef(mobileOverrides)
   const productMobileOverridesRef = useRef(productMobileOverrides)
   const surfaceRef = useRef(surfaceId)
+  const previewStatesRef = useRef(previewStates)
   const inspectModeRef = useRef(inspectMode)
   const outlineRef = useRef({ selectedScope, hoveredFieldId })
   outlineRef.current = { selectedScope, hoveredFieldId }
@@ -138,6 +147,7 @@ export function PreviewFrame({
           __categoryDraft: categoryDraftRef.current ?? {},
           __mobileOverrides: mobileOverridesRef.current ?? {},
           __productMobileOverrides: productMobileOverridesRef.current ?? {},
+          [PREVIEW_STATES_KEY]: previewStatesRef.current,
         },
       },
       window.location.origin
@@ -165,12 +175,13 @@ export function PreviewFrame({
     mobileOverridesRef.current = mobileOverrides
     productMobileOverridesRef.current = productMobileOverrides
     surfaceRef.current = surfaceId
+    previewStatesRef.current = previewStates
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(postDraft, DRAFT_POST_DEBOUNCE_MS)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [draft, productDraft, categoryDraft, mobileOverrides, productMobileOverrides, surfaceId, postDraft])
+  }, [draft, productDraft, categoryDraft, mobileOverrides, productMobileOverrides, surfaceId, previewStates, postDraft])
 
   // Push inspect-mode changes immediately (no debounce — it's a UI toggle).
   useEffect(() => {
@@ -244,6 +255,7 @@ export function PreviewFrame({
           className="h-full w-full flex-1 border-0"
         />
       </div>
+      {stateControls}
       <div className="mt-3 text-center text-[11.5px] font-bold text-[rgba(80,72,60,0.75)]">
         {isMobile
           ? 'Mobile preview · 390px — real responsive breakpoints'
