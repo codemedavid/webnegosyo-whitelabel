@@ -333,26 +333,18 @@ export function mergeSettingsWithBranding(
     const defaults = DEFAULT_PRODUCT_DETAIL_SETTINGS
     const s: Partial<ProductDetailSettings> = settings || {}
 
-    // Helper: only use the product detail setting if it was explicitly customized
-    // (i.e., differs from the default). Otherwise fall back to the branding value.
-    const custom = (
-        settingValue: string | undefined | null,
-        defaultValue: string | undefined,
-        brandingFallback: string
-    ): string => {
-        // If the setting is null/undefined, use branding
-        if (!settingValue) return brandingFallback
-        // If the setting matches the table default, use branding (tenant didn't customize it)
-        if (defaultValue && settingValue === defaultValue) return brandingFallback
-        // The tenant explicitly set a custom value
-        return settingValue
-    }
+    // A saved colour is the owner's pick; blank follows the store's brand.
+    // (A value equal to the old column default used to read as "not chosen",
+    // so picking white for a background did nothing — those stored defaults
+    // were cleared to NULL by 20261019100000_product_detail_brand_null.)
+    const custom = (settingValue: string | undefined | null, brandingFallback: string): string =>
+        settingValue || brandingFallback
 
-    const addonBackground = custom(s.addon_background_color, defaults.addon_background_color, branding.cards)
-    const addonText = custom(s.addon_text_color, defaults.addon_text_color, branding.textPrimary)
+    const addonBackground = custom(s.addon_background_color, branding.cards)
+    const addonText = custom(s.addon_text_color, branding.textPrimary)
 
     return {
-        pageBackground: custom(s.page_background_color, defaults.page_background_color, branding.background),
+        pageBackground: custom(s.page_background_color, branding.background),
         pageGradient: safeGradientStops(s.page_background_gradient),
 
         headerBackground: s.header_background_color || branding.header,
@@ -364,28 +356,28 @@ export function mergeSettingsWithBranding(
         saleBadgeBackground: s.sale_badge_background_color || defaults.sale_badge_background_color!,
         saleBadgeText: s.sale_badge_text_color || defaults.sale_badge_text_color!,
 
-        productName: custom(s.product_name_color, defaults.product_name_color, branding.textPrimary),
+        productName: custom(s.product_name_color, branding.textPrimary),
         productNameFontSize: s.product_name_font_size || defaults.product_name_font_size!,
         productNameFontWeight: s.product_name_font_weight || defaults.product_name_font_weight!,
 
         breadcrumb: s.breadcrumb_color || branding.textMuted,
         breadcrumbActive: s.breadcrumb_active_color || branding.link,
 
-        description: custom(s.description_color, defaults.description_color, branding.textSecondary),
+        description: custom(s.description_color, branding.textSecondary),
         descriptionFontSize: s.description_font_size || defaults.description_font_size!,
 
         dietaryTagBackground: s.dietary_tag_background_color || 'transparent',
         dietaryTagText: s.dietary_tag_text_color || branding.textPrimary,
         dietaryTagBorder: s.dietary_tag_border_color || branding.border,
 
-        variationSectionTitle: custom(s.variation_section_title_color, defaults.variation_section_title_color, branding.textPrimary),
+        variationSectionTitle: custom(s.variation_section_title_color, branding.textPrimary),
         variationSectionTitleFontSize: s.variation_section_title_font_size || defaults.variation_section_title_font_size!,
 
         // Unchosen chips follow the store's cards/text/border like add-on rows,
         // so a dark store never gets pale grey slabs (or dark-on-dark text).
-        variationOptionBackground: custom(s.variation_option_background_color, defaults.variation_option_background_color, branding.cards),
-        variationOptionText: custom(s.variation_option_text_color, defaults.variation_option_text_color, branding.textPrimary),
-        variationOptionBorder: custom(s.variation_option_border_color, defaults.variation_option_border_color, branding.border),
+        variationOptionBackground: custom(s.variation_option_background_color, branding.cards),
+        variationOptionText: custom(s.variation_option_text_color, branding.textPrimary),
+        variationOptionBorder: custom(s.variation_option_border_color, branding.border),
         variationOptionSelectedBackground: s.variation_option_selected_background_color || branding.primary,
         variationOptionSelectedText: s.variation_option_selected_text_color || defaults.variation_option_selected_text_color!,
         variationOptionSelectedBorder: s.variation_option_selected_border_color || branding.primary,
@@ -395,12 +387,12 @@ export function mergeSettingsWithBranding(
         variationRequiredText: s.variation_required_text || defaults.variation_required_text!,
         variationOptionalText: s.variation_optional_text || defaults.variation_optional_text!,
 
-        addonSectionTitle: custom(s.addon_section_title_color, defaults.addon_section_title_color, branding.textPrimary),
+        addonSectionTitle: custom(s.addon_section_title_color, branding.textPrimary),
         addonSectionTitleFontSize: s.addon_section_title_font_size || defaults.addon_section_title_font_size!,
 
         addonBackground,
         addonText,
-        addonBorder: custom(s.addon_border_color, defaults.addon_border_color, branding.border),
+        addonBorder: custom(s.addon_border_color, branding.border),
         // Unset picked colours follow the unpicked row (the brand border marks
         // the pick), so a picked add-on is never less readable than the rest.
         addonSelectedBackground: s.addon_selected_background_color || addonBackground,
@@ -411,19 +403,19 @@ export function mergeSettingsWithBranding(
         addonPriceFreeText: s.addon_price_free_text || defaults.addon_price_free_text!,
         addonOptionalText: s.addon_optional_text || defaults.addon_optional_text!,
 
-        relatedSectionTitle: custom(s.related_section_title_color, defaults.related_section_title_color, branding.textPrimary),
+        relatedSectionTitle: custom(s.related_section_title_color, branding.textPrimary),
         relatedSectionTitleFontSize: s.related_section_title_font_size || defaults.related_section_title_font_size!,
         relatedItemBackground: s.related_item_background_color || branding.cards,
-        relatedItemName: custom(s.related_item_name_color, defaults.related_item_name_color, branding.cardTitle),
+        relatedItemName: custom(s.related_item_name_color, branding.cardTitle),
         relatedItemPrice: s.related_item_price_color || branding.cardPrice,
 
-        footerBackground: custom(s.footer_background_color, defaults.footer_background_color, branding.cards),
-        footerBorder: custom(s.footer_border_color, defaults.footer_border_color, branding.border),
+        footerBackground: custom(s.footer_background_color, branding.cards),
+        footerBorder: custom(s.footer_border_color, branding.border),
         footerShadow: s.footer_shadow_color || defaults.footer_shadow_color!,
 
-        summaryText: custom(s.summary_text_color, defaults.summary_text_color, branding.textMuted),
-        totalPrice: custom(s.total_price_color, defaults.total_price_color, branding.textPrimary),
-        originalPrice: custom(s.original_price_color, defaults.original_price_color, branding.textMuted),
+        summaryText: custom(s.summary_text_color, branding.textMuted),
+        totalPrice: custom(s.total_price_color, branding.textPrimary),
+        originalPrice: custom(s.original_price_color, branding.textMuted),
         footerEmptySummaryText: s.footer_empty_summary_text || defaults.footer_empty_summary_text!,
 
         quantityControlsBackground: s.quantity_controls_background || defaults.quantity_controls_background!,

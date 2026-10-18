@@ -122,20 +122,23 @@ describe('mergeSettingsWithBranding', () => {
         expect(result.border).toBe(mockBranding.border)
     })
 
-    it('uses branding when setting matches default value (custom() helper behavior)', () => {
-        // When the setting value equals the default, custom() returns the branding fallback
+    it('honours a saved colour even when it equals the old table default', () => {
+        // White is a real choice: a store on a dark brand that picks a white
+        // page, option or add-on background must get white (2026-10-19).
         const settings: ProductDetailSettings = {
             tenant_id: 'test-tenant',
-            page_background_color: '#ffffff', // matches default
-            product_name_color: '#111827', // matches default
-            description_color: '#6b7280', // matches default
+            page_background_color: '#ffffff',
+            product_name_color: '#111827',
+            description_color: '#6b7280',
+            addon_background_color: '#ffffff',
         }
 
         const result = mergeSettingsWithBranding(settings, mockBranding)
 
-        expect(result.pageBackground).toBe(mockBranding.background)
-        expect(result.productName).toBe(mockBranding.textPrimary)
-        expect(result.description).toBe(mockBranding.textSecondary)
+        expect(result.pageBackground).toBe('#ffffff')
+        expect(result.productName).toBe('#111827')
+        expect(result.description).toBe('#6b7280')
+        expect(result.addonBackground).toBe('#ffffff')
     })
 
     it('uses custom value when setting differs from default', () => {
@@ -210,16 +213,16 @@ describe('mergeSettingsWithBranding', () => {
         expect(result.variationOptionBorder).toBe(mockBranding.border)
     })
 
-    it('unchosen option chips saved at the table default follow the brand too', () => {
+    it('unchosen option chips saved at the old table default keep that colour', () => {
         const result = mergeSettingsWithBranding({
             variation_option_background_color: '#f9fafb',
             variation_option_text_color: '#374151',
             variation_option_border_color: '#e5e7eb',
         } as never, mockBranding)
 
-        expect(result.variationOptionBackground).toBe(mockBranding.cards)
-        expect(result.variationOptionText).toBe(mockBranding.textPrimary)
-        expect(result.variationOptionBorder).toBe(mockBranding.border)
+        expect(result.variationOptionBackground).toBe('#f9fafb')
+        expect(result.variationOptionText).toBe('#374151')
+        expect(result.variationOptionBorder).toBe('#e5e7eb')
     })
 
     it('keeps a picked add-on row as readable as an unpicked one when its colours are unset', () => {

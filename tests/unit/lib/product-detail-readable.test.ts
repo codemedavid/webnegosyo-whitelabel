@@ -30,13 +30,24 @@ describe('resolveProductDetailColors readable text', () => {
         expect(contrastRatio(colors.variationOptionText, '#ffffff')).toBeGreaterThanOrEqual(4.5)
     })
 
-    it('treats a text colour saved at the table default as not chosen', () => {
+    it('swaps a saved text colour that would not read on the chosen fill', () => {
         const colors = resolveProductDetailColors(settings({
             variation_option_background_color: '#1a1a1a',
             variation_option_text_color: '#374151',
         }), DARK_STORE)
 
         expect(contrastRatio(colors.variationOptionText, '#1a1a1a')).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it('paints a white add-on and page background on a dark store, with dark ink', () => {
+        const colors = resolveProductDetailColors(settings({
+            addon_background_color: '#ffffff',
+            page_background_color: '#ffffff',
+        }), DARK_STORE)
+
+        expect(colors.addonBackground).toBe('#ffffff')
+        expect(colors.pageBackground).toBe('#ffffff')
+        expect(contrastRatio(colors.addonText, '#ffffff')).toBeGreaterThanOrEqual(4.5)
     })
 
     it('keeps a chosen text colour that reads', () => {

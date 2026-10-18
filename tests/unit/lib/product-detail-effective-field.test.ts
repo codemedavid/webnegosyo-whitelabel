@@ -1,7 +1,7 @@
 /**
  * The Studio's Product Detail rows must show what the product page renders.
- * The page resolves colours through mergeSettingsWithBranding (blank → brand,
- * and for some fields "equals the table default" → brand too); the editor used
+ * The page resolves colours through mergeSettingsWithBranding (blank → brand);
+ * the editor used
  * a flat saved → default cascade, so e.g. a saved page background of #ffffff
  * showed as white while a dark store's page rendered #171717 (2026-10-18).
  */
@@ -44,7 +44,7 @@ describe('resolveProductFieldEffective', () => {
         expect(mismatched).toEqual([])
     })
 
-    it('shows the brand colour for a saved value equal to the table default', () => {
+    it('shows a saved white page background as the owner\'s pick', () => {
         const result = resolveProductFieldEffective(
             'page_background_color',
             {},
@@ -52,7 +52,7 @@ describe('resolveProductFieldEffective', () => {
             DARK_STORE,
         )
 
-        expect(result).toEqual({ value: DARK_STORE.background, isSet: false, inheritLabel: 'Brand' })
+        expect(result).toEqual({ value: '#ffffff', isSet: true, inheritLabel: 'Brand' })
     })
 
     it('shows the brand colour for a blank field that follows the brand', () => {
@@ -99,7 +99,7 @@ describe('resolveProductFieldEffective', () => {
     })
 
     it('agrees with the product page for every field', () => {
-        const saved = { addon_background_color: '#1a1a1a', description_color: '#6b7280', product_name_font_size: '28px' }
+        const saved = { addon_background_color: '#1a1a1a', description_color: '#c0c4cc', product_name_font_size: '28px' }
         const colors = resolveProductDetailColors(saved as never, DARK_STORE) as unknown as Record<keyof ProductDetailColors, unknown>
 
         expect(resolveProductFieldEffective('addon_background_color', {}, saved, DARK_STORE).value).toBe(colors.addonBackground)
