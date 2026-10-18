@@ -7,12 +7,13 @@
  * the scope key to the editor, which jumps to the matching surface + accordion
  * section. This module is the single source of truth for which scope keys
  * exist and where each one lands, kept pure so the mapping is unit-testable
- * against BRANDING_SURFACES / PRODUCT_DETAIL_SECTIONS (the test fails if a
+ * against BRANDING_SURFACES / PRODUCT_SURFACE_SECTIONS (the test fails if a
  * section is renamed without updating the map).
  */
 
 import { BRANDING_SURFACES, type BrandingSurface } from '@/lib/branding-registry'
-import { PRODUCT_DETAIL_SECTIONS } from '@/lib/product-detail-registry'
+import { PRODUCT_SURFACE_SECTIONS } from '@/lib/branding-studio/product-surface'
+import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS, type LabelScreen, type StorefrontLabelKey } from '@/lib/storefront-labels'
 
 /** Editor → iframe: turn the hover/click inspector on or off. */
 export const BRANDING_INSPECT_MODE_MESSAGE = 'wn-branding-inspect-mode'
@@ -45,7 +46,36 @@ const scope = (
   fieldId?: string
 ): BrandingScopeTarget => ({ surfaceId, sectionTitle, label, fieldId })
 
+/** Which screen's settings hold the labels shown on each label screen. */
+const LABEL_SURFACE: Record<LabelScreen, BrandingSurface['id']> = {
+  menu: 'storefront',
+  item: 'product',
+  cart: 'cart',
+  checkout: 'checkout',
+  confirmation: 'checkout',
+}
+
+/** Scope a storefront label's text carries in the preview (`label/cart.title`). */
+export function labelScope(key: StorefrontLabelKey): string {
+  return `label/${key}`
+}
+
+// Every label is its own tappable part: tapping the words opens just that label.
+const LABEL_SCOPES: Record<string, BrandingScopeTarget> = Object.fromEntries(
+  STOREFRONT_LABEL_KEYS.map((key) => [
+    labelScope(key),
+    scope(LABEL_SURFACE[STOREFRONT_LABELS[key].screen], 'Labels', STOREFRONT_LABELS[key].label, `storefront_labels.${key}`),
+  ])
+)
+
 export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
+  ...LABEL_SCOPES,
+  // Each screen's wording, as a whole (the parent of its label parts).
+  'storefront/labels': scope('storefront', 'Labels', 'Menu wording'),
+  'product/labels': scope('product', 'Labels', 'Item page wording'),
+  'cart/labels': scope('cart', 'Labels', 'Cart wording'),
+  'checkout/labels': scope('checkout', 'Labels', 'Checkout wording'),
+
   // Global brand — the page canvas itself.
   'global/palette': scope('global', 'Brand palette', 'Brand palette'),
 
@@ -88,6 +118,10 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   // Checkout page.
   'checkout/template': scope('checkout', 'Template', 'Checkout layout'),
   'checkout/colors': scope('checkout', 'Colors', 'Checkout'),
+  'checkout/card': scope('checkout', 'Colors', 'Section card', 'checkout_card_background_color'),
+  'checkout/summary': scope('checkout', 'Colors', 'Order summary', 'checkout_summary_background_color'),
+  'checkout/choice': scope('checkout', 'Colors', 'Order type & payment choice', 'checkout_accent_color'),
+  'checkout/place-order': scope('checkout', 'Colors', 'Place order button', 'checkout_button_color'),
 
   // "Before you go…" upsell interstitial.
   'upsell/colors': scope('upsell', 'Colors', 'Checkout upsell'),
@@ -155,7 +189,7 @@ export function getBrandingFieldAnchorId(fieldId: string): string {
 export function getScopeSectionIndex(target: BrandingScopeTarget): number {
   const sections =
     target.surfaceId === 'product'
-      ? PRODUCT_DETAIL_SECTIONS
+      ? PRODUCT_SURFACE_SECTIONS
       : BRANDING_SURFACES.find((s) => s.id === target.surfaceId)?.sections ?? []
   return sections.findIndex((section) => section.title === target.sectionTitle)
 }

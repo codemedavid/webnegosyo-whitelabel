@@ -37,14 +37,18 @@ function Section({
   subtitle,
   children,
   surfaceColor,
+  scope = 'checkout/card',
 }: {
   title: React.ReactNode
   subtitle?: string
   children: React.ReactNode
   surfaceColor?: string
+  /** Studio tap-to-edit part this card opens. */
+  scope?: 'checkout/card' | 'checkout/summary'
 }) {
   return (
     <section
+      data-branding-scope={scope}
       className="rounded-2xl bg-[var(--co-card)] border border-[color:var(--co-border)] shadow-sm p-4 sm:p-5"
       style={{ backgroundColor: surfaceColor }}
     >
@@ -115,7 +119,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           </Section>
 
           {/* Order summary */}
-          <Section title={<StoreLabel name="checkout.summary" fallback="Order summary" />} subtitle="Review before you confirm" surfaceColor={palette.summaryBackground ?? palette.cardBackground}>
+          <Section title={<StoreLabel name="checkout.summary" fallback="Order summary" />} subtitle="Review before you confirm" scope="checkout/summary" surfaceColor={palette.summaryBackground ?? palette.cardBackground}>
             <OrderSummaryLines checkout={checkout} />
           </Section>
 
@@ -139,7 +143,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
         >
           <div className="mb-2.5 flex items-baseline justify-between">
-            <span className="text-sm font-medium text-[color:var(--co-muted)]"><StoreLabel name="cart.total" fallback="Total" /></span>
+            <span className="text-sm font-medium text-[color:var(--co-muted)]"><StoreLabel name="checkout.total" fallback="Total" /></span>
             <span className="text-xl font-bold" style={{ color: accent }}>
               {checkout.isFetchingDeliveryFee ? (
                 <span className="animate-pulse">Calculating...</span>

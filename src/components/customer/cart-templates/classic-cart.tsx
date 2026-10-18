@@ -77,7 +77,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
               </div>
 
               {items.map((item, index) => (
-                <div key={item.id} className="group rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
+                <div key={item.id} data-branding-scope="cart/item" className="group rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
                   <div className="flex gap-4 md:gap-6">
                     <div className="relative h-20 w-20 md:h-28 md:w-28 flex-shrink-0 overflow-hidden rounded-xl" style={{ backgroundColor: palette.accentSoft }}>
                       <OptimizedImage
@@ -192,7 +192,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                           </Button>
                         </div>
                         <div className="ml-auto text-right">
-                          <span className="text-xl font-bold" style={{ color: accentColor }}>
+                          <span data-branding-scope="cart/item-price" className="text-xl font-bold" style={{ color: accentColor }}>
                             {formatPrice(item.subtotal)}
                           </span>
                           {item.quantity > 1 && (
@@ -215,7 +215,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                 )
 
                 return (
-                  <div key={bundleItem.id} className="group rounded-2xl p-4 md:p-6 shadow-sm border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
+                  <div key={bundleItem.id} data-branding-scope="cart/item" className="group rounded-2xl p-4 md:p-6 shadow-sm border" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
                     {/* Bundle header */}
                     <div className="flex items-center gap-2 mb-3">
                       <Package className="h-4 w-4" style={{ color: accentColor }} />
@@ -282,7 +282,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             {formatPrice(originalTotal * bundleItem.quantity)}
                           </span>
                         )}
-                        <span className="font-bold" style={{ color: accentColor }}>
+                        <span data-branding-scope="cart/item-price" className="font-bold" style={{ color: accentColor }}>
                           {formatPrice(bundleItem.subtotal)}
                         </span>
                       </div>
@@ -294,7 +294,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
             </div>
 
             <div className="lg:col-span-1">
-              <div className="sticky top-20 rounded-2xl p-6 md:p-8 shadow-lg border" style={{ backgroundColor: palette.summary, borderColor: palette.border }}>
+              <div data-branding-scope="cart/summary" className="sticky top-20 rounded-2xl p-6 md:p-8 shadow-lg border" style={{ backgroundColor: palette.summary, borderColor: palette.border }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: palette.accentSoft }}>
                     <span className="font-bold" style={{ color: accentColor }}>₱</span>
@@ -325,6 +325,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
                 <div className="space-y-4">
                   <Button
+                    data-branding-scope="cart/checkout-button"
                     className="w-full h-14 font-bold rounded-xl shadow-lg hover:shadow-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ background: palette.button, color: palette.buttonText }}
                     onClick={requestCheckout}

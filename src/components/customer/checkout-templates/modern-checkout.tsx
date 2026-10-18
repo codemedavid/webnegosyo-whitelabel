@@ -85,6 +85,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               {/* Order type + advance scheduling */}
               {showOrderType && (
                 <section
+                  data-branding-scope="checkout/card"
                   className={sectionCard}
                   style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}
                 >
@@ -113,6 +114,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               {/* Customer information */}
               {showCustomerInfo && (
                 <section
+                  data-branding-scope="checkout/card"
                   className={sectionCard}
                   style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}
                 >
@@ -130,6 +132,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
               {/* Payment — kept mounted so the hook's scroll-to-error works */}
               <section
+                data-branding-scope="checkout/card"
                 className={sectionCard}
                 style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}
               >
@@ -149,6 +152,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <aside className="lg:col-span-1">
               <div className="lg:sticky lg:top-24">
                 <div
+                  data-branding-scope="checkout/summary"
                   className="overflow-hidden rounded-2xl bg-[var(--co-card)] border border-[color:var(--co-border)] shadow-md shadow-black/5"
                   style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}
                 >

@@ -233,8 +233,8 @@ describe('getSurfaceFieldIds', () => {
     )
   })
 
-  it('leaves the product surface with no tenant-column fields — it uses the product_detail_settings store', () => {
-    expect(getSurfaceFieldIds('product')).toEqual([])
+  it('keeps only the item page wording on the product surface — its styling uses the product_detail_settings store', () => {
+    expect(getSurfaceFieldIds('product').every((id) => id.startsWith('storefront_labels.item.'))).toBe(true)
   })
 })
 

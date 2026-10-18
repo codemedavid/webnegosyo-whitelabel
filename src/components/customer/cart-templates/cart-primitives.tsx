@@ -159,6 +159,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
 
   return (
     <div
+      data-branding-scope="cart/item"
       className="group rounded-2xl p-4 md:p-5 shadow-sm hover:shadow-md transition-shadow border"
       style={{ ...cartColorVars(p), backgroundColor: p.card, borderColor: p.border }}
     >
@@ -251,7 +252,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
               </button>
             </div>
             <div className="ml-auto text-right">
-              <span className="text-lg font-bold" style={{ color: p.accent }}>{formatPrice(item.subtotal)}</span>
+              <span data-branding-scope="cart/item-price" className="text-lg font-bold" style={{ color: p.accent }}>{formatPrice(item.subtotal)}</span>
               {item.quantity > 1 && (
                 <p className="text-xs" style={{ color: p.muted }}>{formatPrice(item.subtotal / item.quantity)} each</p>
               )}
@@ -273,7 +274,7 @@ export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; b
   const originalTotal = bundleItem.slots.reduce((sum, s) => sum + s.menuItemPrice * s.quantity, 0)
 
   return (
-    <div className="rounded-2xl p-4 md:p-5 shadow-sm border" style={{ ...cartColorVars(p), backgroundColor: p.card, borderColor: p.border }}>
+    <div data-branding-scope="cart/item" className="rounded-2xl p-4 md:p-5 shadow-sm border" style={{ ...cartColorVars(p), backgroundColor: p.card, borderColor: p.border }}>
       <div className="flex items-center gap-2 mb-3">
         <Package className="h-4 w-4" style={{ color: p.accent }} />
         <span className="font-bold" style={{ color: p.text }}>{bundleItem.bundleName}</span>
@@ -326,7 +327,7 @@ export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; b
           {savings > 0 && (
             <span className="text-xs line-through block" style={{ color: p.muted }}>{formatPrice(originalTotal * bundleItem.quantity)}</span>
           )}
-          <span className="font-bold" style={{ color: p.accent }}>{formatPrice(bundleItem.subtotal)}</span>
+          <span data-branding-scope="cart/item-price" className="font-bold" style={{ color: p.accent }}>{formatPrice(bundleItem.subtotal)}</span>
         </div>
       </div>
     </div>
@@ -340,7 +341,7 @@ export function CartTotalsRows({ cart }: { cart: UseCartViewReturn }) {
   const bundleSavings = calculateTotalSlotBundleSavings(bundleItems)
 
   return (
-    <div className="space-y-3">
+    <div data-branding-scope="cart/summary" className="space-y-3">
       <div className="flex justify-between items-center">
         <span style={{ color: p.muted }}>Items ({items.length})</span>
         <span className="font-semibold" style={{ color: p.text }}>{formatPrice(total)}</span>
@@ -367,6 +368,7 @@ export function CartCheckoutButton({ cart, className = '' }: { cart: UseCartView
   const p = useCartColors(cart)
   return (
     <button
+      data-branding-scope="cart/checkout-button"
       type="button"
       onClick={requestCheckout}
       disabled={isNavigating}

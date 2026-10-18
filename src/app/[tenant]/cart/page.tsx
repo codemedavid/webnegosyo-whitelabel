@@ -39,7 +39,9 @@ export default function CartPage() {
     <StorefrontLabelsProvider tenant={cart.tenant}>
       {/* Senior mode only: "Step 2 of 4" + a labelled back button */}
       <SeniorOrderSteps current="cart" branding={cart.branding} backLabel="Back to menu" onBack={cart.exitToMenu} />
-      <CartTemplateRenderer template={template} cart={cart} />
+      <div data-branding-scope="cart/colors">
+        <CartTemplateRenderer template={template} cart={cart} />
+      </div>
       {/* Shared overlays — rendered for every design */}
       <CartRemoveDialog cart={cart} />
       <CartEditDialog cart={cart} />

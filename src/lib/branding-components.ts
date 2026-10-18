@@ -14,7 +14,7 @@
 
 import { BRANDING_SCOPE_MAP, type BrandingScopeTarget } from '@/lib/branding-inspect'
 import { BRANDING_SURFACES, type BrandingSection, type BrandingSurface } from '@/lib/branding-registry'
-import { PRODUCT_DETAIL_SECTIONS } from '@/lib/product-detail-registry'
+import { PRODUCT_SURFACE_SECTIONS } from '@/lib/branding-studio/product-surface'
 
 export interface BrandingComponent {
     /** The scope key (`product/add-to-cart`). */
@@ -53,10 +53,18 @@ const ELEMENT_FIELDS: Readonly<Record<string, readonly string[]>> = {
         'addon_selected_check_color', 'addon_price_color', 'addon_price_free_text',
     ],
     'product/quantity': ['quantity_controls_background', 'quantity_button_color', 'quantity_text_color'],
+    'cart/item': ['cart_card_background_color', 'cart_text_color', 'cart_muted_text_color', 'cart_border_color'],
+    'cart/item-price': ['cart_accent_color'],
+    'cart/summary': ['cart_summary_background_color', 'cart_text_color', 'cart_muted_text_color'],
+    'cart/checkout-button': ['cart_button_color', 'cart_button_text_color'],
+    'checkout/card': ['checkout_card_background_color', 'checkout_text_color', 'checkout_muted_text_color', 'checkout_border_color'],
+    'checkout/summary': ['checkout_summary_background_color', 'checkout_text_color', 'checkout_muted_text_color'],
+    'checkout/choice': ['checkout_accent_color', 'checkout_border_color'],
+    'checkout/place-order': ['checkout_button_color', 'checkout_button_text_color'],
 }
 
-function sectionsFor(surfaceId: BrandingSurface['id']): BrandingSection[] {
-    if (surfaceId === 'product') return PRODUCT_DETAIL_SECTIONS
+function sectionsFor(surfaceId: BrandingSurface['id']): readonly BrandingSection[] {
+    if (surfaceId === 'product') return PRODUCT_SURFACE_SECTIONS
     return BRANDING_SURFACES.find((surface) => surface.id === surfaceId)?.sections ?? []
 }
 

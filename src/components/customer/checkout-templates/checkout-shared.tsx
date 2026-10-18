@@ -183,7 +183,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           )}
 
           {/* Order Summary */}
-          <div className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+          <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
             <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-1"><StoreLabel name="checkout.summary" fallback="Order Summary" /></h2>
             {completedOrderData.orderTypeName && (
               <p className={`text-sm text-[color:var(--co-muted)] ${completedOrderData.scheduledForLabel ? 'mb-2' : 'mb-4'}`}>{completedOrderData.orderTypeName}</p>
@@ -276,7 +276,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 
           {/* Customer Information */}
           {completedOrderData.formFields.length > 0 && (
-            <div className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
               <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-4"><StoreLabel name="checkout.customer" fallback="Customer Information" /></h2>
               <div className="space-y-2">
                 {completedOrderData.formFields.map(field => {
@@ -295,7 +295,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 
           {/* Payment Method */}
           {completedOrderData.paymentMethodName && (
-            <div className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
               <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-2"><StoreLabel name="checkout.payment" fallback="Payment Method" /></h2>
               <p className="font-medium text-[color:var(--co-text)]">{completedOrderData.paymentMethodName}</p>
               {completedOrderData.paymentMethodDetails && (
@@ -306,7 +306,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 
           {/* Kiosk: say what is about to happen, and offer a way to skip the wait. */}
           {isKiosk ? (
-            <div className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
               <div className="space-y-4 text-center">
                 <p className="text-sm font-medium text-[color:var(--co-text)]">
                   {hasOrderSaveFailed
@@ -336,7 +336,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           ) : (
           <>
           {/* Messenger Redirect Section — skipped when the order type has Messenger turned off */}
-          <div className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+          <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
             {!messengerEnabled ? (
               <div className="space-y-2 text-center">
                 {hasOrderSaveFailed ? (
@@ -413,7 +413,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           </div>
 
           {/* Order Message Box (collapsible) */}
-          <div className="rounded-2xl bg-[var(--co-card)] shadow-sm border border-[color:var(--co-border)] overflow-hidden">
+          <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] shadow-sm border border-[color:var(--co-border)] overflow-hidden">
             <button
               onClick={() => setMessageExpanded(!messageExpanded)}
               aria-expanded={messageExpanded}

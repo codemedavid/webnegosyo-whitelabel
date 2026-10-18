@@ -44,10 +44,10 @@ describe('storefront label consumers', () => {
         'checkout-templates/classic-checkout.tsx': ['checkout.title', 'checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment'],
         'checkout-templates/modern-checkout.tsx': ['checkout.title', 'checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment'],
         'checkout-templates/minimal-checkout.tsx': ['checkout.title', 'checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment'],
-        'checkout-templates/express-checkout.tsx': ['checkout.title', 'checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment', 'cart.total'],
+        'checkout-templates/express-checkout.tsx': ['checkout.title', 'checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment', 'checkout.total'],
         'checkout-templates/wizard-checkout.tsx': ['checkout.title', 'checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment'],
         'checkout-templates/bitespeed-checkout.tsx': ['checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment'],
-        'checkout-templates/order-summary-lines.tsx': ['cart.total'],
+        'checkout-templates/order-summary-lines.tsx': ['checkout.total'],
     }
 
     it.each(Object.entries(TEMPLATE_LABELS))('%s shows the owner\'s wording', (file, keys) => {

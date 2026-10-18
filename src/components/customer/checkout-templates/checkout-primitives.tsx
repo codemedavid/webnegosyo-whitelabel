@@ -243,6 +243,7 @@ export function OrderTypeSelector({ checkout, compact = false }: { checkout: Use
         return (
           <button
             key={ot.id}
+            data-branding-scope="checkout/choice"
             type="button"
             onClick={() => setOrderType(ot.id)}
             aria-pressed={isSelected}
@@ -338,6 +339,7 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
 
   return (
     <button
+      data-branding-scope="checkout/place-order"
       type="button"
       onClick={handleProceedToPayment}
       disabled={isProcessing || orderMinimum?.meets === false}

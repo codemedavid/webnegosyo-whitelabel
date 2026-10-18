@@ -342,7 +342,7 @@ export function OrderSummaryLines({
       {skin.totalLeadingBreak}
 
       <div className={skin.totalRow}>
-        <span className={skin.totalLabel} style={{ color: text }}><StoreLabel name="cart.total" fallback="Total" /></span>
+        <span className={skin.totalLabel} style={{ color: text }}><StoreLabel name="checkout.total" fallback="Total" /></span>
         <span className={skin.totalValue} style={{ color: accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>

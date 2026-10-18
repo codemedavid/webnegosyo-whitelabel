@@ -8,7 +8,8 @@
  */
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { useBrandingPreviewColumns } from '@/hooks/use-branding-preview'
+import { useBrandingPreviewColumns, useIsBrandingPreview } from '@/hooks/use-branding-preview'
+import { BRANDING_SCOPE_ATTRIBUTE, labelScope } from '@/lib/branding-inspect'
 import { readStorefrontLabels, type StorefrontLabelKey, type StorefrontLabels } from '@/lib/storefront-labels'
 
 const StorefrontLabelsContext = createContext<StorefrontLabels>({})
@@ -25,7 +26,13 @@ export function useStorefrontLabel(key: StorefrontLabelKey, fallback: string): s
     return useContext(StorefrontLabelsContext)[key] ?? fallback
 }
 
-/** A label as text: the owner's wording, else `fallback`. For JSX text spots. */
+/**
+ * A label as text: the owner's wording, else `fallback`. For JSX text spots.
+ * In the Branding Studio preview the words are tappable, opening that label.
+ */
 export function StoreLabel({ name, fallback }: { name: StorefrontLabelKey; fallback: string }) {
-    return <>{useStorefrontLabel(name, fallback)}</>
+    const text = useStorefrontLabel(name, fallback)
+    const isPreview = useIsBrandingPreview()
+    if (!isPreview) return <>{text}</>
+    return <span {...{ [BRANDING_SCOPE_ATTRIBUTE]: labelScope(name) }}>{text}</span>
 }

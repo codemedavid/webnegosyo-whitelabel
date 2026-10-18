@@ -84,7 +84,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
         <div className="mx-auto max-w-4xl space-y-8">
           {/* Order Type + Advance Order Scheduling */}
           {checkout.shouldAskFulfillment && (
-            <div className="rounded-2xl bg-[var(--co-card)] p-4 sm:p-6 md:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-4 sm:p-6 md:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
               <div className="mb-4 sm:mb-5">
                 <h2 className="text-xl sm:text-2xl font-bold text-[color:var(--co-text)]" style={{ color: palette.text }}><StoreLabel name="checkout.order_type" fallback="How would you like to receive your order?" /></h2>
                 <p className="text-sm text-[color:var(--co-muted)] mt-1" style={{ color: palette.mutedText }}>
@@ -269,7 +269,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
           {/* Customer Information Form */}
           {orderType && formFields.length > 0 && (
-            <div className="rounded-2xl bg-[var(--co-card)] p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
               <h2 className="text-2xl font-bold text-[color:var(--co-text)] mb-2" style={{ color: palette.text }}><StoreLabel name="checkout.customer" fallback="Customer Information" /></h2>
               <p className="text-[color:var(--co-muted)] mb-6" style={{ color: palette.mutedText }}>Please provide the following details</p>
 
@@ -356,7 +356,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             </div>
           )}
 
-          <div className="rounded-2xl bg-[var(--co-card)] p-8 shadow-sm" style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}>
+          <div data-branding-scope="checkout/summary" className="rounded-2xl bg-[var(--co-card)] p-8 shadow-sm" style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}>
             <h2 className="text-2xl font-bold text-[color:var(--co-text)] mb-2" style={{ color: palette.text }}><StoreLabel name="checkout.summary" fallback="Order Summary" /></h2>
             <p className="text-[color:var(--co-muted)] mb-6" style={{ color: palette.mutedText }}>Review your order before checkout</p>
 
@@ -365,7 +365,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
           {/* Payment method: the shared wallet-style picker (branded). */}
           {(paymentMethods.length > 0 || (orderType && tenant)) && (
-            <div className="rounded-2xl bg-[var(--co-card)] p-6 sm:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 sm:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
               <h2 className="text-2xl font-bold text-[color:var(--co-text)] mb-2" style={{ color: palette.text }}><StoreLabel name="checkout.payment" fallback="Payment" /></h2>
               <p className="text-[color:var(--co-muted)] mb-6" style={{ color: palette.mutedText }}>
                 Choose how you would like to pay
@@ -374,7 +374,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             </div>
           )}
 
-          <div className="rounded-2xl bg-[var(--co-card)] p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+          <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
             <h2 className="text-2xl font-bold text-[color:var(--co-text)] mb-2 flex items-center gap-3" style={{ color: palette.text }}>
               <MessageCircle className="h-6 w-6 text-[color:var(--co-accent)]" />
               {paymentMethods.length > 0 || !messengerEnabled ? 'Complete Order' : 'Complete Order via Messenger'}
@@ -391,6 +391,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <MinimumOrderNotice checkout={checkout} className="mb-3 text-center" />
 
             <Button
+              data-branding-scope="checkout/place-order"
               size="lg"
               className="w-full h-14 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleProceedToPayment}

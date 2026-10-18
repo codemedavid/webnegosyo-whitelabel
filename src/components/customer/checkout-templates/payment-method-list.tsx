@@ -90,6 +90,7 @@ interface PaymentMethodTileProps {
 function PaymentMethodTile({ method, isSelected, accent, accentText, accentSoft, onSelect }: PaymentMethodTileProps) {
   return (
     <label
+      data-branding-scope="checkout/choice"
       className="relative flex w-[7.25rem] shrink-0 snap-start cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 bg-[var(--co-card)] px-2 pb-3 pt-4 text-center transition-[border-color,background-color,transform] hover:border-[color:var(--co-accent-border)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-[color:var(--co-accent)] has-[:focus-visible]:ring-offset-[color:var(--co-card)] motion-safe:active:scale-[0.97]"
       style={{
         borderColor: isSelected ? accent : 'var(--co-border)',

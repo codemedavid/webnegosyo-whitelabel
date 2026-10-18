@@ -34,12 +34,16 @@ import { withPackSettingsPreview } from '@/lib/storefront-pack-studio'
 import { withJsonColumnsPreview } from '@/lib/branding-studio/studio-columns'
 import type { BrandingInput } from '@/lib/branding-service'
 import {
-  PRODUCT_DETAIL_SECTIONS,
   getProductDetailFieldIds,
   createProductFieldResolver,
   isProductFieldSet,
 } from '@/lib/product-detail-registry'
 import { saveProductDetailSettings } from '@/app/actions/product-detail-settings'
+import {
+  PRODUCT_SURFACE_SECTIONS,
+  PRODUCT_SURFACE_TENANT_FIELD_IDS,
+  isProductSurfaceTenantField,
+} from '@/lib/branding-studio/product-surface'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import {
   applyMobileOverrides,
@@ -296,6 +300,8 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
       studio.setCategories({})
       return
     }
+    // The item page's store-wide wording is one value for every device.
+    if (isProductSurface && !isMobile) clearFields('tenant', [...PRODUCT_SURFACE_TENANT_FIELD_IDS])
     const fieldIds = isProductSurface ? getProductDetailFieldIds() : getSurfaceFieldIds(surface.id)
     // On the phone tab: back to the computer values. Otherwise: back to defaults
     // (toggles and choices to their default value, never '').
@@ -348,11 +354,12 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     ? surfaceFieldIds.some((id) => isFieldSet(id, isProductSurface ? mobileProductDraft : mobileDraft, isProductSurface ? savedMobileProduct : savedMobile))
     : isProductSurface
       ? getProductDetailFieldIds().some((id) => isProductFieldSet(id, productDraft, savedProduct))
+        || PRODUCT_SURFACE_TENANT_FIELD_IDS.some((id) => isFieldSet(id, draft, savedTenant))
       : getSurfaceFieldIds(surface.id).some((id) => isFieldSet(id, draft, savedTenant))
 
   const [logoColor, setLogoColor] = useState('#E4572E')
 
-  const panelSections = isProductSurface ? PRODUCT_DETAIL_SECTIONS : surface.sections
+  const panelSections = isProductSurface ? PRODUCT_SURFACE_SECTIONS : surface.sections
   const automaticStates = new Set<ProductPreviewState>(
     isProductSurface
       ? [hoveredFieldId, lastEditedFieldId, ...(selectedScope ? getBrandingComponent(selectedScope)?.fieldIds ?? [] : [])]
@@ -379,14 +386,16 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const renderField = (field: BrandingField) => {
     // Desktop-resolved value first — mobile rows fall back to it when they
     // have no override of their own.
-    const productField = isProductSurface ? productFields.effective(field.id) : null
+    // The item page's wording is a tenant column, edited like any other screen's.
+    const isProductField = isProductSurface && !isProductSurfaceTenantField(field.id)
+    const productField = isProductField ? productFields.effective(field.id) : null
     const desktopIsSet = productField ? productField.isSet : isFieldSet(field.id, draft, savedTenant)
     const desktopValue = productField
       ? productField.value
       : (!desktopIsSet && tenantColor(field.id)) || resolveFieldValue(field.id, draft, savedTenant)
     const desktopInherit = productField ? productField.inheritLabel : getInheritSourceLabel(field.id, draft, savedTenant)
-    const activeMobileDraft = isProductSurface ? mobileProductDraft : mobileDraft
-    const activeSavedMobile = isProductSurface ? savedMobileProduct : savedMobile
+    const activeMobileDraft = isProductField ? mobileProductDraft : mobileDraft
+    const activeSavedMobile = isProductField ? savedMobileProduct : savedMobile
     // Column-backed fields (e.g. mobile_grid_columns) always edit their real
     // tenant column, even on the mobile tab — the storefront reads it directly.
     const usesMobilePath = !editsTenantColumn(field, isMobile)
@@ -413,13 +422,13 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           onChange={(value) => {
             if (isProductSurface) setLastEditedFieldId(field.id)
             return usesMobilePath
-              ? (isProductSurface ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
-              : (isProductSurface ? setProductFieldValue : setFieldValue)(field.id, value)
+              ? (isProductField ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
+              : (isProductField ? setProductFieldValue : setFieldValue)(field.id, value)
           }}
           onClear={() =>
             usesMobilePath
-              ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
-              : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
+              ? (isProductField ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
+              : (isProductField ? clearProductFieldValue : clearFieldValue)(field.id)
           }
           contrastIssue={
             usesMobilePath

@@ -338,8 +338,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('modal_description_color', 'Description', null, 'text_secondary_color'),
         ],
       },
-      { title: 'Menu labels', fields: labelFields(['menu']) },
-      { title: 'Item page labels', fields: labelFields(['item']) },
+      { title: 'Labels', fields: labelFields(['menu']) },
     ],
   },
   {
@@ -502,6 +501,9 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         title: 'Product detail page',
         fields: [note('note_product_detail', 'Every section of the product page is editable here — image, variations, add-ons, related items, sticky footer and the upsell bottom-sheets.')],
       },
+      // Store-wide wording shown on the item page (a tenants column, not
+      // product_detail_settings): the Studio lists it after the page's own sections.
+      { title: 'Labels', fields: labelFields(['item']) },
     ],
   },
   {

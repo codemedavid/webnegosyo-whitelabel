@@ -91,3 +91,21 @@ describe('hand-grouped elements', () => {
         }
     })
 })
+
+describe('label parts', () => {
+    it('a tapped label opens just that label, under its screen\'s wording', () => {
+        expect(getBrandingComponent('label/cart.title')).toMatchObject({
+            surfaceId: 'cart',
+            parent: 'cart/labels',
+            fieldIds: ['storefront_labels.cart.title'],
+        })
+    })
+
+    it('an item page label stays on the item page', () => {
+        expect(getBrandingComponent('label/item.related_title')?.surfaceId).toBe('product')
+    })
+
+    it('the checkout button opens its colours', () => {
+        expect(getBrandingComponent('checkout/place-order')?.fieldIds).toEqual(['checkout_button_color', 'checkout_button_text_color'])
+    })
+})
