@@ -8510,9 +8510,11 @@ export type Database = {
           search_bar_style: string | null
           search_bar_text: string | null
           secondary_color: string
+          section_schemes: Json
           senior_friendly_mode: boolean
           shadow_color: string | null
           slug: string
+          storefront_labels: Json
           storefront_pack: string
           storefront_pack_settings: Json
           storefront_palette: string | null
@@ -8799,9 +8801,11 @@ export type Database = {
           search_bar_style?: string | null
           search_bar_text?: string | null
           secondary_color?: string
+          section_schemes?: Json
           senior_friendly_mode?: boolean
           shadow_color?: string | null
           slug: string
+          storefront_labels?: Json
           storefront_pack?: string
           storefront_pack_settings?: Json
           storefront_palette?: string | null
@@ -9088,9 +9092,11 @@ export type Database = {
           search_bar_style?: string | null
           search_bar_text?: string | null
           secondary_color?: string
+          section_schemes?: Json
           senior_friendly_mode?: boolean
           shadow_color?: string | null
           slug?: string
+          storefront_labels?: Json
           storefront_pack?: string
           storefront_pack_settings?: Json
           storefront_palette?: string | null
@@ -9612,6 +9618,10 @@ export type Database = {
         Args: { p_permission: string; p_tenant_id: string }
         Returns: boolean
       }
+      app_user_holds_any_permission: {
+        Args: { p_keys: string[]; p_tenant_id: string }
+        Returns: boolean
+      }
       app_user_is_store_owner: {
         Args: { p_tenant_id: string }
         Returns: boolean
@@ -9694,6 +9704,10 @@ export type Database = {
           p_user_id: string
         }
         Returns: boolean
+      }
+      approval_direct_lock_key: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: number
       }
       approval_finish: {
         Args: {
