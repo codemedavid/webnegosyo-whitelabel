@@ -10,7 +10,7 @@
  * bridge — see preview-frame.tsx / use-branding-preview.ts).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -22,21 +22,19 @@ import {
   generatePaletteFromColor,
   isFieldSet,
   resolveFieldValue,
-  buildPublishPayload,
   editsTenantColumn,
   isFieldVisible,
   type BrandingSurface,
 } from '@/lib/branding-registry'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { saveBrandingAction } from '@/app/actions/branding'
-import { flattenPackSettings, withPackSettingsPreview } from '@/lib/storefront-pack-studio'
+import { withPackSettingsPreview } from '@/lib/storefront-pack-studio'
 import type { BrandingInput } from '@/lib/branding-service'
 import {
   PRODUCT_DETAIL_SECTIONS,
   getProductDetailFieldIds,
   createProductFieldResolver,
   isProductFieldSet,
-  buildProductSettingsPayload,
 } from '@/lib/product-detail-registry'
 import { saveProductDetailSettings } from '@/app/actions/product-detail-settings'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
@@ -44,7 +42,6 @@ import {
   applyMobileOverrides,
   mergeMobileOverrides,
   resolveMobileFieldValue,
-  type OverrideMap,
 } from '@/lib/mobile-overrides'
 import {
   resolveBrandingScope,
@@ -53,13 +50,13 @@ import {
   getBrandingFieldAnchorId,
 } from '@/lib/branding-inspect'
 import {
-  buildCategoryPublishPlan,
   hasCategoryDraftChanges,
-  applyCategoryDraft,
-  type CategoryStudioDraft,
 } from '@/lib/category-studio'
 import { reorderCategoriesAction, updateCategoryAction } from '@/app/actions/categories'
+import { publishStudio } from '@/lib/branding-studio/publish-studio'
 import { FieldRow } from './field-row'
+import { ChangesMenu, HistoryButtons, RestoreBanner } from './changes-menu'
+import { useStudioDrafts } from './use-studio-drafts'
 import { PreviewFrame } from './preview-frame'
 import { CategoryLayoutPanel } from './category-layout-panel'
 import type { GalleryContext } from './template-gallery'
@@ -84,6 +81,8 @@ interface BrandingStudioProps {
   categories?: Category[]
   /** A real dish (ideally with a photo) the card-template gallery renders. */
   sampleMenuItem?: MenuItem | null
+  /** Surface to open first (e.g. "product" from a dish's "Edit look"). */
+  initialSurfaceId?: BrandingSurface['id']
 }
 
 /** Stand-in dish for the card gallery when the menu is still empty. */
@@ -98,36 +97,32 @@ const PLACEHOLDER_SAMPLE_ITEM = {
   is_available: true,
 } as unknown as MenuItem
 
-type Draft = Record<string, unknown>
-
-export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettings, products = [], categories = [], sampleMenuItem }: BrandingStudioProps) {
+export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettings, products = [], categories = [], sampleMenuItem, initialSurfaceId }: BrandingStudioProps) {
   const productOptions = useMemo(
     () => products.map((p) => ({ value: p.id, label: p.name })),
     [products]
   )
   const router = useRouter()
-  const [surfaceId, setSurfaceId] = useState<BrandingSurface['id']>('storefront')
+  const [surfaceId, setSurfaceId] = useState<BrandingSurface['id']>(initialSurfaceId ?? 'storefront')
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
-  const [draft, setDraft] = useState<Draft>({})
-  // Locally-published values layered over the server tenant snapshot so the
-  // editor stays accurate after Publish without waiting for a router refresh.
-  const [publishedValues, setPublishedValues] = useState<Draft>({})
-  // The Product Detail surface edits the separate product_detail_settings store
-  // — its own draft + published overlay, published through a different action.
-  const [productDraft, setProductDraft] = useState<Draft>({})
-  const [publishedProductValues, setPublishedProductValues] = useState<Draft>({})
-  // Mobile-device edits go to a separate override map per store (published into
-  // the tenants / product_detail_settings `mobile_overrides` JSONB column).
-  // Menu Layout surface: category arrangement + per-category style edits.
-  // Published categories overlay the server snapshot (same idea as
-  // publishedValues) so the panel stays accurate before router.refresh lands.
-  const [categoryDraft, setCategoryDraft] = useState<CategoryStudioDraft>({})
-  const [publishedCategories, setPublishedCategories] = useState<Category[] | null>(null)
-  const [mobileDraft, setMobileDraft] = useState<Draft>({})
-  const [mobileProductDraft, setMobileProductDraft] = useState<Draft>({})
-  const [publishedMobile, setPublishedMobile] = useState<OverrideMap | null>(null)
-  const [publishedMobileProduct, setPublishedMobileProduct] = useState<OverrideMap | null>(null)
+  // Every unpublished edit, undoable, kept in the browser until published.
+  const studio = useStudioDrafts({ tenant, productSettings, categories })
+  const {
+    drafts,
+    savedTenant,
+    savedProduct,
+    savedMobile,
+    savedMobileProduct,
+    savedCategories,
+    changes,
+  } = studio
+  const draft = drafts.tenant
+  const productDraft = drafts.product
+  const mobileDraft = drafts.mobile
+  const mobileProductDraft = drafts.mobileProduct
+  const categoryDraft = drafts.categories
   const [isPublishing, setIsPublishing] = useState(false)
+  const publishingRef = useRef(false)
   const [showPublishedToast, setShowPublishedToast] = useState(false)
   // Click-to-inspect: while on, the preview highlights hovered regions and a
   // click jumps the panel to that region's settings section.
@@ -137,27 +132,9 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
 
   const isMobile = device === 'mobile'
 
-  const savedTenant = useMemo(() => {
-    const merged = { ...(tenant as unknown as Record<string, unknown>), ...publishedValues }
-    // Storefront pack settings live in one jsonb column; the Studio edits
-    // them as virtual fields, so expose the saved ones under those ids too.
-    return { ...merged, ...flattenPackSettings(merged) }
-  }, [tenant, publishedValues])
   // The preview's tenant merge is a shallow spread, so pack setting edits
   // must reach it as the whole folded storefront_pack_settings object.
   const previewDraft = useMemo(() => withPackSettingsPreview(draft, savedTenant), [draft, savedTenant])
-  const savedProduct = useMemo(
-    () => ({ ...(productSettings ?? {}), ...publishedProductValues }) as Record<string, unknown>,
-    [productSettings, publishedProductValues]
-  )
-  const savedMobile = useMemo<OverrideMap>(
-    () => publishedMobile ?? ((tenant as unknown as Record<string, unknown>).mobile_overrides as OverrideMap) ?? {},
-    [publishedMobile, tenant]
-  )
-  const savedMobileProduct = useMemo<OverrideMap>(
-    () => publishedMobileProduct ?? ((productSettings?.mobile_overrides as OverrideMap) ?? {}),
-    [publishedMobileProduct, productSettings]
-  )
 
   // Product Detail rows resolve through the product page's own merge, against
   // the desktop brand the merchant is editing right now.
@@ -184,8 +161,6 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     return isMobile ? resolveMobileFieldValue(fieldId, mobileDraft, savedMobile, desktopValue) : desktopValue
   }, [draft, savedTenant, isMobile, mobileDraft, savedMobile])
 
-  const savedCategories = publishedCategories ?? categories
-
   const surface = useMemo(
     () => BRANDING_SURFACES.find((s) => s.id === surfaceId) ?? BRANDING_SURFACES[0],
     [surfaceId]
@@ -194,12 +169,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const isCategoriesSurface = surface.id === 'categories'
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({ 0: true })
 
-  const isDirty =
-    Object.keys(draft).length > 0 ||
-    Object.keys(productDraft).length > 0 ||
-    Object.keys(mobileDraft).length > 0 ||
-    Object.keys(mobileProductDraft).length > 0 ||
-    hasCategoryDraftChanges(categoryDraft)
+  const isDirty = changes.length > 0
 
   // Guard against losing unsaved changes on tab close / hard navigation.
   useEffect(() => {
@@ -211,61 +181,31 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     return () => window.removeEventListener('beforeunload', warn)
   }, [isDirty])
 
-  const setFieldValue = useCallback((fieldId: string, value: unknown) => {
-    setDraft((prev) => ({ ...prev, [fieldId]: value }))
-  }, [])
+  const { setField, clearField, clearFields, undo, redo } = studio
+  const setFieldValue = useCallback((fieldId: string, value: unknown) => setField('tenant', fieldId, value), [setField])
+  const clearFieldValue = useCallback((fieldId: string) => clearField('tenant', fieldId), [clearField])
+  const setProductFieldValue = useCallback((fieldId: string, value: unknown) => setField('product', fieldId, value), [setField])
+  const clearProductFieldValue = useCallback((fieldId: string) => clearField('product', fieldId), [clearField])
+  const setMobileFieldValue = useCallback((fieldId: string, value: unknown) => setField('mobile', fieldId, value), [setField])
+  const clearMobileFieldValue = useCallback((fieldId: string) => clearField('mobile', fieldId), [clearField])
+  const setMobileProductFieldValue = useCallback((fieldId: string, value: unknown) => setField('mobileProduct', fieldId, value), [setField])
+  const clearMobileProductFieldValue = useCallback((fieldId: string) => clearField('mobileProduct', fieldId), [clearField])
 
-  const clearFieldValue = useCallback((fieldId: string) => {
-    // An explicit empty string clears the saved column on publish; if the
-    // column was never saved, dropping the draft key keeps the diff minimal.
-    setDraft((prev) => {
-      const saved = (savedTenant as Draft)[fieldId]
-      const next = { ...prev }
-      if (saved !== undefined && saved !== null && saved !== '') next[fieldId] = ''
-      else delete next[fieldId]
-      return next
-    })
-  }, [savedTenant])
-
-  const setProductFieldValue = useCallback((fieldId: string, value: unknown) => {
-    setProductDraft((prev) => ({ ...prev, [fieldId]: value }))
-  }, [])
-
-  const clearProductFieldValue = useCallback((fieldId: string) => {
-    setProductDraft((prev) => {
-      const saved = savedProduct[fieldId]
-      const next = { ...prev }
-      if (saved !== undefined && saved !== null && saved !== '') next[fieldId] = ''
-      else delete next[fieldId]
-      return next
-    })
-  }, [savedProduct])
-
-  // Mobile-device edits: a blank value means "inherit desktop". Drop the draft
-  // key when there is no saved override to clear, else store '' so publish
-  // removes it from the JSONB map.
-  const clearMobileEntry = useCallback((setter: typeof setMobileDraft, saved: OverrideMap, fieldId: string) => {
-    setter((prev) => {
-      const next = { ...prev }
-      const savedValue = saved[fieldId]
-      if (savedValue !== undefined && savedValue !== null && savedValue !== '') next[fieldId] = ''
-      else delete next[fieldId]
-      return next
-    })
-  }, [])
-
-  const setMobileFieldValue = useCallback((fieldId: string, value: unknown) => {
-    setMobileDraft((prev) => ({ ...prev, [fieldId]: value }))
-  }, [])
-  const clearMobileFieldValue = useCallback((fieldId: string) => {
-    clearMobileEntry(setMobileDraft, savedMobile, fieldId)
-  }, [clearMobileEntry, savedMobile])
-  const setMobileProductFieldValue = useCallback((fieldId: string, value: unknown) => {
-    setMobileProductDraft((prev) => ({ ...prev, [fieldId]: value }))
-  }, [])
-  const clearMobileProductFieldValue = useCallback((fieldId: string) => {
-    clearMobileEntry(setMobileProductDraft, savedMobileProduct, fieldId)
-  }, [clearMobileEntry, savedMobileProduct])
+  // ⌘Z / ⇧⌘Z (Ctrl on Windows). Text boxes keep their own typing undo.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
+      const target = event.target as HTMLElement | null
+      const isTyping = target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable === true
+        || (target?.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'color')
+      if (isTyping) return
+      event.preventDefault()
+      if (event.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
 
   const pickSurface = useCallback((id: BrandingSurface['id']) => {
     setSurfaceId(id)
@@ -304,131 +244,57 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     }, SECTION_SCROLL_DELAY_MS)
   }, [])
 
-  const applyValues = useCallback((values: Record<string, string>) => {
-    setDraft((prev) => ({ ...prev, ...values }))
-  }, [])
+  const applyValues = useCallback((values: Record<string, string>) => studio.applyValues('tenant', values), [studio])
 
   const resetSurface = useCallback(() => {
     if (isCategoriesSurface) {
-      setCategoryDraft({})
+      studio.setCategories({})
       return
     }
     const fieldIds = isProductSurface ? getProductDetailFieldIds() : getSurfaceFieldIds(surface.id)
-
-    if (isMobile) {
-      // Revert this surface's mobile overrides back to the desktop values.
-      const setter = isProductSurface ? setMobileProductDraft : setMobileDraft
-      const saved = isProductSurface ? savedMobileProduct : savedMobile
-      setter((prev) => {
-        const next = { ...prev }
-        for (const id of fieldIds) {
-          const savedValue = saved[id]
-          if (savedValue !== undefined && savedValue !== null && savedValue !== '') next[id] = ''
-          else delete next[id]
-        }
-        return next
-      })
-      return
-    }
-
-    const savedBag = isProductSurface ? savedProduct : (savedTenant as Draft)
-    const setter = isProductSurface ? setProductDraft : setDraft
-    setter((prev) => {
-      const next = { ...prev }
-      for (const id of fieldIds) {
-        const saved = savedBag[id]
-        if (saved !== undefined && saved !== null && saved !== '') next[id] = ''
-        else delete next[id]
-      }
-      return next
-    })
-  }, [surface.id, savedTenant, isProductSurface, isCategoriesSurface, savedProduct, isMobile, savedMobile, savedMobileProduct])
+    // On the phone tab: back to the computer values. Otherwise: back to defaults
+    // (toggles and choices to their default value, never '').
+    const store = isMobile
+      ? (isProductSurface ? 'mobileProduct' : 'mobile')
+      : (isProductSurface ? 'product' : 'tenant')
+    clearFields(store, fieldIds)
+  }, [surface.id, isProductSurface, isCategoriesSurface, isMobile, clearFields, studio])
 
   const handlePublish = useCallback(async () => {
-    if (isPublishing) return
+    // A ref, not state: a fast double-click must not start two publishes.
+    if (publishingRef.current) return
+    publishingRef.current = true
     setIsPublishing(true)
     try {
-      const hasTenantChanges = Object.keys(draft).length > 0
-      const hasProductChanges = Object.keys(productDraft).length > 0
-      const hasCategoryChanges = hasCategoryDraftChanges(categoryDraft)
-      const hasMobileChanges = Object.keys(mobileDraft).length > 0
-      const hasMobileProductChanges = Object.keys(mobileProductDraft).length > 0
-
-      const nextMobile = hasMobileChanges ? mergeMobileOverrides(savedMobile, mobileDraft) : null
-      const nextMobileProduct = hasMobileProductChanges
-        ? mergeMobileOverrides(savedMobileProduct, mobileProductDraft)
-        : null
-
-      if (hasTenantChanges || hasMobileChanges) {
-        // buildPublishPayload always carries the required core colors, so a
-        // mobile-only publish still sends a schema-valid tenant payload.
-        const payload = buildPublishPayload(draft, savedTenant)
-        if (nextMobile) payload.mobile_overrides = nextMobile
-        const result = await saveBrandingAction(tenant.id, tenantSlug, payload as BrandingInput)
-        if (!result.success) {
-          toast.error(result.error || 'Failed to publish branding')
-          return
-        }
-        if (result.warning) toast.warning(result.warning)
+      const result = await publishStudio(
+        {
+          saveTenant: (patch) => saveBrandingAction(tenant.id, tenantSlug, patch as BrandingInput),
+          saveProduct: (patch) => saveProductDetailSettings(tenant.id, tenantSlug, patch as Partial<ProductDetailSettings>),
+          reorderCategories: (orderedIds) => reorderCategoriesAction(tenant.id, tenantSlug, orderedIds),
+          updateCategory: (categoryId, input) => updateCategoryAction(categoryId, tenant.id, tenantSlug, input),
+        },
+        { drafts, saved: studio.saved, categories: savedCategories }
+      )
+      studio.markPublished(
+        { ...result.published, categories: result.publishedCategories ?? undefined },
+        drafts,
+        result.nextMobile,
+        result.nextMobileProduct
+      )
+      result.warnings.forEach((warning) => toast.warning(warning))
+      if (result.failures.length > 0) {
+        // Parts that saved stay saved; the rest keeps its draft for a retry.
+        result.failures.forEach((failure) => toast.error(`${failure.part} didn't save: ${failure.error}. Press Publish to try again.`))
+      } else {
+        setShowPublishedToast(true)
+        window.setTimeout(() => setShowPublishedToast(false), PUBLISHED_TOAST_MS)
       }
-
-      if (hasProductChanges || hasMobileProductChanges) {
-        const productPayload = buildProductSettingsPayload(productDraft, savedProduct)
-        if (nextMobileProduct) productPayload.mobile_overrides = nextMobileProduct
-        const result = await saveProductDetailSettings(
-          tenant.id,
-          tenantSlug,
-          productPayload as Partial<ProductDetailSettings>
-        )
-        if (!result.success) {
-          toast.error(result.error || 'Failed to publish product detail settings')
-          return
-        }
-      }
-
-      if (hasCategoryChanges) {
-        // Order first, then per-category field updates. A partial failure
-        // stops the publish so the draft stays intact for a retry.
-        const plan = buildCategoryPublishPlan(savedCategories, categoryDraft)
-        if (plan.orderedIds) {
-          const result = await reorderCategoriesAction(tenant.id, tenantSlug, plan.orderedIds)
-          if (!result.success) {
-            toast.error(result.error || 'Failed to save category order')
-            return
-          }
-        }
-        for (const update of plan.updates) {
-          const result = await updateCategoryAction(update.id, tenant.id, tenantSlug, update.input)
-          if (!result.success) {
-            toast.error(result.error || 'Failed to save category changes')
-            return
-          }
-        }
-        setPublishedCategories(applyCategoryDraft(savedCategories, categoryDraft))
-        setCategoryDraft({})
-      }
-
-      setPublishedValues((prev) => ({ ...prev, ...draft }))
-      setPublishedProductValues((prev) => ({ ...prev, ...productDraft }))
-      if (nextMobile) setPublishedMobile(nextMobile)
-      if (nextMobileProduct) setPublishedMobileProduct(nextMobileProduct)
-      setDraft({})
-      setProductDraft({})
-      setMobileDraft({})
-      setMobileProductDraft({})
-      setShowPublishedToast(true)
-      window.setTimeout(() => setShowPublishedToast(false), PUBLISHED_TOAST_MS)
-      router.refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to publish branding')
+      if (result.published.tenant || result.published.product || result.publishedCategories) router.refresh()
     } finally {
+      publishingRef.current = false
       setIsPublishing(false)
     }
-  }, [
-    draft, productDraft, mobileDraft, mobileProductDraft, categoryDraft,
-    savedTenant, savedProduct, savedMobile, savedMobileProduct, savedCategories,
-    tenant.id, tenantSlug, isPublishing, router,
-  ])
+  }, [tenant.id, tenantSlug, drafts, studio, savedCategories, router])
 
   const surfaceFieldIds = isProductSurface ? getProductDetailFieldIds() : getSurfaceFieldIds(surface.id)
   const surfaceHasOverrides = isCategoriesSurface
@@ -464,6 +330,8 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
 
         <div className="flex-1" />
 
+        <HistoryButtons canUndo={studio.canUndo} canRedo={studio.canRedo} onUndo={undo} onRedo={redo} />
+
         {/* click-to-inspect toggle */}
         <button
           type="button"
@@ -496,8 +364,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           ))}
         </div>
 
-        {showPublishedToast && (
+        {showPublishedToast ? (
           <div className="text-[12px] font-bold text-emerald-700">✓ Published</div>
+        ) : (
+          <ChangesMenu changes={changes} onRevert={studio.revert} onDiscardAll={studio.discardAll} />
         )}
         <button
           type="button"
@@ -508,6 +378,14 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           {isPublishing ? 'Publishing…' : 'Publish'}
         </button>
       </div>
+
+      {studio.pendingRestore && (
+        <RestoreBanner
+          savedAt={studio.pendingRestore.savedAt}
+          onRestore={studio.restore}
+          onDismiss={studio.dismissRestore}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* ============ ICON RAIL ============ */}
@@ -615,7 +493,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
               <CategoryLayoutPanel
                 categories={savedCategories}
                 draft={categoryDraft}
-                onDraftChange={setCategoryDraft}
+                onDraftChange={studio.setCategories}
               />
             )}
 

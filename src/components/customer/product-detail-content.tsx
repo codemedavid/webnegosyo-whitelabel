@@ -10,7 +10,6 @@ import { useCart } from '@/hooks/useCart'
 import { useVariationState } from '@/hooks/useVariationState'
 import { useModifierGroups } from '@/hooks/useModifierGroups'
 import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
-import { AdminEditPencil } from '@/components/customer/product-detail/admin-edit-pencil'
 import { ProductVariations, ProductAddons } from '@/components/customer/product-detail/product-options'
 import { addonLabel } from '@/lib/addon-quantity'
 import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
@@ -43,7 +42,7 @@ import { modifierLabelsFrom } from '@/lib/product-detail-labels'
 import { transformImageUrl as transformCloudinaryUrl, isOptimizableImageUrl as isCloudinaryUrl } from '@/lib/imagekit-utils'
 import { UpsellOrchestratorProvider } from '@/lib/upsell-orchestrator'
 import dynamic from 'next/dynamic'
-import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } from './product-detail-lazy'
+import { LazyImageModal, LazyRelatedItemsSection } from './product-detail-lazy'
 import { BackgroundOverlayLayer } from './background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { motion } from 'framer-motion'
@@ -51,8 +50,7 @@ import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-pro
 import { describeAddedToCart } from '@/lib/senior-mode'
 import { ItemOffers, combosContainingItem } from '@/components/customer/offers/item-offers'
 import { oneTapSelection, postAddOffers } from '@/lib/boost/offer-items'
-import { addedSheetThemeFrom, cartOfferThemeFromBranding, offerThemeFromBranding } from '@/components/customer/offers/offer-theme'
-import { CartOfferRow } from '@/components/customer/offers/cart-offer-row'
+import { addedSheetThemeFrom, offerThemeFromBranding } from '@/components/customer/offers/offer-theme'
 
 // Upsell/checkout modals — not visible on initial render; lazy-load them.
 const AddedSheet = dynamic(
@@ -107,12 +105,6 @@ interface ProductDetailContentProps {
      * fetches server-side before paint).
      */
     upsellsPending?: boolean
-}
-
-interface ProductDetailCustomizerOpenDetail {
-    tab?: 'colors' | 'typography' | 'layout'
-    section?: 'header' | 'image' | 'product_info' | 'variations' | 'addons' | 'related_items' | 'footer_summary' | 'footer_buttons'
-    pane?: 'palette' | 'settings'
 }
 
 // Memoized Dietary Tag Component
@@ -206,23 +198,16 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // what the diner already ordered is left out, and nothing jumps once a
     // suggestion inside the sheet joins the cart.
     const [addedSheetOffers, setAddedSheetOffers] = useState<MenuItem[]>([])
-    const [customizationDraft, setCustomizationDraft] = useState<Partial<ProductDetailSettings> | null>(null)
 
     const {
         isImageModalOpen,
         isPostAddUpsellOpen,
         setIsPostAddUpsellOpen,
-        isPopupPreviewOpen,
-        setIsPopupPreviewOpen,
-        isCheckoutPreviewOpen,
-        setIsCheckoutPreviewOpen,
         bundleForCustomization,
         setBundleForCustomization,
         buyNowIntentRef,
         handleOpenImageModal,
         handleCloseImageModal,
-        handleTogglePopupPreview,
-        handleToggleCheckoutPreview,
         handlePostAddUpsellClose,
     } = useProductDetailModals({
         tenantSlug: tenant.slug,
@@ -330,7 +315,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const studioProductMobile = previewDraft?.__productMobileOverrides as OverrideMap | undefined
     const savedProductMobile = (customization as { mobile_overrides?: OverrideMap } | null)?.mobile_overrides
     const activeCustomization = useMemo(() => {
-        if (customizationDraft) return customizationDraft
         // Saved settings, with the tenant's mobile overrides applied on a phone.
         let base: Partial<ProductDetailSettings> | null = customization
         if (isMobileViewport && base) {
@@ -344,7 +328,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             base = applyMobileOverrides((base ?? {}) as Record<string, unknown>, studioProductMobile) as Partial<ProductDetailSettings>
         }
         return base
-    }, [customizationDraft, studioProductDraft, studioProductMobile, savedProductMobile, customization, isMobileViewport])
+    }, [studioProductDraft, studioProductMobile, savedProductMobile, customization, isMobileViewport])
 
     const themeColors = useMemo(() => {
         // Cast to expected type - draft may be Partial but merge function handles null
@@ -367,14 +351,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         return computeProductDetailStyles(themeColors)
     }, [themeColors])
 
-    const openBrandingEditor = useCallback((
-        section: NonNullable<ProductDetailCustomizerOpenDetail['section']>,
-        pane: NonNullable<ProductDetailCustomizerOpenDetail['pane']> = 'palette'
-    ) => {
-        window.dispatchEvent(new CustomEvent<ProductDetailCustomizerOpenDetail>('product-detail-customizer:open', {
-            detail: { section, pane },
-        }))
-    }, [])
 
     // Note: Animation config can be added here if needed for custom animations
 
@@ -750,20 +726,27 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             <ChevronLeft className="h-6 w-6" style={{ color: 'var(--pd-header-button-icon)' }} />
                         </motion.button>
                     )}
-                    <motion.button
-                        onClick={handleShare}
-                        className="rounded-full p-2 shadow-md transition-colors"
-                        style={{ backgroundColor: 'var(--pd-header-button-bg)' }}
-                        aria-label="Share"
-                        whileTap={{ scale: 0.95 }}
-                    >
-                        <Share2 className="h-5 w-5" style={{ color: 'var(--pd-header-button-icon)' }} />
-                    </motion.button>
-                    <AdminEditPencil
-                        visible={showEditTools}
-                        onClick={() => openBrandingEditor('header')}
-                        label="Edit header branding"
-                    />
+                    <div className="flex items-center gap-2">
+                        {/* Store admins restyle this page in the Branding Studio. */}
+                        {showEditTools && (
+                            <a
+                                href={`/${tenant.slug}/admin/branding?surface=product&item=${encodeURIComponent(item.id)}`}
+                                className="rounded-full px-3 py-2 text-xs font-semibold shadow-md"
+                                style={{ backgroundColor: 'var(--pd-header-button-bg)', color: 'var(--pd-header-button-icon)' }}
+                            >
+                                Edit look
+                            </a>
+                        )}
+                        <motion.button
+                            onClick={handleShare}
+                            className="rounded-full p-2 shadow-md transition-colors"
+                            style={{ backgroundColor: 'var(--pd-header-button-bg)' }}
+                            aria-label="Share"
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <Share2 className="h-5 w-5" style={{ color: 'var(--pd-header-button-icon)' }} />
+                        </motion.button>
+                    </div>
                 </div>
             </header>
 
@@ -802,12 +785,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         } : {}),
                     }}
                 >
-                    <AdminEditPencil
-                        visible={showEditTools}
-                        onClick={() => openBrandingEditor('image')}
-                        label="Edit image and badge branding"
-                        className="absolute left-4 top-4 z-20"
-                    />
                     {hasImage ? (
                         <button
                             onClick={handleOpenImageModal}
@@ -845,12 +822,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
                 {/* Product Info */}
                 <div data-branding-scope="product/info" className="relative px-5 py-6" style={{ padding: 'var(--pd-section-padding)' }}>
-                    <AdminEditPencil
-                        visible={showEditTools}
-                        onClick={() => openBrandingEditor('product_info', 'settings')}
-                        label="Edit product text branding"
-                        className="absolute right-0 top-0"
-                    />
                     {/* Breadcrumbs */}
                     <nav className="mb-4">
                         <ol className="flex items-center gap-1.5 text-sm flex-wrap">
@@ -961,8 +932,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 dynamicStyles={dynamicStyles}
                                 menuEngineeringEnabled={menuEngineeringEnabled}
                                 themeColors={themeColors}
-                                isBrandAdmin={showEditTools}
-                                onEditBranding={openBrandingEditor}
                             />
                             <ProductAddons
                                 addons={mergedAddons}
@@ -970,8 +939,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 onQuantityChange={changeAddonQuantity}
                                 hideCurrencySymbol={hideCurrencySymbol}
                                 themeColors={themeColors}
-                                isBrandAdmin={showEditTools}
-                                onEditBranding={openBrandingEditor}
                             />
                         </>
                     )}
@@ -1032,12 +999,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {/* Related Items Section */}
                     {relatedItems.length > 0 && (
                         <div className="relative" data-branding-scope="product/related">
-                            <AdminEditPencil
-                                visible={showEditTools}
-                                onClick={() => openBrandingEditor('related_items')}
-                                label="Edit related items branding"
-                                className="absolute right-0 top-10 z-10"
-                            />
                             <LazyRelatedItemsSection
                                 relatedItems={relatedItems}
                                 tenantSlug={tenant.slug}
@@ -1102,53 +1063,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 hideCurrencySymbol={hideCurrencySymbol}
             />
 
-            {showEditTools && (
-                <>
-                    {/* "Just added" preview (admin only) — the real sheet, with this dish's related items */}
-                    <AddedSheet
-                        open={isPopupPreviewOpen}
-                        addedItem={item}
-                        suggestions={relatedItems.length > 0 ? relatedItems.slice(0, 4) : [item]}
-                        theme={addedSheetTheme}
-                        tenantId={tenant.id}
-                        hideCurrencySymbol={hideCurrencySymbol}
-                        primaryLabel="View cart"
-                        onAdd={() => {}}
-                        onCustomize={() => {}}
-                        onPrimary={() => setIsPopupPreviewOpen(false)}
-                        onClose={() => setIsPopupPreviewOpen(false)}
-                    />
-
-                    {/* Cart "last call" preview (admin only) — live with the draft checkout_modal_* colours */}
-                    {isCheckoutPreviewOpen && (
-                        <div className="fixed inset-0 z-[58] flex items-center justify-center bg-black/40 p-4" onClick={() => setIsCheckoutPreviewOpen(false)}>
-                            <div className="w-full max-w-md" onClick={(event) => event.stopPropagation()}>
-                                <CartOfferRow
-                                    title={tenant.checkout_upsell_title?.trim() || 'Add to your order'}
-                                    subtitle={tenant.checkout_upsell_subtitle?.trim() || undefined}
-                                    items={(relatedItems.length > 0 ? relatedItems.slice(0, 4) : [item]).map((preview) => ({
-                                        id: preview.id,
-                                        name: preview.name,
-                                        priceLabel: formatPrice(preview.price, { hideCurrencySymbol }),
-                                        imageUrl: preview.image_url,
-                                    }))}
-                                    addedIds={new Set()}
-                                    theme={cartOfferThemeFromBranding({
-                                        ...branding,
-                                        checkoutModalBackground: activeCustomization?.checkout_modal_background_color || branding.checkoutModalBackground,
-                                        checkoutModalTitle: activeCustomization?.checkout_modal_title_color || branding.checkoutModalTitle,
-                                        checkoutModalDescription: activeCustomization?.checkout_modal_description_color || branding.checkoutModalDescription,
-                                        checkoutModalButton: activeCustomization?.checkout_modal_button_color || branding.checkoutModalButton,
-                                        checkoutModalButtonText: activeCustomization?.checkout_modal_button_text_color || branding.checkoutModalButtonText,
-                                        checkoutModalBorder: activeCustomization?.checkout_modal_border_color || branding.checkoutModalBorder,
-                                    })}
-                                    onAdd={() => {}}
-                                />
-                            </div>
-                        </div>
-                    )}
-                </>
-            )}
 
             {/* Sticky Footer */}
             <footer
@@ -1158,12 +1072,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             >
                 {/* Selected Summary */}
                 <div className="relative px-5 pt-3 pb-2">
-                    <AdminEditPencil
-                        visible={showEditTools}
-                        onClick={() => openBrandingEditor('footer_summary')}
-                        label="Edit footer summary branding"
-                        className="absolute right-5 top-2"
-                    />
                     <p
                         className="text-xs truncate"
                         style={{ color: 'var(--pd-summary-text)' }}
@@ -1255,12 +1163,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
                 {/* Action Buttons */}
                 <div className="relative px-5 pb-5 pt-2 flex gap-3">
-                    <AdminEditPencil
-                        visible={showEditTools}
-                        onClick={() => openBrandingEditor('footer_buttons')}
-                        label="Edit footer button branding"
-                        className="absolute right-5 -top-3 z-10"
-                    />
                     <Button
                         type="button"
                         variant="outline"
@@ -1285,17 +1187,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 </div>
             </footer>
 
-            {showEditTools && (
-                <LazyProductDetailCustomizer
-                    tenant={tenant}
-                    onPreview={setCustomizationDraft}
-                    onSaved={() => {
-                        router.refresh()
-                    }}
-                    onTogglePopupPreview={handleTogglePopupPreview}
-                    onToggleCheckoutPreview={handleToggleCheckoutPreview}
-                />
-            )}
         </motion.div>
         </UpsellOrchestratorProvider>
     )
