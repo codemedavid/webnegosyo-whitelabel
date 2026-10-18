@@ -3,6 +3,7 @@
  * Provides fallback colors and utility functions for consistent branding
  */
 
+import { readSectionScheme, schemeColors } from '@/lib/section-schemes'
 import { AUTO_CARD_STYLE, readCardStyleSettings, type CardStyleSettings } from '@/lib/card-style'
 import { resolveFontPair, resolveRoundness, resolvePalette } from '@/lib/storefront-theme'
 
@@ -174,6 +175,24 @@ export const DEFAULT_BRANDING: BrandingColors = {
 /**
  * Extract branding colors from tenant with fallbacks
  */
+/**
+ * A section colour style the owner picked (Studio → Header → Colour style)
+ * replaces that section's own colours; "auto" keeps them.
+ */
+function withSectionSchemes(tenant: Record<string, unknown>, branding: BrandingColors): BrandingColors {
+  const headerScheme = readSectionScheme(tenant, 'header')
+  if (!headerScheme) return branding
+  const colors = schemeColors(headerScheme, branding.accent || branding.primary)
+  return {
+    ...branding,
+    header: colors.background,
+    headerFont: colors.text,
+    // Header templates draw the store name and subtitle in these.
+    menuMainHeaderText: colors.text,
+    menuMainHeaderSubtitle: colors.muted,
+  }
+}
+
 export function getTenantBranding(tenant: Record<string, unknown> | null): BrandingColors {
   if (!tenant) {
     return DEFAULT_BRANDING
@@ -195,7 +214,7 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
   // the expression collapses back to the original chain — zero regression.
   const p = resolvePalette(tenant['storefront_palette'])
 
-  return {
+  return withSectionSchemes(tenant, {
     background: get('background_color', '') || p?.bg || DEFAULT_BRANDING.background,
     header: get('header_color', '') || p?.surface || DEFAULT_BRANDING.header,
     headerFont: get('header_font_color', '') || p?.text || DEFAULT_BRANDING.headerFont,
@@ -257,7 +276,7 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
       radius: (['pill','rounded','square'].includes(tenant['search_bar_radius'] as string) ? tenant['search_bar_radius'] : 'pill') as 'pill' | 'rounded' | 'square',
       style: (['filled','outline','ghost'].includes(tenant['search_bar_style'] as string) ? tenant['search_bar_style'] : 'filled') as 'filled' | 'outline' | 'ghost',
     },
-  }
+  })
 }
 
 /**

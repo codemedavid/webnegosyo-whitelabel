@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
@@ -116,7 +117,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
                 boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)'
               }}
             >
-              Unavailable
+              <StoreLabel name="menu.unavailable" fallback="Unavailable" />
             </div>
           </div>
         )}

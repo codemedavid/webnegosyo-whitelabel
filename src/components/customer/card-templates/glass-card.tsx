@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
@@ -120,7 +121,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                             className="rounded-full px-4 py-2 text-sm font-semibold backdrop-blur-xl"
                             style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: branding.textPrimary }}
                         >
-                            Unavailable
+                            <StoreLabel name="menu.unavailable" fallback="Unavailable" />
                         </span>
                     </div>
                 )}

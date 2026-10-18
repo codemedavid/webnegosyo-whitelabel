@@ -29,6 +29,7 @@ import {
 } from '@/lib/branding-studio/studio-drafts'
 import { draftStorageKey, parseDraftSnapshot, serializeDraftSnapshot, type DraftSnapshot } from '@/lib/branding-studio/draft-storage'
 import { flattenPackSettings, foldPackSettings, isPackFieldId } from '@/lib/storefront-pack-studio'
+import { flattenJsonColumns, foldedJsonColumns } from '@/lib/branding-studio/studio-columns'
 import type { OverrideMap } from '@/lib/mobile-overrides'
 import type { CategoryStudioDraft } from '@/lib/category-studio'
 import type { Category, Tenant } from '@/types/database'
@@ -86,7 +87,7 @@ export function useStudioDrafts({ tenant, productSettings, categories }: UseStud
         const merged = { ...tenantBag, ...publishedValues }
         // Storefront pack settings live in one jsonb column; the Studio edits
         // them as virtual fields, so expose the saved ones under those ids too.
-        return { ...merged, ...flattenPackSettings(merged) }
+        return { ...merged, ...flattenPackSettings(merged), ...flattenJsonColumns(merged) }
     }, [tenantBag, publishedValues])
     const savedProduct = useMemo<Bag>(
         () => ({ ...(productSettings ?? {}), ...publishedProductValues }),
@@ -204,7 +205,8 @@ export function useStudioDrafts({ tenant, productSettings, categories }: UseStud
             const packColumn = Object.keys(sent.tenant).some(isPackFieldId)
                 ? { storefront_pack_settings: foldPackSettings(sent.tenant, savedTenant) }
                 : {}
-            setPublishedValues((prev) => ({ ...prev, ...sent.tenant, ...packColumn }))
+            const jsonColumns = foldedJsonColumns(Object.keys(sent.tenant), sent.tenant, savedTenant)
+            setPublishedValues((prev) => ({ ...prev, ...sent.tenant, ...packColumn, ...jsonColumns }))
             if (nextMobile) setPublishedMobile(nextMobile)
         }
         if (parts.product) {

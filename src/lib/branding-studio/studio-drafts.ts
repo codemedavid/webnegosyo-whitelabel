@@ -15,6 +15,7 @@ import { PRODUCT_DETAIL_FIELD_INDEX } from '@/lib/product-detail-registry'
 import { VALID_DB_COLUMNS } from '@/lib/product-detail-settings-utils'
 import { mergeMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import { foldPackSettings, isPackFieldId } from '@/lib/storefront-pack-studio'
+import { foldedJsonColumns, isJsonColumnFieldId } from '@/lib/branding-studio/studio-columns'
 import { hasCategoryDraftChanges, type CategoryStudioDraft } from '@/lib/category-studio'
 
 type Bag = Record<string, unknown>
@@ -219,7 +220,9 @@ export function listChanges(drafts: StudioDrafts, saved: SavedStores): StudioCha
 export function tenantPublishPatch(drafts: StudioDrafts, saved: SavedStores): Bag | null {
     const changed = changedFieldIds(drafts, saved, 'tenant')
     const columns = Object.fromEntries(
-        changed.filter((fieldId) => !isPackFieldId(fieldId)).map((fieldId) => [fieldId, drafts.tenant[fieldId]])
+        changed
+            .filter((fieldId) => !isPackFieldId(fieldId) && !isJsonColumnFieldId(fieldId))
+            .map((fieldId) => [fieldId, drafts.tenant[fieldId]])
     )
     const packPatch = changed.some(isPackFieldId)
         ? { storefront_pack_settings: foldPackSettings(drafts.tenant, saved.tenant) }
@@ -227,7 +230,8 @@ export function tenantPublishPatch(drafts: StudioDrafts, saved: SavedStores): Ba
     const mobilePatch = changedFieldIds(drafts, saved, 'mobile').length > 0
         ? { mobile_overrides: mergeMobileOverrides(saved.mobile as OverrideMap, drafts.mobile as OverrideMap) }
         : {}
-    const patch = { ...columns, ...packPatch, ...mobilePatch }
+    const jsonColumns = foldedJsonColumns(changed, drafts.tenant, saved.tenant)
+    const patch = { ...columns, ...packPatch, ...jsonColumns, ...mobilePatch }
     return Object.keys(patch).length > 0 ? patch : null
 }
 

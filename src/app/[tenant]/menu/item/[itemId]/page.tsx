@@ -1,4 +1,5 @@
 import type { Metadata, ResolvingMetadata } from 'next'
+import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { notFound } from 'next/navigation'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { ProductDetailContent } from '@/components/customer/product-detail-content'
@@ -178,7 +179,7 @@ export default async function ProductDetailPage({ params }: Props) {
             : null
 
         return (
-            <>
+            <StorefrontLabelsProvider tenant={tenant}>
                 {preloadImageUrl && (
                     <link
                         rel="preload"
@@ -207,7 +208,7 @@ export default async function ProductDetailPage({ params }: Props) {
                 />
                 {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}
                 <BrandingInspector />
-            </>
+            </StorefrontLabelsProvider>
         )
     } catch (error) {
         console.error('Error loading product detail page:', error)

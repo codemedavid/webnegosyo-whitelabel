@@ -20,6 +20,9 @@ import { CARD_STYLE_FIELDS } from '@/lib/card-style'
 import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
 import { STOREFRONT_PACK_IDS, DEFAULT_STOREFRONT_PACK } from '@/lib/storefront-packs'
 import { foldPackSettings, isPackFieldId, packStudioSections } from '@/lib/storefront-pack-studio'
+import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS, type LabelScreen } from '@/lib/storefront-labels'
+import { SECTION_SCHEME_IDS } from '@/lib/section-schemes'
+import { isJsonColumnFieldId } from '@/lib/branding-studio/studio-columns'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
@@ -84,6 +87,23 @@ const text = (id: string, label: string, placeholder = ''): BrandingField =>
   ({ id, label, type: 'text', default: '', placeholder })
 const number = (id: string, label: string, def: number, min: number, max: number): BrandingField =>
   ({ id, label, type: 'number', default: def, min, max })
+
+/** The store's own wording for one screen's labels (virtual fields over `storefront_labels`). */
+function labelFields(screens: readonly LabelScreen[]): BrandingField[] {
+  return STOREFRONT_LABEL_KEYS.filter((key) => screens.includes(STOREFRONT_LABELS[key].screen)).map((key) => ({
+    id: `storefront_labels.${key}`,
+    label: STOREFRONT_LABELS[key].label,
+    type: 'text',
+    default: '',
+    placeholder: STOREFRONT_LABELS[key].example,
+    columnBacked: true,
+  }))
+}
+
+/** A section's colour style (virtual field over `section_schemes`); "auto" keeps its own colours. */
+function sectionStyle(section: 'header' | 'hero'): BrandingField {
+  return { id: `section_schemes.${section}`, label: 'Colour style', type: 'select', options: SECTION_SCHEME_IDS, default: 'auto', columnBacked: true }
+}
 const note = (id: string, label: string): BrandingField => ({ id, label, type: 'note' })
 // A picker whose options are the tenant's own menu items (supplied at runtime,
 // not statically). Stored value is the selected menu item id, or '' for none.
@@ -213,6 +233,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Header',
         fields: [
+          sectionStyle('header'),
           select('header_template', 'Template', HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE),
           toggle('header_show_logo', 'Show logo', true),
           toggle('header_show_name', 'Show business name', true),
@@ -238,6 +259,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         title: 'Hero',
         fields: [
           toggle('hero_section_enabled', 'Show hero section', true),
+          sectionStyle('hero'),
           select('hero_preset', 'Style', ['theme', 'centered', 'editorial', 'split', 'banner', 'collage', 'minimal', 'custom'], 'theme'),
           text('hero_kicker', 'Kicker (eyebrow)', 'Now serving'),
           text('hero_title', 'Title', 'Welcome to our menu'),
@@ -313,6 +335,8 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('modal_description_color', 'Description', null, 'text_secondary_color'),
         ],
       },
+      { title: 'Menu labels', fields: labelFields(['menu']) },
+      { title: 'Item page labels', fields: labelFields(['item']) },
     ],
   },
   {
@@ -410,6 +434,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('cart_border_color', 'Border', null, 'border_color'),
         ],
       },
+      { title: 'Labels', fields: labelFields(['cart']) },
     ],
   },
   {
@@ -436,6 +461,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('checkout_border_color', 'Border', null, 'border_color'),
         ],
       },
+      { title: 'Labels', fields: labelFields(['checkout', 'confirmation']) },
     ],
   },
   {
@@ -694,7 +720,7 @@ export function buildPublishPayload(
   const payload: Record<string, unknown> = {}
   for (const fieldId of Object.keys(BRANDING_FIELD_INDEX)) {
     // Pack settings are virtual fields inside one jsonb column: folded below.
-    if (isPackFieldId(fieldId)) continue
+    if (isPackFieldId(fieldId) || isJsonColumnFieldId(fieldId)) continue
     const value = Object.prototype.hasOwnProperty.call(draft, fieldId)
       ? draft[fieldId]
       : tenant?.[fieldId]

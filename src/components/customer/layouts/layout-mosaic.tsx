@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { isAboveTheFold, pageIndexOf } from '@/lib/above-the-fold'
 
 import type { MenuLayoutContentProps } from '@/storefront/contracts'
@@ -187,7 +188,7 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                         <span className="text-3xl">🍽️</span>
                     </div>
                     <h3 className="text-xl font-semibold mb-2" style={{ color: branding.textPrimary }}>
-                        No items found
+                        <StoreLabel name="menu.no_results" fallback="No items found" />
                     </h3>
                     <p style={{ color: branding.textSecondary }}>
                         Try adjusting your search or category filter

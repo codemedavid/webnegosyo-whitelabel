@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
@@ -84,7 +85,7 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrder
                             className="text-xs font-medium tracking-wider uppercase"
                             style={{ color: branding.textMuted }}
                         >
-                            Unavailable
+                            <StoreLabel name="menu.unavailable" fallback="Unavailable" />
                         </span>
                     </div>
                 )}

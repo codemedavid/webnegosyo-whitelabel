@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { VoucherPreview } from '@/lib/vouchers/preview'
@@ -43,7 +44,7 @@ export function VoucherField({
   return (
     <div className="space-y-2">
       <label htmlFor="voucher-code-input" className="text-sm font-medium">
-        Have a voucher?
+        <StoreLabel name="checkout.voucher" fallback="Have a voucher?" />
       </label>
 
       <div className="flex gap-2">

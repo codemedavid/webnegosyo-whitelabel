@@ -30,6 +30,7 @@ import {
 import { getTenantBranding } from '@/lib/branding-utils'
 import { saveBrandingAction } from '@/app/actions/branding'
 import { withPackSettingsPreview } from '@/lib/storefront-pack-studio'
+import { withJsonColumnsPreview } from '@/lib/branding-studio/studio-columns'
 import type { BrandingInput } from '@/lib/branding-service'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -145,7 +146,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
 
   // The preview's tenant merge is a shallow spread, so pack setting edits
   // must reach it as the whole folded storefront_pack_settings object.
-  const previewDraft = useMemo(() => withPackSettingsPreview(draft, savedTenant), [draft, savedTenant])
+  const previewDraft = useMemo(
+    () => withJsonColumnsPreview(withPackSettingsPreview(draft, savedTenant), savedTenant),
+    [draft, savedTenant]
+  )
 
   // Product Detail rows resolve through the product page's own merge, against
   // the desktop brand the merchant is editing right now.

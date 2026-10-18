@@ -13,6 +13,7 @@
  * neutral defaults until chosen — no visual regression for existing tenants.
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { addonLabel } from '@/lib/addon-quantity'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -262,7 +263,7 @@ export function CartCheckoutButton({ cart, className = '' }: { cart: UseCartView
           <span className="text-lg">Loading...</span>
         </>
       ) : (
-        <span className="text-lg">Proceed to Checkout</span>
+        <span className="text-lg"><StoreLabel name="cart.checkout" fallback="Proceed to Checkout" /></span>
       )}
     </button>
   )
@@ -288,7 +289,7 @@ export function CartEmptyState({ cart }: { cart: UseCartViewReturn }) {
       <div className="rounded-3xl bg-white p-12 sm:p-16 shadow-lg text-center max-w-md">
         <EmptyState
           icon={ShoppingBag}
-          title="Your cart is empty"
+          title={<StoreLabel name="cart.empty" fallback="Your cart is empty" />}
           description="Add some items from the menu to get started"
           actionLabel="Browse Menu"
           onAction={() => router.push(`/${tenantSlug}/menu`)}

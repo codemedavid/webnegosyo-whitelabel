@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 
 /**
@@ -71,7 +72,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900" style={{ color: palette.text }}>Checkout</h1>
+            <h1 className="text-2xl font-bold text-gray-900" style={{ color: palette.text }}><StoreLabel name="checkout.title" fallback="Checkout" /></h1>
             <p className="text-sm text-gray-500" style={{ color: palette.mutedText }}>Complete your order</p>
           </div>
         </div>
@@ -83,7 +84,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {checkout.shouldAskFulfillment && (
             <div className="rounded-2xl bg-white p-4 sm:p-6 md:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
               <div className="mb-4 sm:mb-5">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900" style={{ color: palette.text }}>How would you like to receive your order?</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900" style={{ color: palette.text }}><StoreLabel name="checkout.order_type" fallback="How would you like to receive your order?" /></h2>
                 <p className="text-sm text-gray-500 mt-1" style={{ color: palette.mutedText }}>
                   Choose a fulfillment method{advanceConfig.enabled ? ' and when you want it' : ''}.
                 </p>
@@ -267,7 +268,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           {/* Customer Information Form */}
           {orderType && formFields.length > 0 && (
             <div className="rounded-2xl bg-white p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}>Customer Information</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}><StoreLabel name="checkout.customer" fallback="Customer Information" /></h2>
               <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>Please provide the following details</p>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -354,7 +355,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           )}
 
           <div className="rounded-2xl bg-white p-8 shadow-sm" style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}>Order Summary</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}><StoreLabel name="checkout.summary" fallback="Order Summary" /></h2>
             <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>Review your order before checkout</p>
 
             <OrderSummaryLines checkout={checkout} variant="classic" />

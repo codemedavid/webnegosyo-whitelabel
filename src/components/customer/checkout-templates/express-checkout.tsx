@@ -13,6 +13,7 @@
  * mounted in the normal flow so the hook's scroll-to-error anchors work.
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { ArrowLeft } from 'lucide-react'
 import { getCheckoutPalette, setAlpha } from '@/lib/branding-utils'
 import { formatPrice } from '@/lib/cart-utils'
@@ -73,7 +74,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Checkout</h1>
+          <h1 className="text-lg font-bold text-gray-900"><StoreLabel name="checkout.title" fallback="Checkout" /></h1>
           <span className="ml-auto truncate text-sm text-gray-400">{tenant.name}</span>
         </div>
       </header>

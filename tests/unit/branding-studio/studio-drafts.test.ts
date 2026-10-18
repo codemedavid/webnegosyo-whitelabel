@@ -188,3 +188,24 @@ describe('publish patches pass the save schema', () => {
         expect(() => brandingPatchSchema.parse(patch)).not.toThrow()
     })
 })
+
+describe('label and colour-style fields', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { brandingPatchSchema } = require('@/lib/branding-service') as typeof import('@/lib/branding-service')
+
+    it('publishes edited labels as the whole storefront_labels column', () => {
+        const saved: SavedStores = { ...SAVED, tenant: { ...SAVED.tenant, storefront_labels: { 'cart.empty': 'Wala pa' } } }
+
+        const patch = tenantPublishPatch(drafts({ tenant: { 'storefront_labels.cart.title': 'Your tray' } }), saved)
+
+        expect(patch).toEqual({ storefront_labels: { 'cart.empty': 'Wala pa', 'cart.title': 'Your tray' } })
+        expect(() => brandingPatchSchema.parse(patch)).not.toThrow()
+    })
+
+    it('publishes a section colour style', () => {
+        const patch = tenantPublishPatch(drafts({ tenant: { 'section_schemes.header': 'brand' } }), SAVED)
+
+        expect(patch).toEqual({ section_schemes: { header: 'brand' } })
+        expect(() => brandingPatchSchema.parse(patch)).not.toThrow()
+    })
+})

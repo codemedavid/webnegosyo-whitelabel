@@ -12,6 +12,7 @@
  * dialog, cart remove-dialog and upsell modal — this component never does.
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { ArrowLeft, Lock, ShoppingBag, User, CreditCard } from 'lucide-react'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
@@ -65,7 +66,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-none truncate">Checkout</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-none truncate"><StoreLabel name="checkout.title" fallback="Checkout" /></h1>
             <p className="text-xs text-gray-500 mt-0.5 truncate">{tenant.name}</p>
           </div>
           <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
@@ -90,7 +91,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                     {numberBadge(<ShoppingBag className="h-5 w-5" />)}
                     <div className="min-w-0">
                       <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">
-                        How would you like to receive your order?
+                        <StoreLabel name="checkout.order_type" fallback="How would you like to receive your order?" />
                       </h2>
                       <p className="text-sm text-gray-500 mt-0.5">
                         Choose a fulfillment method{advanceConfig.enabled ? ' and when you want it' : ''}.

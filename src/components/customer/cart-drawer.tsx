@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { addonLabel } from '@/lib/addon-quantity'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import { useCartCommands } from '@/storefront/cart/use-cart-commands'
@@ -109,7 +110,7 @@ export function CartDrawer({
                 <ShoppingCart className="h-4 w-4 text-white" />
               </div>
               <div>
-                <span className="text-gray-900">Your Cart</span>
+                <span className="text-gray-900"><StoreLabel name="cart.title" fallback="Your Cart" /></span>
                 <p className="text-[11px] font-normal text-gray-500 leading-tight">({items.length + bundleItems.length} items)</p>
               </div>
             </SheetTitle>
@@ -119,7 +120,7 @@ export function CartDrawer({
             <div className="flex flex-1 items-center justify-center">
               <EmptyState
                 icon={ShoppingCart}
-                title="Your cart is empty"
+                title={<StoreLabel name="cart.empty" fallback="Your cart is empty" />}
                 description="Add some delicious items to get started"
               />
             </div>
@@ -383,7 +384,7 @@ export function CartDrawer({
                     style={{ backgroundColor: palette.button ?? accent, color: palette.accentText }}
                     onClick={handleCheckoutClick}
                   >
-                    Proceed to Checkout
+                    <StoreLabel name="cart.checkout" fallback="Proceed to Checkout" />
                   </Button>
                 </div>
 

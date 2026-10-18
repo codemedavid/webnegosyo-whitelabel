@@ -7,6 +7,7 @@
  * interstitial are rendered by the page shell (shared).
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { addonLabel } from '@/lib/addon-quantity'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import Link from 'next/link'
@@ -45,7 +46,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900" style={{ color: palette.text }}>Your Cart</h1>
+            <h1 className="text-2xl font-bold text-gray-900" style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Your Cart" /></h1>
             <p className="text-sm text-gray-500" style={{ color: palette.mutedText }}>Review your delicious selection</p>
           </div>
         </div>
@@ -57,7 +58,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
             <div className="rounded-3xl bg-white p-16 shadow-lg text-center max-w-md">
               <EmptyState
                 icon={ShoppingBag}
-                title="Your cart is empty"
+                title={<StoreLabel name="cart.empty" fallback="Your cart is empty" />}
                 description="Add some items from the menu to get started"
                 actionLabel="Browse Menu"
                 onAction={() => router.push(`/${tenantSlug}/menu`)}
@@ -328,7 +329,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                         <span className="text-lg">Loading...</span>
                       </>
                     ) : (
-                      <span className="text-lg">Proceed to Checkout</span>
+                      <span className="text-lg"><StoreLabel name="cart.checkout" fallback="Proceed to Checkout" /></span>
                     )}
                   </Button>
                   <Link href={`/${tenantSlug}/menu`} className="w-full">

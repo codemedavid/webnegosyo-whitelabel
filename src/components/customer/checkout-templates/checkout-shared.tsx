@@ -12,6 +12,7 @@
  * the experience is unchanged.
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { addonLabel } from '@/lib/addon-quantity'
 import { ArrowLeft, QrCode, Copy, CheckCircle2, ExternalLink, Package, CalendarClock, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -163,7 +164,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
               )}
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              {hasOrderSaveFailed ? 'Order Not Confirmed' : 'Order Placed!'}
+              {hasOrderSaveFailed ? 'Order Not Confirmed' : <StoreLabel name="confirmation.title" fallback="Order Placed!" />}
             </h1>
             <p className="text-gray-500 text-lg">
               {hasOrderSaveFailed
@@ -178,7 +179,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 
           {/* Order Summary */}
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-1">Order Summary</h2>
+            <h2 className="text-lg font-bold text-gray-900 mb-1"><StoreLabel name="checkout.summary" fallback="Order Summary" /></h2>
             {completedOrderData.orderTypeName && (
               <p className={`text-sm text-gray-500 ${completedOrderData.scheduledForLabel ? 'mb-2' : 'mb-4'}`}>{completedOrderData.orderTypeName}</p>
             )}
@@ -271,7 +272,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           {/* Customer Information */}
           {completedOrderData.formFields.length > 0 && (
             <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Customer Information</h2>
+              <h2 className="text-lg font-bold text-gray-900 mb-4"><StoreLabel name="checkout.customer" fallback="Customer Information" /></h2>
               <div className="space-y-2">
                 {completedOrderData.formFields.map(field => {
                   const value = completedOrderData.customerData[field.field_name]

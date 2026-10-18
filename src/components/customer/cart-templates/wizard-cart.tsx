@@ -7,6 +7,7 @@
  * The remove dialog and upsell interstitial are rendered by the page shell.
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { ArrowLeft, Receipt } from 'lucide-react'
 import { getCartPalette } from '@/lib/branding-utils'
 import {
@@ -46,7 +47,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
           </button>
           <div className="flex items-center gap-2">
             <Receipt className="h-5 w-5" style={{ color: accent }} />
-            <h1 className="text-lg font-bold text-gray-900">Your Cart</h1>
+            <h1 className="text-lg font-bold text-gray-900"><StoreLabel name="cart.title" fallback="Your Cart" /></h1>
           </div>
         </div>
       </header>

@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -838,7 +839,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 color: 'var(--pd-sale-badge-text)'
                             }}
                         >
-                            Sale
+                            <StoreLabel name="item.sale" fallback="Sale" />
                         </div>
                     )}
                 </div>
@@ -973,7 +974,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 className="text-base font-semibold mb-1"
                                 style={{ color: 'var(--pd-variation-title)', fontSize: 'var(--pd-variation-title-font-size)', fontFamily: 'var(--pd-font-heading)' }}
                             >
-                                Choose a pickup date
+                                <StoreLabel name="item.pickup_date" fallback="Choose a pickup date" />
                             </h3>
                             <p className="text-xs mb-3" style={{ color: 'var(--pd-text-muted)' }}>
                                 {presellDate
@@ -1049,7 +1050,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 theme={addedSheetTheme}
                 tenantId={tenant.id}
                 hideCurrencySymbol={hideCurrencySymbol}
-                primaryLabel="View cart"
+                primaryLabel={<StoreLabel name="item.view_cart" fallback="View cart" />}
                 onAdd={(upsellItem) => {
                     // The picks its own page would have pre-selected (see oneTapSelection).
                     const { variations, addons } = oneTapSelection(upsellItem)
@@ -1179,7 +1180,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             className="rounded-lg px-3 py-2 text-center text-sm font-medium"
                             style={{ color: 'var(--pd-summary-text)', backgroundColor: 'color-mix(in srgb, var(--pd-summary-text) 12%, transparent)' }}
                         >
-                            This item is currently unavailable.
+                            <StoreLabel name="item.unavailable" fallback="This item is currently unavailable." />
                         </p>
                     </div>
                 )}

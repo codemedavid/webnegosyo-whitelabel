@@ -65,7 +65,7 @@ describe('branding registry structure', () => {
           if (field.type === 'note') continue
           // Storefront pack settings are virtual fields folded into one jsonb
           // column (see storefront-pack-studio), namespaced pack.key.
-          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$|^storefront_pack_settings\.[a-z]+\.[a-z0-9_]+$/)
+          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$|^storefront_pack_settings\.[a-z]+\.[a-z0-9_]+$|^storefront_labels\.[a-z]+\.[a-z0-9_]+$|^section_schemes\.[a-z_]+$/)
           expect(seen.has(field.id)).toBe(false)
           seen.add(field.id)
         }

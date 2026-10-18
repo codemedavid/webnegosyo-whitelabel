@@ -21,7 +21,7 @@ interface AddedSheetProps {
   theme: OfferTheme
   tenantId: string
   hideCurrencySymbol?: boolean
-  primaryLabel: string
+  primaryLabel: React.ReactNode
   /** Put a suggestion in the cart. Only called for one-tap items. */
   onAdd: (item: MenuItem) => void
   /** Open a suggestion that needs a size or flavour chosen first. */

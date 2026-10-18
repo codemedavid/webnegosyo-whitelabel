@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { PrefetchingCard } from './prefetching-card'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -32,7 +33,7 @@ export const MenuGrid = memo(function MenuGrid({ items, onItemSelect, tenantSlug
       <div className="text-center py-16">
         <EmptyState
           icon={UtensilsCrossed}
-          title="No items found"
+          title={<StoreLabel name="menu.no_results" fallback="No items found" />}
           description="Try adjusting your search or filters"
         />
       </div>

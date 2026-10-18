@@ -8,6 +8,7 @@
  * screen and payment/QR dialogs are rendered by the page shell (shared).
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { useState } from 'react'
 import { ArrowLeft, Check, ChevronLeft } from 'lucide-react'
 import { getCheckoutPalette } from '@/lib/branding-utils'
@@ -106,7 +107,7 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold text-gray-900">Checkout</h1>
+            <h1 className="truncate text-lg font-bold text-gray-900"><StoreLabel name="checkout.title" fallback="Checkout" /></h1>
             <p className="truncate text-xs text-gray-500">{tenant.name}</p>
           </div>
         </div>

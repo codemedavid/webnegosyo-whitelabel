@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { isAboveTheFold, pageIndexOf } from '@/lib/above-the-fold'
 
 import type { MenuLayoutContentProps } from '@/storefront/contracts'
@@ -36,6 +37,7 @@ export const LayoutMagazine = memo(function LayoutMagazine({
     menuEngineeringEnabled,
     hideCurrencySymbol,
 }: Omit<LayoutMagazineProps, 'mobileGridColumns' | 'tenantSlug'>) {
+    const searchPlaceholder = useStorefrontLabel('menu.search_placeholder', 'Search the menu...')
     const activeColor = branding.menuCategoryActive || branding.primary
     const activeTextColor = getContrastColor(activeColor)
     const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
@@ -156,7 +158,7 @@ export const LayoutMagazine = memo(function LayoutMagazine({
                 <SearchBar
                     value={searchQuery}
                     onChange={setSearchQuery}
-                    placeholder="Search the menu..."
+                    placeholder={searchPlaceholder}
                     branding={branding}
                 />
             </div>
@@ -252,7 +254,7 @@ export const LayoutMagazine = memo(function LayoutMagazine({
                         <span className="text-3xl">🍽️</span>
                     </div>
                     <h3 className="text-xl font-semibold mb-2" style={{ color: branding.textPrimary }}>
-                        No items found
+                        <StoreLabel name="menu.no_results" fallback="No items found" />
                     </h3>
                     <p style={{ color: branding.textSecondary }}>
                         Try adjusting your search

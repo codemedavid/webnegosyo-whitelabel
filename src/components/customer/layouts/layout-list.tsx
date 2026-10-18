@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import type { MenuLayoutContentProps } from '@/storefront/contracts'
 
 import { memo, useMemo } from 'react'
@@ -34,6 +35,7 @@ export const LayoutList = memo(function LayoutList({
     menuEngineeringEnabled,
     hideCurrencySymbol,
 }: Omit<LayoutListProps, 'mobileGridColumns' | 'tenantSlug' | 'isLoading'>) {
+    const searchPlaceholder = useStorefrontLabel('menu.search_placeholder', 'Search...')
     const activeColor = branding.menuCategoryActive || branding.primary
     const activeTextColor = getContrastColor(activeColor)
     const inactiveColor = branding.menuCategoryInactive || branding.textSecondary
@@ -90,7 +92,7 @@ export const LayoutList = memo(function LayoutList({
                 <SearchBar
                     value={searchQuery}
                     onChange={setSearchQuery}
-                    placeholder="Search..."
+                    placeholder={searchPlaceholder}
                     branding={branding}
                 />
             </div>
@@ -172,7 +174,7 @@ export const LayoutList = memo(function LayoutList({
             {filteredItems.length === 0 ? (
                 <div className="text-center py-12">
                     <p className="text-sm" style={{ color: branding.textSecondary }}>
-                        No items found. Try a different search.
+                        <StoreLabel name="menu.no_results" fallback="No items found. Try a different search." />
                     </p>
                 </div>
             ) : (

@@ -8,6 +8,7 @@
  * shell (shared) — this component is pure presentation.
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { ArrowLeft, ShoppingBag } from 'lucide-react'
 import { getCartPalette } from '@/lib/branding-utils'
 import {
@@ -48,7 +49,7 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex flex-1 items-center gap-3">
-            <h1 className="text-xl font-bold text-gray-900 md:text-2xl" style={{ color: palette.text }}>Your Cart</h1>
+            <h1 className="text-xl font-bold text-gray-900 md:text-2xl" style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Your Cart" /></h1>
             {!isEmpty && (
               <span
                 className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
