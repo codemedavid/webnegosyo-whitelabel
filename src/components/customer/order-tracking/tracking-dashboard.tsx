@@ -44,6 +44,8 @@ export interface TrackingDashboardProps {
   readyNotice: { title: string; body: string } | null
   onAcknowledgeReady: () => void
   onBack: () => void
+  /** The ready alert takes focus when it opens (off in the Studio preview, where the owner is typing). */
+  shouldFocusAlert?: boolean
 }
 
 export function TrackingDashboard({
@@ -65,6 +67,7 @@ export function TrackingDashboard({
   readyNotice,
   onAcknowledgeReady,
   onBack,
+  shouldFocusAlert = true,
 }: TrackingDashboardProps) {
   const isCancelled = data.status === 'cancelled'
   const canRing = !data.isTerminal && data.status !== 'ready' && !isCancelled
@@ -143,7 +146,7 @@ export function TrackingDashboard({
           </main>
 
           {readyNotice && (
-            <ReadyAlertOverlay title={readyNotice.title} body={readyNotice.body} onAcknowledge={onAcknowledgeReady} />
+            <ReadyAlertOverlay title={readyNotice.title} body={readyNotice.body} onAcknowledge={onAcknowledgeReady} shouldFocus={shouldFocusAlert} />
           )}
         </div>
       </TrackingOptionsProvider>

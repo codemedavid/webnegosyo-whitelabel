@@ -38,6 +38,8 @@ interface AddToWalletButtonsProps {
   tenantId: string
   trackingToken: string
   wallets: WalletAvailability | null
+  /** The Branding Studio's sample card: the badges show but go nowhere. */
+  isSample?: boolean
 }
 
 /**
@@ -48,7 +50,7 @@ interface AddToWalletButtonsProps {
  * Google's own save page. The receipt's tracking token is the proof of
  * ownership — the pass is for the number on THIS order, never a typed one.
  */
-export function AddToWalletButtons({ orderId, tenantId, trackingToken, wallets }: AddToWalletButtonsProps) {
+export function AddToWalletButtons({ orderId, tenantId, trackingToken, wallets, isSample = false }: AddToWalletButtonsProps) {
   const kinds = availableWallets(wallets)
   if (kinds.length === 0) return null
   const query = new URLSearchParams({ orderId, tenantId, token: trackingToken }).toString()
@@ -60,17 +62,17 @@ export function AddToWalletButtons({ orderId, tenantId, trackingToken, wallets }
       data-testid="add-to-wallet"
       data-branding-scope="loyalty/wallet"
     >
-      <h3 className="text-sm font-bold" style={{ color: 'var(--trk-loy-text)' }}>
+      <h3 className="text-sm font-bold" style={{ color: 'var(--trk-wallet-text)' }}>
         <StoreLabel name="loyalty.wallet_title" fallback="Save your card to your phone" />
       </h3>
-      <p className="mt-0.5 text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
+      <p className="mt-0.5 text-xs" style={{ color: 'var(--trk-wallet-muted)' }}>
         Tap below — your stamps update by themselves, no app needed.
       </p>
       <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
         {kinds.map((kind) => (
           <a
             key={kind}
-            href={`${WALLET_ART[kind].href}?${query}`}
+            href={isSample ? undefined : `${WALLET_ART[kind].href}?${query}`}
             className="inline-flex rounded-[10px] transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- static vendor badge SVG */}

@@ -11,6 +11,7 @@ import {
     TRACKING_STYLE_KEYS,
     TRACKING_TOGGLES,
     readTrackingStyle,
+    toTrackingHex,
     trackingStyleSchema,
 } from '@/lib/tracking-style/keys'
 
@@ -91,5 +92,23 @@ describe('readTrackingStyle', () => {
     it('lists every colour key under TRACKING_COLOR_KEYS', () => {
         expect(TRACKING_COLOR_KEYS).toContain('hero_color')
         expect(TRACKING_COLOR_KEYS).toContain('stamp_color')
+    })
+})
+
+describe('toTrackingHex', () => {
+    it('turns store colours into the hex the tracking schema accepts', () => {
+        expect(toTrackingHex('#ABC')).toBe('#aabbcc')
+        expect(toTrackingHex('#e4572eff')).toBe('#e4572e')
+        expect(toTrackingHex('rgb(250, 250, 250)')).toBe('#fafafa')
+        expect(toTrackingHex('rgba(0,0,0,0.5)')).toBe('#000000')
+        for (const hex of ['#abc', '#e4572e', 'rgb(1,2,3)'].map(toTrackingHex)) {
+            expect(trackingStyleSchema.safeParse({ text: hex }).success).toBe(true)
+        }
+    })
+
+    it('gives up on what it cannot read', () => {
+        expect(toTrackingHex('white')).toBeNull()
+        expect(toTrackingHex('rgb(300,0,0)')).toBeNull()
+        expect(toTrackingHex('var(--x)')).toBeNull()
     })
 })

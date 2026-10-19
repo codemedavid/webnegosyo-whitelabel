@@ -111,6 +111,26 @@ export function normalizeHex(color: string): string {
     return lower.length === 4 ? `#${lower.slice(1).split('').map((c) => c + c).join('')}` : lower
 }
 
+const RGB_COLOR = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)$/i
+const HEX_WITH_ALPHA = /^#([0-9a-f]{6})[0-9a-f]{2}$/i
+
+/**
+ * A store colour as a tracking colour (strict six-digit hex), or null when it
+ * can't be one. Store colours may be saved as rgb() or 8-digit hex; offering
+ * those raw would fail the whole publish (the tracking schema takes hex only).
+ */
+export function toTrackingHex(color: string): string | null {
+    const value = color.trim()
+    if (HEX_COLOR.test(value)) return normalizeHex(value)
+    const withAlpha = HEX_WITH_ALPHA.exec(value)
+    if (withAlpha) return `#${withAlpha[1].toLowerCase()}`
+    const rgb = RGB_COLOR.exec(value)
+    if (!rgb) return null
+    const channels = rgb.slice(1, 4).map(Number)
+    if (channels.some((channel) => channel > 255)) return null
+    return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

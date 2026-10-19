@@ -78,8 +78,8 @@ const TRACKING_VARS: Readonly<Record<keyof TrackingPalette, string>> = {
   bandText: '--trk-band-text',
   bandBorder: '--trk-band-border',
   bandChip: '--trk-band-chip',
-  bandColor: '--trk-band-color',
   bandSoft: '--trk-band-soft',
+  bandSoftText: '--trk-band-soft-text',
   bandInk: '--trk-band-ink',
   stamp: '--trk-stamp',
   stampSoft: '--trk-stamp-soft',
@@ -97,6 +97,8 @@ const TRACKING_VARS: Readonly<Record<keyof TrackingPalette, string>> = {
   loyaltyButtonText: '--trk-on-loy-cta',
   loyaltyLink: '--trk-loy-link',
   walletBackground: '--trk-wallet-bg',
+  walletText: '--trk-wallet-text',
+  walletMuted: '--trk-wallet-muted',
 }
 
 /** Every `--trk-*` variable the theme defines (the components may read only these). */

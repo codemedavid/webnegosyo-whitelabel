@@ -74,6 +74,7 @@ import {
   parseTrackingPreview,
   type TrackingPreviewState,
 } from '@/lib/branding-studio/tracking-preview'
+import { toTrackingHex } from '@/lib/tracking-style/keys'
 import { previewStatesForField, type ProductPreviewState } from '@/lib/branding-studio/preview-states'
 import { componentBreadcrumb, getBrandingComponent } from '@/lib/branding-components'
 import { FieldRow } from './field-row'
@@ -205,6 +206,11 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     { label: 'Soft text', color: desktopBranding.textSecondary },
     { label: 'Lines', color: desktopBranding.border },
   ].filter((entry): entry is StoreColor => typeof entry.color === 'string' && entry.color.length > 0), [desktopBranding])
+  // The order page / loyalty card take hex only: offer store colours converted (or not at all).
+  const hexStoreColors = useMemo<StoreColor[]>(() => storeColors.flatMap((entry) => {
+    const color = toTrackingHex(entry.color)
+    return color ? [{ ...entry, color }] : []
+  }), [storeColors])
   const contrastIssues = useMemo(() => listTenantContrastIssues(draft, savedTenant), [draft, savedTenant])
   const productFields = useMemo(
     () => createProductFieldResolver(productDraft, savedProduct, desktopBranding),
@@ -413,7 +419,9 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     })
   // The sample order, switched so the setting in focus is on screen; keyed by
   // content so the preview isn't re-posted on every render.
-  const trackingFocusIds = [hoveredFieldId, lastEditedFieldId, ...(selectedScope ? getBrandingComponent(selectedScope)?.fieldIds ?? [] : [])]
+  // Edits and taps only — not hover: brushing past a row must not flip the
+  // sample (or open the full-screen alert) while the owner is aiming elsewhere.
+  const trackingFocusIds = [lastEditedFieldId, ...(selectedScope ? getBrandingComponent(selectedScope)?.fieldIds ?? [] : [])]
     .filter((fieldId): fieldId is string => Boolean(fieldId))
   const trackingShownKey = isTrackingSurface ? JSON.stringify(focusTrackingPreview(trackingPick, trackingFocusIds)) : ''
   const trackingShown = useMemo(() => (trackingShownKey ? parseTrackingPreview(JSON.parse(trackingShownKey)) : null), [trackingShownKey])
@@ -477,7 +485,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                 ? productFields.contrastIssue(field.id)
                 : contrastIssues.find((issue) => issue.fieldId === field.id) ?? null
           }
-          storeColors={storeColors}
+          storeColors={field.id.startsWith('tracking_style.') ? hexStoreColors : storeColors}
         />
       </div>
     )

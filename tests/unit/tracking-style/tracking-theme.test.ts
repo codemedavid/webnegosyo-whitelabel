@@ -14,7 +14,7 @@ import {
 } from '@/lib/branding-utils'
 import { contrastRatio } from '@/lib/color-contrast'
 import { buildTrackingTheme } from '@/components/customer/order-tracking/tracking-theme'
-import { listTrackingContrastIssues, resolveTrackingPalette } from '@/lib/tracking-style/palette'
+import { listTrackingContrastIssues, resolveTrackingPalette, resolveTrackingSettingColors } from '@/lib/tracking-style/palette'
 import {
     DEFAULT_TRACKING_OPTIONS,
     TRACKING_CHOICES,
@@ -182,8 +182,40 @@ describe('readable text', () => {
         expect(contrastRatio(band.bandText, '#fff3b0')).toBeGreaterThanOrEqual(4.5)
     })
 
+    it('keeps the cancelled banner readable once the owner changes the accent', () => {
+        const palette = resolveTrackingPalette(DARK, style({ accent: '#ffd600' }))
+        const end = '#' + [0xef, 0x44, 0x44].map((c) => Math.round(c * 0.7).toString(16).padStart(2, '0')).join('')
+
+        // The headline is large text: 3:1 across the whole red gradient.
+        expect(contrastRatio(palette.cancelledText, DARK.error)).toBeGreaterThanOrEqual(3)
+        expect(contrastRatio(palette.cancelledText, end)).toBeGreaterThanOrEqual(3)
+    })
+
+    it('keeps the faintest text readable once the owner picks a soft text', () => {
+        const palette = resolveTrackingPalette(STORES.default, style({ muted_text: '#eeeeee' }))
+
+        expect(palette.textFaint).toBe(palette.textMuted)
+        expect(contrastRatio(palette.textFaint, palette.card)).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it('keeps the checkout panel\'s band text and the wallet box text readable', () => {
+        const palette = resolveTrackingPalette(STORES.default, style({ band_color: '#ffffff', wallet_background: '#1d1815' }))
+
+        expect(contrastRatio(palette.bandSoftText, palette.loyaltyBackground)).toBeGreaterThanOrEqual(4.5)
+        expect(contrastRatio(palette.walletText, '#1d1815')).toBeGreaterThanOrEqual(4.5)
+        expect(contrastRatio(palette.walletMuted, '#1d1815')).toBeGreaterThanOrEqual(4.5)
+    })
+
     it('reports nothing for a store that never set these colours', () => {
         expect(Object.values(STORES).flatMap((branding) => listTrackingContrastIssues(branding, style()))).toEqual([])
+    })
+})
+
+describe('resolveTrackingSettingColors', () => {
+    it('names an opaque colour for every setting (what the Studio shows beside a blank one)', () => {
+        const settings = resolveTrackingSettingColors(DARK, style())
+
+        for (const key of TRACKING_COLOR_KEYS) expect([key, settings[key]]).toEqual([key, expect.stringMatching(/^#[0-9a-f]{6}$/i)])
     })
 })
 

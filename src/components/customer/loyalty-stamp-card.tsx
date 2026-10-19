@@ -52,6 +52,8 @@ interface LoyaltyStampCardProps {
   wallets?: WalletAvailability | null
   /** Called after a successful claim so the page can re-read the live card. */
   onClaimed?: () => void
+  /** The Branding Studio's sample card: looks real, but never looks up or saves a number. */
+  isSample?: boolean
 }
 
 type Phase =
@@ -85,6 +87,7 @@ export function LoyaltyStampCard({
   card = null,
   wallets = null,
   onClaimed,
+  isSample = false,
 }: LoyaltyStampCardProps) {
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
@@ -102,12 +105,12 @@ export function LoyaltyStampCard({
   const typedProgress = useLoyaltyProgress({
     tenantId,
     phone: e164,
-    enabled: offer !== null && (phase.kind === 'idle' || phase.kind === 'error'),
+    enabled: !isSample && offer !== null && (phase.kind === 'idle' || phase.kind === 'error'),
   })
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!e164 || isSaving) return
+    if (!e164 || isSaving || isSample) return
 
     setPhase({ kind: 'saving' })
     try {
@@ -144,7 +147,7 @@ export function LoyaltyStampCard({
     return (
       <CardShell>
         <EarnedCardState card={card} storeName={storeName} logoUrl={logoUrl} />
-        <AddToWalletButtons orderId={orderId} tenantId={tenantId} trackingToken={trackingToken} wallets={wallets} />
+        <AddToWalletButtons orderId={orderId} tenantId={tenantId} trackingToken={trackingToken} wallets={wallets} isSample={isSample} />
         {tenantSlug ? <ViewRewardsLink tenantSlug={tenantSlug} /> : null}
       </CardShell>
     )

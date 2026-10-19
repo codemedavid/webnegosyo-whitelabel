@@ -15,7 +15,7 @@ import { PickupQrCard } from '@/components/customer/pickup-qr-card'
 import { TrackingDashboard } from '@/components/customer/order-tracking/tracking-dashboard'
 import { buildTrackingTheme } from '@/components/customer/order-tracking/tracking-theme'
 import { getStatusIndex } from '@/components/customer/order-tracking/status-steps'
-import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
+import { stripPreviewMeta, useBrandingPreviewDraft } from '@/hooks/use-branding-preview'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { readTrackingStyle } from '@/lib/tracking-style/keys'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
@@ -49,8 +49,11 @@ interface TrackingStudioPreviewProps {
 }
 
 export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName, loyaltyOffer, items }: TrackingStudioPreviewProps) {
-  const previewTenant = useBrandingPreviewTenant(tenant)
   const draft = useBrandingPreviewDraft()
+  // The draft over the saved columns, WITHOUT the phone overrides: the live
+  // order page is themed on the server from the store's columns alone, so the
+  // 390px preview must not show colours a real phone never gets.
+  const previewTenant = useMemo(() => (draft ? { ...tenant, ...stripPreviewMeta(draft) } : tenant), [tenant, draft])
   const state = parseTrackingPreview(draft?.[TRACKING_PREVIEW_KEY])
   // Tapping "Ring me" or "Got it" in Try-it mode answers until the Show bar changes.
   const [armedTaps, setArmedTaps] = useState<string | null>(null)
@@ -114,6 +117,7 @@ export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName,
             view={view}
             card={sampleStampCard(offer, state.loyalty)}
             wallets={SAMPLE_WALLETS}
+            isSample
           />
         ) : null}
         pickup={state.extras.includes('pickup') && data.status !== 'cancelled' ? (
@@ -127,6 +131,7 @@ export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName,
         ) : null}
         readyNotice={isAlertShown ? buildReadyNotice({ shortId: SAMPLE_SHORT_ID, storeName, kind: data.orderTypeKind }) : null}
         onAcknowledgeReady={() => setDismissedAlert(stateKey)}
+        shouldFocusAlert={false}
         onBack={() => undefined}
       />
       <BrandingInspector />

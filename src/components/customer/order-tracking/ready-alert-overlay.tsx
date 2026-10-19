@@ -7,6 +7,8 @@ interface ReadyAlertOverlayProps {
   title: string
   body: string
   onAcknowledge: () => void
+  /** Move focus to "Got it" on open (default). */
+  shouldFocus?: boolean
 }
 
 /**
@@ -14,12 +16,12 @@ interface ReadyAlertOverlayProps {
  * One big button silences it — the customer should never hunt for a way to
  * stop the noise.
  */
-export function ReadyAlertOverlay({ title, body, onAcknowledge }: ReadyAlertOverlayProps) {
+export function ReadyAlertOverlay({ title, body, onAcknowledge, shouldFocus = true }: ReadyAlertOverlayProps) {
   const buttonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    buttonRef.current?.focus()
-  }, [])
+    if (shouldFocus) buttonRef.current?.focus()
+  }, [shouldFocus])
 
   return (
     <div

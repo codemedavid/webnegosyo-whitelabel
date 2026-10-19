@@ -81,7 +81,7 @@ export function LoyaltyProgressPanel({
       <div
         data-branding-scope="loyalty/band"
         className="flex items-center gap-2 px-4 py-2.5"
-        style={{ backgroundColor: 'var(--trk-band-soft)', color: 'var(--trk-band-color)' }}
+        style={{ backgroundColor: 'var(--trk-band-soft)', color: 'var(--trk-band-soft-text)' }}
       >
         {hasReward && <RewardBurst emoji={steps[0]?.emoji} />}
         {hasReward ? <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" /> : <Stamp className="h-4 w-4 shrink-0" aria-hidden="true" />}
