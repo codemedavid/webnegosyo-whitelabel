@@ -27,8 +27,9 @@ export function ReadyAlertOverlay({ title, body, onAcknowledge }: ReadyAlertOver
       aria-modal="true"
       aria-labelledby="ready-alert-title"
       aria-describedby="ready-alert-body"
+      data-branding-scope="tracking/alert"
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 px-6 text-center"
-      style={{ background: 'linear-gradient(135deg, var(--trk-accent), var(--trk-accent-strong))', color: 'var(--trk-on-accent)' }}
+      style={{ background: 'var(--trk-alert-bg)', color: 'var(--trk-alert-text)' }}
     >
       <span
         className="flex h-28 w-28 items-center justify-center rounded-full border-4 motion-safe:animate-pulse"
@@ -49,8 +50,8 @@ export function ReadyAlertOverlay({ title, body, onAcknowledge }: ReadyAlertOver
         ref={buttonRef}
         type="button"
         onClick={onAcknowledge}
-        className="h-14 w-full max-w-xs rounded-full text-lg font-semibold shadow-lg"
-        style={{ backgroundColor: 'var(--trk-on-accent)', color: 'var(--trk-accent-strong)' }}
+        className="h-14 w-full max-w-xs text-lg font-semibold shadow-lg"
+        style={{ borderRadius: 'var(--trk-radius-pill)', backgroundColor: 'var(--trk-alert-button)', color: 'var(--trk-alert-button-text)' }}
       >
         Got it
       </button>

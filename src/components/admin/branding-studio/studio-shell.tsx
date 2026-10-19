@@ -8,7 +8,7 @@
  * Pure CSS breakpoints — nothing here measures the window.
  */
 
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { BrandingSurface } from '@/lib/branding-registry'
 
 export type SheetSize = 'peek' | 'half' | 'full'
@@ -27,6 +27,13 @@ interface SurfaceRailProps {
 }
 
 export function SurfaceRail({ surfaces, activeId, onPick }: SurfaceRailProps) {
+    // The phone's chip row scrolls: keep the open screen's chip in view
+    // (Order status / Loyalty card sit past the edge when opened from the preview).
+    const activeRef = useRef<HTMLButtonElement>(null)
+    useEffect(() => {
+        activeRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    }, [activeId])
+
     return (
         <nav
             aria-label="Screens"
@@ -37,6 +44,7 @@ export function SurfaceRail({ surfaces, activeId, onPick }: SurfaceRailProps) {
                 return (
                     <button
                         key={surface.id}
+                        ref={isActive ? activeRef : undefined}
                         type="button"
                         onClick={() => onPick(surface.id)}
                         aria-current={isActive ? 'page' : undefined}

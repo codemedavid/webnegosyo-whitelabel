@@ -23,6 +23,7 @@ import { foldPackSettings, isPackFieldId, packStudioSections } from '@/lib/store
 import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS, type LabelScreen } from '@/lib/storefront-labels'
 import { SECTION_SCHEME_IDS } from '@/lib/section-schemes'
 import { isJsonColumnFieldId } from '@/lib/branding-studio/studio-columns'
+import { LOYALTY_STYLE_SECTIONS, TRACKING_STYLE_SECTIONS } from '@/lib/tracking-style/studio-sections'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
@@ -32,6 +33,8 @@ export interface BrandingField {
   type: BrandingFieldType
   /** Select options (first option is not implicitly the default). */
   options?: readonly string[]
+  /** Select fields only: words shown for an option instead of its stored value. */
+  optionLabels?: Readonly<Record<string, string>>
   /** Value used when nothing in draft/tenant/inherit chain is set. */
   default?: string | number | boolean | null
   /** Registry field id this field inherits from when unset. */
@@ -71,7 +74,7 @@ export interface BrandingSection {
 }
 
 export interface BrandingSurface {
-  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
+  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'tracking' | 'loyalty' | 'footer' | 'flash'
   label: string
   glyph: string
   description: string
@@ -505,6 +508,20 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       // product_detail_settings): the Studio lists it after the page's own sections.
       { title: 'Labels', fields: labelFields(['item']) },
     ],
+  },
+  {
+    id: 'tracking',
+    label: 'Order Status',
+    glyph: 'O',
+    description: 'The page customers follow their order on — banner, timeline, receipt and the ready alert. Blank colours follow your brand.',
+    sections: [...TRACKING_STYLE_SECTIONS, { title: 'Labels', fields: labelFields(['tracking']) }],
+  },
+  {
+    id: 'loyalty',
+    label: 'Loyalty Card',
+    glyph: 'L',
+    description: 'The stamp card — on the order page, at checkout and on the rewards page. Blank colours follow the order page.',
+    sections: [...LOYALTY_STYLE_SECTIONS, { title: 'Labels', fields: labelFields(['loyalty']) }],
   },
   {
     id: 'footer',

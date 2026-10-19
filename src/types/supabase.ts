@@ -8528,6 +8528,7 @@ export type Database = {
           text_primary_color: string | null
           text_secondary_color: string | null
           timezone: string
+          tracking_style: Json
           updated_at: string
           warning_color: string | null
           welcome_background_color: string | null
@@ -8819,6 +8820,7 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
           welcome_background_color?: string | null
@@ -9110,6 +9112,7 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
           welcome_background_color?: string | null

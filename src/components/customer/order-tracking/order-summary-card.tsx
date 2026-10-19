@@ -2,6 +2,7 @@
 
 import { Receipt } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import type { TrackingData } from '@/lib/order-tracking-service'
 
 interface OrderSummaryCardProps {
@@ -19,12 +20,13 @@ export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmoun
   return (
     <section
       aria-label="Order summary"
-      className="rounded-3xl border p-5 shadow-sm"
-      style={{ backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-card-border)' }}
+      data-branding-scope="tracking/summary"
+      className="border p-5 shadow-sm"
+      style={{ borderRadius: 'var(--trk-radius)', backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-card-border)' }}
     >
       <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--trk-text-muted)' }}>
         <Receipt className="h-4 w-4" aria-hidden="true" />
-        Your order
+        <StoreLabel name="tracking.summary_title" fallback="Your order" />
       </h2>
 
       <ul className="divide-y" style={{ borderColor: 'var(--trk-card-border)' }}>
@@ -34,7 +36,7 @@ export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmoun
               <p className="font-medium" style={{ color: 'var(--trk-text)' }}>
                 <span
                   className="mr-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-xs font-bold"
-                  style={{ backgroundColor: 'var(--trk-accent-soft)', color: 'var(--trk-accent)' }}
+                  style={{ backgroundColor: 'var(--trk-qty-bg)', color: 'var(--trk-qty-text)' }}
                 >
                   {item.quantity}×
                 </span>
@@ -71,7 +73,7 @@ export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmoun
         )}
         <div className="flex items-baseline justify-between pt-1">
           <span className="text-base font-bold" style={{ color: 'var(--trk-text)' }}>Total</span>
-          <span className="text-xl font-extrabold" style={{ color: 'var(--trk-accent)' }}>{formatPrice(total)}</span>
+          <span className="text-xl font-extrabold" style={{ color: 'var(--trk-total)' }}>{formatPrice(total)}</span>
         </div>
       </div>
     </section>

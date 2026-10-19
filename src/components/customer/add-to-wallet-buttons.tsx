@@ -1,6 +1,7 @@
 'use client'
 
 import type { WalletAvailability } from '@/lib/loyalty/wallet-pass/config'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 /**
  * Wallet artwork lives in `public/wallet/`. The Google badge and icon are
@@ -53,11 +54,16 @@ export function AddToWalletButtons({ orderId, tenantId, trackingToken, wallets }
   const query = new URLSearchParams({ orderId, tenantId, token: trackingToken }).toString()
 
   return (
-    <div className="mx-5 mb-5 rounded-2xl p-4 text-center" style={{ backgroundColor: 'var(--trk-accent-soft)' }} data-testid="add-to-wallet">
-      <h3 className="text-sm font-bold" style={{ color: 'var(--trk-text)' }}>
-        Save your card to your phone
+    <div
+      className="mx-5 mb-5 p-4 text-center"
+      style={{ borderRadius: 'var(--trk-radius-inner)', backgroundColor: 'var(--trk-wallet-bg)' }}
+      data-testid="add-to-wallet"
+      data-branding-scope="loyalty/wallet"
+    >
+      <h3 className="text-sm font-bold" style={{ color: 'var(--trk-loy-text)' }}>
+        <StoreLabel name="loyalty.wallet_title" fallback="Save your card to your phone" />
       </h3>
-      <p className="mt-0.5 text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+      <p className="mt-0.5 text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
         Tap below — your stamps update by themselves, no app needed.
       </p>
       <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
@@ -86,7 +92,7 @@ export function WalletHint({ wallets }: { wallets: WalletAvailability | null }) 
   const names = kinds.map((kind) => WALLET_ART[kind].name).join(' or ')
 
   return (
-    <p data-testid="wallet-hint" className="flex items-center justify-center gap-2 text-[11px]" style={{ color: 'var(--trk-text-muted)' }}>
+    <p data-testid="wallet-hint" className="flex items-center justify-center gap-2 text-[11px]" style={{ color: 'var(--trk-loy-muted)' }}>
       <span className="flex shrink-0 items-center gap-1">
         {kinds.map((kind) => (
           // eslint-disable-next-line @next/next/no-img-element -- static vendor icon SVG

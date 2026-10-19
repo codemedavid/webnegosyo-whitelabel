@@ -26,6 +26,7 @@ import {
 import { STOREFRONT_LABELS, cleanLabelText, type StorefrontLabelKey } from '@/lib/storefront-labels'
 import { getPreviewTarget } from './preview-routes'
 import { PREVIEW_STATES_KEY } from '@/lib/branding-studio/preview-states'
+import { TRACKING_PREVIEW_KEY, type TrackingPreviewState } from '@/lib/branding-studio/tracking-preview'
 import type { BrandingSurface } from '@/lib/branding-registry'
 
 const DRAFT_POST_DEBOUNCE_MS = 60
@@ -67,6 +68,8 @@ interface PreviewFrameProps {
   stateControls?: React.ReactNode
   /** Sample dishes for the cart and checkout previews (used only when the cart is empty). */
   sampleCart?: readonly unknown[]
+  /** What the sample order shows on the Order status / Loyalty card screens. */
+  trackingPreview?: TrackingPreviewState | null
   /** Screen switcher shown above the preview. */
   journey?: React.ReactNode
   /** Cart surfaces: the drawer over the menu or the full cart page. */
@@ -106,6 +109,7 @@ export function PreviewFrame({
   previewStates = NO_STATES,
   stateControls,
   sampleCart = NO_STATES,
+  trackingPreview = null,
   journey,
   cartView = 'drawer',
   phoneInsetClass = 'max-md:pb-[64px]',
@@ -121,6 +125,7 @@ export function PreviewFrame({
   const previewStatesRef = useRef(previewStates)
   const sampleCartRef = useRef(sampleCart)
   sampleCartRef.current = sampleCart
+  const trackingPreviewRef = useRef(trackingPreview)
   const inspectModeRef = useRef(inspectMode)
   const outlineRef = useRef({ selectedScope, hoveredFieldId })
   outlineRef.current = { selectedScope, hoveredFieldId }
@@ -169,6 +174,7 @@ export function PreviewFrame({
           __productMobileOverrides: productMobileOverridesRef.current ?? {},
           [PREVIEW_STATES_KEY]: previewStatesRef.current,
           [SAMPLE_CART_KEY]: sampleCartRef.current,
+          [TRACKING_PREVIEW_KEY]: trackingPreviewRef.current,
         },
       },
       window.location.origin
@@ -197,12 +203,13 @@ export function PreviewFrame({
     productMobileOverridesRef.current = productMobileOverrides
     surfaceRef.current = surfaceId
     previewStatesRef.current = previewStates
+    trackingPreviewRef.current = trackingPreview
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(postDraft, DRAFT_POST_DEBOUNCE_MS)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [draft, productDraft, categoryDraft, mobileOverrides, productMobileOverrides, surfaceId, previewStates, postDraft])
+  }, [draft, productDraft, categoryDraft, mobileOverrides, productMobileOverrides, surfaceId, previewStates, trackingPreview, postDraft])
 
   // Push inspect-mode changes immediately (no debounce — it's a UI toggle).
   useEffect(() => {

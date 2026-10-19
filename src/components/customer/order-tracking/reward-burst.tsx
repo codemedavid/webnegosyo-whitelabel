@@ -1,6 +1,7 @@
 'use client'
 
 import { motion, useReducedMotion } from 'framer-motion'
+import { useTrackingOptions } from './tracking-options'
 
 interface RewardBurstProps {
   /** The reward's emoji, scattered among the confetti. */
@@ -12,12 +13,14 @@ const DISTANCE_PX = 90
 
 /**
  * A one-shot confetti pop for "your reward is ready". Decorative only: hidden
- * from assistive tech, never blocks a tap, and absent under reduced motion.
+ * from assistive tech, never blocks a tap, and absent under reduced motion
+ * or when the owner switched confetti off.
  * Place inside a `relative` container.
  */
 export function RewardBurst({ emoji = '🎉' }: RewardBurstProps) {
   const reduceMotion = useReducedMotion()
-  if (reduceMotion) return null
+  const { confetti } = useTrackingOptions()
+  if (reduceMotion || !confetti) return null
 
   return (
     <div data-testid="reward-burst" aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-visible">
@@ -29,7 +32,7 @@ export function RewardBurst({ emoji = '🎉' }: RewardBurstProps) {
           <motion.span
             key={index}
             className={isEmoji ? 'absolute text-lg' : 'absolute h-2 w-2 rounded-sm'}
-            style={isEmoji ? undefined : { backgroundColor: index % 2 ? 'var(--trk-accent)' : 'var(--trk-warning)' }}
+            style={isEmoji ? undefined : { backgroundColor: index % 2 ? 'var(--trk-stamp)' : 'var(--trk-warning)' }}
             initial={{ x: 0, y: 0, scale: 0.4, opacity: 1, rotate: 0 }}
             animate={{ x: Math.cos(angle) * distance, y: Math.sin(angle) * distance, scale: 1, opacity: 0, rotate: 180 }}
             transition={{ duration: 1.1, ease: 'easeOut', delay: 0.15 + index * 0.015 }}

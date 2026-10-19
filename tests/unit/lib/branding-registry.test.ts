@@ -21,7 +21,7 @@ import {
 import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS } from '@/lib/storefront-labels'
 
 describe('branding registry structure', () => {
-  it('defines the eleven editor surfaces in rail order', () => {
+  it('defines the thirteen editor surfaces in rail order', () => {
     // Arrange / Act
     const ids = BRANDING_SURFACES.map((s) => s.id)
 
@@ -36,6 +36,8 @@ describe('branding registry structure', () => {
       'checkout',
       'upsell',
       'product',
+      'tracking',
+      'loyalty',
       'footer',
       'flash',
     ])
@@ -66,7 +68,7 @@ describe('branding registry structure', () => {
           if (field.type === 'note') continue
           // Storefront pack settings are virtual fields folded into one jsonb
           // column (see storefront-pack-studio), namespaced pack.key.
-          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$|^storefront_pack_settings\.[a-z]+\.[a-z0-9_]+$|^storefront_labels\.[a-z]+\.[a-z0-9_]+$|^section_schemes\.[a-z_]+$/)
+          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$|^storefront_pack_settings\.[a-z]+\.[a-z0-9_]+$|^storefront_labels\.[a-z]+\.[a-z0-9_]+$|^section_schemes\.[a-z_]+$|^tracking_style\.[a-z0-9_]+$/)
           expect(seen.has(field.id)).toBe(false)
           seen.add(field.id)
         }

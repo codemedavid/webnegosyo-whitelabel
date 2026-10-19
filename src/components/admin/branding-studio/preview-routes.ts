@@ -10,9 +10,11 @@
  *    that drawer — not the standalone `/cart` page — is the cart customers see.
  *  - `product` navigates to the real product detail page for a sample item so
  *    its ~97 product_detail_settings are visible and editable in place.
+ *  - `tracking` and `loyalty` open the order page with a sample order.
  */
 
 import type { BrandingSurface } from '@/lib/branding-registry'
+import { TRACKING_PREVIEW_ORDER_ID } from '@/lib/branding-studio/tracking-preview'
 
 export interface PreviewTarget {
   /** Storefront path the iframe should load (no query string). */
@@ -37,6 +39,10 @@ export function getPreviewTarget(
       return cartView === 'page' ? { path: `${base}/cart` } : { path: `${base}/menu`, openCart: true }
     case 'checkout':
       return { path: `${base}/checkout` }
+    case 'tracking':
+    case 'loyalty':
+      // A sample order (no real order or token needed); the loyalty card sits on it.
+      return { path: `${base}/order/${TRACKING_PREVIEW_ORDER_ID}` }
     case 'layout':
       // A storefront pack draws the tenant home (legacy shows its menu there).
       return { path: base }

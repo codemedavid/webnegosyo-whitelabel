@@ -163,7 +163,7 @@ function SelectRow({ field, value, onChange, gallery }: FieldRowProps) {
                   : 'border-neutral-200 bg-transparent text-neutral-500 hover:border-neutral-400'
               }`}
             >
-              {option}
+              {field.optionLabels?.[option] ?? option}
             </button>
           )
         })}

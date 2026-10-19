@@ -26,16 +26,16 @@ export function RewardLadder({ steps, balance, earnMode, showHeadline = true }: 
   const unit = earnMode === 'stamp' ? 'stamps' : 'points'
 
   return (
-    <div data-testid="reward-ladder" className="space-y-2">
+    <div data-testid="reward-ladder" data-branding-scope="loyalty/rewards" className="space-y-2">
       {showHeadline && next ? (
-        <p data-testid="next-reward" className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'var(--trk-text)' }}>
+        <p data-testid="next-reward" className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'var(--trk-loy-text)' }}>
           <span aria-hidden="true">{next.step.emoji}</span>
           {next.headline}
         </p>
       ) : null}
       {steps.length > 1 ? (
         <>
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--trk-text-muted)' }}>
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--trk-loy-muted)' }}>
             Rewards on this card
           </p>
           <ul className="flex flex-wrap gap-1.5">
@@ -49,17 +49,17 @@ export function RewardLadder({ steps, balance, earnMode, showHeadline = true }: 
                   data-reached={isReached ? 'true' : 'false'}
                   className="flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-xs font-semibold"
                   style={{
-                    borderColor: isNext ? 'var(--trk-accent)' : 'var(--trk-card-border)',
-                    backgroundColor: isReached ? 'var(--trk-accent-soft)' : isNext ? 'var(--trk-accent-tint)' : 'var(--trk-card)',
-                    color: 'var(--trk-text)',
+                    borderColor: isNext ? 'var(--trk-stamp-next)' : 'var(--trk-loy-border)',
+                    backgroundColor: isReached ? 'var(--trk-stamp-soft)' : isNext ? 'var(--trk-stamp-next-tint)' : 'var(--trk-loy-bg)',
+                    color: 'var(--trk-loy-text)',
                   }}
                 >
-                  <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full" style={{ backgroundColor: 'var(--trk-card)' }}>
+                  <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full" style={{ backgroundColor: 'var(--trk-loy-bg)' }}>
                     <RewardIcon step={step} size={24} />
                   </span>
                   <span>{step.label}</span>
-                  <span style={{ color: 'var(--trk-text-muted)' }}>· {step.at} {unit}</span>
-                  {isReached ? <Check className="h-3 w-3" strokeWidth={3} style={{ color: 'var(--trk-success)' }} aria-label="reached" /> : null}
+                  <span style={{ color: 'var(--trk-loy-muted)' }}>· {step.at} {unit}</span>
+                  {isReached ? <Check className="h-3 w-3" strokeWidth={3} style={{ color: 'var(--trk-stamp-reached)' }} aria-label="reached" /> : null}
                 </li>
               )
             })}
