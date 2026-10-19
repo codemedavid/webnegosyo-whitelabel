@@ -66,6 +66,15 @@ import { listTenantContrastIssues } from '@/lib/branding-studio/tenant-contrast'
 import type { StoreColor } from './color-picker'
 import { ContrastSummary } from './contrast-summary'
 import { PreviewStateBar } from './preview-state-bar'
+import { TrackingPreviewBar } from './tracking-preview-bar'
+import { CartPreviewBar } from './cart-preview-bar'
+import {
+  DEFAULT_TRACKING_PREVIEW,
+  focusTrackingPreview,
+  parseTrackingPreview,
+  type TrackingPreviewState,
+} from '@/lib/branding-studio/tracking-preview'
+import { toTrackingHex } from '@/lib/tracking-style/keys'
 import { previewStatesForField, type ProductPreviewState } from '@/lib/branding-studio/preview-states'
 import { componentBreadcrumb, getBrandingComponent } from '@/lib/branding-components'
 import { FieldRow } from './field-row'
@@ -85,6 +94,8 @@ const PHONE_EDITOR_QUERY = '(max-width: 767px)'
 const NO_SAMPLE_DISHES: readonly MenuItem[] = []
 /** Screens whose preview needs a cart with something in it. */
 const CART_SURFACES = new Set<BrandingSurface['id']>(['cart', 'upsell', 'checkout'])
+/** Screens previewed on the sample order page. */
+const TRACKING_SURFACES = new Set<BrandingSurface['id']>(['tracking', 'loyalty'])
 
 interface BrandingStudioProps {
   tenant: Tenant
@@ -163,6 +174,8 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   // Cart preview: sample dishes, or the empty cart.
   const [isCartEmptyPreview, setIsCartEmptyPreview] = useState(false)
   const [cartView, setCartView] = useState<'drawer' | 'page'>('drawer')
+  // Order status / Loyalty card: what the sample order shows.
+  const [trackingPick, setTrackingPick] = useState<TrackingPreviewState>(DEFAULT_TRACKING_PREVIEW)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const selectedScopeRef = useRef(selectedScope)
   selectedScopeRef.current = selectedScope
@@ -193,6 +206,11 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     { label: 'Soft text', color: desktopBranding.textSecondary },
     { label: 'Lines', color: desktopBranding.border },
   ].filter((entry): entry is StoreColor => typeof entry.color === 'string' && entry.color.length > 0), [desktopBranding])
+  // The order page / loyalty card take hex only: offer store colours converted (or not at all).
+  const hexStoreColors = useMemo<StoreColor[]>(() => storeColors.flatMap((entry) => {
+    const color = toTrackingHex(entry.color)
+    return color ? [{ ...entry, color }] : []
+  }), [storeColors])
   const contrastIssues = useMemo(() => listTenantContrastIssues(draft, savedTenant), [draft, savedTenant])
   const productFields = useMemo(
     () => createProductFieldResolver(productDraft, savedProduct, desktopBranding),
@@ -221,6 +239,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     [surfaceId]
   )
   const isProductSurface = surface.id === 'product'
+  const isTrackingSurface = TRACKING_SURFACES.has(surface.id)
   const isCategoriesSurface = surface.id === 'categories'
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({ 0: true })
 
@@ -398,6 +417,14 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
       else next.add(state)
       return next
     })
+  // The sample order, switched so the setting in focus is on screen; keyed by
+  // content so the preview isn't re-posted on every render.
+  // Edits and taps only — not hover: brushing past a row must not flip the
+  // sample (or open the full-screen alert) while the owner is aiming elsewhere.
+  const trackingFocusIds = [lastEditedFieldId, ...(selectedScope ? getBrandingComponent(selectedScope)?.fieldIds ?? [] : [])]
+    .filter((fieldId): fieldId is string => Boolean(fieldId))
+  const trackingShownKey = isTrackingSurface ? JSON.stringify(focusTrackingPreview(trackingPick, trackingFocusIds)) : ''
+  const trackingShown = useMemo(() => (trackingShownKey ? parseTrackingPreview(JSON.parse(trackingShownKey)) : null), [trackingShownKey])
   const tappedComponent = selectedScope ? getBrandingComponent(selectedScope) : null
   const selectedComponent = tappedComponent?.surfaceId === surface.id ? tappedComponent : null
   const isFieldShown = (field: BrandingField) =>
@@ -441,7 +468,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           isSet={usesMobilePath ? isFieldSet(field.id, activeMobileDraft, activeSavedMobile) : desktopIsSet}
           inheritLabel={usesMobilePath ? 'Desktop' : desktopInherit}
           onChange={(value) => {
-            if (isProductSurface) setLastEditedFieldId(field.id)
+            if (isProductSurface || isTrackingSurface) setLastEditedFieldId(field.id)
             return usesMobilePath
               ? (isProductField ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
               : (isProductField ? setProductFieldValue : setFieldValue)(field.id, value)
@@ -458,7 +485,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                 ? productFields.contrastIssue(field.id)
                 : contrastIssues.find((issue) => issue.fieldId === field.id) ?? null
           }
-          storeColors={storeColors}
+          storeColors={field.id.startsWith('tracking_style.') ? hexStoreColors : storeColors}
         />
       </div>
     )
@@ -727,42 +754,30 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
             !CART_SURFACES.has(surface.id) || (isCartEmptyPreview && surface.id === 'cart') ? NO_SAMPLE_DISHES : sampleCartItems
           }
           cartView={cartView}
+          trackingPreview={trackingShown}
           phoneInsetClass={previewInsetFor(sheetSize)}
           journey={<JourneyBar surfaceId={surface.id} onPick={pickSurface} />}
           stateControls={
             isProductSurface ? (
               <PreviewStateBar chosen={chosenStates} automatic={automaticStates} onToggle={toggleState} />
+            ) : trackingShown ? (
+              <TrackingPreviewBar
+                chosen={trackingPick}
+                shown={trackingShown}
+                onChange={(next) => {
+                  setTrackingPick(next)
+                  // The owner's pick wins over the last edit's automatic switch.
+                  setLastEditedFieldId(null)
+                }}
+                isLoyaltyFirst={surface.id === 'loyalty'}
+              />
             ) : surface.id === 'cart' ? (
-              <div className="mx-auto mt-3 flex items-center gap-1.5" role="group" aria-label="Show in preview">
-                <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">Show</span>
-                {[false, true].map((isEmpty) => (
-                  <button
-                    key={String(isEmpty)}
-                    type="button"
-                    aria-pressed={isCartEmptyPreview === isEmpty}
-                    onClick={() => setIsCartEmptyPreview(isEmpty)}
-                    className={`rounded-full border px-2.5 py-1 text-[11.5px] font-bold ${
-                      isCartEmptyPreview === isEmpty ? 'border-[#2A6FDB] bg-[#2A6FDB] text-white' : 'border-[#D8D2C6] bg-white text-[#5E574C]'
-                    }`}
-                  >
-                    {isEmpty ? 'Empty cart' : 'With items'}
-                  </button>
-                ))}
-                <span aria-hidden="true" className="mx-1 text-[#D8D2C6]">|</span>
-                {(['drawer', 'page'] as const).map((view) => (
-                  <button
-                    key={view}
-                    type="button"
-                    aria-pressed={cartView === view}
-                    onClick={() => setCartView(view)}
-                    className={`rounded-full border px-2.5 py-1 text-[11.5px] font-bold ${
-                      cartView === view ? 'border-[#2A6FDB] bg-[#2A6FDB] text-white' : 'border-[#D8D2C6] bg-white text-[#5E574C]'
-                    }`}
-                  >
-                    {view === 'drawer' ? 'Cart drawer' : 'Cart page'}
-                  </button>
-                ))}
-              </div>
+              <CartPreviewBar
+                isEmpty={isCartEmptyPreview}
+                onEmptyChange={setIsCartEmptyPreview}
+                view={cartView}
+                onViewChange={setCartView}
+              />
             ) : null
           }
         />

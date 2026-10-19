@@ -110,3 +110,22 @@ describe('brandingSchema — mobile_overrides', () => {
     expect(parsed.mobile_overrides).toEqual({ header_color: null })
   })
 })
+
+describe('tracking_style (order page + loyalty card look)', () => {
+  it('accepts the Studio\'s own values on publish', () => {
+    const parsed = brandingPatchSchema.safeParse({ tracking_style: { hero_color: '#2a6fdb', hero_style: 'solid', confetti: false } })
+
+    expect(parsed.success).toBe(true)
+  })
+
+  it('refuses a colour that would break out of an inline style, and unknown keys', () => {
+    expect(brandingPatchSchema.safeParse({ tracking_style: { hero_color: 'red;background:url(x)' } }).success).toBe(false)
+    expect(brandingPatchSchema.safeParse({ tracking_style: { anything: '#ffffff' } }).success).toBe(false)
+  })
+
+  it('never rides in the per-device map', () => {
+    const parsed = brandingPatchSchema.safeParse({ mobile_overrides: { tracking_style: { hero_color: '#2a6fdb' } } })
+
+    expect(parsed.success && parsed.data.mobile_overrides).not.toHaveProperty('tracking_style')
+  })
+})

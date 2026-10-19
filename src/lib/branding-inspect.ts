@@ -55,6 +55,8 @@ const LABEL_SURFACE: Record<LabelScreen, BrandingSurface['id']> = {
   cart: 'cart',
   checkout: 'checkout',
   confirmation: 'checkout',
+  tracking: 'tracking',
+  loyalty: 'loyalty',
 }
 
 const LABEL_SCOPE_PREFIX = 'label/'
@@ -86,6 +88,8 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'product/labels': scope('product', 'Labels', 'Item page wording'),
   'cart/labels': scope('cart', 'Labels', 'Cart wording'),
   'checkout/labels': scope('checkout', 'Labels', 'Checkout wording'),
+  'tracking/labels': scope('tracking', 'Labels', 'Order page wording'),
+  'loyalty/labels': scope('loyalty', 'Labels', 'Loyalty card wording'),
 
   // Global brand — the page canvas itself.
   'global/palette': scope('global', 'Brand palette', 'Brand palette'),
@@ -133,6 +137,25 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'checkout/summary': scope('checkout', 'Colors', 'Order summary', 'checkout_summary_background_color'),
   'checkout/choice': scope('checkout', 'Colors', 'Order type & payment choice', 'checkout_accent_color'),
   'checkout/place-order': scope('checkout', 'Colors', 'Place order button', 'checkout_button_color'),
+
+  // Order-tracking page (the Studio previews it with a sample order).
+  'tracking/page': scope('tracking', 'Page', 'Order page'),
+  'tracking/header': scope('tracking', 'Header', 'Header'),
+  'tracking/hero': scope('tracking', 'Status banner', 'Status banner'),
+  'tracking/ring': scope('tracking', 'Ring-me button', '"Ring me" button'),
+  'tracking/timeline': scope('tracking', 'Progress timeline', 'Progress timeline'),
+  'tracking/summary': scope('tracking', 'Order summary', 'Order summary'),
+  'tracking/pickup': scope('tracking', 'Pickup code', 'Pickup code'),
+  'tracking/alert': scope('tracking', 'Ready alert', '"Order ready" alert'),
+
+  // Loyalty stamp card (order page, checkout, rewards page).
+  'loyalty/card': scope('loyalty', 'Card', 'Loyalty card'),
+  'loyalty/band': scope('loyalty', 'Top band', 'Top band'),
+  'loyalty/stamps': scope('loyalty', 'Stamps', 'Stamps'),
+  'loyalty/rewards': scope('loyalty', 'Stamps', 'Rewards on the card', 'tracking_style.stamp_reached'),
+  'loyalty/buttons': scope('loyalty', 'Buttons & links', 'Buttons & links'),
+  'loyalty/button': scope('loyalty', 'Buttons & links', 'Claim button', 'tracking_style.loyalty_button'),
+  'loyalty/wallet': scope('loyalty', 'Buttons & links', '"Save to phone" box', 'tracking_style.wallet_background'),
 
   // "Before you go…" upsell interstitial.
   'upsell/colors': scope('upsell', 'Colors', 'Checkout upsell'),

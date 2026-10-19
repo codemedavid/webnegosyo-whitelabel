@@ -9,6 +9,10 @@
 import { BRANDING_FIELD_INDEX, BRANDING_SURFACES, resolveFieldValue } from '@/lib/branding-registry'
 import { contrastRatio, MIN_TEXT_CONTRAST, readableTextOn } from '@/lib/color-contrast'
 import { createTenantColorResolver } from '@/lib/branding-studio/tenant-field-effective'
+import { withJsonColumnsPreview } from '@/lib/branding-studio/studio-columns'
+import { getTenantBranding } from '@/lib/branding-utils'
+import { readTrackingStyle } from '@/lib/tracking-style/keys'
+import { listTrackingContrastIssues } from '@/lib/tracking-style/palette'
 
 type Bag = Record<string, unknown> | null | undefined
 
@@ -125,8 +129,18 @@ function issueFor(pair: TenantPair, colors: ColorLookup): TenantContrastIssue | 
     }
 }
 
+/** The order page and loyalty card (their own palette, see tracking-style/palette). */
+function trackingIssues(draft: Bag, saved: Bag): TenantContrastIssue[] {
+    const tenant = { ...(saved ?? {}), ...withJsonColumnsPreview({ ...(draft ?? {}) }, saved) }
+    return listTrackingContrastIssues(getTenantBranding(tenant), readTrackingStyle(tenant)).map((issue) => {
+        const fieldId = `tracking_style.${issue.key}`
+        return { fieldId, label: labelFor(fieldId), ratio: issue.ratio, minRatio: issue.minRatio, fix: issue.fix }
+    })
+}
+
 /** The contrast problem on this text field, or null. */
 export function tenantContrastIssue(fieldId: string, draft: Bag, saved: Bag): TenantContrastIssue | null {
+    if (fieldId.startsWith('tracking_style.')) return trackingIssues(draft, saved).find((issue) => issue.fieldId === fieldId) ?? null
     const pair = TENANT_READABLE_PAIRS.find((candidate) => candidate.text === fieldId)
     return pair ? issueFor(pair, createColorLookup(draft, saved)) : null
 }
@@ -134,8 +148,9 @@ export function tenantContrastIssue(fieldId: string, draft: Bag, saved: Bag): Te
 /** Every unreadable pair in the store (Global Brand's "N things are hard to read"). */
 export function listTenantContrastIssues(draft: Bag, saved: Bag): TenantContrastIssue[] {
     const colors = createColorLookup(draft, saved)
-    return TENANT_READABLE_PAIRS.flatMap((pair) => {
+    const storeIssues = TENANT_READABLE_PAIRS.flatMap((pair) => {
         const issue = issueFor(pair, colors)
         return issue ? [issue] : []
     })
+    return [...storeIssues, ...trackingIssues(draft, saved)]
 }

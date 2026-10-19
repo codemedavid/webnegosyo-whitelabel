@@ -8,7 +8,7 @@
 
 import { z } from 'zod'
 
-export type LabelScreen = 'menu' | 'item' | 'cart' | 'checkout' | 'confirmation'
+export type LabelScreen = 'menu' | 'item' | 'cart' | 'checkout' | 'confirmation' | 'tracking' | 'loyalty'
 
 export interface StorefrontLabelDefinition {
     screen: LabelScreen
@@ -48,6 +48,39 @@ export const STOREFRONT_LABELS = {
     'checkout.total': { screen: 'checkout', label: 'Total', example: 'Total', maxLength: SHORT },
     'checkout.voucher': { screen: 'checkout', label: 'Voucher prompt', example: 'Have a voucher?', maxLength: MEDIUM },
     'confirmation.title': { screen: 'confirmation', label: 'Order placed title', example: 'Order Placed!', maxLength: MEDIUM },
+    'tracking.received': { screen: 'tracking', label: 'Received — step name', example: 'Order received', maxLength: SHORT },
+    'tracking.received_headline': { screen: 'tracking', label: 'Received — headline', example: 'We got your order!', maxLength: MEDIUM },
+    'tracking.received_detail': { screen: 'tracking', label: 'Received — detail', example: 'Waiting for the store to confirm.', maxLength: LONG },
+    'tracking.confirmed': { screen: 'tracking', label: 'Confirmed — step name', example: 'Confirmed', maxLength: SHORT },
+    'tracking.confirmed_headline': { screen: 'tracking', label: 'Confirmed — headline', example: 'Order confirmed', maxLength: MEDIUM },
+    'tracking.confirmed_detail': { screen: 'tracking', label: 'Confirmed — detail', example: 'The store accepted your order.', maxLength: LONG },
+    'tracking.preparing': { screen: 'tracking', label: 'Preparing — step name', example: 'Preparing', maxLength: SHORT },
+    'tracking.preparing_headline': { screen: 'tracking', label: 'Preparing — headline', example: 'Cooking up your order', maxLength: MEDIUM },
+    'tracking.preparing_detail': { screen: 'tracking', label: 'Preparing — detail', example: 'Your food is being prepared right now.', maxLength: LONG },
+    'tracking.ready': { screen: 'tracking', label: 'Ready — step name', example: 'Ready', maxLength: SHORT },
+    'tracking.ready_headline': { screen: 'tracking', label: 'Ready — headline', example: 'Your order is ready!', maxLength: MEDIUM },
+    'tracking.ready_detail': { screen: 'tracking', label: 'Ready — detail', example: 'Ready for pickup or on its way.', maxLength: LONG },
+    'tracking.completed': { screen: 'tracking', label: 'Completed — step name', example: 'Completed', maxLength: SHORT },
+    'tracking.completed_headline': { screen: 'tracking', label: 'Completed — headline', example: 'Enjoy your meal!', maxLength: MEDIUM },
+    'tracking.completed_detail': { screen: 'tracking', label: 'Completed — detail', example: 'Order complete. Thanks for ordering!', maxLength: LONG },
+    'tracking.cancelled_headline': { screen: 'tracking', label: 'Cancelled — headline', example: 'Order cancelled', maxLength: MEDIUM },
+    'tracking.cancelled_detail': { screen: 'tracking', label: 'Cancelled — detail', example: 'This order has been cancelled.', maxLength: LONG },
+    'tracking.ring_me': { screen: 'tracking', label: '"Ring me" button', example: 'Ring me when my order is ready', maxLength: MEDIUM },
+    'tracking.ring_armed': { screen: 'tracking', label: '"Ring me" — after tapping', example: "We'll ring & vibrate when it's ready", maxLength: MEDIUM },
+    'tracking.progress_title': { screen: 'tracking', label: 'Progress title', example: 'Progress', maxLength: SHORT },
+    'tracking.summary_title': { screen: 'tracking', label: 'Order summary title', example: 'Your order', maxLength: SHORT },
+    'tracking.back': { screen: 'tracking', label: 'Back to menu', example: 'Back to menu', maxLength: SHORT },
+    'loyalty.claim_title': { screen: 'loyalty', label: 'Claim title', example: 'Claim your stamp for this order', maxLength: MEDIUM },
+    'loyalty.number_label': { screen: 'loyalty', label: 'Number box label', example: 'Mobile number', maxLength: SHORT },
+    'loyalty.claim_button': { screen: 'loyalty', label: 'Claim button', example: 'Claim my stamp', maxLength: SHORT },
+    'loyalty.privacy': { screen: 'loyalty', label: 'Privacy note', example: 'Only used for your rewards and order updates. No spam.', maxLength: LONG },
+    'loyalty.collected': { screen: 'loyalty', label: 'Stamp collected', example: 'Stamp collected!', maxLength: MEDIUM },
+    'loyalty.reward_ready': { screen: 'loyalty', label: 'Reward ready', example: 'Reward ready!', maxLength: MEDIUM },
+    'loyalty.progress_title': { screen: 'loyalty', label: 'Progress title', example: 'Your reward progress', maxLength: MEDIUM },
+    'loyalty.awaiting': { screen: 'loyalty', label: 'Stamp on the way', example: 'Your stamp is on the way', maxLength: MEDIUM },
+    'loyalty.keep_using': { screen: 'loyalty', label: 'How stamps add up', example: 'Use the same number when you order and your stamps add up automatically.', maxLength: LONG },
+    'loyalty.view_rewards': { screen: 'loyalty', label: 'View rewards link', example: 'View rewards & use a reward', maxLength: MEDIUM },
+    'loyalty.wallet_title': { screen: 'loyalty', label: 'Save to phone title', example: 'Save your card to your phone', maxLength: MEDIUM },
 } as const satisfies Record<string, StorefrontLabelDefinition>
 
 export type StorefrontLabelKey = keyof typeof STOREFRONT_LABELS

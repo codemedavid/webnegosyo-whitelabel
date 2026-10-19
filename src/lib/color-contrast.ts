@@ -60,3 +60,9 @@ export function readableTextOn(text: string, background: string, minRatio = MIN_
     }
     return ink
 }
+
+/** `from` moved `amount` (0–1) of the way to `to`; colours that can't be measured come back unchanged. */
+export function mixHex(from: string, to: string, amount: number): string {
+    if (!HEX_PATTERN.test(from) || !HEX_PATTERN.test(to)) return from
+    return mix(from, to, Math.max(0, Math.min(1, amount)))
+}

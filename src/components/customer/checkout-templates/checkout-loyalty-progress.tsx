@@ -8,11 +8,14 @@
  * consent box — it keeps its original markup.
  *
  * The panel paints from `var(--trk-*)`, which only the tracking page defines on
- * its root, so the store's palette is supplied here: one loyalty card, one look,
- * wherever the customer meets it.
+ * its root, so the store's palette and loyalty look are supplied here: one
+ * loyalty card, one look, wherever the customer meets it.
  */
 
+import { useMemo } from 'react'
 import { buildTrackingTheme } from '@/components/customer/order-tracking/tracking-theme'
+import { TrackingOptionsProvider } from '@/components/customer/order-tracking/tracking-options'
+import { readTrackingStyle } from '@/lib/tracking-style/keys'
 import { LoyaltyProgressPanel } from '@/components/customer/loyalty-progress-panel'
 import { useLoyaltyProgress } from '@/hooks/use-loyalty-progress'
 import { resolveCheckoutLoyaltyPhone } from '@/lib/loyalty/checkout-phone'
@@ -31,20 +34,26 @@ export function CheckoutLoyaltyProgress({ checkout }: { checkout: UseCheckoutRet
     enabled: isLoyaltyLive(tenant),
   })
 
+  // The owner's loyalty look (Branding Studio → Loyalty card); in the Studio
+  // preview `tenant` already carries the unpublished draft.
+  const trackingStyle = useMemo(() => readTrackingStyle(tenant as unknown as Record<string, unknown> | null), [tenant])
+
   if (!progress.card && !progress.isLoading && !progress.error) return null
 
   return (
-    <div style={buildTrackingTheme(branding)}>
-      <LoyaltyProgressPanel
-        offer={progress.offer}
-        card={progress.card}
-        isLoading={progress.isLoading}
-        error={progress.error}
-        onRetry={progress.refresh}
-        storeName={tenant?.name ?? 'the store'}
-        logoUrl={branding.logoUrl}
-        tenantSlug={tenant?.slug}
-      />
+    <div style={buildTrackingTheme(branding, trackingStyle)}>
+      <TrackingOptionsProvider options={trackingStyle.options}>
+        <LoyaltyProgressPanel
+          offer={progress.offer}
+          card={progress.card}
+          isLoading={progress.isLoading}
+          error={progress.error}
+          onRetry={progress.refresh}
+          storeName={tenant?.name ?? 'the store'}
+          logoUrl={branding.logoUrl}
+          tenantSlug={tenant?.slug}
+        />
+      </TrackingOptionsProvider>
     </div>
   )
 }

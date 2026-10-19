@@ -5,17 +5,13 @@ import { formatDailyOrderNumber } from '@/lib/order-number'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import type { CSSProperties } from 'react'
-import { ArrowLeft, Bell, BellRing } from 'lucide-react'
 import { getStorageKey, updateActiveOrderStatus } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
 import { isPickupScanEnabled, shouldShowPickupQr } from '@/lib/pickup-qr-gating'
 import { PickupQrCard } from '@/components/customer/pickup-qr-card'
 import { LoyaltyStampCard } from '@/components/customer/loyalty-stamp-card'
-import { TrackingHeader } from '@/components/customer/order-tracking/tracking-header'
-import { StatusHero } from '@/components/customer/order-tracking/status-hero'
-import { StatusTimeline } from '@/components/customer/order-tracking/status-timeline'
-import { OrderSummaryCard } from '@/components/customer/order-tracking/order-summary-card'
+import { TrackingDashboard } from '@/components/customer/order-tracking/tracking-dashboard'
 import { getStatusIndex } from '@/components/customer/order-tracking/status-steps'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import { decideStampCardView } from '@/lib/loyalty/stamp-card-view'
@@ -24,7 +20,7 @@ import { useOrderStamps, type OrderStampsState } from '@/hooks/use-order-stamps'
 import { buildReadyNotice, shouldRingForTransition, type ReadyNotice } from '@/lib/order-ready-alert'
 import { describePrepPromise } from '@/lib/prep-time'
 import { useReadyAlarm } from '@/hooks/use-ready-alarm'
-import { ReadyAlertOverlay } from '@/components/customer/order-tracking/ready-alert-overlay'
+import type { TrackingOptions } from '@/lib/tracking-style/keys'
 import { formatOrderTrackingTime, ORDER_TRACKING_TIME_ZONE } from '@/lib/order-tracking-time'
 import { useVisibilityPoll } from '@/hooks/use-visibility-poll'
 
@@ -33,6 +29,10 @@ export interface OrderTrackingBrand {
   logoUrl: string | null
   /** CSS variables from `buildTrackingTheme`, applied on the page root. */
   theme: CSSProperties
+  /** The owner's layout choices (Branding Studio → Order status / Loyalty card). */
+  options: TrackingOptions
+  /** The store's own wording (`tenants.storefront_labels`). */
+  storefrontLabels: unknown
   /** The store's live loyalty offer, or null when no stamp may be promised. */
   loyaltyOffer: LoyaltyOffer | null
 }
@@ -216,131 +216,54 @@ export function OrderTrackingClient({
   })
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        ...brand.theme,
-        backgroundColor: 'var(--trk-bg)',
-        backgroundImage: 'radial-gradient(120% 60% at 50% -10%, var(--trk-accent-soft), transparent 70%)',
-        color: 'var(--trk-text)',
-      }}
-    >
-      <TrackingHeader
-        storeName={brand.storeName}
-        logoUrl={brand.logoUrl}
-        shortId={shortId}
-        isLive={!trackingData.isTerminal}
-        onBack={goToMenu}
-      />
-
-      <main className="container mx-auto max-w-lg px-4 py-5">
-        <div className="space-y-4">
-          <StatusHero
-            status={trackingData.status}
-            currentIndex={currentIndex}
-            customerName={trackingData.customerName}
-            placedLabel={formatOrderTrackingTime(trackingData.createdAt)}
-            orderTypeLabel={trackingData.orderType}
-            scheduledLabel={trackingData.scheduledLabel}
-            prepPromise={prepPromise}
-          />
-
-          {/* Ready-alert opt-in — audio needs a tap, so it can't be automatic */}
-          {!trackingData.isTerminal && trackingData.status !== 'ready' && !isCancelled && (
-            <div className="space-y-1.5">
-              <button
-                type="button"
-                onClick={armAlarm}
-                disabled={isAlarmArmed}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 text-sm font-semibold transition-colors disabled:cursor-default"
-                style={
-                  isAlarmArmed
-                    ? { borderColor: 'var(--trk-success)', backgroundColor: 'var(--trk-success-soft)', color: 'var(--trk-success)' }
-                    : { borderColor: 'var(--trk-accent)', backgroundColor: 'var(--trk-card)', color: 'var(--trk-accent)' }
-                }
-              >
-                {isAlarmArmed ? (
-                  <>
-                    <BellRing className="h-4 w-4" aria-hidden="true" />
-                    We&apos;ll ring &amp; vibrate when it&apos;s ready
-                  </>
-                ) : (
-                  <>
-                    <Bell className="h-4 w-4" aria-hidden="true" />
-                    Ring me when my order is ready
-                  </>
-                )}
-              </button>
-              {isAlarmArmed && (
-                <p className="text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
-                  Keep this page open and your volume up.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* The store's loyalty card: claim, live balance, or the closed window */}
-          {stampError && !isCancelled && (
-            <div role="status" className="flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm" style={{ color: 'var(--trk-text-muted)', borderColor: 'var(--trk-card-border)' }}>
-              <p>{stampError}</p>
-              <button type="button" className="shrink-0 font-semibold underline" onClick={refreshStamps}>Try again</button>
-            </div>
-          )}
-          {stampView !== 'hidden' && (
-            <LoyaltyStampCard
-              tenantSlug={tenantSlug}
-              orderId={orderId}
-              tenantId={tenantId}
-              trackingToken={trackingToken}
-              hasName={hasRealName}
-              offer={brand.loyaltyOffer}
-              isOrderComplete={trackingData.isTerminal}
-              storeName={brand.storeName}
-              logoUrl={brand.logoUrl}
-              view={stampView}
-              card={stamps?.card ?? null}
-              wallets={stamps?.wallets ?? null}
-              onClaimed={refreshStamps}
-            />
-          )}
-
-          {/* Scan-to-collect code (pickup orders only) */}
-          {showPickupQr && (
-            <PickupQrCard
-              orderId={orderId}
-              tenantId={tenantId}
-              trackingToken={trackingToken}
-              shortId={shortId}
-              isReady={trackingData.status === 'ready'}
-            />
-          )}
-
-          {!isCancelled && <StatusTimeline currentIndex={currentIndex} />}
-
-          <OrderSummaryCard
-            items={trackingData.items}
-            total={trackingData.total}
-            deliveryFee={trackingData.deliveryFee}
-            serviceChargeAmount={trackingData.serviceChargeAmount}
-          />
-
-          <div className="pb-8 pt-2">
-            <button
-              type="button"
-              onClick={goToMenu}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition-opacity hover:opacity-80"
-              style={{ color: 'var(--trk-text-muted)' }}
-            >
-              <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-              Back to menu
-            </button>
-          </div>
+    <TrackingDashboard
+      storeName={brand.storeName}
+      logoUrl={brand.logoUrl}
+      theme={brand.theme}
+      options={brand.options}
+      storefrontLabels={brand.storefrontLabels}
+      data={trackingData}
+      shortId={shortId}
+      currentIndex={currentIndex}
+      placedLabel={formatOrderTrackingTime(trackingData.createdAt)}
+      prepPromise={prepPromise}
+      isAlarmArmed={isAlarmArmed}
+      onArmAlarm={armAlarm}
+      loyaltyNotice={stampError && !isCancelled ? (
+        <div role="status" className="flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm" style={{ color: 'var(--trk-text-muted)', borderColor: 'var(--trk-card-border)' }}>
+          <p>{stampError}</p>
+          <button type="button" className="shrink-0 font-semibold underline" onClick={refreshStamps}>Try again</button>
         </div>
-      </main>
-
-      {readyNotice && (
-        <ReadyAlertOverlay title={readyNotice.title} body={readyNotice.body} onAcknowledge={acknowledgeReady} />
-      )}
-    </div>
+      ) : null}
+      loyalty={stampView !== 'hidden' ? (
+        <LoyaltyStampCard
+          tenantSlug={tenantSlug}
+          orderId={orderId}
+          tenantId={tenantId}
+          trackingToken={trackingToken}
+          hasName={hasRealName}
+          offer={brand.loyaltyOffer}
+          isOrderComplete={trackingData.isTerminal}
+          storeName={brand.storeName}
+          logoUrl={brand.logoUrl}
+          view={stampView}
+          card={stamps?.card ?? null}
+          wallets={stamps?.wallets ?? null}
+          onClaimed={refreshStamps}
+        />
+      ) : null}
+      pickup={showPickupQr ? (
+        <PickupQrCard
+          orderId={orderId}
+          tenantId={tenantId}
+          trackingToken={trackingToken}
+          shortId={shortId}
+          isReady={trackingData.status === 'ready'}
+        />
+      ) : null}
+      readyNotice={readyNotice}
+      onAcknowledgeReady={acknowledgeReady}
+      onBack={goToMenu}
+    />
   )
 }

@@ -3,7 +3,6 @@
 import { useMemo } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { ScanLine } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
 import { encodePickupQr } from '@/lib/qr-order-codec'
 
 interface PickupQrCardProps {
@@ -47,27 +46,36 @@ export function PickupQrCard({
     [orderId, tenantId, trackingToken]
   )
 
+  // Painted from the order page's `--trk-pickup-*` variables (Branding Studio
+  // → Order status → Pickup code). The code itself stays on white: a scanner
+  // needs dark modules on a light ground whatever the store's colours.
   return (
-    <Card className={isReady ? 'border-green-300 bg-green-50/40' : undefined}>
-      <CardContent className="p-6 text-center">
-        <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700">
-          <ScanLine className="h-4 w-4" />
-          {isReady ? 'Ready — show this to collect' : 'Your collection code'}
-        </div>
+    <section
+      data-branding-scope="tracking/pickup"
+      className="border p-6 text-center shadow-sm"
+      style={{
+        borderRadius: 'var(--trk-radius)',
+        backgroundColor: isReady ? 'var(--trk-pickup-ready-bg)' : 'var(--trk-pickup-bg)',
+        borderColor: isReady ? 'var(--trk-pickup-ready)' : 'var(--trk-pickup-border)',
+      }}
+    >
+      <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--trk-pickup-text)' }}>
+        <ScanLine className="h-4 w-4" />
+        {isReady ? 'Ready — show this to collect' : 'Your collection code'}
+      </div>
 
-        <div className="mx-auto w-fit rounded-xl bg-white p-4 shadow-sm">
-          <QRCodeSVG value={encoded} size={180} level="M" marginSize={0} />
-        </div>
+      <div className="mx-auto w-fit bg-white p-4 shadow-sm" style={{ borderRadius: 'var(--trk-radius-inner)' }}>
+        <QRCodeSVG value={encoded} size={180} level="M" marginSize={0} />
+      </div>
 
-        <p className="mt-3 text-xs font-mono tracking-widest text-gray-500">
-          #{shortId}
-        </p>
-        <p className="mt-2 text-xs text-gray-500">
-          {isReady
-            ? 'Show this code at the counter and our staff will scan it to hand over your order.'
-            : 'Keep this handy — staff will scan it when your order is ready for collection.'}
-        </p>
-      </CardContent>
-    </Card>
+      <p className="mt-3 text-xs font-mono tracking-widest" style={{ color: 'var(--trk-pickup-muted)' }}>
+        #{shortId}
+      </p>
+      <p className="mt-2 text-xs" style={{ color: 'var(--trk-pickup-muted)' }}>
+        {isReady
+          ? 'Show this code at the counter and our staff will scan it to hand over your order.'
+          : 'Keep this handy — staff will scan it when your order is ready for collection.'}
+      </p>
+    </section>
   )
 }

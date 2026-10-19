@@ -61,6 +61,9 @@ const ELEMENT_FIELDS: Readonly<Record<string, readonly string[]>> = {
     'checkout/summary': ['checkout_summary_background_color', 'checkout_text_color', 'checkout_muted_text_color'],
     'checkout/choice': ['checkout_accent_color', 'checkout_border_color'],
     'checkout/place-order': ['checkout_button_color', 'checkout_button_text_color'],
+    'loyalty/rewards': ['tracking_style.stamp_color', 'tracking_style.stamp_next', 'tracking_style.stamp_reached'],
+    'loyalty/button': ['tracking_style.loyalty_button', 'tracking_style.loyalty_button_text'],
+    'loyalty/wallet': ['tracking_style.wallet_background'],
 }
 
 function sectionsFor(surfaceId: BrandingSurface['id']): readonly BrandingSection[] {

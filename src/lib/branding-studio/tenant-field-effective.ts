@@ -6,6 +6,9 @@
  */
 
 import { getTenantBranding, type BrandingColors } from '@/lib/branding-utils'
+import { withJsonColumnsPreview } from '@/lib/branding-studio/studio-columns'
+import { readTrackingStyle, TRACKING_COLOR_KEYS, type TrackingColorKey } from '@/lib/tracking-style/keys'
+import { resolveTrackingSettingColors } from '@/lib/tracking-style/palette'
 
 type Bag = Record<string, unknown> | null | undefined
 
@@ -56,22 +59,38 @@ export const TENANT_COLOR_KEYS: Readonly<Record<string, keyof BrandingColors>> =
     checkout_accent_color: 'checkoutAccent',
 }
 
+const TRACKING_FIELD_PREFIX = 'tracking_style.'
+const TRACKING_COLOR_FIELDS = new Set<string>(TRACKING_COLOR_KEYS)
+
 function mergedTenant(draft: Bag, saved: Bag): Record<string, unknown> {
-    return { ...(saved ?? {}), ...(draft ?? {}) }
+    // Virtual-field edits (`tracking_style.hero_color`) reach the column itself.
+    return { ...(saved ?? {}), ...withJsonColumnsPreview({ ...(draft ?? {}) }, saved) }
+}
+
+/** `tracking_style.hero_color` → `hero_color` when it is a tracking colour setting. */
+function trackingColorKey(fieldId: string): TrackingColorKey | null {
+    if (!fieldId.startsWith(TRACKING_FIELD_PREFIX)) return null
+    const key = fieldId.slice(TRACKING_FIELD_PREFIX.length)
+    return TRACKING_COLOR_FIELDS.has(key) ? (key as TrackingColorKey) : null
 }
 
 /** The colour the storefront renders for this field, or undefined when it isn't a resolved store colour. */
 export function resolveTenantColor(fieldId: string, draft: Bag, saved: Bag): string | undefined {
-    const key = TENANT_COLOR_KEYS[fieldId]
-    if (!key) return undefined
-    const value = getTenantBranding(mergedTenant(draft, saved))[key]
-    return typeof value === 'string' ? value : undefined
+    return createTenantColorResolver(draft, saved)(fieldId)
 }
 
 /** One resolve for every row of a render (the panel shows dozens of colours). */
 export function createTenantColorResolver(draft: Bag, saved: Bag): (fieldId: string) => string | undefined {
-    const branding = getTenantBranding(mergedTenant(draft, saved)) as unknown as Record<string, unknown>
+    const tenant = mergedTenant(draft, saved)
+    const branding = getTenantBranding(tenant) as unknown as Record<string, unknown>
+    let trackingColors: Record<TrackingColorKey, string> | null = null
     return (fieldId) => {
+        const trackingKey = trackingColorKey(fieldId)
+        if (trackingKey) {
+            // The order page and loyalty card resolve through their own chain (page → brand).
+            trackingColors ??= resolveTrackingSettingColors(branding as unknown as BrandingColors, readTrackingStyle(tenant))
+            return trackingColors[trackingKey]
+        }
         const key = TENANT_COLOR_KEYS[fieldId]
         const value = key ? branding[key] : undefined
         return typeof value === 'string' ? value : undefined

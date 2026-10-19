@@ -2,7 +2,8 @@
 
 /**
  * The diner's journey above the preview — Welcome › Menu › Item › Cart ›
- * Checkout — so owners move screen to screen the way a customer does.
+ * Checkout › Order status › Loyalty card — so owners move screen to screen
+ * the way a customer does.
  */
 
 import type { BrandingSurface } from '@/lib/branding-registry'
@@ -13,6 +14,8 @@ export const JOURNEY_STEPS: ReadonlyArray<{ surfaceId: BrandingSurface['id']; la
     { surfaceId: 'product', label: 'Item' },
     { surfaceId: 'cart', label: 'Cart' },
     { surfaceId: 'checkout', label: 'Checkout' },
+    { surfaceId: 'tracking', label: 'Order status' },
+    { surfaceId: 'loyalty', label: 'Loyalty card' },
 ]
 
 interface JourneyBarProps {

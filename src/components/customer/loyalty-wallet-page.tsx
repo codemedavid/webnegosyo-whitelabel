@@ -504,19 +504,21 @@ function WalletSession({
                 {wallet.rewards.map((reward, index) => (
                   <article
                     key={reward.id}
-                    className="relative space-y-3 rounded-2xl border border-[var(--brand-cards-border,var(--border))] bg-[var(--brand-cards,var(--card))] p-5"
+                    data-branding-scope="loyalty/card"
+                    className="relative space-y-3 border p-5"
+                    style={LOYALTY_CARD_STYLE}
                   >
                     {index === 0 && <RewardBurst emoji={reward.emoji} />}
                     <div className="flex items-center gap-4">
                       <RewardTile emoji={reward.emoji ?? '🎁'} imageUrl={reward.imageUrl ?? null} />
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-text-muted,var(--muted-foreground))]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--trk-loy-muted)]">
                           {reward.programName}
                         </p>
                         <h3 className="text-xl font-semibold">{reward.label}</h3>
                       </div>
                     </div>
-                    <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
+                    <p className="text-sm text-[color:var(--trk-loy-muted)]">
                       {reward.branchName
                         ? `At ${reward.branchName}`
                         : 'At any branch'}
@@ -525,7 +527,7 @@ function WalletSession({
                         : ' · No expiry'}
                     </p>
                     {reward.freeItem ? (
-                      <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">
+                      <p className="text-xs text-[color:var(--trk-loy-muted)]">
                         One base item; upgrades and add-ons are payable. Subject
                         to item availability.
                       </p>
@@ -540,7 +542,7 @@ function WalletSession({
                         Get reward QR
                       </button>
                     ) : (
-                      <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
+                      <p className="text-sm text-[color:var(--trk-loy-muted)]">
                         Your reward is saved. Reward QR codes are not available at this
                         store yet.
                       </p>
@@ -550,16 +552,18 @@ function WalletSession({
               </section>
               <section className="space-y-3">
                 <h2 className="text-xl font-semibold">Your next reward</h2>
-                <p className="text-sm text-[var(--brand-text-muted,var(--muted-foreground))]">Keep collecting while your reward is ready. Using it keeps your next-card progress.</p>
+                <p className="text-sm text-[color:var(--trk-loy-muted)]">Keep collecting while your reward is ready. Using it keeps your next-card progress.</p>
                 {wallet.programs.length === 0 ? (
-                  <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
+                  <p className="text-sm text-[color:var(--trk-loy-muted)]">
                     There are no active programs to show.
                   </p>
                 ) : null}
                 {wallet.programs.map((program) => (
                   <article
                     key={program.id}
-                    className="space-y-3 rounded-2xl border border-[var(--brand-cards-border,var(--border))] bg-[var(--brand-cards,var(--card))] p-5"
+                    data-branding-scope="loyalty/card"
+                    className="space-y-3 border p-5"
+                    style={LOYALTY_CARD_STYLE}
                   >
                     <h3 className="font-semibold">{program.name}</h3>
                     <p className="text-sm">
@@ -567,10 +571,10 @@ function WalletSession({
                       {program.earnMode === 'stamp' ? 'stamps' : 'points'}{' '}
                       toward {program.rewardLabel}
                     </p>
-                    {program.balance < 0 && <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">Your balance includes an adjustment. New earnings first cover the {Math.abs(program.balance)} {program.earnMode === 'stamp' ? 'stamps' : 'points'} adjustment.</p>}
+                    {program.balance < 0 && <p className="text-xs text-[color:var(--trk-loy-muted)]">Your balance includes an adjustment. New earnings first cover the {Math.abs(program.balance)} {program.earnMode === 'stamp' ? 'stamps' : 'points'} adjustment.</p>}
                     <StampTrack threshold={program.threshold} filled={Math.max(0, program.balance)} earnMode={program.earnMode} nextIsLive={program.status === 'active'} logoUrl={logoUrl} steps={cardSteps(program.rewardSteps, program.threshold, program.rewardLabel)} />
                     <RewardLadder steps={cardSteps(program.rewardSteps, program.threshold, program.rewardLabel)} balance={program.balance} earnMode={program.earnMode} showHeadline={program.status === 'active'} />
-                    <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">
+                    <p className="text-xs text-[color:var(--trk-loy-muted)]">
                       {program.branchName || 'All branches'}
                       {program.minSpend
                         ? ` · Orders of ₱${program.minSpend} or more`
@@ -595,13 +599,21 @@ function WalletSession({
   )
 }
 
+/** Reward and program cards wear the loyalty card's look (Branding Studio → Loyalty card). */
+const LOYALTY_CARD_STYLE = {
+  borderRadius: 'var(--trk-radius-inner)',
+  backgroundColor: 'var(--trk-loy-bg)',
+  borderColor: 'var(--trk-loy-border)',
+  color: 'var(--trk-loy-text)',
+} as const
+
 /** A ready reward's face: the menu photo of the free item, or its emoji. */
 function RewardTile({ emoji, imageUrl }: { emoji: string; imageUrl: string | null }) {
   return (
     <span
       aria-hidden="true"
       className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-3xl"
-      style={{ backgroundColor: 'var(--trk-accent-soft)', boxShadow: '0 0 0 3px var(--trk-accent-tint)' }}
+      style={{ backgroundColor: 'var(--trk-stamp-soft)', boxShadow: '0 0 0 3px var(--trk-stamp-tint)' }}
     >
       {imageUrl ? (
         <Image src={imageUrl} alt="" width={56} height={56} unoptimized className="h-full w-full object-cover" />

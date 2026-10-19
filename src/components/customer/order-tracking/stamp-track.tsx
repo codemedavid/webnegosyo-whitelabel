@@ -6,6 +6,7 @@ import { Check } from 'lucide-react'
 import { cardSteps } from '@/lib/loyalty/card-progress'
 import type { LoyaltyRewardStep } from '@/lib/loyalty/ladder'
 import type { LoyaltyEarnMode } from '@/lib/loyalty/types'
+import { useTrackingOptions } from './tracking-options'
 
 interface StampTrackProps {
   /** Stamps or points needed for one reward. */
@@ -43,7 +44,8 @@ export function RewardIcon({ step, size }: { step: LoyaltyRewardStep; size: numb
         width={size}
         height={size}
         unoptimized
-        className="h-full w-full rounded-full object-cover"
+        className="h-full w-full object-cover"
+        style={{ borderRadius: 'var(--trk-stamp-radius)' }}
       />
     )
   }
@@ -70,6 +72,8 @@ export function StampTrack({
   steps,
 }: StampTrackProps) {
   const reduceMotion = useReducedMotion()
+  // The owner can stamp a tick instead of the logo.
+  const mark = useTrackingOptions().stamp_fill === 'check' ? null : logoUrl
   const safeFilled = Math.max(0, Math.min(filled, threshold))
   const ladder = cardSteps(steps, threshold, 'Reward')
   const nextStep = ladder.find((step) => step.at > safeFilled) ?? null
@@ -77,7 +81,7 @@ export function StampTrack({
   if (earnMode === 'points' || threshold > MAX_SLOTS) {
     const percent = threshold > 0 ? Math.round((safeFilled / threshold) * 100) : 0
     return (
-      <div data-testid="stamp-track" className="space-y-1.5" aria-label={`${safeFilled} of ${threshold} ${earnMode === 'points' ? 'points' : 'stamps'}`}>
+      <div data-testid="stamp-track" data-branding-scope="loyalty/stamps" className="space-y-1.5" aria-label={`${safeFilled} of ${threshold} ${earnMode === 'points' ? 'points' : 'stamps'}`}>
         <div className="relative pt-9">
           {ladder.map((step) => {
             const isReached = safeFilled >= step.at
@@ -87,12 +91,13 @@ export function StampTrack({
                 key={step.at}
                 data-testid="reward-marker"
                 data-reached={isReached ? 'true' : 'false'}
-                className="absolute top-0 flex h-8 w-8 -translate-x-1/2 items-center justify-center overflow-hidden rounded-full border-2"
+                className="absolute top-0 flex h-8 w-8 -translate-x-1/2 items-center justify-center overflow-hidden border-2"
                 style={{
                   left: `${Math.min(100, (step.at / threshold) * 100)}%`,
-                  borderColor: 'var(--trk-accent)',
-                  backgroundColor: isReached ? 'var(--trk-accent)' : 'var(--trk-card)',
-                  boxShadow: isReached ? '0 0 0 4px var(--trk-accent-soft)' : undefined,
+                  borderRadius: 'var(--trk-stamp-radius)',
+                  borderColor: 'var(--trk-stamp)',
+                  backgroundColor: isReached ? 'var(--trk-stamp)' : 'var(--trk-loy-bg)',
+                  boxShadow: isReached ? '0 0 0 4px var(--trk-stamp-soft)' : undefined,
                 }}
                 animate={isNext && nextIsLive && !reduceMotion ? BOUNCE : undefined}
                 transition={BOUNCE_TRANSITION}
@@ -102,17 +107,17 @@ export function StampTrack({
               </motion.div>
             )
           })}
-          <div className="h-3 w-full overflow-hidden rounded-full" style={{ backgroundColor: 'var(--trk-accent-soft)' }}>
+          <div className="h-3 w-full overflow-hidden rounded-full" style={{ backgroundColor: 'var(--trk-stamp-soft)' }}>
             <motion.div
               className="h-full rounded-full"
-              style={{ backgroundColor: 'var(--trk-accent)' }}
+              style={{ backgroundColor: 'var(--trk-stamp)' }}
               initial={reduceMotion ? false : { width: 0 }}
               animate={{ width: `${percent}%` }}
               transition={{ duration: 0.8, ease: 'easeOut' }}
             />
           </div>
         </div>
-        <p className="text-right text-xs font-semibold" style={{ color: 'var(--trk-text-muted)' }}>
+        <p className="text-right text-xs font-semibold" style={{ color: 'var(--trk-loy-muted)' }}>
           {safeFilled} / {threshold} {earnMode === 'points' ? 'points' : 'stamps'}
         </p>
       </div>
@@ -125,6 +130,7 @@ export function StampTrack({
   return (
     <div
       data-testid="stamp-track"
+      data-branding-scope="loyalty/stamps"
       className="grid justify-items-center gap-2 pt-1"
       style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
       aria-label={`${safeFilled} of ${threshold} stamps`}
@@ -144,24 +150,26 @@ export function StampTrack({
               data-testid="stamp-slot"
               data-filled={isFilled ? 'true' : 'false'}
               data-reward={step.label}
-              className="relative flex aspect-square w-full max-w-11 items-center justify-center rounded-full border-2"
+              className="relative flex aspect-square w-full max-w-11 items-center justify-center border-2"
               style={
                 isFilled
-                  ? { backgroundColor: 'var(--trk-accent)', borderColor: 'var(--trk-accent)', boxShadow: '0 0 0 4px var(--trk-accent-soft)' }
-                  : { borderColor: 'var(--trk-accent)', borderStyle: 'dashed', backgroundColor: 'var(--trk-accent-tint)' }
+                  ? { borderRadius: 'var(--trk-stamp-radius)', backgroundColor: 'var(--trk-stamp)', borderColor: 'var(--trk-stamp)', boxShadow: '0 0 0 4px var(--trk-stamp-soft)' }
+                  : { borderRadius: 'var(--trk-stamp-radius)', borderColor: 'var(--trk-stamp)', borderStyle: 'dashed', backgroundColor: 'var(--trk-stamp-tint)' }
               }
               initial={shouldPop ? { scale: 0, rotate: -30 } : false}
               animate={isNextReward ? { ...BOUNCE, scale: 1, rotate: 0 } : { scale: 1, rotate: 0 }}
               transition={isNextReward ? BOUNCE_TRANSITION : { type: 'spring', stiffness: 300, damping: 15, delay: shouldPop ? 0.35 : 0 }}
               title={step.label}
             >
-              <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+              <span className="flex h-full w-full items-center justify-center overflow-hidden" style={{ borderRadius: 'var(--trk-stamp-radius)' }}>
                 <RewardIcon step={step} size={SLOT_PX} />
               </span>
               <span
                 aria-hidden="true"
                 className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
-                style={{ backgroundColor: isFilled ? 'var(--trk-success)' : 'var(--trk-accent)', color: 'var(--trk-on-accent)' }}
+                style={isFilled
+                  ? { backgroundColor: 'var(--trk-stamp-reached)', color: 'var(--trk-on-stamp-reached)' }
+                  : { backgroundColor: 'var(--trk-stamp-badge)', color: 'var(--trk-on-stamp-badge)' }}
               >
                 {isFilled ? <Check className="h-2.5 w-2.5" strokeWidth={4} /> : slot}
               </span>
@@ -177,29 +185,31 @@ export function StampTrack({
             initial={shouldPop ? { scale: 0, rotate: -30 } : false}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 15, delay: shouldPop ? 0.35 : 0 }}
-            className={`flex aspect-square w-full max-w-11 items-center justify-center rounded-full border-2 ${
+            className={`flex aspect-square w-full max-w-11 items-center justify-center border-2 ${
               isNext && nextIsLive && !reduceMotion ? 'animate-pulse' : ''
             }`}
-            style={
-              isFilled
-                ? logoUrl
-                  ? { backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-accent)', color: 'var(--trk-accent)' }
-                  : { backgroundColor: 'var(--trk-accent)', borderColor: 'var(--trk-accent)', color: 'var(--trk-on-accent)' }
+            style={{
+              borderRadius: 'var(--trk-stamp-radius)',
+              ...(isFilled
+                ? mark
+                  ? { backgroundColor: 'var(--trk-loy-bg)', borderColor: 'var(--trk-stamp)', color: 'var(--trk-stamp)' }
+                  : { backgroundColor: 'var(--trk-stamp)', borderColor: 'var(--trk-stamp)', color: 'var(--trk-on-stamp)' }
                 : isNext && nextIsLive
-                  ? { borderColor: 'var(--trk-accent)', color: 'var(--trk-accent)', borderStyle: 'dashed', backgroundColor: 'var(--trk-accent-tint)' }
-                  : { borderColor: 'var(--trk-card-border)', color: 'var(--trk-text-faint)' }
-            }
+                  ? { borderColor: 'var(--trk-stamp-next)', color: 'var(--trk-stamp-next)', borderStyle: 'dashed', backgroundColor: 'var(--trk-stamp-next-tint)' }
+                  : { borderColor: 'var(--trk-stamp-empty)', color: 'var(--trk-loy-faint)' }),
+            }}
           >
             {isFilled ? (
-              logoUrl ? (
+              mark ? (
                 <Image
-                  src={logoUrl}
+                  src={mark}
                   alt=""
                   aria-hidden="true"
                   width={SLOT_PX}
                   height={SLOT_PX}
                   unoptimized
-                  className="h-full w-full rounded-full object-contain p-1"
+                  className="h-full w-full object-contain p-1"
+                  style={{ borderRadius: 'var(--trk-stamp-radius)' }}
                 />
               ) : (
                 <Check className="h-5 w-5" strokeWidth={3} aria-hidden="true" />
