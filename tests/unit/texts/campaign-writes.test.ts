@@ -82,7 +82,7 @@ describe('editing a live campaign', () => {
     const { saveCampaignDraft } = await import('@/lib/texts/server/campaign-writes')
     const id = '00000000-0000-4000-8000-0000000000d1'
     const db = seed({ sms_campaigns: [campaign(id, { status: 'scheduled', scheduled_from: NOW.toISOString() })] })
-    expect(await saveCampaignDraft(db.client, T, U, { ...DRAFT, id, name: 'Renamed' })).toEqual({ ok: true, value: { id } })
+    expect(await saveCampaignDraft(db.client, T, U, { ...DRAFT, id, name: 'Renamed' }, NOW)).toEqual({ ok: true, value: { id } })
     expect(db.tables.sms_campaigns[0]).toMatchObject({ name: 'Renamed', status: 'scheduled', delivery: 'server', scheduled_from: NOW.toISOString() })
   })
 })
