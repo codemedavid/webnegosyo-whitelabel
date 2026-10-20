@@ -409,31 +409,13 @@ export default function PosTenderScreen() {
           : {}),
       });
 
-      // An edit that swapped one item for another of the same price is complete
-      // the moment it saves; writing a zero-amount ledger row would be noise.
-      if (edit.intent !== "settled") {
-        await recordPayment({
-          orderId: editContext.orderId,
-          kind: edit.intent === "refund" ? "refund" : "charge",
-          // Unsigned — `kind` carries the direction. A signed refund amount
-          // would double-negate and credit the customer twice.
-          amount: Math.abs(edit.balance),
-          paymentMethodId: method?.id,
-          paymentMethodName: method?.name,
-          reference: reference.trim() || undefined,
-          proofUrl: proof?.url,
-          recordedBy: userId ?? undefined,
-          outletId: outletId ?? undefined,
-        });
-      }
-
       // Move only the ingredients the edit is responsible for. The original
       // sale already spent the order's stock, so this is the difference in
       // both directions — an edit can add a latte and drop a bun at once.
       //
       // Claimed against the revision this save just wrote, so a retry is a
       // no-op while the NEXT edit still moves stock. Never throws: the bill is
-      // already rewritten and the money settled by this point.
+      // already rewritten by this point.
       if (tenantId) {
         const movement = posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems));
         const revision = editContext.expectedRevisionNumber + 1;
@@ -451,7 +433,7 @@ export default function PosTenderScreen() {
       // Burn the codes THIS edit added. The order's own codes were burned when
       // it was placed; burning them again would spend a second redemption from
       // the customer's allowance on every subsequent edit. Never throws — the
-      // bill is already rewritten and the money settled by this point.
+      // bill is already rewritten by this point.
       if (tenantId) {
         await burnPosRedemptions(
           tenantId,
@@ -491,6 +473,28 @@ export default function PosTenderScreen() {
         }
       }
       useGovIdPhotoStore.getState().clear();
+
+      // The money moves LAST: the stock, the codes and the sales book above all
+      // follow the revision that just landed, so a refund refused at this point
+      // (handled below) leaves only the money outstanding, never a sales book
+      // or a stock count that disagrees with the saved bill.
+      // An edit that swapped one item for another of the same price is complete
+      // the moment it saves; writing a zero-amount ledger row would be noise.
+      if (edit.intent !== "settled") {
+        await recordPayment({
+          orderId: editContext.orderId,
+          kind: edit.intent === "refund" ? "refund" : "charge",
+          // Unsigned — `kind` carries the direction. A signed refund amount
+          // would double-negate and credit the customer twice.
+          amount: Math.abs(edit.balance),
+          paymentMethodId: method?.id,
+          paymentMethodName: method?.name,
+          reference: reference.trim() || undefined,
+          proofUrl: proof?.url,
+          recordedBy: userId ?? undefined,
+          outletId: outletId ?? undefined,
+        });
+      }
 
       endEdit();
       router.back();

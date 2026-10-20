@@ -74,7 +74,7 @@ export function ServiceChargeSection({ form, onChange, disabled }: TaxSectionPro
       />
       {form.vatStatus === "non_vat" ? (
         <Note>
-          You're Non-VAT, so there's no VAT to remove — the service charge is charged in full either way.
+          You’re Non-VAT, so there’s no VAT to remove — the service charge is charged in full either way.
         </Note>
       ) : null}
       <Note>Not sure which one your store follows? Confirm with your accountant before changing it.</Note>

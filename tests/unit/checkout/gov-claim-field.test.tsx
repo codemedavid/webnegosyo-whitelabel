@@ -33,7 +33,7 @@ describe('GovClaimField', () => {
   })
 
   it('sends who is claiming — kind, name and ID — never an amount', () => {
-    const applyGovClaim = jest.fn(async () => undefined)
+    const applyGovClaim = jest.fn(async (_claim: unknown) => undefined)
     render(<GovClaimField state={state({ applyGovClaim })} formatPrice={peso} accent="#000" />)
 
     fireEvent.click(screen.getByText('Senior Citizen or PWD? Get your discount'))

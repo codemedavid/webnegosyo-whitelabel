@@ -35,7 +35,7 @@ export function DiscountsSection({ form, onChange, disabled }: TaxSectionProps) 
         ))}
       </View>
       <Note>
-        The law requires these, so they can't be switched off. Refusing a Senior Citizen or PWD discount is a
+        The law requires these, so they can’t be switched off. Refusing a Senior Citizen or PWD discount is a
         crime under RA 9994 and RA 10754.
       </Note>
 

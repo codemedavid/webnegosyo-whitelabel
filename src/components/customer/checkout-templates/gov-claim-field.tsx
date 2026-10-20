@@ -32,7 +32,7 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
   if (govClaim) {
     const rule = govSetup.kinds.find((entry) => entry.kind === govClaim.kind)
     return (
-      <div className="space-y-1 rounded-md border border-gray-200 p-3 text-sm">
+      <div className="space-y-1 rounded-md border border-[color:var(--co-border)] p-3 text-sm text-[color:var(--co-text)]">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-start gap-2">
             <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" style={{ color: accent }} aria-hidden />
@@ -40,24 +40,24 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
               <p className="font-medium">
                 {rule?.label ?? 'Senior/PWD'} · {govClaim.name}
               </p>
-              {isCheckingGov && <p className="text-gray-500">Checking the discount…</p>}
+              {isCheckingGov && <p className="text-[color:var(--co-muted)]">Checking the discount…</p>}
               {govPreview?.status === 'applied' && (
-                <p className="text-green-700">−{formatPrice(govPreview.reduction)} · show your ID on {pickupWord()}</p>
+                <p className="text-[color:var(--co-success)]">−{formatPrice(govPreview.reduction)} · show your ID on {pickupWord()}</p>
               )}
               {govPreview?.status === 'outranked' && (
-                <p className="text-gray-600">
+                <p className="text-[color:var(--co-muted)]">
                   Your voucher saves more ({formatPrice(govPreview.otherReduction)}), so it applies instead — the law
                   allows one or the other.
                 </p>
               )}
-              {govPreview?.status === 'refused' && <p className="text-red-600">{govPreview.message}</p>}
+              {govPreview?.status === 'refused' && <p className="text-[color:var(--co-error)]">{govPreview.message}</p>}
             </div>
           </div>
           <button
             type="button"
             onClick={removeGovClaim}
             aria-label="Remove Senior/PWD discount"
-            className="shrink-0 rounded p-1 text-gray-500 hover:text-gray-900"
+            className="shrink-0 rounded p-1 text-[color:var(--co-muted)] hover:text-[color:var(--co-text)]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -80,7 +80,7 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
   }
 
   return (
-    <fieldset className="space-y-3 rounded-md border border-gray-200 p-3">
+    <fieldset className="space-y-3 rounded-md border border-[color:var(--co-border)] p-3 text-[color:var(--co-text)]">
       <legend className="px-1 text-sm font-medium">Senior Citizen / PWD discount</legend>
 
       {govSetup.kinds.length > 1 && (
@@ -94,7 +94,7 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
                 role="radio"
                 aria-checked={isActive}
                 onClick={() => setKind(entry.kind)}
-                className="min-h-10 rounded-full border px-3 text-sm font-medium"
+                className="min-h-10 rounded-full border border-[color:var(--co-border)] px-3 text-sm font-medium"
                 style={isActive ? { borderColor: accent, color: accent } : undefined}
               >
                 {entry.label}
@@ -111,7 +111,7 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
           value={name}
           onChange={(event) => setName(event.target.value)}
           autoComplete="name"
-          className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm"
+          className="h-10 w-full rounded-md border border-[color:var(--co-border)] bg-[var(--co-card)] px-3 text-[color:var(--co-text)] text-sm"
         />
       </div>
       <div className="space-y-1">
@@ -124,11 +124,11 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
           autoCapitalize="characters"
           autoComplete="off"
           spellCheck={false}
-          className="h-10 w-full rounded-md border border-gray-300 px-3 font-mono text-sm uppercase"
+          className="h-10 w-full rounded-md border border-[color:var(--co-border)] bg-[var(--co-card)] px-3 text-[color:var(--co-text)] font-mono text-sm uppercase"
         />
       </div>
 
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-[color:var(--co-muted)]">
         For your own order. Please show the original ID when you receive it — without it the store may charge the
         regular price.
       </p>
@@ -143,7 +143,7 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
         >
           {isCheckingGov ? 'Checking…' : 'Apply discount'}
         </button>
-        <button type="button" onClick={() => setIsOpen(false)} className="h-10 rounded-md border border-gray-300 px-4 text-sm">
+        <button type="button" onClick={() => setIsOpen(false)} className="h-10 rounded-md border border-[color:var(--co-border)] bg-[var(--co-card)] px-4 text-sm text-[color:var(--co-text)]">
           Cancel
         </button>
       </div>

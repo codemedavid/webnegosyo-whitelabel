@@ -46,7 +46,7 @@ export function VoucherUnitChoice({ voucher, lineNames, onChoose }: VoucherUnitC
   }
 
   return (
-    <div className="mt-1 rounded-md bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
+    <div className="mt-1 rounded-md bg-[var(--co-subtle)] px-2 py-1.5 text-xs text-[color:var(--co-text)]">
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0">
           Applies to: <span className="font-medium">{appliesTo(voucher, lineNames)}</span>
@@ -60,7 +60,7 @@ export function VoucherUnitChoice({ voucher, lineNames, onChoose }: VoucherUnitC
 
       {isEditing && (
         <div className="mt-2 space-y-1.5">
-          <p className="text-gray-500">
+          <p className="text-[color:var(--co-muted)]">
             Choose up to {limit} item{limit === 1 ? '' : 's'} ({total} chosen).
           </p>
           {lineIds.map((lineId) => {
@@ -75,7 +75,7 @@ export function VoucherUnitChoice({ voucher, lineNames, onChoose }: VoucherUnitC
                     aria-label={`Fewer ${name}`}
                     onClick={() => change(lineId, -1)}
                     disabled={value === 0}
-                    className="rounded border border-gray-300 p-1 disabled:opacity-40"
+                    className="rounded border border-[color:var(--co-border)] p-1 disabled:opacity-40"
                   >
                     <Minus className="h-3 w-3" />
                   </button>
@@ -85,7 +85,7 @@ export function VoucherUnitChoice({ voucher, lineNames, onChoose }: VoucherUnitC
                     aria-label={`More ${name}`}
                     onClick={() => change(lineId, 1)}
                     disabled={total >= limit}
-                    className="rounded border border-gray-300 p-1 disabled:opacity-40"
+                    className="rounded border border-[color:var(--co-border)] p-1 disabled:opacity-40"
                   >
                     <Plus className="h-3 w-3" />
                   </button>
@@ -94,14 +94,14 @@ export function VoucherUnitChoice({ voucher, lineNames, onChoose }: VoucherUnitC
             )
           })}
           <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={() => setIsEditing(false)} className="text-gray-500">
+            <button type="button" onClick={() => setIsEditing(false)} className="text-[color:var(--co-muted)]">
               Cancel
             </button>
             <button
               type="button"
               onClick={() => void save()}
               disabled={total === 0}
-              className="font-semibold text-gray-900 disabled:opacity-40"
+              className="font-semibold text-[color:var(--co-text)] disabled:opacity-40"
             >
               Use these
             </button>
