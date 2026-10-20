@@ -26,7 +26,12 @@ import { signDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import { claimLalamoveBooking, persistLalamoveBooking, releaseLalamoveBookingClaim, LALAMOVE_BOOKING_PENDING_MESSAGE } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import { buildRiderRemarks } from '@/lib/delivery/rider-remarks'
-import { loadDeliveryOrigin, ORIGIN_TENANT_COLUMNS, type OriginStore } from '@/lib/delivery/delivery-origin-server'
+import {
+  loadDeliveryOrigin,
+  ORIGIN_TENANT_COLUMNS,
+  type DeliveryOriginOptions,
+  type OriginStore,
+} from '@/lib/delivery/delivery-origin-server'
 import type { DeliveryOrigin } from '@/lib/delivery/delivery-origin'
 
 /**
@@ -84,8 +89,9 @@ async function originFor(
   tenant: Tenant,
   outletId: string | null | undefined,
   missingMessage: string,
+  options: DeliveryOriginOptions = {},
 ): Promise<OriginResult> {
-  const lookup = await loadDeliveryOrigin(supabase, tenant as unknown as OriginStore, outletId)
+  const lookup = await loadDeliveryOrigin(supabase, tenant as unknown as OriginStore, outletId, options)
   if (!lookup.ok) return { ok: false, error: BRANCH_READ_FAILED_MESSAGE }
   if (!lookup.origin || !lookup.origin.address) return { ok: false, error: missingMessage }
   return { ok: true, origin: lookup.origin }
@@ -504,6 +510,7 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
       tenantTyped,
       order.outlet_id,
       'Your store pickup address and map pin are not set. Add them in delivery settings.',
+      { isOrderBranch: true },
     )
     if (!pickup.ok) return { success: false, error: pickup.error }
 

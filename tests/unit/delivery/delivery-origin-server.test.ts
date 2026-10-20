@@ -21,10 +21,22 @@ describe('loadDeliveryOrigin', () => {
     })
   })
 
-  it('uses the store for no branch, an inactive branch, another store\'s branch, or branches switched off', async () => {
+  it('still starts at a branch hidden since the menu loaded, like the order itself does', async () => {
+    const { client } = fakeSupabaseTables({ outlets })
+    await expect(loadDeliveryOrigin(client, store, 'b2')).resolves.toMatchObject({ ok: true, origin: { source: 'outlet', outletId: 'b2' } })
+  })
+
+  it('starts an existing order at its own branch even after branches were switched off', async () => {
+    const { client } = fakeSupabaseTables({ outlets })
+    await expect(
+      loadDeliveryOrigin(client, { ...store, multi_branch_enabled: false }, 'b1', { isOrderBranch: true }),
+    ).resolves.toMatchObject({ ok: true, origin: { source: 'outlet', outletId: 'b1' } })
+  })
+
+  it('uses the store for no branch, another store\'s branch, or branches switched off', async () => {
     const { client, seen } = fakeSupabaseTables({ outlets })
     const storeOrigin = { source: 'store', outletId: null, address: 'Main St', point: { lat: 14.6, lng: 121.0 }, radiusKm: 8 }
-    for (const outletId of [null, undefined, '', 'b2', 'x1']) {
+    for (const outletId of [null, undefined, '', 'x1']) {
       await expect(loadDeliveryOrigin(client, store, outletId)).resolves.toEqual({ ok: true, origin: storeOrigin })
     }
     const before = seen.length

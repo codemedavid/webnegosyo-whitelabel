@@ -3,10 +3,15 @@
  * book it (quote, requote, distance fee, order creation).
  *
  * The branch is looked up by id on the server and must be one of the store's
- * own ACTIVE branches; the browser's coordinates are never used. Branches only
- * count while the store runs multi-branch (the same switch the checkout and
- * `createOrderAction` obey), so a stray `outletId` changes nothing for a
- * single-location store and costs it no query.
+ * own branches; the browser's coordinates are never used. Like
+ * `resolveOrderOutlet`, a branch hidden since the menu loaded still counts: a
+ * quote and the order it is checked against must agree on the origin.
+ *
+ * At checkout, branches only count while the store runs multi-branch (the same
+ * switch `createOrderAction` obeys), so a stray `outletId` changes nothing for
+ * a single-location store and costs it no query. An order that already belongs
+ * to a branch (requote, booking) always starts there, whatever the switch says
+ * now, so its rider is never sent to the main shop.
  *
  * A read failure is reported, not papered over with the store pin: a quote
  * priced from the wrong origin would not match the order it is later checked
@@ -32,7 +37,7 @@ export type OriginStore = OriginStoreFields & MultiBranchTenantFields & { id: st
 
 export type DeliveryOriginLookup = { ok: true; origin: DeliveryOrigin | null } | { ok: false }
 
-async function readActiveOutlet(
+async function readStoreOutlet(
   client: SupabaseClient,
   tenantId: string,
   outletId: string,
@@ -42,7 +47,6 @@ async function readActiveOutlet(
     .select(ORIGIN_OUTLET_COLUMNS)
     .eq('id', outletId)
     .eq('tenant_id', tenantId)
-    .eq('is_active', true)
     .maybeSingle()
   if (error) {
     console.error('[delivery-origin] could not read the branch', { tenantId, outletId, error: error.message })
@@ -51,14 +55,21 @@ async function readActiveOutlet(
   return { ok: true, outlet: (data as OriginOutletFields | null) ?? null }
 }
 
+export interface DeliveryOriginOptions {
+  /** The id is the branch an existing order belongs to, not a checkout choice. */
+  isOrderBranch?: boolean
+}
+
 export async function loadDeliveryOrigin(
   client: SupabaseClient,
   store: OriginStore,
   outletId: string | null | undefined,
+  { isOrderBranch = false }: DeliveryOriginOptions = {},
 ): Promise<DeliveryOriginLookup> {
-  const wantsBranch = typeof outletId === 'string' && outletId.trim() !== '' && isMultiBranchEnabled(store)
+  const hasId = typeof outletId === 'string' && outletId.trim() !== ''
+  const wantsBranch = hasId && (isOrderBranch || isMultiBranchEnabled(store))
   if (!wantsBranch) return { ok: true, origin: resolveDeliveryOrigin(store, null) }
-  const read = await readActiveOutlet(client, store.id, outletId)
+  const read = await readStoreOutlet(client, store.id, outletId)
   if (!read.ok) return read
   return { ok: true, origin: resolveDeliveryOrigin(store, read.outlet) }
 }

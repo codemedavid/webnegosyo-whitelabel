@@ -254,7 +254,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       // The order's branch pin when it has one, else the store's — read here,
       // filtered by this tenant, never taken from the caller.
-      const pickup = await loadDeliveryOrigin(admin, tenant as unknown as OriginStore, order.outlet_id)
+      const pickup = await loadDeliveryOrigin(admin, tenant as unknown as OriginStore, order.outlet_id, { isOrderBranch: true })
       if (!pickup.ok) return fail('Could not read the branch for this order. Please try again.', 503)
       if (!pickup.origin || !pickup.origin.address) {
         return fail('Your store pickup address and map pin are not set. Add them in delivery settings.')
