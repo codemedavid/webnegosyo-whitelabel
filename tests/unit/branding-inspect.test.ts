@@ -14,6 +14,7 @@ import {
 } from '@/hooks/use-branding-preview'
 import { BRANDING_SURFACES } from '@/lib/branding-registry'
 import { PRODUCT_DETAIL_SECTIONS } from '@/lib/product-detail-registry'
+import { PRODUCT_SURFACE_SECTIONS } from '@/lib/branding-studio/product-surface'
 
 /**
  * Click-to-inspect scope registry. Every `data-branding-scope` key a
@@ -53,8 +54,9 @@ describe('branding-inspect scope map', () => {
     const surfaceIds = new Set(BRANDING_SURFACES.map((s) => s.id))
     for (const [scope, target] of scopeEntries) {
       expect(surfaceIds.has(target.surfaceId)).toBe(true)
-      // The scope key is namespaced by its surface: '<surfaceId>/<region>'.
-      expect(scope.startsWith(`${target.surfaceId}/`)).toBe(true)
+      // The scope key is namespaced by its surface ('<surfaceId>/<region>'),
+      // except a label's words, which are 'label/<key>' on whichever screen shows them.
+      expect(scope.startsWith(`${target.surfaceId}/`) || scope.startsWith('label/')).toBe(true)
     }
   })
 
@@ -62,7 +64,7 @@ describe('branding-inspect scope map', () => {
     for (const [, target] of scopeEntries) {
       const sections =
         target.surfaceId === 'product'
-          ? PRODUCT_DETAIL_SECTIONS
+          ? PRODUCT_SURFACE_SECTIONS
           : BRANDING_SURFACES.find((s) => s.id === target.surfaceId)?.sections ?? []
       const titles = sections.map((s) => s.title)
       expect(titles).toContain(target.sectionTitle)
@@ -139,10 +141,10 @@ describe('element-level scopes (inspect every storefront element)', () => {
     // Hero text elements (Storefront → Hero)
     'storefront/hero-title': ['Hero', 'hero_title_color'],
     'storefront/hero-description': ['Hero', 'hero_description_color'],
-    // Quick-view modal elements (Storefront → Quick-view modal)
-    'storefront/quickview-title': ['Quick-view modal', 'modal_title_color'],
-    'storefront/quickview-price': ['Quick-view modal', 'modal_price_color'],
-    'storefront/quickview-description': ['Quick-view modal', 'modal_description_color'],
+    // Item pop-up elements (Storefront → Item pop-ups)
+    'storefront/quickview-title': ['Item pop-ups', 'modal_title_color'],
+    'storefront/quickview-price': ['Item pop-ups', 'modal_price_color'],
+    'storefront/quickview-description': ['Item pop-ups', 'modal_description_color'],
     // Cart drawer elements (Cart → Colors)
     'cart/item': ['Colors', 'cart_card_background_color'],
     'cart/item-price': ['Colors', 'cart_accent_color'],
@@ -188,7 +190,7 @@ describe('field-level scopes', () => {
       if (!target.fieldId) continue
       const sections =
         target.surfaceId === 'product'
-          ? PRODUCT_DETAIL_SECTIONS
+          ? PRODUCT_SURFACE_SECTIONS
           : BRANDING_SURFACES.find((s) => s.id === target.surfaceId)?.sections ?? []
       const section = sections.find((s) => s.title === target.sectionTitle)
       expect(section).toBeDefined()

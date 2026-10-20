@@ -8,7 +8,13 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
-import { EMPTY_INGREDIENT_DRAFT, buildIngredientInput, ingredientToDraft, type IngredientDraft } from '@/lib/inventory/inventory-form'
+import {
+  EMPTY_INGREDIENT_DRAFT,
+  buildIngredientInput,
+  ingredientToDraft,
+  ingredientUpdateForCaller,
+  type IngredientDraft,
+} from '@/lib/inventory/inventory-form'
 import { createIngredientAction, updateIngredientAction } from '@/app/actions/inventory'
 
 interface IngredientEditorDialogProps {
@@ -16,12 +22,30 @@ interface IngredientEditorDialogProps {
   tenantSlug: string
   item: InventoryItem | null
   units: InventoryUnitRow[]
+  /**
+   * The account holds `costs`. Without it the unit cost field is absent and an
+   * update leaves the price OUT (the server keeps the stored one): resending
+   * the price this editor loaded would assert a stale one after a delivery
+   * re-blended it. A new ingredient starts at ₱0, which needs no grant.
+   */
+  canSeeCosts: boolean
+  /** The account holds `inventory`; without it an update leaves the reorder level out. */
+  canManageStock: boolean
   onSaved: (item: InventoryItem) => void
   onClose: () => void
 }
 
 /** Mounted per edit session, so typing never rerenders the ingredient table. */
-export function IngredientEditorDialog({ tenantId, tenantSlug, item, units, onSaved, onClose }: IngredientEditorDialogProps) {
+export function IngredientEditorDialog({
+  tenantId,
+  tenantSlug,
+  item,
+  units,
+  canSeeCosts,
+  canManageStock,
+  onSaved,
+  onClose,
+}: IngredientEditorDialogProps) {
   // No router.refresh() after a save: the inventory actions revalidate, and a
   // revalidating Server Action already re-renders this route in its response.
   const editingId = item?.id ?? null
@@ -42,7 +66,12 @@ export function IngredientEditorDialog({ tenantId, tenantSlug, item, units, onSa
     setIsSaving(true)
     try {
       const result = editingId
-        ? await updateIngredientAction(editingId, tenantId, tenantSlug, input)
+        ? await updateIngredientAction(
+            editingId,
+            tenantId,
+            tenantSlug,
+            ingredientUpdateForCaller(input, { canSeeCosts, canManageStock }),
+          )
         : await createIngredientAction(tenantId, tenantSlug, input)
 
       if (!result.success) {
@@ -78,18 +107,20 @@ export function IngredientEditorDialog({ tenantId, tenantSlug, item, units, onSa
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="ing-cost">Unit cost (₱)</Label>
-              <Input
-                id="ing-cost"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={draft.unit_cost}
-                onChange={(e) => setDraft((d) => ({ ...d, unit_cost: e.target.value }))}
-              />
-            </div>
+            {canSeeCosts && (
+              <div className="space-y-1">
+                <Label htmlFor="ing-cost">Unit cost (₱)</Label>
+                <Input
+                  id="ing-cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={draft.unit_cost}
+                  onChange={(e) => setDraft((d) => ({ ...d, unit_cost: e.target.value }))}
+                />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Stock unit</Label>
               <Select
@@ -130,6 +161,8 @@ export function IngredientEditorDialog({ tenantId, tenantSlug, item, units, onSa
             </div>
           </div>
 
+          {/* A starting level rides with adding the ingredient; changing it later is Inventory's. */}
+          {(canManageStock || editingId === null) && (
           <div className="space-y-1">
             <Label htmlFor="ing-reorder">Reorder level</Label>
             <Input
@@ -141,6 +174,7 @@ export function IngredientEditorDialog({ tenantId, tenantSlug, item, units, onSa
               onChange={(e) => setDraft((d) => ({ ...d, reorder_level: e.target.value }))}
             />
           </div>
+          )}
 
           {/* The whole label is the target, so the tappable area is the row
               rather than the 16px box inside it. */}

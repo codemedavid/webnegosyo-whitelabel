@@ -65,6 +65,7 @@ export type IconName =
   | "export"
   | "info"
   | "warning"
+  | "bell"
   | "arrow-right"
   | "chevron-left"
   | "minus"
@@ -84,7 +85,9 @@ export type IconName =
   | "mic"
   // Delivery address
   | "pin"
-  | "external";
+  | "external"
+  // Approvals
+  | "shield";
 
 interface IconProps {
   name: IconName;
@@ -590,6 +593,21 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Path d="M14 4h6v6" />
       <Line x1={20} y1={4} x2={11} y2={13} />
       <Path d="M18 14v6H4V6h6" />
+    </>
+  ),
+  // A bell with its clapper: the notifications inbox, and a request waiting
+  // for someone. One glyph for both.
+  bell: (
+    <>
+      <Path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" />
+      <Path d="M10 20.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  // A shield with a tick: the rules that guard the till.
+  shield: (
+    <>
+      <Path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6z" />
+      <Polyline points="8.5,12 11,14.5 15.5,9.5" />
     </>
   ),
 };

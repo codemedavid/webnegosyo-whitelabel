@@ -2,8 +2,9 @@ import Link from 'next/link'
 import { EditorPageHeader } from '@/components/admin/menu-editor/editor-page-header'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
 import { dishCostConvexUrl } from '@/lib/menu-editor/cost-backend'
-import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
+import { getCachedTenantBySlug, getCachedCategoriesByTenant, getCachedCurrentUserRole } from '@/lib/cache'
 import { getLinkableMenuItems } from '@/lib/admin-service'
+import { resolveInventoryAccess } from '@/components/admin/inventory-manager/inventory-access'
 
 export default async function NewMenuItemPage({
   params,
@@ -22,11 +23,13 @@ export default async function NewMenuItemPage({
   }
 
   const isModifierGroupsTenant = tenant.modifier_groups_enabled ?? false
-  const [categories, linkableItems] = await Promise.all([
+  const [categories, linkableItems, caller] = await Promise.all([
     getCachedCategoriesByTenant(tenant.id),
     // Only the modifier-groups editor reads these, and the query scans every
     // dish the tenant has — skipped for every other store, as on the edit page.
     isModifierGroupsTenant ? getLinkableMenuItems(tenant.id).catch(() => []) : Promise.resolve([]),
+    // The cost displays and the profit calculator are `costs` (see the edit page).
+    getCachedCurrentUserRole(),
   ])
 
   const menuHref = `/${tenantSlug}/admin/menu`
@@ -65,6 +68,7 @@ export default async function NewMenuItemPage({
         inventoryEnabled={tenant.inventory_enabled ?? false}
         presellEnabled={tenant.presell_enabled ?? false}
         convexUrl={dishCostConvexUrl(tenant)}
+        canSeeCosts={resolveInventoryAccess(caller).canSeeCosts}
         defaultCategoryId={typeof category === 'string' ? category : undefined}
       />
     </div>

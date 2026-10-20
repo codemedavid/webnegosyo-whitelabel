@@ -14,7 +14,15 @@ import type { OrderActivityEvent } from "./activity";
 type Db = Pick<typeof supabase, "from">;
 
 const COLUMNS = "id, external_order_id, event, status, source, order_total, actor_user_id, actor_name, occurred_at";
-const ROW_CEILING = 2000;
+
+/**
+ * PostgREST answers at most this many rows per request on the platform
+ * project, whatever `.limit()` asks for. A single `.limit(2000)` read used to
+ * return 1000 and drop every older act without a word.
+ */
+export const ACTIVITY_PAGE_SIZE = 1000;
+/** The most rows one read will hold — two pages, bounded. */
+export const ACTIVITY_ROW_CEILING = 2000;
 
 interface EventRow {
   id: string;
@@ -54,17 +62,31 @@ export async function listOrderActivity(
   query: ActivityQuery,
   db: Db = supabase,
 ): Promise<OrderActivityEvent[]> {
-  let request = db
-    .from("order_status_events")
-    .select(COLUMNS)
-    .eq("tenant_id", tenantId)
-    .gte("occurred_at", query.sinceIso)
-    .order("occurred_at", { ascending: false })
-    .limit(ROW_CEILING);
-  if (query.actorUserId) request = request.eq("actor_user_id", query.actorUserId);
-  if (query.outletId) request = request.eq("outlet_id", query.outletId);
+  // A FRESH builder per page (a supabase-js builder runs once), ordered on a
+  // total ordering so rows cannot shift between pages and be read twice.
+  const buildPage = (from: number, to: number) => {
+    let request = db
+      .from("order_status_events")
+      .select(COLUMNS)
+      .eq("tenant_id", tenantId)
+      .gte("occurred_at", query.sinceIso);
+    if (query.actorUserId) request = request.eq("actor_user_id", query.actorUserId);
+    if (query.outletId) request = request.eq("outlet_id", query.outletId);
+    return request
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to);
+  };
 
-  const { data, error } = await request;
-  if (error) throw new Error(`Order activity could not be read. (${error.message ?? "unknown"})`);
-  return ((data ?? []) as unknown as EventRow[]).map(toEvent);
+  let rows: EventRow[] = [];
+  while (rows.length < ACTIVITY_ROW_CEILING) {
+    const from = rows.length;
+    const size = Math.min(ACTIVITY_PAGE_SIZE, ACTIVITY_ROW_CEILING - from);
+    const { data, error } = await buildPage(from, from + size - 1);
+    if (error) throw new Error(`Order activity could not be read. (${error.message ?? "unknown"})`);
+    const page = (data ?? []) as unknown as EventRow[];
+    rows = [...rows, ...page];
+    if (page.length < size) break;
+  }
+  return rows.map(toEvent);
 }

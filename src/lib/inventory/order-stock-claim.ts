@@ -22,6 +22,17 @@ const UNIQUE_VIOLATION = '23505'
 export type OrderStockDirection = 'sale' | 'void'
 
 /**
+ * Which life a claim belongs to (migration 20261013160000).
+ *
+ * 'order' is the order's own life: the original sale, a cancellation, an
+ * un-cancel. 'edit' is a saved edit's difference, numbered by the order's own
+ * revision counter. They used to share one (reason, revision) namespace, so an
+ * edit's restore read as a cancellation and an un-cancel's fresh revision
+ * collided with the next edit. Each kind now has its own.
+ */
+export type OrderStockClaimKind = 'order' | 'edit'
+
+/**
  * Any Supabase client. Callers here hold the service-role client — a diner
  * placing an order has no admin session and inventory RLS is admin-only — so
  * tenant scoping is this module's job, not RLS's, and every call filters on it.
@@ -42,14 +53,15 @@ export async function claimOrderStockApplication(
   orderId: string,
   reason: OrderStockDirection,
   revision: number = 0,
+  kind: OrderStockClaimKind = 'order',
 ): Promise<boolean> {
   const { error } = await supabase
     .from('order_stock_applications')
-    .insert({ tenant_id: tenantId, order_id: orderId, reason, revision } as never)
+    .insert({ tenant_id: tenantId, order_id: orderId, reason, revision, kind } as never)
 
   if (!error) return true
   if (error.code === UNIQUE_VIOLATION) {
-    console.warn('[inventory] Stock already applied for order', { orderId, reason, revision })
+    console.warn('[inventory] Stock already applied for order', { orderId, reason, revision, kind })
     return false
   }
   throw error
@@ -59,6 +71,24 @@ export async function claimOrderStockApplication(
 export interface OrderStockClaimRow {
   reason: OrderStockDirection
   revision: number
+  /** Absent on rows written before the column existed, which were all 'order'. */
+  kind?: OrderStockClaimKind
+  /** What a cancellation put back — the ledger rows an un-cancel re-spends. */
+  restored?: RestoredMovement[] | null
+}
+
+/** One ledger row a cancellation wrote, as stored on its claim. */
+export interface RestoredMovement {
+  inventory_item_id: string
+  outlet_id: string | null
+  /** Positive: what came back onto the shelf, in the stock unit. */
+  quantity_delta: number
+  entered_quantity: number | null
+  entered_unit_id: string | null
+}
+
+function isOrderClaim(claim: OrderStockClaimRow): boolean {
+  return (claim.kind ?? 'order') === 'order'
 }
 
 /**
@@ -77,7 +107,7 @@ export async function listOrderStockClaims(
 ): Promise<OrderStockClaimRow[]> {
   const { data, error } = await supabase
     .from('order_stock_applications')
-    .select('reason, revision')
+    .select('reason, revision, kind, restored')
     .eq('tenant_id', tenantId)
     .eq('order_id', orderId)
   if (error) throw error
@@ -85,7 +115,47 @@ export async function listOrderStockClaims(
   return ((data ?? []) as OrderStockClaimRow[]).map((row) => ({
     reason: row.reason,
     revision: Number(row.revision) || 0,
+    kind: row.kind === 'edit' ? 'edit' : 'order',
+    restored: Array.isArray(row.restored) ? row.restored : null,
   }))
+}
+
+/**
+ * Remember on a cancellation's claim exactly what it put back.
+ *
+ * Throws on failure: the caller decides whether a missing record matters (an
+ * un-cancel without it falls back to recomputing from the order's lines).
+ */
+export async function recordRestoredMovements(
+  supabase: Pick<SupabaseClient, 'from'>,
+  tenantId: string,
+  orderId: string,
+  revision: number,
+  restored: readonly RestoredMovement[],
+): Promise<void> {
+  const { error } = await supabase
+    .from('order_stock_applications')
+    .update({ restored } as never)
+    .eq('tenant_id', tenantId)
+    .eq('order_id', orderId)
+    .eq('reason', 'void')
+    .eq('kind', 'order')
+    .eq('revision', revision)
+  if (error) throw error
+}
+
+/**
+ * The movements the order's latest cancellation put back, or null when that
+ * cancellation predates the record (or put nothing back) — the caller then
+ * recomputes from the order's lines instead.
+ */
+export function latestCancellationRestored(
+  claims: readonly OrderStockClaimRow[],
+): RestoredMovement[] | null {
+  const cancellations = claims.filter((claim) => isOrderClaim(claim) && claim.reason === 'void')
+  if (cancellations.length === 0) return null
+  const latest = cancellations.reduce((a, b) => (b.revision > a.revision ? b : a))
+  return latest.restored && latest.restored.length > 0 ? latest.restored : null
 }
 
 /**
@@ -100,8 +170,9 @@ export async function listOrderStockClaims(
 export function resolveRedepletionRevision(
   claims: readonly OrderStockClaimRow[],
 ): number {
-  if (claims.length === 0) return 0
-  return Math.max(...claims.map((claim) => claim.revision)) + 1
+  const own = claims.filter(isOrderClaim)
+  if (own.length === 0) return 0
+  return Math.max(...own.map((claim) => claim.revision)) + 1
 }
 
 /**
@@ -117,11 +188,12 @@ export function resolveRedepletionRevision(
 export function resolveVoidClaimRevision(
   claims: readonly OrderStockClaimRow[],
 ): number {
-  const latestSaleRevision = claims
+  const own = claims.filter(isOrderClaim)
+  const latestSaleRevision = own
     .filter((claim) => claim.reason === 'sale')
     .reduce((max, claim) => Math.max(max, claim.revision), 0)
   const burnedVoidRevisions = new Set(
-    claims.filter((claim) => claim.reason === 'void').map((claim) => claim.revision),
+    own.filter((claim) => claim.reason === 'void').map((claim) => claim.revision),
   )
 
   let revision = latestSaleRevision
@@ -129,12 +201,6 @@ export function resolveVoidClaimRevision(
   return revision
 }
 
-/**
- * Whether a cancellation has already spoken for this order's stock at or above
- * the given sale revision — in which case the sale must not apply (cancel
- * wins). Strictly-below voids do NOT block: they belong to an earlier life of
- * the order that an un-cancel has since re-opened.
- */
 /** A simple-option claim row; its `action` uses 'cancel' as well as 'void' for a reversal. */
 export interface SimpleOptionClaimRow {
   action: string
@@ -144,13 +210,16 @@ export interface SimpleOptionClaimRow {
 /**
  * May an un-cancelled order spend its stock again?
  *
- * Only when its latest sale was put back. Re-deducting at a fresh revision is
- * always accepted by the unique index, so the claim cannot be what refuses a
- * second deduction here: a cancel that never restored (best-effort, timed out,
- * or made outside updateOrderStatus) or a repeated un-cancel would each spend
- * the order a second time. Both claim tables count — an order with no recipes
- * releases its recipe claim, and its simple-option claims are then the only
- * record of what was sold.
+ * Only when its latest sale was put back BY A CANCELLATION. Re-deducting at a
+ * fresh revision is always accepted by the unique index, so the claim cannot be
+ * what refuses a second deduction here: a cancel that never restored
+ * (best-effort, timed out, or made outside updateOrderStatus) or a repeated
+ * un-cancel would each spend the order a second time. An edit's restore is not
+ * a cancellation — counting it let an edited order's un-cancel deduct twice.
+ * The simple-option claims count only when no ingredient sale is on record —
+ * an order with no recipes releases its recipe claim, and its simple-option
+ * claims are then the only record of what was sold; the
+ * simple RPC marks a cancellation `action = 'cancel'` ('void' is its edit).
  *
  * An order with no sale on record has nothing to double-count, so it stays
  * allowed (that is the behaviour it had before this guard).
@@ -159,23 +228,52 @@ export function isLatestSaleReversed(
   claims: readonly OrderStockClaimRow[],
   simpleClaims: readonly SimpleOptionClaimRow[] = [],
 ): boolean {
+  const own = claims.filter(isOrderClaim)
+  // The ingredient claims are the authority once they record a sale. A
+  // simple-option sale written by an un-cancel whose ingredient write then
+  // failed (and handed its claim back) would otherwise read as the latest sale
+  // and refuse every retry, leaving the re-opened order's ingredients unspent.
+  const hasOwnSale = own.some((claim) => claim.reason === 'sale')
   const moves = [
-    ...claims.map((claim) => ({ isSale: claim.reason === 'sale', revision: claim.revision })),
-    ...simpleClaims.map((claim) => ({ isSale: claim.action === 'sale', revision: Number(claim.revision) })),
+    ...own.map((claim) => ({ isSale: claim.reason === 'sale', isCancel: claim.reason === 'void', revision: claim.revision })),
+    ...(hasOwnSale ? [] : simpleClaims).map((claim) => ({ isSale: claim.action === 'sale', isCancel: claim.action === 'cancel', revision: Number(claim.revision) })),
   ]
   const sales = moves.filter((move) => move.isSale)
   if (sales.length === 0) return true
   const latestSale = Math.max(...sales.map((move) => move.revision))
-  return moves.some((move) => !move.isSale && move.revision >= latestSale)
+  return moves.some((move) => move.isCancel && move.revision >= latestSale)
 }
 
+/**
+ * Whether a cancellation has already spoken for this order's stock at or above
+ * the given sale revision — in which case the sale must not apply (cancel
+ * wins). Strictly-below cancellations do NOT block: they belong to an earlier
+ * life of the order that an un-cancel has since re-opened. Edit claims never
+ * block: an edit's restore landing before the original sale is still owed that
+ * sale.
+ */
 export function hasBlockingVoidClaim(
   claims: readonly OrderStockClaimRow[],
   revision: number,
 ): boolean {
   return claims.some(
-    (claim) => claim.reason === 'void' && claim.revision >= revision,
+    (claim) => isOrderClaim(claim) && claim.reason === 'void' && claim.revision >= revision,
   )
+}
+
+/**
+ * Is the order cancelled as far as its stock is concerned — a cancellation at
+ * or above its latest sale? An edit arriving then must not move stock: the
+ * cancellation has already netted everything the order recorded, so a late
+ * edit sale would spend for a dead order and a late edit restore would give
+ * back stock that was never out.
+ */
+export function isCancelledByClaims(claims: readonly OrderStockClaimRow[]): boolean {
+  const own = claims.filter(isOrderClaim)
+  const latestSale = own
+    .filter((claim) => claim.reason === 'sale')
+    .reduce((max, claim) => Math.max(max, claim.revision), 0)
+  return own.some((claim) => claim.reason === 'void' && claim.revision >= latestSale)
 }
 
 /**
@@ -194,6 +292,7 @@ export async function releaseOrderStockApplication(
   orderId: string,
   reason: OrderStockDirection,
   revision: number = 0,
+  kind: OrderStockClaimKind = 'order',
 ): Promise<void> {
   try {
     const { error } = await supabase
@@ -202,6 +301,7 @@ export async function releaseOrderStockApplication(
       .eq('tenant_id', tenantId)
       .eq('order_id', orderId)
       .eq('reason', reason)
+      .eq('kind', kind)
       .eq('revision', revision)
     if (error) {
       console.error('[inventory] Could not release stock claim', { orderId, reason }, error)

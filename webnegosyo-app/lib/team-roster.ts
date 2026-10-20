@@ -20,7 +20,7 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
   },
   menu: {
     label: "Menu",
-    description: "Edit products, prices, stock, and the daily report",
+    description: "Edit products, prices, recipes, and the ingredient list",
   },
   analytics: {
     label: "Analytics",
@@ -77,6 +77,27 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
   tables: {
     label: "Tables",
     description: "The floor plan — seat parties, clear tables, see each table's bill",
+  },
+  // Opt-in: a full-access account does not hold these until they are ticked.
+  activity_view: {
+    label: "See store activity",
+    description: "See refunds, cancellations, stock and drawer moves by everyone, not just their own",
+  },
+  approve_requests: {
+    label: "Approve requests",
+    description: "Approve or decline a colleague's refund, cancellation, discount or write-off — grant sparingly",
+  },
+  reports: {
+    label: "Sales reports",
+    description: "Sales figures, transactions, and end-of-day totals",
+  },
+  inventory: {
+    label: "Inventory",
+    description: "Stock: deliveries, waste, counts, transfers, and reorder levels",
+  },
+  costs: {
+    label: "Costs",
+    description: "What things cost: ingredient prices, dish cost, and food cost %",
   },
 };
 

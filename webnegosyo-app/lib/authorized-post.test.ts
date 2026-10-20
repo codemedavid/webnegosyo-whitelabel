@@ -10,7 +10,7 @@ jest.mock("./supabase", () => ({
   supabase: { auth: { getSession: getSessionMock } },
 }));
 
-import { postAuthorized } from "./authorized-post";
+import { postAuthorized, postAuthorizedDetailed } from "./authorized-post";
 
 /**
  * The one bounded, authenticated POST the register's bookkeeping calls share.
@@ -130,5 +130,46 @@ describe("postAuthorized", () => {
 
     // Assert
     expect(delivered).toBe(false);
+  });
+});
+
+/**
+ * The stock notifier must tell a permanent refusal (403, 409) from a transient
+ * one (5xx, 404 while the order row propagates, a timeout). The status is part
+ * of the answer itself — not a side channel keyed by the request body.
+ */
+describe("postAuthorizedDetailed", () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    getSessionMock.mockResolvedValue({ data: { session: { access_token: "token-1" } } });
+  });
+
+  test("answers ok with the status the route gave", async () => {
+    await expect(postAuthorizedDetailed("/api/inventory/order-stock", {})).resolves.toEqual({ ok: true, status: 200 });
+  });
+
+  test("answers the refusal's status", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 403 });
+    await expect(postAuthorizedDetailed("/api/inventory/order-stock", {})).resolves.toEqual({ ok: false, status: 403 });
+  });
+
+  test("answers a null status when no server answered", async () => {
+    fetchMock.mockRejectedValue(new Error("Network request failed"));
+    await expect(postAuthorizedDetailed("/api/x", {})).resolves.toEqual({ ok: false, status: null });
+
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+    await expect(postAuthorizedDetailed("/api/x", {})).resolves.toEqual({ ok: false, status: null });
+
+    getSessionMock.mockReturnValue(forever());
+    await expect(postAuthorizedDetailed("/api/x", {}, { timeoutMs: 20 })).resolves.toEqual({ ok: false, status: null });
+  });
+
+  test("postAuthorized still answers a plain boolean", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 409 });
+    await expect(postAuthorized("/api/x", {})).resolves.toBe(false);
   });
 });

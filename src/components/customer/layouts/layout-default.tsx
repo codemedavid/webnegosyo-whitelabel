@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import type { MenuLayoutContentProps } from '@/storefront/contracts'
 
 import { memo } from 'react'
@@ -36,6 +37,7 @@ export const LayoutDefault = memo(function LayoutDefault({
     menuEngineeringEnabled,
     hideCurrencySymbol,
 }: LayoutDefaultProps) {
+    const searchPlaceholder = useStorefrontLabel('menu.search_placeholder', 'Search...')
     // Get banners to display
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
@@ -110,7 +112,7 @@ export const LayoutDefault = memo(function LayoutDefault({
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
-                        placeholder="Search..."
+                        placeholder={searchPlaceholder}
                         branding={branding}
                     />
                 </div>
@@ -150,7 +152,7 @@ export const LayoutDefault = memo(function LayoutDefault({
                         className="text-xl font-semibold mb-2"
                         style={{ color: branding.textPrimary }}
                     >
-                        No items found
+                        <StoreLabel name="menu.no_results" fallback="No items found" />
                     </h3>
                     <p
                         className="mb-6"

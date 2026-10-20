@@ -18,9 +18,10 @@ import {
   generatePaletteFromColor,
   isFieldVisible,
 } from '@/lib/branding-registry'
+import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS } from '@/lib/storefront-labels'
 
 describe('branding registry structure', () => {
-  it('defines the eleven editor surfaces in rail order', () => {
+  it('defines the thirteen editor surfaces in rail order', () => {
     // Arrange / Act
     const ids = BRANDING_SURFACES.map((s) => s.id)
 
@@ -35,6 +36,8 @@ describe('branding registry structure', () => {
       'checkout',
       'upsell',
       'product',
+      'tracking',
+      'loyalty',
       'footer',
       'flash',
     ])
@@ -65,7 +68,7 @@ describe('branding registry structure', () => {
           if (field.type === 'note') continue
           // Storefront pack settings are virtual fields folded into one jsonb
           // column (see storefront-pack-studio), namespaced pack.key.
-          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$|^storefront_pack_settings\.[a-z]+\.[a-z0-9_]+$/)
+          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$|^storefront_pack_settings\.[a-z]+\.[a-z0-9_]+$|^storefront_labels\.[a-z]+\.[a-z0-9_]+$|^section_schemes\.[a-z_]+$|^tracking_style\.[a-z0-9_]+$/)
           expect(seen.has(field.id)).toBe(false)
           seen.add(field.id)
         }
@@ -131,6 +134,22 @@ describe('branding registry structure', () => {
     expect(BRANDING_FIELD_INDEX['category_nav_style'].options).toEqual(
       expect.arrayContaining(['theme', 'pills', 'chips', 'underline'])
     )
+  })
+})
+
+describe('label fields', () => {
+  const labelFields = BRANDING_SURFACES.flatMap((surface) => surface.sections.flatMap((section) => section.fields))
+    .filter((field) => field.id.startsWith('storefront_labels.'))
+
+  it('offers every storefront label exactly once', () => {
+    expect(labelFields.map((field) => field.id.slice('storefront_labels.'.length)).sort()).toEqual([...STOREFRONT_LABEL_KEYS].sort())
+  })
+
+  it('stops typing at the longest wording the store may save', () => {
+    for (const field of labelFields) {
+      const key = field.id.slice('storefront_labels.'.length) as keyof typeof STOREFRONT_LABELS
+      expect(field.maxLength).toBe(STOREFRONT_LABELS[key].maxLength)
+    }
   })
 })
 
@@ -216,8 +235,8 @@ describe('getSurfaceFieldIds', () => {
     )
   })
 
-  it('leaves the product surface with no tenant-column fields — it uses the product_detail_settings store', () => {
-    expect(getSurfaceFieldIds('product')).toEqual([])
+  it('keeps only the item page wording on the product surface — its styling uses the product_detail_settings store', () => {
+    expect(getSurfaceFieldIds('product').every((id) => id.startsWith('storefront_labels.item.'))).toBe(true)
   })
 })
 

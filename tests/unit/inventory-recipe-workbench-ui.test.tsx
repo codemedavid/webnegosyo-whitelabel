@@ -174,3 +174,22 @@ describe('when there is nothing to work with', () => {
     expect(screen.getByText('Mozzarella')).toBeInTheDocument()
   })
 })
+
+describe('portion picks that deduct nothing', () => {
+  const WINGS: RecipeCoverageRow = {
+    menuItemId: 'm9', name: 'Wings', hasRecipe: true, ingredientCount: 1, unrecipedOptionGroups: ['Flavours'],
+  }
+
+  it('flags the dish in the list and explains the fix beside its recipe', () => {
+    renderWorkbench({ rows: [WINGS] })
+
+    expect(within(screen.getByTestId('dish-m9')).getByText(/Flavours picks deduct nothing/)).toBeInTheDocument()
+    expect(screen.getByTestId('unreciped-option-groups-hint')).toHaveTextContent(/on top of this one/)
+  })
+
+  it('says nothing for a dish whose picks are set up', () => {
+    renderWorkbench({ rows: [{ ...WINGS, unrecipedOptionGroups: undefined }] })
+
+    expect(screen.queryByTestId('unreciped-option-groups-hint')).not.toBeInTheDocument()
+  })
+})

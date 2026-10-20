@@ -8,6 +8,7 @@ import { renderHook, act } from '@testing-library/react'
 import {
   useBrandingPreviewDraft,
   useBrandingPreviewTenant,
+  useIsBrandingPreview,
   BRANDING_DRAFT_MESSAGE,
   BRANDING_PREVIEW_PARAM,
   stripPreviewMeta,
@@ -117,5 +118,43 @@ describe('useBrandingPreviewTenant', () => {
 describe('stripPreviewMeta', () => {
   it('removes double-underscore meta keys only', () => {
     expect(stripPreviewMeta({ a: 1, __previewSurface: 'flash' })).toEqual({ a: 1 })
+  })
+})
+
+describe('useIsBrandingPreview', () => {
+  function insideStudioFrame() {
+    return jest.spyOn(window, 'parent', 'get').mockReturnValue({ postMessage: jest.fn() } as unknown as Window)
+  }
+
+  afterEach(() => jest.restoreAllMocks())
+
+  it('is false on the live storefront', () => {
+    setSearch('')
+    const { result } = renderHook(() => useIsBrandingPreview())
+    expect(result.current).toBe(false)
+  })
+
+  it('is true inside the Studio preview, before any draft arrives', () => {
+    insideStudioFrame()
+    setSearch(`?${BRANDING_PREVIEW_PARAM}=1`)
+    const { result } = renderHook(() => useIsBrandingPreview())
+    expect(result.current).toBe(true)
+  })
+
+  it('stays true after navigating inside the preview', () => {
+    insideStudioFrame()
+    setSearch(`?${BRANDING_PREVIEW_PARAM}=1`)
+    renderHook(() => useIsBrandingPreview())
+    setSearch('')
+    const { result } = renderHook(() => useIsBrandingPreview())
+    expect(result.current).toBe(true)
+  })
+
+  it('is false outside the frame in a tab that once hosted the preview', () => {
+    setSearch(`?${BRANDING_PREVIEW_PARAM}=1`)
+    renderHook(() => useIsBrandingPreview())
+    setSearch('')
+    const { result } = renderHook(() => useIsBrandingPreview())
+    expect(result.current).toBe(false)
   })
 })

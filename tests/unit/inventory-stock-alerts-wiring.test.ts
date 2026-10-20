@@ -40,6 +40,9 @@ jest.mock('@/lib/supabase/server', () => ({
 }))
 jest.mock('@/lib/admin-service', () => ({
   verifyTenantPermission: jest.fn(() => Promise.resolve()),
+  verifyTenantAdmin: jest.fn(() =>
+    Promise.resolve({ user: { id: 'u1' }, userRole: { role: 'admin', is_owner: true, permissions: null } }),
+  ),
 }))
 
 /** Chainable, thenable Supabase stub — resolves `data` however long the chain. */

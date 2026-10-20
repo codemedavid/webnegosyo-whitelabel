@@ -31,12 +31,22 @@ const q = {
   and: (...exprs: Expr[]) => (row: Row) => exprs.every(e => e(row)),
   or: (...exprs: Expr[]) => (row: Row) => exprs.some(e => e(row)),
 };
+// Index range predicates: each narrows the rows it is chained onto.
+type IndexRange = { eq: (field: string, expected: unknown) => IndexRange; gte: (field: string, bound: number) => IndexRange; test: Expr };
+const indexRange = (test: Expr): IndexRange => ({
+  eq: (field, expected) => indexRange((row) => test(row) && row[field] === expected),
+  gte: (field, bound) => indexRange((row) => test(row) && Number(row[field]) >= bound),
+  test,
+});
 function context(tables: Record<string, Row[]>) {
   return { db: { query: (table: string) => {
     let rows = tables[table] ?? [];
     const builder = {
       filter: (fn: (query: typeof q) => Expr) => { rows = rows.filter(fn(q)); return builder; },
-      withIndex: (_name: string, fn: (index: { eq: (field: string, expected: unknown) => Expr }) => Expr) => { rows = rows.filter(fn({ eq: (field: string, expected: unknown) => (row: Row) => row[field] === expected })); return builder; },
+      withIndex: (_name: string, fn?: (index: IndexRange) => IndexRange) => {
+        if (fn) { const { test } = fn(indexRange(() => true)); rows = rows.filter((row) => Boolean(test(row))); }
+        return builder;
+      },
       order: () => builder,
       take: async (n: number) => rows.slice(0, n),
       collect: async () => rows,

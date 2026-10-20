@@ -10,6 +10,8 @@
  * that design's chunk ships. Unknown values fall back to 'classic'.
  */
 
+import { BrandingInspector } from '@/components/customer/branding-inspector'
+import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { useCartView } from '@/hooks/useCartView'
 import { CartTemplateRenderer } from '@/components/customer/cart-templates'
 import {
@@ -34,13 +36,17 @@ export default function CartPage() {
   const template = pickDesignId(cart.tenant.cart_template, CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE)
 
   return (
-    <>
+    <StorefrontLabelsProvider tenant={cart.tenant}>
       {/* Senior mode only: "Step 2 of 4" + a labelled back button */}
       <SeniorOrderSteps current="cart" branding={cart.branding} backLabel="Back to menu" onBack={cart.exitToMenu} />
-      <CartTemplateRenderer template={template} cart={cart} />
+      <div data-branding-scope="cart/colors">
+        <CartTemplateRenderer template={template} cart={cart} />
+      </div>
       {/* Shared overlays — rendered for every design */}
       <CartRemoveDialog cart={cart} />
       <CartEditDialog cart={cart} />
-    </>
+      {/* Branding Studio tap-to-edit (dormant outside the editor iframe) */}
+      <BrandingInspector />
+    </StorefrontLabelsProvider>
   )
 }

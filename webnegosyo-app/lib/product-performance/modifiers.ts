@@ -174,8 +174,12 @@ function fromAddons(line: SalesLine, product: CatalogProduct | undefined): LineM
     .filter(({ label }) => label.name !== "")
     .map(({ addon, label }) => {
       const hit = findOption(product, label.name, { prefer: "addon" });
-      const stored = Number(addon.price);
-      const perUnit = addon.quantity && addon.quantity > 0 ? addon.quantity : label.quantity;
+      const hasStructuredQuantity = Boolean(addon.quantity && addon.quantity > 0);
+      const perUnit = hasStructuredQuantity ? Number(addon.quantity) : label.quantity;
+      // A structured quantity is priced per portion (QR / Convex rows). A
+      // "Name ×N" label stores the price of all N portions — the register's
+      // order-edit writer (`order-edit-cart.ts`); web labels store 0.
+      const stored = hasStructuredQuantity ? Number(addon.price) : Number(addon.price) / label.quantity;
       return {
         // The web writes every multi-pick group here, required ones included.
         kind: hit ? kindOfGroup(hit.group) : ("addon" as const),

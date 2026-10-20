@@ -29,7 +29,8 @@ describe("campaign editor — starting from a preset", () => {
   it("offers the ready-made campaigns instead of an empty form", () => {
     const source = readCode(...EDITOR);
 
-    expect(source).toMatch(/CAMPAIGN_PRESETS/);
+    // The goals offered: every preset, minus the follow-ups Texts runs by itself.
+    expect(source).toMatch(/offeredCampaignPresets\(canUseTexts\)/);
     expect(source).toMatch(/buildPresetDraft/);
   });
 

@@ -17,6 +17,10 @@ import {
   useOfflineOrderList,
   useOfflineOrderMutation,
 } from "../../lib/offline/use-offline-orders";
+import { isQueuedOrderWrite } from "../../lib/offline/write-order-change";
+import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
+import { guardKitchenStatusWrite } from "../../lib/fresh-order-status";
+import { useFreshOrderStatus } from "../../lib/use-fresh-order-status";
 import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useBranchScope } from "../../lib/use-branch-scope";
@@ -64,6 +68,9 @@ const TIMER_TICK_MS = 30_000;
 const KEEP_AWAKE_TAG = "kitchen-board";
 
 const keyExtractor = (ticket: KitchenTicket) => ticket.order._id;
+
+/** How long a refusal notice stays on the board before it clears itself. */
+const NOTICE_DISMISS_MS = 5_000;
 
 /** Tablet landscape fits three tickets across; portrait tablets two. */
 const THREE_COLUMN_MIN_WIDTH = 900;
@@ -114,6 +121,14 @@ export default function KitchenScreen() {
 
   const [isAllDayOpen, setAllDayOpen] = useState(false);
   const [lastBumped, setLastBumped] = useState<{ orderId: string; ref: string } | null>(null);
+  // A refused bump says why on the board itself — a modal would stall a rush.
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), NOTICE_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  const readFreshStatus = useFreshOrderStatus();
 
   const scopedOrders = useMemo(
     () => filterOrdersToScope(scope, orders) as KitchenOrder[] | undefined,
@@ -156,15 +171,32 @@ export default function KitchenScreen() {
         Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
         return;
       }
-      const ticket = ticketsByIdRef.current.get(orderId);
+      // The board can be seconds behind. Ask the server first: a ticket
+      // cancelled elsewhere must not be written back to life (its stock was
+      // restored by the cancel), so the bump is refused instead.
+      const guard = guardKitchenStatusWrite({
+        boardStatus: ticketsByIdRef.current.get(orderId)?.order.status,
+        freshStatus: await readFreshStatus(orderId),
+      });
+      if (!guard.allow) {
+        setNotice(guard.message);
+        return;
+      }
+      const { previousStatus } = guard;
+      const newStatus = bumpTargetStatus(previousStatus ?? "");
       try {
-        await updateStatus({ orderId, status: bumpTargetStatus(ticket?.order.status ?? "") });
+        const written = await updateStatus({ orderId, status: newStatus }, { previousStatus });
+        // The one stock rule every status path shares. A change kept on the
+        // device runs it on replay instead. Background, never throws.
+        if (!isQueuedOrderWrite(written)) {
+          void syncStockForStatusChange({ orderId, newStatus, previousStatus });
+        }
         setLastBumped({ orderId, ref: orderId.slice(-4).toUpperCase() });
       } catch {
         Alert.alert("Error", "Failed to bump the order. Check your connection and try again.");
       }
     },
-    [updateStatus],
+    [updateStatus, readFreshStatus],
   );
 
   const handleSetPrepTime = useCallback(
@@ -201,13 +233,30 @@ export default function KitchenScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
+    // Same check as a bump: a recall of a ticket cancelled since must not
+    // resurrect it. The server's status, else the board's last word on it.
+    const { orderId } = lastBumped;
+    const guard = guardKitchenStatusWrite({
+      boardStatus: ticketsByIdRef.current.get(orderId)?.order.status,
+      freshStatus: await readFreshStatus(orderId),
+    });
+    if (!guard.allow) {
+      setNotice(guard.message);
+      setLastBumped(null);
+      return;
+    }
+    const { previousStatus } = guard;
+    const newStatus = recallTargetStatus();
     try {
-      await updateStatus({ orderId: lastBumped.orderId, status: recallTargetStatus() });
+      const written = await updateStatus({ orderId, status: newStatus }, { previousStatus });
+      if (!isQueuedOrderWrite(written)) {
+        void syncStockForStatusChange({ orderId, newStatus, previousStatus });
+      }
       setLastBumped(null);
     } catch {
       Alert.alert("Error", "Failed to recall the order. Check your connection and try again.");
     }
-  }, [lastBumped, updateStatus]);
+  }, [lastBumped, updateStatus, readFreshStatus]);
 
   const handlePrint = useCallback(async (ticket: KitchenTicket) => {
     const outcome = await printForRole(
@@ -306,6 +355,17 @@ export default function KitchenScreen() {
           />
         </TickerProvider>
       )}
+
+      {notice ? (
+        <TouchableOpacity
+          style={[styles.recallBar, lastBumped ? styles.noticeAboveRecall : null]}
+          onPress={() => setNotice(null)}
+          activeOpacity={0.85}
+          accessibilityRole="alert"
+        >
+          <Text style={styles.recallText}>{notice}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {lastBumped ? (
         <TouchableOpacity style={styles.recallBar} onPress={handleRecall} activeOpacity={0.85}>
@@ -423,6 +483,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: "center",
+  },
+  noticeAboveRecall: {
+    bottom: 80,
   },
   recallText: {
     color: kds.warning,

@@ -1,6 +1,9 @@
 /**
  * get_inventory — what is out or low, what the stock is worth, and recent
  * stock movements (received, wasted, counted, sold).
+ *
+ * Stock is `inventory` (Phase 0d). What it is worth is `costs`: without that
+ * grant the value is left out of the facts and the card, never shown as ₱0.
  */
 
 import { z } from 'zod'
@@ -9,6 +12,7 @@ import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPeso } from '@/components/admin/dashboard/dashboard-format'
 import { summarizeStock, type StockStatus } from '@/lib/assistant/insights/inventory-status'
+import { canSeeCosts } from '@/lib/inventory/cost-visibility'
 import type { ActivityFeedEntry } from '@/lib/inventory/activity-feed'
 import type { AssistantToolDef } from '@/lib/assistant/tools/registry'
 import type { RefBook } from '@/lib/assistant/refs'
@@ -23,20 +27,25 @@ function qty(value: number, unit: string): string {
   return `${value}${unit ? ` ${unit}` : ''}`
 }
 
-export function buildStockResult(status: StockStatus, refs: RefBook): ToolResult {
+function stockSubtitle(status: StockStatus, showCosts: boolean): string {
+  const counts = `${status.outCount} out · ${status.lowCount} low`
+  return showCosts ? `${counts} · stock worth ${formatPeso(status.stockValue)}` : counts
+}
+
+export function buildStockResult(status: StockStatus, refs: RefBook, showCosts: boolean): ToolResult {
   const shown = status.attention.slice(0, LIST_LIMIT)
   return {
     facts: {
       ingredients: status.activeCount,
       out: status.outCount,
       low: status.lowCount,
-      stockValue: status.stockValue,
+      ...(showCosts ? { stockValue: status.stockValue } : {}),
       needsAttention: shown.map((row) => ({ ref: refs.refFor('ingredient', row.id), name: row.name, level: row.level, onHand: qty(row.quantity, row.unit), reorderAt: qty(row.reorderLevel, row.unit) })),
     },
     card: {
       type: 'ranked',
       title: 'Stock to watch',
-      subtitle: `${status.outCount} out · ${status.lowCount} low · stock worth ${formatPeso(status.stockValue)}`,
+      subtitle: stockSubtitle(status, showCosts),
       rows: shown.map((row) => ({
         label: row.name,
         value: qty(row.quantity, row.unit),
@@ -84,7 +93,7 @@ async function readUnits(tenantId: string): Promise<Map<string, string>> {
 export const getInventoryTool: AssistantToolDef<Input> = {
   name: 'get_inventory',
   description: 'Inventory: out/low ingredients and stock value, or recent stock movements.',
-  access: { permission: 'menu' },
+  access: { permission: 'inventory' },
   isAvailable: (flags) => flags.inventoryEnabled,
   input,
   async run(ctx, { view }) {
@@ -93,6 +102,7 @@ export const getInventoryTool: AssistantToolDef<Input> = {
       const { entries, loadFailed } = await getInventoryActivity(ctx.tenantId, ingredients)
       return buildMovementsResult(entries, loadFailed)
     }
-    return buildStockResult(summarizeStock(ingredients, await readUnits(ctx.tenantId)), ctx.refs)
+    const status = summarizeStock(ingredients, await readUnits(ctx.tenantId))
+    return buildStockResult(status, ctx.refs, canSeeCosts(ctx.caller))
   },
 }

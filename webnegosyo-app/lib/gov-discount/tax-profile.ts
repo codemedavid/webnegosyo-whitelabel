@@ -24,7 +24,7 @@ export const ID_PHOTO_MODES: readonly IdPhotoMode[] = ['off', 'optional']
 /**
  * How long an ID photo is kept. The purge
  * (`/api/gov-discounts/id-photos/purge`) and the database (`expires_at`,
- * `20261012140000_gov_discount_id_photos.sql`) both enforce it.
+ * `20261014160000_gov_discount_id_photos.sql`) both enforce it.
  */
 export const ID_PHOTO_RETENTION_DAYS = 90
 

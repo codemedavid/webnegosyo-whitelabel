@@ -1,10 +1,13 @@
 'use client'
 
-import { Check, Minus, Play, X } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Minus, Play, X } from 'lucide-react'
 import type { OnboardingBuildStepId, StepStatus } from '@/lib/onboarding/plan'
 import { GOALS, type GoalId } from '@/lib/onboarding/goals'
+import { Owl } from '@/components/mascot/owl'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB } from './onboarding-ui'
+import { DrawCheck, POP_SPRING, Stagger } from './motion/parts'
 import { LiveStoreFrame, PhoneFrame, PhoneSkeleton, StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
 
 /**
@@ -31,9 +34,10 @@ function statusLine(view: OnboardingView, isOpening: boolean): string {
 function StepMark({ status }: { status: StepStatus }) {
   if (status === 'done') {
     return (
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full animate-in zoom-in-50 duration-300" style={{ backgroundColor: ACCENT }}>
-        <Check className="h-4 w-4" strokeWidth={3} style={{ color: ACCENT_INK }} aria-hidden />
-      </span>
+      <motion.span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: ACCENT, color: ACCENT_INK }}
+        initial={{ scale: 0.4 }} animate={{ scale: 1 }} transition={POP_SPRING}>
+        <DrawCheck size={16} strokeWidth={3} />
+      </motion.span>
     )
   }
   if (status === 'failed') {
@@ -62,7 +66,7 @@ function BuildStepRow({ step, goals }: { step: OnboardingView['steps'][number]; 
   const goal = STEP_GOALS[step.id]
   const isForGoal = !!goal && goals.includes(goal)
   return (
-    <li className="flex items-start gap-4 py-3">
+    <div role="listitem" className="flex items-start gap-4 py-3">
       <StepMark status={step.status} />
       <div className="min-w-0 pt-0.5">
         <p className="text-[15px] font-semibold transition-colors" style={{ color: isQuiet ? OB.faint : OB.ink }}>
@@ -76,7 +80,7 @@ function BuildStepRow({ step, goals }: { step: OnboardingView['steps'][number]; 
           <p className="mt-0.5 text-[13px] leading-snug" style={{ color: step.status === 'failed' ? '#B91C1C' : OB.muted }}>{step.detail}</p>
         )}
       </div>
-    </li>
+    </div>
   )
 }
 
@@ -118,6 +122,7 @@ export function OnboardingBuilding({ view, isOpening = false, preview = null }: 
     <div className="lg:grid lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-2">
       <div className="px-5 pb-16 pt-8 sm:px-8 lg:flex lg:justify-center lg:px-12 lg:pt-16">
         <div className="mx-auto w-full max-w-[34rem]">
+          <Owl state="thinking" size={120} className="mb-5" />
           <p className="text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>Go live</p>
           <h1 className="mt-2 text-balance text-[2.25rem] font-extrabold leading-[1.06] tracking-[-0.03em] sm:text-[3rem]" style={{ color: OB.ink }}>
             Building {storeName}
@@ -128,13 +133,17 @@ export function OnboardingBuilding({ view, isOpening = false, preview = null }: 
 
           <div className="mt-8 h-2.5 overflow-hidden rounded-full" style={{ backgroundColor: OB.line }}
             role="progressbar" aria-label="Build progress" aria-valuemin={0} aria-valuemax={view.steps.length} aria-valuenow={settled}>
-            <div className="h-full rounded-full transition-[width] duration-700 ease-out"
-              style={{ width: `${Math.max((settled / view.steps.length) * 100, 4)}%`, backgroundColor: ACCENT }} />
+            <div className="relative h-full overflow-hidden rounded-full transition-[width] duration-700 ease-out"
+              style={{ width: `${Math.max((settled / view.steps.length) * 100, 4)}%`, backgroundColor: ACCENT }}>
+              {/* Moving stripes: the bar is alive even between two steps. */}
+              <span className="absolute inset-0 animate-[ob-stripes_900ms_linear_infinite] motion-reduce:hidden" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, rgba(255,255,255,0.22) 0 8px, transparent 8px 16px)', backgroundSize: '22.6px 100%' }} aria-hidden />
+            </div>
+            <style>{'@keyframes ob-stripes { to { background-position: 22.6px 0; } }'}</style>
           </div>
 
-          <ol className="mt-6">
+          <Stagger role="list" className="mt-6">
             {view.steps.map((step) => <BuildStepRow key={step.id} step={step} goals={view.goals} />)}
-          </ol>
+          </Stagger>
 
           <p className="mt-6 text-[13px] leading-relaxed" style={{ color: OB.muted }}>
             A minute or two. You can close this page and come back to the same link anytime.

@@ -19,6 +19,12 @@
  * let each keep what it needs, and `npx jest` still runs both.
  */
 
+// Every store runs on Philippine time, and receipts/reports format dates in the
+// device's zone. Pin it so a suite gives the same answer on a laptop in Manila
+// and a UTC CI runner (receipt-modern printed 4:30 AM instead of 12:30 PM).
+// Set before the workers spawn, so they inherit it.
+process.env.TZ = "Asia/Manila";
+
 /** Pure logic and stores — unchanged from before components were testable. */
 const logic = {
   displayName: "logic",

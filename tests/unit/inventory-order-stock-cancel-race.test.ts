@@ -102,12 +102,13 @@ function buildWorld(options: {
       }
       return {
         select: () => chain,
-        insert: (row: { reason: 'sale' | 'void'; revision: number }) => {
+        insert: (row: { reason: 'sale' | 'void'; revision: number; kind?: 'order' | 'edit' }) => {
+          const kind = row.kind ?? 'order'
           const duplicate = claims.some(
-            (c) => c.reason === row.reason && c.revision === row.revision,
+            (c) => c.reason === row.reason && c.revision === row.revision && (c.kind ?? 'order') === kind,
           )
           if (!duplicate) {
-            claims.push({ reason: row.reason, revision: row.revision })
+            claims.push({ reason: row.reason, revision: row.revision, kind })
             claimInserts.push(row as unknown as Record<string, unknown>)
           }
           return Promise.resolve({
@@ -125,7 +126,8 @@ function buildWorld(options: {
             then: (resolve: (r: unknown) => unknown) => {
               claimReleases.push({ ...filters })
               const index = claims.findIndex(
-                (c) => c.reason === filters.reason && c.revision === filters.revision,
+                (c) => c.reason === filters.reason && c.revision === filters.revision &&
+                  (c.kind ?? 'order') === (filters.kind ?? 'order'),
               )
               if (index >= 0) claims.splice(index, 1)
               return resolve({ error: null })
@@ -191,7 +193,7 @@ describe('reverse claims the void before reading movements', () => {
     const result = await reverseOrderStockMovements(TENANT, ORDER)
 
     expect(result.movementCount).toBe(0)
-    expect(world.claims).toContainEqual({ reason: 'void', revision: 0 })
+    expect(world.claims).toContainEqual({ reason: 'void', revision: 0, kind: 'order' })
     expect(world.claimReleases).toEqual([])
   })
 })

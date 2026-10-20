@@ -3,6 +3,7 @@ import { PreviewFrame } from '@/components/admin/branding-studio/preview-frame'
 import {
   BRANDING_INSPECT_MODE_MESSAGE,
   BRANDING_SCOPE_SELECTED_MESSAGE,
+  BRANDING_TEXT_EDIT_MESSAGE,
 } from '@/lib/branding-inspect'
 
 /**
@@ -113,5 +114,33 @@ describe('PreviewFrame inspect bridge', () => {
     })
 
     expect(onScopeSelected).not.toHaveBeenCalled()
+  })
+})
+
+describe('PreviewFrame inline text edits', () => {
+  function send(data: unknown, origin = window.location.origin) {
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data, origin }))
+    })
+  }
+
+  it('hands a retyped label to the editor, cleaned and within length', () => {
+    const onLabelEdited = jest.fn()
+    renderFrame({ onLabelEdited })
+
+    send({ type: BRANDING_TEXT_EDIT_MESSAGE, key: 'menu.add', text: '  Add   it to my order please now  ' })
+
+    expect(onLabelEdited).toHaveBeenCalledWith('menu.add', 'Add it to my order pleas')
+  })
+
+  it('ignores unknown labels, other origins and non-text', () => {
+    const onLabelEdited = jest.fn()
+    renderFrame({ onLabelEdited })
+
+    send({ type: BRANDING_TEXT_EDIT_MESSAGE, key: '__proto__', text: 'x' })
+    send({ type: BRANDING_TEXT_EDIT_MESSAGE, key: 'cart.title', text: 'x' }, 'https://evil.example')
+    send({ type: BRANDING_TEXT_EDIT_MESSAGE, key: 'cart.title', text: 42 })
+
+    expect(onLabelEdited).not.toHaveBeenCalled()
   })
 })

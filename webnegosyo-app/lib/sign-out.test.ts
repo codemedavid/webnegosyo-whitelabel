@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
-import { SIGN_OUT_SCOPE, signOutThisDevice } from "./sign-out";
+import { SIGN_OUT_SCOPE, setBeforeSignOut, signOutThisDevice } from "./sign-out";
 
 /**
  * A global sign-out revokes every session the user holds, including the MCP
@@ -35,5 +35,38 @@ describe("signOutThisDevice", () => {
       .filter((file) => /\.auth\.signOut\(/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("forgetting this device on sign-out", () => {
+  afterEach(() => setBeforeSignOut(null));
+
+  test("runs the device cleanup BEFORE the session ends (it needs the session's RLS)", async () => {
+    const order: string[] = [];
+    setBeforeSignOut(async () => {
+      order.push("forget");
+    });
+    const signOut = jest.fn(async () => {
+      order.push("signOut");
+      return { error: null };
+    });
+    await signOutThisDevice({ auth: { signOut } });
+    expect(order).toEqual(["forget", "signOut"]);
+  });
+
+  test("a failing or hanging cleanup never blocks the sign-out", async () => {
+    jest.useFakeTimers();
+    setBeforeSignOut(() => new Promise<void>(() => undefined));
+    const signOut = jest.fn().mockResolvedValue({ error: null });
+    const done = signOutThisDevice({ auth: { signOut } });
+    await jest.advanceTimersByTimeAsync(5000);
+    await done;
+    expect(signOut).toHaveBeenCalled();
+    jest.useRealTimers();
+
+    setBeforeSignOut(async () => Promise.reject(new Error("offline")));
+    const again = jest.fn().mockResolvedValue({ error: null });
+    await signOutThisDevice({ auth: { signOut: again } });
+    expect(again).toHaveBeenCalled();
   });
 });

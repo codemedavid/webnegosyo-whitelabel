@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useAuthStore } from "../../../stores/auth-store";
+import { useHasPermission } from "../../../lib/use-has-permission";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
 import {
@@ -68,6 +69,9 @@ export default function ProductEditorScreen() {
   const isNew = productId === "new";
   const tenantId = useAuthStore((s) => s.tenantId);
   const tenantSlug = useAuthStore((s) => s.tenantSlug);
+  // What a dish costs to make, and its margin, belong to `costs` — not to
+  // everyone who may edit the menu.
+  const canSeeCosts = useHasPermission("costs");
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(!isNew);
@@ -84,7 +88,7 @@ export default function ProductEditorScreen() {
 
   const { data: costRecord } = useSafeQuery<CostRecord | null>(
     getCostRef,
-    isNew ? "skip" : { menuItemId: productId }
+    !isNew && canSeeCosts ? { menuItemId: productId } : "skip"
   );
   const setCost = useSafeMutation(setCostRef);
   // Every write here is read by the product list, the branch menu, the
@@ -404,7 +408,7 @@ export default function ProductEditorScreen() {
         </Card>
       )}
 
-      {!isNew && (
+      {canSeeCosts && !isNew && (
         <Card title="Cost & Profit" style={styles.card}>
           <Text style={styles.label}>Cost Price (₱)</Text>
           <TextInput

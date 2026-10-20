@@ -86,6 +86,11 @@ export interface OrderEditContext {
   appendBaseCart: PosCartLine[];
   /** Checked against the stored revision on save, to catch a concurrent edit. */
   expectedRevisionNumber: number;
+  /**
+   * When the order was placed (ISO), or null when the caller did not say.
+   * The refund gate mirrors the server's same-day direct-refund limit with it.
+   */
+  orderCreatedAt?: string | null;
   /** The bill as placed, for the was/now header. */
   originalTotal: number;
   /** The items as placed, for the dirty check and the audit snapshot. */
@@ -173,6 +178,8 @@ export interface EditableOrderLike extends ScopedOrderLike {
   total: number;
   revisionNumber?: number;
   deliveryFee?: number;
+  /** When the order was placed (ISO), for the register's same-day refund limit. */
+  createdAt?: string;
   /**
    * The service charge the order was placed with, when the backend stored one.
    * Absent on every order written before the field existed — see
@@ -375,6 +382,7 @@ function loadOrder(
       mode,
       appendBaseCart: mode === "append" ? lines : [],
       expectedRevisionNumber: order.revisionNumber ?? 0,
+      orderCreatedAt: order.createdAt ?? null,
       originalTotal: order.total,
       originalItems: posCartToOrderItems(lines, catalog),
       originalStockItems: buildPosStockItems(lines),

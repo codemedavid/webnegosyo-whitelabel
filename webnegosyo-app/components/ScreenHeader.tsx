@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, type ViewStyle } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenTopInset } from "../lib/use-screen-top-inset";
 import { colors, typography, spacing } from "../theme/colors";
 
 /**
@@ -46,8 +46,8 @@ export function ScreenHeader({
   style,
 }: ScreenHeaderProps) {
   const isDark = tone === "dark";
-  const insets = useSafeAreaInsets();
-  const paddingTop = (ignoreTopInset ? 0 : insets.top) + spacing.md;
+  const topInset = useScreenTopInset();
+  const paddingTop = (ignoreTopInset ? 0 : topInset) + spacing.md;
   return (
     <View style={[styles.wrap, { paddingTop }, style]}>
       <View style={styles.titleRow}>

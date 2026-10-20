@@ -1,7 +1,7 @@
 /**
  * Where a sub-screen is entered from.
  *
- * Seven screens hang under a bar tab instead of taking a slot of their own
+ * Eight screens hang under a bar tab instead of taking a slot of their own
  * (SUBSCREEN_TABS in ./tab-visibility.ts). Demoting them without giving them a
  * door would bury them, so each one names the screen it hangs under, and the
  * parent draws those doors — as header buttons for the shift screens (Orders
@@ -38,8 +38,9 @@ export const SUBSCREEN_PARENTS: Readonly<Record<string, readonly string[]>> = {
   pos: ["pos-sales"],
   // The same sales, plotted over days rather than sliced by type.
   analytics: ["trends"],
-  // The Reports dashboard asks "are they coming back?"; who they are, and the
-  // reward cards that keep them coming, are its two follow-ups.
+  // The Reports dashboard asks "are they coming back?"; who they are, the
+  // reward cards that keep them coming, and the texts that bring them back
+  // are its follow-ups.
   [REPORTS_TAB]: REPORTS_DOORS,
 };
 

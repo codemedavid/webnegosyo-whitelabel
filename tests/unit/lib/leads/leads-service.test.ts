@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from '@jest/globals'
+import { describe, test, expect, beforeEach, beforeAll, afterAll } from '@jest/globals'
 
 // ---------------------------------------------------------------------------
 // Mock @supabase/supabase-js
@@ -71,6 +71,17 @@ const chainMethods = ['select', 'insert', 'update', 'eq', 'neq', 'or', 'order', 
 // ---------------------------------------------------------------------------
 // Reset mocks before each test
 // ---------------------------------------------------------------------------
+// createAdminClient() refuses to build a client without these (read per call),
+// and the mocked createClient never uses them.
+const ORIGINAL_ENV = { ...process.env }
+beforeAll(() => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
+})
+afterAll(() => {
+  process.env = ORIGINAL_ENV
+})
+
 beforeEach(() => {
   jest.clearAllMocks()
   // After clearAllMocks(), re-wire all chain methods to return chain again.

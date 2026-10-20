@@ -8,15 +8,39 @@ import { buildTrackingTheme } from '@/components/customer/order-tracking/trackin
 import { describeLoyaltyOffer, type LoyaltyOffer } from '@/lib/loyalty/offer'
 import { readLoyaltyTenantFlags } from '@/lib/loyalty/tenant-flags'
 import { readWalletAvailability } from '@/lib/loyalty/wallet-pass/config'
+import { readTrackingStyle } from '@/lib/tracking-style/keys'
 import type { Tenant } from '@/types/database'
 import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { OrderTrackingFallback } from './order-tracking-fallback'
+import { TrackingStudioPreview } from './tracking-studio-preview'
+import { STUDIO_PREVIEW_PARAM, TRACKING_PREVIEW_ORDER_ID, previewItemsFrom } from '@/lib/branding-studio/tracking-preview'
+import { pickStorefrontColumns } from '@/lib/queries/tenant-storefront-select'
+import { getCachedMenuItemsList } from '@/lib/cache'
 
 export const dynamic = 'force-dynamic' // Always fetch fresh status
 
 interface PageProps {
   params: Promise<{ tenant: string; orderId: string }>
-  searchParams: Promise<{ t?: string }>
+  searchParams: Promise<{ t?: string; [STUDIO_PREVIEW_PARAM]?: string }>
+}
+
+/**
+ * The Branding Studio's sample order page. Only inside the Studio preview
+ * (the param), and only sample data: no order is read, so nothing private can
+ * show. The store's dishes name the sample lines when the menu can be read.
+ */
+async function renderStudioPreview(tenant: Tenant, tenantSlug: string) {
+  const menu = await getCachedMenuItemsList(tenant.id).catch(() => [])
+  return (
+    <TrackingStudioPreview
+      tenant={pickStorefrontColumns(tenant as unknown as Record<string, unknown>)}
+      tenantSlug={tenantSlug}
+      tenantId={tenant.id}
+      storeName={tenant.name}
+      loyaltyOffer={await resolveLoyaltyOffer(tenant)}
+      items={previewItemsFrom(menu)}
+    />
+  )
 }
 
 /**
@@ -40,21 +64,31 @@ async function resolveLoyaltyOffer(tenant: Tenant): Promise<LoyaltyOffer | null>
 }
 
 async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
-  const branding = getTenantBranding(tenant as unknown as Record<string, unknown>)
+  const row = tenant as unknown as Record<string, unknown>
+  const branding = getTenantBranding(row)
+  const trackingStyle = readTrackingStyle(row)
   return {
     storeName: tenant.name,
     logoUrl: branding.logoUrl,
-    theme: buildTrackingTheme(branding),
+    theme: buildTrackingTheme(branding, trackingStyle),
+    options: trackingStyle.options,
+    storefrontLabels: row.storefront_labels ?? null,
     loyaltyOffer: await resolveLoyaltyOffer(tenant),
   }
 }
 
 export default async function OrderTrackingPage({ params, searchParams }: PageProps) {
-  const [{ tenant: tenantSlug, orderId }, { t: trackingToken }] = await Promise.all([params, searchParams])
+  const [{ tenant: tenantSlug, orderId }, query] = await Promise.all([params, searchParams])
+  const trackingToken = query.t
 
   // Resolve tenant server-side
   const tenant = await getCachedTenantBySlug(tenantSlug)
   if (!tenant) notFound()
+
+  if (orderId === TRACKING_PREVIEW_ORDER_ID) {
+    if (query[STUDIO_PREVIEW_PARAM] !== '1') notFound()
+    return renderStudioPreview(tenant, tenantSlug)
+  }
 
   // The first tracking paint follows checkout's redirect, often on a runtime
   // that has never routed this store. The cached row predicts the backend so

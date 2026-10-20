@@ -26,6 +26,7 @@ import type { ModifierGroup } from "./modifier-groups";
 import type { OrderAddon, OrderItemDto, OrderVariationSelection } from "./backends/supabase-orders";
 import {
   addLine,
+  selectionLabel,
   type OrderLineCarryover,
   type PosCartLine,
   type PosCartSelection,
@@ -121,11 +122,13 @@ function toSelection(
   priceModifier: number,
   groupName: string | undefined,
   onUnresolved: (groupName: string | undefined, optionName: string) => void,
+  portions = 1,
 ): PosCartSelection {
   const match = findOption(groups, optionName, groupName);
+  const amount = portions > 1 ? { portions } : {};
 
   if (!match) {
-    onUnresolved(groupName, optionName);
+    onUnresolved(groupName, selectionLabel({ optionName, portions }));
     // A synthetic id keeps line identity stable and distinct without pretending
     // the option still exists.
     return {
@@ -134,6 +137,7 @@ function toSelection(
       optionId: `orphan:${optionName}`,
       optionName,
       priceModifier,
+      ...amount,
     };
   }
 
@@ -143,7 +147,54 @@ function toSelection(
     optionId: match.optionId,
     optionName,
     priceModifier,
+    ...amount,
   };
+}
+
+/**
+ * Web checkout labels an add-on amount `Name ×N` (`src/lib/addon-quantity.ts`
+ * `addonLabel`; parsed the same way by `order-line-modifier-pricing.ts`).
+ */
+const ADDON_PORTION_LABEL = /^(.*\S)\s*×(\d+)$/;
+const MAX_ADDON_PORTIONS = 99;
+
+function isPortionCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= MAX_ADDON_PORTIONS;
+}
+
+interface AddonAmount {
+  name: string;
+  portions: number;
+  /** The selection's price for ALL its portions. */
+  priceModifier: number;
+}
+
+/**
+ * Split a stored add-on into its option name and portion count.
+ *
+ * A structured `quantity` (QR / Convex rows) is per-portion priced, so the
+ * selection carries price × quantity; a `×N` label (web rows) already stores
+ * its line price, normally 0. A label whose stripped name matches no option but
+ * whose FULL text does is an option that happens to end in "×2".
+ */
+function addonAmount(addon: OrderAddon, groups: ModifierGroup[]): AddonAmount {
+  const label = addon.name.trim();
+  const parsed = ADDON_PORTION_LABEL.exec(label);
+  const structured = isPortionCount(addon.quantity) ? addon.quantity : null;
+
+  if (parsed && isPortionCount(Number(parsed[2]))) {
+    const name = parsed[1].trim();
+    if (findOption(groups, name) || !findOption(groups, label)) {
+      return {
+        name,
+        portions: structured ?? Number(parsed[2]),
+        priceModifier: addon.price * (structured ?? 1),
+      };
+    }
+  }
+
+  const portions = structured ?? 1;
+  return { name: label, portions, priceModifier: addon.price * portions };
 }
 
 /**
@@ -198,9 +249,10 @@ function selectionsFor(
       ? legacyVariationSelections(item.variation, groups, onUnresolved)
       : [];
 
-  const addons = (item.addons ?? []).map((addon) =>
-    toSelection(groups, addon.name, addon.price, undefined, onUnresolved),
-  );
+  const addons = (item.addons ?? []).map((addon) => {
+    const amount = addonAmount(addon, groups);
+    return toSelection(groups, amount.name, amount.priceModifier, undefined, onUnresolved, amount.portions);
+  });
 
   return [...variations, ...legacy, ...addons];
 }
@@ -328,7 +380,9 @@ function partitionSelections(
 
   for (const selection of line.selections) {
     if (isAddonSelection(selection, catalog)) {
-      addons.push({ name: selection.optionName, price: selection.priceModifier });
+      // Written back in the label form web checkout uses, so an untouched
+      // "Kimchi ×2" round-trips exactly.
+      addons.push({ name: selectionLabel(selection), price: selection.priceModifier });
       continue;
     }
     variations.push({

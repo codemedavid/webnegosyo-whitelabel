@@ -23,7 +23,7 @@ export function PaymentDetailRows({ rows, copiedText, onCopy, accent }: PaymentD
   if (rows.length === 0) return null
 
   return (
-    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
+    <ul className="divide-y divide-[color:var(--co-border)] rounded-xl border border-[color:var(--co-border)] bg-[var(--co-card)]">
       {rows.map((row, index) => {
         const isCopied = copiedText === row.value
         const copyLabel = row.label ?? 'Details'
@@ -33,16 +33,15 @@ export function PaymentDetailRows({ rows, copiedText, onCopy, accent }: PaymentD
               type="button"
               onClick={() => onCopy(row.value, copyLabel)}
               aria-label={`Copy ${copyLabel}`}
-              className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--checkout-accent)]"
-              style={{ ['--checkout-accent' as string]: accent }}
+              className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--co-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--co-accent)]"
             >
               <span className="min-w-0 flex-1">
                 {row.label && (
-                  <span className="block text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                  <span className="block text-[11px] font-medium uppercase tracking-wide text-[color:var(--co-muted)]">
                     {row.label}
                   </span>
                 )}
-                <span className="block break-all text-[15px] font-medium leading-snug text-gray-900 tabular-nums">
+                <span className="block break-all text-[15px] font-medium leading-snug text-[color:var(--co-text)] tabular-nums">
                   {row.value}
                 </span>
               </span>
@@ -51,7 +50,7 @@ export function PaymentDetailRows({ rows, copiedText, onCopy, accent }: PaymentD
                 style={
                   isCopied
                     ? { borderColor: accent, color: accent, backgroundColor: 'transparent' }
-                    : { borderColor: '#e5e7eb', color: '#4b5563' }
+                    : { borderColor: 'var(--co-border)', color: 'var(--co-muted)' }
                 }
               >
                 {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}

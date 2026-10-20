@@ -27,6 +27,19 @@ export interface PosCartSelection {
    * types re-derives rather than compounds. Absent on a hydrated edit line.
    */
   listPriceModifier?: number;
+  /**
+   * Portions of this option per unit of the line — an add-on amount such as
+   * "Kimchi ×2" carried in from a web order being edited. Absent means one.
+   * `priceModifier` already covers every portion; this only decides what
+   * stock is spent (`addonQuantities`) and how the add-on is labelled.
+   */
+  portions?: number;
+}
+
+/** "Kimchi" or "Kimchi ×2" — the label web checkout writes for an amount. */
+export function selectionLabel(selection: Pick<PosCartSelection, "optionName" | "portions">): string {
+  const portions = selection.portions ?? 1;
+  return portions > 1 ? `${selection.optionName} ×${portions}` : selection.optionName;
 }
 
 /** What a screen hands to {@link addLine}. */
@@ -137,8 +150,10 @@ export function lineKey(
   note?: string,
   carryover?: OrderLineCarryover,
 ): string {
+  // A portion count is part of what the line is: "Kimchi ×2" must not stack
+  // into a plain "Kimchi" line. One portion keeps the historical key shape.
   const options = selections
-    .map((s) => s.optionId)
+    .map((s) => ((s.portions ?? 1) > 1 ? `${s.optionId}x${s.portions}` : s.optionId))
     .slice()
     .sort()
     .join(",");

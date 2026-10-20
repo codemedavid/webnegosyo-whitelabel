@@ -11,7 +11,6 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { setAlpha, getCartPalette } from '@/lib/branding-utils'
 import {
   CartItemRow,
   CartBundleRow,
@@ -19,37 +18,40 @@ import {
   CartCheckoutButton,
   CartContinueShopping,
   CartEmptyState,
+  cartColorVars,
+  getCartColors,
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import { CartOffers } from './cart-shared'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
   const { tenant, items, bundleItems } = cart
 
   if (!tenant) return null
 
-  const palette = getCartPalette(cart.tenant, cart.branding)
-  const accent = palette.accent
-  const accentSoft = setAlpha(accent, 0.08)
+  const palette = getCartColors(cart.tenant, cart.branding)
+  const accentSoft = palette.accentSoft
 
   const isEmpty = items.length === 0 && bundleItems.length === 0
   const bundles = bundleItems.filter((bi) => Array.isArray(bi.slots))
   const itemCount = items.length + bundles.length
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
+    <div className="min-h-screen" style={{ ...cartColorVars(palette), backgroundColor: palette.background }}>
       {/* Minimal header */}
-      <header data-senior-hidden className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/80 backdrop-blur-md">
+      <header data-senior-hidden className="sticky top-0 z-40 border-b backdrop-blur-md" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
         <div className="mx-auto flex h-16 max-w-xl items-center gap-3 px-5 md:px-0">
           <button
             type="button"
             onClick={cart.exitToMenu}
             aria-label="Go back"
-            className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100"
+            className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[var(--cart-soft)]"
+            style={{ color: palette.text }}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <span className="text-base font-semibold tracking-tight text-gray-900" style={{ color: palette.text }}>Cart</span>
+          <span className="text-base font-semibold tracking-tight" style={{ color: palette.text }}>Cart</span>
         </div>
       </header>
 
@@ -60,9 +62,9 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
           <>
             {/* Large bold heading */}
             <div className="mb-8 md:mb-10">
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl" style={{ color: palette.text }}>Cart</h1>
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl" style={{ color: palette.text }}><StoreLabel name="cart.title" fallback="Cart" /></h1>
               {itemCount > 0 && (
-                <p className="mt-1.5 text-sm text-gray-500" style={{ color: palette.mutedText }}>
+                <p className="mt-1.5 text-sm" style={{ color: palette.muted }}>
                   {itemCount} item{itemCount !== 1 ? 's' : ''} in your bag
                 </p>
               )}
@@ -81,8 +83,8 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
 
             {/* Summary panel */}
             <section
-              className="mt-10 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm md:p-8"
-              style={{ boxShadow: `0 1px 2px ${accentSoft}`, backgroundColor: palette.summaryBackground, borderColor: palette.border }}
+              className="mt-10 rounded-3xl border p-6 shadow-sm md:p-8"
+              style={{ boxShadow: `0 1px 2px ${accentSoft}`, backgroundColor: palette.summary, borderColor: palette.border }}
             >
               <CartTotalsRows cart={cart} />
             </section>
@@ -94,7 +96,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
             </div>
 
             {/* Calm reassurance line */}
-            <p className="mt-6 text-center text-xs font-medium text-gray-400">
+            <p className="mt-6 text-center text-xs font-medium" style={{ color: palette.muted }}>
               You can review your order before paying.
             </p>
           </>

@@ -135,6 +135,21 @@ describe("parseLineModifiers", () => {
     expect(modifiers[0]).toMatchObject({ kind: "addon", unitPrice: 25, priceSource: "recorded" });
   });
 
+  it("reads a labelled 'Name ×N' row's stored price as the price of all N portions", () => {
+    // An order edited on the register writes a picked-twice add-on back as
+    // "Extra Cheese ×2" priced for both portions (lib/order-edit-cart.ts).
+    // Reading that price per portion counted its revenue twice (p×2 × 2).
+    const modifiers = parseLineModifiers(line({ addons: [{ name: "Extra Cheese ×2", price: 30 }] }), BURGER);
+
+    expect(modifiers[0]).toMatchObject({ perUnit: 2, unitPrice: 15, priceSource: "recorded" });
+  });
+
+  it("keeps a structured quantity's stored price per portion", () => {
+    const modifiers = parseLineModifiers(line({ addons: [{ name: "Bacon", price: 25, quantity: 2 }] }), BURGER);
+
+    expect(modifiers[0]).toMatchObject({ perUnit: 2, unitPrice: 25, priceSource: "recorded" });
+  });
+
   it("still counts options of a product no longer on the menu", () => {
     // Arrange
     const sold = line({

@@ -36,7 +36,7 @@ import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-o
 import { awaitSaveBeforeRedirect } from '@/lib/checkout/messenger-redirect-gate'
 import { resolveTrackingRedirect } from '@/lib/checkout/tracking-redirect'
 import { classifyOrderSave, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
-import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
+import { useBrandingPreviewTenant, useIsBrandingPreview } from '@/hooks/use-branding-preview'
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
 import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
 import { computeOrderTotals } from '@/lib/order-totals'
@@ -115,6 +115,8 @@ export interface UseCheckoutInput {
 
 export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutInput) {
   const router = useRouter()
+  // Inside the Branding Studio the checkout is a preview: no order is ever placed.
+  const isBrandingPreview = useIsBrandingPreview()
   const {
     items,
     bundleItems,
@@ -921,6 +923,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   }
 
   const handleCheckout = async () => {
+    if (isBrandingPreview) {
+      toast.info('This is a preview in the Branding Studio — no order was placed.')
+      return
+    }
     if (!tenant || isProcessing || !orderType) return
     if (hasSubmitBlocker()) return
 

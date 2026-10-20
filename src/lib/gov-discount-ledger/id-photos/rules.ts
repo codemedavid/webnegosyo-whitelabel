@@ -5,7 +5,7 @@
  * personal data: it lives in a PRIVATE bucket with no storage policies, its
  * row is readable only by `discount_review` holders, a link to it lasts 60
  * seconds, and it is deleted 90 days after it was taken
- * (`20261012140000_gov_discount_id_photos.sql`).
+ * (`20261014160000_gov_discount_id_photos.sql`).
  */
 
 import { ID_PHOTO_RETENTION_DAYS } from '@/lib/gov-discount'

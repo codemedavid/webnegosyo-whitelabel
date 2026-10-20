@@ -20,6 +20,10 @@ import { CARD_STYLE_FIELDS } from '@/lib/card-style'
 import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
 import { STOREFRONT_PACK_IDS, DEFAULT_STOREFRONT_PACK } from '@/lib/storefront-packs'
 import { foldPackSettings, isPackFieldId, packStudioSections } from '@/lib/storefront-pack-studio'
+import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS, type LabelScreen } from '@/lib/storefront-labels'
+import { SECTION_SCHEME_IDS } from '@/lib/section-schemes'
+import { isJsonColumnFieldId } from '@/lib/branding-studio/studio-columns'
+import { LOYALTY_STYLE_SECTIONS, TRACKING_STYLE_SECTIONS } from '@/lib/tracking-style/studio-sections'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
@@ -29,6 +33,8 @@ export interface BrandingField {
   type: BrandingFieldType
   /** Select options (first option is not implicitly the default). */
   options?: readonly string[]
+  /** Select fields only: words shown for an option instead of its stored value. */
+  optionLabels?: Readonly<Record<string, string>>
   /** Value used when nothing in draft/tenant/inherit chain is set. */
   default?: string | number | boolean | null
   /** Registry field id this field inherits from when unset. */
@@ -48,6 +54,8 @@ export interface BrandingField {
    */
   bannerFormats?: boolean
   placeholder?: string
+  /** Text fields only: the longest value the store may save. */
+  maxLength?: number
   min?: number
   max?: number
   /** Select fields only: render as a visual gallery instead of chips. */
@@ -66,7 +74,7 @@ export interface BrandingSection {
 }
 
 export interface BrandingSurface {
-  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
+  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'tracking' | 'loyalty' | 'footer' | 'flash'
   label: string
   glyph: string
   description: string
@@ -84,6 +92,24 @@ const text = (id: string, label: string, placeholder = ''): BrandingField =>
   ({ id, label, type: 'text', default: '', placeholder })
 const number = (id: string, label: string, def: number, min: number, max: number): BrandingField =>
   ({ id, label, type: 'number', default: def, min, max })
+
+/** The store's own wording for one screen's labels (virtual fields over `storefront_labels`). */
+function labelFields(screens: readonly LabelScreen[]): BrandingField[] {
+  return STOREFRONT_LABEL_KEYS.filter((key) => screens.includes(STOREFRONT_LABELS[key].screen)).map((key) => ({
+    id: `storefront_labels.${key}`,
+    label: STOREFRONT_LABELS[key].label,
+    type: 'text',
+    default: '',
+    placeholder: STOREFRONT_LABELS[key].example,
+    maxLength: STOREFRONT_LABELS[key].maxLength,
+    columnBacked: true,
+  }))
+}
+
+/** A section's colour style (virtual field over `section_schemes`); "auto" keeps its own colours. */
+function sectionStyle(section: 'header' | 'hero'): BrandingField {
+  return { id: `section_schemes.${section}`, label: 'Colour style', type: 'select', options: SECTION_SCHEME_IDS, default: 'auto', columnBacked: true }
+}
 const note = (id: string, label: string): BrandingField => ({ id, label, type: 'note' })
 // A picker whose options are the tenant's own menu items (supplied at runtime,
 // not statically). Stored value is the selected menu item id, or '' for none.
@@ -213,6 +239,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Header',
         fields: [
+          sectionStyle('header'),
           select('header_template', 'Template', HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE),
           toggle('header_show_logo', 'Show logo', true),
           toggle('header_show_name', 'Show business name', true),
@@ -238,6 +265,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         title: 'Hero',
         fields: [
           toggle('hero_section_enabled', 'Show hero section', true),
+          sectionStyle('hero'),
           select('hero_preset', 'Style', ['theme', 'centered', 'editorial', 'split', 'banner', 'collage', 'minimal', 'custom'], 'theme'),
           text('hero_kicker', 'Kicker (eyebrow)', 'Now serving'),
           text('hero_title', 'Title', 'Welcome to our menu'),
@@ -304,15 +332,16 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         ],
       },
       {
-        title: 'Quick-view modal',
+        title: 'Item pop-ups',
         fields: [
-          note('note_quickview', 'The quick-view popup opened from a menu card. The full product page has its own surface (Product Detail).'),
+          note('note_quickview', 'The pop-up for changing a dish already in the cart, and the item page offers (upgrades, "just added" sheet). The item page itself has its own screen (Product Detail).'),
           color('modal_background_color', 'Background', '#ffffff'),
           color('modal_title_color', 'Title', null, 'text_primary_color'),
           color('modal_price_color', 'Price', null, 'primary_color'),
           color('modal_description_color', 'Description', null, 'text_secondary_color'),
         ],
       },
+      { title: 'Labels', fields: labelFields(['menu']) },
     ],
   },
   {
@@ -410,6 +439,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('cart_border_color', 'Border', null, 'border_color'),
         ],
       },
+      { title: 'Labels', fields: labelFields(['cart']) },
     ],
   },
   {
@@ -436,6 +466,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('checkout_border_color', 'Border', null, 'border_color'),
         ],
       },
+      { title: 'Labels', fields: labelFields(['checkout', 'confirmation']) },
     ],
   },
   {
@@ -473,7 +504,24 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         title: 'Product detail page',
         fields: [note('note_product_detail', 'Every section of the product page is editable here — image, variations, add-ons, related items, sticky footer and the upsell bottom-sheets.')],
       },
+      // Store-wide wording shown on the item page (a tenants column, not
+      // product_detail_settings): the Studio lists it after the page's own sections.
+      { title: 'Labels', fields: labelFields(['item']) },
     ],
+  },
+  {
+    id: 'tracking',
+    label: 'Order Status',
+    glyph: 'O',
+    description: 'The page customers follow their order on — banner, timeline, receipt and the ready alert. Blank colours follow your brand.',
+    sections: [...TRACKING_STYLE_SECTIONS, { title: 'Labels', fields: labelFields(['tracking']) }],
+  },
+  {
+    id: 'loyalty',
+    label: 'Loyalty Card',
+    glyph: 'L',
+    description: 'The stamp card — on the order page, at checkout and on the rewards page. Blank colours follow the order page.',
+    sections: [...LOYALTY_STYLE_SECTIONS, { title: 'Labels', fields: labelFields(['loyalty']) }],
   },
   {
     id: 'footer',
@@ -694,7 +742,7 @@ export function buildPublishPayload(
   const payload: Record<string, unknown> = {}
   for (const fieldId of Object.keys(BRANDING_FIELD_INDEX)) {
     // Pack settings are virtual fields inside one jsonb column: folded below.
-    if (isPackFieldId(fieldId)) continue
+    if (isPackFieldId(fieldId) || isJsonColumnFieldId(fieldId)) continue
     const value = Object.prototype.hasOwnProperty.call(draft, fieldId)
       ? draft[fieldId]
       : tenant?.[fieldId]

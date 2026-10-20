@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo, useMemo } from 'react'
 import { MenuItemCard } from './menu-item-card'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -54,7 +55,7 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
       <div className="text-center py-16">
         <EmptyState
           icon={UtensilsCrossed}
-          title="No items found"
+          title={<StoreLabel name="menu.no_results" fallback="No items found" />}
           description="Try adjusting your search or filters"
         />
       </div>

@@ -31,6 +31,11 @@ describe('vercel.json cron schedules', () => {
     expect(pathOf('/api/loyalty/maintenance')?.schedule).not.toBe('* * * * *')
   })
 
+  it('schedules the SMS automations tick every 5 minutes', () => {
+    // Without it, switched-on automations never queue a text.
+    expect(pathOf('/api/sms/automations/tick')?.schedule).toBe('*/5 * * * *')
+  })
+
   it('still schedules the Loyverse reconcile', () => {
     expect(pathOf('/api/loyverse/reconcile')).toBeDefined()
   })

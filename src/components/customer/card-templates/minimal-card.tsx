@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
@@ -91,7 +92,7 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
               className="text-xs font-medium px-2 py-1 rounded"
               style={{ backgroundColor: branding.cards }}
             >
-              Unavailable
+              <StoreLabel name="menu.unavailable" fallback="Unavailable" />
             </span>
           </div>
         )}

@@ -16,6 +16,10 @@ export type StockFailureOperation =
   | 'reverse_order_stock'
   | 'redeplete_order_stock'
   | 'revise_simple_option_stock'
+  | 'simple_option_sale'
+  | 'simple_option_void'
+  | 'simple_option_cancel'
+  | 'record_restored_movements'
   | 'customer_order_stock_route'
 
 export interface StockFailureContext {

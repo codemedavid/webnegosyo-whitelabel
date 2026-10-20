@@ -116,10 +116,27 @@ function rpcIdentity(identity: DeviceIdentity, actorId: string) {
   }
 }
 
+/**
+ * The same enrolled phone also sends automated texts (`/api/sms/outbox`), so a
+ * store WITHOUT live loyalty can have one. Its loyalty claims are denied by
+ * SQL; answering 403 would make the phone wipe its enrollment as "revoked".
+ * Such a store simply has no reward codes to send. A revoked phone still
+ * learns it from the outbox claim.
+ */
+async function isLoyaltyLive(tenantId: string): Promise<boolean> {
+  const { data, error } = await createAdminClient().from('tenants').select('loyalty_enabled, loyalty_shadow')
+    .eq('id', tenantId).maybeSingle()
+  if (error) throw new Error('store could not be read')
+  const row = data as { loyalty_enabled?: boolean | null; loyalty_shadow?: boolean | null } | null
+  return row?.loyalty_enabled === true && row.loyalty_shadow !== true
+}
+
 async function claim(identity: DeviceIdentity, actorId: string): Promise<NextResponse> {
   const { data, error }: RpcResult = await createAdminClient().rpc('claim_loyalty_sms_job', rpcIdentity(identity, actorId))
   if (error) return unavailable(UNAVAILABLE)
-  if (isDenied(data)) return respond({ error: 'Forbidden' }, 403)
+  if (isDenied(data)) {
+    return (await isLoyaltyLive(identity.tenantId)) ? respond({ error: 'Forbidden' }, 403) : respond({ job: null }, 200)
+  }
   if (!isRpcOk(data)) return respond({ job: null }, 200)
   const row = data as { jobId?: unknown; leaseToken?: unknown; leaseExpiresAt?: unknown }
   if (!isUuid(row.jobId) || !isUuid(row.leaseToken) ||

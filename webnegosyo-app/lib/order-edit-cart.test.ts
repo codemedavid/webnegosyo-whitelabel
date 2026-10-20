@@ -521,3 +521,72 @@ describe("a line whose menu item was deleted", () => {
     expect(items[0].menuItemId).toBe("");
   });
 });
+
+/**
+ * Web checkout stores an add-on amount as `Name ×N` (a plain label, price 0 —
+ * the money lives in the subtotal); a QR/Convex row may instead carry
+ * `{ name, price, quantity }`. Either way the edit must recover the real option
+ * id AND the portion count, or removing the line restores one portion of the
+ * add-on's ingredients instead of N (or none at all).
+ */
+describe("add-on amounts", () => {
+  const SIDES: ModifierGroup = {
+    id: "grp-sides",
+    name: "Sides",
+    display_order: 0,
+    min_select: 0,
+    max_select: null,
+    options: [{ id: "opt-kimchi", name: "Kimchi", price_modifier: 10, display_order: 0 }],
+  };
+  const catalog = { "item-latte": [SIDES] };
+
+  it("parses the ×N label into the live option with its portions", () => {
+    const { lines, unresolved } = hydratePosCart(
+      [orderItem({ subtotal: 120, addons: [{ name: "Kimchi ×2", price: 0 }] })],
+      catalog,
+    );
+    expect(unresolved).toEqual([]);
+    expect(lines[0].selections).toEqual([
+      expect.objectContaining({ optionId: "opt-kimchi", optionName: "Kimchi", portions: 2, priceModifier: 0 }),
+    ]);
+  });
+
+  it("reads a structured quantity and prices the selection for all its portions", () => {
+    const { lines } = hydratePosCart(
+      [orderItem({ subtotal: 120, addons: [{ name: "Kimchi", price: 10, quantity: 2 }] })],
+      catalog,
+    );
+    expect(lines[0].selections[0]).toMatchObject({ optionId: "opt-kimchi", portions: 2, priceModifier: 20 });
+    // The money still comes from the subtotal.
+    expect(lines[0].subtotal).toBe(120);
+  });
+
+  it("leaves a single portion exactly as before", () => {
+    const { lines } = hydratePosCart([orderItem({ addons: [{ name: "Kimchi", price: 10 }] })], catalog);
+    expect(lines[0].selections[0].portions).toBeUndefined();
+  });
+
+  it("writes the amount back as the same ×N label, so an untouched edit is a no-op", () => {
+    const { lines } = hydratePosCart(
+      [orderItem({ subtotal: 120, addons: [{ name: "Kimchi ×2", price: 0 }] })],
+      catalog,
+    );
+    expect(posCartToOrderItems(lines, catalog)[0].addons).toEqual([{ name: "Kimchi ×2", price: 0 }]);
+  });
+
+  it("does not stack a ×2 line into a ×1 line of the same dish", () => {
+    const { lines } = hydratePosCart(
+      [
+        orderItem({ subtotal: 120, addons: [{ name: "Kimchi ×2", price: 0 }] }),
+        orderItem({ _id: "oi-2", subtotal: 110, addons: [{ name: "Kimchi", price: 0 }] }),
+      ],
+      catalog,
+    );
+    expect(lines).toHaveLength(2);
+  });
+
+  it("keeps a name that merely contains × as a name when nothing matches the stripped form", () => {
+    const { unresolved } = hydratePosCart([orderItem({ addons: [{ name: "Chef ×Special", price: 0 }] })], catalog);
+    expect(unresolved).toEqual([expect.objectContaining({ optionName: "Chef ×Special" })]);
+  });
+});

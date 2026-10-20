@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { ProductDetailSettings, ProductDetailColors } from '@/lib/product-detail-theme'
-import { mergeSettingsWithBranding, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
+import { resolveProductDetailColors, getProductDetailThemeCSS, computeProductDetailStyles } from '@/lib/product-detail-theme'
 import { getProductDetailSettings } from '@/app/actions/product-detail-settings'
 
 interface UseProductDetailThemeResult {
@@ -59,7 +59,7 @@ export function useProductDetailTheme(
     }, [tenantId])
 
     const colors = useMemo(() => {
-        return mergeSettingsWithBranding(settings, branding)
+        return resolveProductDetailColors(settings, branding)
     }, [settings, branding])
 
     const cssVariables = useMemo(() => {

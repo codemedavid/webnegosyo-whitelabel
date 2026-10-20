@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 
 interface EmptyStateProps {
   icon?: LucideIcon
-  title: string
+  title: React.ReactNode
   description?: string
   actionLabel?: string
   onAction?: () => void

@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import { useAuthStore } from "../../stores/auth-store";
+import { setStockAbandonSink } from "../offline/stock-abandoned";
 import {
   isSentryEnabled,
   scrubBreadcrumb,
@@ -76,6 +77,14 @@ function applyAuthScope(state: SentryAuthSlice): void {
 if (enabled) {
   applyAuthScope(useAuthStore.getState());
   useAuthStore.subscribe(applyAuthScope);
+}
+
+// A stock call the device gave up on leaves the shelf wrong with no screen to
+// show it — see `lib/offline/stock-abandoned.ts`.
+if (enabled) {
+  setStockAbandonSink((message, tags) => {
+    Sentry.captureMessage(message, { level: "warning", tags });
+  });
 }
 
 /** Report an error a screen has already handled (shown a fallback for, etc.). */

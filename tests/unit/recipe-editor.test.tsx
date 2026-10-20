@@ -135,6 +135,39 @@ describe('RecipeEditor', () => {
     expect(JSON.parse(options.body).target).toEqual(ADDON_TARGET)
   })
 
+  it('shows the hint under its heading (option recipes add to the dish recipe)', async () => {
+    setup({ recipe: recipeWith() })
+
+    renderEditor(ADDON_TARGET, { label: 'Extra ingredients for this choice', hint: "Used on top of the dish's own recipe" })
+
+    expect(await screen.findByText("Used on top of the dish's own recipe")).toBeInTheDocument()
+  })
+
+  it('refuses before sending a line no sale could deduct (grams of an ingredient counted by the piece)', async () => {
+    // Arrange — eggs are stocked by the piece; the stored line says 50 g.
+    const PIECE = { ...GRAM, id: '33333333-3333-4333-8333-333333333333', name: 'Piece', abbreviation: 'pc', dimension: 'count' }
+    const EGG = { ...FLOUR, id: '44444444-4444-4444-8444-444444444444', name: 'Egg', stock_unit_id: PIECE.id }
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          ingredients: [EGG],
+          units: [GRAM, PIECE],
+          recipe: { recipe: { id: 'r1', notes: null }, components: [{ inventory_item_id: EGG.id, quantity: 50, unit_id: GRAM.id }] },
+        },
+      }),
+    })
+    renderEditor(ITEM_TARGET)
+
+    // Act
+    fireEvent.click(await screen.findByRole('button', { name: /save recipe/i }))
+
+    // Assert
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringContaining('Egg is stocked in pc')))
+    expect(writeRequest('PUT')).toBeUndefined()
+  })
+
   it('keeps an in-flight write alive across navigation without firing stale callbacks', async () => {
     setup({ recipe: recipeWith() })
     let finishWrite!: (value: unknown) => void

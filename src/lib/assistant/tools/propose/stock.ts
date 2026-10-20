@@ -33,7 +33,7 @@ export function projectedQuantity(current: number, action: Input['action'], quan
 export const proposeStockAdjustmentTool: AssistantToolDef<Input> = {
   name: 'propose_stock_adjustment',
   description: 'Propose recording a delivery (receive), waste, or a stock count for one ingredient. The user must confirm.',
-  access: { permission: 'menu' },
+  access: { permission: 'inventory' },
   isAvailable: (flags) => flags.inventoryEnabled,
   input,
   async run(ctx, request) {

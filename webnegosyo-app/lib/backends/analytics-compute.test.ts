@@ -158,6 +158,26 @@ describe("computeRevenueBreakdown", () => {
       ],
     });
   });
+
+  it("counts a bill paid ₱120 by GCash and the rest in cash under both methods", () => {
+    const orders = [
+      order({
+        id: "split",
+        paymentMethod: "Cash",
+        total: 300,
+        payments: [
+          { kind: "charge", amount: 120, method: "GCash" },
+          { kind: "charge", amount: 180, method: "Cash" },
+        ],
+      }),
+      order({ id: "plain", paymentMethod: "GCash", total: 100 }),
+    ];
+
+    expect(computeRevenueBreakdown(orders).byPaymentMethod).toEqual([
+      { method: "GCash", revenue: 220, count: 2 },
+      { method: "Cash", revenue: 180, count: 1 },
+    ]);
+  });
 });
 
 describe("computeUpsellTrends", () => {
@@ -256,6 +276,28 @@ describe("computePaymentMethodAnalytics", () => {
         { date: "2026-09-04", methods: { Cash: 100 } },
         { date: "2026-09-05", methods: { GCash: 400 } },
       ],
+    });
+  });
+
+  it("splits a mixed-tender bill between its methods, by day too", () => {
+    const orders = [
+      order({
+        id: "split",
+        paymentMethod: "Cash",
+        total: 300,
+        payments: [
+          { kind: "charge", amount: 120, method: "GCash" },
+          { kind: "charge", amount: 180, method: "Cash" },
+        ],
+      }),
+    ];
+
+    expect(computePaymentMethodAnalytics(orders)).toEqual({
+      methods: [
+        { method: "Cash", count: 1, revenue: 180, percentage: 1, avgOrderValue: 180 },
+        { method: "GCash", count: 1, revenue: 120, percentage: 1, avgOrderValue: 120 },
+      ],
+      dailyBreakdown: [{ date: "2026-09-05", methods: { GCash: 120, Cash: 180 } }],
     });
   });
 });

@@ -1,7 +1,7 @@
 /**
  * propose_pause_sms_campaign — stop an active SMS campaign from sending.
  * Only pausing is offered: (re)activating a campaign texts real guests, and
- * that stays a tap on the owner's own Android phone.
+ * that stays the owner's own tap (Texts on the web, or the Android app).
  */
 
 import { z } from 'zod'
@@ -25,7 +25,9 @@ export const proposePauseSmsCampaignTool: AssistantToolDef<Input> = {
     const data = await ctx.memo('campaigns', () => readAssistantCampaigns(ctx.tenantId))
     const campaign = data.campaigns.find((row) => row.id === campaignId)
     if (!campaign) return refused('That campaign no longer exists.')
-    if (campaign.status !== 'active') return refused(`That campaign is ${campaign.status}, not sending. Nothing to pause.`)
+    if (campaign.status !== 'active' && campaign.status !== 'scheduled') {
+      return refused(`That campaign is ${campaign.status}, not sending. Nothing to pause.`)
+    }
 
     const payload: CampaignStatusPayload = { campaignId: campaign.id, name: campaign.name }
     return fileProposal(ctx, {
@@ -35,7 +37,7 @@ export const proposePauseSmsCampaignTool: AssistantToolDef<Input> = {
       title: `Pause SMS: ${campaign.name}`,
       lines: [
         { label: 'To', value: audienceLabel(campaign.audience) },
-        { label: 'Change', value: 'Stops sending. Resume it from the merchant app when you are ready.' },
+        { label: 'Change', value: 'Stops sending. Resume it from Texts or the merchant app when you are ready.' },
       ],
     })
   },

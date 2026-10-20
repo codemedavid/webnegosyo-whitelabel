@@ -31,6 +31,8 @@ import { proposePauseSmsCampaignTool } from '@/lib/assistant/tools/propose/campa
 import { proposeVoucherStatusTool } from '@/lib/assistant/tools/propose/voucher-status'
 import { proposeMenuItemChangeTool } from '@/lib/assistant/tools/propose/menu-item-change'
 import { proposeMenuFromPhotoTool, proposeMenuImportEditTool } from '@/lib/assistant/tools/propose/menu-photo'
+import { getSmsAutomationsTool } from '@/lib/assistant/tools/reads/automations'
+import { proposeRunSmsAutomationTool, proposeSmsAutomationStatusTool, proposeSmsAutomationTool } from '@/lib/assistant/tools/propose/automation'
 
 export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   getSalesOverviewTool,
@@ -65,4 +67,9 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   // Menu photos → dishes.
   proposeMenuFromPhotoTool,
   proposeMenuImportEditTool,
+  // SMS automations.
+  getSmsAutomationsTool,
+  proposeSmsAutomationTool,
+  proposeSmsAutomationStatusTool,
+  proposeRunSmsAutomationTool,
 ] as AssistantToolDef[]

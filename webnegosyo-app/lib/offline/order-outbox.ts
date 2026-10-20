@@ -81,6 +81,17 @@ export interface QueuedSale {
    */
   bookkeepingDone?: boolean;
   /**
+   * Set once the NON-stock bookkeeping (Loyverse, vouchers, activity, capture)
+   * has run while the stock call has not landed yet. A replay that finds it
+   * retries the stock call only — the reports are not idempotent. Absent on
+   * sales queued before the split, which run everything as before.
+   */
+  reportsDone?: boolean;
+  /** Stock calls tried so far for this sale; drives the backoff. */
+  stockAttempts?: number;
+  /** Epoch ms before which the owed stock call is not tried again. */
+  stockRetryAt?: number | null;
+  /**
    * False for a "pay later" sale: the order is written UNPAID and the cashier
    * collects it from the order screen. Absent on sales queued before the flag
    * existed, which were all paid at the counter — see {@link isPaidAtTender}.
@@ -98,6 +109,38 @@ export const MAX_SYNC_ATTEMPTS = 5;
 
 export function needsAttention(sale: QueuedSale): boolean {
   return sale.attempts >= MAX_SYNC_ATTEMPTS;
+}
+
+export {
+  MAX_STOCK_ATTEMPTS,
+  STOCK_RETRY_BASE_MS,
+  STOCK_RETRY_MAX_MS,
+  nextStockRetryAt,
+} from "./stock-retry-policy";
+
+/**
+ * The order row is written and its reports ran; only the stock call is still
+ * owed. Such a sale is NOT waiting to sync from the cashier's point of view and
+ * is never shown as an offline order — the server holds the order.
+ */
+export function owesOnlyStock(sale: QueuedSale): boolean {
+  return Boolean(sale.syncedOrderId) && sale.reportsDone === true && sale.bookkeepingDone !== true;
+}
+
+/**
+ * Whether a queued sale should still read as an order on the device — in the
+ * order list, the order screen and the register's "waiting to sync" banner.
+ * One owing only its stock call is the server's to show: a local copy would
+ * linger as a ghost "confirmed" order after the real one moved on, and the
+ * cashier has nothing to wait for.
+ */
+export function isUserVisibleSale(sale: QueuedSale): boolean {
+  return !owesOnlyStock(sale);
+}
+
+/** Whether an owed stock call's backoff has elapsed. */
+export function isStockRetryDue(sale: QueuedSale, now: number): boolean {
+  return sale.stockRetryAt == null || sale.stockRetryAt <= now;
 }
 
 export interface OutboxState {
@@ -152,6 +195,10 @@ function isQueuedSale(value: unknown): value is QueuedSale {
     (value.lastError === null || typeof value.lastError === "string") &&
     (value.syncedOrderId == null || (typeof value.syncedOrderId === "string" && value.syncedOrderId.length > 0)) &&
     (value.bookkeepingDone === undefined || typeof value.bookkeepingDone === "boolean") &&
+    (value.reportsDone === undefined || typeof value.reportsDone === "boolean") &&
+    (value.stockAttempts === undefined ||
+      (typeof value.stockAttempts === "number" && Number.isInteger(value.stockAttempts) && value.stockAttempts >= 0)) &&
+    (value.stockRetryAt == null || (typeof value.stockRetryAt === "number" && Number.isFinite(value.stockRetryAt))) &&
     isRecord(value.orderArgs) && isRecord(book) &&
     Array.isArray(book.stockItems) && Array.isArray(book.loyverseLines) &&
     Array.isArray(book.discountLines) && Array.isArray(book.captureItems) &&
@@ -229,6 +276,28 @@ export function markSaleWritten(localId: string, orderId: string): Promise<void>
 /** The bookkeeping has run; persisted BEFORE the sale is forgotten. */
 export function markBookkeepingDone(localId: string): Promise<void> {
   return updateSale(localId, (sale) => ({ ...sale, bookkeepingDone: true }));
+}
+
+/**
+ * The non-stock bookkeeping ran; persisted the moment it lands, while the stock
+ * call may still be out (`pos-sale-bookkeeping.ts` `onReportsDone`).
+ */
+export function markReportsDone(localId: string): Promise<void> {
+  return updateSale(localId, (sale) => (sale.reportsDone ? sale : { ...sale, reportsDone: true }));
+}
+
+/**
+ * The stock call did not land: remember that the reports ran, count the
+ * attempt and park the sale until `retryAt`. Persisted before the run moves on,
+ * so a restart retries only the stock.
+ */
+export function deferOwedStock(localId: string, retryAt: number): Promise<void> {
+  return updateSale(localId, (sale) => ({
+    ...sale,
+    reportsDone: true,
+    stockAttempts: (sale.stockAttempts ?? 0) + 1,
+    stockRetryAt: retryAt,
+  }));
 }
 
 export function recordSyncFailure(localId: string, message: string): Promise<void> {

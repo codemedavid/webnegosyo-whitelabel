@@ -276,6 +276,7 @@ const IDLE_LINES: Record<CampaignStatus, string> = {
   draft: "Not live yet — activate it to get reminders",
   paused: "No reminders until you resume it",
   archived: "Finished — it won't send again",
+  scheduled: "Sends automatically from the web — manage it in Texts on the web",
 };
 
 const HALTED: Record<string, string> = {

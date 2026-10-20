@@ -4,7 +4,7 @@
  * and each proposal is refused unless the stored change is valid by the same
  * rules the admin screens use — and files nothing when it is refused.
  */
-import { readFileSync } from 'fs'
+import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { createRefBook } from '@/lib/assistant/refs'
 import { factsForModel } from '@/lib/assistant/tools/registry'
@@ -358,7 +358,11 @@ describe('propose_menu_item_change', () => {
 describe('action kinds', () => {
   test('every kind the code can file is allowed by the database constraint', async () => {
     const { ACTION_PERMISSION } = await import('@/lib/assistant/actions/kinds')
-    const migration = readFileSync(join(process.cwd(), 'supabase/migrations/20261007120000_assistant_manage_action_kinds.sql'), 'utf8')
+    // The NEWEST migration that (re)defines the constraint is the one in force.
+    const dir = join(process.cwd(), 'supabase/migrations')
+    const latest = readdirSync(dir).filter((name) => name.endsWith('.sql')).sort().reverse()
+      .find((name) => readFileSync(join(dir, name), 'utf8').includes('ADD CONSTRAINT assistant_actions_kind_check'))
+    const migration = readFileSync(join(dir, latest as string), 'utf8')
     const allowed = [...migration.matchAll(/'([a-z_]+)'/g)].map((match) => match[1])
 
     for (const kind of Object.keys(ACTION_PERMISSION)) expect(allowed).toContain(kind)

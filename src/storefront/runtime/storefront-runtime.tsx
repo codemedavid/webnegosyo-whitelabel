@@ -1,5 +1,6 @@
 'use client'
 
+import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
@@ -117,6 +118,7 @@ export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', childre
   const CheckoutProvider = checkoutEntry === 'direct' ? DirectCheckoutProvider : DrawerCheckoutProvider
 
   return (
+    <StorefrontLabelsProvider tenant={tenant}>
     <CheckoutProvider menu={menu} branding={branding}>
       {children}
 
@@ -176,5 +178,6 @@ export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', childre
 
       </div>
     </CheckoutProvider>
+    </StorefrontLabelsProvider>
   )
 }

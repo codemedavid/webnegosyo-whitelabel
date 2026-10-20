@@ -68,7 +68,7 @@ describe('readStoredOrderLifecycle', () => {
     const order = await readStoredOrderLifecycle('t1', 'order-1')
 
     // Assert — a leftover Convex URL must not send the read to Convex.
-    expect(order).toEqual({ status: 'cancelled', customerData: { presell_claim: 'x' } })
+    expect(order).toEqual({ status: 'cancelled', customerData: { presell_claim: 'x' }, outletId: null })
     expect(ordersEq).toHaveBeenCalledWith('tenant_id', 't1')
     expect(convexQuery).not.toHaveBeenCalled()
   })
@@ -85,7 +85,7 @@ describe('readStoredOrderLifecycle', () => {
 
     // Assert
     expect(convexQuery).toHaveBeenCalledWith('orders:getOrderByIdInternal', { orderId: 'jh7abc' })
-    expect(order).toEqual({ status: 'cancelled', customerData: { a: 1 } })
+    expect(order).toEqual({ status: 'cancelled', customerData: { a: 1 }, outletId: null })
   })
 
   it('answers null for a Convex tenant without a deploy key rather than guessing', async () => {
@@ -96,6 +96,17 @@ describe('readStoredOrderLifecycle', () => {
 
     // Act / Assert
     await expect(readStoredOrderLifecycle('t1', 'jh7abc')).resolves.toBeNull()
+  })
+
+  it('carries the Convex order\'s branch, so a store-wide account spends the right shelf', async () => {
+    tenantRow = { order_backend: 'convex', convex_deployment_url: 'https://x.convex.cloud' }
+    getTenantSecrets.mockResolvedValue({ convex_deploy_key: 'key' })
+    convexQuery.mockResolvedValue({ status: 'pending', customerData: null, outletId: 'outlet-north' })
+    const { readStoredOrderLifecycle } = await load()
+
+    const order = await readStoredOrderLifecycle('t1', 'jh7abc')
+
+    expect(order?.outletId).toBe('outlet-north')
   })
 
   it('reads a tenant-Supabase order from the tenant project', async () => {
@@ -109,7 +120,7 @@ describe('readStoredOrderLifecycle', () => {
 
     // Assert
     expect(fetchTenantOrderById).toHaveBeenCalledWith({ tenantClient: true }, 't1', 'order-1')
-    expect(order).toEqual({ status: 'pending', customerData: null })
+    expect(order).toEqual({ status: 'pending', customerData: null, outletId: null })
   })
 
   it('answers null for an unknown tenant or a missing order', async () => {

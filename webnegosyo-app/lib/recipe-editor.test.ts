@@ -4,9 +4,12 @@
  */
 import {
   buildIngredientChoices,
+  findChoice,
+  summarizeChoiceCoverage,
   formatRecipeQuantity,
   parseQuantityDraft,
 } from "./recipe-editor";
+import { optionTarget, type OptionRecipeGroup } from "./recipe-target";
 import type { IngredientOption, RecipeComponentView } from "./recipe-service";
 
 function option(id: string, name: string, unitLabel = "kg"): IngredientOption {
@@ -84,5 +87,46 @@ describe("buildIngredientChoices", () => {
 
   it("returns nothing when the search matches nothing", () => {
     expect(buildIngredientChoices(ingredients, [], "flour")).toEqual([]);
+  });
+});
+
+describe("summarizeChoiceCoverage", () => {
+  const groups: OptionRecipeGroup[] = [
+    {
+      id: "g",
+      name: "Flavours",
+      choices: [
+        { optionId: "o1", name: "BBQ", target: optionTarget("m", "modifier_option", "o1") },
+        { optionId: "o2", name: "Teriyaki", target: optionTarget("m", "modifier_option", "o2") },
+      ],
+    },
+  ];
+
+  it("flags a dish whose choices all deduct nothing", () => {
+    expect(summarizeChoiceCoverage(groups, { menu_item: 3 })).toEqual({ total: 2, withRecipe: 0, isUncovered: true });
+  });
+
+  it("counts the choices that carry ingredients", () => {
+    expect(summarizeChoiceCoverage(groups, { "modifier_option:o2": 1 })).toEqual({
+      total: 2,
+      withRecipe: 1,
+      isUncovered: false,
+    });
+  });
+
+  it("never warns on an unreadable coverage, or on a dish without choices", () => {
+    expect(summarizeChoiceCoverage(groups, null).isUncovered).toBe(false);
+    expect(summarizeChoiceCoverage([], {}).isUncovered).toBe(false);
+  });
+});
+
+describe("findChoice", () => {
+  const groups: OptionRecipeGroup[] = [
+    { id: "g", name: "Add-ons", choices: [{ optionId: "a1", name: "Egg", target: optionTarget("m", "addon", "a1") }] },
+  ];
+
+  it("finds the choice a screen was opened for, by kind and id", () => {
+    expect(findChoice(groups, optionTarget("m", "addon", "a1"))?.name).toBe("Egg");
+    expect(findChoice(groups, optionTarget("m", "modifier_option", "a1"))).toBeNull();
   });
 });

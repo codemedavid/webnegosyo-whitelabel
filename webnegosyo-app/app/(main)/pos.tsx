@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Alert,
   ActivityIndicator,
-  FlatList,
   Platform,
   Pressable,
   ScrollView,
@@ -13,7 +12,6 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
@@ -66,10 +64,8 @@ import { OfflineReadyStatus } from "../../components/pos/OfflineReadyStatus";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { Icon } from "../../components/Icon";
-
-/** Height of the notch pad on the full-bleed edit banner, which sits above
- *  <ScreenHeader> and so cannot use its inset. */
-const TOP_INSET = 60;
+import { CollapsingHeaderList, DOCKED_SEARCH_CLEARANCE } from "../../components/CollapsingHeaderList";
+import { useScreenTopInset } from "../../lib/use-screen-top-inset";
 
 /** Rows rendered before the first scroll — roughly two screens' worth. */
 const INITIAL_ROWS = 6;
@@ -151,12 +147,15 @@ export default function PosScreen() {
     () => resolvePosLayout({ width: windowSize.width, height: windowSize.height }),
     [windowSize.width, windowSize.height],
   );
-  // The sale column draws its own notch pad — <ScreenHeader> only covers the
-  // grid column beside it.
-  const insets = useSafeAreaInsets();
+  // Each column clears the notch itself: the grid above its banners and list,
+  // the sale column on a tablet above the sale. Zero under the impersonation
+  // banner, which already cleared it.
+  const topInset = useScreenTopInset();
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Focused by the docked search button once the header has scrolled away.
+  const searchInputRef = useRef<TextInput>(null);
   const [sheetFor, setSheetFor] = useState<RegisterItem | null>(null);
   const [isCartExpanded, setIsCartExpanded] = useState(false);
   const [isIncomingExpanded, setIsIncomingExpanded] = useState(false);
@@ -392,20 +391,19 @@ export default function PosScreen() {
   // ── The two halves of the register, composed once and then arranged ──
   // Both layouts render exactly these pieces; only where they sit changes.
 
-  const productColumn = (
+  const productHeader = (
     <>
-      {/* Silent while online with nothing queued; see components/pos/OfflineBanner. */}
-      <OfflineBanner />
       <ScreenHeader
         title="POS"
         subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}
-        ignoreTopInset={!!edit}
+        ignoreTopInset
         style={styles.header}
         actions={<SubScreenLinks parent="pos" variant="actions" />}
       >
         <View style={styles.searchRow}>
           <Icon name="search" size={18} color={colors.textTertiary} />
           <TextInput
+            ref={searchInputRef}
             style={styles.search}
             placeholder="Search products"
             placeholderTextColor={colors.textTertiary}
@@ -429,8 +427,55 @@ export default function PosScreen() {
 
       {/* Whether this device can sell without internet, and the button that makes it so. */}
       <OfflineReadyStatus />
+    </>
+  );
 
-      {/* The sale just swiped through: change to hand over, or "unpaid". */}
+  // Docks under the status bar once the header above has scrolled away.
+  const categoryRail = (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.railContent}
+    >
+      <TouchableOpacity
+        style={[styles.chip, activeCategory === null && styles.chipActive]}
+        onPress={() => setActiveCategory(null)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: activeCategory === null }}
+      >
+        <Text style={[styles.chipText, activeCategory === null && styles.chipTextActive]}>
+          All
+        </Text>
+      </TouchableOpacity>
+      {categories.map((category) => {
+        const isActive = activeCategory === category.id;
+        return (
+          <TouchableOpacity
+            key={category.id}
+            style={[styles.chip, isActive && styles.chipActive]}
+            onPress={() => setActiveCategory(category.id)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+          >
+            <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+              {category.name?.trim() || "Uncategorized"}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+
+  const productColumn = (
+    <>
+      {/* Clears the notch, unless the edit banner above already did. */}
+      <View style={{ height: edit ? 0 : topInset }} />
+
+      {/* Silent while online with nothing queued; see components/pos/OfflineBanner. */}
+      <OfflineBanner />
+
+      {/* The sale just swiped through: change to hand over, or "unpaid". Kept
+          above the list so it is never scrolled out of sight. */}
       <View style={styles.saleNotice}>
         <SaleCompleteBanner
           onOpenOrder={(id) => router.push(`/(main)/order/${id}`)}
@@ -438,50 +483,23 @@ export default function PosScreen() {
         />
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.rail}
-        contentContainerStyle={styles.railContent}
-      >
-        <TouchableOpacity
-          style={[styles.chip, activeCategory === null && styles.chipActive]}
-          onPress={() => setActiveCategory(null)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: activeCategory === null }}
-        >
-          <Text style={[styles.chipText, activeCategory === null && styles.chipTextActive]}>
-            All
-          </Text>
-        </TouchableOpacity>
-        {categories.map((category) => {
-          const isActive = activeCategory === category.id;
-          return (
-            <TouchableOpacity
-              key={category.id}
-              style={[styles.chip, isActive && styles.chipActive]}
-              onPress={() => setActiveCategory(category.id)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-            >
-              <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                {category.name?.trim() || "Uncategorized"}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
       {/*
         Virtualized by row: a long menu with a photo per item would otherwise
         mount every tile and decode every image up front. Only the rows near the
-        viewport are rendered.
+        viewport are rendered. The title and search scroll away with the grid;
+        the category rail docks at the top.
       */}
-      <FlatList
+      <CollapsingHeaderList
         data={rows}
         keyExtractor={(row) => row[0].product.id}
+        header={productHeader}
+        toolbar={categoryRail}
+        searchInputRef={searchInputRef}
+        isSearchActive={search.trim().length > 0}
+        filterKey={activeCategory ?? "all"}
         style={styles.gridScroll}
         contentContainerStyle={styles.grid}
+        itemStyle={styles.gridItem}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={INITIAL_ROWS}
         maxToRenderPerBatch={INITIAL_ROWS}
@@ -508,7 +526,7 @@ export default function PosScreen() {
             ))}
           </View>
         )}
-        ListEmptyComponent={
+        emptyComponent={
           <View style={styles.noResults}>
             <Text style={styles.noResultsTitle}>Nothing matches</Text>
             <Text style={styles.noResultsBody}>
@@ -651,7 +669,7 @@ export default function PosScreen() {
   return (
     <View style={styles.screen}>
       {edit && editContext && (
-        <View style={styles.editBanner}>
+        <View style={[styles.editBanner, { paddingTop: topInset + spacing.md }]}>
           <View style={styles.editBannerMain}>
             <Text style={styles.editBannerTitle}>
               {editContext.mode === "append"
@@ -699,7 +717,7 @@ export default function PosScreen() {
             {backdrop}
             {incomingSheet}
           </View>
-          <View style={[styles.saleColumn, { width: layout.panelWidth, paddingTop: edit ? 0 : insets.top }]}>
+          <View style={[styles.saleColumn, { width: layout.panelWidth, paddingTop: edit ? 0 : topInset }]}>
             {stockBanner}
             {sale}
           </View>
@@ -804,7 +822,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
-    paddingTop: TOP_INSET,
     paddingBottom: spacing.md,
     backgroundColor: colors.accentLight,
   },
@@ -844,8 +861,12 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
   },
-  rail: { flexGrow: 0 },
-  railContent: { paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, gap: spacing.sm },
+  railContent: {
+    paddingLeft: spacing.xl,
+    paddingRight: spacing.xl + DOCKED_SEARCH_CLEARANCE,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
   chip: {
     paddingHorizontal: spacing.lg,
     paddingVertical: 7,
@@ -862,12 +883,8 @@ const styles = StyleSheet.create({
   gridColumn: { flex: 1 },
   saleColumn: { backgroundColor: colors.card },
   gridScroll: { flex: 1 },
-  grid: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-    gap: spacing.sm,
-  },
+  grid: { paddingBottom: spacing.xl },
+  gridItem: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm },
   row: { flexDirection: "row", gap: spacing.sm },
   filler: { flex: 1 },
   noResults: { alignItems: "center", paddingTop: spacing.xxl * 2, paddingHorizontal: spacing.xl },

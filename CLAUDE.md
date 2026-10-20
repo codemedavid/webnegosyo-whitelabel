@@ -27,10 +27,18 @@ npm run lint             # ESLint
 npm run test             # Jest unit tests
 npm run test:watch       # Jest watch mode
 npm run test:coverage    # Coverage report
-npm run test -- --testPathPattern="cart-utils"  # Run a single test file
+npm run test -- --testPathPatterns="cart-utils"  # Run a single test file (Jest 30: plural flag)
+npm run test:property    # fast-check suites only (*.property.test.ts); FC_NUM_RUNS=5000 for the nightly depth
+npm run test:sql         # every PGlite SQL runner in tests/sql (RLS/trigger checks over the real migrations)
 ```
 
-Tests live in `tests/unit/` with fixtures in `tests/fixtures/`. Jest uses jsdom environment with `@/` path alias mapped to `src/`.
+Tests live in `tests/unit/` with fixtures in `tests/fixtures/`. Jest uses jsdom environment with `@/` path alias mapped to `src/`. The suite expects `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` to be set (placeholders are enough; CI sets placeholders, `.github/workflows/tests.yml`).
+
+**Test infrastructure** (Phase 0e, `docs/testing/test-infrastructure.tdd.md`):
+- **Read seams**: `tests/fixtures/fake-supabase-tables.ts` caps every response at 1000 rows like PostgREST `max-rows` and applies filter → order → range → cap. A reader that forgets to page fails against it; a hand-rolled mock without the cap does not. Use it instead of a new ad-hoc builder mock.
+- **Random orders**: `tests/fixtures/report-orders.ts` (`reportOrdersArb`, `toPlatformTables`) generates untidy `ReportOrder`s in whole centavos and projects them onto platform rows, so engine and reader tests share one source.
+- **Properties**: any `fc.assert` lives in a `*.property.test.ts` file and takes `propertyParameters()` (`tests/utils/property.ts`); a failure prints a seed and path, replay with `FC_SEED` + `FC_PATH`. Test-enforced (`tests/unit/property-test-conventions.test.ts`).
+- **SQL**: new PGlite runners build on `tests/sql/lib/platform-auth.cjs` (roles, `auth.uid()`, Supabase default grants), copy live helper bodies verbatim, run the REAL migration file and assert affected rows per role.
 
 ## Architecture
 
@@ -73,6 +81,44 @@ Supabase client factories:
 - **Types**: `src/types/database.ts` — Full DB type definitions used with `createClient<Database>()`
 - **Migrations**: `supabase/migrations/` (28 SQL files)
 - **Queries**: `src/lib/queries/` for reusable data fetching
+
+### Inventory ledger: stock changes only through a movement
+
+The Reports & Inventory suite (`docs/plans/2026-10-12-reports-and-inventory-suite.md`) reads every profit, variance and stock-value figure from `stock_movements`, so the database refuses anything from a CLIENT role (`anon`/`authenticated`) that would bypass it. Applied 2026-10-12 (`20261012170000_inventory_ledger_guards.sql`, `20261012170100_inventory_write_scopes.sql`):
+
+- `inventory_items.current_qty` / `inventory_stock.current_qty` are written ONLY by `apply_stock_movement` (it runs as the invoker, one trigger level down, so the guards pass `pg_trigger_depth() > 1`). Client inserts start at 0; a branch shelf row is never deleted (no row = ZERO stock). Ingredient writes need `menu`.
+- A client movement needs `menu` and may only be `receive` (≥ 0), `waste` (≤ 0), `stocktake`, or a transfer leg bounded by its transfer (item on it, |delta| ≤ sent, `transfer_out` from the sender while draft, `transfer_in`/shortfall waste while sent, each leg once — `20261012170200`). `sale`/`void` and any `order_id` come from the service role only. `stock_unit_id` can't change while the item holds stock.
+- `order_stock_applications` (deduction claims) are service-role writes only. Recipes, components and units need `menu` on a store-wide account (`app_user_may_reach_branch(tenant, NULL)`); a branch-locked UPDATE is refused with zero rows, so writers must check affected rows.
+- The receiving branch of a transfer may only record what arrived. Actor/time stamping and the `menu` check on movement inserts belong to the Store Activity security floor (`20261012140000`), not here.
+- A new server writer of stock must use the service role or go through a movement; a new client path that changes `current_qty` directly will fail with 42501.
+- **Costs are frozen by the ledger** (`20261012180000_inventory_frozen_cost.sql`, applied 2026-10-12). A `receive` keeps the price it was given (per STOCK unit; blank = uncosted) and `apply_stock_movement` blends the weighted average under the row lock — never blend in app code. Every other movement's `unit_cost` is set by the database whatever the caller sends: a void reuses what its order took out, a transfer arrival/shortfall reuses its departure, the rest freeze today's cost (prep = recipe ÷ yield via `inventory_effective_unit_cost`, the SQL mirror of `costing.ts` — change both; `INVENTORY_COST_LIVE=1 npx jest tests/live/inventory-frozen-cost-live.test.ts` checks parity). Reports value movements at their frozen cost, never today's. NULL = not recorded (pre-2026-10-12 or uncostable).
+- `order_items.category_name` = the category at sale (NULL before 2026-10-12 → report "by current menu"). Dish cost at sale lives in `order_item_costs` (recipe, else typed product cost), NOT on `order_items`, because every staff account that can see an order can read its lines.
+
+### Sales numbers: one definition (`src/lib/reports/`)
+
+"Net sales", discounts, collected, unpaid and payment-method totals are defined ONLY in `src/lib/reports/sales-model.ts` + `payment-buckets.ts` (plan §5; `docs/testing/reports-sales-model.tdd.md`). Don't add another revenue formula.
+
+- Money is integer centavos (`money.ts`). The order TOTAL is the authority: gross = total − service − (delivery − delivery discount) + food discount; lines are scaled to it. Σ items = Σ categories = Σ channels = Σ branches = net, exactly.
+- A ledger `refund` is change returned after an edit lowered the bill — never subtract it from sales again. Unpaid money is never shown under the checkout method; over-collection is "Overpaid".
+- `orders.discount_data` is the one stored discount and `discount_total` is derived from it by the `orders_sync_discount_total` trigger (POS blob copied in, removal clears both, forged values overwritten) — `20261013090000`/`090100`. That trigger is SECURITY INVOKER and runs as anon at checkout: any helper it calls must be executable by anon.
+- Convex `getDashboardStatsByPeriod` is inclusive at both ends: half-open callers pass `inclusiveEndFor(end)` (`src/lib/convex/period-bounds.ts`), never `end` or `end − 1`.
+- Live reconciliation: `SALES_LIVE=1 SALES_LIVE_TENANT=… SALES_LIVE_FROM=… SALES_LIVE_TO=… [SALES_LIVE_EXPECT=…] npx jest tests/live/sales-model-live.test.ts`.
+
+### Sales reports (`/admin/reports`, platform stores)
+
+Phase 1 of the suite (`docs/testing/reports-phase1-sales.tdd.md`). Overview at `/[tenant]/admin/reports`; breakdowns at `/admin/reports/[dim]` (`items` incl. `?view=matrix`, `categories`, `payments`, `channels`, `hours`, `branches`). Product Analytics redirects there on platform stores; Convex/tenant-DB stores keep it (reports for them = Phase 7).
+
+- **SQL twins of the engine**: `report_sales_summary` / `_by_period` / `_by_dimension` / `_by_hour` / `_by_item` / `_by_category` / `report_payments` (`20261014110000` + `130000` + `140000` + `150000`), SECURITY INVOKER (RLS applies) + `reports` key (42501), ≤93 days, helpers in the non-exposed `reporting` schema. A change to `sales-model.ts`/`payment-buckets.ts`/`sales-breakdowns.ts` must change the SQL too — `tests/unit/reports/report-sql-parity.property.test.ts` (PGlite via `tests/sql/report-sales-worker.cjs`) fails on any centavo of drift; `report-sql-access.test.ts` pins who may call them.
+- **Read through the caller's session client only** (`src/lib/reports/read/report-rpc.ts`); never a service-role client. Pages decide access/period/branch in `report-context.ts` (fails closed; a branch-locked account always reads its own branch whatever the URL says).
+- **Children by `order_id = any(array(select …))`, plpgsql `RETURN QUERY EXECUTE … USING`.** A SQL-function version hash-joined all of `order_items` under RLS and took the platform DB down for 8 minutes (2026-10-14). Any live probe of a report function starts with `set local statement_timeout = '5s'` and a one-day window.
+
+### Staff permission keys: reports, inventory, costs
+
+- Four registry copies must change together: web `src/lib/staff-permissions.ts` (source of truth), app `webnegosyo-app/lib/staff-permissions.ts`, desktop, and `supabase/functions/manage-staff/staff-core.ts` (redeploy). The SQL twin is `public.app_user_has_permission` (IMPLIED_BY included). Parity and migration tests pin all of them.
+- `reports` = sales figures (implied by `analytics`; `orders` does NOT grant it). `inventory` = stock, deliveries, waste, counts, transfers, reorder levels. `costs` = unit cost, dish cost, COGS, margins, food cost %, ₱ stock value. `menu` keeps recipes, units and the ingredient master. A screen showing money checks the money key, not the page key.
+- **An admin section missing from `ADMIN_SECTION_PERMISSIONS` is open to every staff account.** New sections are mapped or listed in `OPEN_ADMIN_SECTIONS`; the guardrail test walks `src/app/[tenant]/admin` and fails otherwise.
+- Order reads (HIGH-3): `ORDER_READ_KEYS` / `PAYMENT_READ_KEYS` mirror the orders/payments SELECT policies. A screen open to all staff (app Home) must not read orders without one of them.
+- `permissions: null` (legacy full access) holds every non-opt-in key; editors open such accounts with everything ticked (`editablePermissions`). Production validates lists against its own registry and rejects unknown keys, so a key backfill ships WITH the code that knows the key. Evidence + deploy runbook: `docs/testing/permission-keys.tdd.md`.
 
 ### State Management
 
@@ -125,6 +171,28 @@ Floating owl chat in the tenant admin (`src/components/admin/assistant/`, mounte
 - **Merchant app** (`webnegosyo-app/components/assistant/`, `lib/assistant/`): same floating owl + full-screen panel, mounted in `app/(main)/_layout.tsx`; shown when `assistantEnabled` (session reads `tenants.assistant_enabled`) on store-wide, non-demo accounts, hidden on POS/tender/kitchen/scan and `[param]` editor screens. It calls the SAME three routes with `Authorization: Bearer <access token>`: each route is wrapped in `withRequestBearer` (`src/lib/supabase/bearer-session.ts`), which makes `createClient()` act as that token's user for the whole request (tool calls mid-stream included), so access checks and writers are unchanged. The app parses the UI message stream itself (`ui-stream.ts`, fixture captured from the pinned `ai`) because `@ai-sdk/react`'s React peer range excludes RN's pinned React. Links map web admin paths to app screens (`links.ts`); Boost Sales opens the web. A new tool/link/label must be mirrored in `lib/assistant/presentation.ts` + `links.ts`.
 - **Tests**: `tests/unit/assistant/` (incl. a scripted-model route test); live checks are opt-in: `ASSISTANT_LIVE=1 ASSISTANT_LIVE_TENANT=… ASSISTANT_LIVE_USER=…` (`tests/live/assistant-live.test.ts`, real DB, proposes but never confirms) and `ASSISTANT_GOLDEN=1` (`tests/live/assistant-golden.test.ts`, routing accuracy over `tests/fixtures/assistant/golden.json`).
 
+### Owl mascot (animated, merchant-facing only)
+
+`<Owl state="idle|happy|thinking|waiting|sorry|celebrating|sleeping" size framing="full|bust" label? />` (`src/components/mascot/`). NEVER on diner storefronts — those are white-labeled as the store's brand.
+
+- **Art is generated**: `node scripts/mascot/build-owl-svg.mjs` writes `public/assistant/owl-mascot.svg` AND `src/components/mascot/owl-art.generated.ts` (never hand-edit either). Source modules in `scripts/mascot/lib/` (left side only, mirrored); traced from `scripts/mascot/reference-sheet.png`. `tests/unit/mascot/` fails if the two outputs drift.
+- **Rig**: every moving part is `<g class="o-<part>">` with an inline transform-origin and NO transform attribute (`lib/rig.mjs`); expression variants (happy/closed eyes, lids) and effects (`fx-*`) start at opacity 0.
+- **States** live only in `owl.module.css`: a state = face (static poses) + motion (animations); reduced motion keeps the face. New state → add to `OWL_STATES` + CSS (test-enforced).
+- Ids are prefixed per instance (`useId`); under 120px the blurred shading is dropped (`toLite`).
+- Used in: assistant launcher/header (`owl-mood.ts`: sorry > thinking > happy-after-Confirm > idle), onboarding wizard guide (`guide-owl.ts`), build screen, reveal, Start here, admin error boundary, empty orders/menu/customers.
+
+### SMS automations (texts that send themselves)
+
+Owners switch on per-moment texts — review request, thank first-timers, almost-there, reward waiting/expiring, win-back, regulars gone quiet — in the merchant app (Reports → **Texts**). The SERVER decides who gets a text; the store's enrolled Android phone only delivers. Plan: `docs/plans/2026-10-12-sms-automations.md`.
+
+- **Engine** `src/lib/sms-automations/` (pure, `tests/unit/sms-automations/`): `recipes.ts` (the ONE registry: defaults, limits, EN + Taglish GSM-7 messages, priority, family; contract test over every entry), `candidates.ts` (who qualifies + OCCURRENCE KEY: `lapse:<last_order_at>`, `order:<id>`, `step:<program>:<cycle>:<rung>`, `reward:<id>`…), `planner.ts` (consent/opt-out/suppression, one text per occurrence per FAMILY, re-entry gap, ONE automated text per guest every N days with the highest priority winning, quiet hours HOLD via `not_before`), `template.ts` (placeholders a recipe may use; `toSmsSafe` keeps texts GSM-7; guest-typed names are cut to name-like words), `eta.ts`, `write-copy.ts` ("Write it for me" gate: no invented numbers/prices/links/claims).
+- **Data** (`20261013120000_sms_automations.sql` + `…140000_sms_outbox_hardening.sql`, applied): `sms_automations` (one per tenant+recipe), `sms_settings` (quiet hours, cap days, daily limit, review link), `sms_outbox` — UNIQUE `(tenant_id, family, customer_id, occurrence_key)` IS the dedupe; inserts ignore duplicates. Staff with `customers` (store-wide only) may SELECT; every write is service role or a definer RPC.
+- **Delivery is AT MOST ONCE**: `claim_sms_outbox_message` (device credential, per-store advisory lock) re-checks consent, opt-out, suppression, the guest's phone, exit-on-order, reward still claimable, automation still on, quiet hours, daily limit, per-guest cap (incl. campaign sends + unconfirmed texts) and 25 per 30 min per phone (incl. reward codes), then releases the body ONCE. A phone that never reports leaves the row `claimed`; the sweep fails it `unconfirmed` after 15 min and it is NEVER re-sent.
+- **Server**: `POST /api/sms/automations/tick` (Vercel cron, 5 min, CRON_SECRET; only stores with an automatic automation ON **and** an enrolled phone — a queued text burns its occurrence; `fresh` mode = guests who just qualified). `POST /api/sms/automations` (bearer, `customers`, one strict zod action: list/save/preview/set_status/run_now/save_settings/cancel_waiting/activity/write). Phones: `POST /api/sms/outbox/{claim,finish}` (gated by `LOYALTY_SMS_DELIVERY_ENABLED` like the gateway). Enrollment no longer needs loyalty; a loyalty claim in a store without loyalty answers `job:null`, never 403 (403 = revoked → the phone wipes its enrollment).
+- **Phone** (`webnegosyo-app/lib/sms-automations/`): the gateway's worker is a combined sender — reward codes ALWAYS first, automated texts only when the code queue is idle and their own schedule allows (15 s gap, server waits, 1-min idle poll). Own journal (`sms.outbox.ack.v1…`); a crash mid-send is reported failed, never retried. Needs an EAS Android build.
+- **AI**: Owl `get_sms_automations` + two-phase `propose_sms_automation` (new = Off) / `propose_sms_automation_status` / `propose_run_sms_automation` (kinds in `assistant_actions_kind_check`); operator MCP `list_sms_automations` / `save_sms_automation` (never switches on; excluded from the merchant connector). Onboarding drafts first-timers / slipping regulars / lapsed guests as automations, Off.
+- **Live checks** (opt-in): `SMS_AUTOMATIONS_LIVE=1 npx jest tests/live/sms-automations-live.test.ts` — read-only dry run over real stores, an API round trip on the demo store (cleans up), and a "Write it for me" call.
+
 ### Loyalty wallet passes (Apple Wallet / Google Wallet)
 
 A loyalty member can add their stamp card to Apple or Google Wallet from the order-tracking page (`AddToWalletButtons` inside `LoyaltyStampCard`); the POS attaches a guest by scanning it (`CustomerPickerSheet` → `MemberCardScanner`).
@@ -134,6 +202,24 @@ A loyalty member can add their stamp card to Apple or Google Wallet from the ord
 - **Keeping cards current**: pg_net triggers on `loyalty_balances` / `loyalty_entitlements` / `loyalty_programs` post an id to `/api/loyalty/passes/sync` (ids only, everything re-read; gated by `X-Wallet-Sync-Secret` = Vault `wallet_pass_sync_secret` = env `WALLET_PASS_SYNC_SECRET`). Apple = APNs empty push with the pass certificate, device then pulls; Google = PATCH the object. Per-wallet watermarks (`apple_pushed_hash`, `google_synced_hash`); Google is only called for members who asked for a Google pass.
 - **Routes**: `GET /api/loyalty/passes/{apple,google}` (issue), `/api/loyalty/passes/apple-ws/v1/...` (device web service), `POST /api/loyalty/passes/sync`, `POST /api/loyalty/passes/identify` (bearer, same tenant + `pos`).
 - **Config** (`config.ts`) fails closed per wallet; see ENV_VARIABLES_NEEDED.txt. Swap the text buttons for Apple's/Google's official badge artwork before launch.
+
+### Order status + Loyalty card look (Branding Studio)
+
+Two Studio screens (journey: … Checkout › Order status › Loyalty card) style the order-tracking page and the loyalty stamp card (tracking page, checkout panel, `/[tenant]/loyalty`). Plan: `docs/plans/2026-10-19-studio-tracking-loyalty.md`.
+
+- **Stored** in `tenants.tracking_style` (jsonb, `20261019120000`, applied): flat key → hex colour / choice / boolean (`src/lib/tracking-style/keys.ts`, strict zod on save, re-validated on read). Studio edits it as virtual fields `tracking_style.<key>` (`studio-columns.ts`); one look on every device. Wording = `storefront_labels` screens `tracking` / `loyalty` (status steps carry `titleLabel`/`headlineLabel`/`descriptionLabel`).
+- **One resolver**: `resolveTrackingPalette` (`tracking-style/palette.ts`) → `buildTrackingTheme(branding, style)` publishes every `--trk-*` var. Blank = exactly the pre-2026-10-19 brand-derived look (pinned by `tracking-theme.test.ts`); loyalty colours follow the page accent until set; text gets the readable floor only where the owner changed a side (Studio shows the same issues via `listTenantContrastIssues`). Non-colour choices (timeline, card position, confetti, stamp tick) travel in `TrackingOptionsProvider`.
+- **Contract** (`tracking-theme-contract.test.ts`): every `var(--trk-*)` read must be defined; no hard-coded colours in the tracking/loyalty components (QR plate stays white); every React-read choice is read. A new part = palette entry + var + Studio field + scope.
+- **Preview**: `/[tenant]/order/studio-preview?brandingPreview=1` renders the shared `TrackingDashboard` with a SAMPLE order (`branding-studio/tracking-preview.ts`; 404 without the param, nothing read from orders); the Show bar streams `__trackingPreview`, and `focusTrackingPreview` switches the sample so the setting being edited is on screen.
+
+### Merchant notifications (the app's bell)
+
+Header bell (Home + Manage, `components/notifications/NotificationBell.tsx`) with an unread count, list at `(main)/notifications`. First kind: low / out of stock.
+
+- **Source**: `stock_alerts` (raised by `stock-alerts-service.ts`, gated by `low_stock_alerts_enabled`) → statement triggers write `merchant_notifications` (snapshot of item/unit/branch/qty; a new alert = `stock_low`/`stock_out`, an open low alert updated to `out` = escalation `stock_out`) → statement trigger pg_net-POSTs the ids to `/api/push/notify-merchant` → claims `push_claimed_at` once → Expo push on Android channel `stock-alerts` (never the order ringtone). One stock_alerts statement = one push call per device.
+- **Who**: `app_user_may_read_merchant_notifications` = owner, full-access admins, staff with `menu` (who can open Stock), branch accounts only their branch (NULL outlet = everyone). The push recipient rule (`merchant-notification-push.ts`) and the app's `canSeeMerchantNotifications` mirror it — change all three together. Text is worded in BOTH `merchant-notification-push.ts` and the app's `merchant-notifications.ts`; `tests/unit/merchant-notification-parity.test.ts` fails when the wording or the store-wide visibility rule drifts.
+- **Unread** = not resolved, newer than `merchant_notification_seen.seen_at`, counted once per ingredient shelf (low + its escalation = 1). Opening the list stores the newest notice's SERVER `created_at` as `seen_at` (`nextSeenAt`), never the phone clock. The push route gives its claim back when nothing was sent (no automatic retry — pg_net fires once). Service-role writes only on `merchant_notifications`.
+- **Push taps**: `routeFromPushData` (`lib/merchant-notifications/push-route.ts`) is the app's one router — announcements, then stock alerts (single item → ingredient page, batch → list). A new kind needs: the `kind` check constraint, a trigger/writer, wording on both sides, a route.
 
 ### Bills: combine & split (merchant app)
 
@@ -286,6 +372,7 @@ Dev gotcha (fixed 2026-10-04): `next.config.ts` used to mark `/_next/static` `im
 - **Launch hero = a real Hero Builder gallery template** (owner, 2026-10-10; reference: Karamotan Grill, which the owner hand-built on the press-quote template). `launch-heroes.ts` fills one of 10 templates (`LAUNCH_HEROES`) through the gallery builders' optional `TemplateCopy` param (`hero-builder/template-copy.ts`; no param = the gallery's own sample, unchanged). Words: the design AI writes kicker/headline/body/highlights in the same call that picks look + hero (also when the owner picked the look — sent as `fixedLook`); `launch-copy.ts` refuses any line with a digit or an unknowable claim (rated, since, free, award, best in…) and falls back field by field to honest store-type copy. Facts (hours, order types, payments, best sellers + prices) only ever come from the answers. Photos: stock Unsplash picked per store type (`launch-photos.ts`, category names may promote burger/pizza/ramen…, dish names never do); milk tea/"other" get the photo-free `how-it-works`. Templates with their own palette (press quote, chalkboard, fine dining, masthead, bakery) also paint `header_color`/`menu_main_header_text_color` to match their top band, in the same write; neutral (B&W) brands prefer those templates.
 - **Go live is automatic**: when the build finishes, `openStoreWhenReady` (build.ts) runs `launchFromSetupLink` on the FINISHED row — the same rules as the reveal's button (`{action:'launch'}` → `decideBuyerLaunch`). A refusal leaves the store in pre-launch; it never fails the build. `is_prelaunch` is privileged (service role only).
 - **Start here** (`/[tenant]/admin/start`, `start-path.ts` pure + `start-path-data.ts`): onboarded stores in their first 60 days (`hasStartHere`, request-cached, fails closed) get a sidebar entry, a dashboard nudge and `/admin/launch` redirects here (pre-launch stores see the launch checklist on top). Units Today / This week / Week 2 (one or two steps per goal) / Week 3; steps tick from the store's OWN data (live, launch combos decided, `platform_device_tokens`, orders since live, `has_bundle_items`, loyalty `earn` rows, active `sms_campaigns`, best-seller photos, POS orders, lessons watched). Only "I posted my link" — or a step whose data could not be read — takes a tap (`owner_path_ticks`, `canTickByHand`). Goal trackers (`goal-trackers.ts`) compare against the owner's own buckets; averages need ≥5 orders.
+- **Storefront visits** (shown on Start here + its dashboard nudge as "N people opened your store · M today"): `storefront_visits` (one row per store per Manila day, service role only) written by `record_storefront_visit()` from `POST /api/storefront/visit` — bot UAs ignored, unknown/pre-launch slugs dropped BEFORE any rate-limit key, per store+IP limit, always 204. The beacon (`storefront-visit-beacon.tsx`, mounted in `menu-client.tsx`) fires once per browser session, never for brand admins or inside a frame (Studio, set-up preview), and no-ops without `fetch`/`sendBeacon` (jsdom). Visits are ADVISORY (scriptable): never tick a step or gate anything on them. Next dev adds `x-forwarded-for: ::1`, so locally every request has an IP.
 - **Learn** (`/[tenant]/admin/learn`, `[course]/[lesson]`): University played inside the admin; "Watch these first" (`learn-picks.ts`: current step's lessons → goal lessons → basics); "Mark as watched" writes `university_lesson_progress` (published lessons only, caller's own row). `LearnChip` beside page titles.
 - **Funnel** (`onboarding_events`, first occurrence only, fixed names from `events.ts`, never answers): the wizard beacons screens via `/api/onboarding/[token]/events`; the server records submitted / build_ready|failed / live. `/superadmin/onboarding-funnel` (superadmin only) shows stage conversion, median time to first order and set-ups gone quiet before opening.
 

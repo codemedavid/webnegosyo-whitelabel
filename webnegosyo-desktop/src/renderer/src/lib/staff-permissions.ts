@@ -37,7 +37,14 @@ export const STAFF_PERMISSION_KEYS = [
   // Approving Senior/PWD discounts with a PIN and reviewing every grant in the
   // sales book. Giving the discount needs no grant (refusing one is a crime);
   // vouching for a large one and auditing the ledger is a manager's job.
-  'discount_review'
+  'discount_review',
+  // Store activity & approvals — OPT-IN (see OPT_IN_PERMISSION_KEYS below).
+  'activity_view',
+  'approve_requests',
+  // Reports & inventory suite: sales reports, stock, and what things cost.
+  'reports',
+  'inventory',
+  'costs'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -57,10 +64,24 @@ export interface StaffPermissionHolder {
  */
 export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
   kitchen: 'orders',
-  tables: 'orders'
+  tables: 'orders',
+  reports: 'analytics'
 }
 
 /** Whether `permissions` grants `key` outright or through its containing grant. */
+/**
+ * Keys that full access (`permissions: null`) does NOT grant — owners and
+ * superadmins still hold them; everyone else needs them ticked by name.
+ * Mirror of `OPT_IN_PERMISSION_KEYS` in src/lib/staff-permissions.ts (see the
+ * reasoning there); the parity test pins every copy.
+ */
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+
+/** Whether full access (`permissions: null`) grants `key`. */
+export function isGrantedByFullAccess(key: string): boolean {
+  return !(OPT_IN_PERMISSION_KEYS as readonly string[]).includes(key)
+}
+
 function listGrants(permissions: readonly string[], key: StaffPermissionKey): boolean {
   if (permissions.includes(key)) return true
   const parent = IMPLIED_BY[key]
@@ -72,6 +93,6 @@ export function hasPermission(
   key: StaffPermissionKey
 ): boolean {
   if (user.role === 'superadmin' || user.isOwner) return true
-  if (user.permissions == null) return true
+  if (user.permissions == null) return isGrantedByFullAccess(key)
   return listGrants(user.permissions, key)
 }

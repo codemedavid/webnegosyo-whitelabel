@@ -73,11 +73,16 @@ const STOCK_LEVEL_LABEL = {
 
 export interface InventoryTableProps {
   rows: InventoryRow[]
-  onCreate: () => void
-  onEdit: (id: string) => void
+  /**
+   * The ingredient-master doors (add, edit, recipe, delete) are each omitted
+   * for an account without `menu`: a control that will be refused after the
+   * tap is not offered at all. A row with no door left loses its menu.
+   */
+  onCreate?: () => void
+  onEdit?: (id: string) => void
   onStock: (id: string) => void
-  onRecipe: (id: string) => void
-  onDelete: (id: string) => void
+  onRecipe?: (id: string) => void
+  onDelete?: (id: string) => void
   /** Opens the units list. Omitted by callers that manage units elsewhere. */
   onManageUnits?: () => void
   /** Opens the spreadsheet import. */
@@ -250,15 +255,17 @@ export function InventoryTable({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          <Button
-            type="button"
-            className="max-sm:h-11 max-sm:flex-1"
-            onClick={onCreate}
-            disabled={isCreateDisabled}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add ingredient
-          </Button>
+          {onCreate && (
+            <Button
+              type="button"
+              className="max-sm:h-11 max-sm:flex-1"
+              onClick={onCreate}
+              disabled={isCreateDisabled}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add ingredient
+            </Button>
+          )}
         </div>
       </div>
 
@@ -564,9 +571,9 @@ interface RowActionsMenuProps {
   row: InventoryRow
   isOpen: boolean
   onToggle: () => void
-  onEdit: (id: string) => void
-  onRecipe: (id: string) => void
-  onDelete: (id: string) => void
+  onEdit?: (id: string) => void
+  onRecipe?: (id: string) => void
+  onDelete?: (id: string) => void
 }
 
 /**
@@ -624,6 +631,10 @@ function RowActionsMenu({ row, isOpen, onToggle, onEdit, onRecipe, onDelete }: R
     action(row.id)
   }
 
+  // Hooks above, so this early return keeps their order on every render.
+  const recipeAction = row.isPrep ? onRecipe : undefined
+  if (!onEdit && !recipeAction && !onDelete) return null
+
   /** Arrow, Home and End roving across whatever items this row actually has. */
   const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const items = Array.from(
@@ -667,16 +678,20 @@ function RowActionsMenu({ row, isOpen, onToggle, onEdit, onRecipe, onDelete }: R
           onKeyDown={handleMenuKeyDown}
           className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border bg-popover p-1 text-left shadow-md"
         >
-          <MenuItem icon={<Pencil className="h-4 w-4" />} label="Edit" onSelect={() => run(onEdit)} />
-          {row.isPrep && (
-            <MenuItem icon={<ChefHat className="h-4 w-4" />} label="Recipe" onSelect={() => run(onRecipe)} />
+          {onEdit && (
+            <MenuItem icon={<Pencil className="h-4 w-4" />} label="Edit" onSelect={() => run(onEdit)} />
           )}
-          <MenuItem
-            icon={<Trash2 className="h-4 w-4" />}
-            label="Delete"
-            isDestructive
-            onSelect={() => run(onDelete)}
-          />
+          {recipeAction && (
+            <MenuItem icon={<ChefHat className="h-4 w-4" />} label="Recipe" onSelect={() => run(recipeAction)} />
+          )}
+          {onDelete && (
+            <MenuItem
+              icon={<Trash2 className="h-4 w-4" />}
+              label="Delete"
+              isDestructive
+              onSelect={() => run(onDelete)}
+            />
+          )}
         </div>
       )}
     </div>

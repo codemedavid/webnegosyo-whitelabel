@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-nati
 import { colors, spacing, radius } from "../../theme/colors";
 import { RecipeSheet } from "./RecipeSheet";
 import type { UnitOption } from "../../lib/recipe-service";
+import { compatibleRecipeUnits } from "../../lib/recipe-line-rules";
 
 interface UnitPickerSheetProps {
   /** The ingredient whose unit is being chosen; null = closed. */
@@ -19,6 +20,10 @@ interface UnitPickerSheetProps {
  * The unit for one recipe line, chosen from a grid instead of a strip of
  * every unit squeezed beside each amount. The stock unit is labelled: it is
  * the one that never needs converting.
+ *
+ * Only units that convert to the stock unit are offered (weight ↔ volume
+ * converts 1:1; a count never converts to either): a line in any other unit
+ * would save and then never deduct.
  */
 export function UnitPickerSheet({
   ingredientName,
@@ -28,6 +33,7 @@ export function UnitPickerSheet({
   onPick,
   onClose,
 }: UnitPickerSheetProps) {
+  const offered = compatibleRecipeUnits(stockUnitId, units);
   return (
     <RecipeSheet
       visible={ingredientName !== null}
@@ -36,7 +42,7 @@ export function UnitPickerSheet({
       onClose={onClose}
     >
       <ScrollView contentContainerStyle={styles.grid}>
-        {units.map((unit) => {
+        {offered.map((unit) => {
           const isSelected = unit.id === selectedUnitId;
           const isStock = unit.id === stockUnitId;
           return (
@@ -57,7 +63,7 @@ export function UnitPickerSheet({
             </TouchableOpacity>
           );
         })}
-        {units.length === 0 && (
+        {offered.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No units set up yet. Add them on the Inventory screen.</Text>
           </View>

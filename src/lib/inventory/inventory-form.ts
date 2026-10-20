@@ -125,3 +125,32 @@ export function unitToDraft(row: InventoryUnitRow): UnitDraft {
     is_active: row.is_active,
   }
 }
+
+/** What the editor may change for this account (see `inventory-access.ts`). */
+export interface IngredientEditRights {
+  canSeeCosts: boolean
+  canManageStock: boolean
+}
+
+/**
+ * An ingredient update with only the fields this account may change. A field
+ * it cannot see is LEFT OUT, never resent: the server keeps the stored value
+ * for an absent price or reorder level, whereas resending the one the editor
+ * loaded would assert an old price after a delivery re-blended it — and be
+ * refused for a change the person never made.
+ */
+export type IngredientUpdateForCaller = Omit<IngredientInput, 'unit_cost' | 'reorder_level'> &
+  Partial<Pick<IngredientInput, 'unit_cost' | 'reorder_level'>>
+
+export function ingredientUpdateForCaller(
+  input: IngredientInput,
+  rights: IngredientEditRights,
+): IngredientUpdateForCaller {
+  const hidden = new Set<keyof IngredientInput>([
+    ...(rights.canSeeCosts ? [] : (['unit_cost'] as const)),
+    ...(rights.canManageStock ? [] : (['reorder_level'] as const)),
+  ])
+  return Object.fromEntries(
+    Object.entries(input).filter(([key]) => !hidden.has(key as keyof IngredientInput)),
+  ) as IngredientUpdateForCaller
+}

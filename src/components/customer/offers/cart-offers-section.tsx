@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
-import { needsChoices, offerableItems } from '@/lib/boost/offer-items'
+import { needsChoices, offerableItems, oneTapSelection } from '@/lib/boost/offer-items'
 import type { MenuItem } from '@/types/database'
 import { CartOfferRow } from './cart-offer-row'
 import type { OfferTheme } from './offer-theme'
@@ -85,7 +85,10 @@ export function CartOffersSection({
       router.push(`/${tenantSlug}/menu/item/${item.id}`)
       return
     }
-    addItem(item, undefined, [], 1, undefined, ANALYTICS_SOURCE)
+    // With the picks the dish's page would have pre-selected, so a default
+    // option is priced and spends stock exactly as it would from that page.
+    const { variations, addons } = oneTapSelection(item)
+    addItem(item, variations, addons, 1, undefined, ANALYTICS_SOURCE)
     setAddedIds((current) => new Set(current).add(id))
   }
 

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { verifyTenantAdmin } from '@/lib/admin-service'
+import { ingredientsForCaller } from '@/lib/inventory/cost-visibility'
 import {
   getUnits,
   seedDefaultUnits,
@@ -17,6 +19,7 @@ import {
   deleteIngredient,
   previewIngredientDelete,
   type IngredientInput,
+  type IngredientUpdateInput,
 } from '@/lib/inventory/ingredients-service'
 import {
   getRecipeForTarget,
@@ -116,9 +119,11 @@ export async function deleteInventoryUnitAction(unitId: string, tenantId: string
 // Ingredients
 // ============================================
 
+/** The ingredient list; prices only for an account holding `costs` (Phase 0d). */
 export async function getIngredientsAction(tenantId: string) {
   try {
-    return { success: true as const, data: await getIngredients(tenantId) }
+    const { userRole } = await verifyTenantAdmin(tenantId, 'view')
+    return { success: true as const, data: ingredientsForCaller(await getIngredients(tenantId), userRole) }
   } catch (error) {
     return fail(error, 'Failed to fetch ingredients')
   }
@@ -138,11 +143,15 @@ export async function createIngredientAction(
   }
 }
 
+/**
+ * Each changed field needs its own grant: the master `menu`, the price `costs`,
+ * the reorder level `inventory`. A price or level left out stays as stored.
+ */
 export async function updateIngredientAction(
   ingredientId: string,
   tenantId: string,
   tenantSlug: string,
-  input: IngredientInput,
+  input: IngredientUpdateInput,
 ) {
   try {
     const data = await updateIngredient(ingredientId, tenantId, input)
@@ -181,7 +190,8 @@ export async function previewIngredientDeleteAction(ingredientId: string, tenant
 
 /**
  * Recipe-derived cost of every costable target on one menu item, for the live
- * margin display in the product editor.
+ * margin display in the product editor. Needs `costs` (checked in
+ * `getMenuItemCost`); without it this returns the refusal sentence.
  */
 export async function getMenuItemCostAction(tenantId: string, menuItemId: string) {
   try {

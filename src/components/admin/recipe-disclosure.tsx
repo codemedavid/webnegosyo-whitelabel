@@ -27,6 +27,8 @@ interface RecipeDisclosureProps {
   target: RecipeTarget
   /** Heading on the toggle and inside the editor. */
   label: string
+  /** One line under the heading inside the editor, e.g. how the recipe is spent. */
+  hint?: string
   /**
    * Whether this target already has a recipe. Surfaced on the closed row so a
    * linked recipe is not invisible behind a collapsed section — and so a dish
@@ -41,6 +43,7 @@ export function RecipeDisclosure({
   tenantSlug,
   target,
   label,
+  hint,
   hasRecipe,
   onSaved,
 }: RecipeDisclosureProps) {
@@ -83,6 +86,7 @@ export function RecipeDisclosure({
             tenantSlug={tenantSlug}
             target={target}
             label={label}
+            hint={hint}
             onSaved={onSaved}
           />
         </div>

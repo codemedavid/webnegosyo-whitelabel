@@ -222,4 +222,80 @@ describe("runPosSaleBookkeeping", () => {
     );
     expect(deps.idPhotos).not.toHaveBeenCalled();
   });
+
+  it("answers the stock outcome so a durable queue can retry it", async () => {
+    deps.stock.mockResolvedValueOnce("retry");
+    const outcome = await runPosSaleBookkeeping(facts(), deps);
+    expect(outcome).toEqual({ stock: "retry" });
+  });
+
+  it("runs only the stock call when the reports already ran", async () => {
+    jest.clearAllMocks();
+    deps.stock.mockResolvedValueOnce("ok");
+
+    const outcome = await runPosSaleBookkeeping({ ...facts(), skipReports: true }, deps);
+
+    expect(outcome).toEqual({ stock: "ok" });
+    expect(deps.stock).toHaveBeenCalledTimes(1);
+    expect(deps.loyverse).not.toHaveBeenCalled();
+    expect(deps.vouchers).not.toHaveBeenCalled();
+    expect(deps.activity).not.toHaveBeenCalled();
+    expect(deps.capture).not.toHaveBeenCalled();
+    expect(deps.government).not.toHaveBeenCalled();
+    expect(deps.idPhotos).not.toHaveBeenCalled();
+  });
+
+  it("checkpoints the reports the moment they resolve, while the stock call is still out", async () => {
+    // A crash between the reports landing and the stock call settling must not
+    // send the Loyverse receipt, the voucher burn or the activity line twice.
+    jest.clearAllMocks();
+    let releaseStock: (outcome: "ok") => void = () => undefined;
+    deps.stock.mockImplementationOnce(() => new Promise((resolve) => { releaseStock = resolve; }));
+    const onReportsDone = jest.fn().mockResolvedValue(undefined);
+
+    const running = runPosSaleBookkeeping({ ...facts(), onReportsDone }, deps);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onReportsDone).toHaveBeenCalledTimes(1);
+    releaseStock("ok");
+    await expect(running).resolves.toEqual({ stock: "ok" });
+  });
+
+  it("does not checkpoint reports it skipped", async () => {
+    jest.clearAllMocks();
+    const onReportsDone = jest.fn();
+    await runPosSaleBookkeeping({ ...facts(), skipReports: true, onReportsDone }, deps);
+    expect(onReportsDone).not.toHaveBeenCalled();
+  });
+
+  it("still settles when the checkpoint cannot be written", async () => {
+    jest.clearAllMocks();
+    deps.stock.mockResolvedValueOnce("ok");
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const onReportsDone = jest.fn().mockRejectedValue(new Error("disk full"));
+
+    await expect(runPosSaleBookkeeping({ ...facts(), onReportsDone }, deps)).resolves.toEqual({ stock: "ok" });
+    warn.mockRestore();
+  });
 });
+
+function facts() {
+  return {
+    tenantId: "t",
+    orderId: "abcdef123456",
+    backend: "platform" as const,
+    createdAt: 0,
+    bookkeeping: {
+      stockItems: [{ menuItemId: "m", quantity: 1, optionIds: [], addonIds: [] }],
+      loyverseLines: [],
+      discountLines: [],
+      outletId: null,
+      total: 1,
+      customerName: "",
+      customerContact: "",
+      customerData: {},
+      channel: null,
+      captureItems: [],
+    },
+  };
+}

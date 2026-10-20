@@ -214,6 +214,15 @@ describe("enterEditMode", () => {
    * ORDER, not of the cart, so it has to be carried across explicitly or the
    * re-total drops it.
    */
+  // The register's refund gate mirrors the server's same-day limit, so the
+  // edit must know when the order was placed (approvals, security review H1).
+  it("carries when the order was placed, or null when unknown", () => {
+    expect(enterEditMode({ ...deliveryOrder(), createdAt: "2026-10-12T01:00:00.000Z" }, [], EMPTY_CATALOG).context.orderCreatedAt).toBe(
+      "2026-10-12T01:00:00.000Z",
+    );
+    expect(enterEditMode(deliveryOrder(), [], EMPTY_CATALOG).context.orderCreatedAt).toBeNull();
+  });
+
   it("carries the order's delivery fee into the context", () => {
     const { context } = enterEditMode(deliveryOrder(), [], EMPTY_CATALOG);
 

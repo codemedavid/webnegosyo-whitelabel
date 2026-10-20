@@ -9,6 +9,7 @@
  */
 
 import type { IngredientOption, RecipeComponentView } from "./recipe-service";
+import { targetKey, type OptionRecipeChoice, type OptionRecipeGroup, type RecipeTarget } from "./recipe-target";
 
 export type QuantityDraftResult = { ok: true; value: number } | { ok: false; error: string };
 
@@ -68,4 +69,46 @@ export function buildIngredientChoices(
     ...matches.filter((choice) => !choice.isAdded),
     ...matches.filter((choice) => choice.isAdded),
   ];
+}
+
+export interface ChoiceCoverageSummary {
+  /** Every choice on the dish. */
+  total: number;
+  /** Choices with at least one ingredient line. */
+  withRecipe: number;
+  /** The dish sells choices and none of them deducts anything yet. */
+  isUncovered: boolean;
+}
+
+/**
+ * How many of a dish's choices carry ingredients. `coverage` null (unreadable)
+ * never raises the warning: claiming "none has a recipe" on a failed read
+ * would send the merchant to redo work that exists.
+ */
+export function summarizeChoiceCoverage(
+  groups: readonly OptionRecipeGroup[],
+  coverage: Readonly<Record<string, number>> | null,
+): ChoiceCoverageSummary {
+  const choices = groups.flatMap((group) => group.choices);
+  const withRecipe = coverage
+    ? choices.filter((choice) => (coverage[targetKey(choice.target)] ?? 0) > 0).length
+    : 0;
+  return {
+    total: choices.length,
+    withRecipe,
+    isUncovered: coverage !== null && choices.length > 0 && withRecipe === 0,
+  };
+}
+
+/** The one choice a screen was opened for, or null when it is not on the dish. */
+export function findChoice(
+  groups: readonly OptionRecipeGroup[],
+  target: RecipeTarget,
+): OptionRecipeChoice | null {
+  const key = targetKey(target);
+  for (const group of groups) {
+    const match = group.choices.find((choice) => targetKey(choice.target) === key);
+    if (match) return match;
+  }
+  return null;
 }

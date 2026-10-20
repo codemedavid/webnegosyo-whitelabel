@@ -37,6 +37,10 @@ const TOOL_LABELS: Record<string, string> = {
   propose_loyalty_program: 'Preparing the loyalty program…',
   propose_loyalty_status: 'Preparing the loyalty change…',
   propose_pause_sms_campaign: 'Preparing to pause the SMS…',
+  get_sms_automations: 'Checking your SMS automations…',
+  propose_sms_automation: 'Preparing the automation…',
+  propose_sms_automation_status: 'Preparing the automation change…',
+  propose_run_sms_automation: 'Counting who would get a text…',
   propose_voucher_status: 'Preparing the voucher change…',
   propose_menu_item_change: 'Preparing the dish update…',
   propose_menu_from_photo: 'Reading your photo… this takes a moment',
@@ -95,9 +99,10 @@ interface AssistantMessageProps {
   tenantId: string
   adminBasePath: string
   onNavigate: () => void
+  onApplied?: () => void
 }
 
-export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate }: AssistantMessageProps) {
+export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate, onApplied }: AssistantMessageProps) {
   if (message.role === 'user') {
     const text = message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(' ')
     return (
@@ -138,7 +143,7 @@ export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate 
         return (
           <div key={index} className="space-y-1.5">
             {result.card?.type === 'confirm' ? (
-              <ConfirmCardView card={result.card} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onNavigate} />
+              <ConfirmCardView card={result.card} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onNavigate} onApplied={onApplied} />
             ) : (
               <AssistantCardView card={result.card} />
             )}

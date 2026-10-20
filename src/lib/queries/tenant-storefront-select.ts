@@ -42,7 +42,7 @@ export const TENANT_STOREFRONT_SELECT = `
   card_template, checkout_template, cart_template, page_layout, mobile_page_layout, mobile_card_template,
   card_image_ratio, card_image_fit, card_add_button, card_text_align, card_description, card_density,
   senior_friendly_mode,
-  storefront_pack, storefront_pack_settings,
+  storefront_pack, storefront_pack_settings, storefront_labels, section_schemes, tracking_style,
   header_template, mobile_header_template, header_show_logo, header_show_name, header_show_cart, header_show_search,
   header_tagline, header_tagline_color, header_sticky, header_blur, header_shadow, header_logo_shape, header_height, header_cart_style,
   hero_title, hero_description, hero_title_color, hero_description_color, hero_design, hero_section_enabled,
@@ -83,3 +83,13 @@ export const TENANT_STOREFRONT_SELECT = `
   qr_handoff_enabled, order_backend, lalamove_market,
   distance_delivery_enabled, delivery_radius_km, free_delivery_min_order, restaurant_latitude, restaurant_longitude
 `
+
+const STOREFRONT_COLUMNS: readonly string[] = TENANT_STOREFRONT_SELECT.split(',').map((column) => column.trim()).filter(Boolean)
+
+/**
+ * Only the storefront's own columns of a full tenant row — what a page may
+ * hand to the browser when it read the row with `select('*')`.
+ */
+export function pickStorefrontColumns(row: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(STOREFRONT_COLUMNS.filter((column) => column in row).map((column) => [column, row[column]]))
+}

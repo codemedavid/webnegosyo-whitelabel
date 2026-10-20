@@ -55,8 +55,8 @@ function clockTime(at: number): string {
 
 /** Text of the persistent "SMS gateway is on" notification. */
 export function gatewayStatusText({ sentToday, lastSentAt }: GatewayStats): string {
-  if (sentToday === 0 || lastSentAt === null) return "Ready to send reward codes";
-  const noun = sentToday === 1 ? "code" : "codes";
+  if (sentToday === 0 || lastSentAt === null) return "Ready to send texts";
+  const noun = sentToday === 1 ? "text" : "texts";
   return `${sentToday} ${noun} sent today · last at ${clockTime(lastSentAt)}`;
 }
 

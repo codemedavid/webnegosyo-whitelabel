@@ -384,3 +384,68 @@ describe("runPlatformAnalyticsQuery — bounded windows", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("runPlatformAnalyticsQuery — split tenders", () => {
+  const split = orderRow({ id: "split", total: "300.00", payment_method_name: "Cash" });
+  const ledger = [
+    { order_id: "split", kind: "charge", amount: "120.00", payment_method_name: "GCash" },
+    { order_id: "split", kind: "charge", amount: "180.00", payment_method_name: "Cash" },
+  ];
+
+  it("splits revenue by payment method using the settlement ledger", async () => {
+    const { client } = fakePlatformClient({
+      orders: [{ data: [split], error: null }],
+      order_payments: [{ data: ledger, error: null }],
+    });
+
+    const result = (await runPlatformAnalyticsQuery(client, TENANT, "analytics:getRevenueBreakdown", {
+      daysBack: 7,
+    })) as { byPaymentMethod: unknown };
+
+    expect(result.byPaymentMethod).toEqual([
+      { method: "Cash", revenue: 180, count: 1 },
+      { method: "GCash", revenue: 120, count: 1 },
+    ]);
+  });
+
+  it("feeds the ledger to the payment method detail too", async () => {
+    const { client } = fakePlatformClient({
+      orders: [{ data: [split], error: null }],
+      order_payments: [{ data: ledger, error: null }],
+    });
+
+    const result = (await runPlatformAnalyticsQuery(client, TENANT, "analytics:getPaymentMethodAnalytics", {
+      daysBack: 7,
+    })) as { methods: { method: string; revenue: number }[] };
+
+    expect(result.methods.map((m) => [m.method, m.revenue])).toEqual([
+      ["Cash", 180],
+      ["GCash", 120],
+    ]);
+  });
+
+  it("reads the ledger scoped to the tenant, the branch and the orders' window", async () => {
+    const { client, calls } = fakePlatformClient({
+      orders: [{ data: [split], error: null }],
+      order_payments: [{ data: [], error: null }],
+    });
+
+    await runPlatformAnalyticsQuery(
+      client,
+      TENANT,
+      "analytics:getRevenueBreakdown",
+      { daysBack: 7 },
+      { kind: "branch", outletId: "north" }
+    );
+
+    const payments = calls.filter((c) => c.table === "order_payments");
+    expect(payments.length).toBeGreaterThan(0);
+    const eqs = eqFiltersOn(calls, "order_payments");
+    expect(eqs).toContainEqual(["tenant_id", TENANT]);
+    expect(eqs).toContainEqual(["orders.tenant_id", TENANT]);
+    expect(eqs).toContainEqual(["orders.outlet_id", "north"]);
+    const ops = payments.flatMap((c) => c.ops);
+    expect(ops).toContainEqual({ method: "neq", args: ["orders.status", "cancelled"] });
+    expect(ops).toContainEqual({ method: "range", args: expect.any(Array) });
+  });
+});

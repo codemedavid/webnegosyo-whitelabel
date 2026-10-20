@@ -20,12 +20,25 @@ const q = {
   and: (...exprs: Expr[]) => (row: Row) => exprs.every(e => e(row)),
   or: (...exprs: Expr[]) => (row: Row) => exprs.some(e => e(row)),
 };
+// Index range predicates: each narrows the rows it is chained onto.
+type IndexRange = { eq: (field: string, expected: unknown) => IndexRange; gte: (field: string, bound: number) => IndexRange; test: Expr };
+const indexRange = (test: Expr): IndexRange => ({
+  eq: (field, expected) => indexRange((row) => test(row) && row[field] === expected),
+  gte: (field, bound) => indexRange((row) => test(row) && Number(row[field]) >= bound),
+  test,
+});
+/** Every `withIndex` read, as `table:index`, so a test can see a scan was bounded. */
+let indexReads: string[] = [];
 function context(tables: Record<string, Row[]>) {
   return { db: { query: (table: string) => {
     let rows = tables[table] ?? [];
     const builder = {
       filter: (fn: (query: typeof q) => Expr) => { rows = rows.filter(fn(q)); return builder; },
-      withIndex: (_name: string, fn: (index: { eq: (field: string, expected: unknown) => Expr }) => Expr) => { rows = rows.filter(fn({ eq: (field: string, expected: unknown) => (row: Row) => row[field] === expected })); return builder; },
+      withIndex: (name: string, fn?: (index: IndexRange) => IndexRange) => {
+        indexReads = [...indexReads, `${table}:${name}`];
+        if (fn) { const { test } = fn(indexRange(() => true)); rows = rows.filter((row) => Boolean(test(row))); }
+        return builder;
+      },
       order: () => builder,
       take: async (n: number) => rows.slice(0, n),
       collect: async () => rows,
@@ -170,4 +183,43 @@ it('does not count a month-old projected sale as a new product sale', async () =
     productCosts: [],
   });
   expect(await handlerFor<ProductResult[]>(getAll)(ctx, { period: '30d', outletId: 'north' })).toEqual([]);
+});
+
+it('splits a bill paid by GCash and cash between both methods', async () => {
+  const tables = {
+    orders: [order('split', 'north', 300, { paymentMethod: 'Cash' })],
+    orderPayments: [
+      { orderId: 'split', kind: 'charge', amount: 120, paymentMethodName: 'GCash', _creationTime: now },
+      { orderId: 'split', kind: 'charge', amount: 180, paymentMethodName: 'Cash', _creationTime: now },
+      { orderId: 'elsewhere', kind: 'charge', amount: 999, paymentMethodName: 'Maya', _creationTime: now },
+    ],
+  };
+  const revenue = await invoke('getRevenueBreakdown', tables) as unknown as { byPaymentMethod: unknown };
+  expect(revenue.byPaymentMethod).toEqual([
+    { method: 'Cash', revenue: 180, count: 1 },
+    { method: 'GCash', revenue: 120, count: 1 },
+  ]);
+  const payments = await invoke('getPaymentMethodAnalytics', tables);
+  expect(payments.methods).toEqual([
+    { method: 'Cash', count: 1, revenue: 180, percentage: 1, avgOrderValue: 180 },
+    { method: 'GCash', count: 1, revenue: 120, percentage: 1, avgOrderValue: 120 },
+  ]);
+});
+
+it('reads the settlement ledger through its creation-time index, from the window start', async () => {
+  indexReads = [];
+  const tables = {
+    orders: [order('split', 'north', 300, { paymentMethod: 'Cash' })],
+    orderPayments: [
+      { orderId: 'split', kind: 'charge', amount: 120, paymentMethodName: 'GCash', _creationTime: now },
+      // Before the window: an unbounded scan would read it, the index never does.
+      { orderId: 'split', kind: 'charge', amount: 999, paymentMethodName: 'Maya', _creationTime: now - 30 * 24 * 60 * 60 * 1000 },
+    ],
+  };
+  const revenue = await invoke('getRevenueBreakdown', tables) as unknown as { byPaymentMethod: unknown };
+  expect(indexReads).toContain('orderPayments:by_creation_time');
+  expect(revenue.byPaymentMethod).toEqual([
+    { method: 'Cash', revenue: 180, count: 1 },
+    { method: 'GCash', revenue: 120, count: 1 },
+  ]);
 });

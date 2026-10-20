@@ -73,7 +73,6 @@ const CONVERTED_ROUTES = [
   'src/app/api/revalidate-menu/route.ts',
   'src/app/api/loyverse/route.ts',
   'src/lib/storefront/brand-admin.ts',
-  'src/components/admin/product-detail-customizer.tsx',
   'src/components/auth/tenant-login-form.tsx',
   'src/app/[tenant]/admin/layout.tsx',
 ]

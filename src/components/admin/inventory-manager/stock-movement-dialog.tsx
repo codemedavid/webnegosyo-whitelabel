@@ -71,13 +71,19 @@ interface StockMovementDialogProps {
   branchStockByItemId?: Record<string, BranchStockSummary>
   openCountId: string | null
   openCountOutletId: string | null
+  /**
+   * The account holds `costs`. A clerk without it may still TYPE what a
+   * delivery cost (plan §6.2: "type cost only") but is never shown the
+   * ingredient's current, blended cost — not even as a placeholder.
+   */
+  canSeeCosts: boolean
   onSaved: (item: InventoryItem) => void
   onClose: () => void
 }
 
 /** Each open starts a fresh draft; failed writes keep it mounted for retry. */
 export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, reason,
-  units, branches, branchStockByItemId, openCountId, openCountOutletId, onSaved, onClose,
+  units, branches, branchStockByItemId, openCountId, openCountOutletId, canSeeCosts, onSaved, onClose,
 }: StockMovementDialogProps) {
   // No router.refresh() after a save: the inventory actions revalidate, and a
   // revalidating Server Action already re-renders this route in its response.
@@ -270,7 +276,13 @@ export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, rea
               </div>
             </div>
 
-            {stockDraft.reason === 'receive' && (
+            {/*
+              A delivery price is blended into the ingredient's cost, so it is a
+              cost change: offered only with `costs`. Without it the delivery is
+              recorded uncosted and the owner prices it (the server and the
+              database drop a price from such an account anyway).
+            */}
+            {stockDraft.reason === 'receive' && canSeeCosts && (
               <div className="space-y-1">
                 {/*
                   The price is per the unit the merchant is entering in, and the

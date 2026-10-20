@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { readPaged } from '@/lib/assistant/data/paged'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { OrderStatusEvent } from './order-event'
 
@@ -20,6 +21,11 @@ export interface ActivityQuery {
   limit?: number
 }
 
+/**
+ * The most rows one read holds. Above PostgREST's 1000-row cap, so the read
+ * pages (two requests at most); a single `.limit(2000)` was silently answered
+ * with 1000 rows and never reported itself truncated.
+ */
 export const ACTIVITY_ROW_CEILING = 2000
 
 interface EventRow {
@@ -64,24 +70,33 @@ export interface ActivityPage {
 
 export async function loadOrderStatusEvents(tenantId: string, query: ActivityQuery): Promise<ActivityPage> {
   const limit = query.limit ?? ACTIVITY_ROW_CEILING
-  let request = createAdminClient()
-    .from('order_status_events')
-    .select(
-      'id, tenant_id, outlet_id, backend, external_order_id, event, status, previous_status, source, order_total, actor_user_id, actor_name, occurred_at',
-    )
-    .eq('tenant_id', tenantId)
-    .gte('occurred_at', query.sinceIso)
-    .order('occurred_at', { ascending: false })
-    .limit(limit)
+  const client = createAdminClient()
+  // A fresh builder per page, on a total ordering (occurred_at, then id) so
+  // rows cannot shift between pages and be skipped or read twice.
+  const readPage = (from: number, to: number) => {
+    let request = client
+      .from('order_status_events')
+      .select(
+        'id, tenant_id, outlet_id, backend, external_order_id, event, status, previous_status, source, order_total, actor_user_id, actor_name, occurred_at',
+      )
+      .eq('tenant_id', tenantId)
+      .gte('occurred_at', query.sinceIso)
 
-  if (query.untilIso) request = request.lte('occurred_at', query.untilIso)
-  if (query.actorUserId) request = request.eq('actor_user_id', query.actorUserId)
-  if (query.outletId) request = request.eq('outlet_id', query.outletId)
+    if (query.untilIso) request = request.lte('occurred_at', query.untilIso)
+    if (query.actorUserId) request = request.eq('actor_user_id', query.actorUserId)
+    if (query.outletId) request = request.eq('outlet_id', query.outletId)
 
-  const { data, error } = await request
-  if (error) throw new Error(error.message)
-  const rows = (data ?? []) as unknown as EventRow[]
-  return { events: rows.map(toOrderStatusEvent), isTruncated: rows.length >= limit }
+    return request
+      .order('occurred_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to)
+  }
+
+  const { rows, isCapped } = await readPaged<EventRow>(
+    (from, to) => readPage(from, to) as unknown as PromiseLike<{ data: EventRow[] | null; error: { message: string } | null }>,
+    limit,
+  )
+  return { events: rows.map(toOrderStatusEvent), isTruncated: isCapped }
 }
 
 export interface StaffShiftRecord {

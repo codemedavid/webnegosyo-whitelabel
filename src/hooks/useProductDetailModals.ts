@@ -26,8 +26,6 @@ export function useProductDetailModals({
     // Modal open states
     const [isImageModalOpen, setIsImageModalOpen] = useState(false)
     const [isPostAddUpsellOpen, setIsPostAddUpsellOpen] = useState(false)
-    const [isPopupPreviewOpen, setIsPopupPreviewOpen] = useState(false)
-    const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
 
     // Bundle states
     const [bundleForCustomization, setBundleForCustomization] = useState<BundleWithSlots | null>(null)
@@ -45,14 +43,6 @@ export function useProductDetailModals({
     }, [])
 
     // Admin preview toggle handlers
-    const handleTogglePopupPreview = useCallback(() => {
-        setIsPopupPreviewOpen(prev => !prev)
-    }, [])
-
-    const handleToggleCheckoutPreview = useCallback(() => {
-        setIsCheckoutPreviewOpen(prev => !prev)
-    }, [])
-
     // Post-add upsell handler
     const handlePostAddUpsellClose = useCallback(() => {
         setIsPostAddUpsellOpen(false)
@@ -82,10 +72,6 @@ export function useProductDetailModals({
         isImageModalOpen,
         isPostAddUpsellOpen,
         setIsPostAddUpsellOpen,
-        isPopupPreviewOpen,
-        setIsPopupPreviewOpen,
-        isCheckoutPreviewOpen,
-        setIsCheckoutPreviewOpen,
         bundleForCustomization,
         setBundleForCustomization,
         buyNowIntentRef,
@@ -93,8 +79,6 @@ export function useProductDetailModals({
         // Handlers
         handleOpenImageModal,
         handleCloseImageModal,
-        handleTogglePopupPreview,
-        handleToggleCheckoutPreview,
         handlePostAddUpsellClose,
         navigateAfterBuyNow,
     }

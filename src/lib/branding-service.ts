@@ -1,4 +1,7 @@
 import { STOREFRONT_PACK_IDS, storefrontPackSettingsSchema } from '@/lib/storefront-packs'
+import { storefrontLabelsSchema } from '@/lib/storefront-labels'
+import { sectionSchemesSchema } from '@/lib/section-schemes'
+import { trackingStyleSchema } from '@/lib/tracking-style/keys'
 import { CARD_ADD_BUTTONS, CARD_DENSITIES, CARD_DESCRIPTIONS, CARD_IMAGE_FITS, CARD_IMAGE_RATIOS, CARD_TEXT_ALIGNS } from '@/lib/card-style'
 import { HEADER_CART_STYLES } from '@/lib/header-templates'
 import { z } from 'zod'
@@ -164,6 +167,11 @@ const brandingFieldsSchema = z.object({
     // CHECK — new packs ship without a migration — so validate here.
     storefront_pack: z.enum(STOREFRONT_PACK_IDS).optional(),
     storefront_pack_settings: storefrontPackSettingsSchema.optional(),
+    // The store's own label wording and per-section colour styles (brand editor v2).
+    storefront_labels: storefrontLabelsSchema.optional(),
+    section_schemes: sectionSchemesSchema.optional(),
+    // Order-tracking page + loyalty card look (Studio → Order status / Loyalty card).
+    tracking_style: trackingStyleSchema.optional(),
     // Header template & customization
     header_template: z.string().optional(),
     mobile_header_template: z.string().optional().nullable(),
@@ -395,6 +403,9 @@ export const ROLLOUT_DEPENDENT_FIELDS = [
     'card_density',
     'storefront_pack',
     'storefront_pack_settings',
+    'storefront_labels',
+    'section_schemes',
+    'tracking_style',
     'mobile_overrides',
     'header_template',
     'mobile_header_template',

@@ -18,7 +18,7 @@ import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { displayCustomerName, getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
-import { restoreStockForStatusChange } from "../../../lib/order-cancel-stock";
+import { syncStockForStatusChange } from "../../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../../lib/loyverse-confirm";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
@@ -32,7 +32,7 @@ import { useTenderPaymentMethods } from "../../../lib/query/use-tender-payment-m
 import { isCashMethod } from "../../../lib/pos-payment-methods";
 import { isPosPayLater } from "../../../lib/pos-order";
 import {
-  canCancelOrder,
+  canUserCancelOrder,
   markPaidAfterHandover,
   planOrderStatusChange,
 } from "../../../lib/order-status-change";
@@ -62,6 +62,10 @@ import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
 import { GovDiscountCard } from "../../../components/order/GovDiscountCard";
+import { CancelReasonSheet, type CancelReasonChoice } from "../../../components/order/CancelReasonSheet";
+import { OrderHistoryCard } from "../../../components/order/OrderHistoryCard";
+import { OrderApprovalsPanel } from "../../../components/approvals/OrderApprovalsPanel";
+import { withOrderEventReason, type OrderEventReason } from "../../../lib/order-cancel-reason";
 import { OfflineOrdersNotice } from "../../../components/OfflineOrdersNotice";
 import {
   recallOrder,
@@ -520,6 +524,10 @@ export default function OrderDetailScreen() {
     isCash: isCashMethod(method),
   }));
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
+  // Cancelling asks why first (Store Activity records the reason).
+  const [isCancelSheetOpen, setCancelSheetOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const activityTenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
 
   const gateRequest = order
     ? {
@@ -621,6 +629,7 @@ export default function OrderDetailScreen() {
             total: order.total,
             revisionNumber: order.revisionNumber,
             deliveryFee: order.deliveryFee,
+            createdAt: new Date(order._creationTime).toISOString(),
             items: order.items ?? [],
             // Without this the edit sees no discount at all and would charge
             // the customer full price on any edit to a discounted order.
@@ -668,7 +677,7 @@ export default function OrderDetailScreen() {
   const customerDetailRows = buildCustomerDetailRows(order?.customerData);
 
   /** Resolves true once the new status is saved; every refusal is shown. */
-  const handleUpdateStatus = async (newStatus: OrderStatus): Promise<boolean> => {
+  const handleUpdateStatus = async (newStatus: OrderStatus, why?: OrderEventReason): Promise<boolean> => {
     if (!order) return false;
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
@@ -683,7 +692,11 @@ export default function OrderDetailScreen() {
       // Confirmation receipts print from GlobalReceiptAutoPrint, which reacts
       // to the status transition itself — so a confirm from this screen, the
       // list, the Drawer or the web admin all print exactly once.
-      const written = await updateStatus({ orderId: order._id, status: newStatus });
+      const previousStatus = order.status;
+      const written = await updateStatus(
+        withOrderEventReason({ orderId: order._id, status: newStatus }, why ?? { reason: null, note: null }),
+        { previousStatus },
+      );
 
       // Handing the order over is taking the money for it.
       if (plan.shouldMarkPaid) {
@@ -727,10 +740,11 @@ export default function OrderDetailScreen() {
         );
       }
 
-      // Put the ingredients back on a cancel. This order lives in Convex, so
-      // cancelling it never reaches the web app's updateOrderStatus where
-      // stock is restored. Shared with the order list screen; never throws.
-      await restoreStockForStatusChange(newStatus, String(order._id));
+      // Put the ingredients back on a cancel, or spend them again when the
+      // order leaves `cancelled`. A status written by the app never reaches
+      // the web app's updateOrderStatus where stock moves. Shared with every
+      // status screen; retries in the background and never throws.
+      void syncStockForStatusChange({ orderId: String(order._id), newStatus, previousStatus });
       return true;
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Failed to update status");
@@ -840,6 +854,24 @@ export default function OrderDetailScreen() {
             onCollect={collectGate.allowed ? paymentFlow.openCollect : undefined}
           />
         </View>
+      )}
+
+      {/* Refunds and paid cancels (approvals): the live request card and the entries. */}
+      {!isFromDevice && (
+        <OrderApprovalsPanel
+          style={styles.section}
+          isUnpaid={isUnpaid}
+          order={{
+            id: String(order._id),
+            label: formatDailyOrderNumber(order.dailyNumber, order._id),
+            status: order.status,
+            refundable: collectedFromLedger !== undefined && collectedFromLedger > 0 ? collectedFromLedger : order.total,
+            paymentLabel: order.paymentMethod ?? null,
+            createdAt: new Date(order._creationTime).toISOString(),
+            outletId: order.outletId ?? order.outlet_id ?? null,
+            items: order.items ?? [],
+          }}
+        />
       )}
 
       <Card title="Customer" style={styles.section}>
@@ -1031,6 +1063,13 @@ export default function OrderDetailScreen() {
       <PaymentDecisionSheet {...paymentFlow.decisionSheet} />
 
       <RevisionHistoryCard revisions={revisions ?? []} />
+      {!isFromDevice && (
+        <OrderHistoryCard
+          tenantId={activityTenantId}
+          orderId={String(order._id)}
+          placedAt={new Date(order._creationTime).toISOString()}
+        />
+      )}
 
       {(nextStatus || (order.status !== "delivered" && order.status !== "cancelled")) && (
         <View style={styles.actions}>
@@ -1131,18 +1170,31 @@ export default function OrderDetailScreen() {
               <Text style={styles.billLinkText}>Split or combine bill</Text>
             </TouchableOpacity>
           )}
-          {canCancelOrder(order.status) && (
+          {/* Staff without `orders` get no Cancel: the database refuses it
+              (orders_client_status_guard). On a paid order they get "Ask to
+              cancel" from the approvals panel near the top instead. */}
+          {canUserCancelOrder({ role, isOwner, permissions }, order.status) && (
             <TouchableOpacity
-              onPress={() => {
-                Alert.alert("Cancel Order", "Are you sure?", [
-                  { text: "No" },
-                  { text: "Yes", onPress: () => handleUpdateStatus("cancelled"), style: "destructive" },
-                ]);
-              }}
+              onPress={() => setCancelSheetOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel order"
+              style={styles.cancelHit}
             >
               <Text style={styles.cancelText}>Cancel Order</Text>
             </TouchableOpacity>
           )}
+          <CancelReasonSheet
+            visible={isCancelSheetOpen}
+            orderLabel={formatDailyOrderNumber(order.dailyNumber, order._id)}
+            isBusy={isCancelling}
+            onClose={() => setCancelSheetOpen(false)}
+            onConfirm={async (choice: CancelReasonChoice) => {
+              setIsCancelling(true);
+              const isDone = await handleUpdateStatus("cancelled", choice);
+              setIsCancelling(false);
+              if (isDone) setCancelSheetOpen(false);
+            }}
+          />
         </View>
       )}
       </ScrollView>
@@ -1177,6 +1229,7 @@ const styles = StyleSheet.create({
   primaryAction: { backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 16, alignItems: "center" },
   primaryActionText: { color: colors.textOnDark, ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
+  cancelHit: { minHeight: 48, justifyContent: "center" },
   editButton: {
     borderWidth: 1,
     borderColor: colors.textPrimary,

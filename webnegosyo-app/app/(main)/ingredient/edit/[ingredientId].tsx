@@ -15,6 +15,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "../../../../stores/auth-store";
 import { useBranchScope } from "../../../../lib/use-branch-scope";
+import { useHasPermission } from "../../../../lib/use-has-permission";
 import {
   EMPTY_INGREDIENT_DRAFT,
   buildIngredientPayload,
@@ -23,6 +24,7 @@ import {
   findNameClash,
   groupUnitsByDimension,
   parseOpeningStock,
+  restrictIngredientUpdate,
   suggestCategories,
   type IngredientDraft,
   type IngredientRecord,
@@ -45,6 +47,7 @@ import { colors, typography, spacing, radius, shadow } from "../../../../theme/c
 import { BackHeader } from "../../../../components/BackHeader";
 import { LoadingState } from "../../../../components/LoadingState";
 import { ErrorState } from "../../../../components/ErrorState";
+import { EmptyState } from "../../../../components/EmptyState";
 import { Icon } from "../../../../components/Icon";
 import { SectionHeader } from "../../../../components/SectionHeader";
 import { Button } from "../../../../components/Button";
@@ -64,6 +67,12 @@ export default function IngredientEditorScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const scope = useBranchScope();
   const outletId = scope.kind === "branch" ? scope.outletId : undefined;
+  // Each part of an ingredient answers to its own grant (the database checks
+  // every changed column): the master to `menu`, the reorder level and opening
+  // stock to `inventory`, the price to `costs`.
+  const canEditMaster = useHasPermission("menu");
+  const canManageStock = useHasPermission("inventory");
+  const canSeeCosts = useHasPermission("costs");
 
   const [draft, setDraft] = useState<IngredientDraft>(EMPTY_INGREDIENT_DRAFT);
   const [existing, setExisting] = useState<IngredientRecord | null>(null);
@@ -161,7 +170,17 @@ export default function IngredientEditorScreen() {
         if (opening !== null) await recordOpeningStock(newId, opening, payload.stock_unit_id);
         router.replace(ingredientHref(newId));
       } else {
-        await updateIngredient(tenantId, ingredientId, payload);
+        // Only what this account may change: a price it was never shown, or a
+        // name it may not edit, must not ride along on someone else's grant.
+        await updateIngredient(
+          tenantId,
+          ingredientId,
+          restrictIngredientUpdate(payload, {
+            canEditMaster,
+            canSeeCosts,
+            canSetReorder: canManageStock,
+          }),
+        );
         router.back();
       }
     } catch (saveError) {
@@ -199,6 +218,16 @@ export default function IngredientEditorScreen() {
 
   const title = isNew ? "New ingredient" : "Edit ingredient";
 
+  // Adding to the ingredient list is the master, which stayed on `menu`.
+  if (isNew && !canEditMaster) {
+    return (
+      <View style={styles.screen}>
+        <BackHeader title={title} />
+        <EmptyState icon="stock" message="Adding an ingredient needs Menu access. Ask the owner." />
+      </View>
+    );
+  }
+
   if (isLoading || loadError) {
     return (
       <View style={styles.screen}>
@@ -223,10 +252,14 @@ export default function IngredientEditorScreen() {
               onChangeText={(name) => update({ name })}
               placeholder="e.g. Bread flour"
               placeholderTextColor={colors.textTertiary}
+              editable={canEditMaster}
               autoFocus={isNew}
               autoCapitalize="words"
               returnKeyType="next"
             />
+            {!canEditMaster && (
+              <Text style={styles.hint}>Name, category and unit need Menu access to change.</Text>
+            )}
             {clash && (
               <View style={styles.hintRow}>
                 <Icon name="info" size={14} color={colors.statusPending.text} />
@@ -243,6 +276,7 @@ export default function IngredientEditorScreen() {
               onChangeText={(category) => update({ category })}
               placeholder="e.g. Dry goods"
               placeholderTextColor={colors.textTertiary}
+              editable={canEditMaster}
               autoCapitalize="words"
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -253,6 +287,7 @@ export default function IngredientEditorScreen() {
                     key={name}
                     style={[styles.chip, isActive && styles.chipActive]}
                     onPress={() => update({ category: isActive ? "" : name })}
+                    disabled={!canEditMaster}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isActive }}
                   >
@@ -287,6 +322,7 @@ export default function IngredientEditorScreen() {
                         key={group.dimension}
                         style={[styles.segment, isActive && styles.segmentActive]}
                         onPress={() => setDimension(group.dimension)}
+                        disabled={!canEditMaster}
                         accessibilityRole="button"
                         accessibilityState={{ selected: isActive }}
                       >
@@ -305,6 +341,7 @@ export default function IngredientEditorScreen() {
                         key={unit.id}
                         style={[styles.unit, isActive && styles.unitActive]}
                         onPress={() => update({ stockUnitId: unit.id })}
+                        disabled={!canEditMaster}
                         accessibilityRole="button"
                         accessibilityState={{ selected: isActive }}
                         accessibilityLabel={unit.name}
@@ -322,24 +359,30 @@ export default function IngredientEditorScreen() {
             )}
           </View>
 
-          {/* Money and warnings */}
-          <SectionHeader title="Cost and alerts" style={styles.section} />
+          {/* Money and warnings. The cost is absent without `costs`. */}
+          <SectionHeader title={canSeeCosts ? "Cost and alerts" : "Alerts"} style={styles.section} />
           <View style={styles.card}>
-            <Text style={styles.label}>Cost per {unitLabel}</Text>
-            <View style={styles.affixInput}>
-              <Text style={styles.affix}>₱</Text>
-              <TextInput
-                style={styles.affixField}
-                value={draft.unitCost}
-                onChangeText={(unitCost) => update({ unitCost })}
-                placeholder="0.00"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
-              />
-            </View>
-            <Text style={styles.hint}>Used for stock value and dish costs. Deliveries with a price update it.</Text>
+            {canSeeCosts && (
+              <>
+                <Text style={styles.label}>Cost per {unitLabel}</Text>
+                <View style={styles.affixInput}>
+                  <Text style={styles.affix}>₱</Text>
+                  <TextInput
+                    style={styles.affixField}
+                    value={draft.unitCost}
+                    onChangeText={(unitCost) => update({ unitCost })}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <Text style={styles.hint}>
+                  Used for stock value and dish costs. Deliveries with a price update it.
+                </Text>
 
-            <View style={styles.divider} />
+                <View style={styles.divider} />
+              </>
+            )}
 
             <Text style={styles.label}>Reorder level</Text>
             <View style={styles.affixInput}>
@@ -349,6 +392,7 @@ export default function IngredientEditorScreen() {
                 onChangeText={(reorderLevel) => update({ reorderLevel })}
                 placeholder="0"
                 placeholderTextColor={colors.textTertiary}
+                editable={canManageStock}
                 keyboardType="decimal-pad"
               />
               <Text style={styles.affix}>{unitLabel}</Text>
@@ -356,7 +400,7 @@ export default function IngredientEditorScreen() {
             <Text style={styles.hint}>Marked as running low at or below this. Leave blank to only flag when it runs out.</Text>
           </View>
 
-          {isNew && (
+          {isNew && canManageStock && (
             <>
               <SectionHeader title="Opening stock" style={styles.section} />
               <View style={styles.card}>
@@ -390,6 +434,7 @@ export default function IngredientEditorScreen() {
               <Switch
                 value={draft.isPrep}
                 onValueChange={(isPrep) => update({ isPrep })}
+                disabled={!canEditMaster}
                 trackColor={{ true: colors.success, false: colors.separator }}
               />
             </View>
@@ -403,12 +448,13 @@ export default function IngredientEditorScreen() {
               onChangeText={(sku) => update({ sku })}
               placeholder="Optional"
               placeholderTextColor={colors.textTertiary}
+              editable={canEditMaster}
               autoCapitalize="characters"
               autoCorrect={false}
             />
           </View>
 
-          {!isNew && existing && (
+          {!isNew && existing && canEditMaster && (
             <Button
               label="Archive ingredient"
               icon="trash"

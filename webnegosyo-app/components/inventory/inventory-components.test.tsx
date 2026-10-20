@@ -81,6 +81,17 @@ describe("InventoryHero", () => {
     );
     expect(screen.getByText(/3 without a cost/)).toBeTruthy();
   });
+
+  // Without the Costs grant the peso figure is ABSENT — never ₱0, and never
+  // a nudge to add prices the account may not set.
+  it("leaves the stock value out entirely for an account that may not see costs", () => {
+    render(<InventoryHero summary={SUMMARY} value={null} levelFilter="all" onToggleLevel={() => {}} />);
+
+    expect(screen.queryByText(/₱/)).toBeNull();
+    expect(screen.queryByText(/without a cost/)).toBeNull();
+    expect(screen.getByText("Across 10 ingredients")).toBeTruthy();
+    expect(screen.getByText("70%")).toBeTruthy();
+  });
 });
 
 describe("InventoryActionBar", () => {

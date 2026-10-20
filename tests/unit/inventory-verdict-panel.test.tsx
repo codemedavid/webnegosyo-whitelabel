@@ -12,6 +12,7 @@ import { InventoryManager } from '@/components/admin/inventory-manager'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 
@@ -108,7 +109,7 @@ describe('InventoryManager — recipe coverage reaches the verdict', () => {
 
   test('counts only the dishes that actually have a recipe', () => {
     render(
-      <InventoryManager
+      <InventoryManager access={FULL_INVENTORY_ACCESS}
         tenantId="t1"
         tenantSlug="acme"
         initialIngredients={[] as unknown as InventoryItem[]}
@@ -126,7 +127,7 @@ describe('InventoryManager — recipe coverage reaches the verdict', () => {
 
   test('refuses the verdict when no dish has a recipe', () => {
     render(
-      <InventoryManager
+      <InventoryManager access={FULL_INVENTORY_ACCESS}
         tenantId="t1"
         tenantSlug="acme"
         initialIngredients={[] as unknown as InventoryItem[]}

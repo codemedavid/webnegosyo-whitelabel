@@ -17,16 +17,41 @@
  * explicitly: a query that relies on RLS to be correct reads as though it did
  * not need to be.
  *
- * MVP scope: base menu-item recipes only. Variation-option and addon recipes
- * (`target_type` 'variation_option' / 'addon') are a later iteration.
+ * Scope: the dish's own (base) recipe AND a recipe per choice on it — a
+ * modifier option, a legacy variation option or a legacy add-on (see
+ * `recipe-target.ts` for how each maps to `recipes` columns). A choice's
+ * ingredients are spent each time it is picked, on top of the dish's own.
+ * Without them a "pick your flavours ×N" dish deducted nothing beyond its base.
+ *
+ * Every write asserts the rows it touched: RLS refusals are silent (zero rows,
+ * no error), and a line that "saved" without saving is worse than an error.
  */
 
 import { supabase } from "./supabase";
+import {
+  OPTION_ID_COLUMN,
+  buildRecipeTargetColumns,
+  dishRecipeChoices,
+  targetKey,
+  targetOptionId,
+  type OptionRecipeGroup,
+  type RecipeTarget,
+} from "./recipe-target";
+import { recipeLineProblem, toUnitDimension, type RuleIngredient, type RuleUnit, type UnitDimension } from "./recipe-line-rules";
+import type { ModifierSource } from "./modifier-groups";
 
 /** Injected in tests so no connection is opened. */
 type Db = Pick<typeof supabase, "from">;
 
-const BASE_TARGET_TYPE = "menu_item";
+/**
+ * What a line is judged against before it is written: the ingredient's stock
+ * unit and the unit catalogue (`recipe-line-rules.ts`). Optional so a caller
+ * without the catalogue still gets the quantity check.
+ */
+export interface LineCheck {
+  ingredient: RuleIngredient;
+  units: readonly RuleUnit[];
+}
 
 export interface RecipeComponentView {
   id: string;
@@ -58,11 +83,13 @@ export interface AddComponentInput {
   quantity: number;
   unitId: string;
   sortOrder: number;
+  check?: LineCheck;
 }
 
 export interface ComponentChanges {
   quantity: number;
   unitId: string;
+  check?: LineCheck;
 }
 
 /**
@@ -90,6 +117,14 @@ function assertUsableQuantity(quantity: number): void {
   }
 }
 
+/** The full line rule, when the caller handed over what it needs. */
+function assertUsableLine(line: { quantity: number; unitId: string }, check?: LineCheck): void {
+  assertUsableQuantity(line.quantity);
+  if (!check) return;
+  const problem = recipeLineProblem(line, check.ingredient, check.units);
+  if (problem) throw new Error(problem);
+}
+
 /**
  * An UPDATE or DELETE that RLS refuses (or that names a line another phone
  * already removed) touches zero rows and reports no error. Without this the
@@ -109,19 +144,24 @@ interface ComponentRow {
   sort_order: number;
 }
 
-/** The dish's base recipe row, or null when it has none. */
-async function findBaseRecipe(
+/** The target's recipe row, or null when it has none. */
+async function findRecipe(
   db: Db,
   tenantId: string,
-  menuItemId: string,
+  target: RecipeTarget,
 ): Promise<{ id: string } | null> {
-  const { data, error } = await db
+  const columns = buildRecipeTargetColumns(target);
+  let query = db
     .from("recipes")
     .select("id")
     .eq("tenant_id", tenantId)
-    .eq("menu_item_id", menuItemId)
-    .eq("target_type", BASE_TARGET_TYPE)
-    .maybeSingle();
+    .eq("menu_item_id", columns.menu_item_id)
+    .eq("target_type", columns.target_type);
+  const optionId = targetOptionId(target);
+  if (target.type !== "menu_item" && optionId !== null) {
+    query = query.eq(OPTION_ID_COLUMN[target.type], optionId);
+  }
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw asError(error, "The recipe could not be read.");
   return (data as { id: string } | null) ?? null;
@@ -141,9 +181,18 @@ export async function loadMenuItemRecipe(
   menuItemId: string,
   db: Db = supabase,
 ): Promise<MenuItemRecipe | null> {
-  if (!tenantId || !menuItemId) return null;
+  return loadRecipe(tenantId, { type: "menu_item", menuItemId }, db);
+}
 
-  const recipe = await findBaseRecipe(db, tenantId, menuItemId);
+/** Any target's recipe — the dish's own, or one of its choices'. */
+export async function loadRecipe(
+  tenantId: string,
+  target: RecipeTarget,
+  db: Db = supabase,
+): Promise<MenuItemRecipe | null> {
+  if (!tenantId || !target.menuItemId) return null;
+
+  const recipe = await findRecipe(db, tenantId, target);
   if (!recipe) return null;
 
   const [componentsResult, itemsResult, unitsResult] = await Promise.all([
@@ -260,6 +309,8 @@ export async function loadIngredientOptions(
 export interface UnitOption {
   id: string;
   abbreviation: string;
+  /** What the unit measures; decides which units an ingredient may use. */
+  dimension?: UnitDimension;
 }
 
 /** The tenant's unit catalog, for the unit picker on a recipe line. */
@@ -272,37 +323,51 @@ export async function loadUnitOptions(
 
   const { data, error } = await db
     .from("inventory_units")
-    .select("id, abbreviation")
+    .select("id, abbreviation, dimension")
     .eq("tenant_id", tenantId)
     .order("abbreviation", { ascending: true });
 
   if (error) throw asError(error, "The unit list could not be read.");
-  return (data ?? []) as unknown as UnitOption[];
+  return ((data ?? []) as unknown as { id: string; abbreviation: string; dimension?: unknown }[]).map(
+    (row) => {
+      const dimension = toUnitDimension(row.dimension);
+      return { id: row.id, abbreviation: row.abbreviation, ...(dimension ? { dimension } : {}) };
+    },
+  );
 }
 
-/**
- * The dish's base recipe id, creating the row if it has none.
- *
- * Finding-then-inserting rather than upserting keeps the common path a plain
- * read; the unique partial index (idx_recipes_menu_item_base_uq) refuses a
- * duplicate if two phones race, and that refusal surfaces like any other
- * failed insert.
- */
+/** The dish's base recipe id, creating the row if it has none. */
 export async function ensureMenuItemRecipe(
   tenantId: string,
   menuItemId: string,
   db: Db = supabase,
 ): Promise<string> {
-  const existing = await findBaseRecipe(db, tenantId, menuItemId);
+  return ensureRecipe(tenantId, { type: "menu_item", menuItemId }, db);
+}
+
+/**
+ * The target's recipe id, creating the row if it has none.
+ *
+ * Finding-then-inserting rather than upserting keeps the common path a plain
+ * read; the target's partial unique index (idx_recipes_menu_item_base_uq,
+ * idx_recipes_modifier_option_uq, idx_recipes_option_uq, idx_recipes_addon_uq)
+ * refuses a duplicate if two phones race, and that refusal surfaces like any
+ * other failed insert. Only the target's own columns are written.
+ */
+export async function ensureRecipe(
+  tenantId: string,
+  target: RecipeTarget,
+  db: Db = supabase,
+): Promise<string> {
+  const existing = await findRecipe(db, tenantId, target);
   if (existing) return existing.id;
 
+  const columns = Object.fromEntries(
+    Object.entries(buildRecipeTargetColumns(target)).filter(([, value]) => value !== null),
+  );
   const { data, error } = await db
     .from("recipes")
-    .insert({
-      tenant_id: tenantId,
-      target_type: BASE_TARGET_TYPE,
-      menu_item_id: menuItemId,
-    } as never)
+    .insert({ tenant_id: tenantId, ...columns } as never)
     .select("id")
     .single();
 
@@ -317,18 +382,22 @@ export async function addRecipeComponent(
   input: AddComponentInput,
   db: Db = supabase,
 ): Promise<void> {
-  assertUsableQuantity(input.quantity);
+  assertUsableLine(input, input.check);
 
-  const { error } = await db.from("recipe_components").insert({
-    tenant_id: tenantId,
-    recipe_id: input.recipeId,
-    inventory_item_id: input.inventoryItemId,
-    quantity: input.quantity,
-    unit_id: input.unitId,
-    sort_order: input.sortOrder,
-  } as never);
+  const { data, error } = await db
+    .from("recipe_components")
+    .insert({
+      tenant_id: tenantId,
+      recipe_id: input.recipeId,
+      inventory_item_id: input.inventoryItemId,
+      quantity: input.quantity,
+      unit_id: input.unitId,
+      sort_order: input.sortOrder,
+    } as never)
+    .select("id");
 
   if (error) throw asError(error, "The ingredient could not be added.");
+  assertRowChanged(data, "The ingredient could not be added.");
 }
 
 /** Change a line's quantity or unit. */
@@ -338,7 +407,7 @@ export async function updateRecipeComponent(
   changes: ComponentChanges,
   db: Db = supabase,
 ): Promise<void> {
-  assertUsableQuantity(changes.quantity);
+  assertUsableLine(changes, changes.check);
 
   const { data, error } = await db
     .from("recipe_components")
@@ -367,3 +436,105 @@ export async function removeRecipeComponent(
   if (error) throw asError(error, "The ingredient could not be removed.");
   assertRowChanged(data, "The ingredient could not be removed.");
 }
+
+export interface DishRecipeChoices {
+  /** Blank when the dish could not be read. */
+  name: string;
+  groups: OptionRecipeGroup[];
+}
+
+/**
+ * The dish's name and every choice on it a recipe can attach to.
+ *
+ * Costs the choices, not the screen, on a failed read: the base recipe is
+ * still editable without them.
+ */
+export async function loadDishRecipeChoices(
+  tenantId: string,
+  menuItemId: string,
+  db: Db = supabase,
+): Promise<DishRecipeChoices> {
+  if (!tenantId || !menuItemId) return { name: "", groups: [] };
+
+  const { data, error } = await db
+    .from("menu_items")
+    .select("name, modifier_groups, variation_types, variations, addons")
+    .eq("tenant_id", tenantId)
+    .eq("id", menuItemId)
+    .maybeSingle();
+
+  if (error || !data) return { name: "", groups: [] };
+  const row = data as unknown as ModifierSource & { name: string | null };
+  return { name: row.name ?? "", groups: dishRecipeChoices(menuItemId, row) };
+}
+
+interface RecipeKeyRow {
+  id: string;
+  target_type: string;
+  variation_option_id: string | null;
+  addon_id: string | null;
+  modifier_option_id: string | null;
+}
+
+function rowTargetKey(row: RecipeKeyRow): string | null {
+  switch (row.target_type) {
+    case "menu_item":
+      return "menu_item";
+    case "modifier_option":
+      return row.modifier_option_id ? `modifier_option:${row.modifier_option_id}` : null;
+    case "variation_option":
+      return row.variation_option_id ? `variation_option:${row.variation_option_id}` : null;
+    case "addon":
+      return row.addon_id ? `addon:${row.addon_id}` : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * How many ingredient lines each recipe on the dish has, keyed by
+ * `targetKey` (`menu_item`, `modifier_option:<id>`, …). A target with no
+ * recipe, or an empty one, is absent. Null when it could not be read — the
+ * counts are labels and must not take the editor down with them.
+ */
+export async function loadDishRecipeCoverage(
+  tenantId: string,
+  menuItemId: string,
+  db: Db = supabase,
+): Promise<Record<string, number> | null> {
+  if (!tenantId || !menuItemId) return null;
+
+  const recipes = await db
+    .from("recipes")
+    .select("id, target_type, variation_option_id, addon_id, modifier_option_id")
+    .eq("tenant_id", tenantId)
+    .eq("menu_item_id", menuItemId);
+  if (recipes.error) return null;
+
+  const rows = (recipes.data ?? []) as unknown as RecipeKeyRow[];
+  if (rows.length === 0) return {};
+
+  const components = await db
+    .from("recipe_components")
+    .select("recipe_id")
+    .eq("tenant_id", tenantId)
+    .in(
+      "recipe_id",
+      rows.map((row) => row.id),
+    );
+  if (components.error) return null;
+
+  const linesByRecipe = new Map<string, number>();
+  for (const line of (components.data ?? []) as unknown as { recipe_id: string }[]) {
+    linesByRecipe.set(line.recipe_id, (linesByRecipe.get(line.recipe_id) ?? 0) + 1);
+  }
+
+  return rows.reduce<Record<string, number>>((coverage, row) => {
+    const key = rowTargetKey(row);
+    const lines = linesByRecipe.get(row.id) ?? 0;
+    return key && lines > 0 ? { ...coverage, [key]: lines } : coverage;
+  }, {});
+}
+
+/** The coverage key of a target — re-exported so screens need one import. */
+export { targetKey };

@@ -14,6 +14,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { resolveActingBranchScope } from '@/lib/inventory/acting-branch-scope'
+import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import { resolveMovementBranch } from '@/lib/inventory/branch-stock-view'
 import { toBusinessDayKey } from '@/lib/inventory/business-day'
 import {
@@ -132,6 +133,7 @@ export async function openCount(
   tenantId: string,
   input: OpenCountInput,
 ): Promise<CountSessionRecord> {
+  await requireGrant(tenantId, 'inventory', 'create', PERMISSION_REFUSALS.counts)
   const supabase = await createClient()
 
   // Throws for a manager naming somebody else's shelf, before anything is read
@@ -187,6 +189,7 @@ async function loadCount(
  * with itself about whether the shelf was accounted for.
  */
 export async function closeCount(tenantId: string, countId: string): Promise<void> {
+  await requireGrant(tenantId, 'inventory', 'edit', PERMISSION_REFUSALS.counts)
   const supabase = await createClient()
   const count = await loadCount(supabase, tenantId, countId)
   if (!count) throw new Error('That stock count could not be found')

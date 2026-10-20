@@ -9,12 +9,6 @@ export const LazyImageModal = dynamic(
     { ssr: false }
 )
 
-// Lazy-load the ProductDetailCustomizer (admin-only component)
-export const LazyProductDetailCustomizer = dynamic(
-    () => import('../admin/product-detail-customizer').then(mod => ({ default: mod.ProductDetailCustomizer })),
-    { ssr: false }
-)
-
 // Lazy-load the RelatedItemsSection with a skeleton fallback
 export const LazyRelatedItemsSection = dynamic(
     () => import('./product-detail-related').then(mod => ({ default: mod.RelatedItemsSection })),

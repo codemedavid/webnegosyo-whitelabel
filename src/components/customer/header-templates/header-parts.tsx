@@ -6,6 +6,7 @@
  * header template renders identical, bug-free pieces and only differs in layout.
  */
 
+import { useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { useId } from 'react'
 import { Search, ShoppingBag, ShoppingCart } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -374,6 +375,7 @@ export function HeaderSearch({
   placeholder?: string
   className?: string
 }) {
+  const placeholderText = useStorefrontLabel('menu.search_placeholder', placeholder)
   const sb = branding.searchBar
   const radius =
     sb.radius === 'square' ? 'rounded-md' : sb.radius === 'rounded' ? 'rounded-lg' : 'rounded-full'
@@ -400,7 +402,7 @@ export function HeaderSearch({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={placeholderText}
         aria-label="Search the menu"
         className={`branded-search-input w-full border py-2 pl-9 pr-3 text-sm outline-none ${radius}`}
         style={{

@@ -1,5 +1,6 @@
 'use client'
 
+import { useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { memo, useMemo, useCallback } from 'react'
 import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,7 @@ export const SearchBar = memo(function SearchBar({
   branding,
 }: SearchBarProps) {
   const cfg = branding?.searchBar
+  const placeholderText = useStorefrontLabel('menu.search_placeholder', placeholder)
 
   const resolved = useMemo(() => {
     if (!branding) return null
@@ -66,7 +68,7 @@ export const SearchBar = memo(function SearchBar({
           type="search"
           name="menu-search"
           aria-label="Search menu"
-          placeholder={placeholder}
+          placeholder={placeholderText}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={`pl-12 pr-12 h-12 ${resolved.radius} backdrop-blur-sm border focus:ring-2 focus:outline-none branded-search-input`}
@@ -103,7 +105,7 @@ export const SearchBar = memo(function SearchBar({
         type="search"
         name="menu-search"
         aria-label="Search menu"
-        placeholder={placeholder}
+        placeholder={placeholderText}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="pl-12 pr-12 h-12 rounded-full border-gray-200 bg-white/80 backdrop-blur-sm focus:border-orange-300 focus:ring-orange-200"

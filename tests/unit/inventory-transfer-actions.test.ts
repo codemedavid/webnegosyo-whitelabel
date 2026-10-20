@@ -34,6 +34,12 @@ jest.mock('@/lib/inventory/stock-transfers-service', () => ({
 }))
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }))
 
+/** The caller's grants; the gate itself is pinned in inventory-permission-split. */
+let caller: { role: string; is_owner: boolean; permissions: string[] | null } = { role: 'admin', is_owner: true, permissions: null }
+jest.mock('@/lib/admin-service', () => ({
+  verifyTenantAdmin: async () => ({ user: { id: 'u1' }, userRole: caller }),
+}))
+
 const draft = {
   fromOutletId: NORTH,
   toOutletId: SOUTH,
@@ -41,10 +47,38 @@ const draft = {
 }
 
 beforeEach(() => {
+  caller = { role: 'admin', is_owner: true, permissions: null }
   createTransfer.mockReset().mockResolvedValue({ id: 'xfer-1' })
   sendTransfer.mockReset().mockResolvedValue(undefined)
   receiveTransfer.mockReset().mockResolvedValue(undefined)
   cancelTransfer.mockReset().mockResolvedValue(undefined)
+})
+
+describe('the Inventory grant (Phase 0d)', () => {
+  it('refuses every step to a menu-only account before the service runs', async () => {
+    caller = { role: 'admin', is_owner: false, permissions: ['menu'] }
+
+    const results = [
+      await createStockTransferAction(TENANT, SLUG, draft),
+      await sendStockTransferAction(TENANT, SLUG, 'xfer-1'),
+      await receiveStockTransferAction(TENANT, SLUG, 'xfer-1', { [FLOUR]: 1 }),
+      await cancelStockTransferAction(TENANT, SLUG, 'xfer-1'),
+    ]
+
+    for (const result of results) {
+      expect(result).toEqual({ success: false, error: expect.stringMatching(/Inventory permission/) })
+    }
+    expect(createTransfer).not.toHaveBeenCalled()
+    expect(sendTransfer).not.toHaveBeenCalled()
+    expect(receiveTransfer).not.toHaveBeenCalled()
+    expect(cancelTransfer).not.toHaveBeenCalled()
+  })
+
+  it('admits an inventory-only account', async () => {
+    caller = { role: 'admin', is_owner: false, permissions: ['inventory'] }
+
+    await expect(createStockTransferAction(TENANT, SLUG, draft)).resolves.toEqual({ success: true, data: { id: 'xfer-1' } })
+  })
 })
 
 describe('createStockTransferAction', () => {

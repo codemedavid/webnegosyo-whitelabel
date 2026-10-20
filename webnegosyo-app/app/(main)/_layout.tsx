@@ -20,6 +20,8 @@ import { WhatsNewPopup } from "../../components/WhatsNewPopup";
 import { TutorialWelcomePopup } from "../../components/tutorial/TutorialWelcomePopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
 import { OwlLauncher } from "../../components/assistant/OwlLauncher";
+import { useStockAlertPushRefresh } from "../../lib/merchant-notifications/use-merchant-notifications";
+import { canReadOrders } from "../../lib/staff-permissions";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -34,7 +36,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       // No session (e.g. demo) — ignore.
     }
     useAuthStore.getState().clear();
-    router.replace("/(auth)/login");
+    router.replace("/(auth)/welcome");
   };
   return (
     <CrashFallback
@@ -61,9 +63,13 @@ export default function MainLayout() {
   // Opens an account on its pinned screen, and loads the branch list the
   // context rules validate selections against.
   useBranchLanding();
+  useStockAlertPushRefresh();
 
   const ctx = useTabVisibilityContext();
   const show = (tab: string) => (isTabOnBar(tab, ctx) ? undefined : null);
+  // The watchers below subscribe to new orders. An account the database
+  // refuses orders to would subscribe, be answered with nothing, and wait.
+  const canSeeOrders = canReadOrders(ctx.caller);
   // The bar sits on the home-indicator inset rather than a fixed 85pt guess
   // that was too tall on Android and too short on some iPhones.
   const insets = useSafeAreaInsets();
@@ -71,12 +77,16 @@ export default function MainLayout() {
 
   return (
     <>
-      {/* App-wide new-order ringtone — active on every tab, not just Home. */}
-      <GlobalOrderAlerts />
-      {/* Auto-prints kitchen chits on new orders, whichever tab is open. */}
-      <GlobalKitchenAutoPrint />
-      {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
-      <GlobalReceiptAutoPrint />
+      {canSeeOrders && (
+        <>
+          {/* App-wide new-order ringtone — active on every tab, not just Home. */}
+          <GlobalOrderAlerts />
+          {/* Auto-prints kitchen chits on new orders, whichever tab is open. */}
+          <GlobalKitchenAutoPrint />
+          {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
+          <GlobalReceiptAutoPrint />
+        </>
+      )}
       <PrinterWarmUp />
       {/* Watches the connection and replays counter sales taken offline. */}
       <OfflineSalesSync />
@@ -167,12 +177,15 @@ export default function MainLayout() {
         <Tabs.Screen name="growth" options={{ href: show("growth"), title: "Growth" }} />
         <Tabs.Screen name="customers" options={{ href: show("customers"), title: "Guest list" }} />
         <Tabs.Screen name="loyalty" options={{ href: show("loyalty"), title: "Rewards" }} />
+        <Tabs.Screen name="texts" options={{ href: show("texts"), title: "Texts" }} />
         <Tabs.Screen
           name="product-analytics"
           options={{ href: show("product-analytics"), title: "Performance" }}
         />
         <Tabs.Screen name="daily-report" options={{ href: show("daily-report"), title: "Stock report" }} />
         <Tabs.Screen name="branches" options={{ href: show("branches"), title: "Compare branches" }} />
+        {/* Store activity — the store's view (owners, activity_view, approve_requests). */}
+        <Tabs.Screen name="activity" options={{ href: show("activity"), title: "Activity" }} />
 
         {/* ── Manage ──────────────────────────────────────────────────── */}
         <Tabs.Screen
@@ -196,6 +209,8 @@ export default function MainLayout() {
         <Tabs.Screen name="voucher/[voucherId]" options={{ href: null, title: "Voucher" }} />
         <Tabs.Screen name="category/[categoryId]" options={{ href: null, title: "Category" }} />
         <Tabs.Screen name="campaign/[campaignId]" options={{ href: null, title: "Campaign" }} />
+        {/* One automatic text's settings and message — pushed from Texts. */}
+        <Tabs.Screen name="automation/[recipe]" options={{ href: null, title: "Automation" }} />
         <Tabs.Screen name="scan" options={{ href: null, title: "Scan QR" }} />
         <Tabs.Screen name="order/[orderId]" options={{ href: null, title: "Order Detail" }} />
         {/* One table's party, its open orders and its scan-to-order code. */}
@@ -215,6 +230,12 @@ export default function MainLayout() {
         />
         <Tabs.Screen name="account" options={{ href: null, title: "Account" }} />
         <Tabs.Screen name="team" options={{ href: null, title: "Team" }} />
+        {/* One person's own Store activity — pushed from Account or the Drawer. */}
+        <Tabs.Screen name="my-activity" options={{ href: null, title: "Your activity" }} />
+        {/* One refund / paid-cancel request to approve or read — from To review, Home, an order or a push. */}
+        <Tabs.Screen name="approval/[approvalId]" options={{ href: null, title: "Request" }} />
+        {/* Owner-only refund limits and who approves — pushed from Manage. */}
+        <Tabs.Screen name="approval-rules" options={{ href: null, title: "Approval rules" }} />
         {/* Tills (Cashier 1, Cashier 2, zero-balance) — pushed from Manage or the Drawer. */}
         <Tabs.Screen name="cash-drawers" options={{ href: null, title: "Cash drawers" }} />
         {/* VAT status, BIR details, Senior/PWD rules — pushed from Manage or the register. */}
@@ -235,6 +256,8 @@ export default function MainLayout() {
         {/* Platform "What's New" inbox + post — reached from Manage or a push. */}
         <Tabs.Screen name="whats-new/index" options={{ href: null, title: "What's New" }} />
         <Tabs.Screen name="whats-new/[announcementId]" options={{ href: null, title: "Update" }} />
+        {/* The bell's list (low / out of stock) — reached from the header bell or a push. */}
+        <Tabs.Screen name="notifications" options={{ href: null, title: "Notifications" }} />
         {/* Guided tour: the chapter list and one chapter — reached from the greeter or Manage. */}
         <Tabs.Screen name="tutorial/index" options={{ href: null, title: "Learn the app" }} />
         {/* The chapter draws its own bar inside the simulation, so the real one hides. */}

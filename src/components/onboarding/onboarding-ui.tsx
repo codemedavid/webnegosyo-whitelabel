@@ -15,10 +15,15 @@
  *   Your store puts the question left and the phone right. On phones the
  *   question fills the screen and a fixed bar carries Back / Continue.
  * FORM: canon (user-pinned): Duolingo's one-tap questions and chapter progress,
- *   Airbnb host flow, Stripe restraint. No mascots, no confetti walls.
+ *   Airbnb host flow. Since 2026-10-12 (owner: "make it exciting, closer to
+ *   their dream") it is ALIVE: answers pop, lists rise in, Owl cheers between
+ *   chapters, the brand color ripples, the store opens behind a roll-up
+ *   shutter with brand-colored confetti. Motion vocabulary in ./motion/;
+ *   transform/opacity only, and reduced motion always gets the end state.
  */
 
 import { useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { Camera, Check, Loader2, X } from 'lucide-react'
 import { shrinkPhoto } from './shrink-photo'
 
@@ -93,6 +98,11 @@ function selectionStyle(isSelected: boolean): React.CSSProperties {
   }
 }
 
+/** Chosen: the icon hops and wiggles once (Framer skips it under reduced motion). */
+const ICON_POP = { scale: [1, 1.22, 0.96, 1], rotate: [0, -10, 8, 0] }
+const ICON_REST = { scale: 1, rotate: 0 }
+const ICON_POP_TRANSITION = { duration: 0.42, ease: 'easeOut' } as const
+
 /** A tile in a grid (store type, order types): icon over a title, with the same pressable ledge as `TapCard`. */
 export function OptionTile({ isSelected, onClick, title, description, icon, isMulti = false }: OptionProps) {
   const edge = isSelected ? ACCENT : OB.lineStrong
@@ -105,7 +115,7 @@ export function OptionTile({ isSelected, onClick, title, description, icon, isMu
       className={`flex h-full min-h-[7.25rem] flex-col items-start justify-start gap-3 rounded-2xl border-2 p-4 text-left transition-[transform,box-shadow,border-color,background-color] duration-100 ease-out [box-shadow:0_4px_0_var(--tap-edge)] active:translate-y-[2px] active:[box-shadow:0_2px_0_var(--tap-edge)] motion-reduce:transition-none ${FOCUS_RING}`}
       style={{ borderColor: edge, backgroundColor: isSelected ? ACCENT_SOFT : OB.canvas, '--tap-edge': edge } as React.CSSProperties}
     >
-      <span style={{ color: isSelected ? ACCENT : OB.ink }} aria-hidden>{icon}</span>
+      <motion.span style={{ color: isSelected ? ACCENT : OB.ink }} animate={isSelected ? ICON_POP : ICON_REST} transition={ICON_POP_TRANSITION} aria-hidden>{icon}</motion.span>
       <span>
         <span className="block text-[15px] font-bold" style={{ color: OB.ink }}>{title}</span>
         {description && <span className="mt-0.5 block text-[13px] leading-snug" style={{ color: OB.muted }}>{description}</span>}
@@ -192,13 +202,15 @@ export function TapCard({ isSelected, onClick, title, description, icon, isMulti
       } as React.CSSProperties}
     >
       {icon && (
-        <span
+        <motion.span
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors duration-150"
           style={{ backgroundColor: isSelected ? ACCENT : OB.wash, color: isSelected ? ACCENT_INK : OB.muted }}
+          animate={isSelected ? ICON_POP : ICON_REST}
+          transition={ICON_POP_TRANSITION}
           aria-hidden
         >
           {icon}
-        </span>
+        </motion.span>
       )}
       <span className="min-w-0 flex-1">
         <span className="block text-[16px] font-bold leading-snug" style={{ color: OB.ink }}>{title}</span>
@@ -210,7 +222,11 @@ export function TapCard({ isSelected, onClick, title, description, icon, isMulti
           style={{ borderColor: isSelected ? ACCENT : OB.lineStrong, backgroundColor: isSelected ? ACCENT : 'transparent' }}
           aria-hidden
         >
-          {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3.5} style={{ color: ACCENT_INK }} />}
+          {isSelected && (
+            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 600, damping: 18 }}>
+              <Check className="h-3.5 w-3.5" strokeWidth={3.5} style={{ color: ACCENT_INK }} />
+            </motion.span>
+          )}
         </span>
       )}
     </button>
@@ -351,7 +367,7 @@ interface ButtonProps {
   isFull?: boolean
 }
 
-const BUTTON_BASE = `inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-[15px] font-semibold transition-[filter,transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`
+const BUTTON_BASE = `relative isolate overflow-hidden inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-[15px] font-semibold transition-[filter,transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`
 const PRIMARY_STYLE = { backgroundColor: ACCENT, color: ACCENT_INK }
 
 /** The primary action sits on a darker ledge of its own color, like the tap cards, and sinks when pressed. */
@@ -400,6 +416,20 @@ export function SecondaryLink({ href, children, isExternal = false, isFull = fal
       style={{ borderColor: OB.lineStrong, color: OB.ink }} {...externalProps(isExternal)}>
       {children}
     </a>
+  )
+}
+
+/** A glint that sweeps across the big final button now and then. Decorative. */
+export function Shimmer() {
+  return (
+    <motion.span
+      className="pointer-events-none absolute inset-y-0 -z-10 w-1/3 -skew-x-12 motion-reduce:hidden"
+      style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)' }}
+      initial={{ left: '-40%' }}
+      animate={{ left: '140%' }}
+      transition={{ duration: 1.1, ease: 'easeInOut', repeat: Infinity, repeatDelay: 1.6 }}
+      aria-hidden
+    />
   )
 }
 

@@ -37,6 +37,14 @@ export const STAFF_PERMISSION_KEYS = [
   // sales book. Giving the discount needs no grant (refusing one is a crime);
   // vouching for a large one and auditing the ledger is a manager's job.
   'discount_review',
+  // Store activity & approvals — OPT-IN (see OPT_IN_PERMISSION_KEYS below).
+  'activity_view',
+  'approve_requests',
+  // Reports & inventory suite: sales reports (implied by analytics), stock,
+  // and what things cost (both carved out of menu, backfilled once).
+  'reports',
+  'inventory',
+  'costs',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -108,6 +116,19 @@ export function resolveStaffCaller(
 export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
   kitchen: 'orders',
   tables: 'orders',
+  reports: 'analytics',
+}
+
+/**
+ * Keys that full access (`permissions: null`) does NOT grant — owners and
+ * superadmins still hold them; everyone else needs them ticked by name.
+ * Mirror of `OPT_IN_PERMISSION_KEYS` in src/lib/staff-permissions.ts (see the
+ * reasoning there); the parity test pins every copy.
+ */
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+
+function isGrantedByFullAccess(key: string): boolean {
+  return !(OPT_IN_PERMISSION_KEYS as readonly string[]).includes(key)
 }
 
 /** Whether `permissions` grants `key` outright or through its containing grant. */
@@ -119,7 +140,7 @@ function listGrants(permissions: readonly string[], key: StaffPermissionKey): bo
 
 function hasPermission(caller: StaffCaller, key: StaffPermissionKey): boolean {
   if (caller.role === 'superadmin' || caller.is_owner) return true
-  if (caller.permissions == null) return true
+  if (caller.permissions == null) return isGrantedByFullAccess(key)
   return listGrants(caller.permissions, key)
 }
 
@@ -163,8 +184,8 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   'product-analytics': 'analytics',
   'product-management': 'menu',
   categories: 'menu',
-  inventory: 'menu',
-  'daily-report': 'menu',
+  inventory: 'inventory',
+  'daily-report': 'costs',
   payments: 'store_setup',
   vouchers: 'vouchers',
   portfolio: 'analytics',
@@ -178,7 +199,7 @@ function holdsPermission(
   required: StaffPermissionKey | null
 ): boolean {
   if (required === null) return true
-  if (permissions === null) return true
+  if (permissions === null) return isGrantedByFullAccess(required)
   return listGrants(permissions, required)
 }
 
@@ -346,7 +367,8 @@ function isForbidden(error: unknown): error is Error {
 
 /**
  * May this caller hand out exactly these permissions? An owner or superadmin
- * (or a pre-staff-management admin, `permissions: null`) may grant anything.
+ * may grant anything; a pre-staff-management admin (`permissions: null`) may
+ * grant anything except the opt-in keys, which it does not hold itself.
  * Everyone else may grant only what they hold — a branch admin holding one
  * permission must not be able to mint a full-access account (H3). `null` as
  * the requested set means "full access", which only a full-access caller has.
@@ -356,7 +378,7 @@ export function canGrantPermissions(
   requested: readonly string[] | null
 ): boolean {
   if (caller.role === 'superadmin' || caller.is_owner) return true
-  if (caller.permissions === null) return true
+  if (caller.permissions === null) return (requested ?? []).every(isGrantedByFullAccess)
   if (requested === null) return false
   const held = new Set(caller.permissions)
   return requested.every((key) => held.has(key))

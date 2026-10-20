@@ -109,6 +109,34 @@ export function getDefaultSelection(groups: readonly ModifierGroup[]): ModifierS
 }
 
 /**
+ * The selection with every pick that is no longer available removed — e.g. a
+ * default the page seeded before it learned the option's recipe is sold out.
+ * A required single choice left empty falls to the group's own default seed.
+ * Returns the same object when nothing changed.
+ */
+export function pruneUnavailableSelection(
+  groups: readonly ModifierGroup[],
+  selection: ModifierSelection,
+): ModifierSelection {
+  let changed = false
+  const next: ModifierSelection = { ...selection }
+  for (const group of groups) {
+    const current = selection[group.id]
+    if (!current || current.length === 0) continue
+    const kept = current.filter((id) => {
+      const option = group.options.find((o) => o.id === id)
+      return !option || isOptionAvailable(option)
+    })
+    if (kept.length === current.length) continue
+    changed = true
+    next[group.id] = kept.length === 0 && isSingleSelect(group) && group.min_select > 0
+      ? getDefaultSelection([group])[group.id] ?? []
+      : kept
+  }
+  return changed ? next : selection
+}
+
+/**
  * Immutably toggle an option within its group. Single-select replaces the
  * current pick; multi-select adds or removes, ignoring an add that would exceed
  * `max_select`. Removals are always honoured.

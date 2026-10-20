@@ -10,6 +10,7 @@
  */
 
 import { createConvexServerClient } from '@/lib/convex/server'
+import { inclusiveEndFor } from '@/lib/convex/period-bounds'
 import {
   convexResponsesToAggregate,
   emptyAggregate,
@@ -74,14 +75,16 @@ async function fetchOneTenant(
   timeoutMs: number,
 ): Promise<TenantWindowAggregate> {
   const daysBack = windows.days ?? ALL_RANGE_DAYS
-  const currentArgs = { startDate: windows.startMs ?? 0, endDate: windows.endMs }
+  // The windows are half-open; the query's are inclusive at both ends, so each
+  // ends just before its boundary and the boundary order counts in one window only.
+  const currentArgs = { startDate: windows.startMs ?? 0, endDate: inclusiveEndFor(windows.endMs) }
 
   const currentP = client.query<ConvexPeriodStats>(PATH_PERIOD, currentArgs)
   const prevP =
     windows.prevStartMs != null && windows.prevEndMs != null
       ? client.query<ConvexPeriodStats>(PATH_PERIOD, {
           startDate: windows.prevStartMs,
-          endDate: windows.prevEndMs,
+          endDate: inclusiveEndFor(windows.prevEndMs),
         })
       : Promise.resolve(null)
   const trendsP = client.query<ConvexTrendBucket[]>(PATH_TRENDS, { daysBack })

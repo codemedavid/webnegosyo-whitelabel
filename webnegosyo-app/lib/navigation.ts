@@ -9,6 +9,8 @@
  * navigation already uses successfully.
  */
 
+import type { OptionTargetType } from "./recipe-target";
+
 /** Sentinel productId that puts the editor screen into create mode. */
 export const NEW_PRODUCT_ID = "new" as const;
 
@@ -41,8 +43,14 @@ export function productPerformanceHref(
  *
  * @param productId the menu item whose recipe is being edited.
  */
-export function recipeHref(productId: string): `/(main)/product/recipe/${string}` {
-  return `/(main)/product/recipe/${encodeURIComponent(productId)}`;
+export function recipeHref(
+  productId: string,
+  choice?: { kind: OptionTargetType; optionId: string },
+): `/(main)/product/recipe/${string}` {
+  const dish = `/(main)/product/recipe/${encodeURIComponent(productId)}` as const;
+  if (!choice) return dish;
+  // A choice's recipe opens the same editor, aimed at that choice's target.
+  return `${dish}?kind=${encodeURIComponent(choice.kind)}&option=${encodeURIComponent(choice.optionId)}`;
 }
 
 /** Sentinel methodId that puts the payment method editor into create mode. */
@@ -138,4 +146,22 @@ export function ingredientHref(ingredientId: string): `/(main)/ingredient/${stri
  */
 export function ingredientEditorHref(ingredientId: string): `/(main)/ingredient/edit/${string}` {
   return `/(main)/ingredient/edit/${encodeURIComponent(ingredientId)}`;
+}
+
+/**
+ * The Texts hub (automatic SMS automations), opened on one of its tabs.
+ * `resume` names the automation a fix was made for (the review link), so the
+ * hub can offer the way back to it once the fix is saved.
+ */
+export function textsHref(
+  tab?: "automations" | "activity" | "rules",
+  resume?: "review_request",
+): `/(main)/texts${string}` {
+  if (!tab) return "/(main)/texts";
+  return resume ? `/(main)/texts?tab=${tab}&resume=${resume}` : `/(main)/texts?tab=${tab}`;
+}
+
+/** The automation editor for one recipe; a store has at most one per recipe. */
+export function automationHref(recipe: string): `/(main)/automation/${string}` {
+  return `/(main)/automation/${encodeURIComponent(recipe)}`;
 }

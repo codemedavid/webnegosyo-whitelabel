@@ -51,7 +51,7 @@ export default function SuperadminSettingsScreen() {
             // No session to clear — fall through to the local reset.
           }
           clear();
-          router.replace("/(auth)/login");
+          router.replace("/(auth)/welcome");
         },
       },
     ]);

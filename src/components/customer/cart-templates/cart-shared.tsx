@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import { cartOfferThemeFromBranding } from '@/components/customer/offers/offer-theme'
+import { cartColorVars, getCartColors } from './cart-primitives'
 
 // Lazy-loaded — only fetched when the store has cart suggestions switched on.
 const CartOffersSection = dynamic(
@@ -34,24 +35,28 @@ const ItemDetailModal = dynamic(
   { ssr: false },
 )
 
-/** Full-screen loading state (shared across cart designs). */
+/**
+ * Full-screen loading state (shared across cart designs). The store isn't
+ * known yet when this renders (page hydration, design chunk loading), so it
+ * paints the neutral theme tokens rather than any store colour.
+ */
 export function CartLoading() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center">
-        <div className="h-16 w-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading cart...</p>
+        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Loading cart...</p>
       </div>
     </div>
   )
 }
 
-/** Restaurant-not-found state (shared across cart designs). */
+/** Restaurant-not-found state (shared across cart designs). No store = no palette. */
 export function CartNotFound() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center">
-        <p className="text-gray-600">Restaurant not found</p>
+        <p className="text-muted-foreground">Restaurant not found</p>
       </div>
     </div>
   )
@@ -60,21 +65,26 @@ export function CartNotFound() {
 /** Remove-item confirmation dialog (shared across cart designs). */
 export function CartRemoveDialog({ cart }: { cart: UseCartViewReturn }) {
   const { itemToRemove, handleCancelRemove, handleConfirmRemove } = cart
+  const c = getCartColors(cart.tenant, cart.branding)
   return (
     <AlertDialog open={!!itemToRemove} onOpenChange={(open) => !open && handleCancelRemove()}>
-      <AlertDialogContent className="max-w-sm rounded-2xl">
+      <AlertDialogContent className="max-w-sm rounded-2xl" style={{ ...cartColorVars(c), backgroundColor: c.card, borderColor: c.border, color: c.text }}>
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-center">Remove Item?</AlertDialogTitle>
-          <AlertDialogDescription className="text-center">
-            Do you want to remove <span className="font-semibold text-gray-900">{itemToRemove?.menu_item.name}</span> from your cart?
+          <AlertDialogTitle className="text-center" style={{ color: c.text }}>Remove Item?</AlertDialogTitle>
+          <AlertDialogDescription className="text-center" style={{ color: c.muted }}>
+            Do you want to remove <span className="font-semibold" style={{ color: c.text }}>{itemToRemove?.menu_item.name}</span> from your cart?
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="flex-row gap-3 sm:justify-center">
-          <AlertDialogCancel className="flex-1 mt-0 rounded-xl">
+          <AlertDialogCancel
+            className="flex-1 mt-0 rounded-xl bg-transparent hover:bg-[var(--cart-soft)]"
+            style={{ borderColor: c.border, color: c.text }}
+          >
             Keep Item
           </AlertDialogCancel>
           <AlertDialogAction
-            className="flex-1 bg-red-500 hover:bg-red-600 rounded-xl"
+            className="flex-1 rounded-xl hover:opacity-90"
+            style={{ backgroundColor: c.danger, color: c.dangerText }}
             onClick={handleConfirmRemove}
           >
             Remove

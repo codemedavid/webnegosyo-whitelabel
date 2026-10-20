@@ -1,74 +1,30 @@
 /**
- * Ready-made text campaigns for a brand-new store, saved as DRAFTS.
+ * The ready-made text CAMPAIGN for a brand-new store, saved as a DRAFT: the
+ * Friday weekend reminder, the one calendar-style blast. The follow-ups
+ * (first-timers, slipping regulars, lapsed guests) are SMS automations now —
+ * `launch-automations.ts` — because they text each guest once at the right
+ * moment instead of re-texting a list every week.
  *
- * They are the merchant app's presets (`webnegosyo-app/lib/sms/campaign-presets.ts`)
- * reworked for a store with no guests yet: every schedule REPEATS, so a draft
- * is still valid on the day the owner finally turns it on (a one-off dated at
- * build time would be in the past by then, and the app refuses to activate
- * it). The first-timer text names the stamp-card reward when it texts cleanly.
- *
- * A draft never becomes due and texts no one. Sending happens only from the
- * owner's Android phone after they tap Activate in the app.
+ * Its schedule REPEATS, so the draft is still valid on the day the owner
+ * finally turns it on. A draft never becomes due and texts no one.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { campaignDraftToRow, smsCampaignDraftSchema, type SmsCampaignDraft } from '@/lib/sms-campaign-draft'
+import { LAUNCH_AUTOMATIONS } from './launch-automations'
 
-export interface LaunchCampaignOptions {
-  /** "Free Spanish Latte"; null when the store has no stamp card. */
-  rewardLabel: string | null
-  threshold: number | null
-}
-
-/** Plain letters only: anything else makes the text a costlier UCS-2 message. */
-const PLAIN_TEXT = /^[A-Za-z0-9 .,'&!()-]+$/
-/** Keeps the first-timer text one SMS even with a long store name. */
-const MAX_REWARD_TEXT = 30
 const FRIDAY = 5
+const SEND_TIME = '10:00'
+const WEEKEND = 'Weekend reminder'
 
-/** The drafts, in order, with when each one texts: the reveal lists them. */
+/** Every ready-made text the reveal lists, in build order: the automations, then the campaign. */
 export const LAUNCH_CAMPAIGNS = [
-  { name: 'Invite first-timers back', when: 'A week after their first order' },
-  { name: 'Nudge slipping regulars', when: 'When a regular goes quiet for 2 weeks' },
-  { name: 'Win back lapsed guests', when: 'After 3 quiet weeks' },
-  { name: 'Weekend reminder', when: 'Fridays, to your regulars' },
+  ...LAUNCH_AUTOMATIONS.map(({ name, when }) => ({ name, when })),
+  { name: WEEKEND, when: 'Fridays, to your regulars' },
 ] as const
 
-const [FIRST_TIMERS, SLIPPING, WIN_BACK, WEEKEND] = LAUNCH_CAMPAIGNS.map((campaign) => campaign.name)
-const SEND_TIME = '10:00'
-
-function rewardSentence({ rewardLabel, threshold }: LaunchCampaignOptions): string | null {
-  const reward = rewardLabel?.trim()
-  if (!reward || !threshold || reward.length > MAX_REWARD_TEXT || !PLAIN_TEXT.test(reward)) return null
-  return `Order again and collect stamps: ${threshold} orders = ${reward}.`
-}
-
-export function buildLaunchCampaigns(options: LaunchCampaignOptions): SmsCampaignDraft[] {
-  const reward = rewardSentence(options)
+export function buildLaunchCampaigns(): SmsCampaignDraft[] {
   const drafts = [
-    {
-      name: FIRST_TIMERS,
-      message_template: reward
-        ? `Hi {{firstName}}, thanks for trying {{storeName}}! ${reward}`
-        : "Hi {{firstName}}, thanks for trying {{storeName}}! Come back this week, we'd love to see you again.",
-      audience: { maxOrderCount: 1, lastOrderOlderThanDays: 7 },
-      schedule_kind: 'every_n_days',
-      schedule_interval_days: 7,
-    },
-    {
-      name: SLIPPING,
-      message_template: "Hi {{firstName}}, it's been a while! Your usual is waiting at {{storeName}}. See you soon?",
-      audience: { minOrderCount: 2, lastOrderOlderThanDays: 14 },
-      schedule_kind: 'every_n_days',
-      schedule_interval_days: 14,
-    },
-    {
-      name: WIN_BACK,
-      message_template: 'Hi {{firstName}}, we miss you at {{storeName}}! Drop by this week for your favourite.',
-      audience: { lastOrderOlderThanDays: 21 },
-      schedule_kind: 'every_n_days',
-      schedule_interval_days: 14,
-    },
     {
       name: WEEKEND,
       message_template: 'Hi {{firstName}}, {{storeName}} is open all weekend. Order ahead and skip the wait!',
@@ -92,9 +48,8 @@ const MAX_CAMPAIGN_ROWS = 100
 export async function draftLaunchCampaigns(
   admin: SupabaseClient,
   tenantId: string,
-  options: LaunchCampaignOptions,
 ): Promise<{ drafted: number }> {
-  const drafts = buildLaunchCampaigns(options)
+  const drafts = buildLaunchCampaigns()
   const { data, error } = await admin.from('sms_campaigns').select('name').eq('tenant_id', tenantId).limit(MAX_CAMPAIGN_ROWS)
   if (error) throw new Error(`Text campaigns could not be read: ${error.message}`)
   const existing = new Set(((data ?? []) as Array<{ name: string }>).map((row) => row.name))
