@@ -78,6 +78,7 @@ const PLATFORM_ORDER_COLUMNS = new Set([
   'customer_name',
   'customer_contact',
   'customer_data',
+  'outlet_id',
   'delivery_fee',
   'lalamove_quotation_id',
   'lalamove_order_id',
@@ -111,6 +112,7 @@ describe('POST /api/lalamove', () => {
   let adminEqMock: jest.Mock
   let tenantRow: Record<string, unknown> | null
   let orderRow: Record<string, unknown> | null
+  let outletRow: Record<string, unknown> | null
   let failBookingPersistence: boolean
   let failOrderUpdates: boolean
 
@@ -122,6 +124,7 @@ describe('POST /api/lalamove', () => {
 
     tenantRow = { ...TENANT }
     orderRow = { ...ORDER }
+    outletRow = null
     failBookingPersistence = false
     failOrderUpdates = false
 
@@ -204,7 +207,11 @@ describe('POST /api/lalamove', () => {
             orderRow = { ...orderRow, ...patch }
           }
           return {
-            data: table === 'tenants' ? tenantRow : orderRow ? { ...orderRow } : null,
+            data: table === 'tenants'
+              ? tenantRow
+              : table === 'outlets'
+                ? (outletRow && filters.every((filter) => filter(outletRow!)) ? { ...outletRow } : null)
+                : orderRow ? { ...orderRow } : null,
             error: null,
           }
         })
@@ -471,6 +478,55 @@ describe('POST /api/lalamove', () => {
 
     const [, patch] = adminUpdateMock.mock.calls.at(-1) as [string, Record<string, unknown>]
     expect(patch).toMatchObject({ lalamove_quotation_id: 'quote-new' })
+  })
+
+  test('re-quotes from the order\'s branch pin when the store runs branches', async () => {
+    tenantRow = { ...TENANT, multi_branch_enabled: true }
+    orderRow = { ...ORDER, outlet_id: 'branch-1' }
+    outletRow = {
+      id: 'branch-1', tenant_id: 't1', is_active: true,
+      address: 'Branch St, Pasig', latitude: 14.57, longitude: 121.08, delivery_radius_km: null,
+    }
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+    expect(res.status).toBe(200)
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveQuotation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1' }), 'Branch St, Pasig', { lat: 14.57, lng: 121.08 }, '12 Mabini St', { lat: 14.7, lng: 121.05 },
+    )
+  })
+
+  test('re-quotes from the store pin when the order\'s branch belongs to another store', async () => {
+    tenantRow = { ...TENANT, multi_branch_enabled: true }
+    orderRow = { ...ORDER, outlet_id: 'branch-x' }
+    outletRow = { id: 'branch-x', tenant_id: 'other', is_active: true, address: 'Elsewhere', latitude: 10.3, longitude: 123.9 }
+    const { POST } = await import('@/app/api/lalamove/route')
+    await POST(makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveQuotation).toHaveBeenCalledWith(
+      expect.anything(), '88 Retiro St, QC', { lat: 14.62, lng: 121.0 }, '12 Mabini St', expect.anything(),
+    )
+  })
+
+  test('books with the rider remarks built from the order\'s answers', async () => {
+    orderRow = {
+      ...ORDER,
+      customer_data: { ...ORDER.customer_data, delivery_unit: 'Unit 5B', 'Note to Rider': 'Call on arrival' },
+    }
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+    expect(res.status).toBe(200)
+    const service = await import('@/lib/lalamove-service')
+    const call = (service.createLalamoveOrder as unknown as jest.Mock).mock.calls[0] as unknown[]
+    expect(call[7]).toBe([
+      'Unit/Floor: Unit 5B',
+      'Note: Call on arrival',
+      'Address: 12 Mabini St',
+      'Pin: https://www.google.com/maps/search/?api=1&query=14.7,121.05',
+    ].join('\n'))
   })
 
   test.each(['requote', 'sync', 'cancel'])(

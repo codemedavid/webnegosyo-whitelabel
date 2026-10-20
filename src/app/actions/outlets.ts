@@ -11,6 +11,7 @@ import {
   asAppUserQueryClient,
   fetchAppUserScope,
 } from '@/lib/queries/fetch-app-user-scope'
+import { isStorePinRequired, validateStorePin } from '@/lib/delivery/store-pin-rules'
 
 /**
  * Server actions for the branches admin.
@@ -98,6 +99,56 @@ async function denyUnlessOutletManager(): Promise<string | null> {
   return canManageOutlets(appUser) ? null : NOT_ALLOWED
 }
 
+interface BranchPinFields {
+  latitude?: number | null
+  longitude?: number | null
+  supports_delivery?: boolean
+}
+
+/**
+ * The pickup-pin rules (`store-pin-rules.ts`) for a branch save.
+ *
+ * A branch's pin is its Lalamove pickup and the point its delivery fees are
+ * measured from. Required only for a DELIVERING branch of a store that books
+ * Lalamove or prices by distance: a pickup-only branch has nothing to measure,
+ * and an unpinned delivering branch would fall back to the main store's pin
+ * (`resolveDeliveryOrigin`) and send its riders there. A patch that touches
+ * neither half of the pin is not checked (and costs no read).
+ *
+ * The store's market and delivery settings are read here, never trusted from
+ * the client; a failed read refuses the save.
+ */
+async function denyUnlessBranchPinValid(tenantId: string, fields: BranchPinFields): Promise<string | null> {
+  // A create always carries both keys (null = no pin). A patch without them
+  // keeps the stored pin, which this check cannot see — so it is left alone.
+  const touchesPin = fields.latitude !== undefined || fields.longitude !== undefined
+  if (!touchesPin) return null
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('tenants')
+    .select('lalamove_enabled, lalamove_market, distance_delivery_enabled')
+    .eq('id', tenantId)
+    .maybeSingle()
+  if (error || !data) {
+    console.error('[outlets] Branch pin check: store read failed', tenantId, error)
+    return 'Could not check your delivery settings. Please try again.'
+  }
+
+  const store = data as {
+    lalamove_enabled?: boolean | null
+    lalamove_market?: string | null
+    distance_delivery_enabled?: boolean | null
+  }
+  return validateStorePin({
+    lat: fields.latitude,
+    lng: fields.longitude,
+    market: store.lalamove_market,
+    isPinRequired: fields.supports_delivery === true && isStorePinRequired(store),
+    subject: 'branch',
+  })
+}
+
 export async function listOutletsAction(tenantId: string) {
   try {
     const data = await createSupabaseOutletRepository().listByTenant(tenantId)
@@ -114,6 +165,9 @@ export async function createOutletAction(
 ) {
   const denied = await denyUnlessOutletManager()
   if (denied) return { success: false as const, error: denied }
+
+  const pinError = await denyUnlessBranchPinValid(tenantId, input)
+  if (pinError) return { success: false as const, error: pinError }
 
   try {
     // The branch allowance, enforced here rather than in the repository because
@@ -139,6 +193,9 @@ export async function updateOutletAction(
 ) {
   const denied = await denyUnlessOutletManager()
   if (denied) return { success: false as const, error: denied }
+
+  const pinError = await denyUnlessBranchPinValid(tenantId, patch)
+  if (pinError) return { success: false as const, error: pinError }
 
   try {
     const data = await createSupabaseOutletRepository().update(tenantId, outletId, patch)

@@ -121,6 +121,10 @@ describe("buildCustomerDetailRows — platform carrier keys", () => {
 describe("redaction boundary", () => {
   const MUST_NEVER_PRINT = [
     "messenger_psid",
+    // The confirm-pin field's bookkeeping: the label the pin was picked
+    // under, and whether the customer confirmed it on the map.
+    "delivery_pin_address",
+    "delivery_pin_confirmed",
     "delivery_lat",
     "delivery_lng",
     "payment_proof_reference",
@@ -151,5 +155,15 @@ describe("redaction boundary", () => {
     });
 
     expect(rows.map((row) => row.key)).toEqual(["landmark"]);
+  });
+
+  it("labels the address field's built-in detail answers", () => {
+    const rows = buildCustomerDetailRows({
+      delivery_unit: "Unit 5B",
+      delivery_landmark: "Blue gate",
+      delivery_rider_note: "Call on arrival",
+    });
+
+    expect(rows.map((row) => row.label)).toEqual(["Unit / Floor", "Landmark", "Note to rider"]);
   });
 });

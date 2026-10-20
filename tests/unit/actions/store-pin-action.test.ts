@@ -68,3 +68,4 @@ describe('checkStorePinAddressAction', () => {
     await expect(checkStorePinAddressAction(TENANT, 'x', PIN.lat, PIN.lng)).rejects.toThrow('Unauthorized')
   })
 })
+export {}

@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ImageUpload } from '@/components/shared/image-upload'
 import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
 import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
+import { DEFAULT_LALAMOVE_MARKET, LALAMOVE_MARKETS } from '@/lib/delivery/store-pin-rules'
 import { StatusBadge } from '@/components/superadmin/ui/primitives'
 import { TenantMonogram } from '@/components/superadmin/tenant-visuals'
 import { TenantBrandPreview } from '@/components/superadmin/tenant-brand-preview'
@@ -209,6 +210,26 @@ export function parseCoordinateInput(value: string): number | undefined {
 
   const parsed = Number(trimmed)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+/** Six decimals ≈ 10 cm: enough to tell two pins apart, short enough to read. */
+const PIN_LABEL_DECIMALS = 6
+
+/**
+ * Where the store is pinned, in words. The pin comes only from the address
+ * field (a pick or a map drop); the hand-typed latitude/longitude boxes, with
+ * their Hong Kong placeholders, put stores in the wrong place and are gone.
+ */
+export function describeStorePin(latitude: string, longitude: string): string {
+  const pin = parseLatLng(latitude, longitude)
+  if (!pin) return 'Not pinned yet. Pick the address from the list or on the map.'
+  return `Pinned at ${pin.lat.toFixed(PIN_LABEL_DECIMALS)}, ${pin.lng.toFixed(PIN_LABEL_DECIMALS)}`
+}
+
+/** The Lalamove market a form opens on: the store's own when it is one Lalamove serves, else the Philippines. */
+export function initialLalamoveMarket(market: string | null | undefined): string {
+  const code = (market ?? '').trim().toUpperCase()
+  return LALAMOVE_MARKETS.some((entry) => entry.code === code) ? code : DEFAULT_LALAMOVE_MARKET
 }
 
 // Memoized color input component to prevent unnecessary re-renders
@@ -1252,11 +1273,9 @@ function QrHandoffFeatureSection({
 function RestaurantAddressSection({
   formData,
   setFormData,
-  isPending
 }: {
   formData: TenantFormData
   setFormData: SetFormData
-  isPending: boolean
 }) {
   return (
     <Card>
@@ -1281,39 +1300,9 @@ function RestaurantAddressSection({
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="restaurant_latitude">Latitude *</Label>
-            <Input
-              id="restaurant_latitude"
-              type="number"
-              step="any"
-              value={formData.restaurant_latitude}
-              onChange={(e) => setFormData({ ...formData, restaurant_latitude: e.target.value })}
-              placeholder="22.3193"
-              disabled={isPending}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="restaurant_longitude">Longitude *</Label>
-            <Input
-              id="restaurant_longitude"
-              type="number"
-              step="any"
-              value={formData.restaurant_longitude}
-              onChange={(e) => setFormData({ ...formData, restaurant_longitude: e.target.value })}
-              placeholder="114.1694"
-              disabled={isPending}
-            />
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4">
-          <p className="text-sm text-white/70">
-            <strong className="text-sky-400">Tip:</strong> Use the map picker above to automatically fill in coordinates, or use Google Maps to find your restaurant coordinates manually.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          {describeStorePin(formData.restaurant_latitude, formData.restaurant_longitude)}
+        </p>
       </CardContent>
     </Card>
   )
@@ -1384,15 +1373,21 @@ function LalamoveSection({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="lalamove_market">Market *</Label>
-                  <Input
+                  <select
                     id="lalamove_market"
                     value={formData.lalamove_market}
-                    onChange={(e) => setFormData({ ...formData, lalamove_market: e.target.value.toUpperCase() })}
-                    placeholder="HK, SG, TH, etc."
+                    onChange={(e) => setFormData({ ...formData, lalamove_market: e.target.value })}
                     disabled={isPending}
-                  />
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {LALAMOVE_MARKETS.map((market) => (
+                      <option key={market.code} value={market.code} className="bg-background text-foreground">
+                        {market.label} ({market.code})
+                      </option>
+                    ))}
+                  </select>
                   <p className="text-xs text-muted-foreground">
-                    Country code (e.g., HK for Hong Kong)
+                    The country the store&apos;s Lalamove account is in
                   </p>
                 </div>
 
@@ -2101,7 +2096,7 @@ export function TenantFormWrapper({
     // the submit path drops empty values so the stored keys survive.
     lalamove_api_key: '',
     lalamove_secret_key: '',
-    lalamove_market: tenant?.lalamove_market || 'HK',
+    lalamove_market: initialLalamoveMarket(tenant?.lalamove_market),
     lalamove_service_type: tenant?.lalamove_service_type || 'MOTORCYCLE',
     lalamove_sandbox: tenant?.lalamove_sandbox ?? true,
     lalamove_sender_phone: tenant?.lalamove_sender_phone || '',
@@ -2465,7 +2460,6 @@ export function TenantFormWrapper({
           <RestaurantAddressSection
             formData={formData}
             setFormData={setFormData}
-            isPending={isPending}
           />
           <LalamoveSection
             formData={formData}

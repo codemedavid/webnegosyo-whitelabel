@@ -37,6 +37,9 @@ import { parseOrderLines } from '@/lib/checkout/order-line-schema'
 import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
+import { resolveDeliveryOrigin, type OriginOutletFields } from '@/lib/delivery/delivery-origin'
+import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
+import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
@@ -50,6 +53,8 @@ import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-sta
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
+const OUTSIDE_COUNTRY_PIN_MESSAGE =
+  'Your delivery pin is outside the Philippines. Please search for your address again and pick the right spot on the map.'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -366,18 +371,24 @@ export async function createOrderAction(
     // conditions are checked before the query runs, so a tenant without the
     // feature issues exactly the queries they issue today.
     let resolvedOutlet: { id: string; name: string } | null = null
+    // The resolved branch's own pin and radius: a delivery starts THERE when it
+    // is pinned (fee, Lalamove signature check), else at the store.
+    let resolvedOutletOrigin: OriginOutletFields | null = null
     if (isMultiBranchEnabled(tenantConfig)) {
       const { data: outletRows, error: outletError } = await supabaseAdmin
         .from('outlets')
-        .select('id, name, is_active')
+        .select('id, name, is_active, address, latitude, longitude, delivery_radius_km')
         .eq('tenant_id', tenantId)
       if (outletError) return { success: false, error: 'Unable to verify your branch. Please try again.' }
+      const branchRows = (outletRows ?? []) as Array<OriginOutletFields & { name: string; is_active: boolean }>
       try {
         resolvedOutlet = requireCheckoutOutlet({
           isEnabled: true,
           requestedOutletId: outletId,
-          outlets: (outletRows ?? []) as Array<{ id: string; name: string; is_active: boolean }>,
+          outlets: branchRows,
         })
+        const resolvedId = resolvedOutlet?.id
+        resolvedOutletOrigin = branchRows.find((row) => row.id === resolvedId) ?? null
       } catch (error) {
         return { success: false, refused: true, error: error instanceof Error ? error.message : 'Choose a branch before placing your order.' }
       }
@@ -527,8 +538,23 @@ export async function createOrderAction(
     // carries none. A Lalamove fee is the price the quote action SIGNED, never
     // the browser's number: a forged ₱1 fee on a real quotation used to be
     // booked at the merchant's cost.
-    const isLalamoveDelivery = orderTypeRow?.type === 'delivery' && tenantConfig.lalamove_enabled === true
+    const isDeliveryOrder = orderTypeRow?.type === 'delivery'
+    const isLalamoveDelivery = isDeliveryOrder && tenantConfig.lalamove_enabled === true
     const deliveryDestination = (effectiveCustomerData ?? {}) as Record<string, unknown>
+    const deliveryPin = toLatLng(deliveryDestination.delivery_lat, deliveryDestination.delivery_lng)
+    const deliveryOrigin = resolveDeliveryOrigin(tenantConfig, resolvedOutletOrigin)
+
+    // No rider in this market can reach a pin outside the country — the
+    // customer picked a wrong suggestion ("Manila" in another country, a
+    // dropped pin at 0,0). Every other pin oddity is a checkout warning only.
+    if (isDeliveryOrder && assessDeliveryPin({
+      pin: deliveryPin,
+      origin: null,
+      market: (tenantConfig as { lalamove_market?: string | null }).lalamove_market,
+    }).isBlocked) {
+      return await refuse(OUTSIDE_COUNTRY_PIN_MESSAGE)
+    }
+
     let trustedDeliveryFee = deliveryFee
     if (isLalamoveDelivery) {
       const verification = verifyDeliveryQuote(lalamoveQuoteSignature, {
@@ -539,6 +565,8 @@ export async function createOrderAction(
           lat: deliveryDestination.delivery_lat,
           lng: deliveryDestination.delivery_lng,
         },
+        // A quote is only good for the branch it was priced from.
+        originOutletId: deliveryOrigin?.outletId ?? null,
       })
       if (verification.ok) {
         trustedDeliveryFee = verification.fee
@@ -554,13 +582,14 @@ export async function createOrderAction(
       }
     }
 
+    const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
     const deliveryResolution = await resolveOrderDeliveryFee({
       clientFee: trustedDeliveryFee,
-      isDeliveryOrder: orderTypeRow?.type === 'delivery',
+      isDeliveryOrder,
       lalamoveEnabled: tenantConfig.lalamove_enabled === true,
-      distanceConfig: distanceConfigFromTenant(tenantConfig),
-      store: toLatLng(tenantConfig.restaurant_latitude, tenantConfig.restaurant_longitude),
-      destination: toLatLng(deliveryDestination.delivery_lat, deliveryDestination.delivery_lng),
+      distanceConfig: storeDistanceConfig && withOriginRadius(storeDistanceConfig, deliveryOrigin),
+      store: deliveryOrigin?.point ?? null,
+      destination: deliveryPin,
       measureKm: measureRoadDistanceKm,
     })
     if (deliveryResolution.kind === 'abort') return await abort(deliveryResolution.error)

@@ -17,11 +17,15 @@ jest.mock('@/lib/platform-staff/guard', () => ({
 // next/jest does not hoist jest.mock above static imports — load lazily.
 let applyStoreLocationChange: TenantFormWrapper['applyStoreLocationChange']
 let parseCoordinateInput: TenantFormWrapper['parseCoordinateInput']
+let describeStorePin: TenantFormWrapper['describeStorePin']
+let initialLalamoveMarket: TenantFormWrapper['initialLalamoveMarket']
 
 beforeAll(async () => {
   const mod = await import('@/components/superadmin/tenant-form-wrapper')
   applyStoreLocationChange = mod.applyStoreLocationChange
   parseCoordinateInput = mod.parseCoordinateInput
+  describeStorePin = mod.describeStorePin
+  initialLalamoveMarket = mod.initialLalamoveMarket
 })
 
 /**
@@ -99,5 +103,35 @@ describe('parseCoordinateInput', () => {
     // NaN reaches Zod as "expected number, received nan" — a confusing refusal
     // for what is really an empty field.
     expect(parseCoordinateInput('not-a-number')).toBeUndefined()
+  })
+})
+
+/**
+ * The latitude/longitude number boxes are gone: their Hong Kong placeholders
+ * (22.3193, 114.1694) and hand-typed values put stores in the wrong place.
+ * The pin now comes only from the address field, and the form says where it is.
+ */
+describe('describeStorePin', () => {
+  it('names the pin when there is one', () => {
+    expect(describeStorePin('14.70229531', '121.08885574')).toBe('Pinned at 14.702295, 121.088856')
+  })
+
+  it('tells the superadmin how to set one when there is none', () => {
+    expect(describeStorePin('', '')).toBe('Not pinned yet. Pick the address from the list or on the map.')
+  })
+})
+
+describe('initialLalamoveMarket', () => {
+  it('defaults a new store to the Philippines, not Hong Kong', () => {
+    expect(initialLalamoveMarket(undefined)).toBe('PH')
+    expect(initialLalamoveMarket('')).toBe('PH')
+  })
+
+  it("keeps a store's own Lalamove market", () => {
+    expect(initialLalamoveMarket('sg')).toBe('SG')
+  })
+
+  it('reads an unknown market as the Philippines', () => {
+    expect(initialLalamoveMarket('XX')).toBe('PH')
   })
 })

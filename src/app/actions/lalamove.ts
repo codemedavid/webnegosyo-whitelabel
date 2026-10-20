@@ -25,6 +25,9 @@ import type { Database, Tenant } from '@/types/database'
 import { signDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import { claimLalamoveBooking, persistLalamoveBooking, releaseLalamoveBookingClaim, LALAMOVE_BOOKING_PENDING_MESSAGE } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
+import { buildRiderRemarks } from '@/lib/delivery/rider-remarks'
+import { loadDeliveryOrigin, ORIGIN_TENANT_COLUMNS, type OriginStore } from '@/lib/delivery/delivery-origin-server'
+import type { DeliveryOrigin } from '@/lib/delivery/delivery-origin'
 
 /**
  * The tenant columns Lalamove work actually needs. Several of these actions
@@ -67,6 +70,27 @@ const QUOTE_RATE_LIMITED = {
   error: 'Too many delivery quotes requested. Please try again in a moment.',
 }
 
+const BRANCH_READ_FAILED_MESSAGE = 'We could not check the branch for this delivery. Please try again.'
+
+type OriginResult = { ok: true; origin: DeliveryOrigin } | { ok: false; error: string }
+
+/**
+ * Where this delivery starts: the order's branch when it is pinned, else the
+ * store (`loadDeliveryOrigin` reads the branch itself — client coordinates are
+ * never used). `missingMessage` is the caller's wording for "nothing pinned".
+ */
+async function originFor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenant: Tenant,
+  outletId: string | null | undefined,
+  missingMessage: string,
+): Promise<OriginResult> {
+  const lookup = await loadDeliveryOrigin(supabase, tenant as unknown as OriginStore, outletId)
+  if (!lookup.ok) return { ok: false, error: BRANCH_READ_FAILED_MESSAGE }
+  if (!lookup.origin || !lookup.origin.address) return { ok: false, error: missingMessage }
+  return { ok: true, origin: lookup.origin }
+}
+
 function isLatitude(value: number): boolean {
   return Number.isFinite(value) && value >= -90 && value <= 90
 }
@@ -86,6 +110,10 @@ function isLongitude(value: number): boolean {
  * vehicle type is no longer a parameter — it is the merchant's
  * `lalamove_service_type` setting.
  * This matches `requoteLalamoveAction`, which has always read the store pin.
+ *
+ * `outletId` is the branch the customer picked: when the store runs branches
+ * and that branch is pinned, the trip starts THERE (read server-side, active
+ * and owned by this store), and the signature binds the branch.
  */
 export async function createQuotationAction(
   tenantId: string,
@@ -95,6 +123,7 @@ export async function createQuotationAction(
   deliveryAddress: string,
   deliveryLat: number,
   deliveryLng: number,
+  outletId: string | null = null,
 ) {
   try {
     if (typeof tenantId !== 'string' || tenantId === '') {
@@ -120,7 +149,7 @@ export async function createQuotationAction(
     const supabase = await createClient()
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select(`${LALAMOVE_TENANT_COLUMNS}, restaurant_address, restaurant_latitude, restaurant_longitude`)
+      .select(`${LALAMOVE_TENANT_COLUMNS}, ${ORIGIN_TENANT_COLUMNS}`)
       .eq('id', tenantId)
       .single()
 
@@ -134,20 +163,18 @@ export async function createQuotationAction(
       return { success: false, error: 'Lalamove delivery is not enabled for this restaurant' }
     }
 
-    const pickupAddress = tenantTyped.restaurant_address
-    const pickupLat = toFiniteNumber(tenantTyped.restaurant_latitude)
-    const pickupLng = toFiniteNumber(tenantTyped.restaurant_longitude)
-    if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
-      return {
-        success: false,
-        error: 'This store has not set its pickup location yet. Please contact the store.',
-      }
-    }
+    const pickup = await originFor(
+      supabase,
+      tenantTyped,
+      outletId,
+      'This store has not set its pickup location yet. Please contact the store.',
+    )
+    if (!pickup.ok) return { success: false, error: pickup.error }
 
     const quotation = await createLalamoveQuotation(
       tenantTyped,
-      pickupAddress,
-      { lat: pickupLat, lng: pickupLng },
+      pickup.origin.address,
+      pickup.origin.point,
       deliveryAddress,
       { lat: deliveryLat, lng: deliveryLng },
     )
@@ -159,6 +186,7 @@ export async function createQuotationAction(
       fee: quotation.price,
       destination: { address: deliveryAddress, lat: deliveryLat, lng: deliveryLng },
       expiresAt,
+      originOutletId: pickup.origin.outletId,
     })
     if (!quoteSignature) {
       return { success: false, error: 'Could not verify a valid delivery quotation. Please try again or contact the store.' }
@@ -373,7 +401,8 @@ export async function createLalamoveOrderAction(
           ...metadata,
           orderId,
           tenantId,
-        }
+        },
+        buildRiderRemarks(orderContact.customer_data)
       )
     } catch (error) {
       if (error instanceof LalamoveBookingError && !error.bookingMayExist) {
@@ -405,7 +434,8 @@ export async function createLalamoveOrderAction(
  *
  * Quotations expire ~5 minutes after checkout; any order confirmed later than
  * that used to be stuck — no path anywhere to get a bookable quotation again.
- * The new quote runs store pin → the order's stored delivery coordinates.
+ * The new quote runs from the order's branch pin (else the store pin) to the
+ * order's stored delivery coordinates.
  * The customer's delivery_fee is deliberately NOT changed: the price was
  * agreed at checkout, and a fare difference is the merchant's to absorb or
  * chase — never silently rebilled.
@@ -419,7 +449,7 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
 
     const { data: tenant } = await supabase
       .from('tenants')
-      .select(`${LALAMOVE_TENANT_COLUMNS}, restaurant_address, restaurant_latitude, restaurant_longitude`)
+      .select(`${LALAMOVE_TENANT_COLUMNS}, ${ORIGIN_TENANT_COLUMNS}`)
       .eq('id', tenantId)
       .single()
 
@@ -433,7 +463,7 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
 
     const { data: orderData } = await supabase
       .from('orders')
-      .select('id, customer_data, lalamove_order_id, lalamove_status')
+      .select('id, customer_data, outlet_id, lalamove_order_id, lalamove_status')
       .eq('id', orderId)
       .eq('tenant_id', tenantId)
       .single()
@@ -444,6 +474,7 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
         delivery_lat?: number | string | null
         delivery_lng?: number | string | null
       } | null
+      outlet_id?: string | null
       lalamove_order_id: string | null
       lalamove_status: string | null
     } | null
@@ -468,20 +499,18 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
       return { success: false, error: 'This order has no delivery coordinates to quote against' }
     }
 
-    const pickupAddress = tenantTyped.restaurant_address
-    const pickupLat = toFiniteNumber(tenantTyped.restaurant_latitude)
-    const pickupLng = toFiniteNumber(tenantTyped.restaurant_longitude)
-    if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
-      return {
-        success: false,
-        error: 'Your store pickup address and map pin are not set. Add them in delivery settings.',
-      }
-    }
+    const pickup = await originFor(
+      supabase,
+      tenantTyped,
+      order.outlet_id,
+      'Your store pickup address and map pin are not set. Add them in delivery settings.',
+    )
+    if (!pickup.ok) return { success: false, error: pickup.error }
 
     const quotation = await createLalamoveQuotation(
       tenantTyped,
-      pickupAddress,
-      { lat: pickupLat, lng: pickupLng },
+      pickup.origin.address,
+      pickup.origin.point,
       deliveryAddress,
       { lat: deliveryLat, lng: deliveryLng },
     )

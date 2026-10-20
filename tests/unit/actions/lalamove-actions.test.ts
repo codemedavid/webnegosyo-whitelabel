@@ -63,6 +63,7 @@ const SECRETS = { lalamove_api_key: 'key', lalamove_secret_key: 'secret' }
 describe('lalamove server actions', () => {
   let tenantRow: Record<string, unknown> | null
   let orderRow: Record<string, unknown> | null
+  let outletRow: Record<string, unknown> | null
   let updateMock: jest.Mock
   let selectMock: jest.Mock
   let secretsSelectMock: jest.Mock
@@ -74,6 +75,7 @@ describe('lalamove server actions', () => {
 
     tenantRow = { ...TENANT }
     orderRow = { id: 'order-1', lalamove_order_id: 'lala-1', lalamove_status: null }
+    outletRow = null
     updateMock = jest.fn()
     selectMock = jest.fn()
     secretsSelectMock = jest.fn()
@@ -115,7 +117,7 @@ describe('lalamove server actions', () => {
           return builder
         })
         builder.single = jest.fn(async () => ({
-          data: table === 'tenants' ? tenantRow : orderRow,
+          data: table === 'tenants' ? tenantRow : table === 'outlets' ? outletRow : orderRow,
           error: null,
         }))
         builder.maybeSingle = builder.single
@@ -245,6 +247,31 @@ describe('lalamove server actions', () => {
       )
       const [, patch] = updateMock.mock.calls.at(-1) as [string, Record<string, unknown>]
       expect(patch).toMatchObject({ lalamove_quotation_id: 'quote-new' })
+    })
+
+    test('quotes from the order\'s branch pin when the store runs branches', async () => {
+      tenantRow = { ...TENANT, multi_branch_enabled: true }
+      outletRow = { id: 'branch-1', address: 'Branch St, Pasig', latitude: 14.57, longitude: 121.08, delivery_radius_km: null }
+      orderRow = {
+        id: 'order-1',
+        lalamove_order_id: null,
+        outlet_id: 'branch-1',
+        customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
+      }
+      const service = await import('@/lib/lalamove-service')
+      ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
+        quotationId: 'quote-new', price: 89, currency: 'PHP', expiresAt: new Date('2099-01-01T00:00:00Z'), distance: '0 km', duration: '0 min',
+      })
+
+      const { requoteLalamoveAction } = await import('@/app/actions/lalamove')
+      const result = await requoteLalamoveAction('t1', 'order-1')
+
+      expect(result.success).toBe(true)
+      expect(service.createLalamoveQuotation).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 't1' }), 'Branch St, Pasig', { lat: 14.57, lng: 121.08 }, '12 Mabini St', { lat: 14.7, lng: 121.05 },
+      )
+      expect(eqMock).toHaveBeenCalledWith('outlets', 'id', 'branch-1')
+      expect(eqMock).toHaveBeenCalledWith('outlets', 'tenant_id', 't1')
     })
 
     test('refuses once a delivery is already booked', async () => {
@@ -423,6 +450,38 @@ describe('lalamove server actions', () => {
       expect(call[5]).toBeUndefined()
     })
 
+    test('quotes from the chosen branch, and the signature names that branch', async () => {
+      tenantRow = { ...TENANT, multi_branch_enabled: true }
+      outletRow = { id: 'branch-1', address: 'Branch St, Pasig', latitude: 14.57, longitude: 121.08, delivery_radius_km: 5 }
+      const service = await mockQuote()
+
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const { verifyDeliveryQuote } = await import('@/lib/checkout/delivery-quote-signature')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1, 'branch-1')
+
+      expect(result.success).toBe(true)
+      const call = (service.createLalamoveQuotation as unknown as jest.Mock).mock.calls[0]
+      expect(call[1]).toBe('Branch St, Pasig')
+      expect(call[2]).toEqual({ lat: 14.57, lng: 121.08 })
+      const destination = { address: 'Home', lat: 14.7, lng: 121.1 }
+      expect(verifyDeliveryQuote(result.data?.quoteSignature, { tenantId: 't1', quotationId: 'q1', destination, originOutletId: 'branch-1' }))
+        .toEqual({ ok: true, fee: 100 })
+      expect(verifyDeliveryQuote(result.data?.quoteSignature, { tenantId: 't1', quotationId: 'q1', destination }))
+        .toEqual({ ok: false, reason: 'mismatch' })
+    })
+
+    test('quotes a pinned branch even when the store itself has no pin', async () => {
+      tenantRow = { ...TENANT, multi_branch_enabled: true, restaurant_latitude: null, restaurant_longitude: null }
+      outletRow = { id: 'branch-1', address: 'Branch St', latitude: 14.57, longitude: 121.08, delivery_radius_km: null }
+      const service = await mockQuote()
+
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1, 'branch-1')
+
+      expect(result.success).toBe(true)
+      expect(service.createLalamoveQuotation).toHaveBeenCalled()
+    })
+
     test('refuses when the store pickup location is not configured', async () => {
       tenantRow = { ...TENANT, restaurant_latitude: null, restaurant_longitude: null }
       const service = await mockQuote()
@@ -496,7 +555,10 @@ describe('lalamove server actions', () => {
         lalamove_order_id: null,
         customer_contact: '',
         lalamove_quotation_id: 'quote-1',
-        customer_data: { delivery_address: '12 Mabini St' },
+        customer_data: {
+          delivery_address: '12 Mabini St', delivery_lat: '14.7', delivery_lng: '121.05',
+          'Nearest Landmark': 'Blue gate',
+        },
       }
       const service = await import('@/lib/lalamove-service')
       ;(service.createLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
@@ -512,6 +574,12 @@ describe('lalamove server actions', () => {
       const call = (service.createLalamoveOrder as unknown as jest.Mock).mock.calls[0] as unknown[]
       expect(call[3]).toBe('+639170000000')
       expect(call[5]).toBe('+639170000000')
+      // The rider gets the landmark, the address and a pin link.
+      expect(call[7]).toBe([
+        'Landmark: Blue gate',
+        'Address: 12 Mabini St',
+        'Pin: https://www.google.com/maps/search/?api=1&query=14.7,121.05',
+      ].join('\n'))
     })
 
     test('refuses to book when the store pickup phone is not a usable number', async () => {
