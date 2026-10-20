@@ -148,9 +148,9 @@ liveDescribe('SMS automations API handlers (live platform DB, demo store)', () =
       expect(await writes.setAutomationStatus(db, tenantId, reward.ok ? reward.value.id : '', 'on', false)).toMatchObject({ ok: false, code: 'loyalty_off' })
 
       await writes.saveSettings(db, tenantId, {
-        quietHoursStart: '22:00', quietHoursEnd: '07:00', guestCapDays: 4, dailyLimit: 50, optOutLine: null, reviewUrl: 'https://g.page/r/demo',
+        quietHoursStart: '21:00', quietHoursEnd: '07:00', guestCapDays: 4, dailyLimit: 50, optOutLine: null, reviewUrl: 'https://g.page/r/demo',
       })
-      expect(await reads.readSettings(db, tenantId)).toMatchObject({ quietHoursStart: '22:00', reviewUrl: 'https://g.page/r/demo' })
+      expect(await reads.readSettings(db, tenantId)).toMatchObject({ quietHoursStart: '21:00', reviewUrl: 'https://g.page/r/demo' })
       expect(await writes.setAutomationStatus(db, tenantId, reviewId, 'on', false)).toMatchObject({ ok: true })
 
       expect((await reads.listActivity(db, tenantId, {})).items).toEqual([])
