@@ -12,6 +12,8 @@
  */
 
 import { resolveVouchers, type VoucherLookup } from './resolve'
+import { unitLimitOf } from './discount'
+import { getEligibleLines } from './eligibility'
 import type { DiscountContext, VoucherRejectionReason } from './types'
 
 export interface AcceptedVoucherPreview {
@@ -20,6 +22,13 @@ export interface AcceptedVoucherPreview {
   description?: string | null
   /** What this voucher took off, after stacking and caps. */
   amount: number
+  /**
+   * Only for a voucher that discounts N items: the limit, the customer's own
+   * lines it may land on (so they can choose), and where it landed.
+   */
+  unitLimit?: number
+  eligibleLineIds?: readonly string[]
+  items?: readonly { lineId: string; units: number }[]
 }
 
 export interface RejectedVoucherPreview {
@@ -54,12 +63,26 @@ export async function buildVoucherPreview(
     // Only these four fields cross the wire. Handing back the voucher row
     // would tell any visitor how many redemptions are left, what the
     // per-customer cap is, and which products are targeted.
-    accepted: resolved.applied.map((entry) => ({
-      code: entry.voucher.code,
-      name: entry.voucher.name,
-      description: entry.voucher.description ?? null,
-      amount: entry.result.amount,
-    })),
+    accepted: resolved.applied.map((entry) => {
+      const unitLimit = unitLimitOf(entry.voucher)
+      return {
+        code: entry.voucher.code,
+        name: entry.voucher.name,
+        description: entry.voucher.description ?? null,
+        amount: entry.result.amount,
+        // Only the customer's OWN lines are named — never the voucher's
+        // target list — so this says nothing about other products.
+        ...(unitLimit !== null
+          ? {
+              unitLimit,
+              eligibleLineIds: getEligibleLines(entry.voucher, input.context.lines).map((line) => line.id),
+              items: entry.result.allocations
+                .filter((allocation) => (allocation.units ?? 0) > 0)
+                .map((allocation) => ({ lineId: allocation.lineId, units: allocation.units ?? 0 })),
+            }
+          : {}),
+      }
+    }),
     rejected: resolved.rejected.map((entry) => ({
       code: entry.code,
       reason: entry.reason,

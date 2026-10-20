@@ -58,3 +58,27 @@ export function buildVoucherPreviewLines(
 
   return [...itemLines, ...bundleLines]
 }
+
+/**
+ * Picks keyed by preview line id → keyed by order position (`line-<index>`),
+ * the way `createOrderAction` names lines. The preview lines are built in the
+ * order the checkout sends its items (regular, then bundle slots), so a line's
+ * index here IS its index on the order. A pick for a line no longer in the
+ * cart is dropped.
+ */
+export function toOrderLinePicks(
+  picks: Readonly<Record<string, Readonly<Record<string, number>>>>,
+  lines: readonly Pick<VoucherPreviewLine, 'id'>[],
+): Record<string, Record<string, number>> {
+  const indexById = new Map(lines.map((line, index) => [line.id, index]))
+  const out: Record<string, Record<string, number>> = {}
+  for (const [code, byLine] of Object.entries(picks)) {
+    const mapped: Record<string, number> = {}
+    for (const [lineId, units] of Object.entries(byLine)) {
+      const index = indexById.get(lineId)
+      if (index !== undefined && units > 0) mapped[`line-${index}`] = units
+    }
+    if (Object.keys(mapped).length > 0) out[code] = mapped
+  }
+  return out
+}

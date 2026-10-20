@@ -1,9 +1,10 @@
 import { cartTotals, round2, type PosCartLine } from "./pos-cart";
-import type { OrderDiscountPayload } from "./order-discount";
-import type { OrderDiscountLine } from "./order-totals";
+import { discountLineItems, type OrderDiscountPayload } from "./order-discount";
+import type { DiscountLineItem, OrderDiscountLine } from "./order-totals";
 import { applyPosVouchers, posDiscountContext } from "./pos-discount";
 import type {
   DiscountContext,
+  UnitPicks,
   Voucher,
   VoucherRejectionReason,
 } from "./vouchers/types";
@@ -27,11 +28,13 @@ import type {
  * legitimately given, for a reason nobody at the counter could explain.
  *
  * A MANUAL discount is always carried forward. A person decided that amount for
- * a written reason, and there is no rule to re-evaluate.
+ * a written reason, and there is no rule to re-evaluate. An ITEM discount is
+ * carried per unit of its dish: it follows the dish to its new position, keeps
+ * only the units still on the order, and goes when the dish goes.
  *
  * When the vouchers could not be fetched at all — a counter with no signal —
- * the stored discount is carried forward untouched. Charging a customer more
- * than they agreed because the wifi dropped is the worse failure.
+ * the vouchers are carried forward as placed. Charging a customer more than
+ * they agreed because the wifi dropped is the worse failure.
  */
 
 export interface EditDiscountInput {
@@ -78,6 +81,48 @@ const CART_DEPENDENT_REASONS: readonly VoucherRejectionReason[] = [
 const EMPTY: EditDiscount = { lines: [], total: 0, isRepriced: false };
 
 /**
+ * A cashier's item discount against the edited cart. Each dish (named by cart
+ * key, see `cartKeyedDiscount`) keeps its per-unit amount: a dish no longer on
+ * the order takes its share with it, and a dish whose quantity dropped keeps
+ * only the units still there. Null when every dish it was given on is gone.
+ * A discount without dishes (the whole-order kind) is carried as placed.
+ */
+function carriedManualLine(storedLine: OrderDiscountLine, cart: readonly PosCartLine[]): OrderDiscountLine | null {
+  const placed = discountLineItems(storedLine);
+  if (placed.length === 0) return { label: storedLine.label, amount: storedLine.amount };
+
+  const quantityByKey = new Map(cart.map((line) => [line.key, Math.floor(line.quantity)]));
+  const items: DiscountLineItem[] = placed.flatMap((item) => {
+    const units = Math.min(item.units, quantityByKey.get(item.lineKey) ?? 0);
+    if (units <= 0) return [];
+    return [{ lineKey: item.lineKey, units, amount: Math.round((item.amount * 100 * units) / item.units) / 100 }];
+  });
+  if (items.length === 0) return null;
+
+  // Whatever the line held beyond its dishes (none, for an item discount) rides along.
+  const placedCents = placed.reduce((sum, item) => sum + Math.round(item.amount * 100), 0);
+  const keptCents = items.reduce((sum, item) => sum + Math.round(item.amount * 100), 0);
+  const amount = Math.max(0, Math.round(storedLine.amount * 100) - placedCents + keptCents) / 100;
+  return { label: storedLine.label, amount, items };
+}
+
+/**
+ * The dishes each stored unit-limited voucher was given on, as picks for the
+ * engine — so an edit keeps the dish the cashier or customer chose instead of
+ * sliding back to the cheapest units. A pick that no longer fits the edited
+ * cart is ignored by the engine, which then takes the cheapest units.
+ */
+function storedUnitPicks(stored: OrderDiscountPayload): Record<string, UnitPicks> {
+  const picks: Record<string, UnitPicks> = {};
+  for (const line of stored.lines) {
+    const items = discountLineItems(line);
+    if (!line.code || items.length === 0) continue;
+    picks[line.code] = Object.fromEntries(items.map((item) => [item.lineKey, item.units]));
+  }
+  return picks;
+}
+
+/**
  * Can the register actually judge this voucher's scope against this cart?
  *
  * A `no_matching_items` rejection is only a verdict when the register holds the
@@ -100,10 +145,24 @@ function canJudgeScope(voucher: Voucher | undefined, context: DiscountContext): 
   return context.lines.some((line) => line.categoryId != null);
 }
 
-function carryForward(stored: OrderDiscountPayload, chargeable: number): EditDiscount {
-  const lines = stored.lines.filter(
-    (line) => Number.isFinite(line.amount) && line.amount > 0,
-  );
+/**
+ * The bill as placed, for when the vouchers could not be looked up — which is
+ * also every order whose discounts are all the cashier's own (no code, so the
+ * screen never looks anything up). Vouchers ride as placed; a cashier's item
+ * discount still follows its dish, which needs no lookup.
+ */
+function carryForward(
+  stored: OrderDiscountPayload,
+  chargeable: number,
+  cart: readonly PosCartLine[],
+): EditDiscount {
+  const lines = stored.lines
+    .filter((line) => Number.isFinite(line.amount) && line.amount > 0)
+    .flatMap((line) => {
+      if (line.code) return [line];
+      const carried = carriedManualLine(line, cart);
+      return carried ? [carried] : [];
+    });
   const total = Math.min(
     round2(lines.reduce((sum, line) => sum + line.amount, 0)),
     chargeable,
@@ -127,7 +186,7 @@ export function repriceEditDiscount(input: EditDiscountInput): EditDiscount {
   if (chargeable <= 0) return EMPTY;
 
   // Could not ask. Carry the bill as placed rather than invent a new one.
-  if (vouchers === null) return carryForward(stored, chargeable);
+  if (vouchers === null) return carryForward(stored, chargeable, cart);
 
   const context = posDiscountContext(
     cart,
@@ -135,6 +194,7 @@ export function repriceEditDiscount(input: EditDiscountInput): EditDiscount {
     now,
     outletId,
     deliveryFee ?? 0,
+    storedUnitPicks(stored),
   );
   const application = applyPosVouchers(vouchers, context);
 
@@ -143,9 +203,11 @@ export function repriceEditDiscount(input: EditDiscountInput): EditDiscount {
   for (const storedLine of stored.lines) {
     if (!Number.isFinite(storedLine.amount) || storedLine.amount <= 0) continue;
 
-    // No code means a cashier's open discount. Nothing to re-evaluate.
+    // No code means a cashier's open discount. No rule to re-evaluate, but an
+    // item discount follows its dish (see `carriedManualLine`).
     if (!storedLine.code) {
-      lines.push({ label: storedLine.label, amount: storedLine.amount });
+      const carried = carriedManualLine(storedLine, cart);
+      if (carried) lines.push(carried);
       continue;
     }
 

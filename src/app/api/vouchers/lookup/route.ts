@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { clientSupportsUnitLimits, VOUCHER_FEATURES_HEADER, vouchersForClient } from '@/lib/vouchers/client-features'
 import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
@@ -55,7 +56,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // rather than afterwards. The authorization above and that filter use the
   // same `tenantId` value, so what was authorized is what is read.
   const lookup = createVoucherLookup(createAdminClient())
-  const vouchers = await lookup.findByCodes(tenantId, codes)
+  const found = await lookup.findByCodes(tenantId, codes)
+  // An older register would ignore a unit limit and discount every unit.
+  const vouchers = vouchersForClient(found, clientSupportsUnitLimits(request.headers.get(VOUCHER_FEATURES_HEADER)))
 
   return NextResponse.json({ vouchers })
 }

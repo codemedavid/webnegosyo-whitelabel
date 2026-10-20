@@ -12,10 +12,12 @@ interface VoucherCardProps {
 /** "50% off, up to ₱200" — the shape of the deal, in one line. */
 function describeDiscount(voucher: Voucher): string {
   if (voucher.discountType === 'free_delivery') return 'Free delivery'
-  if (voucher.discountType === 'fixed') return `₱${voucher.discountValue} off`
+  const units = voucher.maxDiscountedUnits
+  const limit = units ? ` · ${units} item${units === 1 ? '' : 's'} per order` : ''
+  if (voucher.discountType === 'fixed') return `₱${voucher.discountValue} off${units ? ' each' : ''}${limit}`
 
   const cap = voucher.maxDiscountAmount ? `, up to ₱${voucher.maxDiscountAmount}` : ''
-  return `${voucher.discountValue}% off${cap}`
+  return `${voucher.discountValue}% off${cap}${limit}`
 }
 
 function describeScope(voucher: Voucher): string {

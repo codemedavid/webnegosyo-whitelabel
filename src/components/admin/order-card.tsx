@@ -7,8 +7,9 @@ import { Clock, CheckCircle, XCircle, ShoppingBag, Package, Truck, UtensilsCross
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
-import { orderSummaryRows } from '@/lib/order-summary-rows'
+import { discountItemsText, orderSummaryRows } from '@/lib/order-summary-rows'
 import { readOrderDiscount } from '@/lib/order-discount'
+import { GovDiscountSummary } from '@/components/admin/gov-discount-summary'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import type { OrderWithItems } from '@/lib/orders-service'
 import { displayCustomerName } from '@/lib/order-display-name'
@@ -158,6 +159,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
             serviceCharge: Number(order.service_charge_amount) || 0,
             discount: readOrderDiscount(order),
             total: Number(order.total),
+            itemNames: order.order_items.map((item) => item.menu_item_name),
           }).map((row, index) => (
             <div
               key={`${row.kind}-${index}`}
@@ -169,6 +171,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
             >
               <span className={row.kind === 'total' ? undefined : 'text-muted-foreground'}>
                 {row.label}:
+                {row.items && <span className="ml-1 text-xs">({discountItemsText(row.items)})</span>}
               </span>
               <span
                 className={
@@ -182,6 +185,8 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               </span>
             </div>
           ))}
+          {/* Who the Senior/PWD discount above was for; silent on other orders. */}
+          <GovDiscountSummary discount={readOrderDiscount(order)} variant="compact" />
         </div>
       </CardContent>
     </Card>

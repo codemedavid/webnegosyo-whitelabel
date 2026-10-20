@@ -20,6 +20,12 @@ const input = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().describe('YYYY-MM-DD; null = immediately'),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   usesPerCustomer: z.number().int().positive().nullable(),
+  maxUnits: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .describe('Only this many items get the discount (1 = one fries of five; cheapest first); null = every item'),
 })
 type Input = z.infer<typeof input>
 
@@ -32,15 +38,16 @@ function manilaEndOfDay(date: string): string {
   return new Date(`${date}T23:59:59+08:00`).toISOString()
 }
 
-function describeDiscount(discount: Input['discount'], maxDiscount: number | null): string {
+function describeDiscount(discount: Input['discount'], maxDiscount: number | null, maxUnits: number | null): string {
   if (discount.type === 'free_delivery') return 'Free delivery'
-  if (discount.type === 'fixed') return `${formatPeso(discount.value)} off`
-  return `${discount.value}% off${maxDiscount ? ` (up to ${formatPeso(maxDiscount)})` : ''}`
+  const limit = maxUnits ? ` · ${maxUnits} item${maxUnits === 1 ? '' : 's'} per order` : ''
+  if (discount.type === 'fixed') return `${formatPeso(discount.value)} off${maxUnits ? ' each' : ''}${limit}`
+  return `${discount.value}% off${maxDiscount ? ` (up to ${formatPeso(maxDiscount)})` : ''}${limit}`
 }
 
 export const proposeVoucherTool: AssistantToolDef<Input> = {
   name: 'propose_voucher',
-  description: 'Propose a voucher code (percent/fixed/free_delivery, optional min order, dates, item limits). The user must confirm.',
+  description: 'Propose a voucher code (percent/fixed/free_delivery, optional min order, dates, item limits, max discounted items). The user must confirm.',
   access: { permission: 'vouchers' },
   input,
   async run(ctx, request) {
@@ -53,6 +60,7 @@ export const proposeVoucherTool: AssistantToolDef<Input> = {
       discountType: request.discount.type,
       discountValue: request.discount.type === 'free_delivery' ? 0 : request.discount.value,
       maxDiscountAmount: request.maxDiscount,
+      maxDiscountedUnits: request.discount.type === 'free_delivery' ? null : request.maxUnits ?? null,
       minOrderAmount: request.minOrder,
       scope: targetIds.length > 0 ? 'products' : 'universal',
       targetIds: targetIds as string[],
@@ -68,10 +76,10 @@ export const proposeVoucherTool: AssistantToolDef<Input> = {
     return fileProposal(ctx, {
       kind: 'voucher',
       payload: { draft },
-      summary: `Voucher ${draft.code}: ${describeDiscount(request.discount, request.maxDiscount)}`,
+      summary: `Voucher ${draft.code}: ${describeDiscount(request.discount, request.maxDiscount, request.maxUnits ?? null)}`,
       title: `Voucher ${draft.code}`,
       lines: [
-        { label: 'Discount', value: describeDiscount(request.discount, request.maxDiscount) },
+        { label: 'Discount', value: describeDiscount(request.discount, request.maxDiscount, request.maxUnits ?? null) },
         ...(request.minOrder ? [{ label: 'Min order', value: formatPeso(request.minOrder) }] : []),
         { label: 'Applies to', value: targetIds.length > 0 ? `${targetIds.length} dish${targetIds.length === 1 ? '' : 'es'}` : 'Whole order' },
         { label: 'Valid', value: `${request.startDate ?? 'Now'} → ${request.endDate ?? 'no end date'}` },

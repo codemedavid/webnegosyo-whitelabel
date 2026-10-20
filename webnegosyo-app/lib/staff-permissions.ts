@@ -47,6 +47,10 @@ export const STAFF_PERMISSION_KEYS = [
   // stamp card. Attaching a customer at the register needs no grant.
   "loyalty_manage",
   "loyalty_redeem",
+  // Approving Senior/PWD discounts with a PIN and reviewing every grant in the
+  // sales book. Giving the discount needs no grant (refusing one is a crime);
+  // vouching for a large one and auditing the ledger is a manager's job.
+  "discount_review",
   // Store activity & approvals — OPT-IN (see OPT_IN_PERMISSION_KEYS below).
   "activity_view",
   "approve_requests",

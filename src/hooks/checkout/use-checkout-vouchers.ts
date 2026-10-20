@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { CartItem, CartBundleItem } from '@/types/database'
 import { validateVoucherAction } from '@/app/actions/vouchers'
-import { buildVoucherPreviewLines } from '@/lib/vouchers/checkout-preview-lines'
+import { buildVoucherPreviewLines, toOrderLinePicks } from '@/lib/vouchers/checkout-preview-lines'
+import type { UnitPicks } from '@/lib/vouchers/types'
 import {
   addCode,
   cartFingerprint,
@@ -41,6 +42,9 @@ export function useCheckoutVouchers({ tenantId, items, bundleItems, validDeliver
     EMPTY_CHECKOUT_VOUCHER_STATE
   )
   const [isCheckingVoucher, setIsCheckingVoucher] = useState(false)
+  // Which of the customer's lines a voucher that discounts N items lands on,
+  // by code. Empty = the cheapest; the server re-validates every pick.
+  const [unitPicks, setUnitPicks] = useState<Record<string, UnitPicks>>({})
 
   // Bundle slots are priced by the server too, so they belong in both the
   // request and the fingerprint. Leaving them out of the fingerprint left a
@@ -75,7 +79,7 @@ export function useCheckoutVouchers({ tenantId, items, bundleItems, validDeliver
   const voucherRequestSeqRef = useRef(0)
 
   const refreshVoucherPreview = useCallback(
-    async (codes: readonly string[], fingerprint: string) => {
+    async (codes: readonly string[], fingerprint: string, picks: Record<string, UnitPicks> = unitPicks) => {
       const requestSeq = ++voucherRequestSeqRef.current
       if (codes.length === 0) {
         setVoucherState({ codes: [], preview: null, previewFingerprint: null })
@@ -95,6 +99,7 @@ export function useCheckoutVouchers({ tenantId, items, bundleItems, validDeliver
           serviceCharge: serviceChargeAmount,
           channel: 'checkout',
           outletId: outletId ?? null,
+          unitPicks: picks,
         })
         if (requestSeq !== voucherRequestSeqRef.current) return
 
@@ -117,7 +122,7 @@ export function useCheckoutVouchers({ tenantId, items, bundleItems, validDeliver
         if (requestSeq === voucherRequestSeqRef.current) setIsCheckingVoucher(false)
       }
     },
-    [tenantId, voucherPreviewLines, validDeliveryFee, serviceChargeAmount, outletId]
+    [tenantId, voucherPreviewLines, validDeliveryFee, serviceChargeAmount, outletId, unitPicks]
   )
 
   const applyVoucherCode = useCallback(
@@ -148,8 +153,43 @@ export function useCheckoutVouchers({ tenantId, items, bundleItems, validDeliver
     void refreshVoucherPreview(voucherState.codes, voucherFingerprint)
   }, [isCheckoutComplete, voucherState, voucherFingerprint, refreshVoucherPreview])
 
+  /** Move a voucher that discounts N items to the lines the customer chose. */
+  const setVoucherUnitPicks = useCallback(
+    async (code: string, picks: UnitPicks) => {
+      const key = code.trim().toUpperCase()
+      const chosen = Object.fromEntries(Object.entries(picks).filter(([, units]) => units > 0))
+      const rest = Object.fromEntries(Object.entries(unitPicks).filter(([existing]) => existing !== key))
+      const next = Object.keys(chosen).length > 0 ? { ...rest, [key]: chosen } : rest
+      setUnitPicks(next)
+      await refreshVoucherPreview(voucherState.codes, voucherFingerprint, next)
+    },
+    [unitPicks, refreshVoucherPreview, voucherState.codes, voucherFingerprint]
+  )
+
+  // Dish names for "Applies to: Fries ×1", by preview line id.
+  const voucherLineNames = useMemo(() => {
+    const names: Record<string, string> = {}
+    items.forEach((item) => {
+      names[item.id] = item.menu_item.name
+    })
+    voucherPreviewLines.forEach((line) => {
+      if (!names[line.id]) names[line.id] = 'Combo item'
+    })
+    return names
+  }, [items, voucherPreviewLines])
+
+  // What the order carries: the same picks, by order position.
+  const voucherOrderPicks = useMemo(
+    () => toOrderLinePicks(unitPicks, voucherPreviewLines),
+    [unitPicks, voucherPreviewLines]
+  )
+
   return {
     voucherCodes: voucherState.codes,
+    voucherLineNames,
+    voucherPreviewLines,
+    voucherOrderPicks,
+    setVoucherUnitPicks,
     voucherPreview,
     effectiveDiscounts,
     isCheckingVoucher,

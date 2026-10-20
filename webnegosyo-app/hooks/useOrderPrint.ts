@@ -12,6 +12,8 @@ import { isSaleQueued } from "../lib/offline/order-outbox";
 import { prefetchLogo } from "../lib/receipt-logo";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 import type { ReceiptOrder } from "../lib/receipt-layout";
+import { receiptTaxIdentity } from "../lib/receipt-tax";
+import { useTaxProfile } from "../lib/query/use-tax-profile";
 
 /** A session read that takes longer than this is a stalled refresh, not a slow one. */
 const SESSION_READ_TIMEOUT_MS = 3_000;
@@ -58,6 +60,10 @@ export function useOrderPrint() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const receiptLayout = useAuthStore((s) => s.receiptLayout);
   const receiptLogoUrl = useAuthStore((s) => s.receiptLogoUrl);
+  // TIN header, VAT block and the not-an-invoice notice. Offline-snapshotted
+  // like the register's own read; a store without Tax & discounts set up (or
+  // a read that failed) prints the receipt it always has.
+  const taxProfile = useTaxProfile(tenantId).data ?? null;
   const printTrigger = usePrinterStore((s) => s.printTrigger);
   const printers = usePrinterStore((s) => s.printers);
   // The receipt is the cashier's paper; a device whose printers are all
@@ -119,9 +125,10 @@ export function useOrderPrint() {
         trackingUrl,
         receiptLogoUrl,
         paperColumns,
+        receiptTaxIdentity(taxProfile),
       );
     },
-    [resolveTrackingUrl, tenantName, receiptLayout, receiptLogoUrl, paperColumns],
+    [resolveTrackingUrl, tenantName, receiptLayout, receiptLogoUrl, paperColumns, taxProfile],
   );
 
   const showFeedback = useCallback((next: PrintFeedback) => {

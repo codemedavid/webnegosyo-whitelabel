@@ -22,6 +22,7 @@ export const SETTINGS_SECTION_KEYS = [
   'store',
   'hours',
   'delivery',
+  'tax',
   'messenger',
   'footer',
   'splash',
@@ -51,6 +52,7 @@ export type SettingsIconKey =
   | 'users'
   | 'user'
   | 'trash'
+  | 'percent'
 
 /** Who is looking — resolved once on the server from the signed-in account. */
 export interface SettingsViewer {
@@ -159,6 +161,7 @@ const CATALOG: readonly GroupDef[] = [
       tool('order-types', 'Order types', 'Dine-in, pickup, delivery — and what each one asks for.', 'shopping-bag', '/order-types'),
       tool('payment-methods', 'Payment methods', 'How customers pay, and whether they send proof.', 'credit-card', '/payment-methods'),
       section('delivery', 'Delivery & pickup', 'Distance-based fees, Lalamove riders and scan-to-collect.', 'truck'),
+      section('tax', 'Tax & discounts', 'Your BIR registration, Senior/PWD discounts and manager approval.', 'percent'),
       tool('receipts', 'Receipt Studio', 'Design the printed receipt and its tracking QR.', 'receipt', '/receipt-editor'),
       tool('qr-codes', 'QR codes', 'Print codes for your store, each branch and every table.', 'qr-code', '/qr-codes'),
     ],
@@ -201,6 +204,10 @@ const SECTION_GATES: Record<SettingsSectionKey, (ctx: CatalogContext) => boolean
   store: () => true,
   hours: ({ viewer }) => viewer.hasPermission('settings'),
   delivery: ({ viewer }) => viewer.hasPermission('settings'),
+  // Only the owner may CHANGE it (RLS); staff who run settings or approve
+  // discounts may read it, so the page shows them a read-only copy.
+  tax: ({ viewer }) =>
+    viewer.isOwner || viewer.hasPermission('settings') || viewer.hasPermission('discount_review'),
   messenger: ({ viewer }) => viewer.hasPermission('settings'),
   footer: ({ viewer }) => viewer.hasPermission('settings'),
   splash: ({ viewer, tenant }) => viewer.hasPermission('settings') && tenant.flash_screen_feature_enabled === true,
@@ -334,6 +341,8 @@ export function describeSectionStatus(
       return extras.accountEmail ? { tone: 'neutral', label: extras.accountEmail } : null
     case 'team':
     case 'data':
+    // Its state lives in store_tax_profiles, not on the tenant row; the page says it.
+    case 'tax':
       return null
   }
 }

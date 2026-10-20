@@ -114,7 +114,7 @@ Security review: 1 HIGH, 2 MEDIUM, 4 LOW. Code review: 0 CRITICAL/HIGH, 2 MEDIUM
 
 ## Coordination with other branches
 
-- `app_user_has_permission` is redefined by gov-discounts (`20261012120000`) and store-activity (`20261012140000`); this branch's version sorts later and is their superset. A later redefinition must keep the `reports` line (the migration test pins it).
+- `app_user_has_permission` is redefined by gov-discounts (`20261012110000`) and store-activity (`20261012140000`); this branch's version sorts later and is their superset. A later redefinition must keep the `reports` line (the migration test pins it).
 - The low-stock bell (`app_user_may_read_merchant_notifications` + push rule + app `canSeeMerchantNotifications`) is in the merchant-notifications workstream (uncommitted in the main checkout); it still checks `menu`. That workstream should move all three to `inventory` together. Nobody loses the bell meanwhile: every `menu` holder gets `inventory`.
 - store-activity adds opt-in keys (`activity_view`, `approve_requests`) to the same four registries; merging will conflict textually in the key lists only. `editablePermissions(null)` must then exclude opt-in keys (use its `isGrantedByFullAccess`).
 

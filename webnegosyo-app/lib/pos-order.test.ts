@@ -255,6 +255,49 @@ describe("buildPosOrder with a discount", () => {
   });
 });
 
+describe("buildPosOrder with a Senior/PWD discount", () => {
+  // A senior's croissant (line 1, ₱87.50) at a non-VAT store: ₱17.50 off.
+  const government = {
+    version: 1 as const,
+    vatStatus: "non_vat" as const,
+    serviceChargeMode: "full" as const,
+    diners: null,
+    vat: null,
+    claimants: [
+      {
+        id: "c1",
+        kind: "senior" as const,
+        name: "Juan Dela Cruz",
+        idNumber: "12345",
+        allocation: { mode: "items" as const, units: { "line-1": 1 } },
+        grossShare: 87.5,
+        vatExemptSales: 0,
+        vatRemoved: 0,
+        discount: 17.5,
+        netDue: 70,
+        serviceChargeShare: 0,
+        serviceChargeVatRemoved: 0,
+        reduction: 17.5,
+        lineReductions: { "line-1": 17.5 },
+      },
+    ],
+  };
+  const order = buildPosOrder({
+    ...context,
+    discounts: [{ label: "SC 20% · J. Dela Cruz", amount: 17.5, isGovernment: true }],
+    government,
+  });
+
+  it("bills the discounted total and keeps the claimant record on the order", () => {
+    expect(order.total).toBe(350);
+    expect(readOrderDiscount(order)?.government?.claimants[0].idNumber).toBe("12345");
+  });
+
+  it("allocates the reduction to the claimant's own line", () => {
+    expect(readOrderDiscount(order)?.allocationsByLine).toEqual({ "line-1": 17.5 });
+  });
+});
+
 describe("buildPosOrder — the service charge is stored, not just spent", () => {
   /**
    * The register has always folded the order type's service charge into

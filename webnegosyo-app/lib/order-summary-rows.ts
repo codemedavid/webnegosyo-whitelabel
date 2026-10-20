@@ -19,6 +19,8 @@ export interface SummarisableDiscount {
     /** The voucher's code, when a voucher rather than an open discount. */
     code?: string;
     voucherId?: string;
+    /** Line-specific discounts: `{ lineKey: "line-<index>", units }[]`. Untrusted. */
+    items?: unknown;
   }[];
   deliveryDiscount?: number;
   allocationsByLine?: Record<string, number>;
@@ -57,6 +59,16 @@ export interface OrderSummaryRow {
    * from the code.
    */
   code?: string;
+  /**
+   * The dishes a line-specific discount came off ("Fries ×1"): a unit-limited
+   * voucher or a cashier's item discount. Absent on order-wide discounts.
+   */
+  items?: readonly DiscountedDish[];
+}
+
+export interface DiscountedDish {
+  name: string;
+  units: number;
 }
 
 export interface OrderSummaryInput {
@@ -70,6 +82,29 @@ export interface OrderSummaryInput {
   discount?: SummarisableDiscount | null;
   /** What was actually charged. Authoritative. */
   total: number;
+  /** The order's dish names by line position, so `line-<index>` reads as a dish. */
+  itemNames?: readonly string[];
+}
+
+const UNKNOWN_DISH = "Item";
+
+/** "Fries ×1, Soda ×2" — thermal printers pass `x` (no × in their code page). */
+export function discountItemsText(items: readonly DiscountedDish[], times = "×"): string {
+  return items.map((item) => `${item.name} ${times}${item.units}`).join(", ");
+}
+
+/** The dishes a stored line names, shape-checked; undefined when none. */
+function discountedDishes(items: unknown, itemNames: readonly string[] | undefined): DiscountedDish[] | undefined {
+  if (!Array.isArray(items)) return undefined;
+  const dishes = items.flatMap((item: unknown) => {
+    const candidate = item as { lineKey?: unknown; units?: unknown } | null;
+    const match = typeof candidate?.lineKey === "string" ? /^line-(\d+)$/.exec(candidate.lineKey) : null;
+    const units = Number(candidate?.units);
+    if (!Number.isInteger(units) || units < 1) return [];
+    const name = match ? itemNames?.[Number(match[1])] : undefined;
+    return [{ name: name && name.trim() !== "" ? name : UNKNOWN_DISH, units }];
+  });
+  return dishes.length > 0 ? dishes : undefined;
 }
 
 /** Cent-level tolerance, matching the receipt's own reconciliation check. */
@@ -101,11 +136,13 @@ export function orderSummaryRows(input: OrderSummaryInput): OrderSummaryRow[] {
   }
 
   for (const line of discountLines) {
+    const items = discountedDishes(line.items, input.itemNames);
     rows.push({
       kind: "discount",
       label: line.label,
       amount: line.amount,
       ...(line.code ? { code: line.code } : {}),
+      ...(items ? { items } : {}),
     });
   }
 

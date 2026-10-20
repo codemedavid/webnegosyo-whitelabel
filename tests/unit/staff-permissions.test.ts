@@ -48,6 +48,9 @@ describe('staff permission registry', () => {
       'tables',
       'loyalty_manage',
       'loyalty_redeem',
+      // Approving large Senior/PWD discounts and reviewing the sales book.
+      // Giving the discount itself needs no grant.
+      'discount_review',
       // Store activity & approvals: opt-in — a full-access account does NOT
       // get them without the owner ticking them (see OPT_IN_PERMISSION_KEYS).
       'activity_view',

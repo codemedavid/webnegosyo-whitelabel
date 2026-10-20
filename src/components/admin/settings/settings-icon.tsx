@@ -6,6 +6,7 @@ import {
   MapPin,
   MessageCircle,
   PanelBottom,
+  Percent,
   Paintbrush,
   QrCode,
   ReceiptText,
@@ -38,6 +39,7 @@ const ICONS: Record<SettingsIconKey, LucideIcon> = {
   users: Users,
   user: UserRound,
   trash: Trash2,
+  percent: Percent,
 }
 
 interface SettingsIconProps {

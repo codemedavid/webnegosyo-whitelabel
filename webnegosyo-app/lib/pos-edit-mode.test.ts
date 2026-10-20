@@ -396,6 +396,7 @@ describe("editModeTotals", () => {
       orderId: "order-1",
       mode: "revise",
       appendBaseCart: [],
+      orderLineCartKeys: [],
       // No stored charge: these bills predate the field, so whatever the
       // order carried beyond items and delivery stays in `carriedCharges`.
       serviceCharge: 0,
@@ -549,6 +550,7 @@ describe("editModeTotals with a discount added during the edit", () => {
       orderId: "order-1",
       mode: "revise",
       appendBaseCart: [],
+      orderLineCartKeys: [],
       // No stored charge: these bills predate the field, so whatever the
       // order carried beyond items and delivery stays in `carriedCharges`.
       serviceCharge: 0,
@@ -768,6 +770,7 @@ describe("the discount an edit settles on", () => {
       orderId: "order-1",
       mode: "revise",
       appendBaseCart: [],
+      orderLineCartKeys: [],
       // No stored charge: these bills predate the field, so whatever the
       // order carried beyond items and delivery stays in `carriedCharges`.
       serviceCharge: 0,

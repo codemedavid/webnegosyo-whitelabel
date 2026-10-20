@@ -111,8 +111,31 @@ describe("buildOrdersCsv", () => {
     // Aug 14 00:00 Manila; the phone is formula-guarded for Excel.
     expect(lines[1]).toBe(
       "ord-1,2026-08-14,00:00,delivered,delivery,web,Maria Cruz,'+639171234567," +
-        "2x Burger,2,GCash,paid,49,349,349"
+        "2x Burger,2,GCash,paid,49,,,,349,349"
     );
+  });
+
+  it("names the service charge and every discount line beside the total", () => {
+    const o = order({
+      _id: "ord-2",
+      serviceCharge: 20,
+      total: 300,
+      customerData: {
+        discount: {
+          total: 40,
+          deliveryDiscount: 0,
+          lines: [
+            { label: "Senior 20% — J. Cruz", amount: 30 },
+            { label: "LATTE10", amount: 10, code: "LATTE10" },
+          ],
+          allocationsByLine: {},
+        },
+      },
+    });
+
+    const row = buildOrdersCsv([o], new Map()).split("\r\n")[1];
+
+    expect(row).toContain(",20,40,Senior 20% — J. Cruz (30); LATTE10 (10),300,");
   });
 
   it("renders rows newest first", () => {

@@ -5,6 +5,7 @@
  */
 
 import type { Voucher } from "../vouchers/types";
+import { describeDiscount } from "./voucher-status";
 import {
   buildVoucherForm,
   endOfDayIso,
@@ -76,6 +77,7 @@ describe("buildVoucherForm", () => {
       discountType: "fixed",
       discountValue: "50",
       maxDiscountAmount: "",
+      maxDiscountedUnits: "",
       minOrderAmount: "300",
       scope: "products",
       targetIds: ["p1", "p2"],
@@ -101,6 +103,7 @@ describe("formToDraft", () => {
       discountType: "fixed",
       discountValue: 50,
       maxDiscountAmount: null,
+      maxDiscountedUnits: null,
       minOrderAmount: 300,
       scope: "products",
       targetIds: ["p1", "p2"],
@@ -250,5 +253,38 @@ describe("templates", () => {
 
   it("returns null for an unknown template", () => {
     expect(formFromTemplate("nope", NOW)).toBeNull();
+  });
+});
+
+describe("item limit (only discount N items)", () => {
+  it("is blank on a new voucher and reads back from a saved one", () => {
+    expect(buildVoucherForm(null).maxDiscountedUnits).toBe("");
+  });
+
+  it("drafts a typed limit as a number and blank as every item", () => {
+    expect(formToDraft(form({ maxDiscountedUnits: "1" })).maxDiscountedUnits).toBe(1);
+    expect(formToDraft(form({ maxDiscountedUnits: "" })).maxDiscountedUnits).toBeNull();
+  });
+
+  it("drops the limit for free delivery, which has no items to limit", () => {
+    expect(formToDraft(form({ discountType: "free_delivery", maxDiscountedUnits: "2" })).maxDiscountedUnits).toBeNull();
+  });
+
+  it("refuses zero, fractions and text", () => {
+    const fields = (maxDiscountedUnits: string) =>
+      validateVoucherForm(form({ maxDiscountedUnits })).errors.map((issue) => issue.field);
+    expect(fields("0")).toContain("maxDiscountedUnits");
+    expect(fields("1.5")).toContain("maxDiscountedUnits");
+    expect(fields("abc")).toContain("maxDiscountedUnits");
+    expect(fields("2")).not.toContain("maxDiscountedUnits");
+  });
+
+  it("describes the deal with the limit", () => {
+    expect(describeDiscount({ discountType: "percent", discountValue: 50, maxDiscountAmount: null, maxDiscountedUnits: 1 })).toBe(
+      "50% off · 1 item per order",
+    );
+    expect(describeDiscount({ discountType: "fixed", discountValue: 20, maxDiscountAmount: null, maxDiscountedUnits: 2 })).toBe(
+      "₱20 off each · 2 items per order",
+    );
   });
 });

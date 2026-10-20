@@ -58,6 +58,7 @@ describe('buildSettingsCatalog — what each viewer is offered', () => {
       'order-types',
       'payment-methods',
       'delivery',
+      'tax',
       'receipts',
       'qr-codes',
       'messenger',
@@ -101,7 +102,7 @@ describe('buildSettingsCatalog — what each viewer is offered', () => {
   it('gives a staff member with the settings grant the operational sections, not the store-setup tools', () => {
     const keys = keysOf(buildSettingsCatalog({ viewer: staff(['settings']), tenant: store(), tenantSlug: 'sukad' }))
 
-    expect(keys).toEqual(expect.arrayContaining(['hours', 'delivery', 'messenger', 'footer']))
+    expect(keys).toEqual(expect.arrayContaining(['hours', 'delivery', 'tax', 'messenger', 'footer']))
     expect(keys).not.toEqual(expect.arrayContaining(['payment-methods']))
     expect(keys).not.toContain('branding')
     expect(keys).not.toContain('team')
@@ -148,6 +149,15 @@ describe('canOpenSettingsSection — the page gate agrees with the catalog', () 
   it('allows a section the viewer is offered', () => {
     expect(canOpenSettingsSection('hours', { viewer: staff(['settings']), tenant: store() })).toBe(true)
     expect(canOpenSettingsSection('account', { viewer: staff([]), tenant: store() })).toBe(true)
+  })
+
+  it('opens Tax & discounts to the owner, settings staff and discount approvers only', () => {
+    const canOpenTax = (viewer: SettingsViewer) => canOpenSettingsSection('tax', { viewer, tenant: store() })
+
+    expect(canOpenTax(owner())).toBe(true)
+    expect(canOpenTax(staff(['settings']))).toBe(true)
+    expect(canOpenTax(staff(['discount_review']))).toBe(true)
+    expect(canOpenTax(staff(['orders', 'menu']))).toBe(false)
   })
 
   it('lets a branch admin who manages staff open the team section', () => {
@@ -227,6 +237,7 @@ describe('describeSectionStatus — the state shown beside each section', () => 
   it('has no status for sections whose state lives inside them', () => {
     expect(describeSectionStatus('team', store(), {})).toBeNull()
     expect(describeSectionStatus('data', store(), {})).toBeNull()
+    expect(describeSectionStatus('tax', store(), {})).toBeNull()
   })
 })
 

@@ -27,6 +27,13 @@ export interface Voucher {
   discountValue: number
   /** Ceiling on a percent voucher, so "50% off" cannot cost the merchant ₱5,000. */
   maxDiscountAmount?: number | null
+  /**
+   * Only this many units get the discount ("50% off ONE fries" when the table
+   * ordered five). Null/absent = every eligible unit. The cheapest eligible
+   * units win unless the cashier or customer chose (`DiscountContext.unitPicks`);
+   * a fixed value then comes off EACH chosen unit. Meaningless on free delivery.
+   */
+  maxDiscountedUnits?: number | null
   minOrderAmount?: number | null
   scope: VoucherScope
   /** Menu item ids or category ids, per `scope`. Empty means nothing matches. */
@@ -67,7 +74,17 @@ export interface DiscountContext {
   outletId?: string | null
   /** How many times THIS customer has already redeemed. Undefined = unknown (guest). */
   customerUsageCount?: number
+  /**
+   * Which units a unit-limited voucher lands on, as chosen at the counter or at
+   * checkout: voucher code (any case) → line id → units. A pick that is not
+   * valid for this cart (an ineligible line, too many units) is ignored and the
+   * cheapest units are used — a stale choice must never block the sale.
+   */
+  unitPicks?: Readonly<Record<string, UnitPicks>>
 }
+
+/** Line id → how many of that line's units the discount should land on. */
+export type UnitPicks = Readonly<Record<string, number>>
 
 /** Why a voucher was turned down. Drives both the message and any analytics. */
 export type VoucherRejectionReason =

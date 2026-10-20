@@ -151,3 +151,30 @@ describe("impersonation carries the saved layout", () => {
     expect(patch.receiptLogoUrl).toBeNull();
   });
 });
+
+describe("buildReceiptSegments — the store's tax registration", () => {
+  const tax = {
+    vatStatus: "vat" as const,
+    tinLine: "VAT REG TIN 123-456-789-00000",
+    registeredName: null,
+    businessAddress: "24 Rizal St, Quezon City",
+    isBirRegisteredPos: false,
+  };
+  const textOf = (segments: ReturnType<typeof buildReceiptSegments>) =>
+    segments.map((s) => (s.type === "text" ? s.text : "")).join("\n");
+
+  it("prints the TIN, the VAT block and the not-an-invoice notice when the store has a profile", () => {
+    const text = textOf(buildReceiptSegments(order, "Kape Co", "classic", null, null, 32, tax));
+    expect(text).toContain("VAT REG TIN 123-456-789-00000");
+    expect(text).toContain("24 Rizal St, Quezon City");
+    expect(text).toContain("VATable Sales:");
+    expect(text).toContain("THIS DOCUMENT IS NOT VALID FOR");
+    expect(text).not.toMatch(/official receipt/i);
+  });
+
+  it("prints exactly what it always did without one", () => {
+    expect(buildReceiptText(order, "Kape Co", "classic")).toBe(formatReceipt(order, { storeName: "Kape Co" }));
+    expect(textOf(buildReceiptSegments(order, "Kape Co", "classic", null, null, 32))).not.toContain("VAT");
+    expect(buildReceiptText(order, "Kape Co", "classic", tax)).toContain("VAT (12%):");
+  });
+});

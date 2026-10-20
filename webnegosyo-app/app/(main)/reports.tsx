@@ -13,6 +13,8 @@ import { tabPresentation } from "../../lib/workspace-presentation";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { automationHref, customerHref, newCampaignFromPresetHref } from "../../lib/navigation";
 import { isSmsCampaignsAvailable } from "../../lib/sms/availability";
+import { canReviewGovDiscounts } from "../../lib/tax-settings/access";
+import { GOV_REPORT_ROUTE } from "../../lib/gov-reports/routes";
 import { automationForPreset } from "../../lib/sms/campaign-presets";
 import {
   DASHBOARD_WINDOWS,
@@ -65,6 +67,7 @@ const canText = isSmsCampaignsAvailable(Platform.OS);
 export default function ReportsScreen() {
   const outletName = useAuthStore((s) => s.outletName);
   const isHubOn = useAuthStore(selectIsCustomerHubOn);
+  const isDemo = useAuthStore((s) => s.isDemo);
   const ctx = useTabVisibilityContext();
   const canSeeCustomers = isTabReachable("customers", ctx);
   const canSeeRewards = isTabReachable("loyalty", ctx);
@@ -122,25 +125,46 @@ export default function ReportsScreen() {
     await Promise.all([refetchDashboard(), refetchRewards(), refetchSales()]);
   }, [refetchDashboard, refetchRewards, refetchSales]);
 
+  // The Senior/PWD sales book: a manager's audit, so it rides its own grant
+  // rather than a hub row every analytics holder would see.
+  const complianceDoor = canReviewGovDiscounts({ ...ctx.caller, isDemo }) ? (
+    <>
+      <SectionHeader title="Compliance" hint="What the law makes you record" />
+      <View style={styles.group}>
+        <ListRow
+          icon="report"
+          title="Senior & PWD"
+          subtitle="Every discount given, and the ones that need a look"
+          onPress={() => router.push(GOV_REPORT_ROUTE)}
+        />
+      </View>
+    </>
+  ) : null;
+
   const digDeeper =
-    sections.length > 0 ? (
+    sections.length > 0 || complianceDoor ? (
       <>
-        <SectionHeader title="Dig deeper" hint="Sales, products, branches and store activity" />
-        <View style={styles.group}>
-          {sections.flatMap((section) => section.tabs).map((tab, index, all) => {
-            const p = tabPresentation(tab);
-            return (
-              <ListRow
-                key={tab}
-                icon={p.icon}
-                title={p.label}
-                subtitle={p.hint}
-                onPress={() => open(tab)}
-                grouped={index < all.length - 1}
-              />
-            );
-          })}
-        </View>
+        {sections.length > 0 ? (
+          <>
+            <SectionHeader title="Dig deeper" hint="Sales, products, branches and store activity" />
+            <View style={styles.group}>
+              {sections.flatMap((section) => section.tabs).map((tab, index, all) => {
+                const p = tabPresentation(tab);
+                return (
+                  <ListRow
+                    key={tab}
+                    icon={p.icon}
+                    title={p.label}
+                    subtitle={p.hint}
+                    onPress={() => open(tab)}
+                    grouped={index < all.length - 1}
+                  />
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+        {complianceDoor}
       </>
     ) : null;
 

@@ -20,6 +20,8 @@ export interface VoucherRow {
   discount_type: string
   discount_value: number
   max_discount_amount: number | null
+  /** Optional so a row read before the column existed still maps (as "every unit"). */
+  max_discounted_units?: number | null
   min_order_amount: number | null
   scope: string
   is_stackable: boolean
@@ -89,6 +91,7 @@ export function mapVoucherRow(row: VoucherRow, targets: readonly VoucherTargetRo
     discountType: row.discount_type as VoucherDiscountType,
     discountValue: toNumber(row.discount_value, 0),
     maxDiscountAmount: toNullableNumber(row.max_discount_amount),
+    maxDiscountedUnits: toNullableNumber(row.max_discounted_units),
     minOrderAmount: toNumber(row.min_order_amount, 0),
     scope,
     ...(targetIds ? { targetIds } : {}),

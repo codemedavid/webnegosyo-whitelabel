@@ -25,6 +25,9 @@ import type { burnPosRedemptions } from "../voucher-service";
 import type { notifyPosSaleActivity } from "../staff-activity/report-pos-sale";
 import type { notifyCustomerCapture } from "../customers/capture";
 import type { QueuedSaleBookkeeping } from "./order-outbox";
+import type { recordGovGrant } from "../gov-ledger/live-ledger";
+import { completeGovRecord, ledgerBackendOf } from "../gov-ledger/record-request";
+import type { queueSaleIdPhotos } from "../gov-id-photos/live-photo-queue";
 
 export interface PosSaleBookkeepingFacts {
   tenantId: string;
@@ -54,6 +57,8 @@ export interface PosSaleBookkeepingDeps {
   vouchers: typeof burnPosRedemptions;
   activity: typeof notifyPosSaleActivity;
   capture: typeof notifyCustomerCapture;
+  government: typeof recordGovGrant;
+  idPhotos: typeof queueSaleIdPhotos;
 }
 
 /**
@@ -63,12 +68,14 @@ export interface PosSaleBookkeepingDeps {
  * imports this file. Tests pass their own deps and never trigger the load.
  */
 async function liveDeps(): Promise<PosSaleBookkeepingDeps> {
-  const [stock, loyverse, vouchers, activity, capture] = await Promise.all([
+  const [stock, loyverse, vouchers, activity, capture, government, idPhotos] = await Promise.all([
     import("../pos-stock-notify"),
     import("../loyverse-notify"),
     import("../voucher-service"),
     import("../staff-activity/report-pos-sale"),
     import("../customers/capture"),
+    import("../gov-ledger/live-ledger"),
+    import("../gov-id-photos/live-photo-queue"),
   ]);
   return {
     stock: stock.notifyPosStockDepletion,
@@ -76,12 +83,39 @@ async function liveDeps(): Promise<PosSaleBookkeepingDeps> {
     vouchers: vouchers.burnPosRedemptions,
     activity: activity.notifyPosSaleActivity,
     capture: capture.notifyCustomerCapture,
+    government: government.recordGovGrant,
+    idPhotos: idPhotos.queueSaleIdPhotos,
   };
 }
 
 /** The short reference Loyverse shows for a counter sale. */
 export function loyverseOrderNumber(orderId: string): string {
   return orderId.slice(-6).toUpperCase();
+}
+
+/**
+ * The Senior/PWD record, then its optional ID photos: a photo is accepted only
+ * for a grant the sales book already holds, so it goes second.
+ */
+async function reportGovernment(
+  facts: PosSaleBookkeepingFacts,
+  deps: PosSaleBookkeepingDeps,
+): Promise<void> {
+  const { tenantId, orderId, backend, bookkeeping } = facts;
+  if (!bookkeeping.govRecord) return;
+  await deps.government(completeGovRecord(bookkeeping.govRecord, { tenantId, backend, orderId }));
+  const photos = bookkeeping.govIdPhotos ?? [];
+  if (photos.length === 0) return;
+  await deps.idPhotos(
+    photos.map((photo) => ({
+      tenantId,
+      backend: ledgerBackendOf(backend),
+      externalOrderId: orderId,
+      claimantRef: photo.claimantRef,
+      fileUri: photo.fileUri,
+      capturedAt: photo.capturedAt,
+    })),
+  );
 }
 
 export async function runPosSaleBookkeeping(
@@ -132,5 +166,8 @@ async function runReports(facts: PosSaleBookkeepingFacts, deps: PosSaleBookkeepi
       channel: bookkeeping.channel,
       items: bookkeeping.captureItems,
     }),
+    // The Senior/PWD sales book. Durable (saved on the device until the
+    // platform takes it), unlike the best-effort reports above.
+    reportGovernment(facts, deps),
   ]);
 }

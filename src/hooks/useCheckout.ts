@@ -42,6 +42,7 @@ import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
 import { computeOrderTotals } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { useCheckoutVouchers } from '@/hooks/checkout/use-checkout-vouchers'
+import { useCheckoutGovClaim } from '@/hooks/checkout/use-checkout-gov-claim'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE, STORE_PRELAUNCH_MESSAGE } from '@/lib/store-open-status'
 import { computeServiceCharge } from '@/lib/order-service-charge'
@@ -383,6 +384,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   const {
     voucherCodes, voucherPreview, effectiveDiscounts,
     isCheckingVoucher, applyVoucherCode, removeVoucherCode,
+    voucherLineNames, voucherOrderPicks, setVoucherUnitPicks,
   } = useCheckoutVouchers({
     tenantId: tenant?.id ?? null,
     items,
@@ -393,11 +395,25 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     isCheckoutComplete: checkoutComplete,
   })
 
+  // Senior / PWD: the government discount OR the vouchers, whichever saves
+  // more — never both. The server re-prices the claim at order time.
+  const voucherReduction = effectiveDiscounts.reduce((sum, line) => sum + line.amount, 0)
+  const govClaimState = useCheckoutGovClaim({
+    tenantId: tenant?.id ?? null,
+    items,
+    bundleItems,
+    validDeliveryFee,
+    serviceChargeAmount,
+    voucherReduction,
+    isCheckoutComplete: checkoutComplete,
+  })
+  const appliedDiscounts = govClaimState.govLines ?? effectiveDiscounts
+
   const { grandTotal } = computeOrderTotals({
     subtotal: total,
     deliveryFee: validDeliveryFee,
     serviceCharge: serviceChargeAmount,
-    discounts: effectiveDiscounts,
+    discounts: appliedDiscounts,
   })
 
   // Per-order-type minimum. Measured against the ITEM subtotal, never the grand
@@ -860,7 +876,12 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
           // Codes, not amounts. The server recomputes the discount from these.
           [...voucherCodes],
           clientOrderId,
-          quote.quoteSignature
+          quote.quoteSignature,
+          // Who is claiming Senior/PWD — never an amount.
+          govClaimState.govClaim ?? undefined,
+          // Which item a voucher that discounts N items lands on — never an
+          // amount; the server re-validates it. Absent when nothing was chosen.
+          Object.keys(voucherOrderPicks).length > 0 ? voucherOrderPicks : undefined
         )
         saveResult = attemptResult
         return { success: attemptResult.success, error: attemptResult.error }
@@ -929,7 +950,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         serviceChargeAmount,
         scheduledForLabel,
         deliveryFee: validDeliveryFee,
-        discounts: effectiveDiscounts,
+        discounts: appliedDiscounts,
       })
 
       // ── PHASE 2: Resolve Messenger URL (no request — read with the page) ──
@@ -964,7 +985,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         // and the summary already billed it as one.
         deliveryFee: validDeliveryFee,
         serviceChargeAmount,
-        discounts: effectiveDiscounts,
+        discounts: appliedDiscounts,
         customerData: normalizedCustomerData,
         orderTypeName: selectedOrderTypeData?.name ?? null,
         scheduledForLabel,
@@ -1056,6 +1077,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     isCheckingVoucher,
     applyVoucherCode,
     removeVoucherCode,
+    voucherLineNames,
+    setVoucherUnitPicks,
+    // Senior / PWD
+    ...govClaimState,
     // advance order / scheduling
     advanceConfig,
     scheduleMode,

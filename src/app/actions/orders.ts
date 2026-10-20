@@ -26,6 +26,7 @@ import {
   WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE,
 } from '@/lib/order-types/order-type-availability'
 import { priceOrderWithVouchers } from '@/lib/vouchers/order-pricing'
+import { sanitizeUnitPicks } from '@/lib/vouchers/unit-picks'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
 import { burnRedemptions, loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
 import { writeOrderDiscount } from '@/lib/order-discount'
@@ -44,6 +45,7 @@ import { resolveOrderSchedule } from '@/lib/checkout/order-schedule'
 import { runOrderFollowUps } from '@/lib/checkout/order-follow-ups'
 import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
 import { computeServiceCharge } from '@/lib/order-service-charge'
+import { applyCheckoutGovernment } from '@/lib/gov-discount-checkout/apply-checkout-government'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
@@ -178,7 +180,20 @@ export async function createOrderAction(
    * delivery order must carry a quotation and is billed the SIGNED price;
    * without a valid signature it is refused. See delivery-quote-signature.ts.
    */
-  lalamoveQuoteSignature?: string
+  lalamoveQuoteSignature?: string,
+  /**
+   * A Senior Citizen / PWD claim: WHO is claiming (kind, name, ID number),
+   * never an amount. Priced here against the server's own lines; the ID is
+   * checked when the order is handed over. See gov-discount-checkout.
+   */
+  governmentClaim?: unknown,
+  /**
+   * Which of the order's lines (`line-<index>`) a voucher that discounts N
+   * items should land on, by code. Never an amount: it only moves a discount
+   * between eligible units, and the engine re-validates it against the
+   * server-priced lines (an invalid pick falls back to the cheapest units).
+   */
+  voucherUnitPicks?: unknown
 ) {
   // Declared OUTSIDE the try so the catch below can reach them. Presell stock
   // is claimed mid-flight, and a throw after that point used to walk past every
@@ -193,6 +208,12 @@ export async function createOrderAction(
     if (!tenantId || typeof tenantId !== 'string') {
       return { success: false, refused: true, error: 'Invalid tenant ID' }
     }
+
+    // A Senior/PWD claim is 20% + VAT off for anyone who types an ID, with no
+    // session: orders carrying one are limited per client IP (fail open).
+    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
+    const claimRefusal = await govClaimLimitRefusal(tenantId, governmentClaim)
+    if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
 
     // ── Boundary validation (this is a public server action) ──
     // Shape only: a price that passes is still just a claim, floored below.
@@ -581,7 +602,7 @@ export async function createOrderAction(
       customerData: effectiveCustomerData,
     })
 
-    const pricing = await priceOrderWithVouchers({
+    const voucherPricing = await priceOrderWithVouchers({
       tenantId,
       items,
       deliveryFee: effectiveDeliveryFee,
@@ -593,7 +614,22 @@ export async function createOrderAction(
       categoryByMenuItemId,
       outletId: resolvedOutlet?.id ?? null,
       customerKey,
+      unitPicks: sanitizeUnitPicks(voucherUnitPicks),
     })
+
+    // ---- Senior / PWD ----------------------------------------------------
+    // The government discount OR the vouchers, whichever saves more — never
+    // both (RA 9994 §4). Unpriceable claims fall back to the vouchers.
+    const checkoutGovernment = await applyCheckoutGovernment({
+      db: supabaseAdmin,
+      tenantId,
+      claim: governmentClaim,
+      items,
+      serviceCharge,
+      deliveryFee: effectiveDeliveryFee ?? 0,
+      voucherPricing,
+    })
+    const pricing = checkoutGovernment.pricing
 
     // The breakdown rides in customerData so it reaches Convex tenants too,
     // whose schema is deployed per tenant and would not have a new column.
@@ -607,6 +643,8 @@ export async function createOrderAction(
 
     /** Burns the uses once an order row exists. Never before. */
     const burnFor = async (orderId: string) => {
+      // The Senior/PWD sales book, written as the order is (any backend).
+      await checkoutGovernment.recordFor(orderId, resolveOrderBackend(tenantConfig))
       const outcome = await burnRedemptions(supabaseAdmin, {
         tenantId,
         orderId,

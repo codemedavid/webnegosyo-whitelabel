@@ -374,6 +374,21 @@ export default function VoucherEditorScreen() {
                 warning={warningFor("maxDiscountAmount")}
               />
             ) : null}
+            {isFreeDelivery ? null : (
+              <LabeledInput
+                label="Only discount this many items"
+                hint={
+                  form.discountType === "fixed"
+                    ? "Optional. The amount comes off each of these items. 1 = one fries of five. The cheapest get it unless the cashier picks."
+                    : "Optional. 1 = one fries of five. The cheapest get it unless the cashier picks."
+                }
+                value={form.maxDiscountedUnits}
+                onChangeText={(maxDiscountedUnits) => update({ maxDiscountedUnits })}
+                placeholder="Every item"
+                keyboardType={NUMERIC}
+                error={errorFor("maxDiscountedUnits")}
+              />
+            )}
           </FormSection>
 
           <FormSection title="Code" hint="What customers type at checkout or tell your cashier.">

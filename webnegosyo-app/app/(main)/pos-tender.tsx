@@ -48,6 +48,7 @@ import { burnPosRedemptions } from "../../lib/voucher-service";
 import { placeCounterSale } from "../../lib/offline/place-sale";
 import { newLocalOrderId } from "../../lib/offline/local-id";
 import { runPosSaleBookkeeping } from "../../lib/offline/pos-sale-bookkeeping";
+import { completeGovRecord, ledgerBackendOf } from "../../lib/gov-ledger/record-request";
 import { keepOwedStock } from "../../lib/offline/owed-stock";
 import { isOffline } from "../../lib/offline/connectivity";
 import { isNetworkFailure } from "../../lib/offline/network-error";
@@ -83,12 +84,14 @@ import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
 import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
+import { TenderGovApproval, useTenderGovApproval } from "../../components/pos/gov-discount/TenderGovApproval";
 import { Button } from "../../components/Button";
 import { AskManagerRefund } from "../../components/approvals/AskManagerRefund";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
 import { printPosKitchenChit, readPosKitchenPrintDeps } from "../../lib/pos-kitchen-print";
+import { useGovIdPhotoStore } from "../../stores/gov-id-photo-store";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updatePaymentStatusRef =
@@ -218,7 +221,9 @@ export default function PosTenderScreen() {
   // price here after a voucher was applied on the register.
   // Editing a placed order: `edit` is what it is now worth, and what still has
   // to move. Every part of that judgement lives in `pos-edit-mode.ts`.
-  const { totals, discountLines: shownDiscountLines, edit } = usePosSaleTotals();
+  const { totals, discountLines: shownDiscountLines, edit, discount: saleDiscount } = usePosSaleTotals();
+  // A large Senior/PWD discount waits for a manager's PIN (or an offline skip).
+  const govApproval = useTenderGovApproval(saleDiscount);
 
   // The storefront's checkout questions for this order type. Optional at the
   // counter: a failed read just means none are shown.
@@ -323,7 +328,9 @@ export default function PosTenderScreen() {
   });
   const blockedReason = refundRefusedAfterSave
     ? REFUND_NEEDS_APPROVAL_MESSAGE
-    : paymentBlockedReason ?? (phoneProblem ? "Fix the phone number or clear it" : undefined);
+    : paymentBlockedReason ??
+      (phoneProblem ? "Fix the phone number or clear it" : undefined) ??
+      (govApproval.isPending ? "A manager must approve the Senior/PWD discount" : undefined);
 
   /**
    * Save an edited order and settle the difference.
@@ -402,31 +409,13 @@ export default function PosTenderScreen() {
           : {}),
       });
 
-      // An edit that swapped one item for another of the same price is complete
-      // the moment it saves; writing a zero-amount ledger row would be noise.
-      if (edit.intent !== "settled") {
-        await recordPayment({
-          orderId: editContext.orderId,
-          kind: edit.intent === "refund" ? "refund" : "charge",
-          // Unsigned — `kind` carries the direction. A signed refund amount
-          // would double-negate and credit the customer twice.
-          amount: Math.abs(edit.balance),
-          paymentMethodId: method?.id,
-          paymentMethodName: method?.name,
-          reference: reference.trim() || undefined,
-          proofUrl: proof?.url,
-          recordedBy: userId ?? undefined,
-          outletId: outletId ?? undefined,
-        });
-      }
-
       // Move only the ingredients the edit is responsible for. The original
       // sale already spent the order's stock, so this is the difference in
       // both directions — an edit can add a latte and drop a bun at once.
       //
       // Claimed against the revision this save just wrote, so a retry is a
       // no-op while the NEXT edit still moves stock. Never throws: the bill is
-      // already rewritten and the money settled by this point.
+      // already rewritten by this point.
       if (tenantId) {
         const movement = posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems));
         const revision = editContext.expectedRevisionNumber + 1;
@@ -444,7 +433,7 @@ export default function PosTenderScreen() {
       // Burn the codes THIS edit added. The order's own codes were burned when
       // it was placed; burning them again would spend a second redemption from
       // the customer's allowance on every subsequent edit. Never throws — the
-      // bill is already rewritten and the money settled by this point.
+      // bill is already rewritten by this point.
       if (tenantId) {
         await burnPosRedemptions(
           tenantId,
@@ -455,6 +444,56 @@ export default function PosTenderScreen() {
           ),
           outletId,
         );
+      }
+
+      // The sales book follows the edit: a re-priced Senior/PWD discount is
+      // recorded under the new revision and the old grant reversed (or only
+      // reversed, when the edit removed it). Saved on the device until sent.
+      const govDraft = usePosCartStore
+        .getState()
+        .governmentLedgerDraft({ occurredAt: new Date(), orderTotal: saved.newTotal });
+      if (tenantId && govDraft) {
+        const { recordGovGrant } = await import("../../lib/gov-ledger/live-ledger");
+        const backend = resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl });
+        await recordGovGrant(completeGovRecord(govDraft, { tenantId, backend, orderId: editContext.orderId }));
+        // A claimant added (or re-photographed) during the edit sends their photo too.
+        const photos = govDraft.government
+          ? useGovIdPhotoStore.getState().photosFor(govDraft.government.claimants.map((claimant) => claimant.id))
+          : [];
+        if (photos.length > 0) {
+          const { queueSaleIdPhotos } = await import("../../lib/gov-id-photos/live-photo-queue");
+          await queueSaleIdPhotos(
+            photos.map((photo) => ({
+              ...photo,
+              tenantId,
+              backend: ledgerBackendOf(backend),
+              externalOrderId: editContext.orderId,
+            })),
+          );
+        }
+      }
+      useGovIdPhotoStore.getState().clear();
+
+      // The money moves LAST: the stock, the codes and the sales book above all
+      // follow the revision that just landed, so a refund refused at this point
+      // (handled below) leaves only the money outstanding, never a sales book
+      // or a stock count that disagrees with the saved bill.
+      // An edit that swapped one item for another of the same price is complete
+      // the moment it saves; writing a zero-amount ledger row would be noise.
+      if (edit.intent !== "settled") {
+        await recordPayment({
+          orderId: editContext.orderId,
+          kind: edit.intent === "refund" ? "refund" : "charge",
+          // Unsigned — `kind` carries the direction. A signed refund amount
+          // would double-negate and credit the customer twice.
+          amount: Math.abs(edit.balance),
+          paymentMethodId: method?.id,
+          paymentMethodName: method?.name,
+          reference: reference.trim() || undefined,
+          proofUrl: proof?.url,
+          recordedBy: userId ?? undefined,
+          outletId: outletId ?? undefined,
+        });
       }
 
       endEdit();
@@ -491,6 +530,8 @@ export default function PosTenderScreen() {
     reviseOrder,
     recordPayment,
     endEdit,
+    orderBackend,
+    convexUrl,
   ]);
 
   const handleComplete = useCallback(async () => {
@@ -550,7 +591,11 @@ export default function PosTenderScreen() {
       // reflected in what the customer is actually charged.
       const discountLines = usePosCartStore.getState().sessionDiscount().lines;
 
+      // The Senior/PWD record travels with the order (receipt, reports, edits).
+      const government = usePosCartStore.getState().governmentRecord();
+
       const args = buildPosOrder({
+        government,
         cart: lines,
         tender,
         clientOrderId,
@@ -603,6 +648,9 @@ export default function PosTenderScreen() {
           }
         : {};
       const orderArgs = { ...rest, ...serviceChargeArg(builtCharge), ...platformFields };
+      const govRecord = usePosCartStore
+        .getState()
+        .governmentLedgerDraft({ occurredAt: new Date(createdAt), orderTotal: args.total });
       // Everything the sale owes the platform after the row exists, computed
       // NOW from the cart, so a sale written behind reports exactly what a
       // live one would (lib/offline/pos-sale-bookkeeping.ts).
@@ -617,6 +665,12 @@ export default function PosTenderScreen() {
         customerData: args.customerData,
         channel: args.orderType ?? null,
         captureItems: lines.map((line) => ({ name: line.name, quantity: line.quantity })),
+        // The Senior/PWD sales-book record; ids are added when it is written.
+        govRecord,
+        // Optional ID photos of this sale's claimants, uploaded after the record.
+        govIdPhotos: govRecord?.government
+          ? useGovIdPhotoStore.getState().photosFor(govRecord.government.claimants.map((claimant) => claimant.id))
+          : [],
       };
 
       // The platform register does not wait on the server: the id is minted
@@ -677,6 +731,8 @@ export default function PosTenderScreen() {
         canOpenOrder: !isSavedOffline,
       });
       reset();
+      // The sale (and its upload queue) owns its ID photos now.
+      useGovIdPhotoStore.getState().clear();
       // navigate, not replace: replacing into a sibling tab renames the tab
       // navigator's state key and remounts it mid-transition, which crashes with
       // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
@@ -793,8 +849,8 @@ export default function PosTenderScreen() {
         */}
         {!edit && shownDiscountLines.length > 0 && (
           <View style={styles.discounts} accessibilityLabel="Discounts applied">
-            {shownDiscountLines.map((line) => (
-              <View key={line.code ?? line.label} style={styles.discountRow}>
+            {shownDiscountLines.map((line, index) => (
+              <View key={`${line.code ?? line.label}-${index}`} style={styles.discountRow}>
                 <Text style={styles.discountLabel} numberOfLines={1}>
                   {line.code && line.code !== line.label ? `${line.label} (${line.code})` : line.label}
                 </Text>
@@ -1077,6 +1133,8 @@ export default function PosTenderScreen() {
         </>
         )}
       </ScrollView>
+
+      <TenderGovApproval approval={govApproval} />
 
       <View style={styles.footer}>
         {isCompleting ? (

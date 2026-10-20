@@ -66,6 +66,10 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
     label: "Redeem Rewards",
     description: "Apply a verified customer reward at the register, without seeing customer history",
   },
+  discount_review: {
+    label: "Approve & Review Discounts",
+    description: "Approve Senior/PWD discounts with a PIN and review every one — for managers",
+  },
   kitchen: {
     label: "Kitchen Display",
     description: "The kitchen board — see tickets and bump orders",

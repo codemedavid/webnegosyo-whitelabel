@@ -18,12 +18,40 @@
  * never the source of the amount charged. Nothing may subtract it again.
  */
 
+import { readStoredGovDiscount, type StoredGovDiscount } from "./gov-discount/payload";
+import type { DiscountLineItem } from "./order-totals";
+
 /** One deducted line as stored. */
 export interface StoredDiscountLine {
   label: string;
   amount: number;
   voucherId?: string;
   code?: string;
+  /** A Senior/PWD (government-mandated) line; its detail is in `government`. */
+  isGovernment?: boolean;
+  /**
+   * The dishes a line-specific discount came off (`line-<index>` + units) — a
+   * unit-limited voucher or a cashier's item discount. Read it through
+   * `discountLineItems`, which shape-checks.
+   */
+  items?: readonly DiscountLineItem[];
+}
+
+/**
+ * The dishes a stored discount line came off, or [] for an order-wide line.
+ * Never throws: the blob is untyped at the database edge.
+ */
+export function discountLineItems(line: unknown): DiscountLineItem[] {
+  const items = (line as { items?: unknown } | null)?.items;
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item: unknown) => {
+    const candidate = item as Partial<DiscountLineItem> | null;
+    if (!candidate || typeof candidate.lineKey !== "string") return [];
+    const units = Number(candidate.units);
+    const amount = Number(candidate.amount);
+    if (!Number.isInteger(units) || units < 1 || !Number.isFinite(amount) || amount <= 0) return [];
+    return [{ lineKey: candidate.lineKey, units, amount }];
+  });
 }
 
 export interface OrderDiscountPayload {
@@ -34,6 +62,11 @@ export interface OrderDiscountPayload {
   lines: StoredDiscountLine[];
   /** Per cart line, so a partial refund can be computed later. */
   allocationsByLine: Record<string, number>;
+  /**
+   * Senior/PWD (and other government) discounts — see the web copy. Its money
+   * is ALSO in `lines`, so older readers still add up.
+   */
+  government?: StoredGovDiscount;
 }
 
 /** Shape-checks an untyped blob before trusting it. */
@@ -42,6 +75,7 @@ function asPayload(value: unknown): OrderDiscountPayload | null {
 
   const candidate = value as Partial<OrderDiscountPayload>;
   if (typeof candidate.total !== "number" || !Number.isFinite(candidate.total)) return null;
+  const government = readStoredGovDiscount(candidate.government);
 
   return {
     total: candidate.total,
@@ -52,6 +86,7 @@ function asPayload(value: unknown): OrderDiscountPayload | null {
       typeof candidate.allocationsByLine === "object" && candidate.allocationsByLine !== null
         ? candidate.allocationsByLine
         : {},
+    ...(government ? { government } : {}),
   };
 }
 

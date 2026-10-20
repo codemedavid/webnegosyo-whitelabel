@@ -53,6 +53,112 @@ describe("bill units", () => {
     expect(tea.totalCents + bun.totalCents).toBe(9000);
   });
 
+  it("puts a one-item discount on that dish's own piece, not across the table", () => {
+    // 5 fries (₱560) + a burger (₱150); "50% off ONE fries" (₱56) and a
+    // cashier's ₱20 off the burger. The guest who takes the discounted fries
+    // pays ₱56; the other fries stay ₱112; the burger ₱130.
+    const order = billOrder({
+      _id: "f",
+      total: 634,
+      customerData: {
+        discount: {
+          total: 76,
+          lines: [
+            { label: "FRIES50", amount: 56, code: "FRIES50", items: [{ lineKey: "line-0", units: 1, amount: 56 }] },
+            { label: "Discount — Cold", amount: 20, items: [{ lineKey: "line-1", units: 1, amount: 20 }] },
+          ],
+          allocationsByLine: { "line-0": 56, "line-1": 20 },
+        },
+      },
+      items: [
+        { orderId: "f", menuItemName: "Fries", quantity: 5, subtotal: 560 },
+        { orderId: "f", menuItemName: "Burger", quantity: 1, subtotal: 150 },
+      ],
+    });
+
+    const units = billUnits([order]);
+
+    expect(units.map((u) => u.totalCents)).toEqual([5600, 11200, 11200, 11200, 11200, 13000]);
+    expect(units[0].discountLines).toEqual([{ label: "FRIES50", cents: 5600 }]);
+    expect(units[1].discountLines).toEqual([]);
+    expect(sum(units.map((u) => u.totalCents))).toBe(63400);
+  });
+
+  it("puts two discounts on the same dish on different pieces", () => {
+    const order = billOrder({
+      _id: "g",
+      total: 336,
+      customerData: {
+        discount: {
+          total: 224,
+          lines: [
+            { label: "A", amount: 112, code: "A", items: [{ lineKey: "line-0", units: 1, amount: 112 }] },
+            { label: "Discount — B", amount: 112, items: [{ lineKey: "line-0", units: 1, amount: 112 }] },
+          ],
+        },
+      },
+      items: [{ orderId: "g", menuItemName: "Fries", quantity: 5, subtotal: 560 }],
+    });
+
+    expect(billUnits([order]).map((u) => u.totalCents)).toEqual([0, 0, 11200, 11200, 11200]);
+  });
+
+  it("puts a Senior/PWD discount on the claimant's own dish, not across the table", () => {
+    // A senior's ₱560 sisig at a VAT store (₱160 off) beside a companion's
+    // ₱200 tea. Whoever takes the sisig takes the discount.
+    const seniorTable = billOrder({
+      _id: "s",
+      total: 600,
+      customerData: {
+        discount: {
+          total: 160,
+          deliveryDiscount: 0,
+          lines: [
+            { label: "SC VAT exemption · J. Dela Cruz", amount: 60 },
+            { label: "SC 20% · J. Dela Cruz", amount: 100 },
+          ],
+          allocationsByLine: { "line-0": 160 },
+          government: {
+            version: 1,
+            vatStatus: "vat",
+            serviceChargeMode: "full",
+            diners: null,
+            vat: null,
+            claimants: [
+              {
+                id: "c1",
+                kind: "senior",
+                name: "Juan Dela Cruz",
+                idNumber: "12345",
+                allocation: { mode: "items", units: { "line-0": 1 } },
+                grossShare: 560,
+                vatExemptSales: 500,
+                vatRemoved: 60,
+                discount: 100,
+                netDue: 400,
+                serviceChargeShare: 0,
+                serviceChargeVatRemoved: 0,
+                reduction: 160,
+                lineReductions: { "line-0": 160 },
+              },
+            ],
+          },
+        },
+      },
+      items: [
+        { orderId: "s", menuItemName: "Sisig", quantity: 1, subtotal: 560 },
+        { orderId: "s", menuItemName: "Tea", quantity: 1, subtotal: 200 },
+      ],
+    });
+
+    const [sisig, tea] = billUnits([seniorTable]);
+
+    expect(sisig.totalCents).toBe(40000);
+    expect(sisig.discountLines).toEqual([{ label: "Senior/PWD discount", cents: 16000 }]);
+    expect(tea.totalCents).toBe(20000);
+    expect(tea.discountLines).toEqual([]);
+  });
+
   it("keeps an order with no lines payable as one unit of charges", () => {
     const feeOnly = billOrder({ _id: "f", total: 60, deliveryFee: 60 });
 

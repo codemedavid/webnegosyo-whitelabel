@@ -15,7 +15,7 @@
 import { computeOrderTotals, type OrderTotals } from '../order-totals'
 import { buildOrderDiscountPayload, type OrderDiscountPayload } from '../order-discount'
 import { resolveVouchers, type ResolvedVouchers, type VoucherLookup } from './resolve'
-import type { DiscountLine, VoucherChannel } from './types'
+import type { DiscountLine, UnitPicks, VoucherChannel } from './types'
 
 /** Just enough of an order item to discount it. */
 export interface PriceableItem {
@@ -41,6 +41,12 @@ export interface PriceOrderWithVouchersInput {
   categoryByMenuItemId?: Readonly<Record<string, string>>
   outletId?: string | null
   customerKey?: string | null
+  /**
+   * Which units a unit-limited voucher lands on (code → `line-<index>` →
+   * units), as the customer chose. Only moves a discount between eligible
+   * units; the engine re-validates it and falls back to the cheapest.
+   */
+  unitPicks?: Readonly<Record<string, UnitPicks>>
 }
 
 /** One use to burn once the order row exists. */
@@ -93,6 +99,7 @@ export async function priceOrderWithVouchers(
       channel: input.channel,
       now: input.now,
       outletId: input.outletId,
+      ...(input.unitPicks ? { unitPicks: input.unitPicks } : {}),
     },
   })
 

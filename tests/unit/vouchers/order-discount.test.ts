@@ -28,6 +28,7 @@ function makeApplication(overrides: Partial<VoucherApplication> = {}): VoucherAp
     discountTotal: 20,
     deliveryDiscount: 0,
     allocationsByLine: { 'line-1': 20 },
+    remaining: { byLine: {}, byUnit: {}, deliveryFee: 0 },
     ...overrides,
   }
 }

@@ -56,11 +56,12 @@ import type { ModifierCatalog } from "../../../lib/order-edit-cart";
 import { goTo } from "../../../lib/tab-navigation";
 import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
-import { orderSummaryRows } from "../../../lib/order-summary-rows";
+import { discountItemsText, orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
+import { GovDiscountCard } from "../../../components/order/GovDiscountCard";
 import { CancelReasonSheet, type CancelReasonChoice } from "../../../components/order/CancelReasonSheet";
 import { OrderHistoryCard } from "../../../components/order/OrderHistoryCard";
 import { OrderApprovalsPanel } from "../../../components/approvals/OrderApprovalsPanel";
@@ -960,6 +961,7 @@ export default function OrderDetailScreen() {
           serviceCharge: order.serviceCharge,
           discount: readOrderDiscount(order),
           total: order.total,
+          itemNames: (order.items ?? []).map((item) => item.menuItemName),
         }).map((row, index) => (
           <View
             key={`${row.kind}-${index}`}
@@ -973,6 +975,7 @@ export default function OrderDetailScreen() {
                 bill, both work from the code.
               */}
               {row.code ? <Text style={styles.summaryCode}>  {row.code}</Text> : null}
+              {row.items ? <Text style={styles.summaryCode}>  {discountItemsText(row.items)}</Text> : null}
             </Text>
             <Text
               style={[
@@ -985,6 +988,14 @@ export default function OrderDetailScreen() {
           </View>
         ))}
       </Card>
+
+      {/* Who the Senior/PWD discount above was for; silent on every other order. */}
+      <GovDiscountCard
+        discount={readOrderDiscount(order)}
+        // An online claim is only declared; the card asks for the card itself.
+        needsIdCheck={order.source !== "pos" && !["delivered", "cancelled"].includes(order.status)}
+        style={styles.section}
+      />
 
       {/* A fee without an address is a real case now — a POS delivery the
           rider already knows — and hiding the card made the fee invisible. */}

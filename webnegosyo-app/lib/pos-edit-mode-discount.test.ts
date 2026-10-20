@@ -150,3 +150,45 @@ describe("editModeTotals with a recorded discount", () => {
     expect(totals.intent).toBe("collect");
   });
 });
+
+describe("editModeTotals with a manual discount added during the edit", () => {
+  const cart: PosCartLine[] = [
+    {
+      key: "k1",
+      menuItemId: "m-latte",
+      menuItemName: "Latte",
+      basePrice: 200,
+      quantity: 1,
+      subtotal: 200,
+      selections: [],
+    } as unknown as PosCartLine,
+  ];
+  const manual = { label: "Discount — regular", amount: 30 };
+
+  it("stores the manual line it charged, so the receipt can name it", () => {
+    // The total always counted it; the stored lines used to drop it, so a
+    // reprint showed an anonymous "Discount" row and the reason was lost.
+    const { context } = enterEditMode(
+      { _id: "order-4", total: 200, items: [orderItem()] },
+      [],
+      EMPTY_CATALOG,
+    );
+
+    const totals = editModeTotals(cart, context, [manual]);
+
+    expect(totals.newTotal).toBe(170);
+    expect(totals.settledDiscount?.total).toBe(30);
+    expect(totals.settledDiscount?.lines).toEqual([manual]);
+  });
+
+  it("keeps the stored lines summing to the stored total beside a voucher", () => {
+    const { context } = enterEditMode(discountedOrder(), [], EMPTY_CATALOG);
+    const priced = withEditVouchers(context, [latteVoucher]);
+
+    const totals = editModeTotals(cart, priced, [manual]);
+    const lines = totals.settledDiscount?.lines ?? [];
+
+    expect(totals.settledDiscount?.total).toBe(50);
+    expect(lines.reduce((sum, line) => sum + line.amount, 0)).toBe(50);
+  });
+});

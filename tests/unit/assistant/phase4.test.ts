@@ -65,7 +65,7 @@ describe('propose_sms_campaign', () => {
 })
 
 describe('propose_voucher', () => {
-  const base = { code: 'save 10', name: 'Save ten', discount: { type: 'percent' as const, value: 10 }, minOrder: 300, maxDiscount: 100, items: null, startDate: null, endDate: null, usesPerCustomer: 1 }
+  const base = { code: 'save 10', name: 'Save ten', discount: { type: 'percent' as const, value: 10 }, minOrder: 300, maxDiscount: 100, items: null, startDate: null, endDate: null, usesPerCustomer: 1, maxUnits: null }
 
   test('normalises the code and warns when it works immediately', async () => {
     const { proposeVoucherTool } = await import('@/lib/assistant/tools/propose/voucher')
@@ -82,6 +82,17 @@ describe('propose_voucher', () => {
 
     expect(result.facts).toMatchObject({ proposed: false })
     expect(mockCreatePending).not.toHaveBeenCalled()
+  })
+
+  test('limits the discount to N items and says so on the card', async () => {
+    const { proposeVoucherTool } = await import('@/lib/assistant/tools/propose/voucher')
+
+    const result = await proposeVoucherTool.run(ctx() as never, { ...base, maxUnits: 1 })
+
+    expect(mockCreatePending).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: { draft: expect.objectContaining({ maxDiscountedUnits: 1 }) } }),
+    )
+    expect(JSON.stringify(result.card)).toContain('1 item per order')
   })
 
   test('refuses item refs it never issued', async () => {

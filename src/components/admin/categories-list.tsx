@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import { createCategoryAction, updateCategoryAction, deleteCategoryAction, reorderCategoriesAction } from '@/app/actions/categories'
 import type { Category, Addon } from '@/types/database'
@@ -56,6 +57,7 @@ interface CategoryFormData {
   is_active: boolean
   display_layout: 'grid' | 'horizontal_scroll' | 'horizontal_mobile_only' | 'horizontal_desktop_only'
   default_addons: Addon[]
+  gov_discount_eligible: boolean
 }
 
 interface CategoriesListProps {
@@ -107,6 +109,9 @@ function SortableCategoryCard({
             <CategoryIcon icon={category.icon} color={category.icon_color} size="md" />
             <h3 className="font-semibold">{category.name}</h3>
             {!category.is_active && <Badge variant="secondary">Inactive</Badge>}
+            {category.gov_discount_eligible === false && (
+              <Badge variant="outline" className="text-xs">No Senior/PWD</Badge>
+            )}
             {category.display_layout && category.display_layout !== 'grid' && (
               <Badge variant="outline" className="text-xs">
                 {category.display_layout === 'horizontal_scroll' ? 'Horizontal' :
@@ -163,6 +168,7 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
     is_active: true,
     display_layout: 'grid',
     default_addons: [],
+    gov_discount_eligible: true,
   })
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
 
@@ -211,6 +217,7 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
       is_active: true,
       display_layout: 'grid',
       default_addons: [],
+      gov_discount_eligible: true,
     })
     setIsDialogOpen(true)
   }
@@ -225,6 +232,7 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
       is_active: category.is_active,
       display_layout: category.display_layout || 'grid',
       default_addons: category.default_addons || [],
+      gov_discount_eligible: category.gov_discount_eligible !== false,
     })
     setIsDialogOpen(true)
   }
@@ -246,6 +254,7 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
       display_layout: formData.display_layout,
       order: editingCategory?.order || categories.length,
       default_addons: formData.default_addons,
+      gov_discount_eligible: formData.gov_discount_eligible,
     }
 
     let result: Awaited<ReturnType<typeof createCategoryAction>>
@@ -448,6 +457,21 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
                 className="h-4 w-4"
               />
               <Label htmlFor="is_active">Active</Label>
+            </div>
+
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+              <div className="min-w-0">
+                <Label htmlFor="category_gov_discount_eligible">Senior/PWD discount applies</Label>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Turn off for items the law does not cover, like retail merchandise or gift cards.
+                  Off here means off for every item in this category.
+                </p>
+              </div>
+              <Switch
+                id="category_gov_discount_eligible"
+                checked={formData.gov_discount_eligible}
+                onCheckedChange={(checked) => setFormData({ ...formData, gov_discount_eligible: checked })}
+              />
             </div>
 
             {/* Default Add-ons */}

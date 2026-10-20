@@ -175,7 +175,7 @@ const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'update_menu_item',
         description:
-            "Update fields of an EXISTING menu item (partial — only the fields you pass are changed; omit the rest). Editable: name, description, price, discounted_price, category_id, variation_types (grouped size/spice etc.), variations (legacy flat), addons, is_available, is_featured, badge_text, show_in_checkout_upsell, order. Envelope: { tenantId, itemId, ...fields }. Use list_menu_items first to resolve itemId by name. For the item's image use upload_menu_item_image (bytes) or update_menu_item_image (hosted URL).",
+            "Update fields of an EXISTING menu item (partial — only the fields you pass are changed; omit the rest). Editable: name, description, price, discounted_price, category_id, variation_types (grouped size/spice etc.), variations (legacy flat), addons, is_available, is_featured, badge_text, show_in_checkout_upsell, gov_discount_eligible (false = the Senior/PWD discount does not cover it, e.g. retail merchandise), order. Envelope: { tenantId, itemId, ...fields }. Use list_menu_items first to resolve itemId by name. For the item's image use upload_menu_item_image (bytes) or update_menu_item_image (hosted URL).",
         input: z
             .object({
                 tenantId: UUID,
@@ -192,6 +192,8 @@ const ops: ProvisioningOp<unknown>[] = [
                 is_featured: z.boolean().optional(),
                 badge_text: z.string().nullable().optional(),
                 show_in_checkout_upsell: z.boolean().optional(),
+                gov_discount_eligible: z.boolean().optional()
+                    .describe('False excludes the item from Senior/PWD discounts (e.g. retail merchandise, gift cards)'),
                 order: z.number().int().optional(),
             })
             .passthrough(),
@@ -859,7 +861,7 @@ const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'update_category',
         description:
-            'Update an EXISTING category. Partial: only the fields you pass change. Envelope: { tenantId, categoryId, name?, description?, icon?, icon_color?, is_active?, display_layout?, card_template? }. icon is "lucide:<name>" from list_category_icons (or one emoji); pass "" to clear. card_template gives this category its own card design (ids and looks in get_branding designCatalog); null inherits the store template. Resolve categoryId via list_categories.',
+            'Update an EXISTING category. Partial: only the fields you pass change. Envelope: { tenantId, categoryId, name?, description?, icon?, icon_color?, is_active?, display_layout?, card_template?, gov_discount_eligible? }. gov_discount_eligible false excludes every item in the category from Senior/PWD discounts. icon is "lucide:<name>" from list_category_icons (or one emoji); pass "" to clear. card_template gives this category its own card design (ids and looks in get_branding designCatalog); null inherits the store template. Resolve categoryId via list_categories.',
         input: z.object({
             tenantId: UUID,
             categoryId: UUID,
@@ -871,6 +873,8 @@ const ops: ProvisioningOp<unknown>[] = [
             display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).optional(),
             card_template: z.enum(CARD_TEMPLATE_IDS as [string, ...string[]]).nullable().optional()
                 .describe('A card template id from get_branding designCatalog; null inherits the store template'),
+            gov_discount_eligible: z.boolean().optional()
+                .describe('False excludes every item in this category from Senior/PWD discounts'),
         }),
         execute: (ctx, input) => {
             const record = input as Record<string, unknown>

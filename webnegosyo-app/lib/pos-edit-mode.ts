@@ -33,6 +33,14 @@ import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
 import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { repriceEditDiscount } from "./pos-edit-discount";
+import { orderLineAllocations } from "./pos-gov-discount";
+import {
+  lineItemAllocations,
+  mergeAllocations,
+  toCartLineDiscounts,
+  toOrderLineDiscounts,
+} from "./pos-line-discounts";
+import type { StoredGovDiscount } from "./gov-discount";
 import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
 import type { OrderBackend } from "./order-backend";
@@ -141,8 +149,19 @@ export interface OrderEditContext {
    * edited cart without being deducted twice. Null for an order with no
    * recorded breakdown — there the residue is the only evidence a discount
    * happened, so it stays inside `carriedCharges` as before.
+   *
+   * A one-dish discount names its dish by CART key here (`cartKeyedDiscount`),
+   * not by the order position it was stored under.
    */
   storedDiscount: OrderDiscountPayload | null;
+  /**
+   * The cart key each of the order's lines loaded as, by order position
+   * (null for a line that did not load). Loading merges identical lines and
+   * skips empty ones, so cart position i is not order line i; anything stored
+   * by position (`line-<index>`: one-dish discounts, Senior/PWD claims) is
+   * mapped to the edit's cart through this.
+   */
+  orderLineCartKeys: (string | null)[];
   /**
    * The vouchers behind that discount, fetched by code.
    *
@@ -306,6 +325,34 @@ export function enterAppendMode(
   return loadOrder(order, payments, catalog, "append");
 }
 
+/**
+ * The stored discount with each dish named by its CART key instead of its
+ * order position. Positions shift when an edit removes an earlier dish; cart
+ * keys do not, so a one-dish discount follows its dish through the edit and
+ * `editModeTotals` writes it back under the dish's new position. Each order
+ * line's key is found on its own, because loading merges identical lines and
+ * skips empty ones, so cart position i is not order line i.
+ */
+function cartKeyedDiscount(
+  stored: OrderDiscountPayload | null,
+  cartKeys: readonly (string | null)[],
+): OrderDiscountPayload | null {
+  if (!stored || !stored.lines.some((line) => line.items && line.items.length > 0)) return stored;
+  return { ...stored, lines: toCartLineDiscounts(stored.lines, cartKeys) };
+}
+
+/**
+ * The cart key each order line loads as, by order position — null for a line
+ * loading skips. Each line is loaded on its own because loading the whole
+ * order merges identical lines, which is exactly the shift this undoes.
+ */
+export function orderLineCartKeys(
+  items: readonly HydratableOrderItem[],
+  catalog: ModifierCatalog,
+): (string | null)[] {
+  return items.map((item) => hydratePosCart([item], catalog).lines[0]?.key ?? null);
+}
+
 function loadOrder(
   order: EditableOrderLike,
   payments: readonly OrderPayment[],
@@ -322,7 +369,8 @@ function loadOrder(
     Number.isFinite(order.serviceCharge) && (order.serviceCharge ?? 0) > 0
       ? round2(order.serviceCharge as number)
       : 0;
-  const storedDiscount = readOrderDiscount(order);
+  const cartKeys = orderLineCartKeys(order.items, catalog);
+  const storedDiscount = cartKeyedDiscount(readOrderDiscount(order), cartKeys);
 
   return {
     // Appending opens on an empty register; the order's lines wait in the
@@ -350,6 +398,7 @@ function loadOrder(
       serviceCharge,
       payments: [...payments],
       storedDiscount,
+      orderLineCartKeys: cartKeys,
       // Fetched by the screen once the order is open; see `withEditVouchers`.
       discountVouchers: null,
     },
@@ -482,16 +531,31 @@ function addedDiscountsOf(
   added: readonly OrderDiscountLine[],
   carried: readonly OrderDiscountLine[],
 ): number {
+  return round2(
+    countedAddedLines(added, carried).reduce((sum, line) => sum + line.amount, 0),
+  );
+}
+
+/**
+ * The lines this edit adds that actually come off the bill: coded ones not
+ * already on it, and manual ones. The ONE filter behind both the amount
+ * charged and the lines stored, so the stored breakdown always sums to the
+ * stored total — a manual line counted in one and missing from the other
+ * reprinted as an anonymous "Discount" row with its reason gone.
+ */
+function countedAddedLines(
+  added: readonly OrderDiscountLine[],
+  carried: readonly OrderDiscountLine[],
+): OrderDiscountLine[] {
   const alreadyOn = new Set(
     carried.map((line) => line.code).filter((code): code is string => code != null),
   );
 
-  return round2(
-    added.reduce((sum, line) => {
-      if (!Number.isFinite(line.amount) || line.amount <= 0) return sum;
-      if (line.code != null && alreadyOn.has(line.code)) return sum;
-      return sum + line.amount;
-    }, 0),
+  return added.filter(
+    (line) =>
+      Number.isFinite(line.amount) &&
+      line.amount > 0 &&
+      (line.code == null || !alreadyOn.has(line.code)),
   );
 }
 
@@ -570,23 +634,24 @@ export function withEditDeliveryFee(
  * The single place the carried fees are re-applied, so there is one answer to
  * "what does this order cost now" rather than one per screen.
  */
-export function editModeTotals(
-  registerCart: readonly PosCartLine[],
-  context: OrderEditContext,
-  addedDiscountLines: readonly OrderDiscountLine[] = [],
-): EditModeTotals {
-  // Everything below prices the ORDER, not the register. While appending those
-  // are different lists, and using the register's would bill the table for the
-  // second round while forgetting the first.
-  const cart = effectiveEditCart(registerCart, context);
-  const itemsTotal = itemsTotalOf(cart);
+/**
+ * The placed bill's discount, re-priced against the edited cart.
+ *
+ * A Senior/PWD discount is never carried as a fixed amount: the register's
+ * government session re-prices it and hands it in with `addedDiscountLines`.
+ * Carrying the placed lines as well would take it off twice. (A stored
+ * government block means every stored line is one — government and store
+ * discounts never combine.)
+ */
+const NO_CARRIED_DISCOUNT: { lines: readonly OrderDiscountLine[]; total: number } = { lines: [], total: 0 };
 
-  // Re-priced against the edited cart, per the owner's decision: remove the
-  // item a voucher qualified for and the discount goes with it. Until the
-  // lookup returns, `discountVouchers` is null and the bill as placed is
-  // carried — showing full price for a moment and then dropping would read as
-  // a price that changed itself.
-  const discount = repriceEditDiscount({
+function carriedEditDiscount(
+  context: OrderEditContext,
+  cart: readonly PosCartLine[],
+): { lines: readonly OrderDiscountLine[]; total: number } {
+  if (context.storedDiscount?.government) return { lines: [], total: 0 };
+
+  return repriceEditDiscount({
     stored: context.storedDiscount,
     vouchers: context.discountVouchers,
     cart,
@@ -599,6 +664,46 @@ export function editModeTotals(
     deliveryFee: context.deliveryFee,
     now: new Date(),
   });
+}
+
+/**
+ * The store discount (vouchers, cashier discounts) the edited order carries,
+ * re-priced against the edited cart — the store's side of the Senior/PWD
+ * "higher of the two" comparison (`sessionDiscount`'s `carriedOtherTotal`).
+ */
+export function carriedEditDiscountTotal(
+  registerCart: readonly PosCartLine[],
+  context: OrderEditContext,
+): number {
+  return carriedEditDiscount(context, effectiveEditCart(registerCart, context)).total;
+}
+
+export function editModeTotals(
+  registerCart: readonly PosCartLine[],
+  context: OrderEditContext,
+  addedDiscountLines: readonly OrderDiscountLine[] = [],
+  /**
+   * The Senior/PWD block the edit now carries (re-priced by the register's
+   * government session), or null when it has none. Its money arrives in
+   * `addedDiscountLines`; this is the record stored beside it.
+   */
+  government: StoredGovDiscount | null = null,
+): EditModeTotals {
+  // Everything below prices the ORDER, not the register. While appending those
+  // are different lists, and using the register's would bill the table for the
+  // second round while forgetting the first.
+  const cart = effectiveEditCart(registerCart, context);
+  const itemsTotal = itemsTotalOf(cart);
+
+  // Re-priced against the edited cart, per the owner's decision: remove the
+  // item a voucher qualified for and the discount goes with it. Until the
+  // lookup returns, `discountVouchers` is null and the bill as placed is
+  // carried — showing full price for a moment and then dropping would read as
+  // a price that changed itself.
+  // A Senior/PWD block here means it WON the comparison against the carried
+  // store discount (`sessionDiscount`'s `carriedOtherTotal`), so the carried
+  // one goes: the higher of the two, never both (RA 9994 §4).
+  const discount = government ? NO_CARRIED_DISCOUNT : carriedEditDiscount(context, cart);
 
   // A code the cashier applied during THIS edit, on top of whatever the order
   // already carried. Capped against the two together rather than separately:
@@ -622,12 +727,13 @@ export function editModeTotals(
 
   const settledLines = [
     ...discount.lines,
-    ...newDiscountLines(addedDiscountLines, discount.lines),
+    ...countedAddedLines(addedDiscountLines, discount.lines),
   ];
   const settledDiscount = settledDiscountOf(
-    settledLines,
+    toOrderLineDiscounts(settledLines, cart),
     discountTotal,
     context.storedDiscount,
+    government,
   );
   const newTotal = revisedOrderTotal(
     itemsTotal,
@@ -696,6 +802,7 @@ function settledDiscountOf(
   lines: readonly OrderDiscountLine[],
   total: number,
   stored: OrderDiscountPayload | null,
+  government: StoredGovDiscount | null,
 ): OrderDiscountPayload | null | undefined {
   if (lines.length === 0) return stored ? null : undefined;
 
@@ -709,8 +816,17 @@ function settledDiscountOf(
       amount: line.amount,
       ...(line.code != null ? { code: line.code } : {}),
       ...(line.voucherId != null ? { voucherId: line.voucherId } : {}),
+      ...(line.items && line.items.length > 0 ? { items: line.items.map((item) => ({ ...item })) } : {}),
     })),
-    // Per-line allocation is the checkout's; the register has no equivalent.
-    allocationsByLine: {},
+    // Tied to lines: a Senior/PWD discount (the claimant's own items) and every
+    // line-specific discount (unit-limited voucher, item discount), keyed by
+    // order position like a new sale's (`pos-order.ts`); without them the
+    // revision's order_items.discount_amount reads 0 and a split bill spreads
+    // the discount over the whole table.
+    allocationsByLine: mergeAllocations(
+      government ? orderLineAllocations(government) : {},
+      lineItemAllocations(lines),
+    ),
+    ...(government ? { government } : {}),
   };
 }

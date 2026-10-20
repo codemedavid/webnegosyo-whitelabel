@@ -20,6 +20,7 @@ import {
   PanelLeftOpen,
   Flag,
   GraduationCap,
+  IdCard,
   LineChart,
   Package,
   ArrowLeftRight,
@@ -372,6 +373,8 @@ export const adminSidebarItems: SidebarEntry[] = [
   { label: 'Loyalty', href: '/admin/loyalty', icon: Gift, section: 'Grow' },
   { label: 'Texts', href: '/admin/texts', icon: MessageSquareText, section: 'Grow' },
   { label: 'Vouchers', href: '/admin/vouchers', icon: Ticket, section: 'Grow' },
+  // The Senior/PWD sales book: its flags, its reviews and the BIR exports.
+  { label: 'Senior & PWD', href: '/admin/gov-discounts', icon: IdCard, section: 'Grow' },
   {
     label: 'Store Setup',
     icon: Store,

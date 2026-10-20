@@ -30,6 +30,8 @@ export interface VoucherForm {
   discountType: VoucherDiscountType;
   discountValue: string;
   maxDiscountAmount: string;
+  /** "Only discount this many items"; blank = every item. */
+  maxDiscountedUnits: string;
   minOrderAmount: string;
   scope: VoucherScope;
   targetIds: string[];
@@ -97,6 +99,7 @@ export function buildVoucherForm(voucher: Voucher | null): VoucherForm {
       discountType: "percent",
       discountValue: "",
       maxDiscountAmount: "",
+      maxDiscountedUnits: "",
       minOrderAmount: "",
       scope: "universal",
       targetIds: [],
@@ -115,6 +118,7 @@ export function buildVoucherForm(voucher: Voucher | null): VoucherForm {
     discountType: voucher.discountType,
     discountValue: voucher.discountType === "free_delivery" ? "" : numberText(voucher.discountValue),
     maxDiscountAmount: numberText(voucher.maxDiscountAmount),
+    maxDiscountedUnits: numberText(voucher.maxDiscountedUnits),
     // No minimum is stored as 0; showing "0" invites the merchant to wonder
     // whether they set one.
     minOrderAmount: voucher.minOrderAmount ? numberText(voucher.minOrderAmount) : "",
@@ -160,6 +164,7 @@ export function formToDraft(form: VoucherForm): VoucherDraft {
     discountType: form.discountType,
     discountValue,
     maxDiscountAmount: form.discountType === "percent" ? optionalAmount(form.maxDiscountAmount) : null,
+    maxDiscountedUnits: isFreeDelivery ? null : optionalAmount(form.maxDiscountedUnits),
     minOrderAmount: optionalAmount(form.minOrderAmount),
     scope,
     targetIds: scope === "universal" ? [] : [...form.targetIds],
@@ -195,6 +200,12 @@ function localIssues(form: VoucherForm, draft: VoucherDraft): VoucherIssue[] {
       isWhole: false,
       mustBePositive: "Leave blank for no cap, or enter more than zero.",
       applies: draft.discountType === "percent",
+    },
+    {
+      field: "maxDiscountedUnits",
+      isWhole: true,
+      mustBePositive: "Leave blank for every item, or enter 1 or more.",
+      applies: draft.discountType !== "free_delivery",
     },
     { field: "minOrderAmount", isWhole: false, mustBePositive: null, applies: true },
     {
@@ -237,6 +248,7 @@ export function formToPreview(form: VoucherForm, saved: Voucher | null): Voucher
     discountType: draft.discountType,
     discountValue: value,
     maxDiscountAmount: draft.maxDiscountAmount ?? null,
+    maxDiscountedUnits: draft.maxDiscountedUnits ?? null,
     minOrderAmount: draft.minOrderAmount ?? 0,
     scope: draft.scope,
     targetIds: draft.targetIds,

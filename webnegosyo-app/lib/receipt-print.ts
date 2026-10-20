@@ -4,6 +4,7 @@ import {
   resolveReceiptLayout,
   type ReceiptOrder,
   type ReceiptSegment,
+  type ReceiptTaxIdentity,
 } from "./receipt-layout";
 
 /**
@@ -16,8 +17,14 @@ export function buildReceiptText(
   order: ReceiptOrder,
   storeName: string,
   savedLayout: unknown,
+  /** The store's tax registration; absent prints the receipt as it always was. */
+  tax?: ReceiptTaxIdentity,
 ): string {
-  return renderReceipt(order, { storeName }, resolveReceiptLayout(savedLayout));
+  return renderReceipt(
+    order,
+    { storeName, ...(tax ? { tax } : {}) },
+    resolveReceiptLayout(savedLayout),
+  );
 }
 
 /**
@@ -33,6 +40,11 @@ export function buildReceiptSegments(
   logoUrl: string | null = null,
   /** Text columns of the paper — 32 on 58mm, 48 on 80mm. A layout's own width wins. */
   width?: number,
+  /**
+   * The store's tax registration (TIN header, VAT block, not-an-invoice
+   * notice). Absent for a store that never set up Tax & discounts.
+   */
+  tax?: ReceiptTaxIdentity,
 ): ReceiptSegment[] {
   return renderReceiptSegments(
     order,
@@ -41,6 +53,7 @@ export function buildReceiptSegments(
       ...(trackingUrl ? { trackingUrl } : {}),
       ...(logoUrl ? { logoUrl } : {}),
       ...(width !== undefined ? { width } : {}),
+      ...(tax ? { tax } : {}),
     },
     resolveReceiptLayout(savedLayout),
   );

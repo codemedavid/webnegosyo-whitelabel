@@ -4,7 +4,7 @@ import { formatDailyOrderNumber } from '@/lib/order-number'
 
 import dynamic from 'next/dynamic'
 import { format, formatDistance } from 'date-fns'
-import { orderSummaryRows } from '@/lib/order-summary-rows'
+import { discountItemsText, orderSummaryRows } from '@/lib/order-summary-rows'
 import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { readOrderDiscount } from '@/lib/order-discount'
 import { buildCustomerDetailRows } from '@/lib/customer-details'
@@ -41,6 +41,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatPrice } from '@/lib/cart-utils'
 import { OrderItemsDisplay } from '@/components/admin/order-items-display'
+import { GovDiscountSummary } from '@/components/admin/gov-discount-summary'
 import { OrderStatusManagement } from '@/components/admin/order-status-management'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { getOrderOutletLabel } from '@/lib/outlets/order-outlet-display'
@@ -122,6 +123,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
         order,
         context?.storeName ?? tenantSlug,
         context?.receiptLayout ?? null,
+        context?.tax ?? null,
       )
       if (!openReceiptPrintWindow(segments)) {
         toast.error('Allow pop-ups to print the receipt')
@@ -304,6 +306,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                       serviceCharge: Number(order.service_charge_amount) || 0,
                       discount: readOrderDiscount(order),
                       total: Number(order.total),
+                      itemNames: order.order_items.map((item) => item.menu_item_name),
                     }).map((row, index) =>
                       row.kind === 'total' ? (
                         <div key={`${row.kind}-${index}`}>
@@ -317,6 +320,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                         <div key={`${row.kind}-${index}`} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">
                             {row.kind === 'subtotal' ? `Subtotal (${itemsCount} items)` : row.label}
+                            {row.items && <span className="ml-1 text-xs">({discountItemsText(row.items)})</span>}
                           </span>
                           <span
                             className={
@@ -331,6 +335,9 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                         </div>
                       ),
                     )}
+                  </div>
+                  <div className="mt-4 empty:hidden">
+                    <GovDiscountSummary discount={readOrderDiscount(order)} />
                   </div>
                 </div>
               </TabsContent>

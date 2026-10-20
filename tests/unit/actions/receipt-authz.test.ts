@@ -38,5 +38,6 @@ it('allows staff with store_setup to publish a valid layout', async () => {
 })
 
 it('keeps receipt printing available to order staff', async () => {
-  expect(await getReceiptContext('tenant-a')).toEqual({ storeName: 'Store', receiptLayout: 'classic' })
+  // `tax` is the store's Senior/PWD + VAT receipt profile; this store has none.
+  expect(await getReceiptContext('tenant-a')).toEqual({ storeName: 'Store', receiptLayout: 'classic', tax: null })
 })

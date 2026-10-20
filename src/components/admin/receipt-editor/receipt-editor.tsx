@@ -35,6 +35,7 @@ import {
   RECEIPT_THEMES,
   renderReceiptBlocks,
   type ReceiptBlockKind,
+  type ReceiptTaxIdentity,
   type ReceiptTheme,
 } from '@/lib/receipt-layout'
 import { AddBlockPanel } from './add-block-panel'
@@ -51,6 +52,8 @@ interface ReceiptEditorProps {
   /** The tenant's logo URL — the `logo` block previews and prints with it. */
   logoUrl: string | null
   initialLayout: unknown
+  /** The store's tax identity, so the preview carries the TIN header and footer it will print. */
+  tax?: ReceiptTaxIdentity | null
 }
 
 /** Text columns per paper roll, as the app prints them (font A). */
@@ -273,7 +276,14 @@ function PublishStatus({ studio }: { studio: ReceiptStudio }) {
   return <span className="hidden text-[12px] font-semibold text-[#8B857B] sm:inline">All changes published</span>
 }
 
-export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initialLayout }: ReceiptEditorProps) {
+export function ReceiptEditor({
+  tenantId,
+  tenantSlug,
+  storeName,
+  logoUrl,
+  initialLayout,
+  tax = null,
+}: ReceiptEditorProps) {
   const studio = useReceiptStudio(tenantId, initialLayout)
   const [paper, setPaper] = useState<PaperWidth>(PAPER_WIDTHS[0])
   const [mobileView, setMobileView] = useState<'edit' | 'preview'>('edit')
@@ -286,6 +296,7 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initia
         width: paper.columns,
         trackingUrl: SAMPLE_TRACKING_URL,
         ...(logoUrl ? { logoUrl } : {}),
+        ...(tax ? { tax } : {}),
       },
       studio.layout,
     )
@@ -295,7 +306,7 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initia
       emptyHint: emptyHint(draft.block.kind, Boolean(logoUrl)),
       segments: rendered[index]?.segments ?? [],
     }))
-  }, [storeName, logoUrl, paper, studio.layout, studio.draft.drafts])
+  }, [storeName, logoUrl, tax, paper, studio.layout, studio.draft.drafts])
 
   const silentIds = useMemo(
     () => new Set(previewBlocks.filter((b) => b.segments.length === 0).map((b) => b.id)),

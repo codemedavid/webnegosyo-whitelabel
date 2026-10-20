@@ -2,8 +2,10 @@ import {
   renderReceipt,
   renderReceiptSegments,
   resolveReceiptLayout,
+  type ReceiptConfig,
   type ReceiptOrder,
   type ReceiptSegment,
+  type ReceiptTaxIdentity,
 } from '@/lib/receipt-layout'
 import { receiptSegmentsToHtml } from '@/lib/receipt-markup'
 import type { OrderWithItems } from '@/lib/orders-service'
@@ -47,15 +49,27 @@ export function mapSupabaseOrderToReceipt(order: OrderWithItems): ReceiptOrder {
   }
 }
 
+/**
+ * The engine's config for a web print. The store's tax identity adds the TIN
+ * header, the VAT block and the footer; absent, the receipt is unchanged.
+ */
+export function adminReceiptConfig(
+  storeName: string,
+  tax?: ReceiptTaxIdentity | null,
+): ReceiptConfig {
+  return { storeName, ...(tax ? { tax } : {}) }
+}
+
 /** Render the printable text for an admin order under the tenant's layout. */
 export function buildAdminReceiptText(
   order: OrderWithItems,
   storeName: string,
   savedLayout: unknown,
+  tax?: ReceiptTaxIdentity | null,
 ): string {
   return renderReceipt(
     mapSupabaseOrderToReceipt(order),
-    { storeName },
+    adminReceiptConfig(storeName, tax),
     resolveReceiptLayout(savedLayout),
   )
 }
@@ -65,10 +79,11 @@ export function buildAdminReceiptSegments(
   order: OrderWithItems,
   storeName: string,
   savedLayout: unknown,
+  tax?: ReceiptTaxIdentity | null,
 ): ReceiptSegment[] {
   return renderReceiptSegments(
     mapSupabaseOrderToReceipt(order),
-    { storeName },
+    adminReceiptConfig(storeName, tax),
     resolveReceiptLayout(savedLayout),
   )
 }

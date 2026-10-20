@@ -16,6 +16,8 @@ import { tenderPaymentMethodsKey } from "../query/use-tender-payment-methods";
 import { listRegisterPaymentMethods } from "../pos-catalog";
 import { OUTLETS_RESOURCE, fetchOutlets } from "../use-outlets";
 import { DINING_TABLES_RESOURCE, fetchDiningTables } from "../tables/tables-service";
+import { taxProfileKey } from "../query/use-tax-profile";
+import { fetchTaxProfile } from "../tax-profile-service";
 import { resourceKey } from "../backends/query-keys";
 import { POS_TILE_THUMB_PX, thumbUrl } from "../image-thumb";
 import type { OfflinePackPart, OfflinePackSummary } from "./offline-pack";
@@ -59,6 +61,14 @@ export function registerPackParts({
       label: "checkout questions",
       key: checkoutSetupKey(tenantId),
       fetch: () => fetchCheckoutSetup(tenantId),
+      isRequired: false,
+    },
+    {
+      // Senior/PWD pricing rules (VAT status, approval). Optional: without
+      // them the register asks the owner to finish setup before discounting.
+      label: "tax settings",
+      key: taxProfileKey(tenantId),
+      fetch: () => fetchTaxProfile(tenantId),
       isRequired: false,
     },
     {

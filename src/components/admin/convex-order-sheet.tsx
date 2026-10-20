@@ -22,7 +22,7 @@ import {
 import { useState } from "react";
 import { getReceiptContext } from "@/app/actions/receipt";
 import { renderReceiptSegments, resolveReceiptLayout, type ReceiptOrder } from "@/lib/receipt-layout";
-import { openReceiptPrintWindow } from "@/lib/receipt-web";
+import { adminReceiptConfig, openReceiptPrintWindow } from "@/lib/receipt-web";
 import {
   Sheet,
   SheetContent,
@@ -53,8 +53,9 @@ import { restoreOrderStockAction } from "@/app/actions/inventory";
 import { notifyConvexLifecycleSync } from "@/lib/customers/web-lifecycle-sync";
 import { visibleCustomerFields } from "@/lib/admin/order-customer-fields";
 import { releasePresellForCancelledConvexOrderAction } from "@/app/actions/presell";
-import { orderSummaryRows } from "@/lib/order-summary-rows";
+import { discountItemsText, orderSummaryRows } from "@/lib/order-summary-rows";
 import { readOrderDiscount } from "@/lib/order-discount";
+import { GovDiscountSummary } from "@/components/admin/gov-discount-summary";
 import { displayCustomerName } from '@/lib/order-display-name'
 import { ConvexLalamovePanel } from "@/components/admin/convex-lalamove-panel";
 import { shouldShowLalamoveControls } from "@/lib/lalamove-order-visibility";
@@ -168,7 +169,7 @@ export function ConvexOrderSheet({
       const context = await getReceiptContext(tenantId);
       const segments = renderReceiptSegments(
         order as unknown as ReceiptOrder,
-        { storeName: context?.storeName ?? "Store" },
+        adminReceiptConfig(context?.storeName ?? "Store", context?.tax),
         resolveReceiptLayout(context?.receiptLayout ?? null),
       );
       openReceiptPrintWindow(segments);
@@ -355,6 +356,7 @@ export function ConvexOrderSheet({
                   deliveryFee: order.deliveryFee,
                   discount: readOrderDiscount(order),
                   total: order.total,
+                  itemNames: (order.items ?? []).map((item: OrderItem) => item.menuItemName),
                 }).map((row, index) =>
                   row.kind === 'total' ? (
                     <div
@@ -369,7 +371,10 @@ export function ConvexOrderSheet({
                       key={`${row.kind}-${index}`}
                       className="flex items-center justify-between text-sm"
                     >
-                      <span className="text-muted-foreground">{row.label}</span>
+                      <span className="text-muted-foreground">
+                        {row.label}
+                        {row.items && <span className="ml-1 text-xs">({discountItemsText(row.items)})</span>}
+                      </span>
                       <span
                         className={
                           row.kind === 'discount'
@@ -383,6 +388,7 @@ export function ConvexOrderSheet({
                     </div>
                   ),
                 )}
+                <GovDiscountSummary discount={readOrderDiscount(order)} />
               </CardContent>
             </Card>
 

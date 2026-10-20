@@ -24,6 +24,7 @@ import { buildVoucherPreview } from '@/lib/vouchers/preview'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
 import { loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
 import { checkActionRateLimit } from '@/lib/action-rate-limit'
+import { sanitizeUnitPicks } from '@/lib/vouchers/unit-picks'
 import type { VoucherChannel, DiscountLine } from '@/lib/vouchers/types'
 import type { VoucherPreview } from '@/lib/vouchers/preview'
 
@@ -42,6 +43,8 @@ export interface ValidateVoucherInput {
   channel?: VoucherChannel
   outletId?: string | null
   customerKey?: string | null
+  /** Which of their lines a voucher that discounts N items should land on. */
+  unitPicks?: unknown
 }
 
 export interface ValidateVoucherResult {
@@ -175,6 +178,7 @@ export async function validateVoucherAction(
         // revive an expired voucher.
         now: new Date(),
         outletId: input.outletId ?? null,
+        unitPicks: sanitizeUnitPicks(input.unitPicks),
       },
     })
 
