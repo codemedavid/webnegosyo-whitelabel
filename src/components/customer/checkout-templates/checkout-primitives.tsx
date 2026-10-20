@@ -16,7 +16,6 @@
  */
 
 import { useId } from 'react'
-import dynamic from 'next/dynamic'
 import {
   UtensilsCrossed, Package, Truck, Check, CalendarClock, CreditCard, Bike, ShoppingBag, Store,
   type LucideIcon,
@@ -25,7 +24,6 @@ import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolvePlaceOrderLabel } from '@/lib/checkout/checkout-cta'
 import {
-  applyDeliveryAddressChange,
   phPhoneDigitCount,
   phPhoneDisplayDigits,
   toPhPhoneValue,
@@ -38,15 +36,8 @@ import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
 
-import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
+import { CheckoutAddressField } from './checkout-address-field'
 
-const AddressAutocomplete = dynamic(
-  () => import('@/components/shared/address-autocomplete').then(mod => ({ default: mod.AddressAutocomplete })),
-  {
-    loading: () => <input className={`w-full px-3 py-2 rounded-lg ${CO.input}`} placeholder="Loading address field..." disabled />,
-    ssr: false,
-  }
-)
 
 const orderTypeIconMap: Record<OrderTypeKind, LucideIcon> = {
   dine_in: UtensilsCrossed,
@@ -91,15 +82,13 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
             </label>
 
             {isDeliveryAddressField(field) ? (
-              <AddressAutocomplete
-                value={customerData[field.field_name] || ''}
-                coordinates={parseLatLng(customerData.delivery_lat, customerData.delivery_lng)}
-                onChange={(address, coordinates) => {
-                  setCustomerData(prev => applyDeliveryAddressChange(prev, field.field_name, address, coordinates))
-                }}
-                placeholder={field.placeholder || 'Start typing your address...'}
-                required={field.is_required}
-                mapsEnabled={tenant?.mapbox_enabled ?? true}
+              <CheckoutAddressField
+                checkout={checkout}
+                fieldName={field.field_name}
+                placeholder={field.placeholder}
+                isRequired={field.is_required}
+                inputClassName={inputClass}
+                labelClassName={CO.text}
               />
             ) : field.field_type === 'textarea' ? (
               <textarea

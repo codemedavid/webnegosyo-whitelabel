@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MapPin, LocateFixed, Map, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 
 // Metro Manila — the map's opening view and the default bias for address search.
+/** Metro Manila: only when the store has no pin to start from. */
 const DEFAULT_MAP_CENTER = { lat: 14.5995, lng: 120.9842 }
 const DEFAULT_MAP_ZOOM = 13
 // Keystrokes within one Search Box session are free, so autocomplete can feel immediate;
@@ -36,6 +37,8 @@ interface MapboxAddressAutocompleteProps {
   required?: boolean
   className?: string
   mapboxEnabled?: boolean // If false, shows regular input without Mapbox features
+  /** Where search leans and the map opens before a pin exists: the branch or store. */
+  biasCenter?: { lat: number; lng: number } | null
 }
 
 export function MapboxAddressAutocomplete({
@@ -45,7 +48,14 @@ export function MapboxAddressAutocomplete({
   required = false,
   className = '',
   mapboxEnabled = true,
+  biasCenter = null,
 }: MapboxAddressAutocompleteProps) {
+  const biasLat = biasCenter?.lat
+  const biasLng = biasCenter?.lng
+  const fallbackCenter = useMemo(
+    () => (biasLat !== undefined && biasLng !== undefined ? { lat: biasLat, lng: biasLng } : DEFAULT_MAP_CENTER),
+    [biasLat, biasLng],
+  )
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [isClient, setIsClient] = useState(false)
   const [localValue, setLocalValue] = useState(value)
@@ -115,8 +125,8 @@ export function MapboxAddressAutocomplete({
     if (center && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
       return { lat: center.lat, lng: center.lng }
     }
-    return DEFAULT_MAP_CENTER
-  }, [])
+    return fallbackCenter
+  }, [fallbackCenter])
 
   // Cleanup debounce timers on unmount
   useEffect(() => {
@@ -262,8 +272,8 @@ export function MapboxAddressAutocomplete({
       mapboxgl.accessToken = accessToken
 
       // Get initial coordinates from current value or default to Manila
-      let initialLng = DEFAULT_MAP_CENTER.lng
-      let initialLat = DEFAULT_MAP_CENTER.lat
+      let initialLng = fallbackCenter.lng
+      let initialLat = fallbackCenter.lat
 
       // Try to parse coordinates from value or use last saved location
       const currentValue = localValue
@@ -389,7 +399,7 @@ export function MapboxAddressAutocomplete({
       setMapError('Failed to load map. Please check your Mapbox token.')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]) // localValue and handleAddressSelect intentionally excluded to prevent re-initialization
+  }, [accessToken, fallbackCenter]) // localValue and handleAddressSelect intentionally excluded to prevent re-initialization
 
   const handleMapSearch = useCallback((query: string) => {
     // Clear any pending search

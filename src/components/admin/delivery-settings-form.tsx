@@ -13,6 +13,7 @@ import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
 import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
 import { updateTenantDeliveryForAdminAction } from '@/actions/tenants'
 import { DeliveryFeePreview } from '@/components/admin/delivery-fee-preview'
+import { StorePinMismatchNotice, useStorePinCheck } from '@/components/admin/store-pin-check'
 
 interface DeliverySettingsInitial {
   distance_delivery_enabled: boolean
@@ -66,6 +67,7 @@ export function DeliverySettingsForm({
   const [minFee, setMinFee] = useState<string>(numberToInput(initial.delivery_min_fee))
   const [radiusKm, setRadiusKm] = useState<string>(numberToInput(initial.delivery_radius_km))
   const [freeDeliveryMin, setFreeDeliveryMin] = useState<string>(numberToInput(initial.free_delivery_min_order))
+  const { mismatchKm, ensurePinMatchesAddress } = useStorePinCheck(tenantId)
 
   const handleAddressChange = (nextAddress: string, coordinates?: { lat: number; lng: number }) => {
     setAddress(nextAddress)
@@ -78,6 +80,7 @@ export function DeliverySettingsForm({
   const handleSave = () => {
     startTransition(async () => {
       try {
+        if (!(await ensurePinMatchesAddress(address, latitude, longitude))) return
         const result = await updateTenantDeliveryForAdminAction(tenantId, {
           distance_delivery_enabled: enabled,
           delivery_price_per_km: inputToNumber(perKm),
@@ -157,6 +160,7 @@ export function DeliverySettingsForm({
                 onChange={handleAddressChange}
                 placeholder="Search or pin your store location"
                 mapsEnabled={mapboxEnabled}
+                purpose="store"
               />
               {latitude !== null && longitude !== null && (
                 <p className="text-xs text-muted-foreground">
@@ -269,7 +273,8 @@ export function DeliverySettingsForm({
           </div>
         )}
 
-        <div className="pt-2">
+        <div className="space-y-3 pt-2">
+          <StorePinMismatchNotice mismatchKm={mismatchKm} onSaveAnyway={handleSave} isSaving={isPending} />
           <Button onClick={handleSave} disabled={isPending}>
             <Save className="mr-2 h-4 w-4" /> {isPending ? 'Saving…' : 'Save Delivery Settings'}
           </Button>

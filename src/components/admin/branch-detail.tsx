@@ -225,6 +225,7 @@ export function BranchDetail({
           <OutletForm
             outlet={outlet}
             mapboxEnabled={mapboxEnabled}
+            tenantId={tenantId}
             isSaving={isSaving}
             onCancel={() => router.push(`/${tenantSlug}/admin/outlets`)}
             onSubmit={handleSave}

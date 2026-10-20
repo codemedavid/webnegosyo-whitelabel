@@ -1,59 +1,88 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { LocateFixed, Map as MapIcon, MapPin } from 'lucide-react'
+import { AlertTriangle, LocateFixed, Map as MapIcon, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { haversineDistanceKm } from '@/lib/delivery-fee'
 import { parseCoordinateFallback, type LatLng } from '@/lib/maps/apple/mapkit-address'
 import { AddressSuggestionList, suggestionOptionId, useSuggestionKeyboard } from './address-suggestion-list'
-import { AppleMapCanvas } from './apple-map-canvas'
-import { AppleMapPickerDialog } from './apple-map-picker-dialog'
+import { PinConfirmDialog, type PinCheckView, type PinPurpose } from './pin-confirm-dialog'
+import { PinConfirmMap } from './pin-confirm-map'
 import { PlainAddressInput } from './plain-address-input'
 import { useAddressSuggestions, useAppleAddressSearch, type AddressSuggestion } from './use-apple-address-search'
 
-/** Metro Manila: where the map opens and search is biased before any pin exists. */
+/** Metro Manila: only when the store has no pin to start from. */
 const DEFAULT_CENTER: LatLng = { lat: 14.5995, lng: 120.9842 }
 /** A GPS fix that has not arrived by then is reported as a failure, not a spinner forever. */
 const GEOLOCATION_TIMEOUT_MS = 15_000
 /** A fix up to a minute old is still "where I am" for an address. */
 const GEOLOCATION_MAX_AGE_MS = 60_000
-const INLINE_MAP_SIZE_CLASS = 'h-56 sm:h-64'
+/** A pin moved less than this from a searched place keeps the place's name as the address. */
+const KEEP_PICKED_LABEL_KM = 0.04
+const PREVIEW_SIZE_CLASS = 'h-36 sm:h-44'
+
+export interface AddressChangeMeta {
+  /** The spot was confirmed on the map, not just searched. */
+  isConfirmed?: boolean
+}
 
 export interface AppleAddressAutocompleteProps {
   value: string
-  onChange: (address: string, coordinates?: LatLng) => void
+  onChange: (address: string, coordinates?: LatLng, meta?: AddressChangeMeta) => void
   placeholder?: string
   required?: boolean
   className?: string
   /** The saved location, so the map opens on it. */
   coordinates?: LatLng | null
+  /** Where search leans and the map opens before there is a pin: the branch or store. */
+  biasCenter?: LatLng | null
+  /** A customer's door, or a store's entrance (changes the wording and the default map type). */
+  purpose?: PinPurpose
+  /** Warnings about a spot (too far, on the store itself, outside the country). */
+  check?: (point: LatLng) => PinCheckView | null
   /** Rendered instead when this deployment has no Apple Maps key. */
   fallback: ReactNode
 }
 
-function joinPlaceName(placeName: string | null, address: string): string {
-  if (!placeName || address.toLowerCase().includes(placeName.toLowerCase())) return address
-  return `${placeName}, ${address}`
+interface PendingPin {
+  start: LatLng
+  /** The searched place's address, kept if the pin stays on it. */
+  label: string | null
+  accuracyM: number | null
 }
 
-function currentPosition(): Promise<LatLng> {
+interface Located {
+  point: LatLng
+  accuracyM: number | null
+}
+
+function currentPosition(): Promise<Located> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error('Geolocation is not supported by your browser'))
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      (position) =>
+        resolve({
+          point: { lat: position.coords.latitude, lng: position.coords.longitude },
+          accuracyM: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+        }),
       reject,
       { enableHighAccuracy: true, timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: GEOLOCATION_MAX_AGE_MS },
     )
   })
 }
 
+function isNear(a: LatLng, b: LatLng, km: number): boolean {
+  return haversineDistanceKm(a.lat, a.lng, b.lat, b.lng) <= km
+}
+
 /**
- * The address field on Apple Maps: type-ahead from Apple's search, a pick
- * resolved to Apple's exact address and coordinates, "use my location", and a
- * map to tap or drag the pin. Emits the same `(address, { lat, lng }?)` as the
- * Mapbox field: text alone while typing, coordinates once a place is chosen.
+ * The address field on Apple Maps. Search (biased to the store) or "use my
+ * location" opens a map with a fixed centre pin; the spot is stored only once
+ * it is confirmed there. Emits `(address, { lat, lng }?, meta?)`: text alone
+ * while typing, coordinates once a spot is confirmed.
  */
 export function AppleAddressAutocomplete({
   value,
@@ -62,79 +91,91 @@ export function AppleAddressAutocomplete({
   required = false,
   className = '',
   coordinates = null,
+  biasCenter = null,
+  purpose = 'delivery',
+  check,
   fallback,
 }: AppleAddressAutocompleteProps) {
   const { status, suggest, resolveSuggestion, reverseGeocode } = useAppleAddressSearch()
   const { suggestions, search, clear: clearSuggestions } = useAddressSuggestions(suggest)
   const [isFocused, setIsFocused] = useState(false)
-  const [isPickerOpen, setIsPickerOpen] = useState(false)
+  const [pending, setPending] = useState<PendingPin | null>(null)
   const [isLocating, setIsLocating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [inlineMapError, setInlineMapError] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [pin, setPin] = useState<LatLng | null>(() => coordinates ?? parseCoordinateFallback(value))
   // Bumped by every keystroke: a pick still resolving when the diner types on
   // must not overwrite what they typed.
   const editGenerationRef = useRef(0)
   const listId = useId()
   const isListOpen = isFocused && suggestions.length > 0
+  const startPoint = pin ?? biasCenter ?? DEFAULT_CENTER
 
-  // A location saved or typed elsewhere in the form moves the pin too.
+  // The saved location is the truth: a pin set elsewhere moves ours, and a
+  // pin the form dropped (the address was rewritten) clears ours.
   const savedLat = coordinates?.lat
   const savedLng = coordinates?.lng
+  const hadSavedPinRef = useRef(coordinates !== null)
   useEffect(() => {
-    if (savedLat === undefined || savedLng === undefined) return
+    if (savedLat === undefined || savedLng === undefined) {
+      if (hadSavedPinRef.current) setPin(null)
+      hadSavedPinRef.current = false
+      return
+    }
+    hadSavedPinRef.current = true
     setPin((current) => (current?.lat === savedLat && current?.lng === savedLng ? current : { lat: savedLat, lng: savedLng }))
   }, [savedLat, savedLng])
-
-  const select = useCallback(
-    (address: string, point: LatLng) => {
-      setPin(point)
-      onChange(address, point)
-    },
-    [onChange],
-  )
 
   const handleType = (text: string) => {
     editGenerationRef.current += 1
     onChange(text)
-    search(text, pin ?? DEFAULT_CENTER)
+    search(text, startPoint)
   }
 
   const handleSuggestionPick = useCallback(
     async (suggestion: AddressSuggestion) => {
       clearSuggestions()
-      // Show the pick at once; Apple's exact address and coordinates follow.
       onChange(suggestion.label)
       const generation = editGenerationRef.current
       const selection = await resolveSuggestion(suggestion)
-      if (selection && generation === editGenerationRef.current) select(selection.address, selection.coordinates)
+      if (!selection || generation !== editGenerationRef.current) return
+      setPending({ start: selection.coordinates, label: selection.address, accuracyM: null })
     },
-    [clearSuggestions, onChange, resolveSuggestion, select],
+    [clearSuggestions, onChange, resolveSuggestion],
   )
 
   const { activeIndex, onKeyDown } = useSuggestionKeyboard(suggestions, handleSuggestionPick, clearSuggestions)
 
-  const handleMapPick = useCallback(
-    async (point: LatLng, placeName: string | null) => {
-      setPin(point)
-      select(joinPlaceName(placeName, await reverseGeocode(point)), point)
-    },
-    [reverseGeocode, select],
-  )
+  const locate = useCallback(async (): Promise<Located | null> => {
+    setError(null)
+    try {
+      return await currentPosition()
+    } catch (caught) {
+      console.error('[apple-maps] geolocation failed:', caught)
+      setError('We could not get your location. Please allow location access, or search for your address.')
+      return null
+    }
+  }, [])
 
   const handleLocate = useCallback(async () => {
     setIsLocating(true)
-    setError(null)
-    try {
-      const point = await currentPosition()
-      select(await reverseGeocode(point), point)
-    } catch (caught) {
-      console.error('[apple-maps] geolocation failed:', caught)
-      setError('We could not get your location. Please allow location access, or type your address.')
-    } finally {
-      setIsLocating(false)
-    }
-  }, [reverseGeocode, select])
+    const located = await locate()
+    setIsLocating(false)
+    if (located) setPending({ start: located.point, label: null, accuracyM: located.accuracyM })
+  }, [locate])
+
+  const handleConfirm = useCallback(
+    async (point: LatLng) => {
+      const label = pending?.label ?? null
+      const keepsLabel = label !== null && pending !== null && isNear(point, pending.start, KEEP_PICKED_LABEL_KM)
+      // A store's typed address is what its customers read; moving the pin never rewrites it.
+      const keepsTyped = purpose === 'store' && value.trim() !== ''
+      const address = keepsTyped ? value : keepsLabel ? label : await reverseGeocode(point)
+      setPin(point)
+      onChange(address, point, { isConfirmed: true })
+    },
+    [onChange, pending, purpose, reverseGeocode, value],
+  )
 
   if (status === 'unconfigured') return <>{fallback}</>
   if (status === 'failed') {
@@ -148,6 +189,9 @@ export function AppleAddressAutocomplete({
       />
     )
   }
+
+  const pinView = pin ? check?.(pin) ?? null : null
+  const needsPin = !pin && value.trim() !== '' && status === 'ready'
 
   return (
     <div className="space-y-2">
@@ -198,7 +242,7 @@ export function AppleAddressAutocomplete({
           type="button"
           variant="outline"
           size="icon"
-          onClick={() => setIsPickerOpen(true)}
+          onClick={() => setPending({ start: startPoint, label: null, accuracyM: null })}
           disabled={status !== 'ready'}
           title="Pick on the map"
           aria-label="Pick on the map"
@@ -210,30 +254,48 @@ export function AppleAddressAutocomplete({
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      <section aria-label="Your location on the map">
-        {inlineMapError ? (
-          <p className="text-sm text-gray-500">{inlineMapError}</p>
-        ) : (
-          <AppleMapCanvas
-            pin={pin}
-            initialCenter={DEFAULT_CENTER}
-            onPick={handleMapPick}
-            onError={setInlineMapError}
-            className={INLINE_MAP_SIZE_CLASS}
-          />
-        )}
-      </section>
+      {needsPin ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+          <span>{purpose === 'store' ? 'Pin your entrance on the map so riders find you.' : 'Set your exact spot on the map so the rider finds you.'}</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => setPending({ start: startPoint, label: null, accuracyM: null })}>
+            Set pin on map
+          </Button>
+        </div>
+      ) : null}
 
-      <AppleMapPickerDialog
-        open={isPickerOpen}
-        onOpenChange={setIsPickerOpen}
-        pin={pin}
-        initialCenter={DEFAULT_CENTER}
-        isLocating={isLocating}
-        onMapPick={handleMapPick}
-        onSuggestionPick={handleSuggestionPick}
-        onLocate={handleLocate}
-        suggest={suggest}
+      {pin ? (
+        <section aria-label="Your location on the map" className="space-y-2">
+          {previewError ? (
+            <p className="text-sm text-gray-500">{previewError}</p>
+          ) : (
+            <PinConfirmMap center={pin} isInteractive={false} onError={setPreviewError} className={PREVIEW_SIZE_CLASS} />
+          )}
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span className="text-gray-600">{purpose === 'store' ? 'Entrance pinned' : 'Pin set — the rider goes here'}</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => setPending({ start: pin, label: null, accuracyM: null })}>
+              Change pin
+            </Button>
+          </div>
+          {pinView ? (
+            <p className={`flex items-start gap-2 text-sm ${pinView.isBlocked ? 'text-red-700' : 'text-amber-800'}`}>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {pinView.message}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      <PinConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) setPending(null)
+        }}
+        start={pending?.start ?? startPoint}
+        purpose={purpose}
+        accuracyM={pending?.accuracyM ?? null}
+        check={check}
+        onLocate={locate}
+        onConfirm={handleConfirm}
       />
     </div>
   )
