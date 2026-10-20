@@ -191,7 +191,8 @@ export function AppleAddressAutocomplete({
   }
 
   const pinView = pin ? check?.(pin) ?? null : null
-  const needsPin = !pin && value.trim() !== '' && status === 'ready'
+  // Not while they are still typing a search: only once they have left the field.
+  const needsPin = !pin && !isFocused && value.trim() !== '' && status === 'ready'
 
   return (
     <div className="space-y-2">
