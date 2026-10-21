@@ -221,15 +221,21 @@ export const replacePatchSchema = z
 
 export const replaceExpenseSchema = z.object({ expenseId, reason, patch: replacePatchSchema }).strict()
 
-/** Fields anyone with `expenses` may fix in place; everything else is a replace. */
+/**
+ * Fields anyone with `expenses` may fix in place (the guard trigger's list).
+ * The stock answer, VAT and withholding change profit and tax figures, so they
+ * change only through `replace_expense` (Fix, with a reason) — never here.
+ */
 export const expenseDetailsUpdateSchema = z
   .object({
     expenseId,
     note: optionalText(MAX_NOTE_LENGTH, 'The note'),
     supplierId: uuid('Choose who was paid.').nullable().optional(),
     paidToName: optionalText(MAX_PAID_TO_LENGTH, 'Paid to'),
-    isStockPurchase: z.boolean().optional(),
-    ...taxFields,
+    docType: taxFields.docType,
+    invoiceNo: taxFields.invoiceNo,
+    supplierTin: taxFields.supplierTin,
+    form2307Given: taxFields.form2307Given,
   })
   .strict()
   .refine((value) => Object.keys(value).some((key) => key !== 'expenseId'), 'Change at least one thing.')

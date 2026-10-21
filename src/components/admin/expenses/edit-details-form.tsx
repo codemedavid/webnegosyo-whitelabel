@@ -3,31 +3,22 @@
 import { useId, useMemo, useState } from 'react'
 import type { Expense, ExpenseCategory, Supplier } from '@/lib/expenses/types'
 import type { ExpenseDetailsUpdateInput } from '@/lib/expenses/validation'
-import { NoteField, YesNoField } from './expense-form-fields'
+import { NoteField } from './expense-form-fields'
 import { buildPatch, formFromExpense, validateForm, type ExpenseFormState, type FormErrors } from './expense-form-model'
 import { InvoiceDetailsFields } from './invoice-details-fields'
 import { SupplierPicker } from './pickers'
 
-/** Fields that can change in place; money, date, source, branch and category need Fix. */
-const EDITABLE_KEYS = [
-  'note',
-  'supplierId',
-  'paidToName',
-  'isStockPurchase',
-  'docType',
-  'invoiceNo',
-  'supplierTin',
-  'vatCents',
-  'ewtCents',
-  'ewtRate',
-  'form2307Given',
-] as const
+/**
+ * Fields that can change in place (the database guard's list). Money, date,
+ * source, branch, category, the stock answer, VAT and withholding change the
+ * profit or tax figures, so they need Fix — with a reason in the history.
+ */
+const EDITABLE_KEYS = ['note', 'supplierId', 'paidToName', 'docType', 'invoiceNo', 'supplierTin', 'form2307Given'] as const
 
 interface EditDetailsFormProps {
   expense: Expense
   category: ExpenseCategory | undefined
   suppliers: readonly Supplier[]
-  tracksStock: boolean
   isSaving: boolean
   error: string | null
   onCancel: () => void
@@ -35,7 +26,7 @@ interface EditDetailsFormProps {
 }
 
 /** "Edit details": notes, who was paid and the invoice fields, changed in place and logged. */
-export function EditDetailsForm({ expense, category, suppliers, tracksStock, isSaving, error, onCancel, onSave }: EditDetailsFormProps) {
+export function EditDetailsForm({ expense, category, suppliers, isSaving, error, onCancel, onSave }: EditDetailsFormProps) {
   const idPrefix = useId().replace(/:/g, '')
   const [form, setForm] = useState<ExpenseFormState>(() => formFromExpense(expense))
   const [errors, setErrors] = useState<FormErrors>({})
@@ -47,9 +38,6 @@ export function EditDetailsForm({ expense, category, suppliers, tracksStock, isS
     const relevant: FormErrors = {
       ...(checked.errors.note ? { note: checked.errors.note } : {}),
       ...(checked.errors.supplierTin ? { supplierTin: checked.errors.supplierTin } : {}),
-      ...(checked.errors.vat ? { vat: checked.errors.vat } : {}),
-      ...(checked.errors.ewt ? { ewt: checked.errors.ewt } : {}),
-      ...(checked.errors.ewtRate ? { ewtRate: checked.errors.ewtRate } : {}),
     }
     setErrors(relevant)
     if (Object.keys(relevant).length > 0) return
@@ -93,13 +81,6 @@ export function EditDetailsForm({ expense, category, suppliers, tracksStock, isS
         requiredFor={category?.name}
         error={errors.note}
       />
-      {category?.group === 'ingredients' && tracksStock && (
-        <YesNoField
-          legend="Did this go into your stock count?"
-          value={form.isStockPurchase}
-          onChange={(isStockPurchase) => update({ isStockPurchase })}
-        />
-      )}
       <InvoiceDetailsFields
         idPrefix={idPrefix}
         value={form}
@@ -107,7 +88,9 @@ export function EditDetailsForm({ expense, category, suppliers, tracksStock, isS
         amountCents={expense.amountCents}
         errors={errors}
         defaultOpen
+        showTaxAmounts={false}
       />
+      <p className="text-[12.5px] text-wn-stone">To change VAT, tax withheld or the stock answer, use Fix. It keeps a reason in the history.</p>
       {error && (
         <p role="alert" className="text-[13px] font-semibold text-red-800">
           {error}

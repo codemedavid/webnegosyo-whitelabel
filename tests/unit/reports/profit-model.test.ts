@@ -181,6 +181,23 @@ describe('profit: the trust strip', () => {
     expect(worse.findings).toEqual([{ kind: 'uncosted_dishes', severity: 'warning', uncostedDishes: 1, uncostedShare: expect.closeTo(0.2) }])
   })
 
+  test('a pay-out sorted into an expense is never unsorted, even once voided; its pay_in correction is not money in or out', () => {
+    const report = reportOf(
+      raw({
+        expenses: [expense('rent', 12_000), expense('ice', 12_000, { status: 'void', shiftCashMovementId: 'p1' })],
+        payouts: [
+          { id: 'p1', kind: 'pay_out', amount: '120.00', outletId: null, at: AT },
+          { id: 'pi1', kind: 'pay_in', amount: '120.00', outletId: null, at: AT + 60_000 },
+          { id: 'c1', kind: 'collect', amount: '500.00', outletId: null, at: AT },
+        ],
+      }),
+    )
+    expect(report.cashFlow.unsortedPayouts).toBe(0)
+    expect(report.findings.map((finding) => finding.kind)).not.toContain('unsorted_payouts')
+    expect(report.expensesCents).toBe(12_000)
+    expect(report.cashFlow.outCents).toBe(12_000)
+  })
+
   test('a branch account cannot see dish costs: coverage is unknown, not 0%', () => {
     const report = reportOf(
       raw({

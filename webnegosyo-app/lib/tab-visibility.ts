@@ -67,9 +67,9 @@ export const SUBSCREEN_TABS: readonly string[] = [
  * whether the Reports tab exists for an account at all.
  */
 export const REPORT_TABS: readonly string[] = [
-  // Money: what the store spent (the expense book). Profit joins it when its
-  // screen lands — a registered tab with no route file breaks the bar.
+  // Money: what the store spent (the expense book), and what it kept.
   "expenses",
+  "profit",
   "analytics",
   "growth",
   "product-analytics",

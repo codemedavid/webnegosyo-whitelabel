@@ -33,6 +33,12 @@ interface InvoiceDetailsFieldsProps {
   errors: FormErrors
   /** Opens itself when something inside is already filled or wrong. */
   defaultOpen?: boolean
+  /**
+   * VAT and withholding change the profit and tax figures, so once an expense
+   * is saved they change only through Fix (with a reason); "Edit details"
+   * hides them. Defaults to shown (new expense, Fix).
+   */
+  showTaxAmounts?: boolean
 }
 
 function centsToText(cents: number): string {
@@ -44,7 +50,15 @@ function centsToText(cents: number): string {
  * away (plan §2.6). The VAT and withholding buttons work the figures out; the
  * owner can still type over them.
  */
-export function InvoiceDetailsFields({ idPrefix, value, onChange, amountCents, errors, defaultOpen = false }: InvoiceDetailsFieldsProps) {
+export function InvoiceDetailsFields({
+  idPrefix,
+  value,
+  onChange,
+  amountCents,
+  errors,
+  defaultOpen = false,
+  showTaxAmounts = true,
+}: InvoiceDetailsFieldsProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const panelId = useId()
   const docLabelId = `${idPrefix}-doc-label`
@@ -120,84 +134,88 @@ export function InvoiceDetailsFields({ idPrefix, value, onChange, amountCents, e
           />
           <FieldError id={`${idPrefix}-tin-error`} message={errors.supplierTin} />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={`${idPrefix}-vat`} className={FIELD_LABEL}>
-            VAT included
-          </label>
-          <div className="flex gap-1.5">
-            <input
-              id={`${idPrefix}-vat`}
-              type="text"
-              inputMode="decimal"
-              placeholder="0"
-              value={value.vatText}
-              aria-invalid={errors.vat ? true : undefined}
-              aria-describedby={errors.vat ? `${idPrefix}-vat-error` : undefined}
-              onChange={(event) => onChange({ vatText: event.target.value })}
-              className={cn(FIELD_INPUT, 'tabular-nums')}
-            />
-            <button
-              type="button"
-              disabled={amountCents === null}
-              onClick={() => amountCents !== null && onChange({ vatText: centsToText(vatFromGross(amountCents)) })}
-              className="shrink-0 rounded-xl px-3 text-[13px] font-bold text-wn-ink ring-1 ring-wn-line outline-none hover:ring-wn-ink disabled:cursor-not-allowed disabled:text-wn-stone disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-wn-ink"
-            >
-              12%
-              <span className="sr-only"> VAT: work it out from the amount</span>
-            </button>
-          </div>
-          <FieldError id={`${idPrefix}-vat-error`} message={errors.vat} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={FIELD_LABEL}>Tax withheld (EWT)</span>
-          <div className="flex gap-1.5">
-            <label htmlFor={`${idPrefix}-ewt-rate`} className="sr-only">
-              Withholding rate, percent
+        {showTaxAmounts && (
+          <>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`${idPrefix}-vat`} className={FIELD_LABEL}>
+              VAT included
             </label>
-            <div className="relative w-20 shrink-0">
+            <div className="flex gap-1.5">
               <input
-                id={`${idPrefix}-ewt-rate`}
+                id={`${idPrefix}-vat`}
                 type="text"
                 inputMode="decimal"
-                placeholder="5"
-                value={value.ewtRateText}
-                aria-invalid={errors.ewtRate ? true : undefined}
-                onChange={(event) => {
-                  const text = event.target.value
-                  const nextRate = Number(text.replace('%', '').trim())
-                  const canWorkOut = amountCents !== null && text.trim() !== '' && Number.isFinite(nextRate) && nextRate >= 0 && nextRate <= 100
-                  onChange({
-                    ewtRateText: text,
-                    ...(canWorkOut ? { ewtText: centsToText(ewtFromRate(amountCents, vatCents, nextRate)) } : {}),
-                  })
-                }}
-                className={cn(FIELD_INPUT, 'pr-7 tabular-nums')}
+                placeholder="0"
+                value={value.vatText}
+                aria-invalid={errors.vat ? true : undefined}
+                aria-describedby={errors.vat ? `${idPrefix}-vat-error` : undefined}
+                onChange={(event) => onChange({ vatText: event.target.value })}
+                className={cn(FIELD_INPUT, 'tabular-nums')}
               />
-              <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[14px] text-wn-stone">
-                %
-              </span>
+              <button
+                type="button"
+                disabled={amountCents === null}
+                onClick={() => amountCents !== null && onChange({ vatText: centsToText(vatFromGross(amountCents)) })}
+                className="shrink-0 rounded-xl px-3 text-[13px] font-bold text-wn-ink ring-1 ring-wn-line outline-none hover:ring-wn-ink disabled:cursor-not-allowed disabled:text-wn-stone disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-wn-ink"
+              >
+                12%
+                <span className="sr-only"> VAT: work it out from the amount</span>
+              </button>
             </div>
-            <label htmlFor={`${idPrefix}-ewt`} className="sr-only">
-              Amount withheld, pesos
-            </label>
-            <input
-              id={`${idPrefix}-ewt`}
-              type="text"
-              inputMode="decimal"
-              placeholder="0"
-              value={value.ewtText}
-              aria-invalid={errors.ewt ? true : undefined}
-              aria-describedby={errors.ewt ? `${idPrefix}-ewt-error` : undefined}
-              onChange={(event) => onChange({ ewtText: event.target.value })}
-              className={cn(FIELD_INPUT, 'tabular-nums')}
-            />
+            <FieldError id={`${idPrefix}-vat-error`} message={errors.vat} />
           </div>
-          {Number.isFinite(rate) && rate > 0 && !errors.ewt && (
-            <p className="text-[12px] text-wn-stone">Worked out on the amount before VAT. You can type over it.</p>
-          )}
-          <FieldError id={`${idPrefix}-ewt-rate-error`} message={errors.ewtRate} />
-          <FieldError id={`${idPrefix}-ewt-error`} message={errors.ewt} />
-        </div>
+          <div className="flex flex-col gap-1.5">
+            <span className={FIELD_LABEL}>Tax withheld (EWT)</span>
+            <div className="flex gap-1.5">
+              <label htmlFor={`${idPrefix}-ewt-rate`} className="sr-only">
+                Withholding rate, percent
+              </label>
+              <div className="relative w-20 shrink-0">
+                <input
+                  id={`${idPrefix}-ewt-rate`}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="5"
+                  value={value.ewtRateText}
+                  aria-invalid={errors.ewtRate ? true : undefined}
+                  onChange={(event) => {
+                    const text = event.target.value
+                    const nextRate = Number(text.replace('%', '').trim())
+                    const canWorkOut = amountCents !== null && text.trim() !== '' && Number.isFinite(nextRate) && nextRate >= 0 && nextRate <= 100
+                    onChange({
+                      ewtRateText: text,
+                      ...(canWorkOut ? { ewtText: centsToText(ewtFromRate(amountCents, vatCents, nextRate)) } : {}),
+                    })
+                  }}
+                  className={cn(FIELD_INPUT, 'pr-7 tabular-nums')}
+                />
+                <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[14px] text-wn-stone">
+                  %
+                </span>
+              </div>
+              <label htmlFor={`${idPrefix}-ewt`} className="sr-only">
+                Amount withheld, pesos
+              </label>
+              <input
+                id={`${idPrefix}-ewt`}
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={value.ewtText}
+                aria-invalid={errors.ewt ? true : undefined}
+                aria-describedby={errors.ewt ? `${idPrefix}-ewt-error` : undefined}
+                onChange={(event) => onChange({ ewtText: event.target.value })}
+                className={cn(FIELD_INPUT, 'tabular-nums')}
+              />
+            </div>
+            {Number.isFinite(rate) && rate > 0 && !errors.ewt && (
+              <p className="text-[12px] text-wn-stone">Worked out on the amount before VAT. You can type over it.</p>
+            )}
+            <FieldError id={`${idPrefix}-ewt-rate-error`} message={errors.ewtRate} />
+            <FieldError id={`${idPrefix}-ewt-error`} message={errors.ewt} />
+          </div>
+          </>
+        )}
         <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-[14px] text-wn-ink sm:col-span-2">
           <Checkbox
             checked={value.form2307Given}

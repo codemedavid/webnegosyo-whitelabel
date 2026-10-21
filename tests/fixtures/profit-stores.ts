@@ -187,9 +187,11 @@ function toStore(orders: ReportOrder[], plans: Plan[], loose: Loose[], drafts: E
     status: draft.isVoid ? ('void' as const) : ('recorded' as const),
     shiftCashMovementId: null,
   }))
-  const payouts = payoutDrafts.map(
-    (draft, index): DrawerPayout => ({ id: `p-${index}`, kind: 'pay_out', amount: (draft.amountCents / 100).toFixed(2), outletId: draft.outlet, at: draft.at }),
-  )
+  const payouts = payoutDrafts.flatMap((draft, index): DrawerPayout[] => {
+    const payout: DrawerPayout = { id: `p-${index}`, kind: 'pay_out', amount: (draft.amountCents / 100).toFixed(2), outletId: draft.outlet, at: draft.at }
+    // Voiding a drawer expense puts the cash back with a pay_in on the same shift.
+    return draft.sorted === 'void' ? [payout, { ...payout, id: `pi-${index}`, kind: 'pay_in', at: draft.at + 60_000 }] : [payout]
+  })
   // A sorted pay-out is a drawer expense: its amount, branch and Manila day.
   const drawerExpenses = payoutDrafts.flatMap((draft, index) =>
     draft.sorted === 'no'

@@ -80,6 +80,8 @@ interface AddExpenseSheetProps {
   onClose: () => void;
   /** After an entry left its Undo window (sent, or kept on the phone) — the drawer re-reads its cash. */
   onCommitted?: () => void;
+  /** Opens with this category chosen (Profit's "No Rent recorded · Record"). */
+  initialCategoryId?: string | null;
 }
 
 interface Snack {
@@ -98,7 +100,7 @@ interface Snack {
  * held for the Undo window, so Undo never has to void anything, a dead zone
  * never loses an entry, and a replay can never record it twice.
  */
-export function AddExpenseSheet({ visible, mode, scope = "spend", onClose, onCommitted }: AddExpenseSheetProps) {
+export function AddExpenseSheet({ visible, mode, scope = "spend", onClose, onCommitted, initialCategoryId = null }: AddExpenseSheetProps) {
   const tenantId = useExpenseTenant();
   const outletId = useExpenseOutlet();
   const invalidate = useInvalidateExpenses();
@@ -111,7 +113,7 @@ export function AddExpenseSheet({ visible, mode, scope = "spend", onClose, onCom
   const tracksStock = useTracksStock();
 
   const today = manilaToday();
-  const [form, setForm] = useState<AddExpenseForm>(() => emptyForm(today));
+  const [form, setForm] = useState<AddExpenseForm>(() => ({ ...emptyForm(today), categoryId: initialCategoryId }));
   const [panel, setPanel] = useState<FoldPanel>(null);
   const [isShowingAll, setIsShowingAll] = useState(false);
   const [receipt, setReceipt] = useState<CapturedReceipt | null>(null);

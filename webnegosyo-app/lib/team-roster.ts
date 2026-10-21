@@ -147,6 +147,7 @@ const SCREEN_LABELS: Record<string, string> = {
   branches: "Compare Branches",
   "branch-menu": "Branch Menu",
   expenses: "Expenses",
+  profit: "Profit",
 };
 
 /**

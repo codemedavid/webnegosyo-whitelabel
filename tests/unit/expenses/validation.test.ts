@@ -130,6 +130,16 @@ describe('expenseDetailsUpdateSchema', () => {
     expect(expenseDetailsUpdateSchema.safeParse({ expenseId: EXPENSE, amountCents: 100 }).success).toBe(false)
     expect(expenseDetailsUpdateSchema.safeParse({ expenseId: EXPENSE, ewtRate: 101 }).success).toBe(false)
   })
+
+  it('refuses the stock answer, VAT and withholding in place (they go through Fix)', () => {
+    for (const field of [{ isStockPurchase: true }, { vatCents: 100 }, { ewtCents: 100 }, { ewtRate: 1 }]) {
+      expect(expenseDetailsUpdateSchema.safeParse({ expenseId: EXPENSE, ...field }).success).toBe(false)
+    }
+  })
+
+  it('lets Fix change the stock answer, VAT and withholding', () => {
+    expect(replacePatchSchema.safeParse({ isStockPurchase: true, vatCents: 100, ewtCents: 50, ewtRate: 1 }).success).toBe(true)
+  })
 })
 
 describe('sortDrawerPayoutSchema', () => {

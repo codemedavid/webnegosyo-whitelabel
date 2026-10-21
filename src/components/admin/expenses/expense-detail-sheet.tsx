@@ -285,7 +285,6 @@ function DetailBody({
               expense={expense}
               category={category}
               suppliers={suppliers}
-              tracksStock={tracksStock}
               isSaving={isBusy}
               error={actionError}
               onCancel={() => {

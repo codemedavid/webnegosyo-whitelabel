@@ -32,15 +32,8 @@ interface RpcError {
   message: string
 }
 
-/**
- * The profit functions (20261022120300_report_profit.sql). Listed by name until
- * the generated schema is regenerated after the migration is applied; then
- * they are in the Extract below too and this list can go.
- */
-type ProfitReportFunction = 'report_profit_summary' | 'report_profit_by_period' | 'report_expenses_by_category'
-
 /** A report function that exists in the generated schema: a renamed function fails the build, not a page. */
-type ReportFunction = Extract<keyof Database['public']['Functions'], `report_${string}`> | ProfitReportFunction
+type ReportFunction = Extract<keyof Database['public']['Functions'], `report_${string}`>
 
 /** The one method of the Supabase client these reads use. */
 export interface ReportRpcClient {

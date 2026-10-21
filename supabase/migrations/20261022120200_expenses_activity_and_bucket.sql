@@ -19,7 +19,7 @@
 -- Rollback at end.
 
 -- store_activity is written by hot triggers: never queue behind a long
--- transaction. The CHECKs are re-added NOT VALID, then validated (~77k rows).
+-- transaction. The CHECKs are re-added NOT VALID (validated in 120210).
 set lock_timeout = '3s';
 
 -- ============================================
@@ -60,13 +60,11 @@ alter table public.store_activity
     'order', 'ingredient', 'menu_item', 'shift', 'member', 'voucher', 'staff', 'setting', 'approval', 'count', 'transfer', 'expense'
   )) not valid;
 
--- Both are strict supersets of what every existing row already passed.
--- NOT VALID + VALIDATE: the scan itself only needs SHARE UPDATE EXCLUSIVE.
--- Applied as ONE transaction the ADD's ACCESS EXCLUSIVE is still held until
--- commit, so the gain is real only when these two lines run separately (as
--- 20261012150500 did); the scan is ~77k narrow rows either way.
-alter table public.store_activity validate constraint store_activity_category_ck;
-alter table public.store_activity validate constraint store_activity_subject_type_ck;
+-- Both are strict supersets of what every existing row already passed. They
+-- are added NOT VALID here (no table scan under ACCESS EXCLUSIVE) and
+-- validated in 20261022120210, a separate transaction whose scan only takes
+-- SHARE UPDATE EXCLUSIVE (writes continue).
+
 
 -- ============================================
 -- The writer: expense.voided joins the sensitive kinds

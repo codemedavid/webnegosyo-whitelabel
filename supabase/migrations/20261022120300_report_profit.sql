@@ -19,7 +19,10 @@
 --            window: amount, group, is_stock_purchase.
 --   store_wide_expense  (one branch asked) a store-wide expense that reduces
 --            profit but belongs to no branch: shown beside the figure.
---   payout   a drawer pay-out in the window with no recorded expense yet.
+--   payout   a drawer pay-out in the window with NO linked expense of any
+--            status (contract §10: a voided drawer expense already put the
+--            cash back with a pay_in and is never re-filed). Only `pay_out`
+--            rows are read; drawer pay_in / collect never touch profit.
 -- tests/unit/reports/report-profit-parity.property.test.ts runs this file and
 -- the TypeScript over generated stores in PGlite and fails on one centavo.
 --
@@ -185,7 +188,7 @@ begin
     and ($4 is null or s.outlet_id = $4)
     and (not coalesce($5, false) or s.outlet_id is null)
     and not exists (
-      select 1 from public.expenses e where e.shift_cash_movement_id = s.id and e.status = 'recorded'
+      select 1 from public.expenses e where e.shift_cash_movement_id = s.id
     )
   $q$ using p_tenant, p_from, p_to, p_outlet, p_unassigned;
 end;

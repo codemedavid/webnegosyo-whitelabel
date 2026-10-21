@@ -130,6 +130,13 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     permission: 'expenses',
   },
   {
+    tab: 'profit',
+    label: 'Profit',
+    description: 'Sales minus ingredients minus expenses (also needs Expenses and Costs to show figures)',
+    workspace: 'insights',
+    permission: 'reports',
+  },
+  {
     tab: 'product-analytics',
     label: 'Product Performance',
     description: 'What sells, day by day',

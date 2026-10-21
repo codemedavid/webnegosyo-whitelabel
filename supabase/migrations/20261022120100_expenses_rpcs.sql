@@ -81,7 +81,11 @@ declare
   v_category_name text;
   v_movement uuid;
   v_expense uuid;
-  v_name text := btrim(coalesce(p_recorded_by_name, ''));
+  -- Signed-in callers are named from app_users; only the service role's
+  -- p_recorded_by_name is used as sent.
+  v_name text := case when current_user in ('anon', 'authenticated')
+    then coalesce(public.expense_actor_name(), 'Staff')
+    else btrim(coalesce(p_recorded_by_name, '')) end;
 begin
   select s.tenant_id into v_tenant from public.staff_shifts s where s.id = p_shift_id;
   if not found then
@@ -148,7 +152,11 @@ as $$
 declare
   m record;
   v_expense uuid;
-  v_name text := btrim(coalesce(p_recorded_by_name, ''));
+  -- Signed-in callers are named from app_users; only the service role's
+  -- p_recorded_by_name is used as sent.
+  v_name text := case when current_user in ('anon', 'authenticated')
+    then coalesce(public.expense_actor_name(), 'Staff')
+    else btrim(coalesce(p_recorded_by_name, '')) end;
 begin
   select scm.tenant_id, scm.amount into m
     from public.shift_cash_movements scm where scm.id = p_movement_id;
@@ -201,6 +209,7 @@ declare
   v_shift record;
   v_reason text := btrim(coalesce(p_reason, ''));
   v_actor text;
+  v_locked text;
   v_client boolean := current_user in ('anon', 'authenticated');
   v_rows integer;
 begin
@@ -238,12 +247,31 @@ begin
               hint = 'The shift is closed; use Fix (replace_expense) to change the category instead.';
     end if;
 
-    select coalesce(nullif(btrim(au.display_name), ''), nullif(split_part(coalesce(au.email, ''), '@', 1), ''))
-      into v_actor
-      from public.app_users au where au.user_id = auth.uid() limit 1;
-    v_actor := left(coalesce(nullif(btrim(p_actor_name), ''), v_actor, 'Staff'), 80);
+    -- Lock the shift so it cannot close between the check and the pay_in,
+    -- then re-check under the lock. FOR SHARE runs under the caller's
+    -- staff_shifts UPDATE policy (open + own drawer or cash manager), so a
+    -- row it cannot lock is either closed now or not the caller's drawer.
+    select s.status into v_locked from public.staff_shifts s where s.id = v_shift.id for share;
+    if not found then
+      if exists (select 1 from public.staff_shifts s where s.id = v_shift.id and s.status <> 'open') then
+        raise exception 'drawer_shift_closed'
+          using errcode = '22023',
+                hint = 'The shift is closed; use Fix (replace_expense) to change the category instead.';
+      end if;
+      raise exception 'Only the drawer''s holder or a cash manager can put cash back' using errcode = '42501';
+    end if;
+    if v_locked <> 'open' then
+      raise exception 'drawer_shift_closed'
+        using errcode = '22023',
+              hint = 'The shift is closed; use Fix (replace_expense) to change the category instead.';
+    end if;
 
-    -- The drawer's guard refuses a shift that closed meanwhile.
+    -- Signed-in callers are named from app_users; p_actor_name is used only
+    -- for the service role.
+    v_actor := left(coalesce(
+      case when v_client then public.expense_actor_name() else nullif(btrim(p_actor_name), '') end,
+      'Staff'), 80);
+
     insert into public.shift_cash_movements (tenant_id, shift_id, kind, amount, reason, recorded_by_name)
     values (e.tenant_id, v_shift.id, 'pay_in', e.amount_cents::numeric / 100,
             left('Correction: ' || v_reason, 200), v_actor);
@@ -335,9 +363,7 @@ begin
     raise exception 'expense_not_found' using errcode = 'P0002';
   end if;
 
-  select coalesce(nullif(btrim(au.display_name), ''), nullif(split_part(coalesce(au.email, ''), '@', 1), ''))
-    into v_name
-    from public.app_users au where au.user_id = auth.uid() limit 1;
+  v_name := public.expense_actor_name();
 
   -- The drawer link stays: the old row is void now, so the partial unique
   -- index has room for the new one.

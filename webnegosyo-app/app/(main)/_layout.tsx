@@ -189,6 +189,8 @@ export default function MainLayout() {
         <Tabs.Screen name="branches" options={{ href: show("branches"), title: "Compare branches" }} />
         {/* Money: the expense book — what the store spent (`expenses` key). */}
         <Tabs.Screen name="expenses" options={{ href: show("expenses"), title: "Expenses" }} />
+        {/* Money: Profit = Sales − Ingredients − Expenses (`reports`; the screen re-checks expenses + costs). */}
+        <Tabs.Screen name="profit" options={{ href: show("profit"), title: "Profit" }} />
         {/* Store activity — the store's view (owners, activity_view, approve_requests). */}
         <Tabs.Screen name="activity" options={{ href: show("activity"), title: "Activity" }} />
 

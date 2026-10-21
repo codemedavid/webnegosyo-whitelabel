@@ -328,16 +328,21 @@ export function expenseDraftToInsert(draft: ExpenseDraftInput, context: ExpenseI
   }
 }
 
-/** The UPDATE for the in-place editable fields (the guard trigger refuses any other column). */
+/**
+ * The UPDATE for the in-place editable fields — the guard trigger refuses any
+ * other column (stock answer, VAT and withholding go through `replace_expense`).
+ */
 export function detailsUpdateToRow(update: ExpenseDetailsUpdateInput, nowIso: string): Row {
   return {
     ...definedOnly([
       ['note', update.note],
       ['supplier_id', update.supplierId],
       ['paid_to_name', update.paidToName],
-      ['is_stock_purchase', update.isStockPurchase],
+      ['doc_type', update.docType],
+      ['invoice_no', update.invoiceNo],
+      ['supplier_tin', update.supplierTin],
+      ['form_2307_given', update.form2307Given],
     ]),
-    ...taxColumns(update),
     updated_at: nowIso,
   }
 }

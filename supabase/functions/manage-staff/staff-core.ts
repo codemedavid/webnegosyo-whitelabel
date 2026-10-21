@@ -195,6 +195,7 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   'branch-menu': 'menu',
   loyalty: 'loyalty_manage',
   expenses: 'expenses',
+  profit: 'reports',
 }
 
 function holdsPermission(

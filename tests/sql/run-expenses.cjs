@@ -235,6 +235,7 @@ async function checkOwner(db) {
   const id = inserted[0].id
   const row = (await rows(db, 'select created_by, status, abs(extract(epoch from now() - created_at)) < 60 as fresh from expenses where id = $1', [id]))[0]
   eq(row, { created_by: U.owner, status: 'recorded', fresh: true }, 'created_by / created_at are stamped by the server')
+  eq(await scalar(db, 'select created_by_name from expenses where id = $1', [id]), 'Olivia Owner', 'created_by_name comes from app_users, not the client')
 
   await refused(db.query("insert into expenses (tenant_id, category_id, amount_cents, paid_from, created_by_name, status, void_reason, voided_at) values ($1, $2, 100, 'cash', 'x', 'void', 'r', now())", [T_A, cat.rent]), '42501', 'a client cannot insert a void row')
   await refused(db.query('update expenses set amount_cents = 1 where id = $1', [id]), '42501', 'money is immutable')
@@ -243,7 +244,10 @@ async function checkOwner(db) {
   await refused(db.query('update expenses set outlet_id = $2 where id = $1', [id, OUT_A1]), '42501', 'branch is immutable')
   await refused(db.query("update expenses set paid_from = 'bank' where id = $1", [id]), '42501', 'source is immutable')
   await refused(db.query("update expenses set status = 'void', void_reason = 'x', voided_at = now() where id = $1", [id]), '42501', 'void only through void_expense')
-  eq(await affected(db, "update expenses set note = 'March', invoice_no = 'SI-1', vat_cents = 100 where id = $1", [id]), 1, 'owner edits the details')
+  eq(await affected(db, "update expenses set note = 'March', invoice_no = 'SI-1', doc_type = 'vat_invoice', supplier_tin = '123456789', form_2307_given = true where id = $1", [id]), 1, 'owner edits the details')
+  await refused(db.query('update expenses set vat_cents = 100 where id = $1', [id]), '42501', 'VAT changes only through replace_expense')
+  await refused(db.query('update expenses set ewt_cents = 100, ewt_rate = 1 where id = $1', [id]), '42501', 'EWT changes only through replace_expense')
+  await refused(db.query('update expenses set is_stock_purchase = true where id = $1', [id]), '42501', 'the stock flag changes only through replace_expense')
   await refused(db.query('delete from expenses where id = $1', [id]), '42501', 'DELETE is refused')
 
   await refused(insertExpense(db, { category: cat.other }), '22023', 'needs_note: "Other" without a note', /note_required/)
@@ -301,7 +305,14 @@ async function checkBookkeeper(db) {
   await refused(db.query("update expense_categories set system_key = 'other_ice' where id = $1", [cat.ice]), '42501', 'system_key never changes')
   eq(await affected(db, 'update expense_categories set archived_at = now() where id = $1', [cat.thirteenth_month]), 1, 'categories are archived')
   await refused(db.query('delete from expense_categories where id = $1', [cat.thirteenth_month]), '42501', 'categories are never deleted')
-  await refused(db.query("update expense_categories set grp = 'nope' where id = $1", [cat.ice]), '23514', 'grp is a closed list')
+  await refused(db.query("update expense_categories set grp = 'operating' where id = $1", [cat.ice]), '42501', 'a starter category keeps its group')
+  await refused(db.query('update expense_categories set needs_note = true where id = $1', [cat.ice]), '42501', 'a starter category keeps its note rule')
+  const snacks = await scalar(db, "select id from expense_categories where name = 'Snacks'")
+  await refused(db.query("update expense_categories set grp = 'nope' where id = $1", [snacks]), '23514', 'grp is a closed list')
+  eq(await affected(db, "update expense_categories set grp = 'staff', needs_note = true where id = $1", [snacks]), 1, 'an unused custom category can change group and note rule')
+  eq((await insertExpense(db, { category: snacks, note: 'merienda' })).rows.length, 1, 'an expense lands in it')
+  await refused(db.query("update expense_categories set grp = 'operating' where id = $1", [snacks]), '42501', 'once used, its group cannot change (history)')
+  eq(await affected(db, "update expense_categories set name = 'Merienda', needs_note = false where id = $1", [snacks]), 1, 'but it can still be renamed')
 
   // Branch rows for the branch-locked checks below.
   eq((await insertExpense(db, { category: cat.water, outlet: OUT_A1 })).rows.length, 1, 'book records at branch 1')
@@ -331,14 +342,14 @@ async function checkCashier(db) {
   await as(db, 'authenticated', U.cashier)
   eq(Number(await scalar(db, 'select count(*) from expense_categories where system_key is not null')), 27, 'a cashier reads the categories (drawer sheet)')
   const requestId = 'eeeeeeee-0000-4000-8000-000000000002'
-  const id = await scalar(db, RECORD, [S.cash1, 125000, cat.lpg, null, ' Cara ', requestId])
+  const id = await scalar(db, RECORD, [S.cash1, 125000, cat.lpg, null, 'Somebody Else', requestId])
   eq(typeof id, 'string', 'record_drawer_expense returns the expense id')
   const movement = (await admin(db, `select m.kind, m.amount, m.reason, m.recorded_by, m.recorded_by_name, m.outlet_id
     from expenses e join shift_cash_movements m on m.id = e.shift_cash_movement_id where e.id = $1`, [id]))[0]
-  eq(movement, { kind: 'pay_out', amount: '1250.00', reason: 'Gas / LPG', recorded_by: U.cashier, recorded_by_name: 'Cara', outlet_id: OUT_A1 }, 'the pay_out row is written in pesos with the category as reason')
+  eq(movement, { kind: 'pay_out', amount: '1250.00', reason: 'Gas / LPG', recorded_by: U.cashier, recorded_by_name: 'Cara Cashier', outlet_id: OUT_A1 }, 'the pay_out row is written in pesos with the category as reason, named from app_users (the sent name is ignored)')
   const expense = (await admin(db, `select outlet_id, paid_from, amount_cents, created_by, created_by_name, status,
     spent_on = (now() at time zone 'Asia/Manila')::date as today from expenses where id = $1`, [id]))[0]
-  eq(expense, { outlet_id: OUT_A1, paid_from: 'drawer', amount_cents: 125000, created_by: U.cashier, created_by_name: 'Cara', status: 'recorded', today: true }, 'the expense takes branch and Manila date from the movement')
+  eq(expense, { outlet_id: OUT_A1, paid_from: 'drawer', amount_cents: 125000, created_by: U.cashier, created_by_name: 'Cara Cashier', status: 'recorded', today: true }, 'the expense takes branch and Manila date from the movement')
   eq(await movementCount(db), before + 1, 'one movement per drawer expense')
 
   await as(db, 'authenticated', U.cashier)
@@ -351,7 +362,6 @@ async function checkCashier(db) {
   await refused(db.query(RECORD, [S.cash2, 1000, cat.lpg, null, 'Cara', null]), '42501', "a cashier cannot pay from someone else's drawer")
   await refused(db.query(RECORD, [S.cash1, 1000, cat.other, '  ', 'Cara', null]), '22023', 'needs_note on the drawer path', /note_required/)
   await refused(db.query(RECORD, [S.cash1, 1000, cat.bRent, null, 'Cara', null]), '42501', "another store's category on the drawer path")
-  await refused(db.query(RECORD, [S.cash1, 1000, cat.lpg, null, ' ', null]), '22023', 'the recorder name is required', /recorded_by_name_required/)
   eq(await movementCount(db), before + 1, 'refused drawer expenses leave no pay-out behind')
 
   await as(db, 'authenticated', U.cashier)
@@ -369,6 +379,14 @@ async function checkCashier(db) {
   await refused(db.query("update expenses set note = 'x' where id = $1", [id]), '42501', 'a cashier cannot edit their drawer expense (the own-drawer policy only admits a void)')
   await refused(db.query("select public.replace_expense($1, 'oops', $2)", [id, JSON.stringify({ category_id: cat.ice })]), '42501', 'a cashier cannot re-file (Fix needs expenses)')
   await refused(db.query('select public.sort_drawer_payout($1, $2, null, null, null, $3)', [M.old, cat.ice, 'Cara']), '42501', 'a cashier cannot sort pay-outs (needs expenses)')
+
+  // A former member keeps no window into the book (L2).
+  await reset(db)
+  await db.query('update app_users set tenant_id = $2 where user_id = $1', [U.cashier, T_B])
+  await as(db, 'authenticated', U.cashier)
+  eq(Number(await scalar(db, 'select count(*) from expenses')), 0, 'a cashier moved out of the store no longer sees their old drawer expenses')
+  await reset(db)
+  await db.query('update app_users set tenant_id = $2 where user_id = $1', [U.cashier, T_A])
 
   const kitchenBefore = await movementCount(db)
   await as(db, 'authenticated', U.kitchen)
@@ -453,8 +471,8 @@ async function checkDrawerVoid(db) {
   // The owner (a cash manager) voids a cashier's drawer expense; actor name given.
   const byOwner = await record(U.cashier, S.cash1, 4000, 'eeeeeeee-0000-4000-8000-000000000102')
   await as(db, 'authenticated', U.owner)
-  await db.query("select public.void_expense($1, 'Not ours', 'Olivia')", [byOwner])
-  eq((await corrections(S.cash1)).at(-1), { amount: '40.00', reason: 'Correction: Not ours', recorded_by: U.owner, recorded_by_name: 'Olivia' }, 'expenses + branch reach voids any drawer expense; p_actor_name names the pay_in')
+  await db.query("select public.void_expense($1, 'Not ours', 'Someone Else')", [byOwner])
+  eq((await corrections(S.cash1)).at(-1), { amount: '40.00', reason: 'Correction: Not ours', recorded_by: U.owner, recorded_by_name: 'Olivia Owner' }, 'expenses + branch reach voids any drawer expense; the pay_in is named from app_users (p_actor_name ignored for clients)')
 
   // expenses without cash management cannot put cash into someone else's drawer.
   const notBooks = await record(U.cashier, S.cash1, 5000, 'eeeeeeee-0000-4000-8000-000000000103')
@@ -483,7 +501,7 @@ async function checkDrawerVoid(db) {
   eq((await corrections(S.cash2)).length, 0, 'and Fix never touches the drawer')
 }
 
-async function checkReceipts(db, ownerExpenseId, drawerExpenseId) {
+async function checkReceipts(db, ownerExpenseId, drawerExpenseId, voidedId) {
   const pathFor = (expenseId, file = 'ffffffff-0000-4000-8000-000000000001.jpg') => `${T_A}/${expenseId}/${file}`
   await as(db, 'authenticated', U.owner)
   await refused(db.query('insert into expense_receipts (tenant_id, expense_id, object_path, mime, bytes) values ($1, $2, $3, $4, 10)', [T_A, ownerExpenseId, pathFor(ownerExpenseId), 'image/jpeg']), '42501', 'clients never write receipt rows')
@@ -506,6 +524,14 @@ async function checkReceipts(db, ownerExpenseId, drawerExpenseId) {
   eq((await rows(db, 'select expense_id from expense_receipts')).map((row) => row.expense_id), [drawerExpenseId], 'a branch admin sees only its branch receipts')
   await as(db, 'authenticated', U.owner)
   await refused(db.query('delete from expense_receipts'), '42501', 'clients cannot delete receipt rows')
+
+  await as(db, 'service_role', null)
+  const addReceipt = (expenseId, n) => db.query('insert into expense_receipts (tenant_id, expense_id, object_path, mime, bytes) values ($1, $2, $3, $4, 10)',
+    [T_A, expenseId, `${T_A}/${expenseId}/ffffffff-0000-4000-8000-${String(n).padStart(12, '0')}.jpg`, 'image/jpeg'])
+  await refused(addReceipt(voidedId, 900), '22023', 'no receipt on a void expense', /expense_void/)
+  for (let n = 100; n < 109; n += 1) await addReceipt(ownerExpenseId, n)
+  eq(Number(await scalar(db, 'select count(*) from expense_receipts where expense_id = $1', [ownerExpenseId])), 10, 'ten receipts fit')
+  await refused(addReceipt(ownerExpenseId, 109), '22023', 'the eleventh is refused', /too_many_receipts/)
 }
 
 async function checkActivity(db, ownerVoidedId) {
@@ -558,7 +584,12 @@ async function main() {
     await db.exec(readMigration('20261012150000_store_activity.sql'))
     await db.exec('set check_function_bodies = on')
     await db.exec(SEED)
-    for (const file of ['20261022120000_expenses.sql', '20261022120100_expenses_rpcs.sql', '20261022120200_expenses_activity_and_bucket.sql']) {
+    for (const file of [
+      '20261022120000_expenses.sql',
+      '20261022120100_expenses_rpcs.sql',
+      '20261022120200_expenses_activity_and_bucket.sql',
+      '20261022120210_expenses_activity_validate.sql',
+    ]) {
       await db.exec(readMigration(file))
     }
 
@@ -571,9 +602,9 @@ async function main() {
     const drawerExpenseId = await checkCashier(db)
     await checkSorting(db)
     const ownerExpenseId = (await admin(db, "select id from expenses where note = 'Plumber'"))[0].id
+    await checkReceipts(db, ownerExpenseId, drawerExpenseId, ownerVoidedId)
     await checkReplace(db, drawerExpenseId)
     await checkDrawerVoid(db)
-    await checkReceipts(db, ownerExpenseId, drawerExpenseId)
     await checkActivity(db, ownerVoidedId)
     await checkBucketAndTenantDeletion(db)
     console.log(`Expenses: ${checks} checks passed (seed, anon, owner, staff without key, book-keeper, branch lock, cashier drawer path, sorting, replace, drawer void, receipts, activity, bucket, store deletion).`)

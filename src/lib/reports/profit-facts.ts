@@ -282,7 +282,8 @@ function expenseFacts(input: ProfitRawInput): ProfitFact[] {
 function payoutFacts(input: ProfitRawInput): ProfitFact[] {
   const { scope } = input
   const sorted = new Set(
-    input.expenses.filter((expense) => expense.status === 'recorded' && expense.shiftCashMovementId !== null).map((expense) => expense.shiftCashMovementId),
+    // Any status (contract §10): a voided drawer expense put the cash back with a pay_in and is never re-filed.
+    input.expenses.filter((expense) => expense.shiftCashMovementId !== null).map((expense) => expense.shiftCashMovementId),
   )
   return input.payouts.flatMap((payout): ProfitFact[] => {
     if (payout.kind !== 'pay_out' || sorted.has(payout.id)) return []

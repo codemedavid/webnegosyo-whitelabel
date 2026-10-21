@@ -52,6 +52,7 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   branches: { label: "Compare branches", icon: "compare", hint: "Branch against branch" },
   activity: { label: "Activity", icon: "clock", hint: "Refunds, cancels, stock and drawers — and who did them" },
   expenses: { label: "Expenses", icon: "receipt", hint: "What the store spent, and on what" },
+  profit: { label: "Profit", icon: "wallet", hint: "Sales minus ingredients minus expenses: what you kept" },
   // Manage
   "product-management": { label: "Products", icon: "manage", hint: "Products, prices, availability" },
   categories: { label: "Categories", icon: "list", hint: "Menu sections, their order and icons" },

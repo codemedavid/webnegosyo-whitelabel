@@ -48,22 +48,34 @@ type FilterPanel = "category" | "paidFrom" | null;
 export default function ExpensesScreen() {
   const tenantId = useExpenseTenant();
   const invalidate = useInvalidateExpenses();
-  const params = useLocalSearchParams<{ add?: string }>();
+  // add=1 (Home, Profit), category=<id> (Profit: preselect when adding, else filter),
+  // month=YYYY-MM, view=unsorted (Profit's "Sort").
+  const params = useLocalSearchParams<{ add?: string; category?: string; month?: string; view?: string }>();
   const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
 
   const [month, setMonth] = useState(() => monthOf(Date.now()));
   const [filters, setFilters] = useState<ExpenseListFilters>(NO_FILTERS);
   const [panel, setPanel] = useState<FilterPanel>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [addCategoryId, setAddCategoryId] = useState<string | null>(null);
   const [isSorting, setIsSorting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Home's "+ Expense" lands here with the sheet up.
+  // Home's "+ Expense" and Profit's actions land here with something open.
   useEffect(() => {
-    if (params.add !== "1") return;
-    setIsAdding(true);
-    router.setParams({ add: undefined });
-  }, [params.add]);
+    const category = typeof params.category === "string" && params.category ? params.category : null;
+    const isAdd = params.add === "1";
+    if (!isAdd && !category && !params.month && params.view !== "unsorted") return;
+    if (typeof params.month === "string" && /^\d{4}-\d{2}$/.test(params.month)) setMonth(params.month);
+    if (isAdd) {
+      setAddCategoryId(category);
+      setIsAdding(true);
+    } else if (category) {
+      setFilters({ ...NO_FILTERS, categoryId: category });
+    }
+    if (params.view === "unsorted") setIsSorting(true);
+    router.setParams({ add: undefined, category: undefined, month: undefined, view: undefined });
+  }, [params.add, params.category, params.month, params.view]);
 
   const monthRead = useExpenseMonth(month, selectedOutlet ?? undefined);
   const { categories } = useExpenseCategories();
@@ -298,11 +310,20 @@ export default function ExpensesScreen() {
       <ScreenHeader title="Expenses" subtitle="What the store spent, and on what" />
       {body}
       <View style={styles.fabWrap} pointerEvents="box-none">
-        <Button label="Expense" icon="plus" onPress={() => setIsAdding(true)} style={styles.fab} accessibilityLabel="Add an expense" />
+        <Button label="Expense" icon="plus" onPress={() => { setAddCategoryId(null); setIsAdding(true); }} style={styles.fab} accessibilityLabel="Add an expense" />
       </View>
 
       {isAdding ? (
-        <AddExpenseSheet visible mode={{ kind: "book" }} onClose={() => setIsAdding(false)} onCommitted={reloadAll} />
+        <AddExpenseSheet
+          visible
+          mode={{ kind: "book" }}
+          initialCategoryId={addCategoryId}
+          onClose={() => {
+            setIsAdding(false);
+            setAddCategoryId(null);
+          }}
+          onCommitted={reloadAll}
+        />
       ) : null}
       {isSorting ? (
         <SortPayoutsSheet

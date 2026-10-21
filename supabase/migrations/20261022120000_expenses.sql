@@ -215,7 +215,12 @@ create index if not exists expense_receipts_expense_idx on public.expense_receip
 -- ============================================
 
 -- 5a. expense_categories: trimmed names; a client never sets or moves a
--- system_key and never moves a row to another store.
+-- system_key and never moves a row to another store. A category's group
+-- decides where its money lands in Profit, so a client may not rewrite
+-- history: no grp change once any expense (any status) uses the category,
+-- and seed rows keep their grp and needs_note for good (rename/icon/sort/
+-- archive stay allowed). SECURITY INVOKER (current_user is the writer); the
+-- callers that pass the policy hold `expenses` store-wide and see the book.
 create or replace function public.expense_categories_guard()
 returns trigger
 language plpgsql
@@ -237,6 +242,14 @@ begin
      or new.system_key is distinct from old.system_key
      or new.created_at is distinct from old.created_at then
     raise exception 'A category cannot move to another store or change its seed key' using errcode = '42501';
+  end if;
+  if old.system_key is not null
+     and (new.grp is distinct from old.grp or new.needs_note is distinct from old.needs_note) then
+    raise exception 'A starter category keeps its group and note rule' using errcode = '42501';
+  end if;
+  if new.grp is distinct from old.grp
+     and exists (select 1 from public.expenses e where e.category_id = old.id) then
+    raise exception 'This category already has expenses; its group cannot change' using errcode = '42501';
   end if;
   return new;
 end;
@@ -299,6 +312,29 @@ create trigger suppliers_keep_creator
   before update on public.suppliers
   for each row execute function public.suppliers_keep_creator();
 
+-- 5b'. The signed-in account's display name, as the apps show it
+-- (display_name, else the email's local part — store_activity_actor_name's
+-- rule). Client-sent names are not trusted: writers stamp this instead.
+-- SECURITY INVOKER: app_users_select_self lets a user read their own row.
+create or replace function public.expense_actor_name()
+returns text
+language plpgsql
+stable
+set search_path = ''
+as $$
+begin
+  return (
+    select left(nullif(btrim(coalesce(nullif(btrim(au.display_name), ''), split_part(coalesce(au.email, ''), '@', 1))), ''), 80)
+      from public.app_users au
+     where au.user_id = auth.uid()
+     limit 1
+  );
+end;
+$$;
+
+revoke all on function public.expense_actor_name() from public, anon;
+grant execute on function public.expense_actor_name() to authenticated, service_role;
+
 -- 5c. expenses_10_guard — the append-only rules for client roles.
 -- SECURITY INVOKER on purpose: current_user must be the role doing the write.
 -- void_expense marks its own UPDATE with the transaction-local setting
@@ -310,8 +346,10 @@ set search_path = ''
 as $$
 declare
   v_editable constant text[] := array[
-    'note', 'supplier_id', 'paid_to_name', 'is_stock_purchase', 'doc_type', 'invoice_no',
-    'supplier_tin', 'vat_cents', 'ewt_cents', 'ewt_rate', 'form_2307_given', 'updated_at'
+    -- Money-bearing fields (is_stock_purchase, vat/ewt) change only through
+    -- replace_expense, so the history shows the correction.
+    'note', 'supplier_id', 'paid_to_name', 'doc_type', 'invoice_no',
+    'supplier_tin', 'form_2307_given', 'updated_at'
   ];
   v_void_cols constant text[] := array['status', 'void_reason', 'voided_by', 'voided_at', 'updated_at'];
 begin
@@ -334,6 +372,7 @@ begin
       raise exception 'An expense is recorded first; void it with void_expense' using errcode = '42501';
     end if;
     new.created_by := auth.uid();
+    new.created_by_name := coalesce(public.expense_actor_name(), 'Staff');
     new.created_at := now();
     new.updated_at := now();
     new.void_reason := null;
@@ -560,7 +599,9 @@ create trigger expenses_40_spent_on_window
   before insert on public.expenses
   for each row execute function public.expenses_spent_on_window();
 
--- 5g. expense_receipts: same store as the expense, branch copied from it.
+-- 5g. expense_receipts: same store as the expense, branch copied from it;
+-- on insert, at most 10 per expense and never on a void one. The expense row
+-- is locked FOR UPDATE so two uploads cannot both take the 10th slot.
 create or replace function public.expense_receipts_link()
 returns trigger
 language plpgsql
@@ -570,9 +611,19 @@ as $$
 declare
   e record;
 begin
-  select x.tenant_id, x.outlet_id into e from public.expenses x where x.id = new.expense_id;
+  select x.tenant_id, x.outlet_id, x.status into e
+    from public.expenses x where x.id = new.expense_id
+    for update;
   if not found or e.tenant_id <> new.tenant_id then
     raise exception 'Expense belongs to a different store' using errcode = '42501';
+  end if;
+  if tg_op = 'INSERT' then
+    if e.status <> 'recorded' then
+      raise exception 'expense_void' using errcode = '22023';
+    end if;
+    if (select count(*) from public.expense_receipts r where r.expense_id = new.expense_id) >= 10 then
+      raise exception 'too_many_receipts' using errcode = '22023';
+    end if;
   end if;
   new.outlet_id := e.outlet_id;
   return new;
@@ -648,7 +699,7 @@ drop policy if exists expenses_read on public.expenses;
 create policy expenses_read on public.expenses for select to authenticated
   using (
     (public.app_user_has_permission(tenant_id, 'expenses') and public.app_user_may_reach_branch(tenant_id, outlet_id))
-    or (paid_from = 'drawer' and created_by = auth.uid())
+    or (paid_from = 'drawer' and created_by = auth.uid() and public.app_user_belongs_to_store(tenant_id))
   );
 
 -- RLS WITH CHECK runs after the BEFORE triggers: created_by is the caller,
@@ -782,6 +833,7 @@ grant execute on function public.ensure_expense_categories(uuid) to authenticate
 -- drop function if exists public.expenses_movement_once();
 -- drop function if exists public.expenses_drawer_link();
 -- drop function if exists public.expenses_guard();
+-- drop function if exists public.expense_actor_name();
 -- drop function if exists public.suppliers_keep_creator();
 -- drop function if exists public.suppliers_guard();
 -- drop function if exists public.expense_categories_guard();

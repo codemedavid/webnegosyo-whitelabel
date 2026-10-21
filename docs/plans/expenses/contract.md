@@ -282,3 +282,13 @@ These refine §2–§6; the migrations `20261022120000/120100/120200` are the re
 - **Activity amounts** are signed like the rest of Store Activity: `expense.recorded` = −amount, `expense.voided` = +amount. Summary carries `title`, `categoryName`, `paidFrom`, `spentOn` (+ `replacesExpenseId`). The activity `describe.ts` (web + app) uses the `money` icon for the category (no new app glyph) and `cancel` for a void.
 - **Permission**: `app_user_has_permission` needs NO change for `expenses` (owner = every key; `permissions IS NULL` = every non-opt-in key; a held key matches by name). Verified against the live body 2026-10-21.
 
+
+### 10.1 Security review folds (2026-10-22, before the first apply)
+
+- **Editable in place** (expenses guard): `note, supplier_id, paid_to_name, doc_type, invoice_no, supplier_tin, form_2307_given` (+ `updated_at`). `is_stock_purchase`, `vat_cents`, `ewt_cents`, `ewt_rate` change only through `replace_expense`. This supersedes the §2 guard list.
+- **Categories** (client roles): seed rows (`system_key` set) never change `grp` or `needs_note`; no category changes `grp` once any expense (any status) uses it. Rename, icon, sort and archive stay allowed.
+- **Names are server-derived** for signed-in callers: `created_by_name`, the drawer `recorded_by_name` and the void correction's `recorded_by_name` come from `public.expense_actor_name()` (app_users `display_name`, else the email's local part, else `'Staff'`). `p_recorded_by_name` / `p_actor_name` stay in the signatures and are used only by the service role.
+- `void_expense` locks the drawer's shift (`FOR SHARE`, under the caller's staff_shifts UPDATE policy) and re-checks it is open before writing the correction pay_in.
+- `expenses_read`: the cashier's own-drawer branch also requires `app_user_belongs_to_store(tenant_id)`.
+- `expense_receipts`: at most 10 per expense (22023 `too_many_receipts`) and never on a void expense (22023 `expense_void`); the expense row is locked `FOR UPDATE` so the count is atomic.
+- The store_activity CHECKs are added NOT VALID in `20261022120200` and validated in `20261022120210` (separate transaction).
