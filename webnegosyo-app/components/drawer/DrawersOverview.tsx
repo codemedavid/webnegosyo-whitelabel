@@ -15,6 +15,8 @@ export interface FloorRow {
   shift: ShiftRecord;
   expectation: DrawerExpectationRead;
   isMine: boolean;
+  /** "Expenses ₱1,480 · Taken out ₱1,500" (money-glance-drawer); null = nothing left, or not known yet. */
+  payoutSplit?: string | null;
 }
 
 interface DrawersOverviewProps {
@@ -86,6 +88,8 @@ export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, 
               </View>
               {row.expectation.state === "unavailable" ? (
                 <Text style={styles.warning}>{row.expectation.reason}</Text>
+              ) : row.payoutSplit ? (
+                <Text style={styles.meta}>{row.payoutSplit}</Text>
               ) : ready && ready.moves.collected > 0 ? (
                 <Text style={styles.meta}>
                   {formatPeso(ready.moves.collected)} already collected this shift

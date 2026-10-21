@@ -58,6 +58,8 @@ export const colors = {
   heroInkMuted: "rgba(253,251,247,0.62)",
   /** A saving shown on the ink surface (e.g. the Senior/PWD preview). */
   heroInkPositive: "#7FD3B0",
+  /** A loss shown on the ink surface (Profit's hero): a light red that stays readable on ink. */
+  heroInkNegative: "#F4A397",
 
   /** The dimmed ground behind a bottom sheet. */
   scrim: "rgba(29,24,21,0.45)",

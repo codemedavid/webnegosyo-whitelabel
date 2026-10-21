@@ -35,6 +35,19 @@ const mockDrawerExpenses = {
   settleBeforeClose: jest.fn(async () => 0),
 };
 jest.mock("../lib/expenses/use-drawer-expenses", () => ({ useDrawerExpenses: () => mockDrawerExpenses }));
+// The close sheet reads which pay-outs were expenses; the floor reads them for every drawer.
+let mockLinks = new Map<string, unknown>();
+let mockFloorLinks: Map<string, unknown> | null = null;
+let mockCanManageExpenses = false;
+let mockCategoriesRead: { data: unknown[] | undefined; error: string | null } = { data: [], error: null };
+jest.mock("../lib/expenses/expense-client", () => ({ liveExpenseDb: {} }));
+jest.mock("../lib/expenses/expense-service", () => ({ listMovementLinks: jest.fn(async () => mockLinks) }));
+jest.mock("../lib/expenses/money-glance-hooks", () => ({ usePayoutLinks: () => mockFloorLinks }));
+jest.mock("../lib/expenses/use-expenses", () => ({
+  useExpenseCategories: () => ({ ...mockCategoriesRead, categories: mockCategoriesRead.data ?? [] }),
+  useCategoryIndex: () => new Map(),
+  useCanManageExpenses: () => mockCanManageExpenses,
+}));
 const mockExpenseSheet = jest.fn();
 jest.mock("./expenses/AddExpenseSheet", () => ({
   AddExpenseSheet: (props: Record<string, unknown>) => {
@@ -66,14 +79,26 @@ beforeEach(() => {
   mockDrawerExpenses.payouts = null;
   mockDrawerExpenses.pendingFor.mockReturnValue({ cents: 0, count: 0, waiting: 0 });
   mockDrawerExpenses.settleBeforeClose.mockResolvedValue(0);
+  mockLinks = new Map();
+  mockFloorLinks = null;
+  mockCanManageExpenses = false;
+  mockCategoriesRead = { data: [], error: null };
 });
 afterEach(() => jest.restoreAllMocks());
 
-async function countAndConfirm(screen: ReturnType<typeof render>, text: string) {
+/** Opens End shift, types the count and taps Continue — the close sheet is next. */
+async function countOnly(screen: ReturnType<typeof render>, text: string) {
   await waitFor(() => expect(screen.getByLabelText("End shift")).toBeTruthy());
   fireEvent.press(screen.getByLabelText("End shift"));
   fireEvent.changeText(screen.getByLabelText("Counted cash in pesos"), text);
-  fireEvent.press(screen.getByLabelText("Confirm end of shift"));
+  fireEvent.press(screen.getByLabelText("Confirm the count"));
+}
+
+/** Counts, then ends the shift on the close sheet. */
+async function countAndConfirm(screen: ReturnType<typeof render>, text: string) {
+  await countOnly(screen, text);
+  await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+  fireEvent.press(screen.getByLabelText("End shift and save the count"));
 }
 
 it("freezes the actual cash ledger plus opening float when the cashier closes", async () => {
@@ -105,9 +130,10 @@ it("nets a pickup recorded on another tablet before freezing the expectation", a
 it.each(["unavailable", "truncated"])("does not close a shift with %s settlement history", async (mode) => {
   if (mode === "unavailable") mockLedgerError = "Connection lost";
   const screen = render(<ShiftCard orders={orders} pageLimit={mode === "truncated" ? 1 : 200} />);
-  await countAndConfirm(screen, "125");
+  await countOnly(screen, "125");
   expect(closeShift).not.toHaveBeenCalled();
-  expect(screen.getByLabelText("Confirm end of shift").props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+  expect(screen.queryByLabelText("End shift and save the count")).toBeNull();
+  expect(screen.getByLabelText("Confirm the count").props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
 });
 
 // A store with years of history always fills the 200-order page. That alone
@@ -120,6 +146,72 @@ it("closes a shift on a store whose order page is full but reaches back past the
   await waitFor(() => expect(closeShift).toHaveBeenCalledTimes(1));
 });
 
+describe("the drawer changing between the count and End shift", () => {
+  const changedNotice = "The drawer changed while you were counting. Check the new total.";
+
+  it("shows the new total and does not close on that tap when a pay-in landed meanwhile", async () => {
+    // Arrange: ₱100 float + ₱25 cash sale = ₱125 at the count.
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await countOnly(screen, "125");
+    await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+    // Both the total and the count read ₱125.
+    expect(screen.getAllByText("₱125")).toHaveLength(2);
+    // Another tablet puts ₱50 in before End shift.
+    jest.mocked(listCashMoves).mockResolvedValue([
+      { id: "in", shiftId: "shift", kind: "pay_in", amount: 50, reason: "Change", recordedByName: "Owner", createdAt: "2026-01-01T11:00:00Z" },
+    ]);
+
+    // Act
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+
+    // Assert: the sheet stays, says why, and shows the new figure and difference.
+    await waitFor(() => expect(screen.getByText(changedNotice)).toBeTruthy());
+    expect(closeShift).not.toHaveBeenCalled();
+    expect(screen.getByText("Should be in the drawer")).toBeTruthy();
+    expect(screen.getByText("₱175")).toBeTruthy();
+    expect(screen.getByText("₱50 short")).toBeTruthy();
+
+    // A second tap closes against the new figure, with the same count.
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+    await waitFor(() => expect(closeShift).toHaveBeenCalledTimes(1));
+    expect(closeShift).toHaveBeenCalledWith("tenant", "shift", expect.objectContaining({ expectedCash: 175, closingCount: 125 }));
+  });
+
+  it("closes once with the freshly read figure when nothing changed", async () => {
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await countOnly(screen, "125");
+    await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+    const readsBeforeEnd = jest.mocked(listCashMoves).mock.calls.length;
+
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+
+    await waitFor(() => expect(closeShift).toHaveBeenCalledTimes(1));
+    expect(closeShift).toHaveBeenCalledWith("tenant", "shift", expect.objectContaining({ expectedCash: 125, closingCount: 125 }));
+    expect(jest.mocked(listCashMoves).mock.calls.length).toBeGreaterThan(readsBeforeEnd);
+    expect(screen.queryByText(changedNotice)).toBeNull();
+  });
+
+  it("keeps the sheet open when an expense is still waiting to sync at End shift", async () => {
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await countOnly(screen, "125");
+    await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+    mockDrawerExpenses.settleBeforeClose.mockResolvedValue(1);
+
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/1 drawer expense is still waiting/)));
+    expect(closeShift).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("End shift and save the count")).toBeTruthy();
+  });
+});
+
+it("confirms the close with what was counted and the difference", async () => {
+  const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+  await countAndConfirm(screen, "105");
+  // The pop-up follows the post-close reload (see the double-tap test on timing).
+  await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Shift ended", "Counted ₱105 · ₱20 short"), { timeout: 5_000 });
+});
+
 it("lets the cashier back out of counting the drawer", async () => {
   const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
   await waitFor(() => expect(screen.getByLabelText("End shift")).toBeTruthy());
@@ -128,15 +220,17 @@ it("lets the cashier back out of counting the drawer", async () => {
   expect(screen.queryByLabelText("Counted cash in pesos")).toBeNull();
 });
 
-it("closes once when Confirm is tapped twice before the first tap lands", async () => {
+it("closes once when End shift is tapped twice before the first tap lands", async () => {
   let finish: () => void = () => {};
   jest.mocked(closeShift).mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
   const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
   await countAndConfirm(screen, "125");
-  fireEvent.press(screen.getByLabelText("Confirm end of shift"));
+  fireEvent.press(screen.getByLabelText("End shift and save the count"));
   await waitFor(() => expect(closeShift).toHaveBeenCalledTimes(1));
   finish();
-  await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Shift ended", expect.any(String)));
+  // Re-rendering the card after a close takes ~0.8s on this renderer; under
+  // the parallel run that overshoots waitFor's 1s default.
+  await waitFor(() => expect(screen.queryByLabelText("End shift and save the count")).toBeNull(), { timeout: 5_000 });
   expect(closeShift).toHaveBeenCalledTimes(1);
 });
 
@@ -155,9 +249,11 @@ it("treats a close that already landed as ended when the retry finds the shift c
   jest.mocked(listOpenShifts).mockResolvedValue([]);
   fireEvent.press(screen.getByLabelText("End shift"));
   fireEvent.changeText(screen.getByLabelText("Counted cash in pesos"), "125");
-  fireEvent.press(screen.getByLabelText("Confirm end of shift"));
-  await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Shift ended", expect.any(String)));
-  expect(screen.getByText("Start your shift")).toBeTruthy();
+  fireEvent.press(screen.getByLabelText("Confirm the count"));
+  await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+  fireEvent.press(screen.getByLabelText("End shift and save the count"));
+  await waitFor(() => expect(screen.getByText("Start your shift")).toBeTruthy());
+  expect(Alert.alert).not.toHaveBeenCalledWith("Could not end the shift", expect.any(String));
 });
 
 it("does not claim a timed-out close landed when the follow-up read also fails", async () => {
@@ -270,13 +366,28 @@ describe("owner floor", () => {
     await waitFor(() => expect(recordCashMove).toHaveBeenCalledWith("tenant", expect.objectContaining({ shiftId: "ana-shift", kind: "collect", amount: 2500 })));
   });
 
+  it("shows each open drawer's expenses and cash taken out", async () => {
+    mockSession.isOwner = true;
+    jest.mocked(listCashMoves).mockResolvedValue([
+      { id: "lpg", shiftId: "ana-shift", kind: "pay_out", amount: 1180, reason: "LPG", recordedByName: "Ana", createdAt: "" },
+      { id: "pick", shiftId: "ana-shift", kind: "collect", amount: 500, reason: null, recordedByName: "Owner", createdAt: "" },
+    ]);
+    mockFloorLinks = new Map([["lpg", { expenseId: "e", categoryId: "lpg", categoryName: "Gas / LPG", group: "utilities", status: "recorded" }]]);
+    const screen = render(<ShiftCard orders={[anaSale]} pageLimit={200} />);
+
+    await waitFor(() => expect(screen.getByText("Expenses ₱1,180 · Taken out ₱500")).toBeTruthy());
+  });
+
   it("lets the owner count and close a cashier's drawer on their behalf", async () => {
     mockSession.isOwner = true;
     const screen = render(<ShiftCard orders={[anaSale]} pageLimit={200} />);
     await waitFor(() => expect(screen.getByText("All drawers")).toBeTruthy());
     fireEvent.press(screen.getByLabelText("Count and close Ana's drawer"));
     fireEvent.changeText(screen.getByLabelText("Counted cash in pesos"), "2500");
-    fireEvent.press(screen.getByLabelText("Confirm end of shift"));
+    fireEvent.press(screen.getByLabelText("Confirm the count"));
+    await waitFor(() => expect(screen.getByText("End Ana's shift")).toBeTruthy());
+    expect(screen.getByText("Saved on Ana's shift.")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
     await waitFor(() => expect(closeShift).toHaveBeenCalledWith("tenant", "ana-shift", expect.objectContaining({ expectedCash: 2500, closingCount: 2500 })));
   });
 });
@@ -341,25 +452,81 @@ describe("expenses from the drawer", () => {
     mockDrawerExpenses.settleBeforeClose.mockResolvedValue(2);
     const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
 
-    await countAndConfirm(screen, "100");
+    await countOnly(screen, "100");
 
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/2 drawer expenses are still waiting/)));
     expect(closeShift).not.toHaveBeenCalled();
   });
 
-  it("lists what the drawer paid for in the close summary", async () => {
-    mockDrawerExpenses.payouts = {
-      expenses: { cents: 2_000, count: 1, byCategory: [{ name: "Ice (Yelo)", cents: 2_000, count: 1 }] },
-      takenOut: { cents: 0, count: 0 },
-      unsorted: { cents: 0, count: 0 },
-      undone: { cents: 0, count: 0 },
-    };
+  it("builds the close sheet line by line, lists what the drawer paid for, and says the drawer is short", async () => {
+    // ₱100 float + ₱25 cash sale − ₱20 ice paid from the drawer = ₱105.
+    jest.mocked(listCashMoves).mockResolvedValue([
+      { id: "ice", shiftId: "shift", kind: "pay_out", amount: 20, reason: "Ice (Yelo)", recordedByName: "Cashier", createdAt: "2026-01-01T03:30:00Z" },
+    ]);
+    mockLinks = new Map([["ice", { expenseId: "e1", categoryId: "ice", categoryName: "Ice (Yelo)", group: "ingredients", status: "recorded" }]]);
+    mockCanManageExpenses = true;
     const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
 
-    await countAndConfirm(screen, "100");
+    await countOnly(screen, "100");
 
-    await waitFor(() =>
-      expect(Alert.alert).toHaveBeenCalledWith("Shift ended", expect.stringContaining("Paid for expenses ₱20 (1): Ice ₱20.")),
+    await waitFor(() => expect(screen.getByText("What the drawer should hold")).toBeTruthy());
+    expect(screen.getByText("Paid for expenses · 1")).toBeTruthy();
+    expect(screen.getByText("Should be in the drawer")).toBeTruthy();
+    expect(screen.getByText("Yelo")).toBeTruthy();
+    expect(screen.getByText("₱5 short")).toBeTruthy();
+    expect(screen.getByText("The owner will see this on the shift.")).toBeTruthy();
+    expect(closeShift).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+    await waitFor(() => expect(closeShift).toHaveBeenCalledWith("tenant", "shift", expect.objectContaining({ expectedCash: 105, closingCount: 100 })));
+  });
+
+  it("keeps one way to pay an expense: the shift card, not Cash in / out", async () => {
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByText("Cash in / out")).toBeTruthy());
+    fireEvent.press(screen.getByText("Cash in / out"));
+
+    expect(screen.getAllByText("Pay an expense")).toHaveLength(1);
+    expect(screen.getByText("Take out cash")).toBeTruthy();
+  });
+
+  it("opens Pay from the drawer when the register's Pay out asks for it, then clears the request", async () => {
+    const handled = jest.fn();
+    render(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={handled} />);
+
+    await waitFor(() => expect(handled).toHaveBeenCalledTimes(1));
+    expect(mockExpenseSheet).toHaveBeenLastCalledWith(
+      expect.objectContaining({ scope: "spend", mode: expect.objectContaining({ kind: "drawer", shiftId: "shift" }) }),
     );
+  });
+
+  it("drops a Pay out request when the categories could not be read, instead of popping the sheet later", async () => {
+    mockDrawerExpenses.isReady = false;
+    mockCategoriesRead = { data: undefined, error: "offline" };
+    const handled = jest.fn();
+    render(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={handled} />);
+
+    await waitFor(() => expect(handled).toHaveBeenCalledTimes(1));
+    expect(mockExpenseSheet).not.toHaveBeenCalled();
+  });
+
+  it("waits on a Pay out request while the categories are still loading", async () => {
+    mockDrawerExpenses.isReady = false;
+    mockCategoriesRead = { data: undefined, error: null };
+    const handled = jest.fn();
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={handled} />);
+
+    await waitFor(() => expect(screen.getByText("Cash in / out")).toBeTruthy());
+    expect(handled).not.toHaveBeenCalled();
+  });
+
+  it("drops a Pay out request when there is no open shift", async () => {
+    jest.mocked(loadOpenShift).mockResolvedValue(null);
+    jest.mocked(listOpenShifts).mockResolvedValue([]);
+    const handled = jest.fn();
+    render(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={handled} />);
+
+    await waitFor(() => expect(handled).toHaveBeenCalledTimes(1));
+    expect(mockExpenseSheet).not.toHaveBeenCalled();
   });
 });

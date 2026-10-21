@@ -36,6 +36,8 @@ import { HomeNeedsReview } from "../../components/approvals/NeedsReviewCard";
 import { IconButton } from "../../components/IconButton";
 import { ListRow } from "../../components/ListRow";
 import { ShiftStatusStrip } from "../../components/ShiftStatusStrip";
+import { HomeMoneyCard } from "../../components/money/HomeMoneyCard";
+import { moneyAccess } from "../../lib/expenses/money-glance";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getDashboardStatsByPeriodRef = "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
@@ -125,6 +127,8 @@ export default function DashboardScreen() {
   // The drawer's own screen is the only place the shift can be opened or
   // closed, so an account that cannot reach it has no shift to report.
   const showShift = isTabReachable("pos-sales", ctx);
+  // Money out beside money in: each row only for an account that may open it.
+  const money = useMemo(() => moneyAccess(ctx, orderBackend), [ctx, orderBackend]);
 
   const [refreshing, setRefreshing] = useState(false);
   // Spread into a fresh literal: the query hook wants an indexable record,
@@ -281,10 +285,13 @@ export default function DashboardScreen() {
 
         {!canSeeOrders ? (
           // Only what this account can open: no takings, no queue, no ₱0.
-          <QuickActions
-            actions={quickActions}
-            onPress={(action) => goTo(tabRouter, action.href as `/(main)/${string}`)}
-          />
+          <>
+            <HomeMoneyCard access={money} />
+            <QuickActions
+              actions={quickActions}
+              onPress={(action) => goTo(tabRouter, action.href as `/(main)/${string}`)}
+            />
+          </>
         ) : isStatsLoading ? (
           <LoadingState message="Loading today..." />
         ) : (
@@ -298,6 +305,8 @@ export default function DashboardScreen() {
               delta={delta}
               comparisonLabel="yesterday"
             />
+
+            <HomeMoneyCard access={money} />
 
             <QuickActions
               actions={quickActions}

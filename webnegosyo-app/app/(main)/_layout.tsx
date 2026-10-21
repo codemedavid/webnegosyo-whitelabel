@@ -15,6 +15,7 @@ import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint"
 import { PrinterWarmUp } from "../../components/PrinterWarmUp";
 import { OfflineSalesSync } from "../../components/OfflineSalesSync";
 import { ExpenseSync } from "../../components/expenses/ExpenseSync";
+import { ExpenseUndoHost } from "../../components/expenses/ExpenseUndoHost";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
@@ -93,6 +94,8 @@ export default function MainLayout() {
       <OfflineSalesSync />
       {/* Sends expenses (and their receipts) this phone kept while offline. */}
       <ExpenseSync />
+      {/* The Undo bar after an expense save, on whatever screen the sheet closed onto. */}
+      <ExpenseUndoHost />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}

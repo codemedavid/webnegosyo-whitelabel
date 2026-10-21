@@ -138,6 +138,7 @@ describe("profit access", () => {
     expect(canSeeProfit(staff(["reports", "expenses", "costs"]))).toBe(true);
     expect(canSeeProfit(staff(["reports", "expenses"]))).toBe(false);
     expect(canSeeProfit(staff(["reports", "costs"]))).toBe(false);
+    expect(canSeeProfit(staff(["expenses", "costs"]))).toBe(false);
   });
 });
 

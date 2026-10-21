@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import {
@@ -270,6 +270,8 @@ function JoinedLedger({
 }
 
 function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, savedAt, refetch }: DrawerRead) {
+  // `?pay=1`: the register's "Pay out" — the shift card opens "Pay from the drawer".
+  const { pay } = useLocalSearchParams<{ pay?: string }>();
   // The "Your activity today" door at the foot of the Drawer.
   const activityViewer = {
     userId: useAuthStore((s) => s.userId),
@@ -410,7 +412,13 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       >
-        <ShiftCard orders={page} pageLimit={SHIFT_ORDER_LIMIT} ledger={ledger} />
+        <ShiftCard
+          orders={page}
+          pageLimit={SHIFT_ORDER_LIMIT}
+          ledger={ledger}
+          isPayOutRequested={pay === "1"}
+          onPayOutHandled={() => router.setParams({ pay: undefined })}
+        />
         {/* The money first: it is the only reason this screen is open. */}
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Today at this counter · Cash</Text>

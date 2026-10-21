@@ -32,12 +32,12 @@ interface CashMoveSheetProps {
   onSubmit: (move: { kind: CashMoveKind; amount: number; reason: string }) => void;
   onClose: () => void;
   /**
-   * The drawer's two ways money leaves on purpose, each its own sheet: an
-   * expense (ice, LPG, a rider) and cash taken out that is not an expense
-   * (owner, bank deposit, loan). Absent = this store has no expenses yet,
-   * and the old free-text "Pay out" stays in `target.kinds`.
+   * Cash taken out that is not an expense (owner, bank deposit, loan), in the
+   * expense sheet. Absent = this store has no expenses yet, and the old
+   * free-text "Pay out" stays in `target.kinds`. Paying an expense is NOT a
+   * door here: it has one way in, "Pay an expense" on the shift card (and the
+   * register's "Pay out", which opens that same sheet).
    */
-  onPayExpense?: () => void;
   onTakeOut?: () => void;
 }
 
@@ -58,7 +58,7 @@ function pickupChips(expected: number | null, floatToKeep: number): { label: str
  * the count at close still balances — the best-practice alternative to
  * "just take some cash and remember".
  */
-export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onPayExpense, onTakeOut }: CashMoveSheetProps) {
+export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onTakeOut }: CashMoveSheetProps) {
   const [kind, setKind] = useState<CashMoveKind>(target?.kinds[0] ?? "collect");
   const [amountText, setAmountText] = useState("");
   const [reason, setReason] = useState("");
@@ -85,26 +85,15 @@ export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onPayExpense,
 
   return (
     <DrawerSheet visible title={target.title} subtitle={target.subtitle} onClose={onClose} isBusy={isBusy}>
-      {onPayExpense || onTakeOut ? (
+      {onTakeOut ? (
         <View style={styles.doors}>
-          {onPayExpense ? (
-            <MoveDoor
-              icon="receipt"
-              title="Pay an expense"
-              hint="Ice, LPG, a rider — saved under its category"
-              onPress={onPayExpense}
-              isDisabled={isBusy}
-            />
-          ) : null}
-          {onTakeOut ? (
-            <MoveDoor
-              icon="wallet"
-              title="Take out cash"
-              hint="Owner took cash, bank deposit, loan payment"
-              onPress={onTakeOut}
-              isDisabled={isBusy}
-            />
-          ) : null}
+          <MoveDoor
+            icon="wallet"
+            title="Take out cash"
+            hint="Owner took cash, bank deposit, loan payment"
+            onPress={onTakeOut}
+            isDisabled={isBusy}
+          />
         </View>
       ) : null}
       {target.kinds.length > 1 ? (

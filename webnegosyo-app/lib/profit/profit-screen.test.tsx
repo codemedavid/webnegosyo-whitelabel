@@ -47,12 +47,14 @@ function ready(overrides: Partial<typeof summary> = {}): ProfitScreenData {
   });
 }
 
-function answer(data: ProfitScreenData | undefined) {
+const refetch = jest.fn(async () => {});
+
+function answer(data: ProfitScreenData | undefined, extra: { isLoading?: boolean; error?: string | null } = {}) {
   jest.mocked(useProfit).mockReturnValue({
     data,
-    isLoading: data === undefined,
-    error: null,
-    refetch: jest.fn(async () => {}),
+    isLoading: extra.isLoading ?? data === undefined,
+    error: extra.error ?? null,
+    refetch,
     isRefetching: false,
     dataUpdatedAt: 1,
   });
@@ -65,51 +67,120 @@ beforeEach(() => {
   mockSession.orderBackend = "platform";
 });
 
-it("is locked, without reading, for staff missing the costs key", () => {
-  mockSession.isOwner = false;
-  mockSession.permissions = ["reports", "expenses"];
-  answer(undefined);
+describe("who sees profit", () => {
+  it("is locked, without reading, for staff missing the costs key", () => {
+    mockSession.isOwner = false;
+    mockSession.permissions = ["reports", "expenses"];
+    answer(undefined);
 
-  const screen = render(<ProfitScreen />);
+    const screen = render(<ProfitScreen />);
 
-  expect(screen.getByText("Ask the owner for cost access to see profit.")).toBeTruthy();
-  expect(jest.mocked(useProfit).mock.calls[0][2]).toBe(false);
+    expect(screen.getByText("Ask the owner for cost access to see profit.")).toBeTruthy();
+    expect(jest.mocked(useProfit).mock.calls[0][2]).toBe(false);
+  });
+
+  it("is locked when the database refuses, whatever the phone thought", () => {
+    answer({ status: "locked", message: "Ask the owner for cost access to see profit." });
+    expect(render(<ProfitScreen />).getByText("Ask the owner for cost access to see profit.")).toBeTruthy();
+  });
+
+  it("explains itself on a store that is not on the platform backend", () => {
+    mockSession.orderBackend = "convex";
+    answer(undefined);
+    const screen = render(<ProfitScreen />);
+    expect(screen.getByText(/new order system/)).toBeTruthy();
+    expect(jest.mocked(useProfit).mock.calls[0][2]).toBe(false);
+  });
 });
 
-it("is locked when the database refuses, whatever the phone thought", () => {
-  answer({ status: "locked", message: "Ask the owner for cost access to see profit." });
-  expect(render(<ProfitScreen />).getByText("Ask the owner for cost access to see profit.")).toBeTruthy();
+describe("the answer", () => {
+  it("says a loss in words, with the falling bar and the three guides", () => {
+    answer(ready());
+    const screen = render(<ProfitScreen />);
+    // ₱10,000 − ₱4,000 − ₱8,000 = −₱2,000.
+    const month = resolveProfitWindow({ preset: "this_month" }, Date.now()).label;
+    expect(screen.getByText(`Lost in ${month} so far`)).toBeTruthy();
+    expect(screen.getByText("You spent ₱2,000 more than the ₱10,000 you made in sales.")).toBeTruthy();
+    expect(screen.getByLabelText("Lost ₱2,000")).toBeTruthy();
+    expect(screen.getByLabelText("Food cost: 40% of sales, On the high side")).toBeTruthy();
+    expect(screen.getByLabelText("Staff: 30% of sales, Usual")).toBeTruthy();
+    expect(screen.getByLabelText("Rent: 50% of sales, High")).toBeTruthy();
+    expect(screen.getByText("Food + staff: 70% of sales")).toBeTruthy();
+  });
+
+  it("explains a tile in plain words when tapped", () => {
+    answer(ready());
+    const screen = render(<ProfitScreen />);
+    fireEvent.press(screen.getByLabelText("Rent: 50% of sales, High"));
+    expect(screen.getByText(/Rent is what your space costs/)).toBeTruthy();
+    expect(screen.getByText(/most restaurants land at 10% or less/)).toBeTruthy();
+  });
+
+  it("opens the expense book on the category a bar stands for, for the same days", () => {
+    answer(ready());
+    const screen = render(<ProfitScreen />);
+    fireEvent.press(screen.getByLabelText(/^Rent, ₱5,000/));
+    expect(router.push).toHaveBeenCalledWith(expect.stringMatching(/^\/\(main\)\/expenses\?category=rent&from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/));
+  });
+
+  it("opens every expense for the same days", () => {
+    answer(ready());
+    const screen = render(<ProfitScreen />);
+    fireEvent.press(screen.getByLabelText("All expenses: Where the money went"));
+    expect(router.push).toHaveBeenCalledWith(expect.stringMatching(/^\/\(main\)\/expenses\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/));
+  });
+
+  it("greets a store with no expenses yet, and every finding is a button", () => {
+    answer(ready({ expense_count: 0 }));
+    const screen = render(<ProfitScreen />);
+    expect(screen.getByText("Profit is sales, minus ingredients, minus expenses")).toBeTruthy();
+    expect(screen.getByText(/^No expenses recorded this month/)).toBeTruthy();
+    const buttons = screen.getAllByRole("button", { name: "Add expense" });
+    expect(buttons.length).toBe(2);
+    fireEvent.press(buttons[1]);
+    expect(router.push).toHaveBeenCalledWith("/(main)/expenses?add=1");
+  });
 });
 
-it("explains itself on a store that is not on the platform backend", () => {
-  mockSession.orderBackend = "convex";
-  answer(undefined);
-  const screen = render(<ProfitScreen />);
-  expect(screen.getByText(/new order system/)).toBeTruthy();
-  expect(jest.mocked(useProfit).mock.calls[0][2]).toBe(false);
+describe("the period", () => {
+  it("re-reads the chosen period", () => {
+    answer(ready());
+    const screen = render(<ProfitScreen />);
+    fireEvent.press(screen.getByLabelText("Period This week"));
+    const calls = jest.mocked(useProfit).mock.calls;
+    expect(calls[calls.length - 1][0].preset).toBe("this_week");
+  });
 });
 
-it("says the sentence, and a loss in words", () => {
-  answer(ready());
-  const screen = render(<ProfitScreen />);
-  expect(screen.getByText("Sales (Benta)")).toBeTruthy();
-  // ₱10,000 − ₱4,000 − ₱8,000 = −₱2,000.
-  expect(screen.getByText("−₱2,000")).toBeTruthy();
-  expect(screen.getByText("Lugi (loss) · −₱2,000 · 20% of sales")).toBeTruthy();
-  expect(screen.getByText("Ingredients + Staff = 70% of sales")).toBeTruthy();
-});
+describe("states", () => {
+  it("keeps the header and the period control while the first read runs", () => {
+    answer(undefined);
+    const screen = render(<ProfitScreen />);
+    expect(screen.getByRole("header", { name: "Profit" })).toBeTruthy();
+    expect(screen.getByLabelText("Period This month")).toBeTruthy();
+    expect(screen.getByLabelText("Loading profit")).toBeTruthy();
+  });
 
-it("opens the expense book on the category a bar stands for", () => {
-  answer(ready());
-  const screen = render(<ProfitScreen />);
-  fireEvent.press(screen.getByLabelText(/^Rent, ₱5,000/));
-  expect(router.push).toHaveBeenCalledWith(expect.stringMatching(/^\/\(main\)\/expenses\?category=rent&month=\d{4}-\d{2}$/));
-});
+  it("says plainly when profit could not load, with a retry", () => {
+    answer(undefined, { isLoading: false, error: "Profit couldn’t load. Pull down to try again." });
+    const screen = render(<ProfitScreen />);
+    expect(screen.getByText("Profit couldn’t load")).toBeTruthy();
+    fireEvent.press(screen.getByText("Try again"));
+    expect(refetch).toHaveBeenCalled();
+  });
 
-it("greets a store with no expenses yet and records the first one", () => {
-  answer(ready({ expense_count: 0 }));
-  const screen = render(<ProfitScreen />);
-  expect(screen.getByText("Profit = Sales − Ingredients − Expenses")).toBeTruthy();
-  fireEvent.press(screen.getAllByText("Add expense")[0]);
-  expect(router.push).toHaveBeenCalledWith("/(main)/expenses?add=1");
+  it("keeps the figures and says so quietly when only a refresh failed", () => {
+    answer(ready(), { error: "offline" });
+    const screen = render(<ProfitScreen />);
+    expect(screen.getByText(/Couldn’t refresh/)).toBeTruthy();
+    expect(screen.getByLabelText("Lost ₱2,000")).toBeTruthy();
+  });
+
+  it("switches to cash flow", () => {
+    answer(ready({ capex_cents: 2_500_000 }));
+    const screen = render(<ProfitScreen />);
+    fireEvent.press(screen.getByLabelText("Show Cash flow"));
+    expect(screen.getByText("Collected from sales")).toBeTruthy();
+    expect(screen.getByText("Big purchases (equipment)")).toBeTruthy();
+  });
 });

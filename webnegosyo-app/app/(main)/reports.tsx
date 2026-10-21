@@ -35,6 +35,8 @@ import { HeroRevenueCard } from "../../components/HeroRevenueCard";
 import { CustomerInsights } from "../../components/reports/CustomerInsights";
 import { InsightsNotice } from "../../components/reports/InsightsNotice";
 import { ReportsColumns, useIsWideReports } from "../../components/reports/ReportsColumns";
+import { ReportsMoneySection } from "../../components/money/ReportsMoneySection";
+import { moneyAccess } from "../../lib/expenses/money-glance";
 
 const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
 
@@ -49,6 +51,8 @@ interface SalesSnapshot {
 const DEFAULT_DAYS = 30;
 const PERIOD_OPTIONS = DASHBOARD_WINDOWS.map((days) => ({ label: `${days} days`, value: days as number }));
 const canText = isSmsCampaignsAvailable(Platform.OS);
+/** The REPORTS_SECTIONS entry drawn as ReportsMoneySection instead of plain rows. */
+const MONEY_SECTION = "Money";
 
 /**
  * Reports: the store's customers first, every other report one tap below.
@@ -73,7 +77,10 @@ export default function ReportsScreen() {
   const canSeeRewards = isTabReachable("loyalty", ctx);
   const canSeeSales = isTabReachable("analytics", ctx);
   const canSeeTexts = isTabReachable("texts", ctx);
-  const sections = hubSections(REPORTS_SECTIONS, ctx);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  // Money has its own section with live figures; Dig deeper keeps the rest.
+  const money = useMemo(() => moneyAccess(ctx, orderBackend), [ctx, orderBackend]);
+  const sections = hubSections(REPORTS_SECTIONS, ctx).filter((section) => section.title !== MONEY_SECTION);
   const isWide = useIsWideReports();
 
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
@@ -141,9 +148,13 @@ export default function ReportsScreen() {
     </>
   ) : null;
 
+  const moneySection = <ReportsMoneySection access={money} onOpen={open} />;
+  const hasMoney = money.canSeeExpenses || money.canSeeProfitRow;
+
   const digDeeper =
-    sections.length > 0 || complianceDoor ? (
+    sections.length > 0 || complianceDoor || hasMoney ? (
       <>
+        {moneySection}
         {sections.length > 0 ? (
           <>
             <SectionHeader title="Dig deeper" hint="Sales, products, branches and store activity" />

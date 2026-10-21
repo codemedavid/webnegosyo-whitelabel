@@ -1,20 +1,34 @@
 import {
+  MAX_DAYS_BACK,
   applyRepeat,
   asksStockQuestion,
   canTapSave,
   categoriesForScope,
   checkForm,
   dateChoices,
+  dateToDay,
+  dayToDate,
+  drawerAfterCents,
+  drawerChipLabel,
   emptyForm,
+  formForOpening,
   nextEntryForm,
+  oldestSpendDate,
+  primaryLabel,
   saveLabel,
   savedMessage,
+  savesToPhoneOnly,
   selectCategory,
+  sheetTitle,
   toBookDraft,
   toDrawerDraft,
+  withNote,
   type AddExpenseForm,
+  type AddExpenseMode,
   type FormContext,
 } from "./add-expense-form";
+import type { QueuedExpense } from "./expense-queue";
+import { addDays } from "./manila-date";
 import { keypadCents, pressKeys, type KeypadKey } from "./keypad";
 import type { ExpenseCategory } from "./types";
 
@@ -155,13 +169,126 @@ describe("add-expense form", () => {
     expect(nextEntryForm(filled)).toEqual({ ...emptyForm("2026-10-20", "maya") });
   });
 
-  it("offers the last week of days, today first", () => {
+  it("offers days today first, and never one the validator would refuse", () => {
     expect(dateChoices(TODAY, 3)).toEqual(["2026-10-21", "2026-10-20", "2026-10-19"]);
+    const every = dateChoices(TODAY, 1_000);
+    expect(every).toHaveLength(MAX_DAYS_BACK + 1);
+    expect(every[every.length - 1]).toBe(oldestSpendDate(TODAY));
+    const base = selectCategory(typed(["5", "0"]), "c-lpg");
+    for (const spentOn of [every[0], every[every.length - 1]]) {
+      expect(checkForm({ ...base, spentOn }, book)).toEqual({ ok: true });
+    }
+  });
+
+  it("refuses a day older than the oldest the calendar offers", () => {
+    const base = selectCategory(typed(["5", "0"]), "c-lpg");
+    const tooOld = addDays(TODAY, -(MAX_DAYS_BACK + 1));
+    expect(tooOld < oldestSpendDate(TODAY)).toBe(true);
+    expect(checkForm({ ...base, spentOn: tooOld }, book)).toMatchObject({ ok: false, field: "date" });
+  });
+
+  it("turns a calendar day into the stored date and back, whatever the hour", () => {
+    expect(dateToDay(dayToDate("2026-03-09"))).toBe("2026-03-09");
+    expect(dateToDay(new Date(2026, 0, 31, 23, 59))).toBe("2026-01-31");
+    expect(dayToDate("2026-12-01").getMonth()).toBe(11);
   });
 
   it("says what was saved, short", () => {
     expect(savedMessage("Gas / LPG", 125_000, false)).toBe("Saved · Gas / LPG ₱1,250");
     expect(savedMessage("Ice (Yelo)", 12_000, true)).toBe("Saved on this phone · Ice ₱120");
+  });
+
+  it("pre-picks a category from a note only while the person has not picked one", () => {
+    const all = [lpg, ice, other];
+    const suggested = withNote(emptyForm(TODAY), "yelo para sa cooler", all);
+    expect(suggested.categoryId).toBe("c-ice");
+    expect(suggested.note).toBe("yelo para sa cooler");
+
+    // A changed note may move its own suggestion…
+    expect(withNote(suggested, "gasul refill", all).categoryId).toBe("c-lpg");
+    // …but never a category the person tapped.
+    const picked = selectCategory(emptyForm(TODAY), "c-other");
+    expect(withNote(picked, "yelo", all).categoryId).toBe("c-other");
+    const repeated = applyRepeat(emptyForm(TODAY), {
+      categoryId: "c-lpg",
+      categoryName: "Gas / LPG",
+      icon: null,
+      amountCents: 105_000,
+      timesUsed: 1,
+      lastUsedAt: "2026-10-20T00:00:00Z",
+    });
+    expect(withNote(repeated, "yelo", all).categoryId).toBe("c-lpg");
+  });
+
+  it("does not pre-pick on a weak or two-way note, or a category the sheet does not offer", () => {
+    expect(withNote(emptyForm(TODAY), "yelo at lpg", [lpg, ice]).categoryId).toBeNull();
+    expect(withNote(emptyForm(TODAY), "yelo", [lpg]).categoryId).toBeNull();
+  });
+
+  it("opens with the caller's amount, note, category and stock answer", () => {
+    const form = formForOpening({
+      today: TODAY,
+      paidFrom: "gcash",
+      initialCategoryId: "c-ice",
+      initialAmountCents: 213_050,
+      initialNote: "Delivery from Aling Nena",
+      initialIsStockPurchase: true,
+    });
+    expect(keypadCents(form.keypad)).toBe(213_050);
+    expect(form).toMatchObject({
+      categoryId: "c-ice",
+      note: "Delivery from Aling Nena",
+      isStockPurchase: true,
+      paidFrom: "gcash",
+      spentOn: TODAY,
+    });
+    expect(formForOpening({ today: TODAY, paidFrom: "cash" })).toEqual(emptyForm(TODAY));
+    // A nonsense amount opens empty rather than as a negative or fractional centavo.
+    expect(keypadCents(formForOpening({ today: TODAY, paidFrom: "cash", initialAmountCents: -5 }).keypad)).toBe(0);
+  });
+
+  it("titles and labels the sheet for each way it opens", () => {
+    const drawer: AddExpenseMode = { kind: "drawer", shiftId: "s1", drawerName: "Front till", availableCents: 462_000 };
+    expect(sheetTitle({ kind: "book" }, "spend")).toBe("New expense");
+    expect(sheetTitle(drawer, "spend")).toBe("Pay from the drawer");
+    expect(sheetTitle(drawer, "take_out")).toBe("Take out cash");
+    expect(primaryLabel(105_000, { kind: "book" }, "spend")).toBe("Save ₱1,050");
+    expect(primaryLabel(15_000, drawer, "spend")).toBe("Pay ₱150 from drawer");
+    expect(primaryLabel(0, drawer, "spend")).toBe("Pay from drawer");
+    expect(primaryLabel(50_000, drawer, "take_out")).toBe("Take out ₱500");
+  });
+
+  it("names the drawer chip and says what the drawer should hold afterwards", () => {
+    const drawer = { kind: "drawer" as const, shiftId: "s1", drawerName: "Front till", availableCents: 462_000 };
+    expect(drawerChipLabel({ ...drawer, shiftLabel: "Ben's shift" })).toBe("Front till · Ben's shift");
+    expect(drawerChipLabel({ ...drawer, drawerName: "Cashier 1" })).toBe("Cashier 1 drawer");
+    expect(drawerChipLabel({ ...drawer, drawerName: "My" })).toBe("Your drawer");
+    expect(drawerAfterCents(drawer, 15_000)).toBe(447_000);
+    expect(drawerAfterCents(drawer, 0)).toBeNull();
+    expect(drawerAfterCents(drawer, 500_000)).toBeNull();
+    expect(drawerAfterCents({ ...drawer, availableCents: null }, 15_000)).toBeNull();
+    expect(drawerAfterCents({ kind: "book" }, 15_000)).toBeNull();
+  });
+
+  it("says an entry is saved on this phone only when the queue shows it will wait", () => {
+    const waiting = (overrides: Partial<QueuedExpense>): QueuedExpense => ({
+      id: "old",
+      tenantId: "t1",
+      payload: { kind: "book", createdByName: "Ana", draft: toBookDraft(selectCategory(typed(["5"]), "c-lpg"), { clientRequestId: "old", outletId: null, tracksStock: false, category: lpg }) },
+      categoryName: "Gas / LPG",
+      attempts: 1,
+      retryAt: null,
+      createdAt: 0,
+      refusedReason: null,
+      ...overrides,
+    });
+    expect(savesToPhoneOnly([], { isOffline: false, exceptId: "new" })).toBe(false);
+    expect(savesToPhoneOnly([], { isOffline: true, exceptId: "new" })).toBe(true);
+    expect(savesToPhoneOnly([waiting({})], { isOffline: false, exceptId: "new" })).toBe(true);
+    // Never tried yet (still in its own Undo window), refused, or the new entry itself: not evidence.
+    expect(savesToPhoneOnly([waiting({ attempts: 0 })], { isOffline: false, exceptId: "new" })).toBe(false);
+    expect(savesToPhoneOnly([waiting({ refusedReason: "Shift closed" })], { isOffline: false, exceptId: "new" })).toBe(false);
+    expect(savesToPhoneOnly([waiting({ id: "new" })], { isOffline: false, exceptId: "new" })).toBe(false);
   });
 
   it("splits spendable categories from cash taken out", () => {

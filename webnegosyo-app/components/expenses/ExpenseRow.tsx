@@ -1,62 +1,71 @@
 import React, { memo } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
+import { categoryLook } from "../../lib/expenses/category-look";
 import { formatCents, spokenCents } from "../../lib/expenses/expense-format";
-import { rowAccessibilityLabel, type ExpenseListRow } from "../../lib/expenses/expense-list";
+import { ROW_NOTE_TEXT, homeRowLabel, type HomeRow, type RowNote } from "../../lib/expenses/expenses-home-rows";
 import { colors, radius, spacing, typography } from "../../theme/colors";
-import { Icon } from "../Icon";
-import { CategoryBadge } from "./CategoryBadge";
+import { CategoryTile } from "./CategoryTile";
 
 interface ExpenseRowProps {
-  row: ExpenseListRow;
-  onPress: (row: ExpenseListRow) => void;
+  row: HomeRow;
+  onPress: (row: HomeRow) => void;
+  /** Draws the hairline above the row (every row in a day card but the first). */
+  isDivided?: boolean;
 }
 
+const NOTE_COLOR: Readonly<Record<RowNote, string>> = {
+  no_receipt: colors.textMuted,
+  waiting: colors.textMuted,
+  refused: colors.danger,
+  void: colors.textMuted,
+};
+
 /**
- * One line of the expense book: category mark · what · who/when · amount.
- * Money out is normal ink with a minus, never red (plan §5.6); a voided row is
- * struck through and stays visible; a row still on this phone says so.
+ * One line of the expense book: category tile · what · where it came from,
+ * who, when · amount. Money out is ink, never red and never with a minus
+ * (design brief); the small line under the amount says what still needs a
+ * look. A voided row stays visible, struck through.
  */
-function ExpenseRowView({ row, onPress }: ExpenseRowProps) {
-  const sign = row.isVoid ? "" : "−";
+function ExpenseRowView({ row, onPress, isDivided = false }: ExpenseRowProps) {
+  const isVoid = row.status === "void";
   return (
     <TouchableOpacity
-      style={styles.row}
+      style={[styles.row, isDivided && styles.divided]}
       onPress={() => onPress(row)}
+      activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={rowAccessibilityLabel(row, spokenCents(row.amountCents))}
+      accessibilityLabel={homeRowLabel(row, spokenCents(row.amountCents))}
     >
-      <CategoryBadge code={row.icon} isMuted={row.isVoid} />
+      <CategoryTile look={categoryLook(row.category)} size={30} isMuted={isVoid} />
       <View style={styles.body}>
         <View style={styles.titleLine}>
-          <Text style={[styles.title, row.isVoid && styles.struck]} numberOfLines={1}>
+          <Text style={[styles.title, isVoid && styles.struck]} numberOfLines={1}>
             {row.title}
           </Text>
-          {row.isDrawer ? (
-            <View style={styles.till}>
-              <Text style={styles.tillText}>DRAWER</Text>
-            </View>
-          ) : null}
-          {row.isNotExpense ? (
+          {row.isCashMoved ? (
             <View style={styles.tag}>
-              <Text style={styles.tagText}>NOT AN EXPENSE</Text>
+              <Text style={styles.tagText}>Cash moved</Text>
             </View>
           ) : null}
         </View>
-        <View style={styles.metaLine}>
-          {row.isWaiting ? <Icon name="rotate" size={12} color={colors.textMuted} /> : null}
-          {row.refusedReason ? <Icon name="warning" size={12} color={colors.danger} /> : null}
-          <Text style={[styles.meta, row.refusedReason !== null && styles.metaRefused]} numberOfLines={1}>
-            {row.meta}
-          </Text>
-          {row.hasReceipt ? <Icon name="photo" size={12} color={colors.textMuted} /> : null}
-          {row.needsLook && !row.refusedReason ? <Icon name="info" size={12} color={colors.textMuted} /> : null}
-        </View>
+        <Text style={styles.meta} numberOfLines={1}>
+          {row.meta}
+        </Text>
       </View>
-      <Text style={[styles.amount, row.isVoid && styles.struck]}>
-        {sign}
-        {formatCents(row.amountCents, { compact: true })}
-      </Text>
+      <View style={styles.amountColumn}>
+        <Text style={[styles.amount, isVoid && styles.struck]} numberOfLines={1}>
+          {formatCents(row.amountCents, { compact: true })}
+        </Text>
+        {row.note ? (
+          <View style={styles.noteLine}>
+            {row.note === "no_receipt" ? <View style={styles.dot} /> : null}
+            <Text style={[styles.note, { color: NOTE_COLOR[row.note] }]} numberOfLines={1}>
+              {ROW_NOTE_TEXT[row.note]}
+            </Text>
+          </View>
+        ) : null}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -70,21 +79,19 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    minHeight: 64,
-    backgroundColor: colors.card,
-    borderTopWidth: 1,
-    borderTopColor: colors.separator,
+    minHeight: 60,
   },
-  body: { flex: 1, gap: 3 },
+  divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  body: { flex: 1, gap: 2 },
   titleLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   title: { ...typography.body, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
   struck: { textDecorationLine: "line-through", color: colors.textMuted },
-  till: { backgroundColor: colors.successLight, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
-  tillText: { fontSize: 10, fontWeight: "800", color: colors.success, letterSpacing: 0.4 },
-  tag: { backgroundColor: colors.infoLight, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
-  tagText: { fontSize: 10, fontWeight: "800", color: colors.info, letterSpacing: 0.4 },
-  metaLine: { flexDirection: "row", alignItems: "center", gap: 4 },
-  meta: { ...typography.caption, color: colors.textMuted, flexShrink: 1 },
-  metaRefused: { color: colors.danger, fontWeight: "600" },
+  tag: { backgroundColor: colors.surfaceSubtle, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 1 },
+  tagText: { ...typography.small, fontWeight: "700", color: colors.textMuted },
+  meta: { ...typography.caption, color: colors.textMuted },
+  amountColumn: { alignItems: "flex-end", gap: 2, maxWidth: "40%" },
   amount: { ...typography.body, fontWeight: "700", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
+  noteLine: { flexDirection: "row", alignItems: "center", gap: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent },
+  note: { ...typography.small, fontWeight: "600" },
 });

@@ -175,7 +175,7 @@ export function MyShiftCard({
           icon="payments"
           onPress={onCashMove}
           style={styles.flex}
-          accessibilityHint="Record a pay in, an expense, cash taken out or a pickup"
+          accessibilityHint="Add cash, take cash out or record a pickup"
         />
         <Button label="End shift" onPress={onEndShift} style={styles.endShift} accessibilityHint="Count the drawer and close your shift" />
       </View>

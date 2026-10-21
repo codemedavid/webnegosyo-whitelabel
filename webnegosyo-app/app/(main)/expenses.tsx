@@ -1,128 +1,184 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, RefreshControl, ScrollView, SectionList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, RefreshControl, ScrollView, SectionList, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { AddExpenseSheet } from "../../components/expenses/AddExpenseSheet";
-import { Chip } from "../../components/expenses/AddExpenseParts";
-import { ExpenseRow } from "../../components/expenses/ExpenseRow";
 import { SortPayoutsSheet } from "../../components/expenses/SortPayoutsSheet";
-import { Button } from "../../components/Button";
+import { CategoryFilterSheet } from "../../components/expenses/home/CategoryFilterSheet";
+import { CategoryBreakdown } from "../../components/expenses/home/CategoryBreakdown";
+import { DayCard, DayHeader } from "../../components/expenses/home/ExpenseDay";
+import { ExportExpensesSheet } from "../../components/expenses/home/ExportExpensesSheet";
+import { AddExpenseFab, HomeSearchField, HomeSkeleton, QuietBanner } from "../../components/expenses/home/HomeBits";
+import { HomeFilterPills } from "../../components/expenses/home/HomeFilterPills";
+import { HomeHero, ModeSwitch, SideBreakdown, type HomeMode } from "../../components/expenses/home/HomeSummary";
 import { EmptyState } from "../../components/EmptyState";
-import { Icon } from "../../components/Icon";
+import { ErrorState } from "../../components/ErrorState";
 import { IconButton } from "../../components/IconButton";
-import { LoadingState } from "../../components/LoadingState";
 import { ScreenHeader } from "../../components/ScreenHeader";
-import { PAID_FROM_LABELS, formatCents, monthLabel, monthOf, shiftMonth, spokenCents } from "../../lib/expenses/expense-format";
+import { useIsWideReports } from "../../components/reports/ReportsColumns";
+import { shortCategoryName } from "../../lib/expenses/category-look";
+import { monthLabel, monthOf, shiftMonth } from "../../lib/expenses/expense-format";
 import {
-  NO_FILTERS,
-  buildExpenseSections,
-  categoryFilterChoices,
-  monthSpentCents,
-  type ExpenseListFilters,
-  type ExpenseListRow,
-} from "../../lib/expenses/expense-list";
-import { computeFlagsForAll } from "../../lib/expenses/flags";
+  hasHomeParams,
+  homeSubtitle,
+  parseHomeParams,
+  rangeLabel,
+  windowMonth,
+  type DayRange,
+  type HomeView,
+} from "../../lib/expenses/expenses-home";
+import { useExpenseBranchLabel, useExpenseWindow, useKeptFigure } from "../../lib/expenses/expenses-home-data";
+import { buildHomeModel } from "../../lib/expenses/expenses-home-model";
+import type { NeedsYouItem } from "../../lib/expenses/expenses-home-needs";
+import { NO_HOME_FILTERS, type HomeDay, type HomeFilters, type HomeRow } from "../../lib/expenses/expenses-home-rows";
 import { dismissQueuedExpense, retryQueuedExpenses } from "../../lib/expenses/live-expense-queue";
-import { PAID_FROM, type PaidFrom } from "../../lib/expenses/types";
 import {
   useDeviceExpenseQueue,
   useExpenseCategories,
-  useExpenseMonth,
   useExpenseTenant,
   useInvalidateExpenses,
   useRecentExpenses,
   useUnsortedPayouts,
 } from "../../lib/expenses/use-expenses";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
-import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
+import { colors, spacing } from "../../theme/colors";
 
-type FilterPanel = "category" | "paidFrom" | null;
+type Sheet =
+  | { kind: "add"; categoryId: string | null }
+  | { kind: "sort" }
+  | { kind: "category" }
+  | { kind: "export" }
+  | null;
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const CLEARED_PARAMS = { add: undefined, category: undefined, month: undefined, view: undefined, from: undefined, to: undefined };
 
 /**
- * The expense book (plan §5.2): one month, its total, the old drawer pay-outs
- * still to sort, and every expense grouped by day. Recording happens here
- * (+ Expense), on Home, and on the Drawer; this is where it is read, fixed and
- * sorted. Reached from Reports, under Money; gated on the `expenses` key.
+ * The expense book (design brief §1): what the store spent in a month (or the
+ * exact days Profit linked to), how it split, what needs the owner, and every
+ * expense by day. The hero and the split follow the filters and search, so the
+ * number always matches the list. Reached from Reports, under Money; gated on
+ * the `expenses` key (cashiers pay from the drawer and never land here).
  */
 export default function ExpensesScreen() {
   const tenantId = useExpenseTenant();
   const invalidate = useInvalidateExpenses();
-  // add=1 (Home, Profit), category=<id> (Profit: preselect when adding, else filter),
-  // month=YYYY-MM, view=unsorted (Profit's "Sort").
-  const params = useLocalSearchParams<{ add?: string; category?: string; month?: string; view?: string }>();
+  const isWide = useIsWideReports();
+  const params = useLocalSearchParams<{ add?: string; category?: string; month?: string; view?: string; from?: string; to?: string }>();
   const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
 
   const [month, setMonth] = useState(() => monthOf(Date.now()));
-  const [filters, setFilters] = useState<ExpenseListFilters>(NO_FILTERS);
-  const [panel, setPanel] = useState<FilterPanel>(null);
-  const [isAdding, setIsAdding] = useState(false);
-  const [addCategoryId, setAddCategoryId] = useState<string | null>(null);
-  const [isSorting, setIsSorting] = useState(false);
+  const [range, setRange] = useState<DayRange | null>(null);
+  const [filters, setFilters] = useState<HomeFilters>(NO_HOME_FILTERS);
+  const [mode, setMode] = useState<HomeMode>("list");
+  const [isSearching, setIsSearching] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Home's "+ Expense" and Profit's actions land here with something open.
+  // Home, Profit and the drawer land here with something to show or open.
+  const { add, category, month: monthParam, view, from, to } = params;
   useEffect(() => {
-    const category = typeof params.category === "string" && params.category ? params.category : null;
-    const isAdd = params.add === "1";
-    if (!isAdd && !category && !params.month && params.view !== "unsorted") return;
-    if (typeof params.month === "string" && /^\d{4}-\d{2}$/.test(params.month)) setMonth(params.month);
-    if (isAdd) {
-      setAddCategoryId(category);
-      setIsAdding(true);
-    } else if (category) {
-      setFilters({ ...NO_FILTERS, categoryId: category });
+    const raw = { add, category, month: monthParam, view, from, to };
+    if (!hasHomeParams(raw)) return;
+    const asked = parseHomeParams(raw, Date.now());
+    if (asked.range) {
+      setRange(asked.range);
+      setMonth(monthOf(asked.range.to));
+    } else if (asked.month) {
+      setRange(null);
+      setMonth(asked.month);
     }
-    if (params.view === "unsorted") setIsSorting(true);
-    router.setParams({ add: undefined, category: undefined, month: undefined, view: undefined });
-  }, [params.add, params.category, params.month, params.view]);
+    if (asked.isAdd) setSheet({ kind: "add", categoryId: asked.categoryId });
+    else if (asked.isSort) setSheet({ kind: "sort" });
+    if (asked.view || (asked.categoryId && !asked.isAdd)) {
+      setFilters({ ...NO_HOME_FILTERS, view: asked.view ?? "all", categoryId: asked.isAdd ? null : asked.categoryId });
+      setMode("list");
+    }
+    router.setParams(CLEARED_PARAMS);
+  }, [add, category, monthParam, view, from, to]);
 
-  const monthRead = useExpenseMonth(month, selectedOutlet ?? undefined);
+  const data = useExpenseWindow(month, range, selectedOutlet ?? undefined);
   const { categories } = useExpenseCategories();
-  const { expenses: recent } = useRecentExpenses();
+  const { expenses: recent } = useRecentExpenses(sheet?.kind === "sort");
   const queue = useDeviceExpenseQueue();
   const unsorted = useUnsortedPayouts(true);
+  const kept = useKeptFigure(month, range);
+  const branchLabel = useExpenseBranchLabel();
 
-  const expenses = useMemo(() => monthRead.data?.expenses ?? [], [monthRead.data]);
-  const flagsById = useMemo(() => computeFlagsForAll(expenses, { categories }), [expenses, categories]);
-  const sections = useMemo(
+  const unsortedCents = useMemo(() => unsorted.payouts.reduce((sum, payout) => sum + payout.amountCents, 0), [unsorted.payouts]);
+  const model = useMemo(
     () =>
-      buildExpenseSections({
-        expenses,
-        queued: queue.expenses,
-        categories,
-        flagsById,
-        waitingReceipts: queue.waitingReceipts,
-        filters,
+      buildHomeModel({
         month,
+        range,
+        filters,
+        expenses: data.expenses,
+        previous: data.previous,
+        categories,
+        queued: queue.expenses,
+        waitingReceipts: queue.waitingReceipts,
+        unsortedCount: unsorted.payouts.length,
+        unsortedCents,
+        nowMs: Date.now(),
       }),
-    [expenses, queue.expenses, queue.waitingReceipts, categories, flagsById, filters, month],
+    [month, range, filters, data.expenses, data.previous, categories, queue, unsorted.payouts.length, unsortedCents],
   );
-  const totals = useMemo(() => monthSpentCents(expenses, categories), [expenses, categories]);
-  const categoryChoices = useMemo(() => categoryFilterChoices(expenses, categories), [expenses, categories]);
-  const lookCount = useMemo(
-    () => expenses.filter((e) => e.status === "recorded" && (flagsById[e.id]?.length ?? 0) > 0).length,
-    [expenses, flagsById],
-  );
-  const thisMonth = monthOf(Date.now());
 
-  const refresh = useCallback(
-    () =>
-      refreshWithMinSpinner(
-        [monthRead.refetch, unsorted.refetch, async () => {
-          if (tenantId) await retryQueuedExpenses(tenantId);
-        }],
-        setIsRefreshing,
-      ),
-    [monthRead.refetch, unsorted.refetch, tenantId],
-  );
+  const nowMs = Date.now();
+  const baseMonth = windowMonth(month, range);
+  const canGoNext = baseMonth < monthOf(nowMs);
+  const windowWords = range ? rangeLabel(range, nowMs) : monthLabel(month, nowMs);
+  const categoryName = filters.categoryId ? categories.find((category) => category.id === filters.categoryId)?.name ?? "Category" : null;
+  const clearLabel = model.isFiltered ? "Clear filters" : range ? `Show all of ${monthLabel(baseMonth, nowMs)}` : null;
+
+  const stepMonth = (delta: number) => {
+    setRange(null);
+    setMonth(shiftMonth(baseMonth, delta));
+  };
+  const clearAll = () => {
+    setFilters(NO_HOME_FILTERS);
+    if (!model.isFiltered && range) stepMonth(0);
+  };
+  const showView = (view: HomeView) => {
+    setFilters((current) => ({ ...current, view }));
+    setMode("list");
+  };
+  const showCategory = (categoryId: string | null) => {
+    setFilters((current) => ({ ...current, categoryId }));
+    setMode("list");
+    setSheet(null);
+  };
+  const onNeed = (item: NeedsYouItem) => {
+    if (item.action.kind === "sort") setSheet({ kind: "sort" });
+    else showView(item.action.view);
+  };
+  const toggleSearch = () => {
+    if (isSearching) setFilters((current) => ({ ...current, search: "" }));
+    setIsSearching(!isSearching);
+  };
 
   const reloadAll = useCallback(() => {
     void invalidate();
   }, [invalidate]);
 
+  const refresh = useCallback(
+    () =>
+      refreshWithMinSpinner(
+        [
+          data.refetch,
+          unsorted.refetch,
+          async () => {
+            if (tenantId) await retryQueuedExpenses(tenantId);
+          },
+        ],
+        setIsRefreshing,
+      ),
+    [data.refetch, unsorted.refetch, tenantId],
+  );
+
   const openRow = useCallback(
-    (row: ExpenseListRow) => {
+    (row: HomeRow) => {
       if (row.expenseId) {
         router.push(`/(main)/expense/${row.expenseId}` as never);
         return;
@@ -130,13 +186,13 @@ export default function ExpensesScreen() {
       if (!row.queuedId || !tenantId) return;
       const queuedId = row.queuedId;
       if (row.refusedReason) {
-        Alert.alert("Not saved", row.refusedReason, [
+        Alert.alert("Not sent", row.refusedReason, [
           { text: "Keep it", style: "cancel" },
           { text: "Remove from this phone", style: "destructive", onPress: () => void dismissQueuedExpense(queuedId) },
         ]);
         return;
       }
-      Alert.alert("Waiting to sync", "This expense is saved on this phone and will be sent when the connection is back.", [
+      Alert.alert("Waiting to send", "This expense is saved on this phone and will be sent when the connection is back.", [
         { text: "OK", style: "cancel" },
         { text: "Try now", onPress: () => void retryQueuedExpenses(tenantId).then(reloadAll) },
       ]);
@@ -144,194 +200,129 @@ export default function ExpensesScreen() {
     [tenantId, reloadAll],
   );
 
-  const categoryLabel = filters.categoryId
-    ? categoryChoices.find((choice) => choice.id === filters.categoryId)?.label ?? "Category"
-    : "Category";
-  const paidFromLabel = filters.paidFrom ? PAID_FROM_LABELS[filters.paidFrom] : "Paid from";
-  const isFiltered = filters.categoryId !== null || filters.paidFrom !== null || filters.needsLook;
-
   const header = (
-    <View style={styles.head}>
-      <View style={styles.monthRow}>
-        <IconButton icon="chevron-left" label="Previous month" onPress={() => setMonth(shiftMonth(month, -1))} />
-        <Text style={styles.monthLabel} accessibilityRole="header">
-          {monthLabel(month)}
-        </Text>
-        <IconButton
-          icon="chevron"
-          label="Next month"
-          onPress={() => setMonth(shiftMonth(month, 1))}
-          disabled={month >= thisMonth}
-        />
-      </View>
-      <Text style={styles.totalLabel}>{month === thisMonth ? "Gastos this month" : `Gastos in ${monthLabel(month)}`}</Text>
-      <Text
-        style={styles.total}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        accessibilityLabel={`Spent ${spokenCents(totals.spentCents)}`}
-      >
-        {formatCents(totals.spentCents, { compact: true })}
-      </Text>
-      {totals.takenOutCents > 0 ? (
-        <Text style={styles.totalNote}>
-          + {formatCents(totals.takenOutCents, { compact: true })} cash taken out (not an expense)
-        </Text>
-      ) : null}
-      {monthRead.data?.isTruncated ? (
-        <Text style={styles.totalNote}>This month has more rows than the phone can show; the total may be short. Open it on the web.</Text>
-      ) : null}
-
-      {unsorted.payouts.length > 0 ? (
-        <TouchableOpacity
-          style={styles.banner}
-          onPress={() => setIsSorting(true)}
-          accessibilityRole="button"
-          accessibilityLabel={`${unsorted.payouts.length} drawer pay-outs to sort`}
-        >
-          <Icon name="drawer" size={18} color={colors.statusPending.text} />
-          <Text style={styles.bannerText}>
-            {unsorted.payouts.length} drawer {unsorted.payouts.length === 1 ? "pay-out" : "pay-outs"} to sort
-          </Text>
-          <Icon name="chevron" size={16} color={colors.statusPending.text} />
-        </TouchableOpacity>
-      ) : null}
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        <Chip
-          label={categoryLabel}
-          icon="chevron-down"
-          isOn={filters.categoryId !== null}
-          onPress={() => setPanel(panel === "category" ? null : "category")}
-        />
-        <Chip
-          label={paidFromLabel}
-          icon="chevron-down"
-          isOn={filters.paidFrom !== null}
-          onPress={() => setPanel(panel === "paidFrom" ? null : "paidFrom")}
-        />
-        <Chip
-          label={lookCount > 0 ? `Needs a look (${lookCount})` : "Needs a look"}
-          icon="info"
-          isOn={filters.needsLook}
-          onPress={() => setFilters({ ...filters, needsLook: !filters.needsLook })}
-        />
-        {isFiltered ? <Chip label="Clear" icon="close" onPress={() => setFilters(NO_FILTERS)} /> : null}
-      </ScrollView>
-      {panel === "category" ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-          <Chip label="All" isOn={filters.categoryId === null} onPress={() => setFilters({ ...filters, categoryId: null })} />
-          {categoryChoices.map((choice) => (
-            <Chip
-              key={choice.id}
-              label={choice.label}
-              isOn={filters.categoryId === choice.id}
-              onPress={() => {
-                setFilters({ ...filters, categoryId: choice.id });
-                setPanel(null);
-              }}
-            />
-          ))}
-        </ScrollView>
-      ) : null}
-      {panel === "paidFrom" ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-          <Chip label="All" isOn={filters.paidFrom === null} onPress={() => setFilters({ ...filters, paidFrom: null })} />
-          {PAID_FROM.map((source: PaidFrom) => (
-            <Chip
-              key={source}
-              label={PAID_FROM_LABELS[source]}
-              isOn={filters.paidFrom === source}
-              onPress={() => {
-                setFilters({ ...filters, paidFrom: source });
-                setPanel(null);
-              }}
-            />
-          ))}
-        </ScrollView>
-      ) : null}
-    </View>
+    <ScreenHeader
+      title="Expenses"
+      subtitle={homeSubtitle({ month, range, branchLabel }, nowMs)}
+      actions={
+        <>
+          <IconButton icon={isSearching ? "close" : "search"} label={isSearching ? "Close search" : "Search expenses"} onPress={toggleSearch} />
+          <IconButton icon="export" label={`Export ${windowWords}`} onPress={() => setSheet({ kind: "export" })} />
+        </>
+      }
+    >
+      {isSearching ? <HomeSearchField value={filters.search} onChange={(search) => setFilters((current) => ({ ...current, search }))} /> : null}
+    </ScreenHeader>
   );
 
-  const body = monthRead.isLoading ? (
-    <LoadingState />
-  ) : (
-    <SectionList
-      sections={sections.map((section) => ({ ...section, data: section.rows }))}
-      keyExtractor={(row) => row.key}
-      renderItem={({ item }) => <ExpenseRow row={item} onPress={openRow} />}
-      renderSectionHeader={({ section }) => (
-        <View style={styles.dayHeader} accessibilityRole="header">
-          <Text style={styles.dayTitle}>{section.title}</Text>
-          <Text style={styles.dayTotal}>{formatCents(section.totalCents, { compact: true })}</Text>
-        </View>
-      )}
-      stickySectionHeadersEnabled
-      ListHeaderComponent={header}
-      ListEmptyComponent={
-        monthRead.error ? (
-          <EmptyState
-            icon="warning"
-            title="Expenses could not be loaded"
-            message={monthRead.error}
-            actionLabel="Try again"
-            onAction={() => void monthRead.refetch()}
-            inset
-          />
-        ) : isFiltered ? (
-          <EmptyState
-            icon="search"
-            title="Nothing matches"
-            message="No expense this month fits these filters."
-            actionLabel="Clear filters"
-            onAction={() => setFilters(NO_FILTERS)}
-            inset
-          />
-        ) : (
-          <EmptyState
-            icon="receipt"
-            title={`No expenses recorded for ${monthLabel(month)}`}
-            message="Kung may binayaran ka, idagdag dito — ice, LPG, rent, sahod."
-            actionLabel="Add expense"
-            onAction={() => setIsAdding(true)}
-            inset
-          />
-        )
-      }
-      contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} />}
-      initialNumToRender={20}
-      windowSize={9}
+  const hero = (
+    <HomeHero
+      model={model}
+      monthShort={SHORT_MONTHS[Number(baseMonth.slice(5, 7)) - 1] ?? ""}
+      clearLabel={clearLabel}
+      onClear={clearAll}
+      kept={kept}
+      onOpenProfit={() => router.push("/(main)/profit" as never)}
+      isTruncated={data.isTruncated}
+      canGoNext={canGoNext}
+      onPrevious={() => stepMonth(-1)}
+      onNext={() => stepMonth(1)}
+      onNeed={onNeed}
     />
+  );
+  const banner =
+    data.error && data.hasData ? (
+      <QuietBanner message="Could not refresh. Showing what was loaded before." onRetry={() => void data.refetch()} />
+    ) : null;
+  const pills = (
+    <HomeFilterPills
+      view={filters.view}
+      checkCount={model.counts.check}
+      categoryLabel={categoryName ? shortCategoryName(categoryName) : null}
+      onView={showView}
+      onCategory={() => setSheet({ kind: "category" })}
+    />
+  );
+  const isListMode = isWide || mode === "list";
+  const listHeader = (
+    <View style={styles.listHeader}>
+      {banner}
+      {isWide ? null : hero}
+      {isWide ? null : <ModeSwitch mode={mode} onMode={setMode} />}
+      {isListMode ? pills : <CategoryBreakdown lines={model.breakdown} onPick={showCategory} />}
+    </View>
+  );
+  const emptyList = model.rows.length === 0 ? (
+    <EmptyState
+      icon="receipt"
+      title={`Nothing recorded for ${windowWords}`}
+      message="When the store pays for something, like ice, LPG, rent or sahod, add it here."
+      actionLabel="Add expense"
+      onAction={() => setSheet({ kind: "add", categoryId: null })}
+      inset
+    />
+  ) : (
+    <EmptyState icon="search" title="Nothing matches" message="No expense here fits these filters." actionLabel="Clear filters" onAction={clearAll} inset />
+  );
+
+  const list = (
+    <SectionList
+      sections={isListMode ? model.days.map((day) => ({ key: day.date, day, data: [day] })) : []}
+      keyExtractor={(day: HomeDay) => day.date}
+      renderItem={({ item }) => <DayCard day={item} onOpen={openRow} />}
+      renderSectionHeader={({ section }) => <DayHeader title={section.day.title} totalCents={section.day.totalCents} />}
+      stickySectionHeadersEnabled
+      ListHeaderComponent={listHeader}
+      ListEmptyComponent={isListMode ? emptyList : null}
+      contentContainerStyle={[styles.list, isWide && styles.listWide]}
+      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} />}
+      keyboardShouldPersistTaps="handled"
+      initialNumToRender={6}
+      windowSize={7}
+    />
+  );
+
+  const isFirstLoad = data.isLoading && !data.hasData;
+  const hasFailed = data.error !== null && !data.hasData;
+  const body = isFirstLoad ? (
+    <HomeSkeleton />
+  ) : hasFailed ? (
+    <ErrorState title="Expenses could not load" message={data.error ?? undefined} onRetry={() => void data.refetch()} />
+  ) : isWide ? (
+    <View style={styles.columns}>
+      <View style={styles.main}>{list}</View>
+      <ScrollView style={styles.side} contentContainerStyle={styles.sideBody}>
+        {hero}
+        <SideBreakdown model={model} onPick={showCategory} />
+      </ScrollView>
+    </View>
+  ) : (
+    list
   );
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Expenses" subtitle="What the store spent, and on what" />
+      {header}
       {body}
-      <View style={styles.fabWrap} pointerEvents="box-none">
-        <Button label="Expense" icon="plus" onPress={() => { setAddCategoryId(null); setIsAdding(true); }} style={styles.fab} accessibilityLabel="Add an expense" />
-      </View>
+      {hasFailed ? null : <AddExpenseFab onPress={() => setSheet({ kind: "add", categoryId: null })} />}
 
-      {isAdding ? (
-        <AddExpenseSheet
-          visible
-          mode={{ kind: "book" }}
-          initialCategoryId={addCategoryId}
-          onClose={() => {
-            setIsAdding(false);
-            setAddCategoryId(null);
-          }}
-          onCommitted={reloadAll}
-        />
+      {sheet?.kind === "add" ? (
+        <AddExpenseSheet visible mode={{ kind: "book" }} initialCategoryId={sheet.categoryId} onClose={() => setSheet(null)} onCommitted={reloadAll} />
       ) : null}
-      {isSorting ? (
-        <SortPayoutsSheet
-          payouts={unsorted.payouts}
+      {sheet?.kind === "sort" ? (
+        <SortPayoutsSheet payouts={unsorted.payouts} categories={categories} recent={recent} onClose={() => setSheet(null)} onSorted={reloadAll} />
+      ) : null}
+      {sheet?.kind === "category" ? (
+        <CategoryFilterSheet categories={categories} selectedId={filters.categoryId} onPick={showCategory} onClose={() => setSheet(null)} />
+      ) : null}
+      {sheet?.kind === "export" ? (
+        <ExportExpensesSheet
+          label={windowWords}
+          expenses={data.expenses}
           categories={categories}
-          recent={recent}
-          onClose={() => setIsSorting(false)}
-          onSorted={reloadAll}
+          window={model.window}
+          isTruncated={data.isTruncated}
+          onClose={() => setSheet(null)}
         />
       ) : null}
     </View>
@@ -340,36 +331,11 @@ export default function ExpensesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  list: { paddingBottom: 120 },
-  head: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.xs },
-  monthRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  monthLabel: { ...typography.heading, color: colors.textPrimary },
-  totalLabel: { ...typography.caption, color: colors.textMuted, marginTop: spacing.sm },
-  total: { fontSize: 34, fontWeight: "800", color: colors.textPrimary, fontVariant: ["tabular-nums"], letterSpacing: -0.5 },
-  totalNote: { ...typography.caption, color: colors.textMuted },
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    padding: spacing.md,
-    minHeight: 48,
-    borderRadius: radius.md,
-    backgroundColor: colors.statusPending.bg,
-  },
-  bannerText: { ...typography.body, fontWeight: "700", color: colors.statusPending.text, flex: 1 },
-  filters: { gap: spacing.sm, paddingVertical: spacing.sm },
-  dayHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
-    backgroundColor: colors.background,
-  },
-  dayTitle: { ...typography.caption, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.6 },
-  dayTotal: { ...typography.caption, fontWeight: "800", color: colors.textMuted, fontVariant: ["tabular-nums"] },
-  fabWrap: { position: "absolute", right: spacing.lg, bottom: spacing.lg },
-  fab: { ...shadow.md, paddingHorizontal: spacing.xl },
+  list: { paddingHorizontal: spacing.xl, paddingBottom: 120 },
+  listWide: { paddingRight: 0 },
+  listHeader: { gap: spacing.md },
+  columns: { flex: 1, flexDirection: "row", gap: spacing.xl },
+  main: { flex: 3 },
+  side: { flex: 2 },
+  sideBody: { paddingRight: spacing.xl, paddingBottom: 120 },
 });

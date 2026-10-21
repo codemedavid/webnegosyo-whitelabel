@@ -2,7 +2,8 @@
  * Profit on the shared cache, read as the signed-in user. Keyed on tenant,
  * window and branch, so a period chip re-reads and the tenant-switch
  * teardown drops it; re-read on focus when stale (an expense recorded on the
- * Drawer should show here when the owner comes back).
+ * Drawer should show here when the owner comes back). A passing failure is
+ * thrown (`settleProfit`) so a failed refresh keeps the figures on screen.
  */
 
 import { useCallback } from "react";
@@ -13,6 +14,7 @@ import { useResource } from "../query/use-resource";
 import { useRefetchOnScreenFocus } from "../query/use-screen-focus";
 import { supabase } from "../supabase";
 import type { ProfitWindow } from "./profit-period";
+import { settleProfit } from "./profit-screen-state";
 import { readProfit, type ProfitBranch, type ProfitRpcClient, type ProfitScreenData } from "./profit-service";
 
 export const PROFIT_RESOURCE = "profit";
@@ -25,7 +27,7 @@ const liveProfitClient: ProfitRpcClient = {
 export function useProfit(w: ProfitWindow, branch: ProfitBranch, isEnabled: boolean) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const fetcher = useCallback(
-    () => readProfit(liveProfitClient, w, { tenantId: tenantId as string, branch }),
+    async () => settleProfit(await readProfit(liveProfitClient, w, { tenantId: tenantId as string, branch })),
     // The window's identity changes every render ("so far" moves with now);
     // its first and last day decide what is read.
     // eslint-disable-next-line react-hooks/exhaustive-deps

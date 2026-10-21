@@ -1,78 +1,64 @@
-import React, { useRef, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { StyleSheet, Text } from "react-native";
 
 import { NOTE_MAX } from "../../lib/expenses/add-expense-form";
+import { rankCategoriesForPicker } from "../../lib/expenses/categories";
+import { CHANGE_REASONS, VOID_REASONS, checkChange, checkVoidReason } from "../../lib/expenses/expense-detail-sheets";
 import { PAID_FROM_LABELS, PICKABLE_PAID_FROM, formatCents } from "../../lib/expenses/expense-format";
 import { VOID_REASON_MAX, type ExpensePatch } from "../../lib/expenses/expense-service";
-import { buildFixPatch } from "../../lib/expenses/fix-patch";
 import type { Expense, ExpenseCategory, PaidFrom } from "../../lib/expenses/types";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { CashInput, DrawerSheet, sheetText } from "../drawer/DrawerSheet";
-import { AllCategories, Chip } from "./AddExpenseParts";
+import { CategoryGrid, CategoryList } from "./CategoryPicker";
+import { BackRow, ChoicePill, PillRow, ReasonField, TextField } from "./detail/SheetParts";
 
-const VOID_REASONS = ["Recorded twice", "Wrong amount", "Not ours", "Wrong category"] as const;
-
-function ReasonField({ value, onChange }: { value: string; onChange: (text: string) => void }) {
-  return (
-    <>
-      <Text style={sheetText.label}>Why</Text>
-      <View style={styles.reasons}>
-        {VOID_REASONS.map((reason) => (
-          <Chip key={reason} label={reason} isOn={value === reason} onPress={() => onChange(reason)} />
-        ))}
-      </View>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder="Or type the reason"
-        placeholderTextColor={colors.textTertiary}
-        maxLength={VOID_REASON_MAX}
-        accessibilityLabel="Reason"
-      />
-    </>
-  );
+/** Turns a thrown write into words for the sheet. */
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
-/**
- * Void with a reason (plan §2.5): the row stays, struck through, and the
- * history says who and why. A drawer expense on an open shift also puts the
- * cash back into that drawer (contract §5).
- */
-export function VoidExpenseSheet({
-  expense,
-  drawerNote,
-  onConfirm,
-  onClose,
-}: {
+/** One write at a time: a double tap must never void or change twice. */
+function useSingleFlight() {
+  const inFlight = useRef(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const run = async (write: () => Promise<void>, onError: (error: unknown) => void) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setIsBusy(true);
+    try {
+      await write();
+    } catch (error) {
+      onError(error);
+    } finally {
+      inFlight.current = false;
+      setIsBusy(false);
+    }
+  };
+  return { isBusy, run };
+}
+
+interface VoidExpenseSheetProps {
   expense: Expense;
   /** "Voiding puts ₱1,250 back in the drawer." for a drawer row. */
   drawerNote: string | null;
   onConfirm: (reason: string) => Promise<void>;
   onClose: () => void;
-}) {
+}
+
+/**
+ * Void with a reason: the row stays, struck through, and the history says who
+ * and why. A drawer expense on an open shift also puts the cash back.
+ */
+export function VoidExpenseSheet({ expense, drawerNote, onConfirm, onClose }: VoidExpenseSheetProps) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-  const inFlight = useRef(false);
+  const { isBusy, run } = useSingleFlight();
 
-  const submit = async () => {
-    if (inFlight.current) return;
-    if (!reason.trim()) {
-      setError("Say why — a short reason is enough.");
-      return;
-    }
-    inFlight.current = true;
-    setIsBusy(true);
-    try {
-      await onConfirm(reason.trim());
-    } catch (voidError) {
-      setError(voidError instanceof Error ? voidError.message : "Could not void it. Try again.");
-    } finally {
-      inFlight.current = false;
-      setIsBusy(false);
-    }
+  const submit = () => {
+    const checked = checkVoidReason(reason);
+    if (checked.error !== null) return setError(checked.error);
+    void run(() => onConfirm(checked.reason), (voidError) => setError(messageOf(voidError, "Could not void it. Try again.")));
   };
 
   return (
@@ -84,75 +70,71 @@ export function VoidExpenseSheet({
       isBusy={isBusy}
     >
       {drawerNote ? <Text style={styles.drawerNote}>{drawerNote}</Text> : null}
-      <ReasonField value={reason} onChange={(text) => { setReason(text); setError(null); }} />
+      <ReasonField
+        reasons={VOID_REASONS}
+        value={reason}
+        maxLength={VOID_REASON_MAX}
+        onChange={(text) => {
+          setReason(text);
+          setError(null);
+        }}
+      />
       {error ? <Text style={sheetText.error}>{error}</Text> : null}
-      <Button label="Void expense" tone="danger" size="lg" onPress={() => void submit()} isLoading={isBusy} disabled={isBusy} />
+      <Button label="Void expense" tone="danger" size="lg" onPress={submit} isLoading={isBusy} disabled={isBusy} testID="void-confirm" />
     </DrawerSheet>
   );
 }
 
-/**
- * Fix = void + a corrected copy (plan §2.5). A drawer row keeps its amount,
- * date and drawer — the cash really left — so only its category and note can
- * change.
- */
-export function FixExpenseSheet({
-  expense,
-  categories,
-  onConfirm,
-  onClose,
-}: {
+interface ChangeExpenseSheetProps {
   expense: Expense;
   categories: readonly ExpenseCategory[];
+  /** Recent rows, so the grid leads with the store's usual categories. */
+  recent?: readonly Expense[];
   onConfirm: (reason: string, patch: ExpensePatch) => Promise<void>;
   onClose: () => void;
-}) {
+}
+
+type ChangeStep = "form" | "categories";
+type BookSource = Exclude<PaidFrom, "drawer">;
+const NO_RECENT: readonly Expense[] = [];
+
+/**
+ * Change = void + a corrected copy; the old version stays in the history. A
+ * drawer row keeps its amount, date and drawer — the cash really left — so only
+ * its category and note can change. "All categories" swaps in place.
+ */
+export function ChangeExpenseSheet({ expense, categories, recent = NO_RECENT, onConfirm, onClose }: ChangeExpenseSheetProps) {
   const isDrawer = expense.paidFrom === "drawer";
+  const [step, setStep] = useState<ChangeStep>("form");
   const [categoryId, setCategoryId] = useState(expense.categoryId);
   const [note, setNote] = useState(expense.note ?? "");
   const [amountText, setAmountText] = useState((expense.amountCents / 100).toFixed(2));
-  const [paidFrom, setPaidFrom] = useState<Exclude<PaidFrom, "drawer"> | null>(isDrawer ? null : (expense.paidFrom as Exclude<PaidFrom, "drawer">));
+  const [paidFrom, setPaidFrom] = useState<BookSource | null>(isDrawer ? null : (expense.paidFrom as BookSource));
   const [reason, setReason] = useState("");
-  const [isPickingCategory, setIsPickingCategory] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-  const inFlight = useRef(false);
-  const category = categories.find((c) => c.id === categoryId);
+  const { isBusy, run } = useSingleFlight();
+  const ranked = useMemo(() => rankCategoriesForPicker(categories, recent, new Date()), [categories, recent]);
+  const category = categories.find((candidate) => candidate.id === categoryId);
 
-  const submit = async () => {
-    if (inFlight.current) return;
-    const { patch, error: patchError } = buildFixPatch(expense, { categoryId, note, amountText, paidFrom });
-    if (patchError) return setError(patchError);
-    if (!patch) return setError("Nothing changed yet.");
-    if (category?.needsNote && !note.trim()) return setError("Add a note for this category.");
-    if (!reason.trim()) return setError("Say why you are fixing it.");
-    inFlight.current = true;
-    setIsBusy(true);
-    try {
-      await onConfirm(reason.trim(), patch);
-    } catch (fixError) {
-      setError(fixError instanceof Error ? fixError.message : "Could not save the fix. Try again.");
-    } finally {
-      inFlight.current = false;
-      setIsBusy(false);
-    }
+  const edited = (apply: () => void) => {
+    apply();
+    setError(null);
+  };
+  const pick = (picked: ExpenseCategory) => {
+    edited(() => setCategoryId(picked.id));
+    setStep("form");
+  };
+  const submit = () => {
+    const checked = checkChange(expense, { categoryId, note, amountText, paidFrom }, reason, category);
+    if (checked.error !== null) return setError(checked.error);
+    void run(() => onConfirm(checked.reason, checked.patch), (changeError) => setError(messageOf(changeError, "Could not save the change. Try again.")));
   };
 
-  if (isPickingCategory) {
+  if (step === "categories") {
     return (
-      <DrawerSheet visible title="Category" onClose={() => setIsPickingCategory(false)} closeLabel="Back">
-        <View style={styles.all}>
-          <AllCategories
-            categories={categories}
-            selectedId={categoryId}
-            onPick={(picked) => {
-              setCategoryId(picked.id);
-              setIsPickingCategory(false);
-              setError(null);
-            }}
-            onBack={() => setIsPickingCategory(false)}
-          />
-        </View>
+      <DrawerSheet visible title="Pick a category" onClose={onClose} isBusy={isBusy}>
+        <BackRow label="Back to the change" onPress={() => setStep("form")} />
+        <CategoryList categories={categories} selectedId={categoryId} onPick={pick} />
       </DrawerSheet>
     );
   }
@@ -160,53 +142,48 @@ export function FixExpenseSheet({
   return (
     <DrawerSheet
       visible
-      title="Fix this expense"
-      subtitle={isDrawer ? "Paid from a drawer: the amount and date stay. Change what it was for." : "The old entry is voided and a corrected one replaces it."}
+      title="Change this expense"
+      subtitle={
+        isDrawer
+          ? "Paid from a drawer, so the amount and date stay. The old version is kept in the history."
+          : "The old version is kept in the history."
+      }
       onClose={onClose}
       isBusy={isBusy}
     >
       <Text style={sheetText.label}>Category</Text>
-      <Chip label={category?.name ?? "Pick a category"} icon="list" onPress={() => setIsPickingCategory(true)} />
+      <CategoryGrid ranked={ranked} selectedId={categoryId} onPick={pick} onShowAll={() => setStep("categories")} />
       {!isDrawer ? (
         <>
           <Text style={sheetText.label}>Amount</Text>
-          <CashInput value={amountText} onChangeText={(text) => { setAmountText(text); setError(null); }} accessibilityLabel="Amount in pesos" />
+          <CashInput value={amountText} onChangeText={(text) => edited(() => setAmountText(text))} accessibilityLabel="Amount in pesos" />
           <Text style={sheetText.label}>Paid from</Text>
-          <View style={styles.reasons}>
+          <PillRow>
             {PICKABLE_PAID_FROM.map((source) => (
-              <Chip key={source} label={PAID_FROM_LABELS[source]} isOn={paidFrom === source} onPress={() => setPaidFrom(source)} />
+              <ChoicePill key={source} label={PAID_FROM_LABELS[source]} isOn={paidFrom === source} onPress={() => edited(() => setPaidFrom(source))} />
             ))}
-          </View>
+          </PillRow>
         </>
       ) : null}
       <Text style={sheetText.label}>Note</Text>
-      <TextInput
-        style={styles.input}
+      <TextField
         value={note}
-        onChangeText={(text) => { setNote(text); setError(null); }}
+        onChange={(text) => edited(() => setNote(text))}
         placeholder={category?.needsNote ? "What was it for? (needed)" : "What was it for?"}
-        placeholderTextColor={colors.textTertiary}
         maxLength={NOTE_MAX}
         accessibilityLabel="Note"
       />
-      <ReasonField value={reason} onChange={(text) => { setReason(text); setError(null); }} />
+      <ReasonField reasons={CHANGE_REASONS} value={reason} maxLength={VOID_REASON_MAX} onChange={(text) => edited(() => setReason(text))} />
       {error ? <Text style={sheetText.error}>{error}</Text> : null}
-      <Button label="Save the fix" size="lg" onPress={() => void submit()} isLoading={isBusy} disabled={isBusy} />
+      <Button label="Save the change" size="lg" onPress={submit} isLoading={isBusy} disabled={isBusy} testID="change-confirm" />
     </DrawerSheet>
   );
 }
 
+/** The pre-redesign name; same props and callbacks. */
+export const FixExpenseSheet = ChangeExpenseSheet;
+
 const styles = StyleSheet.create({
-  reasons: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  input: {
-    ...typography.body,
-    color: colors.textPrimary,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    minHeight: 48,
-  },
   drawerNote: {
     ...typography.body,
     fontWeight: "700",
@@ -215,5 +192,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
   },
-  all: { height: 440 },
 });

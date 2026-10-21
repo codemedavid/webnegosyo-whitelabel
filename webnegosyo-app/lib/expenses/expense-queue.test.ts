@@ -196,7 +196,7 @@ describe("expense queue", () => {
   });
 
   it("makes waiting entries due at once on a retry tap, and forgets a dismissed one", async () => {
-    let now = 0;
+    const now = 0;
     const send = jest.fn(async (): Promise<SendOutcome> => ({ status: "retry" }));
     const queue = createExpenseQueue({ storage: memoryStorage(), send, now: () => now });
     await queue.enqueue(bookEntry("req-1"));

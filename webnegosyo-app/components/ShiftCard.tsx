@@ -23,15 +23,26 @@ import { DrawersOverview, type FloorRow } from "./drawer/DrawersOverview";
 import { CashMoveSheet, type CashMoveTarget } from "./drawer/CashMoveSheet";
 import { CountDrawerSheet, type CountTarget } from "./drawer/CountDrawerSheet";
 import { AddExpenseSheet, type ExpenseSheetScope } from "./expenses/AddExpenseSheet";
+import { CloseShiftSheet } from "./drawer/CloseShiftSheet";
 import { useDrawerExpenses } from "../lib/expenses/use-drawer-expenses";
-import { describeShiftExpenses, payoutLines } from "../lib/expenses/drawer-expenses";
+import { payoutLines, summarizeShiftPayouts } from "../lib/expenses/drawer-expenses";
 import { formatPeso as formatCentsPeso } from "../lib/expenses/keypad";
+import { liveExpenseDb } from "../lib/expenses/expense-client";
+import { listMovementLinks, type MovementLink } from "../lib/expenses/expense-service";
+import { closedConfirmation, closeReview, hasDrawerChanged, type CloseReview } from "../lib/expenses/money-glance-close";
+import { drawerSplitText } from "../lib/expenses/money-glance-drawer";
+import { usePayoutLinks } from "../lib/expenses/money-glance-hooks";
+import { useCanManageExpenses, useCategoryIndex, useExpenseCategories } from "../lib/expenses/use-expenses";
 
 /** The session read only names the shift; it must never hold up the clock-in. */
 const SESSION_READ_MS = 5_000;
 /** How often the "3h 12m" on open drawers is re-read from the clock. */
 const TICK_MS = 60_000;
 const CASH_SETUP_ROUTE = "/(main)/cash-drawers";
+/** Expenses, filtered to what was paid from drawers (B1's `view=drawer`). */
+const DRAWER_EXPENSES_ROUTE = "/(main)/expenses?view=drawer";
+/** Shown on the close sheet when "End shift" found the drawer's figure moved since the count. */
+const DRAWER_CHANGED_NOTICE = "The drawer changed while you were counting. Check the new total.";
 
 /**
  * Clock in / clock out, cash in / out, and — for an owner or manager — every
@@ -51,9 +62,13 @@ interface ShiftCardProps {
    * totals. Absent, the card reads it itself.
    */
   ledger?: OrderLedger;
+  /** The register's "Pay out" asked for the drawer sheet (`?pay=1`). */
+  isPayOutRequested?: boolean;
+  /** Called once the request was acted on (or cannot be), to clear the param. */
+  onPayOutHandled?: () => void;
 }
 
-export function ShiftCard({ orders, pageLimit, ledger }: ShiftCardProps) {
+export function ShiftCard({ orders, pageLimit, ledger, isPayOutRequested = false, onPayOutHandled }: ShiftCardProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   if (ledger) {
@@ -65,13 +80,23 @@ export function ShiftCard({ orders, pageLimit, ledger }: ShiftCardProps) {
         pageLimit={pageLimit}
         ledgerReady={ledger.ready}
         ledgerError={ledger.error}
+        isPayOutRequested={isPayOutRequested}
+        onPayOutHandled={onPayOutHandled}
       />
     );
   }
   return (
     <OrderSettlementReader key={`${tenantId}:${userId}`} ids={orders.map((order) => order._id)}>
       {(payments, ready, error) => (
-        <ShiftCardContent orders={orders} payments={payments} pageLimit={pageLimit} ledgerReady={ready} ledgerError={error} />
+        <ShiftCardContent
+          orders={orders}
+          payments={payments}
+          pageLimit={pageLimit}
+          ledgerReady={ready}
+          ledgerError={error}
+          isPayOutRequested={isPayOutRequested}
+          onPayOutHandled={onPayOutHandled}
+        />
       )}
     </OrderSettlementReader>
   );
@@ -87,19 +112,6 @@ async function readStaffName(): Promise<string> {
     console.warn("[shift] session unavailable for the staff name", error);
     return "Staff";
   }
-}
-
-function describeClose(rec: ShiftReconciliation, isZeroBalance: boolean): string {
-  const variance = rec.variance ?? 0;
-  const verdictLine =
-    rec.verdict === "balanced"
-      ? "The drawer balanced."
-      : rec.verdict === "short"
-        ? `The drawer is short ${formatPeso(Math.abs(variance))}.`
-        : `The drawer is over ${formatPeso(variance)}.`;
-  const handOver = formatPeso(rec.handOver ?? rec.expectedTurnover);
-  const keep = isZeroBalance ? "The drawer ends empty." : `Leave ${formatPeso(rec.floatToKeep)} in the drawer.`;
-  return `Hand over ${handOver}. ${keep} ${verdictLine}`;
 }
 
 function refuseInDemo(): boolean {
@@ -118,9 +130,35 @@ interface ContentProps {
   pageLimit: number;
   ledgerReady: boolean;
   ledgerError: string | null;
+  isPayOutRequested: boolean;
+  onPayOutHandled?: () => void;
 }
 
-function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerError }: ContentProps) {
+/** The close sheet's review plus what "End shift" writes, frozen together. */
+interface PendingClose {
+  shift: ShiftRecord;
+  expectedInDrawer: number;
+  counted: number;
+  review: CloseReview;
+  /** Set when "End shift" found the drawer changed; the next tap closes. */
+  notice: string | null;
+}
+
+/** A fresh read of the drawer for a close: the sheet to show, or why it cannot close yet. */
+type PreparedClose = { kind: "ready"; pending: PendingClose } | { kind: "blocked"; reason: string };
+
+function waitingToSyncText(waiting: number): string {
+  return `${waiting} drawer ${waiting === 1 ? "expense is" : "expenses are"} still waiting to sync. Connect to the internet, then end the shift.`;
+}
+
+/** Which of these pay-outs were expenses; null when that read failed (the sheet then shows one "Paid out" line). */
+async function readLinks(tenantId: string, moves: readonly { id: string; kind: string }[]): Promise<ReadonlyMap<string, MovementLink> | null> {
+  const ids = moves.filter((move) => move.kind === "pay_out").map((move) => move.id);
+  if (ids.length === 0) return new Map();
+  return listMovementLinks(liveExpenseDb, tenantId, ids).catch(() => null);
+}
+
+function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerError, isPayOutRequested, onPayOutHandled }: ContentProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);
@@ -136,6 +174,8 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const inFlight = useRef(false);
   const [moveTarget, setMoveTarget] = useState<CashMoveTarget | null>(null);
   const [countTarget, setCountTarget] = useState<(CountTarget & { shift: ShiftRecord }) | null>(null);
+  // Counted, not yet ended: the close sheet (design screen 07) shows this.
+  const [pendingClose, setPendingClose] = useState<PendingClose | null>(null);
   // "Pay an expense" / "Take out cash" from my own drawer (plan §4.1).
   const [expenseScope, setExpenseScope] = useState<ExpenseSheetScope | null>(null);
   // What this person did to web orders during the shift. Read separately
@@ -145,6 +185,14 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
 
   const myShift = floor.myShift;
   const drawerExpenses = useDrawerExpenses(myShift?.id ?? null, floor.moves ?? []);
+  const categoriesRead = useExpenseCategories();
+  const { categories } = categoriesRead;
+  // Settled = read or failed; a store without categories never becomes "ready".
+  const haveCategoriesSettled = categoriesRead.data !== undefined || categoriesRead.error !== null;
+  const categoryIndex = useCategoryIndex(categories);
+  const canOpenExpenses = useCanManageExpenses();
+  // Managers: every open drawer's pay-outs told apart, in one bounded read.
+  const floorLinks = usePayoutLinks(floor.moves, canManage);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), TICK_MS);
@@ -192,12 +240,18 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
 
   const floorRows: FloorRow[] = useMemo(
     () =>
-      floor.openShifts.map((shift) => ({
-        shift,
-        expectation: expectDrawer(shift, sources),
-        isMine: shift.id === myShift?.id,
-      })),
-    [floor.openShifts, sources, myShift],
+      floor.openShifts.map((shift) => {
+        const expectation = expectDrawer(shift, sources);
+        const shiftMoves = (floor.moves ?? []).filter((move) => move.shiftId === shift.id);
+        const collected = expectation.state === "ready" ? expectation.value.moves.collected : 0;
+        return {
+          shift,
+          expectation,
+          isMine: shift.id === myShift?.id,
+          payoutSplit: drawerSplitText(floorLinks ? summarizeShiftPayouts(shiftMoves, floorLinks) : null, collected),
+        };
+      }),
+    [floor.openShifts, floor.moves, floorLinks, sources, myShift],
   );
 
   const board = useMemo(
@@ -315,56 +369,91 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     });
   };
 
-  const finishClose = async (shift: ShiftRecord, rec: ShiftReconciliation) => {
-    setCountTarget(null);
+  const finishClose = async (review: CloseReview) => {
+    setPendingClose(null);
     setActivity(null);
     await floor.reload();
-    const isMine = shift.id === myShift?.id;
-    const who = isMine ? "Shift ended" : `${shift.staffName}'s shift closed`;
-    const expensesLine = isMine && drawerExpenses.payouts ? describeShiftExpenses(drawerExpenses.payouts) : null;
-    Alert.alert(who, expensesLine ? `${describeClose(rec, shift.isZeroBalance)}\n\n${expensesLine}` : describeClose(rec, shift.isZeroBalance));
+    void drawerExpenses.reloadPayouts();
+    const done = closedConfirmation(review);
+    Alert.alert(done.title, done.message);
+  };
+
+  /**
+   * Settle this phone's drawer expenses, re-read the drawer's moves and build
+   * the close sheet from them — at the count AND again at "End shift", so a
+   * pickup or pay-in recorded on another tablet meanwhile is never missed.
+   */
+  const prepareClose = async (shift: ShiftRecord, counted: number): Promise<PreparedClose> => {
+    if (!tenantId) return { kind: "blocked", reason: "Try again." };
+    // Cash this phone paid out must be on the server before the count is
+    // judged, or the drawer reads over by exactly that much.
+    if (shift.id === myShift?.id) {
+      const waiting = await drawerExpenses.settleBeforeClose(shift.id).catch(() => 0);
+      if (waiting > 0) return { kind: "blocked", reason: waitingToSyncText(waiting) };
+    }
+    // Re-read this drawer's moves first: a pickup recorded on another
+    // tablet since this screen loaded would otherwise read as a shortage.
+    let fresh: DrawerExpectationRead;
+    let freshMoves: Awaited<ReturnType<typeof listCashMoves>>;
+    try {
+      freshMoves = await listCashMoves(tenantId, [shift.id]);
+      fresh = expectDrawer(shift, { ...sources, moves: freshMoves, nowMs: Date.now() });
+    } catch (error) {
+      return { kind: "blocked", reason: errorText(error) };
+    }
+    if (fresh.state !== "ready") {
+      return { kind: "blocked", reason: fresh.state === "unavailable" ? fresh.reason : "Settlement history is still loading. Try again in a moment." };
+    }
+    const rec = fresh.value.reconciliation;
+    const final: ShiftReconciliation = { ...rec, ...judgeCount(rec.expectedInDrawer, rec.floatToKeep, counted) };
+    const review = closeReview({
+      shift,
+      isMine: shift.id === myShift?.id,
+      cashSales: fresh.value.summary.cashTotal,
+      moves: freshMoves,
+      links: await readLinks(tenantId, freshMoves),
+      reconciliation: final,
+      counted,
+    });
+    return { kind: "ready", pending: { shift, expectedInDrawer: rec.expectedInDrawer, counted, review, notice: null } };
   };
 
   const handleCount = (counted: number) =>
     runExclusive(async () => {
       if (refuseInDemo() || !tenantId || !countTarget) return;
-      const { shift } = countTarget;
-      // Cash this phone paid out must be on the server before the count is
-      // judged, or the drawer reads over by exactly that much.
-      if (shift.id === myShift?.id) {
-        const waiting = await drawerExpenses.settleBeforeClose(shift.id).catch(() => 0);
-        if (waiting > 0) {
-          Alert.alert(
-            "Not ready to close",
-            `${waiting} drawer ${waiting === 1 ? "expense is" : "expenses are"} still waiting to sync. Connect to the internet, then end the shift.`,
-          );
-          return;
-        }
-      }
-      // Re-read this drawer's moves first: a pickup recorded on another
-      // tablet since this screen loaded would otherwise read as a shortage.
-      let fresh: DrawerExpectationRead;
-      try {
-        fresh = expectDrawer(shift, { ...sources, moves: await listCashMoves(tenantId, [shift.id]), nowMs: Date.now() });
-      } catch (error) {
-        Alert.alert("Not ready to close", errorText(error));
+      const prepared = await prepareClose(countTarget.shift, counted);
+      if (prepared.kind === "blocked") {
+        Alert.alert("Not ready to close", prepared.reason);
         return;
       }
-      if (fresh.state !== "ready") {
-        Alert.alert("Not ready to close", fresh.state === "unavailable" ? fresh.reason : "Settlement history is still loading. Try again in a moment.");
+      setCountTarget(null);
+      setPendingClose(prepared.pending);
+    });
+
+  const handleEndShift = () =>
+    runExclusive(async () => {
+      if (refuseInDemo() || !tenantId || !pendingClose) return;
+      // The sheet may have sat open while another tablet moved cash: read the
+      // drawer again rather than write the figure frozen at the count.
+      const prepared = await prepareClose(pendingClose.shift, pendingClose.counted);
+      if (prepared.kind === "blocked") {
+        Alert.alert("Not ready to close", prepared.reason);
         return;
       }
-      const rec = fresh.value.reconciliation;
-      const final: ShiftReconciliation = { ...rec, ...judgeCount(rec.expectedInDrawer, rec.floatToKeep, counted) };
+      if (hasDrawerChanged(pendingClose.expectedInDrawer, prepared.pending.expectedInDrawer)) {
+        setPendingClose({ ...prepared.pending, notice: DRAWER_CHANGED_NOTICE });
+        return;
+      }
+      const { shift, expectedInDrawer, counted, review } = prepared.pending;
       try {
         await closeShift(tenantId, shift.id, {
           closingCount: counted,
-          // Frozen at the moment of close; see shift-service.ts.
-          expectedCash: rec.expectedInDrawer,
+          // Read just now and unchanged since the sheet showed it; see shift-service.ts.
+          expectedCash: expectedInDrawer,
           note: null,
           closedByName: await readStaffName(),
         });
-        await finishClose(shift, final);
+        await finishClose(review);
       } catch (error) {
         // A timed-out close may still have landed. Only a successful read that
         // no longer finds THIS shift open counts as closed — a failed read is
@@ -373,7 +462,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           .then((open) => !open)
           .catch(() => false);
         if (hasLanded) {
-          await finishClose(shift, final);
+          await finishClose(review);
           return;
         }
         Alert.alert("Could not end the shift", errorText(error));
@@ -385,6 +474,19 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     setMoveTarget(null);
     setExpenseScope(scope);
   };
+
+  // The register's "Pay out": open "Pay from the drawer" once the drawer is known.
+  useEffect(() => {
+    if (!isPayOutRequested || !floor.isLoaded) return;
+    // Wait only while the categories are still loading; once they failed (or
+    // the store has none) the request is cleared, never left to pop later.
+    if (myShift && !drawerExpenses.isReady && !haveCategoriesSettled) return;
+    if (myShift && drawerExpenses.isReady && !useAuthStore.getState().isDemo) {
+      setMoveTarget(null);
+      setExpenseScope("spend");
+    }
+    onPayOutHandled?.();
+  }, [isPayOutRequested, floor.isLoaded, myShift, drawerExpenses.isReady, haveCategoriesSettled, onPayOutHandled]);
 
   const myPending = myShift ? drawerExpenses.pendingFor(myShift.id) : { cents: 0, count: 0, waiting: 0 };
   const pendingLine =
@@ -460,7 +562,6 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           isBusy={busy}
           onSubmit={(move) => void handleMove(move)}
           onClose={() => setMoveTarget(null)}
-          onPayExpense={isOwnMoveTarget && drawerExpenses.isReady ? () => openExpenseSheet("spend") : undefined}
           onTakeOut={isOwnMoveTarget && drawerExpenses.isReady ? () => openExpenseSheet("take_out") : undefined}
         />
       ) : null}
@@ -488,6 +589,25 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           isBusy={busy}
           onConfirm={(counted) => void handleCount(counted)}
           onClose={() => setCountTarget(null)}
+        />
+      ) : null}
+      {pendingClose ? (
+        <CloseShiftSheet
+          key={pendingClose.shift.id}
+          review={pendingClose.review}
+          notice={pendingClose.notice}
+          categories={categoryIndex}
+          isBusy={busy}
+          onEnd={() => void handleEndShift()}
+          onClose={() => setPendingClose(null)}
+          onOpenExpenses={
+            canOpenExpenses
+              ? () => {
+                  setPendingClose(null);
+                  router.push(DRAWER_EXPENSES_ROUTE as never);
+                }
+              : undefined
+          }
         />
       ) : null}
     </>

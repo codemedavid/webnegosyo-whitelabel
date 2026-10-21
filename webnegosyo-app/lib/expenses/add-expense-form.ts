@@ -9,22 +9,29 @@
  * Two modes:
  * - `book`: the owner's "+ Expense". Paid from Cash on hand / GCash / Maya /
  *   Bank / Card / Owner's pocket; any recent date.
- * - `drawer`: "Pay an expense" from an open shift. The source is that drawer
+ * - `drawer`: "Pay from the drawer" on an open shift. The source is that drawer
  *   (locked), the date is today, and the amount can't be more than the drawer
  *   should hold — the same rule and words as every other cash move
  *   (`validateCashMove`).
  */
 
 import { validateCashMove } from "../cash-drawers";
-import { EMPTY_KEYPAD, formatPeso, keypadCents, keypadFromCents, type KeypadState } from "./keypad";
+import type { QueuedExpense } from "./expense-queue";
+import { EMPTY_KEYPAD, MAX_AMOUNT_CENTS, formatPeso, keypadCents, keypadFromCents, type KeypadState } from "./keypad";
 import { addDays } from "./manila-date";
 import type { RepeatSuggestion } from "./repeat-chips";
+import { suggestCategoryForReason } from "./sort-suggest";
 import type { DrawerExpenseDraft, ExpenseCategory, ExpenseDraft, PaidFrom } from "./types";
 
 export const NOTE_MAX = 200;
 export const PAID_TO_MAX = 80;
-/** Date chips the phone offers; older rows are back-office work on the web. */
+/** How far back an expense may be dated: the validator and the calendar share it. */
+export const MAX_DAYS_BACK = 400;
+/** Date chips offered by default; the calendar reaches back to `MAX_DAYS_BACK`. */
 export const DATE_CHOICE_DAYS = 7;
+
+export type BookPaidFrom = Exclude<PaidFrom, "drawer">;
+export type ExpenseSheetScope = "spend" | "take_out";
 
 export type AddExpenseMode =
   | { kind: "book" }
@@ -34,21 +41,25 @@ export type AddExpenseMode =
       drawerName: string;
       /** What the drawer should hold now, in centavos; null = unknown (never blocks). */
       availableCents: number | null;
+      /** "Ben's shift" — shown after the drawer's name on the chip when given. */
+      shiftLabel?: string | null;
     };
 
 export interface AddExpenseForm {
   keypad: KeypadState;
   categoryId: string | null;
-  paidFrom: Exclude<PaidFrom, "drawer">;
+  paidFrom: BookPaidFrom;
   note: string;
   paidToName: string;
   /** `YYYY-MM-DD`, Manila. */
   spentOn: string;
   /** "Did this go into your stock count?" — null until answered. */
   isStockPurchase: boolean | null;
+  /** Whether the category came from the note; a person's own pick is never replaced. */
+  isCategoryFromNote: boolean;
 }
 
-export function emptyForm(today: string, paidFrom: Exclude<PaidFrom, "drawer"> = "cash"): AddExpenseForm {
+export function emptyForm(today: string, paidFrom: BookPaidFrom = "cash"): AddExpenseForm {
   return {
     keypad: EMPTY_KEYPAD,
     categoryId: null,
@@ -57,6 +68,33 @@ export function emptyForm(today: string, paidFrom: Exclude<PaidFrom, "drawer"> =
     paidToName: "",
     spentOn: today,
     isStockPurchase: null,
+    isCategoryFromNote: false,
+  };
+}
+
+export interface OpeningValues {
+  today: string;
+  /** Kept from the last entry: where the money usually comes from. */
+  paidFrom: BookPaidFrom;
+  initialCategoryId?: string | null;
+  initialAmountCents?: number;
+  initialNote?: string;
+  initialIsStockPurchase?: boolean;
+}
+
+function isUsableAmount(cents: number | undefined): cents is number {
+  return typeof cents === "number" && Number.isInteger(cents) && cents > 0 && cents <= MAX_AMOUNT_CENTS;
+}
+
+/** The form a sheet opens with: what the caller already knows ("Record what you paid"), else empty. */
+export function formForOpening(values: OpeningValues): AddExpenseForm {
+  const empty = emptyForm(values.today, values.paidFrom);
+  return {
+    ...empty,
+    keypad: isUsableAmount(values.initialAmountCents) ? keypadFromCents(values.initialAmountCents) : EMPTY_KEYPAD,
+    categoryId: values.initialCategoryId ?? null,
+    note: (values.initialNote ?? "").slice(0, NOTE_MAX),
+    isStockPurchase: values.initialIsStockPurchase ?? null,
   };
 }
 
@@ -67,12 +105,32 @@ export function nextEntryForm(previous: AddExpenseForm): AddExpenseForm {
 
 /** One tap on "↻ Ice ₱120": fills the category AND the amount. */
 export function applyRepeat(form: AddExpenseForm, suggestion: RepeatSuggestion): AddExpenseForm {
-  return { ...form, keypad: keypadFromCents(suggestion.amountCents), categoryId: suggestion.categoryId, isStockPurchase: null };
+  return {
+    ...form,
+    keypad: keypadFromCents(suggestion.amountCents),
+    categoryId: suggestion.categoryId,
+    isStockPurchase: null,
+    isCategoryFromNote: false,
+  };
 }
 
 export function selectCategory(form: AddExpenseForm, categoryId: string): AddExpenseForm {
-  if (form.categoryId === categoryId) return form;
-  return { ...form, categoryId, isStockPurchase: null };
+  if (form.categoryId === categoryId) return form.isCategoryFromNote ? { ...form, isCategoryFromNote: false } : form;
+  return { ...form, categoryId, isStockPurchase: null, isCategoryFromNote: false };
+}
+
+/**
+ * Typing the note: "palengke" picks Ingredients, but only while the person has
+ * not picked a category themselves, and only on a clear match among the
+ * categories this sheet offers (`suggestCategoryForReason` confidence high).
+ */
+export function withNote(form: AddExpenseForm, note: string, offered: readonly ExpenseCategory[]): AddExpenseForm {
+  const next = { ...form, note };
+  const mayPick = form.categoryId === null || form.isCategoryFromNote;
+  if (!mayPick) return next;
+  const suggestion = suggestCategoryForReason(note, offered);
+  if (suggestion?.confidence !== "high" || suggestion.categoryId === form.categoryId) return next;
+  return { ...next, categoryId: suggestion.categoryId, isStockPurchase: null, isCategoryFromNote: true };
 }
 
 /** The stock question shows only for ingredient buys in a store whose stock is counted (plan §2.2). */
@@ -82,6 +140,33 @@ export function asksStockQuestion(category: ExpenseCategory | null, tracksStock:
 
 export function saveLabel(cents: number, verb = "Save"): string {
   return cents > 0 ? `${verb} ${formatPeso(cents)}` : verb;
+}
+
+export function sheetTitle(mode: AddExpenseMode, scope: ExpenseSheetScope): string {
+  if (scope === "take_out") return "Take out cash";
+  return mode.kind === "drawer" ? "Pay from the drawer" : "New expense";
+}
+
+/** The one main button; it always repeats the amount ("Pay ₱150 from drawer"). */
+export function primaryLabel(cents: number, mode: AddExpenseMode, scope: ExpenseSheetScope): string {
+  if (scope === "take_out") return saveLabel(cents, "Take out");
+  if (mode.kind === "drawer") return cents > 0 ? `Pay ${formatPeso(cents)} from drawer` : "Pay from drawer";
+  return saveLabel(cents);
+}
+
+/** "Front till · Ben's shift", "Cashier 1 drawer", or "Your drawer" for the till with no name. */
+export function drawerChipLabel(mode: Extract<AddExpenseMode, { kind: "drawer" }>): string {
+  const name = mode.drawerName.trim();
+  const drawer = name === "" || name === "My" ? "Your drawer" : /\b(drawer|till)\b/i.test(name) ? name : `${name} drawer`;
+  const shift = mode.shiftLabel?.trim();
+  return shift ? `${drawer} · ${shift}` : drawer;
+}
+
+/** What the drawer should hold after this pay-out; null when unknown, nothing typed, or too much. */
+export function drawerAfterCents(mode: AddExpenseMode, cents: number): number | null {
+  if (mode.kind !== "drawer" || mode.availableCents === null || cents <= 0) return null;
+  const after = mode.availableCents - cents;
+  return after >= 0 ? after : null;
 }
 
 export type FormVerdict =
@@ -117,8 +202,8 @@ export function checkForm(form: AddExpenseForm, ctx: FormContext): FormVerdict {
     if (!verdict.ok) return { ok: false, field: "amount", reason: verdict.reason };
     return { ok: true };
   }
-  if (form.spentOn > ctx.today || form.spentOn < addDays(ctx.today, -400)) {
-    return { ok: false, field: "date", reason: "Pick a day from the last 400 days." };
+  if (form.spentOn > ctx.today || form.spentOn < oldestSpendDate(ctx.today)) {
+    return { ok: false, field: "date", reason: `Pick a day from the last ${MAX_DAYS_BACK} days.` };
   }
   return { ok: true };
 }
@@ -164,9 +249,43 @@ export function toDrawerDraft(
   };
 }
 
-/** The date chips: today first, then the previous days. */
+/** The oldest day an expense may be dated (`checkForm` and the calendar's lower bound). */
+export function oldestSpendDate(today: string): string {
+  return addDays(today, -MAX_DAYS_BACK);
+}
+
+/** The date chips: today first, then the previous days — never older than the validator allows. */
 export function dateChoices(today: string, days: number = DATE_CHOICE_DAYS): string[] {
-  return Array.from({ length: days }, (_, index) => addDays(today, -index));
+  const count = Math.max(0, Math.min(Math.floor(days), MAX_DAYS_BACK + 1));
+  return Array.from({ length: count }, (_, index) => addDays(today, -index));
+}
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** A stored day as the calendar's Date: local noon, so no time zone moves it a day. */
+export function dayToDate(day: string): Date {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(year, month - 1, date, 12);
+}
+
+/** The calendar's chosen Date back to the stored `YYYY-MM-DD` (the day the person tapped). */
+export function dateToDay(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * Whether a save right now will wait on this phone: the app has seen the
+ * connection fail, or older entries already tried and are still waiting.
+ * Entries in their own Undo window (never tried) and refused ones say nothing.
+ */
+export function savesToPhoneOnly(
+  pending: readonly QueuedExpense[],
+  input: { isOffline: boolean; exceptId: string },
+): boolean {
+  if (input.isOffline) return true;
+  return pending.some((entry) => entry.id !== input.exceptId && entry.refusedReason === null && entry.attempts > 0);
 }
 
 /** "Saved · LPG ₱1,250" — the snackbar after a save. */
@@ -178,7 +297,7 @@ export function savedMessage(categoryName: string, cents: number, isQueued: bool
 /** Which categories the sheet offers: everything spendable, or only the "not an expense" kinds. */
 export function categoriesForScope(
   categories: readonly ExpenseCategory[],
-  scope: "spend" | "take_out",
+  scope: ExpenseSheetScope,
 ): ExpenseCategory[] {
   return categories.filter((category) =>
     scope === "take_out" ? category.group === "not_expense" : category.group !== "not_expense",

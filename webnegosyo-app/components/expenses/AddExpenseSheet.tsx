@@ -1,76 +1,68 @@
-import React, { useMemo, useRef, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useAuthStore } from "../../stores/auth-store";
-import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
-import { newLocalOrderId } from "../../lib/offline/local-id";
-import { readActorName } from "../../lib/expenses/actor-name";
 import {
   applyRepeat,
   asksStockQuestion,
   canTapSave,
   categoriesForScope,
-  checkForm,
-  dateChoices,
-  emptyForm,
+  drawerAfterCents,
+  drawerChipLabel,
+  formForOpening,
   nextEntryForm,
   NOTE_MAX,
   PAID_TO_MAX,
-  saveLabel,
-  savedMessage,
+  primaryLabel,
   selectCategory,
-  toBookDraft,
-  toDrawerDraft,
+  sheetTitle,
+  withNote,
   type AddExpenseForm,
   type AddExpenseMode,
+  type ExpenseSheetScope,
 } from "../../lib/expenses/add-expense-form";
 import { rankCategoriesForPicker } from "../../lib/expenses/categories";
-import { dayLabel, manilaToday, spokenCents } from "../../lib/expenses/expense-format";
-import type { QueuedExpensePayload } from "../../lib/expenses/expense-queue";
+import { manilaToday, spokenCents } from "../../lib/expenses/expense-format";
 import { formatPeso, keypadCents, keypadDisplay, pressKey, type KeypadKey } from "../../lib/expenses/keypad";
-import {
-  commitQueuedExpense,
-  queueExpense,
-  queueReceipt,
-  undoExpense,
-} from "../../lib/expenses/live-expense-queue";
-import { captureReceipt, describeCaptureOutcome, type CapturedReceipt } from "../../lib/expenses/receipt-files";
+import type { CapturedReceipt } from "../../lib/expenses/receipt-files";
 import { repeatSuggestions } from "../../lib/expenses/repeat-chips";
-import {
-  useExpenseCategories,
-  useExpenseOutlet,
-  useExpenseTenant,
-  useInvalidateExpenses,
-  useRecentExpenses,
-  useTracksStock,
-} from "../../lib/expenses/use-expenses";
+import { useExpenseCategories, useRecentExpenses, useTracksStock } from "../../lib/expenses/use-expenses";
 import type { ExpenseCategory } from "../../lib/expenses/types";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
-import { Icon } from "../Icon";
 import { Modal } from "../Modal";
-import { UndoBar } from "../UndoBar";
+import { centeredDialog, useCenteredDialog } from "../pos/dialog-layout";
+import { BackRow, DrawerLine, ExtrasRow, FoldInput, PaidFromRow, RepeatRow, StockQuestion } from "./AddExpenseParts";
+import { CategoryGrid, CategoryList } from "./CategoryPicker";
+import { ExpenseAmount } from "./ExpenseAmount";
+import { ExpenseDatePicker, IS_DATE_PICKER_INLINE } from "./ExpenseDatePicker";
 import { COMPACT_KEY_HEIGHT, ExpenseKeypad, KEY_HEIGHT } from "./ExpenseKeypad";
-import {
-  AllCategories,
-  CategoryGrid,
-  DateChoices,
-  FoldInput,
-  FoldedRow,
-  PaidFromChoices,
-  PaidFromPill,
-  RepeatRow,
-  StockQuestion,
-  type FoldPanel,
-} from "./AddExpenseParts";
+import { expenseExtras } from "./expense-extras";
+import { ExpenseUndoBar } from "./ExpenseUndoHost";
+import { promptForReceipt } from "./receipt-prompt";
+import { useExpenseSave } from "./use-expense-save";
 
-/** How long "Saved · LPG ₱1,250 · Undo" stays, and how long the entry waits unsent (plan §5.1). */
-export const UNDO_WINDOW_MS = 6_000;
+export { UNDO_WINDOW_MS } from "../../stores/expense-undo-store";
+export type { ExpenseSheetScope } from "../../lib/expenses/add-expense-form";
+
 /** Below this window height the keypad shrinks before the amount does (plan §5.6). */
 const COMPACT_HEIGHT = 740;
+/** Scrim left showing above the sheet on a phone, under the status bar. */
+const SCRIM_GAP = 8;
+const SHEET_RADIUS = 22;
+/** A centred dialog on a tablet stops growing here. */
+const MAX_DIALOG_HEIGHT = 820;
 
-export type ExpenseSheetScope = "spend" | "take_out";
+type Panel = "note" | "paidTo" | "date" | "all" | null;
 
 interface AddExpenseSheetProps {
   visible: boolean;
@@ -78,86 +70,83 @@ interface AddExpenseSheetProps {
   /** `take_out`: the drawer's "Take out cash" — owner took cash, bank deposit, loan payment. */
   scope?: ExpenseSheetScope;
   onClose: () => void;
-  /** After an entry left its Undo window (sent, or kept on the phone) — the drawer re-reads its cash. */
+  /** After an entry left its Undo window (sent, kept on the phone, or undone) — the drawer re-reads its cash. */
   onCommitted?: () => void;
   /** Opens with this category chosen (Profit's "No Rent recorded · Record"). */
   initialCategoryId?: string | null;
-}
-
-interface Snack {
-  requestId: string;
-  message: string;
-  actorName: string;
+  /** Opens with this amount typed (stock receive: "Record what you paid"). */
+  initialAmountCents?: number;
+  initialNote?: string;
+  initialIsStockPurchase?: boolean;
 }
 
 /**
- * The Add-expense sheet (plan §5.1): amount first on our own keypad, a repeat
- * row, the top categories, then Save — three taps for a repeat, type → chip →
- * Save for a new one. After Save it stays open and empty for the next entry
- * (palengke runs come in batches) and shows "Saved · … · Undo" for 6 s.
- *
- * Every entry goes through the device queue with its own request id and is
- * held for the Undo window, so Undo never has to void anything, a dead zone
- * never loses an entry, and a replay can never record it twice.
+ * The Add-expense sheet (plan §5.1): amount first on our own keypad, where the
+ * money came from, a repeat row, the store's top categories, then Save —
+ * three taps for a repeat. "Save" closes it; "Save + next" keeps it open and
+ * empty for the next line of a palengke run. Either way the global undo bar
+ * (`ExpenseUndoHost`) says "Saved · … · Undo" for 6 s, on whatever screen is
+ * left. In drawer mode it is "Pay from the drawer": today, from that drawer.
  */
-export function AddExpenseSheet({ visible, mode, scope = "spend", onClose, onCommitted, initialCategoryId = null }: AddExpenseSheetProps) {
-  const tenantId = useExpenseTenant();
-  const outletId = useExpenseOutlet();
-  const invalidate = useInvalidateExpenses();
+export function AddExpenseSheet({
+  visible,
+  mode,
+  scope = "spend",
+  onClose,
+  onCommitted,
+  initialCategoryId = null,
+  initialAmountCents,
+  initialNote,
+  initialIsStockPurchase,
+}: AddExpenseSheetProps) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const keyHeight = height < COMPACT_HEIGHT ? COMPACT_KEY_HEIGHT : KEY_HEIGHT;
+  const isCentered = useCenteredDialog();
+  const isCompact = height < COMPACT_HEIGHT;
 
   const { categories, isLoading: isLoadingCategories, error: categoriesError } = useExpenseCategories();
   const { expenses: recent } = useRecentExpenses(visible);
   const tracksStock = useTracksStock();
+  const { isSaving, save } = useExpenseSave({ mode, tracksStock, onCommitted });
 
-  const today = manilaToday();
-  const [form, setForm] = useState<AddExpenseForm>(() => ({ ...emptyForm(today), categoryId: initialCategoryId }));
-  const [panel, setPanel] = useState<FoldPanel>(null);
-  const [isShowingAll, setIsShowingAll] = useState(false);
+  const opening = { initialCategoryId, initialAmountCents, initialNote, initialIsStockPurchase };
+  const [form, setForm] = useState<AddExpenseForm>(() => formForOpening({ ...opening, today: manilaToday(), paidFrom: "cash" }));
+  const [panel, setPanel] = useState<Panel>(null);
   const [receipt, setReceipt] = useState<CapturedReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [snack, setSnack] = useState<Snack | null>(null);
-  // State lands a render late: two taps inside one frame both saw isSaving false.
-  const inFlight = useRef(false);
-  const committed = useRef(new Set<string>());
+
+  // The caller's values are applied every time the sheet opens, and again if they change while open.
+  const openKey = visible ? JSON.stringify([initialCategoryId, initialAmountCents ?? null, initialNote ?? null, initialIsStockPurchase ?? null]) : null;
+  const lastOpenKey = useRef(openKey);
+  useEffect(() => {
+    if (openKey === lastOpenKey.current) return;
+    lastOpenKey.current = openKey;
+    if (openKey === null) return;
+    setForm((current) => formForOpening({ ...opening, today: manilaToday(), paidFrom: current.paidFrom }));
+    setPanel(null);
+    setReceipt(null);
+    setError(null);
+    // `opening` is read only when the key (which is built from it) changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openKey]);
 
   const offered = useMemo(() => categoriesForScope(categories, scope), [categories, scope]);
   const ranked = useMemo(() => rankCategoriesForPicker(offered, recent, new Date()), [offered, recent]);
-  const suggestions = useMemo(
-    () => (scope === "take_out" ? [] : repeatSuggestions(recent, offered)),
-    [recent, offered, scope],
-  );
+  const suggestions = useMemo(() => (scope === "take_out" ? [] : repeatSuggestions(recent, offered)), [recent, offered, scope]);
   const category: ExpenseCategory | null = offered.find((c) => c.id === form.categoryId) ?? null;
   const cents = keypadCents(form.keypad);
   const isDrawer = mode.kind === "drawer";
-  const verb = scope === "take_out" ? "Take out" : isDrawer ? "Pay" : "Save";
-  const title = scope === "take_out" ? "Take out cash" : isDrawer ? "Pay an expense" : "New expense";
+  const hasNextButton = !isDrawer && scope === "spend";
+  const today = manilaToday();
 
   const update = (next: AddExpenseForm) => {
     setForm(next);
     setError(null);
   };
 
-  const commit = (requestId: string) => {
-    if (!tenantId || committed.current.has(requestId)) return;
-    committed.current.add(requestId);
-    void commitQueuedExpense(tenantId, requestId).then(async (result) => {
-      if (result.sent.size > 0) await invalidate();
-      onCommitted?.();
-    });
-  };
-
   const close = () => {
     if (isSaving) return;
-    // Closing is not Undo: an entry still in its window is sent now.
-    if (snack) commit(snack.requestId);
-    setSnack(null);
     setPanel(null);
-    setIsShowingAll(false);
-    setForm(emptyForm(manilaToday(), form.paidFrom));
     setReceipt(null);
     setError(null);
     onClose();
@@ -168,242 +157,185 @@ export function AddExpenseSheet({ visible, mode, scope = "spend", onClose, onCom
     if (keypad !== form.keypad) update({ ...form, keypad });
   };
 
-  const pickReceipt = () => {
-    const take = async (source: "camera" | "library") => {
-      try {
-        const outcome = await captureReceipt(source);
-        if (outcome.status === "captured") {
-          setReceipt(outcome.receipt);
-          return;
-        }
-        const message = describeCaptureOutcome(outcome);
-        if (message) Alert.alert("Receipt", message);
-      } catch {
-        Alert.alert("Receipt", "The photo could not be saved. Try again.");
-      }
-    };
-    Alert.alert("Add a receipt", receipt ? "Replace the photo you took?" : undefined, [
-      { text: "Take a photo", onPress: () => void take("camera") },
-      { text: "Choose from gallery", onPress: () => void take("library") },
-      ...(receipt ? [{ text: "Remove photo", style: "destructive" as const, onPress: () => setReceipt(null) }] : []),
-      { text: "Cancel", style: "cancel" as const },
-    ]);
-  };
+  const pickReceipt = () => promptForReceipt(receipt, setReceipt);
 
-  const save = async () => {
-    if (inFlight.current || !tenantId) return;
-    if (useAuthStore.getState().isDemo) {
-      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+  const submit = async (keepOpen: boolean) => {
+    const outcome = await save({ form, category, receipt });
+    if (outcome.status === "invalid") {
+      setError(outcome.reason);
+      if (outcome.field === "note") setPanel("note");
       return;
     }
-    const verdict = checkForm(form, { mode, category, tracksStock, today: manilaToday() });
-    if (!verdict.ok || !category) {
-      setError(verdict.ok ? "Pick what it was for." : verdict.reason);
-      if (!verdict.ok && verdict.field === "note") setPanel("note");
+    if (outcome.status === "failed") {
+      setError(outcome.reason);
       return;
     }
-    inFlight.current = true;
-    setIsSaving(true);
-    try {
-      const clientRequestId = newLocalOrderId();
-      const actorName = await readActorName();
-      const payload: QueuedExpensePayload =
-        mode.kind === "drawer"
-          ? {
-              kind: "drawer",
-              input: { ...toDrawerDraft(form, { clientRequestId, shiftId: mode.shiftId, category }), recordedByName: actorName },
-            }
-          : {
-              kind: "book",
-              createdByName: actorName,
-              draft: toBookDraft(form, { clientRequestId, outletId, tracksStock, category }),
-            };
-      const kept = await queueExpense({ tenantId, payload, categoryName: category.name }, UNDO_WINDOW_MS);
-      if (!kept) {
-        setError("This phone could not keep the expense. Free up some space and try again.");
-        return;
-      }
-      if (receipt) {
-        await queueReceipt({ tenantId, clientRequestId, expenseId: null, fileUri: receipt.fileUri, mime: receipt.mime });
-      }
-      // A second save inside the window sends the first one now.
-      if (snack) commit(snack.requestId);
-      setSnack({ requestId: clientRequestId, message: savedMessage(category.name, cents, false), actorName });
-      setForm(nextEntryForm(form));
-      setReceipt(null);
-      setPanel(null);
-      setError(null);
-    } finally {
-      inFlight.current = false;
-      setIsSaving(false);
+    if (outcome.status !== "saved") return;
+    if (!keepOpen) {
+      close();
+      return;
     }
+    setForm(nextEntryForm(form));
+    setReceipt(null);
+    setPanel(null);
+    setError(null);
   };
 
-  const undo = async (current: Snack) => {
-    if (!tenantId) return;
-    committed.current.add(current.requestId);
-    setSnack(null);
-    const outcome = await undoExpense({ tenantId, requestId: current.requestId, actorName: current.actorName });
-    if (outcome.status === "error") Alert.alert("Could not undo", outcome.message);
-    else await invalidate();
-    onCommitted?.();
-  };
+  const togglePanel = (next: Exclude<Panel, null>) => setPanel(panel === next ? null : next);
+  const extras = expenseExtras({
+    form,
+    today,
+    hasReceipt: receipt !== null,
+    isNoteNeeded: category?.needsNote === true,
+    canPickDateAndPayee: !isDrawer,
+    openPanel: panel,
+    onPhoto: pickReceipt,
+    onNote: () => togglePanel("note"),
+    onDate: () => setPanel("date"),
+    onPaidTo: () => togglePanel("paidTo"),
+  });
 
-  const availableLine =
-    mode.kind === "drawer" && mode.availableCents !== null
-      ? `Drawer should hold ${formatPeso(Math.max(0, mode.availableCents))}`
-      : null;
-  const showStock = asksStockQuestion(category, tracksStock);
-  const amountText = keypadDisplay(form.keypad);
+  const afterCents = drawerAfterCents(mode, cents);
+  const isTyping = panel === "note" || panel === "paidTo";
+  const label = primaryLabel(cents, mode, scope);
+  const sheetFrame = isCentered
+    ? [centeredDialog.sheet, { height: Math.min(height - spacing.xl * 2, MAX_DIALOG_HEIGHT), paddingBottom: spacing.lg }]
+    : { flex: 1, marginTop: insets.top + SCRIM_GAP, paddingBottom: Math.max(insets.bottom, spacing.md) };
+
+  const categoryBlock =
+    isLoadingCategories && categories.length === 0 ? (
+      <Text style={styles.hint}>Loading categories…</Text>
+    ) : categoriesError && categories.length === 0 ? (
+      <Text style={styles.error}>Categories could not be loaded. {categoriesError}</Text>
+    ) : (
+      <CategoryGrid
+        ranked={ranked}
+        selectedId={form.categoryId}
+        totalCount={offered.length}
+        onPick={(picked) => update(selectCategory(form, picked.id))}
+        onShowAll={() => setPanel("all")}
+      />
+    );
+
+  const mainBody = (
+    <>
+      <View style={styles.top}>
+        {mode.kind === "drawer" ? <DrawerLine chipLabel={drawerChipLabel(mode)} availableCents={mode.availableCents} /> : null}
+        <ExpenseAmount text={keypadDisplay(form.keypad)} cents={cents} isCompact={isCompact} />
+        {mode.kind === "book" ? <PaidFromRow value={form.paidFrom} onPick={(paidFrom) => update({ ...form, paidFrom })} /> : null}
+      </View>
+      <View style={styles.middle}>
+        <ScrollView contentContainerStyle={styles.middleBody} keyboardShouldPersistTaps="handled">
+          <RepeatRow suggestions={suggestions} onPick={(suggestion) => update(applyRepeat(form, suggestion))} />
+          {categoryBlock}
+          {asksStockQuestion(category, tracksStock) ? (
+            <StockQuestion value={form.isStockPurchase} onAnswer={(answer) => update({ ...form, isStockPurchase: answer })} />
+          ) : null}
+          <ExtrasRow items={extras} />
+          {panel === "note" ? (
+            <FoldInput
+              value={form.note}
+              onChange={(note) => update(withNote(form, note, offered))}
+              placeholder={category?.needsNote ? "What was it for? (needed)" : "What was it for? e.g. palengke"}
+              maxLength={NOTE_MAX}
+              accessibilityLabel="Note"
+              onDone={() => setPanel(null)}
+            />
+          ) : null}
+          {panel === "paidTo" ? (
+            <FoldInput
+              value={form.paidToName}
+              onChange={(paidToName) => update({ ...form, paidToName })}
+              placeholder="Who was paid, e.g. Aling Nena, Meralco"
+              maxLength={PAID_TO_MAX}
+              accessibilityLabel="Paid to"
+              onDone={() => setPanel(null)}
+            />
+          ) : null}
+          {afterCents !== null ? (
+            <Text style={styles.after}>
+              After this the drawer should hold <Text style={styles.strong}>{formatPeso(afterCents)}</Text>
+            </Text>
+          ) : null}
+        </ScrollView>
+        <ExpenseUndoBar style={styles.undo} />
+      </View>
+      <View style={styles.lower}>
+        {error ? (
+          <Text style={styles.error} accessibilityRole="alert">
+            {error}
+          </Text>
+        ) : null}
+        {isTyping ? null : <ExpenseKeypad onKey={onKey} keyHeight={isCompact ? COMPACT_KEY_HEIGHT : KEY_HEIGHT} isDisabled={isSaving} />}
+        <View style={styles.footer}>
+          {hasNextButton ? (
+            <Button
+              label="Save + next"
+              tone="secondary"
+              size="lg"
+              onPress={() => void submit(true)}
+              disabled={!canTapSave(form) || isSaving}
+              accessibilityHint="Saves this and keeps the sheet open for the next one"
+              style={styles.nextButton}
+              testID="expense-save-next"
+            />
+          ) : null}
+          <Button
+            label={label}
+            size="lg"
+            onPress={() => void submit(false)}
+            isLoading={isSaving}
+            disabled={!canTapSave(form) || isSaving}
+            accessibilityLabel={cents > 0 ? label.replace(formatPeso(cents), spokenCents(cents)) : label}
+            style={styles.saveButton}
+            testID="expense-save"
+          />
+        </View>
+      </View>
+      {panel === "date" && !IS_DATE_PICKER_INLINE ? (
+        <ExpenseDatePicker value={form.spentOn} today={today} onPick={(spentOn) => update({ ...form, spentOn })} onClose={() => setPanel(null)} />
+      ) : null}
+    </>
+  );
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={close} transparent>
-      <View style={styles.backdrop}>
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md), paddingTop: Math.max(insets.top, spacing.md) }]}>
+      <KeyboardAvoidingView
+        style={[styles.backdrop, isCentered && centeredDialog.backdrop]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={close} activeOpacity={1} accessibilityRole="button" accessibilityLabel="Close" />
+        <View style={[styles.sheet, sheetFrame]}>
+          {isCentered ? null : <View style={styles.grab} />}
           <View style={styles.header}>
-            <TouchableOpacity onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel="Close">
-              <Icon name="close" size={22} color={colors.textPrimary} />
-            </TouchableOpacity>
             <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-              {title}
+              {sheetTitle(mode, scope)}
             </Text>
-            <PaidFromPill
-              lockedDrawerName={mode.kind === "drawer" ? mode.drawerName : null}
-              paidFrom={form.paidFrom}
-              isOpen={panel === "source"}
-              onToggle={() => setPanel(panel === "source" ? null : "source")}
-            />
+            <TouchableOpacity onPress={close} disabled={isSaving} style={styles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-
-          {isShowingAll ? (
-            <AllCategories
-              categories={scope === "take_out" || isDrawer ? offered : categories}
-              selectedId={form.categoryId}
-              onPick={(picked) => {
-                update(selectCategory(form, picked.id));
-                setIsShowingAll(false);
-              }}
-              onBack={() => setIsShowingAll(false)}
-            />
-          ) : (
-            <>
-              <ScrollView style={styles.upper} contentContainerStyle={styles.upperBody} keyboardShouldPersistTaps="handled">
-                {panel === "source" ? (
-                  <PaidFromChoices
-                    value={form.paidFrom}
-                    onPick={(paidFrom) => {
-                      update({ ...form, paidFrom });
-                      setPanel(null);
-                    }}
-                  />
-                ) : null}
-
-                <View style={styles.amountRow} accessible accessibilityLabel={`Amount: ${spokenCents(cents)}`} accessibilityLiveRegion="polite">
-                  <Text style={styles.peso}>₱</Text>
-                  <Text style={[styles.amount, cents === 0 && styles.amountEmpty]} numberOfLines={1} adjustsFontSizeToFit>
-                    {amountText.slice(1)}
-                  </Text>
-                </View>
-                {availableLine ? <Text style={styles.hint}>{availableLine}</Text> : null}
-
-                <RepeatRow suggestions={suggestions} onPick={(suggestion) => update(applyRepeat(form, suggestion))} />
-
-                {isLoadingCategories && categories.length === 0 ? (
-                  <Text style={styles.hint}>Loading categories…</Text>
-                ) : categoriesError && categories.length === 0 ? (
-                  <Text style={styles.error}>Categories could not be loaded. {categoriesError}</Text>
-                ) : (
-                  <CategoryGrid
-                    ranked={ranked}
-                    selectedId={form.categoryId}
-                    onPick={(picked) => update(selectCategory(form, picked.id))}
-                    onMore={() => setIsShowingAll(true)}
-                  />
-                )}
-
-                {showStock ? (
-                  <StockQuestion value={form.isStockPurchase} onAnswer={(answer) => update({ ...form, isStockPurchase: answer })} />
-                ) : null}
-
-                <FoldedRow
-                  hasReceipt={receipt !== null}
-                  note={form.note}
-                  noteRequired={category?.needsNote === true}
-                  dateLabel={dayLabel(form.spentOn)}
-                  canPickDate={!isDrawer}
-                  paidTo={form.paidToName}
-                  open={panel === "source" ? null : panel}
-                  onReceipt={pickReceipt}
-                  onOpen={setPanel}
+          {panel === "all" ? (
+            <View style={styles.middle}>
+              <BackRow label="All categories" onBack={() => setPanel(null)} />
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.middleBody}>
+                <CategoryList
+                  categories={offered}
+                  selectedId={form.categoryId}
+                  onPick={(picked) => {
+                    update(selectCategory(form, picked.id));
+                    setPanel(null);
+                  }}
                 />
-                {panel === "note" ? (
-                  <FoldInput
-                    value={form.note}
-                    onChange={(note) => update({ ...form, note })}
-                    placeholder={category?.needsNote ? "What was it for? (needed)" : "What was it for?"}
-                    maxLength={NOTE_MAX}
-                    accessibilityLabel="Note"
-                  />
-                ) : null}
-                {panel === "paidTo" ? (
-                  <FoldInput
-                    value={form.paidToName}
-                    onChange={(paidToName) => update({ ...form, paidToName })}
-                    placeholder="Who was paid — e.g. Aling Nena, Meralco"
-                    maxLength={PAID_TO_MAX}
-                    accessibilityLabel="Paid to"
-                  />
-                ) : null}
-                {panel === "date" ? (
-                  <DateChoices
-                    dates={dateChoices(manilaToday())}
-                    value={form.spentOn}
-                    onPick={(spentOn) => {
-                      update({ ...form, spentOn });
-                      setPanel(null);
-                    }}
-                  />
-                ) : null}
               </ScrollView>
-
-              <View style={styles.lower}>
-                {error ? (
-                  <Text style={styles.error} accessibilityRole="alert">
-                    {error}
-                  </Text>
-                ) : null}
-                {panel === "note" || panel === "paidTo" ? null : (
-                  <ExpenseKeypad onKey={onKey} keyHeight={keyHeight} isDisabled={isSaving} />
-                )}
-                <Button
-                  label={saveLabel(cents, verb)}
-                  onPress={() => void save()}
-                  size="lg"
-                  isLoading={isSaving}
-                  disabled={!canTapSave(form) || isSaving}
-                  accessibilityLabel={cents > 0 ? `${verb} ${spokenCents(cents)}` : verb}
-                  testID="expense-save"
-                />
-              </View>
-            </>
-          )}
-
-          {snack ? (
-            <View style={[styles.snack, { bottom: Math.max(insets.bottom, spacing.md) + 64 }]} pointerEvents="box-none">
-              <UndoBar
-                key={snack.requestId}
-                message={snack.message}
-                durationMs={UNDO_WINDOW_MS}
-                onUndo={() => void undo(snack)}
-                onCommit={() => {
-                  commit(snack.requestId);
-                  setSnack((current) => (current?.requestId === snack.requestId ? null : current));
-                }}
-              />
             </View>
-          ) : null}
+          ) : panel === "date" && IS_DATE_PICKER_INLINE ? (
+            <ExpenseDatePicker value={form.spentOn} today={today} onPick={(spentOn) => update({ ...form, spentOn })} onClose={() => setPanel(null)} />
+          ) : (
+            mainBody
+          )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -411,29 +343,33 @@ export function AddExpenseSheet({ visible, mode, scope = "spend", onClose, onCom
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: colors.scrim, justifyContent: "flex-end" },
   sheet: {
-    flex: 1,
     backgroundColor: colors.card,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    gap: spacing.md,
   },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48 },
-  close: { width: 40, height: 40, alignItems: "center", justifyContent: "center", marginLeft: -spacing.sm },
-  title: { ...typography.heading, color: colors.textPrimary, flex: 1 },
-  upper: { flex: 1 },
-  upperBody: { gap: spacing.md, paddingBottom: spacing.sm },
-  amountRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "flex-end", gap: 4, minHeight: 56 },
-  peso: { fontSize: 28, fontWeight: "600", color: colors.textSecondary },
-  amount: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: -0.5,
-    flexShrink: 1,
-  },
-  amountEmpty: { color: colors.textTertiary },
-  hint: { ...typography.caption, color: colors.textMuted, textAlign: "right", marginTop: -spacing.sm },
+  grab: { alignSelf: "center", width: 40, height: 4, borderRadius: radius.full, backgroundColor: colors.separator },
+  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 44 },
+  title: { ...typography.title, color: colors.textPrimary, flex: 1 },
+  cancel: { minHeight: 44, justifyContent: "center", paddingLeft: spacing.sm },
+  cancelText: { ...typography.body, fontWeight: "600", color: colors.textSecondary },
+  top: { gap: spacing.sm },
+  middle: { flex: 1 },
+  middleBody: { gap: spacing.md, paddingBottom: spacing.md },
+  undo: { position: "absolute", left: 0, right: 0, bottom: spacing.sm },
+  after: { ...typography.caption, color: colors.textMuted, textAlign: "center" },
+  strong: { fontWeight: "800", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
+  hint: { ...typography.caption, color: colors.textMuted },
   error: { ...typography.caption, fontWeight: "700", color: colors.danger },
-  lower: { gap: spacing.sm, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.separator },
-  snack: { position: "absolute", left: spacing.lg, right: spacing.lg, borderRadius: radius.lg },
+  lower: { gap: spacing.sm },
+  footer: { flexDirection: "row", gap: spacing.sm },
+  nextButton: {
+    flex: 0.62,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surfaceSubtle,
+    borderColor: colors.surfaceSubtle,
+  },
+  saveButton: { flex: 1, paddingHorizontal: spacing.md },
 });

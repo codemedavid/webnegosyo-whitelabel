@@ -1,94 +1,30 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { GROUP_LABELS, sortCategories } from "../../lib/expenses/categories";
-import { PAID_FROM_LABELS, PICKABLE_PAID_FROM, dayLabel } from "../../lib/expenses/expense-format";
+import { shortCategoryName } from "../../lib/expenses/category-look";
+import { PAID_FROM_LABELS, PICKABLE_PAID_FROM } from "../../lib/expenses/expense-format";
 import { formatPeso } from "../../lib/expenses/keypad";
 import type { RepeatSuggestion } from "../../lib/expenses/repeat-chips";
-import { EXPENSE_GROUPS, type ExpenseCategory, type ExpenseGroup, type PaidFrom } from "../../lib/expenses/types";
+import type { BookPaidFrom } from "../../lib/expenses/add-expense-form";
+import type { ExpenseCategory } from "../../lib/expenses/types";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Icon, type IconName } from "../Icon";
-import { CategoryBadge } from "./CategoryBadge";
-
-function shortName(name: string): string {
-  return name.replace(/\s*\(.*\)\s*$/, "");
-}
-
-// ── Paid from ─────────────────────────────────────────────────────────────
-
-export function PaidFromPill({
-  lockedDrawerName,
-  paidFrom,
-  isOpen,
-  onToggle,
-}: {
-  lockedDrawerName: string | null;
-  paidFrom: Exclude<PaidFrom, "drawer">;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  if (lockedDrawerName !== null) {
-    return (
-      <View style={[styles.pill, styles.pillLocked]} accessibilityLabel={`Paid from the ${lockedDrawerName} drawer. Locked.`}>
-        <Icon name="lock" size={14} color={colors.success} />
-        <Text style={styles.pillLockedText} numberOfLines={1}>
-          From: {lockedDrawerName} drawer
-        </Text>
-      </View>
-    );
-  }
-  return (
-    <TouchableOpacity
-      style={styles.pill}
-      onPress={onToggle}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: isOpen }}
-      accessibilityLabel={`Paid from ${PAID_FROM_LABELS[paidFrom]}. Change`}
-    >
-      <Icon name="wallet" size={14} color={colors.textPrimary} />
-      <Text style={styles.pillText} numberOfLines={1}>
-        From: {PAID_FROM_LABELS[paidFrom]}
-      </Text>
-      <Icon name="chevron-down" size={12} color={colors.textSecondary} />
-    </TouchableOpacity>
-  );
-}
-
-export function PaidFromChoices({
-  value,
-  onPick,
-}: {
-  value: Exclude<PaidFrom, "drawer">;
-  onPick: (next: Exclude<PaidFrom, "drawer">) => void;
-}) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollRow}>
-      {PICKABLE_PAID_FROM.map((source) => (
-        <Chip key={source} label={PAID_FROM_LABELS[source]} isOn={source === value} onPress={() => onPick(source)} />
-      ))}
-    </ScrollView>
-  );
-}
+import { CategoryGrid as IconCategoryGrid, CategoryList } from "./CategoryPicker";
 
 // ── Chips ─────────────────────────────────────────────────────────────────
 
-export function Chip({
-  label,
-  isOn = false,
-  onPress,
-  icon,
-  isDashed = false,
-  accessibilityLabel,
-  style,
-}: {
+interface ChipProps {
   label: string;
   isOn?: boolean;
   onPress: () => void;
   icon?: IconName;
   isDashed?: boolean;
   accessibilityLabel?: string;
-  style?: object;
-}) {
+  style?: StyleProp<ViewStyle>;
+}
+
+/** A pill: coral ring on the light coral fill when chosen (the sheet's selection idiom). */
+export function Chip({ label, isOn = false, onPress, icon, isDashed = false, accessibilityLabel, style }: ChipProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -97,8 +33,7 @@ export function Chip({
       accessibilityState={{ selected: isOn }}
       accessibilityLabel={accessibilityLabel ?? label}
     >
-      {isOn ? <Icon name="check" size={13} color={colors.textOnDark} /> : null}
-      {!isOn && icon ? <Icon name={icon} size={13} color={colors.textSecondary} /> : null}
+      {icon ? <Icon name={icon} size={13} color={colors.textPrimary} /> : null}
       <Text style={[styles.chipText, isOn && styles.chipTextOn]} numberOfLines={1}>
         {label}
       </Text>
@@ -106,212 +41,137 @@ export function Chip({
   );
 }
 
-export function RepeatRow({
-  suggestions,
-  onPick,
-}: {
-  suggestions: readonly RepeatSuggestion[];
-  onPick: (suggestion: RepeatSuggestion) => void;
-}) {
-  if (suggestions.length === 0) return null;
+// ── Paid from (book) / the drawer (drawer mode) ───────────────────────────
+
+interface PaidFromRowProps {
+  value: BookPaidFrom;
+  onPick: (next: BookPaidFrom) => void;
+}
+
+/** Where the money came from, always visible: Cash on hand · GCash · Maya · Bank · Card · Owner's pocket. */
+export function PaidFromRow({ value, onPick }: PaidFromRowProps) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollRow}>
-      {suggestions.map((suggestion) => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.scrollRow}
+      keyboardShouldPersistTaps="handled"
+      accessibilityLabel="Paid from"
+    >
+      {PICKABLE_PAID_FROM.map((source) => (
         <Chip
-          key={`${suggestion.categoryId}|${suggestion.amountCents}`}
-          label={`${shortName(suggestion.categoryName)} ${formatPeso(suggestion.amountCents)}`}
-          icon="rotate"
-          isDashed
-          onPress={() => onPick(suggestion)}
-          accessibilityLabel={`Repeat: ${shortName(suggestion.categoryName)}, ${formatPeso(suggestion.amountCents)}`}
+          key={source}
+          label={PAID_FROM_LABELS[source]}
+          isOn={source === value}
+          onPress={() => onPick(source)}
+          accessibilityLabel={`Paid from ${PAID_FROM_LABELS[source]}`}
         />
       ))}
     </ScrollView>
   );
 }
 
-/** Two rows of four: the top categories, the chosen one always visible, then More…. */
-export function CategoryGrid({
-  ranked,
-  selectedId,
-  onPick,
-  onMore,
-}: {
-  ranked: readonly ExpenseCategory[];
-  selectedId: string | null;
-  onPick: (category: ExpenseCategory) => void;
-  onMore: () => void;
-}) {
-  const shown = ranked.slice(0, 7);
-  const selected = selectedId ? ranked.find((category) => category.id === selectedId) : undefined;
-  const cells = selected && !shown.includes(selected) ? [...shown.slice(0, 6), selected] : shown;
+interface DrawerLineProps {
+  chipLabel: string;
+  /** "Drawer has ₱4,620"; null = unknown, said nothing. */
+  availableCents: number | null;
+}
+
+export function DrawerLine({ chipLabel, availableCents }: DrawerLineProps) {
   return (
-    <View style={styles.grid}>
-      {cells.map((category) => (
-        <Chip
-          key={category.id}
-          label={shortName(category.name)}
-          isOn={category.id === selectedId}
-          onPress={() => onPick(category)}
-          accessibilityLabel={category.name}
-          style={styles.gridCell}
-        />
-      ))}
-      <Chip label="More…" icon="list" onPress={onMore} accessibilityLabel="More categories" style={styles.gridCell} />
+    <View style={styles.drawerLine}>
+      <View style={styles.drawerChip} accessible accessibilityLabel={`Paid from ${chipLabel}`}>
+        <View style={styles.drawerDot} />
+        <Text style={styles.drawerChipText} numberOfLines={1}>
+          {chipLabel}
+        </Text>
+      </View>
+      {availableCents !== null ? (
+        <Text style={styles.drawerHas} accessibilityLabel={`Drawer has ${formatPeso(Math.max(0, availableCents))}`}>
+          Drawer has <Text style={styles.strong}>{formatPeso(Math.max(0, availableCents))}</Text>
+        </Text>
+      ) : null}
     </View>
   );
 }
 
-/** Every category, grouped the way the owner reads them (no accounting words). */
-export function AllCategories({
-  categories,
-  selectedId,
-  onPick,
-  onBack,
-}: {
-  categories: readonly ExpenseCategory[];
-  selectedId: string | null;
-  onPick: (category: ExpenseCategory) => void;
-  onBack: () => void;
-}) {
-  const groups = EXPENSE_GROUPS.map((group: ExpenseGroup) => ({
-    group,
-    items: sortCategories(categories.filter((category) => category.group === group && category.archivedAt === null)),
-  })).filter((section) => section.items.length > 0);
+// ── Repeats ───────────────────────────────────────────────────────────────
+
+interface RepeatRowProps {
+  suggestions: readonly RepeatSuggestion[];
+  onPick: (suggestion: RepeatSuggestion) => void;
+}
+
+export function RepeatRow({ suggestions, onPick }: RepeatRowProps) {
+  if (suggestions.length === 0) return null;
   return (
-    <View style={styles.all}>
-      <TouchableOpacity onPress={onBack} style={styles.backRow} accessibilityRole="button" accessibilityLabel="Back to the amount">
-        <Icon name="chevron-left" size={18} color={colors.textPrimary} />
-        <Text style={styles.backText}>All categories</Text>
-      </TouchableOpacity>
-      <ScrollView style={styles.allScroll} keyboardShouldPersistTaps="handled">
-        {groups.map((section) => (
-          <View key={section.group} style={styles.allGroup}>
-            <Text style={styles.groupTitle}>{GROUP_LABELS[section.group]}</Text>
-            {section.items.map((category) => {
-              const isOn = category.id === selectedId;
-              return (
-                <TouchableOpacity
-                  key={category.id}
-                  style={styles.allRow}
-                  onPress={() => onPick(category)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isOn }}
-                  accessibilityLabel={category.name}
-                >
-                  <CategoryBadge code={category.icon ?? category.name.slice(0, 2)} size={32} />
-                  <Text style={styles.allName}>{category.name}</Text>
-                  {isOn ? <Icon name="check" size={18} color={colors.textPrimary} /> : null}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ))}
-      </ScrollView>
-    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollRow} keyboardShouldPersistTaps="handled">
+      {suggestions.map((suggestion) => {
+        const name = shortCategoryName(suggestion.categoryName);
+        const amount = formatPeso(suggestion.amountCents);
+        return (
+          <Chip
+            key={`${suggestion.categoryId}|${suggestion.amountCents}`}
+            label={`${name} ${amount}`}
+            icon="repeat"
+            isDashed
+            onPress={() => onPick(suggestion)}
+            accessibilityLabel={`Repeat ${name}, ${amount}`}
+          />
+        );
+      })}
+    </ScrollView>
   );
 }
 
-// ── The folded row: receipt · note · date · paid to ───────────────────────
+// ── Extras: Photo · Note · Date · Paid to ─────────────────────────────────
 
-export type FoldPanel = "note" | "date" | "paidTo" | "source" | null;
-
-export function FoldedRow({
-  hasReceipt,
-  note,
-  noteRequired,
-  dateLabel,
-  canPickDate,
-  paidTo,
-  open,
-  onReceipt,
-  onOpen,
-}: {
-  hasReceipt: boolean;
-  note: string;
-  noteRequired: boolean;
-  dateLabel: string;
-  canPickDate: boolean;
-  paidTo: string;
-  open: FoldPanel;
-  onReceipt: () => void;
-  onOpen: (panel: FoldPanel) => void;
-}) {
-  const toggle = (panel: Exclude<FoldPanel, null>) => onOpen(open === panel ? null : panel);
-  return (
-    <View style={styles.folded}>
-      <FoldButton icon="photo" label={hasReceipt ? "Receipt added" : "Receipt"} isDone={hasReceipt} onPress={onReceipt} />
-      <FoldButton
-        icon="edit"
-        label={note.trim() ? "Note added" : noteRequired ? "Note needed" : "Note"}
-        isDone={note.trim().length > 0}
-        isWarn={noteRequired && !note.trim()}
-        isOpen={open === "note"}
-        onPress={() => toggle("note")}
-      />
-      <FoldButton
-        icon="calendar"
-        label={dateLabel}
-        isOpen={open === "date"}
-        onPress={canPickDate ? () => toggle("date") : undefined}
-      />
-      <FoldButton
-        icon="account"
-        label={paidTo.trim() ? shortName(paidTo.trim()) : "Paid to"}
-        isDone={paidTo.trim().length > 0}
-        isOpen={open === "paidTo"}
-        onPress={() => toggle("paidTo")}
-      />
-    </View>
-  );
-}
-
-function FoldButton({
-  icon,
-  label,
-  isDone = false,
-  isWarn = false,
-  isOpen = false,
-  onPress,
-}: {
+export interface ExtraItem {
+  key: string;
   icon: IconName;
   label: string;
-  isDone?: boolean;
+  /** Spoken name; defaults to the label. */
+  accessibilityLabel?: string;
+  isSet: boolean;
   isWarn?: boolean;
   isOpen?: boolean;
-  onPress?: () => void;
-}) {
-  const tint = isWarn || isDone ? colors.textPrimary : colors.textMuted;
+  onPress: () => void;
+}
+
+/** Equal buttons under the grid; a filled tile once its detail is set. */
+export function ExtrasRow({ items }: { items: readonly ExtraItem[] }) {
   return (
-    <TouchableOpacity
-      style={[styles.fold, isOpen && styles.foldOpen]}
-      onPress={onPress}
-      disabled={!onPress}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: isOpen, disabled: !onPress }}
-      accessibilityLabel={label}
-    >
-      <Icon name={isDone ? "check" : icon} size={16} color={tint} />
-      <Text style={[styles.foldText, { color: tint }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </TouchableOpacity>
+    <View style={styles.extras}>
+      {items.map((item) => (
+        <TouchableOpacity
+          key={item.key}
+          style={[styles.extra, item.isSet && styles.extraSet, item.isWarn && styles.extraWarn, item.isOpen && styles.extraOpen]}
+          onPress={item.onPress}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: item.isOpen, selected: item.isSet }}
+          accessibilityLabel={item.accessibilityLabel ?? item.label}
+          testID={`expense-extra-${item.key}`}
+        >
+          <Icon name={item.isSet ? "check" : item.icon} size={16} color={item.isSet ? colors.accent : colors.textPrimary} />
+          <Text style={[styles.extraText, item.isSet && styles.extraTextSet]} numberOfLines={1}>
+            {item.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
   );
 }
 
-export function FoldInput({
-  value,
-  onChange,
-  placeholder,
-  maxLength,
-  accessibilityLabel,
-}: {
+interface FoldInputProps {
   value: string;
   onChange: (text: string) => void;
   placeholder: string;
   maxLength: number;
   accessibilityLabel: string;
-}) {
+  onDone?: () => void;
+}
+
+export function FoldInput({ value, onChange, placeholder, maxLength, accessibilityLabel, onDone }: FoldInputProps) {
   return (
     <TextInput
       style={styles.input}
@@ -322,26 +182,9 @@ export function FoldInput({
       maxLength={maxLength}
       autoFocus
       returnKeyType="done"
+      onSubmitEditing={onDone}
       accessibilityLabel={accessibilityLabel}
     />
-  );
-}
-
-export function DateChoices({
-  dates,
-  value,
-  onPick,
-}: {
-  dates: readonly string[];
-  value: string;
-  onPick: (date: string) => void;
-}) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollRow}>
-      {dates.map((date) => (
-        <Chip key={date} label={dayLabel(date)} isOn={date === value} onPress={() => onPick(date)} />
-      ))}
-    </ScrollView>
   );
 }
 
@@ -357,81 +200,107 @@ export function StockQuestion({ value, onAnswer }: { value: boolean | null; onAn
   );
 }
 
-const styles = StyleSheet.create({
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    minHeight: 36,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    maxWidth: 220,
-  },
-  pillText: { ...typography.caption, fontWeight: "700", color: colors.textPrimary, flexShrink: 1 },
-  pillLocked: { backgroundColor: colors.successLight, borderColor: colors.successLight },
-  pillLockedText: { ...typography.caption, fontWeight: "700", color: colors.success, flexShrink: 1 },
+/** "‹ All categories" over the list that replaces the grid in place. */
+export function BackRow({ label, onBack }: { label: string; onBack: () => void }) {
+  return (
+    <TouchableOpacity onPress={onBack} style={styles.backRow} accessibilityRole="button" accessibilityLabel={`Back. ${label}`}>
+      <Icon name="chevron-left" size={18} color={colors.textPrimary} />
+      <Text style={styles.backText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
 
+// ── Kept for the sort / change sheets until they move to CategoryPicker ──
+
+/** @deprecated Use `CategoryGrid` from `./CategoryPicker`. */
+export function CategoryGrid(props: {
+  ranked: readonly ExpenseCategory[];
+  selectedId: string | null;
+  onPick: (category: ExpenseCategory) => void;
+  onMore: () => void;
+}) {
+  return <IconCategoryGrid ranked={props.ranked} selectedId={props.selectedId} onPick={props.onPick} onShowAll={props.onMore} />;
+}
+
+/** @deprecated Use `CategoryList` from `./CategoryPicker` with a `BackRow`. */
+export function AllCategories(props: {
+  categories: readonly ExpenseCategory[];
+  selectedId: string | null;
+  onPick: (category: ExpenseCategory) => void;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.all}>
+      <BackRow label="All categories" onBack={props.onBack} />
+      <ScrollView style={styles.all} keyboardShouldPersistTaps="handled">
+        <CategoryList categories={props.categories} selectedId={props.selectedId} onPick={props.onPick} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
   scrollRow: { gap: spacing.sm, paddingVertical: 2 },
   chip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    minHeight: 40,
+    minHeight: 36,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.surfaceSubtle,
   },
-  chipDashed: { backgroundColor: "transparent", borderColor: colors.separator, borderStyle: "dashed" },
-  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipDashed: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.textTertiary, borderStyle: "dashed" },
+  chipOn: { backgroundColor: colors.accentLight, borderColor: colors.accent },
   chipText: { ...typography.caption, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
-  chipTextOn: { color: colors.textOnDark, fontWeight: "700" },
+  chipTextOn: { fontWeight: "700" },
 
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  gridCell: { width: "23.5%", paddingHorizontal: 6 },
-
-  all: { flex: 1 },
-  allScroll: { flex: 1 },
-  backRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 44 },
-  backText: { ...typography.heading, color: colors.textPrimary },
-  allGroup: { marginTop: spacing.md },
-  groupTitle: { ...typography.caption, fontWeight: "700", color: colors.textMuted, marginBottom: spacing.xs },
-  allRow: {
+  drawerLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  drawerChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    minHeight: 52,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.separator,
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    minHeight: 30,
+    borderRadius: radius.full,
+    backgroundColor: colors.successLight,
+    flexShrink: 1,
   },
-  allName: { ...typography.body, color: colors.textPrimary, flex: 1 },
+  drawerDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.success },
+  drawerChipText: { ...typography.caption, fontWeight: "700", color: colors.success, flexShrink: 1 },
+  drawerHas: { ...typography.caption, color: colors.textMuted },
+  strong: { fontWeight: "800", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
 
-  folded: { flexDirection: "row", gap: spacing.xs },
-  fold: {
+  extras: { flexDirection: "row", gap: spacing.sm },
+  extra: {
     flex: 1,
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    minHeight: 40,
-    borderRadius: radius.sm,
+    gap: 3,
+    minHeight: 52,
     paddingHorizontal: 4,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1.5,
+    borderColor: colors.surfaceSubtle,
   },
-  foldOpen: { backgroundColor: colors.surfaceSubtle },
-  foldText: { ...typography.small, fontWeight: "700", flexShrink: 1 },
+  extraSet: { backgroundColor: colors.accentLight, borderColor: colors.accentLight },
+  extraWarn: { borderColor: colors.accent },
+  extraOpen: { borderColor: colors.accent },
+  extraText: { ...typography.small, fontWeight: "600", color: colors.textMuted, maxWidth: "100%" },
+  extraTextSet: { color: colors.textPrimary, fontWeight: "700" },
+
   input: {
     ...typography.body,
     color: colors.textPrimary,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.separator,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    minHeight: 44,
+    minHeight: 46,
   },
 
   stock: {
@@ -445,4 +314,8 @@ const styles = StyleSheet.create({
   },
   stockText: { ...typography.caption, fontWeight: "700", color: colors.textPrimary, flex: 1 },
   stockChoices: { flexDirection: "row", gap: spacing.xs },
+
+  backRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 44 },
+  backText: { ...typography.heading, color: colors.textPrimary },
+  all: { flex: 1 },
 });

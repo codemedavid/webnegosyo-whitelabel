@@ -2,12 +2,14 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { KeypadKey } from "../../lib/expenses/keypad";
-import { colors, radius, spacing } from "../../theme/colors";
+import { colors } from "../../theme/colors";
 import { Icon } from "../Icon";
 
-/** 64px keys on a normal phone; shorter on a small screen so the amount never shrinks first. */
-export const KEY_HEIGHT = 64;
-export const COMPACT_KEY_HEIGHT = 52;
+/** Key height on a normal phone; shorter on a small screen so the amount never shrinks first. */
+export const KEY_HEIGHT = 54;
+export const COMPACT_KEY_HEIGHT = 44;
+
+const KEY_RADIUS = 12;
 
 const ROWS: readonly (readonly KeypadKey[])[] = [
   ["1", "2", "3"],
@@ -31,7 +33,8 @@ function keyLabel(key: KeypadKey): string {
 /**
  * Our own number pad (plan §5.1): the OS keyboard covers half the sheet and
  * changes shape between phones; this one is always in the same place under
- * the cashier's thumb. Long-press `00` for centavos, long-press ⌫ to clear.
+ * the cashier's thumb. Long-press `00` for centavos, long-press delete to clear.
+ * Keys are soft rounded tiles on the card, like the register's pad.
  */
 export function ExpenseKeypad({ onKey, keyHeight = KEY_HEIGHT, isDisabled = false }: ExpenseKeypadProps) {
   return (
@@ -64,17 +67,15 @@ export function ExpenseKeypad({ onKey, keyHeight = KEY_HEIGHT, isDisabled = fals
 }
 
 const styles = StyleSheet.create({
-  pad: { gap: spacing.sm },
-  row: { flexDirection: "row", gap: spacing.sm },
+  pad: { gap: 6 },
+  row: { flexDirection: "row", gap: 6 },
   key: {
     flex: 1,
-    borderRadius: radius.md,
+    borderRadius: KEY_RADIUS,
     backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.separator,
     alignItems: "center",
     justifyContent: "center",
   },
-  pressed: { backgroundColor: colors.primaryLight },
-  digit: { fontSize: 24, fontWeight: "700", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
+  pressed: { backgroundColor: colors.separator },
+  digit: { fontSize: 22, fontWeight: "600", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
 });

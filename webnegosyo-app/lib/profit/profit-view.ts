@@ -6,6 +6,7 @@
  * pesos, a real minus sign. Pure.
  */
 
+import type { ExpenseGroup } from "../expenses/types";
 import { hasPermission, type StaffPermissionHolder } from "../staff-permissions";
 import type { CashFlowLine, ProfitFinding, ProfitReport } from "./profit-model";
 
@@ -31,12 +32,13 @@ export function formatRatio(ratio: number | null | undefined): string {
 }
 
 /**
- * Profit needs `expenses` and `costs` on top of `reports` (the tab's own
- * gate). The database refuses the same callers (reporting.assert_profit_access),
- * so this only decides what the screen says first.
+ * Profit needs `reports` (the tab's gate and the report RPCs' key) plus
+ * `expenses` and `costs`. The database refuses the same callers
+ * (reporting.assert_profit_access), so this only decides what the screen says
+ * first — and keeps a row from opening onto a lock screen.
  */
 export function canSeeProfit(holder: StaffPermissionHolder): boolean {
-  return hasPermission(holder, "expenses") && hasPermission(holder, "costs");
+  return hasPermission(holder, "reports") && hasPermission(holder, "expenses") && hasPermission(holder, "costs");
 }
 
 export type FindingAction =
@@ -186,6 +188,9 @@ export function notInProfitLine(report: ProfitReport): string | null {
 export interface MoneyBar {
   categoryId: string;
   name: string;
+  /** For the category's tile and bar colour (lib/expenses/category-look.ts). */
+  group: ExpenseGroup;
+  systemKey: string | null;
   cents: number;
   /** 0–1 of the largest bar. */
   share: number;
@@ -201,6 +206,8 @@ export function moneyBars(report: ProfitReport, limit = 5): { bars: MoneyBar[]; 
     bars: top.map((row) => ({
       categoryId: row.categoryId,
       name: row.name.replace(/\s*\(.*\)\s*$/, ""),
+      group: row.group,
+      systemKey: row.systemKey,
       cents: row.cents,
       share: row.cents / max,
     })),

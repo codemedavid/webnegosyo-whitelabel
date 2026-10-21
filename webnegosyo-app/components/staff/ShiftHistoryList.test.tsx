@@ -3,6 +3,14 @@ import { render } from "@testing-library/react-native";
 
 import { ShiftHistoryList } from "./ShiftHistoryList";
 import type { ShiftRecord } from "../../lib/shift-service";
+import type { ShiftHistoryPayouts } from "../../lib/expenses/money-glance-hooks";
+
+// The page's pay-outs told apart; null = not read (yet), so the free-text reasons stay.
+let mockHistory: ShiftHistoryPayouts | null = null;
+jest.mock("../../lib/expenses/money-glance-hooks", () => ({ useShiftHistoryPayouts: () => mockHistory }));
+beforeEach(() => {
+  mockHistory = null;
+});
 
 const NOW_ISO = "2026-09-19T10:00:00Z";
 const NOW = Date.parse(NOW_ISO);
@@ -95,4 +103,37 @@ it("names what each pay-out was for, so a drawer that bought ice is not read as 
   );
   expect(screen.getByText(/₱535\.50 paid out/)).toBeTruthy();
   expect(screen.getByText("Paid out for: LPG ₱450.00 · No reason given ₱85.50")).toBeTruthy();
+});
+
+it("splits a shift's pay-outs into expenses and cash taken out, by category, once they are told apart", () => {
+  // Arrange
+  mockHistory = {
+    movesByShift: new Map([
+      [
+        "s1",
+        [
+          { id: "m1", shiftId: "s1", kind: "pay_out", amount: 450, reason: "LPG", recordedByName: "Ana", createdAt: "" },
+          { id: "m2", shiftId: "s1", kind: "pay_out", amount: 1000, reason: "Owner took cash", recordedByName: "Ana", createdAt: "" },
+        ],
+      ],
+    ]),
+    links: new Map([
+      ["m1", { expenseId: "e1", categoryId: "lpg", categoryName: "Gas / LPG", group: "utilities", status: "recorded" }],
+      ["m2", { expenseId: "e2", categoryId: "own", categoryName: "Owner took cash", group: "not_expense", status: "recorded" }],
+    ]),
+  };
+
+  // Act
+  const screen = render(
+    <ShiftHistoryList
+      shifts={[shift({ moves: { payIn: 0, payOut: 1450, collected: 200 }, payOuts: [{ amount: 450, reason: "LPG", createdAt: null }] })]}
+      nowMs={NOW}
+      nowIso={NOW_ISO}
+    />,
+  );
+
+  // Assert
+  expect(screen.getByText("Expenses ₱450 · Taken out ₱1,200")).toBeTruthy();
+  expect(screen.getByText("Paid for: Gas / LPG ₱450")).toBeTruthy();
+  expect(screen.queryByText(/Paid out for:/)).toBeNull();
 });
