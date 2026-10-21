@@ -42,6 +42,52 @@ function VerdictBadge({ shift }: { shift: StaffShiftRecord }) {
   )
 }
 
+/**
+ * Cash spent out of the drawer, each with the reason the cashier typed. A
+ * pay-out lowers the cash turned in, so without this list a drawer that bought
+ * ice reads like a drawer that came up light. The recorder is named only when
+ * it was not the person holding the drawer.
+ */
+function ShiftPayOuts({ shift }: { shift: StaffShiftRecord }) {
+  const payOuts = shift.payOuts ?? []
+  if (payOuts.length === 0) return null
+
+  return (
+    <div className="mt-2 text-xs" data-testid="shift-pay-outs">
+      <p className="text-muted-foreground">
+        Paid out <span className="font-medium tabular-nums text-foreground">{formatPrice(shift.paidOut ?? 0)}</span>
+      </p>
+      <ul className="mt-1 space-y-0.5">
+        {payOuts.map((payOut, index) => (
+          <li key={`${payOut.createdAt ?? ''}-${index}`} className="flex items-baseline justify-between gap-2">
+            <span className="min-w-0 truncate text-muted-foreground">
+              {payOut.reason ?? 'No reason given'}
+              {payOut.recordedByName && payOut.recordedByName !== shift.staffName
+                ? ` · by ${payOut.recordedByName}`
+                : ''}
+            </span>
+            <span className="shrink-0 font-medium tabular-nums">{formatPrice(payOut.amount)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Pickups, top-ups and a manager's close, in one muted line. Empty = nothing to say. */
+function shiftAsides(shift: StaffShiftRecord): string {
+  const collected = shift.collected ?? 0
+  const paidIn = shift.paidIn ?? 0
+  const closedBySomeoneElse = shift.closedByName && shift.closedByName !== shift.staffName
+  return [
+    collected > 0 ? `${formatPrice(collected)} collected mid-shift` : null,
+    paidIn > 0 ? `${formatPrice(paidIn)} added mid-shift` : null,
+    closedBySomeoneElse ? `closed by ${shift.closedByName}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 export interface StaffShiftHistoryProps {
   shifts: readonly StaffShiftRecord[]
   nowMs: number
@@ -62,6 +108,7 @@ export function StaffShiftHistory({ shifts, nowMs, nowIso, outlets }: StaffShift
     <ul className="space-y-2" data-testid="staff-shift-history">
       {shifts.map((shift) => {
         const turnover = shiftTurnover(shift)
+        const asides = shiftAsides(shift)
         return (
           <li key={shift.id} className="rounded-lg border p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -105,16 +152,8 @@ export function StaffShiftHistory({ shifts, nowMs, nowIso, outlets }: StaffShift
               </div>
             </dl>
 
-            {(shift.collected ?? 0) > 0 || (shift.closedByName && shift.closedByName !== shift.staffName) ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {[
-                  (shift.collected ?? 0) > 0 ? `${formatPrice(shift.collected ?? 0)} collected mid-shift` : null,
-                  shift.closedByName && shift.closedByName !== shift.staffName ? `closed by ${shift.closedByName}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-            ) : null}
+            <ShiftPayOuts shift={shift} />
+            {asides ? <p className="mt-2 text-xs text-muted-foreground">{asides}</p> : null}
             {shift.note && <p className="mt-2 text-xs italic text-muted-foreground">“{shift.note}”</p>}
           </li>
         )

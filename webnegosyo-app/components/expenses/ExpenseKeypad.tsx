@@ -1,0 +1,80 @@
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+
+import type { KeypadKey } from "../../lib/expenses/keypad";
+import { colors, radius, spacing } from "../../theme/colors";
+import { Icon } from "../Icon";
+
+/** 64px keys on a normal phone; shorter on a small screen so the amount never shrinks first. */
+export const KEY_HEIGHT = 64;
+export const COMPACT_KEY_HEIGHT = 52;
+
+const ROWS: readonly (readonly KeypadKey[])[] = [
+  ["1", "2", "3"],
+  ["4", "5", "6"],
+  ["7", "8", "9"],
+  ["00", "0", "backspace"],
+];
+
+interface ExpenseKeypadProps {
+  onKey: (key: KeypadKey) => void;
+  keyHeight?: number;
+  isDisabled?: boolean;
+}
+
+function keyLabel(key: KeypadKey): string {
+  if (key === "backspace") return "Delete last digit. Hold to clear";
+  if (key === "00") return "Double zero. Hold to type centavos";
+  return key;
+}
+
+/**
+ * Our own number pad (plan §5.1): the OS keyboard covers half the sheet and
+ * changes shape between phones; this one is always in the same place under
+ * the cashier's thumb. Long-press `00` for centavos, long-press ⌫ to clear.
+ */
+export function ExpenseKeypad({ onKey, keyHeight = KEY_HEIGHT, isDisabled = false }: ExpenseKeypadProps) {
+  return (
+    <View style={styles.pad}>
+      {ROWS.map((row) => (
+        <View key={row.join("")} style={styles.row}>
+          {row.map((key) => (
+            <Pressable
+              key={key}
+              disabled={isDisabled}
+              onPress={() => onKey(key)}
+              onLongPress={key === "00" ? () => onKey("decimal") : key === "backspace" ? () => onKey("clear") : undefined}
+              delayLongPress={350}
+              style={({ pressed }) => [styles.key, { height: keyHeight }, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={keyLabel(key)}
+              testID={`keypad-${key}`}
+            >
+              {key === "backspace" ? (
+                <Icon name="backspace" size={24} color={colors.textPrimary} />
+              ) : (
+                <Text style={styles.digit}>{key}</Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  pad: { gap: spacing.sm },
+  row: { flexDirection: "row", gap: spacing.sm },
+  key: {
+    flex: 1,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pressed: { backgroundColor: colors.primaryLight },
+  digit: { fontSize: 24, fontWeight: "700", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
+});

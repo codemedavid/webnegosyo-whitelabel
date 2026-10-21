@@ -76,3 +76,23 @@ it("explains an empty period instead of rendering nothing", () => {
   const screen = render(<ShiftHistoryList shifts={[]} nowMs={NOW} nowIso={NOW_ISO} />);
   expect(screen.getByText("No shifts in this period")).toBeTruthy();
 });
+
+it("names what each pay-out was for, so a drawer that bought ice is not read as light", () => {
+  const screen = render(
+    <ShiftHistoryList
+      shifts={[
+        shift({
+          moves: { payIn: 0, payOut: 535.5, collected: 0 },
+          payOuts: [
+            { amount: 450, reason: "LPG", createdAt: "2026-09-19T02:00:00Z" },
+            { amount: 85.5, reason: null, createdAt: "2026-09-19T03:00:00Z" },
+          ],
+        }),
+      ]}
+      nowMs={NOW}
+      nowIso={NOW_ISO}
+    />,
+  );
+  expect(screen.getByText(/₱535\.50 paid out/)).toBeTruthy();
+  expect(screen.getByText("Paid out for: LPG ₱450.00 · No reason given ₱85.50")).toBeTruthy();
+});

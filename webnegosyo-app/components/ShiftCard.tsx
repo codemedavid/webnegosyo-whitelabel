@@ -22,6 +22,10 @@ import { MyShiftCard } from "./drawer/MyShiftCard";
 import { DrawersOverview, type FloorRow } from "./drawer/DrawersOverview";
 import { CashMoveSheet, type CashMoveTarget } from "./drawer/CashMoveSheet";
 import { CountDrawerSheet, type CountTarget } from "./drawer/CountDrawerSheet";
+import { AddExpenseSheet, type ExpenseSheetScope } from "./expenses/AddExpenseSheet";
+import { useDrawerExpenses } from "../lib/expenses/use-drawer-expenses";
+import { describeShiftExpenses, payoutLines } from "../lib/expenses/drawer-expenses";
+import { formatPeso as formatCentsPeso } from "../lib/expenses/keypad";
 
 /** The session read only names the shift; it must never hold up the clock-in. */
 const SESSION_READ_MS = 5_000;
@@ -132,12 +136,15 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const inFlight = useRef(false);
   const [moveTarget, setMoveTarget] = useState<CashMoveTarget | null>(null);
   const [countTarget, setCountTarget] = useState<(CountTarget & { shift: ShiftRecord }) | null>(null);
+  // "Pay an expense" / "Take out cash" from my own drawer (plan §4.1).
+  const [expenseScope, setExpenseScope] = useState<ExpenseSheetScope | null>(null);
   // What this person did to web orders during the shift. Read separately
   // from the drawer and never added to it: a confirmed web order is the
   // store's money, not this drawer's (shift-drawer.ts).
   const [activity, setActivity] = useState<OrderActivityEvent[] | null>(null);
 
   const myShift = floor.myShift;
+  const drawerExpenses = useDrawerExpenses(myShift?.id ?? null, floor.moves ?? []);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), TICK_MS);
@@ -312,14 +319,28 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     setCountTarget(null);
     setActivity(null);
     await floor.reload();
-    const who = shift.id === myShift?.id ? "Shift ended" : `${shift.staffName}'s shift closed`;
-    Alert.alert(who, describeClose(rec, shift.isZeroBalance));
+    const isMine = shift.id === myShift?.id;
+    const who = isMine ? "Shift ended" : `${shift.staffName}'s shift closed`;
+    const expensesLine = isMine && drawerExpenses.payouts ? describeShiftExpenses(drawerExpenses.payouts) : null;
+    Alert.alert(who, expensesLine ? `${describeClose(rec, shift.isZeroBalance)}\n\n${expensesLine}` : describeClose(rec, shift.isZeroBalance));
   };
 
   const handleCount = (counted: number) =>
     runExclusive(async () => {
       if (refuseInDemo() || !tenantId || !countTarget) return;
       const { shift } = countTarget;
+      // Cash this phone paid out must be on the server before the count is
+      // judged, or the drawer reads over by exactly that much.
+      if (shift.id === myShift?.id) {
+        const waiting = await drawerExpenses.settleBeforeClose(shift.id).catch(() => 0);
+        if (waiting > 0) {
+          Alert.alert(
+            "Not ready to close",
+            `${waiting} drawer ${waiting === 1 ? "expense is" : "expenses are"} still waiting to sync. Connect to the internet, then end the shift.`,
+          );
+          return;
+        }
+      }
       // Re-read this drawer's moves first: a pickup recorded on another
       // tablet since this screen loaded would otherwise read as a shortage.
       let fresh: DrawerExpectationRead;
@@ -359,6 +380,21 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
       }
     });
 
+  const openExpenseSheet = (scope: ExpenseSheetScope) => {
+    if (refuseInDemo()) return;
+    setMoveTarget(null);
+    setExpenseScope(scope);
+  };
+
+  const myPending = myShift ? drawerExpenses.pendingFor(myShift.id) : { cents: 0, count: 0, waiting: 0 };
+  const pendingLine =
+    myPending.count > 0
+      ? `${myPending.count} ${myPending.count === 1 ? "expense" : "expenses"} waiting to sync · −${formatCentsPeso(myPending.cents)} already out of the drawer`
+      : null;
+  const myReady = myExpectation?.state === "ready" ? myExpectation.value.reconciliation : null;
+  // What the drawer should hold now, less what this phone paid out and has not synced yet.
+  const availableCents = myReady ? Math.round(myReady.expectedInDrawer * 100) - myPending.cents : null;
+
   if (!floor.isLoaded) return null;
 
   const notice = floor.needsBranch
@@ -367,6 +403,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
       ? `Drawers could not be loaded: ${floor.error}`
       : null;
 
+  const isOwnMoveTarget = moveTarget !== null && moveTarget.shiftId === myShift?.id;
   const freeDrawers = board.filter((slot) => slot.state === "free").map((slot) => slot.drawer);
   const showFloor = canManage && !floor.needsBranch && (floor.drawers.length > 0 || floorRows.some((row) => !row.isMine));
 
@@ -379,8 +416,20 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           moves={(floor.moves ?? []).filter((m) => m.shiftId === myShift.id)}
           activityLine={activityLine}
           nowMs={nowMs}
-          onCashMove={() => openMoveSheet(myShift, myExpectation, ["pay_out", "pay_in", "collect"])}
+          onCashMove={() =>
+            openMoveSheet(
+              myShift,
+              myExpectation,
+              // With expenses, a pay out is always an expense or cash taken out,
+              // each in its own sheet; the free-text one stays for a store
+              // whose database has no expenses yet.
+              drawerExpenses.isReady ? ["pay_in", "collect"] : ["pay_out", "pay_in", "collect"],
+            )
+          }
           onEndShift={() => openCountSheet(myShift, myExpectation)}
+          onPayExpense={drawerExpenses.isReady ? () => openExpenseSheet("spend") : undefined}
+          payoutLines={drawerExpenses.payouts ? payoutLines(drawerExpenses.payouts) : null}
+          pendingLine={pendingLine}
         />
       ) : (
         <ClockInCard
@@ -411,6 +460,25 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           isBusy={busy}
           onSubmit={(move) => void handleMove(move)}
           onClose={() => setMoveTarget(null)}
+          onPayExpense={isOwnMoveTarget && drawerExpenses.isReady ? () => openExpenseSheet("spend") : undefined}
+          onTakeOut={isOwnMoveTarget && drawerExpenses.isReady ? () => openExpenseSheet("take_out") : undefined}
+        />
+      ) : null}
+      {expenseScope && myShift ? (
+        <AddExpenseSheet
+          visible
+          scope={expenseScope}
+          mode={{
+            kind: "drawer",
+            shiftId: myShift.id,
+            drawerName: myShift.drawerName ?? "My",
+            availableCents,
+          }}
+          onClose={() => setExpenseScope(null)}
+          onCommitted={() => {
+            void floor.reload();
+            void drawerExpenses.reloadPayouts();
+          }}
         />
       ) : null}
       {countTarget ? (

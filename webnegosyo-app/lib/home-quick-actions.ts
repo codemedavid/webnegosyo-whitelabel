@@ -35,6 +35,8 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
     href: "/(main)/product-management",
     gateTab: "product-management",
   },
+  // Opens the book with the Add sheet up: amount first, three taps for a repeat.
+  { key: "expense", label: "+ Expense", icon: "receipt", href: "/(main)/expenses?add=1", gateTab: "expenses" },
 ];
 
 /** Fewer than this and the row is hidden rather than drawn half-empty. */

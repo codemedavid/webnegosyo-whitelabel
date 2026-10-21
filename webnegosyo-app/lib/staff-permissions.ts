@@ -64,6 +64,9 @@ export const STAFF_PERMISSION_KEYS = [
   // What things cost: ingredient prices, dish cost, COGS, food cost %.
   // Carved out of "menu" and backfilled the same way.
   "costs",
+  // The expense book: record, fix and void expenses, categories, suppliers.
+  // Implied by nothing — spending money is not reading sales or costs.
+  "expenses",
 ] as const;
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];
@@ -258,6 +261,12 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // anyone without the guest-list grant. Mapped explicitly because an unmapped
   // tab defaults to ALLOWED.
   texts: "customers",
+  // The expense book: what the store spent, on what, to whom. Mapped
+  // explicitly because an unmapped tab defaults to ALLOWED.
+  expenses: "expenses",
+  // Profit = sales − costs − expenses. The tab rides "reports" (its sales
+  // figure); the screen re-checks "expenses" and "costs" itself.
+  profit: "reports",
 };
 
 /**

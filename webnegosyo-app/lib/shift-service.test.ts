@@ -304,6 +304,27 @@ describe("listShifts", () => {
     });
   });
 
+  it("carries each pay-out's reason onto the history row, oldest first", async () => {
+    const withMoves = {
+      ...OPEN_SHIFT,
+      shift_cash_movements: [
+        { kind: "collect", amount: "1000.00", reason: null, created_at: "2026-08-20T05:00:00Z" },
+        { kind: "pay_out", amount: "85.50", reason: " Ice ", created_at: "2026-08-20T03:00:00Z" },
+        { kind: "pay_out", amount: "450.00", reason: "LPG", created_at: "2026-08-20T02:00:00Z" },
+        { kind: "pay_in", amount: "100.00", reason: "Coins", created_at: "2026-08-20T01:00:00Z" },
+      ],
+    };
+    const { db } = makeDb({ staff_shifts: { data: [withMoves], error: null } });
+
+    const [shift] = await listShifts("t1", {}, db);
+
+    expect(shift.moves).toEqual({ payIn: 100, payOut: 535.5, collected: 1000 });
+    expect(shift.payOuts).toEqual([
+      { amount: 450, reason: "LPG", createdAt: "2026-08-20T02:00:00Z" },
+      { amount: 85.5, reason: "Ice", createdAt: "2026-08-20T03:00:00Z" },
+    ]);
+  });
+
   it("narrows to one staff member when asked", async () => {
     const { db, recorded } = makeDb({ staff_shifts: { data: [], error: null } });
 

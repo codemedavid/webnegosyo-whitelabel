@@ -1,8 +1,9 @@
 /**
  * Store activity vocabulary — categories, kinds, routine kinds, flags.
  *
- * Closed lists, mirrored from the database CHECKs in
- * supabase/migrations/20261012150000_store_activity.sql and the contract
+ * Closed lists, mirrored from the database CHECKs (the NEWEST migration that
+ * defines each: 20261012150000_store_activity.sql, then
+ * 20261022120200_expenses_activity_and_bucket.sql) and the contract
  * (docs/plans/store-activity/contract.md). Tests read the migration text and
  * the contract table, so a kind added on one side only fails CI instead of
  * being silently refused by the database.
@@ -10,7 +11,17 @@
  * Kept byte-identical in webnegosyo-app/lib/activity/taxonomy.ts (parity test).
  */
 
-export const ACTIVITY_CATEGORIES = ['orders', 'money', 'cash', 'stock', 'loyalty', 'menu', 'team', 'approvals'] as const
+export const ACTIVITY_CATEGORIES = [
+  'orders',
+  'money',
+  'cash',
+  'stock',
+  'loyalty',
+  'menu',
+  'team',
+  'approvals',
+  'expenses',
+] as const
 
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]
 
@@ -76,6 +87,7 @@ export const KINDS_BY_CATEGORY = {
     'approval.executed',
     'approval.failed',
   ],
+  expenses: ['expense.recorded', 'expense.voided'],
 } as const satisfies Record<ActivityCategory, readonly string[]>
 
 export type ActivityKind = (typeof KINDS_BY_CATEGORY)[ActivityCategory][number]
@@ -121,6 +133,7 @@ export const SUBJECT_TYPES = [
   'approval',
   'count',
   'transfer',
+  'expense',
 ] as const
 
 export type ActivitySubjectType = (typeof SUBJECT_TYPES)[number]
@@ -162,6 +175,7 @@ export const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {
   menu: 'Menu',
   team: 'Team',
   approvals: 'Approvals',
+  expenses: 'Expenses',
 }
 
 const KIND_SET: ReadonlySet<string> = new Set(ACTIVITY_KINDS)

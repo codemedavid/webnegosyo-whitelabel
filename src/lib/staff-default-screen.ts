@@ -123,6 +123,13 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     permission: 'loyalty_manage',
   },
   {
+    tab: 'expenses',
+    label: 'Expenses',
+    description: 'What the store spent: the expense book and drawer pay-outs to sort',
+    workspace: 'insights',
+    permission: 'expenses',
+  },
+  {
     tab: 'product-analytics',
     label: 'Product Performance',
     description: 'What sells, day by day',

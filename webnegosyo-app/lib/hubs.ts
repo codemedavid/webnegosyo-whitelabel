@@ -19,6 +19,9 @@ export interface HubSection {
 }
 
 export const REPORTS_SECTIONS: readonly HubSection[] = [
+  // Money first: what came in is every other section; what went out is here.
+  // Recording happens on the Drawer and Home; this is where it is read.
+  { title: "Money", tabs: ["expenses"] },
   // Trends hangs under Analytics (subscreen-links.ts) rather than sitting
   // beside it: it is the same sales, plotted over days.
   // Customers are not a row here: they ARE the Reports dashboard, and the

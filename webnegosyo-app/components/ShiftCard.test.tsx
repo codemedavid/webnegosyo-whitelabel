@@ -25,6 +25,23 @@ jest.mock("../lib/shift-service", () => ({
 }));
 jest.mock("../lib/cash-drawer-service", () => ({ listDrawers: jest.fn(), listCashMoves: jest.fn(), recordCashMove: jest.fn() }));
 jest.mock("../lib/staff-activity/activity-service", () => ({ listOrderActivity: jest.fn(async () => []) }));
+// Expenses: off by default (a store whose database predates them), so the
+// free-text pay out is still offered; the expense tests switch it on.
+const mockDrawerExpenses = {
+  isReady: false,
+  pendingFor: jest.fn(() => ({ cents: 0, count: 0, waiting: 0 })),
+  payouts: null as unknown,
+  reloadPayouts: jest.fn(async () => {}),
+  settleBeforeClose: jest.fn(async () => 0),
+};
+jest.mock("../lib/expenses/use-drawer-expenses", () => ({ useDrawerExpenses: () => mockDrawerExpenses }));
+const mockExpenseSheet = jest.fn();
+jest.mock("./expenses/AddExpenseSheet", () => ({
+  AddExpenseSheet: (props: Record<string, unknown>) => {
+    mockExpenseSheet(props);
+    return null;
+  },
+}));
 
 const myShift: ShiftRecord = {
   id: "shift", outletId: null, staffUserId: "cashier", staffName: "Cashier", status: "open", openingFloat: 100,
@@ -45,6 +62,10 @@ beforeEach(() => {
   jest.mocked(listDrawers).mockResolvedValue([]);
   jest.mocked(listCashMoves).mockResolvedValue([]);
   jest.mocked(closeShift).mockResolvedValue(undefined);
+  mockDrawerExpenses.isReady = false;
+  mockDrawerExpenses.payouts = null;
+  mockDrawerExpenses.pendingFor.mockReturnValue({ cents: 0, count: 0, waiting: 0 });
+  mockDrawerExpenses.settleBeforeClose.mockResolvedValue(0);
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -280,4 +301,65 @@ it("refuses a pickup that another tablet already collected while the sheet was o
   fireEvent.press(screen.getByLabelText("Record cash pickup"));
   await waitFor(() => expect(recordCashMove).toHaveBeenCalledWith("tenant", expect.objectContaining({ expectedInDrawer: 0 })));
   await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Could not record it", expect.stringMatching(/more than this drawer/)));
+});
+
+describe("expenses from the drawer", () => {
+  beforeEach(() => {
+    mockDrawerExpenses.isReady = true;
+  });
+
+  it("opens the expense sheet locked to my drawer, with what it should hold less what is still syncing", async () => {
+    // ₱100 float + ₱25 cash taken; ₱20 paid out on this phone, not synced yet.
+    mockDrawerExpenses.pendingFor.mockReturnValue({ cents: 2_000, count: 1, waiting: 1 });
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByText("Pay an expense")).toBeTruthy());
+    expect(screen.getByText(/1 expense waiting to sync/)).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Pay an expense"));
+
+    await waitFor(() => expect(mockExpenseSheet).toHaveBeenCalled());
+    expect(mockExpenseSheet).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        scope: "spend",
+        mode: { kind: "drawer", shiftId: "shift", drawerName: "My", availableCents: 10_500 },
+      }),
+    );
+  });
+
+  it("swaps the free-text pay out for 'Pay an expense' and 'Take out cash' in Cash in / out", async () => {
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByText("Cash in / out")).toBeTruthy());
+    fireEvent.press(screen.getByText("Cash in / out"));
+
+    expect(screen.queryByLabelText("Pay out amount in pesos")).toBeNull();
+    fireEvent.press(screen.getByLabelText("Take out cash"));
+
+    await waitFor(() => expect(mockExpenseSheet).toHaveBeenLastCalledWith(expect.objectContaining({ scope: "take_out" })));
+  });
+
+  it("will not count the drawer while an expense paid from it is still waiting to sync", async () => {
+    mockDrawerExpenses.settleBeforeClose.mockResolvedValue(2);
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+
+    await countAndConfirm(screen, "100");
+
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/2 drawer expenses are still waiting/)));
+    expect(closeShift).not.toHaveBeenCalled();
+  });
+
+  it("lists what the drawer paid for in the close summary", async () => {
+    mockDrawerExpenses.payouts = {
+      expenses: { cents: 2_000, count: 1, byCategory: [{ name: "Ice (Yelo)", cents: 2_000, count: 1 }] },
+      takenOut: { cents: 0, count: 0 },
+      unsorted: { cents: 0, count: 0 },
+      undone: { cents: 0, count: 0 },
+    };
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+
+    await countAndConfirm(screen, "100");
+
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith("Shift ended", expect.stringContaining("Paid for expenses ₱20 (1): Ice ₱20.")),
+    );
+  });
 });

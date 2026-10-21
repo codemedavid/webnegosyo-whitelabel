@@ -3,6 +3,7 @@ import 'server-only'
 import { readPaged } from '@/lib/assistant/data/paged'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { OrderStatusEvent } from './order-event'
+import { summarizeShiftCashMoves, type ShiftCashMoveRow, type ShiftPayOut } from './shift-cash-moves'
 
 /**
  * What the staff pages read, in one place.
@@ -119,6 +120,12 @@ export interface StaffShiftRecord {
   closedByName?: string | null
   /** Cash taken out to the owner mid-shift (pickups). */
   collected?: number
+  /** Cash added to the drawer mid-shift (more change, a top-up). */
+  paidIn?: number
+  /** Cash spent from the drawer mid-shift (ice, LPG, a rider). */
+  paidOut?: number
+  /** Each pay-out with its reason, oldest first. */
+  payOuts?: ShiftPayOut[]
 }
 
 interface ShiftRow {
@@ -136,10 +143,11 @@ interface ShiftRow {
   drawer_name?: string | null
   is_zero_balance?: boolean | null
   closed_by_name?: string | null
-  shift_cash_movements?: { kind: string; amount: number | string }[] | null
+  shift_cash_movements?: ShiftCashMoveRow[] | null
 }
 
 export function toStaffShift(row: ShiftRow): StaffShiftRecord {
+  const moves = summarizeShiftCashMoves(row.shift_cash_movements)
   return {
     id: row.id,
     outletId: row.outlet_id,
@@ -155,11 +163,10 @@ export function toStaffShift(row: ShiftRow): StaffShiftRecord {
     drawerName: row.drawer_name ?? null,
     isZeroBalance: row.is_zero_balance === true,
     closedByName: row.closed_by_name ?? null,
-    collected: Math.round(
-      (row.shift_cash_movements ?? [])
-        .filter((move) => move.kind === 'collect')
-        .reduce((sum, move) => sum + Number(move.amount), 0) * 100,
-    ) / 100,
+    collected: moves.collected,
+    paidIn: moves.paidIn,
+    paidOut: moves.paidOut,
+    payOuts: moves.payOuts,
   }
 }
 
@@ -171,7 +178,7 @@ export async function loadStaffShifts(
   let request = createAdminClient()
     .from('staff_shifts')
     .select(
-      'id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_name, is_zero_balance, closed_by_name, shift_cash_movements(kind, amount)',
+      'id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_name, is_zero_balance, closed_by_name, shift_cash_movements(kind, amount, reason, recorded_by_name, created_at)',
     )
     .eq('tenant_id', tenantId)
     .or(`closed_at.is.null,closed_at.gte.${query.sinceIso}`)

@@ -11,14 +11,15 @@ const keys = (ctx: TabVisibilityContext) => quickActionsFor(ctx).map((a) => a.ke
 
 describe("quickActionsFor", () => {
   it("offers an owner every shortcut, in the order they are done most", () => {
-    expect(keys(owner)).toEqual(["sell", "kitchen", "products"]);
+    expect(keys(owner)).toEqual(["sell", "kitchen", "products", "expense"]);
   });
 
   it("gates each shortcut on the screen it opens", () => {
     // The same rule as the bar and the hubs, so a tile never lands on a
     // screen that refuses the account.
+    // A query may ask the screen to open something on arrival (`?add=1`).
     for (const action of QUICK_ACTIONS) {
-      expect(action.href).toBe(`/(main)/${action.gateTab}`);
+      expect(action.href.split("?")[0]).toBe(`/(main)/${action.gateTab}`);
     }
     const cook = {
       ...owner,
@@ -35,6 +36,13 @@ describe("quickActionsFor", () => {
     const nobody = { ...owner, caller: { role: "admin", isOwner: false, permissions: [] } };
     expect(keys(nobody)).toEqual([]);
     expect(MIN_QUICK_ACTIONS).toBe(2);
+  });
+
+  it("offers + Expense only to an account that holds the expenses key", () => {
+    const bookkeeper = { ...owner, caller: { role: "admin", isOwner: false, permissions: ["pos", "expenses"] } };
+    expect(keys(bookkeeper)).toEqual(["sell", "expense"]);
+    const cashier = { ...owner, caller: { role: "admin", isOwner: false, permissions: ["pos", "menu"] } };
+    expect(keys(cashier)).not.toContain("expense");
   });
 
   it("never repeats a shortcut the header already carries", () => {

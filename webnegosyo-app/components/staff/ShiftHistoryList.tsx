@@ -108,6 +108,7 @@ export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName }: ShiftHis
             </View>
 
             {extras(shift) ? <Text style={styles.extras}>{extras(shift)}</Text> : null}
+            {payOutReasons(shift) ? <Text style={styles.extras}>{payOutReasons(shift)}</Text> : null}
             {shift.note ? <Text style={styles.note}>“{shift.note}”</Text> : null}
           </View>
         );
@@ -124,6 +125,14 @@ function extras(shift: ShiftRecord): string | null {
   if (shift.moves?.payIn) parts.push(`${formatPeso(shift.moves.payIn)} paid in`);
   if (shift.closedByName && shift.closedByName !== shift.staffName) parts.push(`closed by ${shift.closedByName}`);
   return parts.length ? parts.join(" · ") : null;
+}
+
+/** "Paid out for: Ice ₱85.50 · LPG ₱450.00" — so a drawer that bought ice is not read as light. */
+function payOutReasons(shift: ShiftRecord): string | null {
+  const payOuts = shift.payOuts ?? [];
+  if (payOuts.length === 0) return null;
+  const lines = payOuts.map((p) => `${p.reason ?? "No reason given"} ${formatPeso(p.amount)}`);
+  return `Paid out for: ${lines.join(" · ")}`;
 }
 
 const styles = StyleSheet.create({

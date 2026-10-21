@@ -45,6 +45,8 @@ export const STAFF_PERMISSION_KEYS = [
   'reports',
   'inventory',
   'costs',
+  // The expense book: record, fix and void expenses. Implied by nothing.
+  'expenses',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -192,6 +194,7 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   branches: 'analytics',
   'branch-menu': 'menu',
   loyalty: 'loyalty_manage',
+  expenses: 'expenses',
 }
 
 function holdsPermission(

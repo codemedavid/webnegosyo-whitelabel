@@ -61,6 +61,8 @@ describe('staff permission registry', () => {
       'reports',
       'inventory',
       'costs',
+      // The expense book: record, fix and void expenses. Implied by nothing.
+      'expenses',
     ])
   })
 

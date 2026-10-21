@@ -87,7 +87,12 @@ export type IconName =
   | "pin"
   | "external"
   // Approvals
-  | "shield";
+  | "shield"
+  // Expenses
+  | "lock"
+  | "wallet"
+  | "receipt"
+  | "backspace";
 
 interface IconProps {
   name: IconName;
@@ -608,6 +613,37 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
     <>
       <Path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6z" />
       <Polyline points="8.5,12 11,14.5 15.5,9.5" />
+    </>
+  ),
+  // A closed padlock: a choice that is fixed here (the drawer an expense is paid from).
+  lock: (
+    <>
+      <Rect x={5} y={10.5} width={14} height={10} />
+      <Path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  // A wallet with its clasp: where money is paid from.
+  wallet: (
+    <>
+      <Path d="M4 7h14.5v12H4z" />
+      <Path d="M4 7l11-3.5V7" />
+      <Rect x={13.5} y={11} width={5} height={4} />
+    </>
+  ),
+  // A till slip with a torn foot: money that went out, on paper.
+  receipt: (
+    <>
+      <Path d="M6 3.5h12v17l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z" />
+      <Line x1={9} y1={8.5} x2={15} y2={8.5} />
+      <Line x1={9} y1={12} x2={15} y2={12} />
+    </>
+  ),
+  // A key with a cross in it, pointing back: delete the last digit.
+  backspace: (
+    <>
+      <Path d="M9 5.5h11.5v13H9L3.5 12z" />
+      <Line x1={11.5} y1={9.5} x2={16.5} y2={14.5} />
+      <Line x1={16.5} y1={9.5} x2={11.5} y2={14.5} />
     </>
   ),
 };

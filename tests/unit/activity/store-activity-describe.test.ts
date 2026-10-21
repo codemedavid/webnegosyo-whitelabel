@@ -174,3 +174,30 @@ describe('describeActivity — cash, stock, menu, team', () => {
     expect(flagged.subtitle).toBe('')
   })
 })
+
+describe('expenses (docs/plans/expenses/contract.md §6)', () => {
+  it('names who recorded an expense and what it was for', () => {
+    const described = describeActivity(event('expense.recorded', {
+      amount: -1250, note: 'Petron', subjectType: 'expense', orderNumber: null,
+      summary: { title: 'Recorded an expense: Gas / LPG ₱1,250', categoryName: 'Gas / LPG' },
+    }))
+    expect(described).toEqual({
+      title: 'Ana recorded an expense: Gas / LPG',
+      subtitle: 'Petron',
+      amountLabel: `${MINUS}₱1,250`,
+      tone: 'negative',
+      icon: 'money',
+    })
+  })
+
+  it('shows a void with its reason and the money back in the books', () => {
+    const described = describeActivity(event('expense.voided', {
+      amount: 1250, reason: 'wrong category', subjectType: 'expense', orderNumber: null,
+      summary: { categoryName: 'Gas / LPG' },
+    }))
+    expect(described.title).toBe('Ana voided an expense: Gas / LPG')
+    expect(described.subtitle).toBe('wrong category')
+    expect(described.amountLabel).toBe('+₱1,250')
+    expect(described.icon).toBe('cancel')
+  })
+})

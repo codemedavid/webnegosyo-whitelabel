@@ -58,6 +58,11 @@ export const STAFF_PERMISSION_KEYS = [
   // Phase 3/5), so screens hide them. Given once to every 'menu' holder
   // alongside 'inventory'.
   'costs',
+  // The expense book: recording, fixing and voiding expenses, the categories
+  // and suppliers they file under. Its own key, implied by nothing: spending
+  // the store's money is not reading its sales ('reports') or pricing its
+  // ingredients ('costs'). The profit page needs this AND 'costs'.
+  'expenses',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -149,6 +154,10 @@ export const STAFF_PERMISSION_LABELS: Record<
   costs: {
     label: 'Costs & Profit',
     description: 'See and change what ingredients cost, dish costs, gross profit and food cost %',
+  },
+  expenses: {
+    label: 'Expenses',
+    description: 'Record, fix and void expenses, manage categories and suppliers, see the expense book.',
   },
 }
 
@@ -311,6 +320,9 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Sales reports (Phase 1 routes register here before they exist, so the
   // first page under /admin/reports can never ship open to every account).
   reports: 'reports',
+  // The expense book. The profit page lives under reports and re-checks
+  // 'expenses' + 'costs' inside the page.
+  expenses: 'expenses',
   'boost-sales': 'analytics',
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
@@ -394,6 +406,10 @@ const MOBILE_TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // app's TAB_PERMISSIONS (webnegosyo-app/lib/staff-permissions.ts).
   inventory: 'inventory',
   'daily-report': 'costs',
+  // The expense book; the profit screen rides 'reports' and re-checks
+  // 'expenses' + 'costs' itself. Mirrors the app's TAB_PERMISSIONS.
+  expenses: 'expenses',
+  profit: 'reports',
 }
 
 export function permissionForMobileTab(tab: string): StaffPermissionKey | null {
