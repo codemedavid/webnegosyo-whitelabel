@@ -67,6 +67,22 @@ export const colors = {
   urgencyWarning: "#F59E0B",
   urgencyUrgent: "#C0392B",
 
+  // Kinds of spending (lib/expenses/category-look.ts). One hue per group, used
+  // the same way in the add grid, the list, the month split and Profit's bars:
+  // `ink` for the mark and bars, `tint` for the tile behind it, `onHero` for
+  // the split bar on the dark hero card.
+  expenseGroups: {
+    ingredients: { ink: "#4E7A2E", tint: "#EAF1E1", onHero: "#8FBF6A" },
+    staff: { ink: "#4A5A92", tint: "#E8EBF5", onHero: "#8E9BD0" },
+    occupancy: { ink: "#8A4A7A", tint: "#F4E7F0", onHero: "#C894BB" },
+    utilities: { ink: "#B86A0C", tint: "#FBEFDC", onHero: "#E4A64B" },
+    operating: { ink: "#24726C", tint: "#E0F0EE", onHero: "#6FB8B1" },
+    admin: { ink: "#5B6472", tint: "#EDEFF2", onHero: "#A5ADBA" },
+    other: { ink: "#7A746A", tint: "#EFECE6", onHero: "#B8B2A7" },
+    capex: { ink: "#1D1815", tint: "#E7E2DA", onHero: "#E8E1D6" },
+    not_expense: { ink: "#6E685E", tint: "#F7F5F0", onHero: "#6E685E" },
+  },
+
   // Deterministic avatar ring palette for customer initials
   avatarPalette: ["#E4572E", "#F59E0B", "#047857", "#5B6472", "#B23E1B", "#334155"],
 } as const;
