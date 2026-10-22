@@ -16,6 +16,7 @@ import {
   RENT_BILL,
   RENT_BILL_ID,
   TODAY,
+  bill,
   billsPageData,
 } from './bills-fixtures'
 import { ELECTRICITY, TENANT_SLUG, expense } from './ui-fixtures'
@@ -90,7 +91,7 @@ describe('paymentPrefill', () => {
       billDueOn: '2026-10-05',
       title: 'Pay Rent',
       amountChips: [],
-      form: { amountText: '15,000', categoryId: RENT.id, paidFrom: 'gcash', paidToName: 'Aling Rosa', note: 'Rent', spentOn: TODAY, outletId: null },
+      form: { amountText: '15,000', categoryId: RENT.id, paidFrom: 'gcash', paidToName: 'Aling Rosa', note: 'Rent', spentOn: TODAY },
     })
   })
 
@@ -111,6 +112,55 @@ describe('paymentPrefill', () => {
     const collapsed = { ...occurrence, lateCount: 2, lateDueOns: ['2026-09-05', '2026-10-05'] }
 
     expect(paymentPrefill(RENT_BILL, collapsed, PAYMENTS, TODAY).billDueOn).toBe('2026-09-05')
+  })
+})
+
+describe('paying a branch bill', () => {
+  const KATIPUNAN = { id: '20000000-0000-4000-8000-000000000001', name: 'Katipunan' }
+  const MAGINHAWA = { id: '20000000-0000-4000-8000-000000000002', name: 'Maginhawa' }
+  const branchRent = bill({ outletId: MAGINHAWA.id })
+  const branchData = { outlets: [KATIPUNAN, MAGINHAWA], outletNames: { [KATIPUNAN.id]: KATIPUNAN.name, [MAGINHAWA.id]: MAGINHAWA.name }, isMultiBranch: true }
+
+  it('files a branch bill’s payment on that branch; a store-wide bill leaves the branch to the form', () => {
+    const { occurrence } = rowFor('Rent', '2026-10-05')
+
+    expect(paymentPrefill(branchRent, occurrence, PAYMENTS, TODAY)).toMatchObject({ branchOutletId: MAGINHAWA.id, form: { outletId: MAGINHAWA.id } })
+    const storeWide = paymentPrefill(RENT_BILL, occurrence, PAYMENTS, TODAY)
+    expect(storeWide.branchOutletId).toBeNull()
+    expect('outletId' in storeWide.form).toBe(false)
+  })
+
+  it('locks the branch to the bill’s, shown by name, and saves it there', async () => {
+    await renderBoard({ ...branchData, bills: [branchRent] })
+
+    fireEvent.click(within(screen.getByRole('region', { name: 'Late' })).getByRole('button', { name: 'Mark paid: Rent' }))
+    expect(await screen.findByRole('heading', { name: 'Pay Rent' })).toBeInTheDocument()
+    expect(screen.getByText('Maginhawa')).toBeInTheDocument()
+    expect(screen.getByText('(locked)')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save ₱15,000' }))
+    await waitFor(() => expect(recordExpenseAction).toHaveBeenCalledTimes(1))
+    expect(recordExpenseAction.mock.calls[0][1]).toMatchObject({ outletId: MAGINHAWA.id, billId: RENT_BILL_ID })
+  })
+
+  it('a store-wide bill keeps the branch the account records for', async () => {
+    await renderBoard({ ...branchData, lockedOutletId: KATIPUNAN.id, lockedBranchLabel: 'Katipunan' })
+
+    fireEvent.click(within(screen.getByRole('region', { name: 'Late' })).getByRole('button', { name: 'Mark paid: Rent' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Save ₱15,000' }))
+
+    await waitFor(() => expect(recordExpenseAction).toHaveBeenCalledTimes(1))
+    expect(recordExpenseAction.mock.calls[0][1]).toMatchObject({ outletId: KATIPUNAN.id, billId: RENT_BILL_ID })
+  })
+
+  it('"I already recorded it" offers a branch bill only that branch’s expenses; a store-wide bill any branch’s', () => {
+    const atMaginhawa = expense({ categoryId: RENT.id, spentOn: '2026-10-04', outletId: MAGINHAWA.id, note: 'Maginhawa upa' })
+    const atKatipunan = expense({ categoryId: RENT.id, spentOn: '2026-10-05', outletId: KATIPUNAN.id, note: 'Katipunan upa' })
+    const wholeStore = expense({ categoryId: RENT.id, spentOn: '2026-10-06', outletId: null, note: 'Store upa' })
+    const all = [atMaginhawa, atKatipunan, wholeStore]
+
+    expect(linkCandidates(all, branchRent, '2026-10-05').map((entry) => entry.note)).toEqual(['Maginhawa upa'])
+    expect(linkCandidates(all, RENT_BILL, '2026-10-05').map((entry) => entry.note)).toEqual(['Katipunan upa', 'Store upa', 'Maginhawa upa'])
   })
 })
 

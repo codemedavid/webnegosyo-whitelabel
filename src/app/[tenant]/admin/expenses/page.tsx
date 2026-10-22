@@ -17,7 +17,7 @@ import { readInitialLink } from '@/components/admin/expenses/expenses-deep-link'
 import type { ExpensesInitialLink } from '@/components/admin/expenses/expenses-page-data'
 import { readExpensesTab, readMonthParam } from '@/components/admin/expenses/expenses-tabs'
 import { BillsBook } from './bills-book'
-import { outletLists, readBillNames, readOutlets } from './expenses-reads'
+import { outletLists, readBillsGlance, readOutlets } from './expenses-reads'
 
 interface ExpensesPageProps {
   params: Promise<{ tenant: string }>
@@ -97,7 +97,7 @@ async function ExpensesBook({ tenant, lockedOutletId, requestedMonth, initial }:
 
   let data: ExpensesPageData
   try {
-    const [categories, suppliers, outletRows, list, unsorted] = await Promise.all([
+    const [categories, suppliers, outletRows, list, unsorted, bills] = await Promise.all([
       listCategories(db, tenant.id),
       listSuppliers(db, tenant.id),
       readOutlets(db, tenant.id),
@@ -110,9 +110,9 @@ async function ExpensesBook({ tenant, lockedOutletId, requestedMonth, initial }:
         ...(lockedOutletId ? { outletId: lockedOutletId } : {}),
       }),
       readUnsorted(db, tenant.id, month.from, month.to),
+      readBillsGlance(db, tenant.id, today),
     ])
     const { active: activeOutlets, names: outletNames } = outletLists(outletRows)
-    const billNames = await readBillNames(db, tenant.id, list.expenses)
     data = {
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
@@ -128,7 +128,8 @@ async function ExpensesBook({ tenant, lockedOutletId, requestedMonth, initial }:
       lockedOutletId,
       lockedBranchLabel: lockedOutletId ? (outletNames[lockedOutletId] ?? 'Your branch') : null,
       expenses: list.expenses,
-      billNames,
+      billNames: bills.billNames,
+      lateBillCount: bills.lateCount,
       isTruncated: list.isTruncated,
       unsortedPayouts: lockedOutletId ? unsorted.filter((payout) => payout.outletId === lockedOutletId) : unsorted,
       tracksStock: tenant.tracksStock,

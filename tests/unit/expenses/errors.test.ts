@@ -21,3 +21,13 @@ describe('expenseErrorMessage: the guard rules say what they are', () => {
     expect(expenseErrorMessage({ code: '42501', message: 'new row violates row-level security policy' })).toBe(EXPENSE_MESSAGES.noAccess)
   })
 })
+
+describe('expenseErrorMessage: Bills to pay refusals (20261022150000)', () => {
+  it.each([
+    [{ code: '42501', message: "That bill isn't one you can see" }, "That bill belongs to another branch, so it can't be marked here."],
+    [{ code: '42501', message: 'A branch bill is paid from its own branch' }, 'Pay this bill from its own branch.'],
+    [{ code: '22023', message: 'pause_until_past' }, 'Pick a day after today.'],
+  ])('%j', (error, sentence) => {
+    expect(expenseErrorMessage(error)).toBe(sentence)
+  })
+})

@@ -3,7 +3,8 @@
 //
 // Loads the same REAL migrations as run-expenses.cjs (staff shifts, the
 // permission keys, store activity and every 20261022* expenses migration up to
-// the opt-in key), then 20261022140000_expense_bills.sql, over the same stub
+// the opt-in key), then 20261022140000_expense_bills.sql and its fixes
+// 20261022150000_expense_bills_fixes.sql, over the same stub
 // of the live platform schema (provenance in run-expenses.cjs: helper bodies
 // copied verbatim from the live platform DB on 2026-10-21).
 //
@@ -18,6 +19,16 @@ const T_B = 'bbbbbbbb-0000-4000-8000-000000000001'
 const OUT_A1 = 'aaaaaaaa-0000-4000-8000-0000000000a1'
 const OUT_A2 = 'aaaaaaaa-0000-4000-8000-0000000000a2'
 const OUT_B1 = 'bbbbbbbb-0000-4000-8000-0000000000b1'
+
+const SHIFT = 'cccccccc-0000-4000-8000-000000000001'
+const PAYOUT = 'dddddddd-0000-4000-8000-000000000001'
+
+/** Manila business date, from the same clock the database reads. */
+function manilaDate(offsetDays = 0) {
+  return new Date(Date.now() + 8 * 3600_000 + offsetDays * 86_400_000).toISOString().slice(0, 10)
+}
+const TODAY = manilaDate()
+const LATER = manilaDate(40)
 
 const U = {
   owner: '00000000-0000-4000-8000-000000000001',
@@ -247,13 +258,14 @@ async function checkShapes(db) {
     [{ name: 'x'.repeat(61) }, 'a name is at most 60 characters'],
     [{ endsOn: '2026-09-30' }, 'ends_on is not before starts_on'],
     [{ remind: 15 }, 'reminders are 0..14 days ahead'],
-    [{ status: 'active', pausedUntil: '2026-12-01' }, 'paused_until only while paused'],
+    [{ status: 'active', pausedUntil: LATER }, 'paused_until only while paused'],
     [{ status: 'stopped' }, 'status is a closed list'],
   ]
   for (const [overrides, message] of bad) {
     await refused(insertBill(db, overrides), '23514', message)
   }
-  eq((await insertBill(db, { name: 'On hold', status: 'paused', pausedUntil: '2026-12-01' })).rows.length, 1, 'a bill may start paused until a date')
+  eq((await insertBill(db, { name: 'On hold', status: 'paused', pausedUntil: LATER })).rows.length, 1, 'a bill may start paused until a date')
+  await refused(insertBill(db, { name: 'Held back', status: 'paused', pausedUntil: TODAY }), '22023', 'but never until a day already here', /pause_until_past/)
   await refused(insertBill(db, { name: 'Already over', status: 'ended' }), '42501', 'a bill never starts ended')
 }
 
@@ -275,7 +287,7 @@ async function checkOwner(db) {
   await refused(db.query('delete from expense_bills where id = $1', [id]), '42501', 'bills are never deleted (no DELETE grant)')
 
   // Pause / resume / end.
-  eq(await affected(db, "update expense_bills set status = 'paused', paused_until = '2026-12-01' where id = $1", [id]), 1, 'pause until a date')
+  eq(await affected(db, "update expense_bills set status = 'paused', paused_until = $2 where id = $1", [id, LATER]), 1, 'pause until a date')
   await refused(db.query("update expense_bills set status = 'active' where id = $1", [id]), '23514', 'resuming clears paused_until')
   eq(await affected(db, "update expense_bills set status = 'active', paused_until = null where id = $1", [id]), 1, 'resume')
   eq(await affected(db, "update expense_bills set amount_cents = 1600000, repeat_days = '{10}' where id = $1", [id]), 1, 'edit the amount and the day (next occurrences only)')
@@ -291,7 +303,8 @@ async function checkRoles(db) {
   await as(db, 'authenticated', U.book)
   const { rows: a1 } = await insertBill(db, { outlet: OUT_A1, name: 'Branch 1 rent' })
   eq(a1.length, 1, 'an expenses holder adds a branch bill')
-  eq((await insertBill(db, { outlet: OUT_A2, name: 'Branch 2 rent' })).rows.length, 1, 'and one at the other branch')
+  const { rows: a2 } = await insertBill(db, { outlet: OUT_A2, name: 'Branch 2 rent' })
+  eq(a2.length, 1, 'and one at the other branch')
   const total = await count(db, 'select count(*) from expense_bills')
   eq(total > 3, true, 'an expenses holder (store-wide) reads every bill of the store')
 
@@ -316,7 +329,7 @@ async function checkRoles(db) {
     await refused(insertBill(db, { outlet: who === U.cashier ? OUT_A1 : null }), '42501', `${label} cannot add a bill`)
     eq(await affected(db, "update expense_bills set name = 'x' where tenant_id = $1", [T_A]), 0, `${label} edits no bill`)
   }
-  return { branchBillId: own[0].id }
+  return { branchBillId: own[0].id, otherBranchBillId: a2[0].id }
 }
 
 async function checkPayments(db, { rentId, endedId, branchBillId }) {
@@ -375,12 +388,17 @@ async function checkMarks(db, { rentId, branchBillId }) {
   await refused(insertMark(db, { billId: rentId, dueOn: '2026-12-10', kind: 'later' }), '23514', 'kind is skipped or snoozed')
   const { rows: snoozed } = await insertMark(db, { billId: rentId, dueOn: '2026-12-10', kind: 'snoozed', snoozedUntil: '2026-12-11' })
   eq(snoozed.length, 1, '"Remind me tomorrow" lands')
-  await refused(db.query("update expense_bill_marks set snoozed_until = '2026-12-12' where id = $1", [snoozed[0].id]), '42501', 'a mark is never updated (no UPDATE grant)')
+  eq(await affected(db, "update expense_bill_marks set snoozed_until = '2026-12-12', created_by = $2 where id = $1", [snoozed[0].id, U.menu]), 1, 're-snooze is one UPDATE (holders only)')
+  eq((await rows(db, 'select snoozed_until::text, created_by from expense_bill_marks where id = $1', [snoozed[0].id]))[0], { snoozed_until: '2026-12-12', created_by: U.owner }, 'and the mark names whoever changed it')
+  for (const [column, value, label] of [['due_on', '2026-12-11', 'due date'], ['bill_id', branchBillId, 'bill'], ['tenant_id', T_B, 'store']]) {
+    await refused(db.query(`update expense_bill_marks set ${column} = $2 where id = $1`, [snoozed[0].id, value]), '42501', `a mark never moves to another ${label}`, /stays on its bill/)
+  }
   await refused(insertMark(db, { tenant: T_B, billId: rentId, dueOn: '2027-01-10' }), '42501', "a mark carries its bill's store")
 
   // Branch reach follows the bill.
   await as(db, 'authenticated', U.branchBook)
   eq(await count(db, 'select count(*) from expense_bill_marks'), 0, "a branch-locked holder sees no mark on a store-wide bill")
+  eq(await affected(db, "update expense_bill_marks set snoozed_until = '2026-12-20'"), 0, 'nor changes one')
   await refused(insertMark(db, { billId: rentId, dueOn: '2027-01-10' }), '42501', 'nor can mark one')
   eq(await affected(db, 'delete from expense_bill_marks where id = $1', [skipped[0].id]), 0, 'nor undo one')
   eq((await insertMark(db, { billId: branchBillId, dueOn: '2026-11-05' })).rows.length, 1, 'but marks their own branch bill')
@@ -395,6 +413,7 @@ async function checkMarks(db, { rentId, branchBillId }) {
     eq(await count(db, 'select count(*) from expense_bill_marks'), 0, `${label} sees no mark`)
     await refused(insertMark(db, { billId: rentId, dueOn: '2027-02-10' }), '42501', `${label} cannot mark a bill`)
     eq(await affected(db, 'delete from expense_bill_marks'), 0, `${label} deletes no mark`)
+    eq(await affected(db, "update expense_bill_marks set snoozed_until = '2027-02-11'"), 0, `${label} changes no mark`)
   }
 
   await as(db, 'service_role', null)
@@ -403,6 +422,101 @@ async function checkMarks(db, { rentId, branchBillId }) {
   await as(db, 'authenticated', U.owner)
   eq(await affected(db, 'delete from expense_bill_marks where id = $1', [skipped[0].id]), 1, 'undo = delete the mark (holders only)')
   eq((await insertMark(db, { billId: rentId, dueOn: '2026-11-10', kind: 'snoozed', snoozedUntil: '2026-11-11' })).rows.length, 1, 'after which the due date can take another mark')
+}
+
+/** pause_on is the database's: stamped on pausing, kept while the bill stays paused, cleared on resume / stop. */
+async function checkPauseDates(db) {
+  await as(db, 'authenticated', U.owner)
+  const { rows: bill } = await insertBill(db, { name: 'Cable', category: cat.internet })
+  const id = bill[0].id
+  const pausedOn = async () => (await rows(db, 'select paused_on::text as d from expense_bills where id = $1', [id]))[0].d
+  eq(await pausedOn(), null, 'an active bill has no pause date')
+  eq(await affected(db, "update expense_bills set status = 'paused', paused_until = $2, paused_on = '2020-01-01' where id = $1", [id, LATER]), 1, 'pause')
+  eq(await pausedOn(), TODAY, 'pausing stamps paused_on = Manila today (whatever the client sends)')
+  eq(await affected(db, "update expense_bills set paused_until = $2, paused_on = '2020-01-01' where id = $1", [id, manilaDate(60)]), 1, 'a new end date for the same pause')
+  eq(await pausedOn(), TODAY, 'keeps the day the pause began')
+  await refused(db.query("update expense_bills set paused_until = $2 where id = $1", [id, manilaDate(-1)]), '22023', 'a pause never ends on a day already gone', /pause_until_past/)
+  eq(await affected(db, "update expense_bills set status = 'active', paused_until = null where id = $1", [id]), 1, 'resume')
+  eq(await pausedOn(), null, 'resuming clears the pause date')
+  eq(await affected(db, "update expense_bills set paused_on = $2 where id = $1", [id, TODAY]), 1, 'an active bill takes no pause date')
+  eq(await pausedOn(), null, '(it is ignored)')
+  eq(await affected(db, "update expense_bills set status = 'paused', paused_until = null where id = $1", [id]), 1, 'pause until resumed by hand')
+  eq(await pausedOn(), TODAY, 'stamps the pause date too')
+  eq(await affected(db, "update expense_bills set status = 'ended', paused_until = null where id = $1", [id]), 1, 'stop')
+  eq(await pausedOn(), null, 'a stopped bill has no pause date')
+
+  await as(db, 'service_role', null)
+  const { rows: legacy } = await insertBill(db, { name: 'Old pause', category: cat.internet, status: 'paused', pausedUntil: manilaDate(-3) })
+  eq(legacy.length, 1, 'the service role is not held to the past-date rule (repairs)')
+  await as(db, 'authenticated', U.owner)
+  eq(await affected(db, "update expense_bills set paused_until = $2 where id = $1", [legacy[0].id, LATER]), 1, 're-pause a bill whose timed pause already ran out')
+  eq((await rows(db, 'select paused_on::text as d from expense_bills where id = $1', [legacy[0].id]))[0].d, TODAY,
+    'a pause that ran out is a NEW pause: paused_on is today, so the days since it ran out stay owed')
+  await as(db, 'service_role', null)
+}
+
+/**
+ * "I already recorded it" / Mark paid can only settle a bill the CALLER can see,
+ * from that bill's own branch: a branch-locked holder never settles the owner's
+ * store-wide rent or another branch's bill, and a drawer row never names a bill.
+ */
+async function checkBillReach(db, { rentId, branchBillId, otherBranchBillId }) {
+  await as(db, 'authenticated', U.branchBook)
+  await refused(insertExpense(db, { outlet: OUT_A1, billId: rentId, dueOn: '2027-03-10' }), '42501', 'a branch-locked holder cannot pay the store-wide rent', /isn't one you can see/)
+  await refused(insertExpense(db, { outlet: OUT_A1, billId: otherBranchBillId, dueOn: '2027-03-10' }), '42501', "nor another branch's bill", /isn't one you can see/)
+  const { rows: mine } = await insertExpense(db, { outlet: OUT_A1, category: cat.water, cents: 90000 })
+  await refused(db.query("update expenses set bill_id = $2, bill_due_on = '2027-03-10' where id = $1", [mine[0].id, rentId]), '42501', 'nor link an expense to the store-wide rent', /isn't one you can see/)
+  await refused(db.query("update expenses set bill_id = $2, bill_due_on = '2027-03-10' where id = $1", [mine[0].id, otherBranchBillId]), '42501', "nor to another branch's bill", /isn't one you can see/)
+  eq(await affected(db, "update expenses set bill_id = $2, bill_due_on = '2027-03-05' where id = $1", [mine[0].id, branchBillId]), 1, 'but links one to their own branch bill')
+
+  await as(db, 'authenticated', U.owner)
+  const { rows: atBranch } = await insertExpense(db, { outlet: OUT_A1, billId: rentId, dueOn: '2027-04-10' })
+  eq(atBranch.length, 1, 'the owner pays the store-wide rent from a branch expense')
+  eq((await insertExpense(db, { outlet: OUT_A2, category: cat.rent, billId: otherBranchBillId, dueOn: '2027-04-10' })).rows.length, 1, "and a branch's bill from that branch")
+  await refused(insertExpense(db, { outlet: OUT_A1, billId: otherBranchBillId, dueOn: '2027-05-10' }), '42501', "but a branch's bill is never paid from another branch", /own branch/)
+  await refused(insertExpense(db, { outlet: null, billId: otherBranchBillId, dueOn: '2027-05-10' }), '42501', 'nor from a store-wide expense', /own branch/)
+
+  await as(db, 'authenticated', U.branchBook)
+  eq(await count(db, 'select count(*) from expenses where id = $1', [atBranch[0].id]), 1, 'the branch holder sees the branch expense that pays the rent')
+  await refused(db.query('update expenses set bill_id = null, bill_due_on = null where id = $1', [atBranch[0].id]), '42501', 'but cannot take it off the store-wide rent', /isn't one you can see/)
+  await refused(db.query("update expenses set bill_due_on = '2027-06-10' where id = $1", [atBranch[0].id]), '42501', 'nor move it to another due date', /isn't one you can see/)
+  const copy = await scalar(db, "select public.replace_expense($1, 'Typo', $2)", [atBranch[0].id, JSON.stringify({ note: 'April rent' })])
+  eq((await admin(db, 'select bill_id, bill_due_on::text from expenses where id = $1', [copy]))[0], { bill_id: rentId, bill_due_on: '2027-04-10' }, 'fixing that expense keeps its rent link (carried, not chosen)')
+
+  // A cashier's drawer row never names a bill.
+  await reset(db)
+  await db.query(`insert into staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, opening_float) values ($1, $2, $3, $4, 'Cara', 500)`, [SHIFT, T_A, OUT_A1, U.cashier])
+  await db.query(`insert into shift_cash_movements (id, tenant_id, shift_id, kind, amount, reason, recorded_by, recorded_by_name) values ($1, $2, $3, 'pay_out', 85.00, 'water', $4, 'Cara')`, [PAYOUT, T_A, SHIFT, U.cashier])
+  await as(db, 'authenticated', U.cashier)
+  const { rows: drawer } = await db.query(
+    "insert into expenses (tenant_id, category_id, amount_cents, paid_from, shift_cash_movement_id, created_by_name, bill_id, bill_due_on) values ($1, $2, 8500, 'drawer', $3, 'Cara', $4, '2027-03-05') returning id",
+    [T_A, cat.water, PAYOUT, branchBillId])
+  eq(drawer.length, 1, 'a cashier files their own drawer pay-out')
+  eq((await admin(db, 'select bill_id, bill_due_on from expenses where id = $1', [drawer[0].id]))[0], { bill_id: null, bill_due_on: null }, 'but the bill it named is dropped (v1 bills are never paid from the drawer)')
+}
+
+/** "Remind me tomorrow" again = ONE upsert (PostgREST on_conflict=bill_id,due_on), never delete + insert. */
+async function checkMarkUpsert(db, { rentId, branchBillId }) {
+  const UPSERT = `insert into expense_bill_marks (tenant_id, bill_id, due_on, kind, snoozed_until) values ($1, $2, $3, $4, $5)
+    on conflict (bill_id, due_on) do update set tenant_id = excluded.tenant_id, bill_id = excluded.bill_id, due_on = excluded.due_on,
+      kind = excluded.kind, snoozed_until = excluded.snoozed_until
+    returning bill_id, due_on::text, kind, snoozed_until::text`
+  await as(db, 'authenticated', U.owner)
+  eq((await db.query(UPSERT, [T_A, rentId, '2027-06-10', 'snoozed', '2027-06-11'])).rows.length, 1, 'the first mark on a due date is an insert')
+  eq((await db.query(UPSERT, [T_A, rentId, '2027-06-10', 'snoozed', '2027-06-12'])).rows, [{ bill_id: rentId, due_on: '2027-06-10', kind: 'snoozed', snoozed_until: '2027-06-12' }], 'remind me again: the same row, a new date')
+  eq((await db.query(UPSERT, [T_A, rentId, '2027-06-10', 'skipped', null])).rows[0].kind, 'skipped', 'or "Nothing to pay this time" over a snooze')
+  eq(await count(db, "select count(*) from expense_bill_marks where bill_id = $1 and due_on = '2027-06-10'", [rentId]), 1, 'still one mark on that due date')
+  await refused(db.query(UPSERT, [T_B, rentId, '2027-06-10', 'skipped', null]), '42501', "an upsert cannot carry a mark to another store")
+
+  await as(db, 'authenticated', U.branchBook)
+  await refused(db.query(UPSERT, [T_A, rentId, '2027-06-10', 'snoozed', '2027-06-20']), '42501', 'a branch-locked holder cannot upsert over a store-wide bill mark')
+  eq((await db.query(UPSERT, [T_A, branchBillId, '2027-06-05', 'skipped', null])).rows.length, 1, 'but marks their own branch bill')
+  for (const [who, label] of [[U.menu, 'staff without expenses'], [U.cashier, 'a cashier']]) {
+    await as(db, 'authenticated', who)
+    await refused(db.query(UPSERT, [T_A, rentId, '2027-06-10', 'snoozed', '2027-06-30']), '42501', `${label} cannot upsert a mark`)
+  }
+  await as(db, 'authenticated', U.owner)
+  eq((await rows(db, "select kind from expense_bill_marks where bill_id = $1 and due_on = '2027-06-10'", [rentId]))[0].kind, 'skipped', 'nothing they tried changed it')
 }
 
 async function checkTenantDeletion(db) {
@@ -447,16 +561,21 @@ async function main() {
     await db.exec('set check_function_bodies = on')
     await db.exec(readMigration('20261022130200_expenses_opt_in.sql'))
     await db.exec(readMigration('20261022140000_expense_bills.sql'))
+    await db.exec(readMigration('20261022150000_expense_bills_fixes.sql'))
+    await db.exec(readMigration('20261022160000_expense_bills_repause.sql'))
 
     await seedCategories(db)
     await checkAnon(db)
     await checkShapes(db)
     const ids = await checkOwner(db)
-    const { branchBillId } = await checkRoles(db)
+    const { branchBillId, otherBranchBillId } = await checkRoles(db)
     await checkPayments(db, { ...ids, branchBillId })
     await checkMarks(db, { rentId: ids.rentId, branchBillId })
+    await checkPauseDates(db)
+    await checkBillReach(db, { rentId: ids.rentId, branchBillId, otherBranchBillId })
+    await checkMarkUpsert(db, { rentId: ids.rentId, branchBillId })
     await checkTenantDeletion(db)
-    console.log(`Expense bills: ${checks} checks passed (anon, shapes per kind, owner, ended is final, roles + branch reach, payments, void frees a due date, replace carries the link, link/unlink, marks, store deletion).`)
+    console.log(`Expense bills: ${checks} checks passed (anon, shapes per kind, owner, ended is final, roles + branch reach, payments, void frees a due date, replace carries the link, link/unlink, marks, pause dates, bill reach on payments, drawer rows never name a bill, mark upsert, store deletion).`)
   } finally {
     await db.close()
   }

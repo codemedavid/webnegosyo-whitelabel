@@ -7,7 +7,7 @@ import type { Bill } from '@/lib/expenses/bill-schedule'
 import { cn } from '@/lib/utils'
 import { AddExpenseDialog } from '../add-expense-dialog'
 import { ExpensesTabs } from '../expenses-tabs'
-import { buildBillBoard, payDueOn, paymentPrefill, snoozeDueOns, summaryWords, tomorrowOf, type BillPaymentPrefill, type BoardGroupId, type BoardRow } from './bill-board-model'
+import { buildBillBoard, lateCountOf, payDueOn, paymentPrefill, snoozeDueOns, summaryWords, tomorrowOf, type BillPaymentPrefill, type BoardGroupId, type BoardRow } from './bill-board-model'
 import { BillEditorDialog } from './bill-editor-dialog'
 import { BillLinkDialog, type BillLinkTarget } from './bill-link-dialog'
 import { resumeBill, skipBill, snoozeBill, unmarkBill } from './bill-mutations'
@@ -42,7 +42,7 @@ export function BillsWorkspace({ data }: { data: BillsPageData }) {
   )
   const categoriesById = useMemo(() => new Map(data.categories.map((category) => [category.id, category])), [data.categories])
   const supplierNames = useMemo(() => new Map(data.suppliers.map((supplier) => [supplier.id, supplier.name])), [data.suppliers])
-  const lateCount = board.groups.find((group) => group.id === 'late')?.rows.length ?? 0
+  const lateCount = lateCountOf(board)
 
   function branchNameOf(bill: Bill): string | null {
     if (!data.isMultiBranch) return null

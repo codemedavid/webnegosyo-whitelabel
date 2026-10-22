@@ -5,8 +5,10 @@
  */
 import fc from 'fast-check'
 import {
+  afterDaysAnchor,
   dueDatesBetween,
   occurrencesFor,
+  restartOnFor,
   stillToPay,
   validateBillDraft,
   type Bill,
@@ -57,6 +59,7 @@ function makeBill(overrides: Partial<Bill>): Bill {
     remindDaysBefore: 1,
     status: 'active',
     pausedUntil: null,
+    pausedOn: null,
     createdAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   }
@@ -142,15 +145,19 @@ const billArb = fc
     amountCents: fc.option(fc.integer({ min: 1, max: 5_000_000 }), { nil: null }),
     status: fc.constantFrom<Bill['status']>('active', 'active', 'paused', 'ended'),
     pauseGap: fc.option(fc.integer({ min: -100, max: 100 }), { nil: null }),
+    pauseLength: fc.option(fc.integer({ min: 1, max: 120 }), { nil: null }),
   })
-  .map(({ schedule, amountCents, status, pauseGap }) =>
-    makeBill({
+  .map(({ schedule, amountCents, status, pauseGap, pauseLength }) => {
+    const pausedUntil = status === 'paused' && pauseGap !== null ? addDays(schedule.startsOn, Math.abs(pauseGap)) : null
+    return makeBill({
       ...schedule,
       amountCents,
       status,
-      pausedUntil: status === 'paused' && pauseGap !== null ? addDays(schedule.startsOn, Math.abs(pauseGap)) : null,
-    }),
-  )
+      pausedUntil,
+      // A pause recorded since 2026-10-22 knows when it began; an older one does not.
+      pausedOn: status === 'paused' && pauseLength !== null ? addDays(pausedUntil ?? schedule.startsOn, -pauseLength) : null,
+    })
+  })
 
 const scenarioArb = billArb.chain((bill) =>
   fc.record({
@@ -247,6 +254,75 @@ describe('occurrencesFor / stillToPay (property)', () => {
         const bill = { ...input.bill, status, pausedUntil: null }
         const rows = occurrencesFor(bill, scenario({ ...input, bill }))
         expect(stillToPay(rows, input.today.slice(0, 7))).toMatchObject({ cents: 0, count: 0 })
+      }),
+      propertyParameters(),
+    )
+  })
+})
+
+describe('pauses, LPG and edits (property)', () => {
+  test('no due date inside a timed pause is ever owed', () => {
+    fc.assert(
+      fc.property(scenarioArb, (input) => {
+        const { bill } = input
+        if (bill.status !== 'paused' || bill.pausedUntil === null) return
+        const pausedOn = bill.pausedOn ?? '0000-01-01'
+        for (const row of occurrencesFor(bill, scenario(input))) {
+          if (!OPEN.has(row.state)) continue
+          for (const dueOn of [row.dueOn, ...row.lateDueOns]) {
+            expect(dueOn >= pausedOn && dueOn < bill.pausedUntil).toBe(false)
+          }
+        }
+      }),
+      propertyParameters(),
+    )
+  })
+
+  test('an active "about every N days" bill always shows its one due date, however old', () => {
+    const lpgArb = fc.record({ every: fc.integer({ min: 1, max: 90 }), startsOn: dateArb(0, 900) })
+    fc.assert(
+      fc.property(lpgArb, scenarioArb, ({ every, startsOn }, input) => {
+        const bill = makeBill({ rule: { kind: 'after_days', every }, startsOn, status: 'active', pausedUntil: null, pausedOn: null })
+        const ctx = scenario({ ...input, bill })
+        const anchor = afterDaysAnchor(bill.id, ctx.payments, ctx.marks)
+        const due = anchor === null ? startsOn : [addDays(anchor, every), startsOn].sort()[1]
+        const isSettled = ctx.payments.some((p) => p.dueOn === due) || ctx.marks.some((m) => m.dueOn === due && m.kind === 'skipped')
+        const open = occurrencesFor(bill, ctx).filter((row) => OPEN.has(row.state))
+        const isListed = due <= addDays(ctx.today, 31) && !isSettled
+        expect(open.map((row) => row.dueOn)).toEqual(isListed ? [due] : [])
+      }),
+      propertyParameters(),
+    )
+  })
+
+  test('an edit restarts on a real due date of the new rule, keeps its rhythm and turns nothing late', () => {
+    fc.assert(
+      fc.property(scenarioArb, (input) => {
+        const ctx = scenario(input)
+        const edited = { id: input.bill.id, rule: input.bill.rule, startsOn: input.bill.startsOn, endsOn: input.bill.endsOn }
+        const restart = restartOnFor(edited, ctx.payments, ctx.marks, ctx.today)
+        if (restart === null) {
+          // Only an end date with no due date left after today (and after the last settled one).
+          expect(edited.endsOn).not.toBeNull()
+          if (edited.rule.kind !== 'after_days') {
+            const settled = [...ctx.payments.map((p) => p.dueOn), ...ctx.marks.filter((m) => m.kind === 'skipped').map((m) => m.dueOn)]
+            const ahead = dueDatesBetween(edited, ctx.today, edited.endsOn as string).filter((d) => settled.every((dueOn) => dueOn < d))
+            expect(ahead).toEqual([])
+          }
+          return
+        }
+        expect(restart >= ctx.today && restart >= edited.startsOn).toBe(true)
+        if (edited.endsOn !== null) expect(restart <= edited.endsOn).toBe(true)
+        for (const settled of [...ctx.payments.map((p) => p.dueOn), ...ctx.marks.filter((m) => m.kind === 'skipped').map((m) => m.dueOn)]) {
+          expect(restart > settled).toBe(true)
+        }
+        const moved = { ...edited, startsOn: restart }
+        if (edited.rule.kind !== 'after_days') {
+          const later = addDays(restart, 800)
+          expect(dueDatesBetween(moved, restart, later)).toEqual(dueDatesBetween(edited, restart, later))
+        }
+        const rows = occurrencesFor(makeBill({ ...moved, status: 'active' }), ctx)
+        expect(rows.filter((row) => row.state === 'late')).toEqual([])
       }),
       propertyParameters(),
     )

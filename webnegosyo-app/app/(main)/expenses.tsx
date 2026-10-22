@@ -64,6 +64,7 @@ import {
   useUnsortedPayouts,
 } from "../../lib/expenses/use-expenses";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
+import { useOutlets } from "../../lib/use-outlets";
 import { colors, spacing } from "../../theme/colors";
 
 type Sheet =
@@ -153,6 +154,7 @@ function ExpenseBook() {
   // "Make it a bill?" in Needs you (this screen only renders for accounts that manage expenses).
   const idea = useBillSuggestion(true, selectedOutlet ?? undefined);
   const bills = useBillBoard(selectedOutlet ?? undefined);
+  const { outlets } = useOutlets();
   const billsView = useMemo(
     () => buildBillsView({ bills: bills.board.bills, payments: bills.board.payments, marks: bills.board.marks, today: bills.today }),
     [bills.board, bills.today],
@@ -291,7 +293,7 @@ function ExpenseBook() {
   const billsLine = isThisMonth && bills.data !== undefined ? stillToPayLine(billsView.still) : null;
   const openBills = () => router.push(BILLS_PATH as never);
   const payBill = (row: BillRowModel) =>
-    setSheet({ kind: "pay", context: payContextFor(row.bill, targetDueOn(row.occurrence), bills.board.payments) });
+    setSheet({ kind: "pay", context: payContextFor(row.bill, targetDueOn(row.occurrence), bills.board.payments, outlets) });
   const hasNoBills = bills.data !== undefined && billsView.billCount === 0 && billsView.groups.length === 0;
   const billsCard = hasNoBills ? (
     <BillsDoor onPress={openBills} />

@@ -7,6 +7,7 @@ import {
   markBill,
   pauseBill,
   resumeBill,
+  unlinkExpenseFromBill,
   unmarkBill,
   updateBill,
   type BillInput,
@@ -59,18 +60,28 @@ export function useBillWrites() {
   return {
     isBusy,
     create: (input: BillInput, today: string) => run<Bill>((tenant) => createBill(liveExpenseDb, tenant, input, today)),
-    update: (billId: string, input: BillInput, today: string, savedStartsOn: string) =>
-      run<Bill>((tenant) => updateBill(liveExpenseDb, tenant, billId, input, today, savedStartsOn)),
-    pause: (billId: string, until: string | null) => run<Bill>((tenant) => pauseBill(liveExpenseDb, tenant, billId, until)),
-    resume: (billId: string) => run<Bill>((tenant) => resumeBill(liveExpenseDb, tenant, billId)),
+    /** The stored bill decides the start (bills-contract §4); changes apply from the next due date. */
+    update: (billId: string, input: BillInput, today: string) =>
+      run<Bill>((tenant) => updateBill(liveExpenseDb, tenant, billId, input, today)),
+    /** `until` must be after `today` (Manila); null = until resumed by hand. */
+    pause: (billId: string, until: string | null, today: string) =>
+      run<Bill>((tenant) => pauseBill(liveExpenseDb, tenant, billId, until, today)),
+    resume: (billId: string, today: string) => run<Bill>((tenant) => resumeBill(liveExpenseDb, tenant, billId, today)),
     end: (billId: string) => run<Bill>((tenant) => endBill(liveExpenseDb, tenant, billId)),
     skip: (billId: string, dueOn: string) =>
       run((tenant) => markBill(liveExpenseDb, tenant, { billId, dueOn, kind: "skipped" })),
-    snooze: (billId: string, dueOn: string, until: string) =>
-      run((tenant) => markBill(liveExpenseDb, tenant, { billId, dueOn, kind: "snoozed", snoozedUntil: until })),
+    /** "Remind me tomorrow" for every due date a row stands for (a collapsed late row: all of them), one after another. */
+    snooze: (billId: string, dueOns: readonly string[], until: string) =>
+      run(async (tenant) => {
+        for (const dueOn of dueOns) {
+          await markBill(liveExpenseDb, tenant, { billId, dueOn, kind: "snoozed", snoozedUntil: until });
+        }
+      }),
     unmark: (billId: string, dueOn: string) => run((tenant) => unmarkBill(liveExpenseDb, tenant, billId, dueOn)),
     link: (expenseId: string, billId: string, dueOn: string) =>
       run((tenant) => linkExpenseToBill(liveExpenseDb, tenant, expenseId, billId, dueOn), true),
+    /** "Not for this bill": the expense stays as it is; its due date is open again. */
+    unlink: (expenseId: string) => run((tenant) => unlinkExpenseFromBill(liveExpenseDb, tenant, expenseId), true),
   };
 }
 

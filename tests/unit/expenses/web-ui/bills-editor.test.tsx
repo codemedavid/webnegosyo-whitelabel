@@ -211,6 +211,7 @@ describe('BillEditorDialog', () => {
     const { onOpenChange } = await renderEditor({ bill: RENT_BILL })
 
     expect(screen.getByRole('heading', { name: 'Edit Rent' })).toBeInTheDocument()
+    expect(screen.getByText(/^Changes apply from the next due date\./)).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Start from' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Amount (required)' })).toHaveValue('15,000')
     expect(screen.getByLabelText('On the')).toHaveValue('5')

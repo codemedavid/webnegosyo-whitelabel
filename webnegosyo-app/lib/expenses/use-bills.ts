@@ -7,18 +7,19 @@
  * voiding an expense can pay or free a due date.
  */
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/query-core";
 
 import { resourceKey } from "../backends/query-keys";
 import { invalidateResource, useResource } from "../query/use-resource";
 import { useRefetchOnScreenFocus } from "../query/use-screen-focus";
+import { withPendingPayments } from "./bills-screen-pending";
 import { readBillBoard, type BillBoard, type BillOutletFilter } from "./bills-service";
 import { liveExpenseDb } from "./expense-client";
 import { manilaToday } from "./expense-format";
 // Read at call time only: use-expenses imports this module too (EXPENSE_BILLS_RESOURCE).
-import { useExpenseTenant } from "./use-expenses";
+import { useDeviceExpenseQueue, useExpenseTenant } from "./use-expenses";
 
 export const EXPENSE_BILLS_RESOURCE = "expense-bills";
 
@@ -29,6 +30,11 @@ const NO_BOARD: BillBoard = { bills: [], marks: [], payments: [] };
  * The bills, their marks and their payments around today. `outletId`:
  * undefined = every bill the caller reaches (RLS), null = store-wide bills
  * only, a uuid = that branch. `enabled: false` reads nothing.
+ *
+ * `data` / `board` include this phone's bill payments still waiting to send
+ * (queued, in the Undo window, offline) as provisional payments, so a second
+ * "Mark paid" moves on to the next due date and no late reminder fires for a
+ * bill already paid here (`bills-screen-pending.ts`).
  */
 export function useBillBoard(outletId?: BillOutletFilter, enabled = true) {
   const tenantId = useExpenseTenant();
@@ -49,7 +55,12 @@ export function useBillBoard(outletId?: BillOutletFilter, enabled = true) {
     isFetching: result.isRefetching,
     refetch: result.refetch,
   });
-  return { ...result, board: result.data ?? NO_BOARD, today };
+  const queue = useDeviceExpenseQueue();
+  const data = useMemo(
+    () => (result.data ? withPendingPayments(result.data, queue.expenses) : undefined),
+    [result.data, queue.expenses],
+  );
+  return { ...result, data, board: data ?? NO_BOARD, today };
 }
 
 /** Re-read the board after a bill-only write (add, edit, pause, mark). */

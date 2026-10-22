@@ -70,7 +70,7 @@ export const DAY_CHOICES: readonly DayOfMonth[] = [...Array.from({ length: 31 },
 export const REMIND_PRESETS: readonly number[] = [0, 1, 3];
 export const AFTER_DAYS_PRESETS: readonly number[] = [7, 10, 14, 30];
 export const SHORT_MONTH_HINT = "In shorter months we remind you on the last day.";
-export const EDIT_NOTE = "Changes apply to the next ones. Past payments stay as they are.";
+export const EDIT_NOTE = "Changes apply from the next due date. Past payments stay as they are.";
 
 const SHORTEST_MONTH_DAYS = 28;
 const DEFAULT_AFTER_DAYS = 10;

@@ -41,6 +41,7 @@ export function bill(overrides: Partial<Bill> = {}): Bill {
     remindDaysBefore: 3,
     status: 'active',
     pausedUntil: null,
+    pausedOn: null,
     createdAt: '2026-10-01T00:00:00.000Z',
     ...overrides,
   }

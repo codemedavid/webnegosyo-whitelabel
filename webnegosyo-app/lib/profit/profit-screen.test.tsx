@@ -198,6 +198,7 @@ describe("bills to pay", () => {
       still: null,
       findings: {
         hasBills: true,
+        billedCategoryIds: new Set(["cat-rent"]),
         cards: [
           {
             key: "bill:bill-rent",

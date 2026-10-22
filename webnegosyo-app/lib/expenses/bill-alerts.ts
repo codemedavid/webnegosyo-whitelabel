@@ -63,6 +63,29 @@ export function reminderOwner(input: ReminderOwnerInput): ReminderOwner {
   return { kind: "owner", tenantId: input.tenantId, userId: input.userId, key: `${input.tenantId}:${input.userId}` };
 }
 
+/**
+ * The session is gone (signed out, or no store/user left): BillReminderSync's
+ * unmount clears the phone then. Never while auth is still loading — an
+ * offline cold start must not wipe the set.
+ */
+export function isSignedOut(input: Pick<ReminderOwnerInput, "isLoading" | "isAuthenticated" | "tenantId" | "userId">): boolean {
+  return !input.isLoading && (!input.isAuthenticated || !input.tenantId || !input.userId);
+}
+
+/**
+ * The root layout's before-sign-out hook (lib/sign-out.ts takes ONE): the
+ * existing device cleanup plus clearing every bill reminder, side by side.
+ * Sign-out navigates away in the same tick, so BillReminderSync may never
+ * re-render without an owner; this makes sure the next person on a shared
+ * phone never hears about the last one's rent. Never throws.
+ */
+export function withBillAlertsCleared(cleanup: () => Promise<void>, clearAlerts: () => Promise<void>): () => Promise<void> {
+  return async () => {
+    // `.then` turns a synchronous throw into a rejection too.
+    await Promise.allSettled([Promise.resolve().then(cleanup), Promise.resolve().then(clearAlerts)]);
+  };
+}
+
 // ── What ─────────────────────────────────────────────────────────────────────
 
 export interface BillAlertData {

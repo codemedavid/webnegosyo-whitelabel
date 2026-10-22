@@ -11,6 +11,7 @@ import { SectionHeader } from "../../../components/SectionHeader";
 import { ChangeExpenseSheet, VoidExpenseSheet } from "../../../components/expenses/ExpenseActionSheets";
 import { ReceiptViewer } from "../../../components/expenses/ReceiptViewer";
 import { PaidForCard, RepeatThis } from "../../../components/expenses/bills/BillDetailLink";
+import { useBillWrites } from "../../../components/expenses/bills/use-bill-writes";
 import { ActionBar } from "../../../components/expenses/detail/ActionBar";
 import { DetailHero } from "../../../components/expenses/detail/DetailHero";
 import { FactsCard } from "../../../components/expenses/detail/FactsCard";
@@ -95,6 +96,7 @@ export default function ExpenseDetailScreen() {
   const writes = useExpenseDetailWrites({ tenantId, expense, reload, onWritten: () => setSheet(null) });
   // Bills name the bill this paid ("Paid for: Rent · October"), and hide "Repeat this" once one exists.
   const billBoard = useBillBoard(undefined, canManage && expense !== null);
+  const billWrites = useBillWrites();
 
   const requestKey = expense ? expense.clientRequestId ?? expense.id : null;
   const tiles = useMemo(() => {
@@ -172,9 +174,19 @@ export default function ExpenseDetailScreen() {
   };
   const openSheet = (next: Exclude<Sheet, null>) => !refuseInDemo() && setSheet(next);
   const billLink = detailBillLink({ expense, category: category ?? null, bills: billBoard.board.bills, canManage });
+  // "Not for this bill": takes a wrong link off; the expense and its money stay as they are.
+  const unlinkBill = () =>
+    void billWrites.unlink(expense.id).then((result) => {
+      if (!result.ok && result.message) Alert.alert("Not for this bill", result.message);
+    });
   const billLinkView =
     billLink?.kind === "paid_for" ? (
-      <PaidForCard text={billLink.text} onPress={() => router.push(billLink.href as never)} />
+      <PaidForCard
+        text={billLink.text}
+        onPress={() => router.push(billLink.href as never)}
+        onUnlink={billLink.canUnlink ? unlinkBill : undefined}
+        isUnlinking={billWrites.isBusy}
+      />
     ) : billLink?.kind === "repeat" && billBoard.data !== undefined ? (
       <RepeatThis categoryName={billLink.categoryName} onPress={() => router.push(billLink.href as never)} />
     ) : null;

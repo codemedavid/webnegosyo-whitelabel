@@ -30,7 +30,7 @@ import {
   type AddExpenseMode,
   type ExpenseSheetScope,
 } from "../../lib/expenses/add-expense-form";
-import { amountChips, payForLine, type BillPayContext } from "../../lib/expenses/bills-screen";
+import { amountChips, payBranchLine, payForLine, type BillPayContext } from "../../lib/expenses/bills-screen";
 import { rankCategoriesForPicker } from "../../lib/expenses/categories";
 import { manilaToday, spokenCents } from "../../lib/expenses/expense-format";
 import { formatPeso, keypadCents, keypadDisplay, keypadFromCents, pressKey, type KeypadKey } from "../../lib/expenses/keypad";
@@ -146,6 +146,8 @@ export function AddExpenseSheet({
     [recent, offered, scope, isBill],
   );
   const billChips = bill && bill.amountCents === null ? amountChips(bill.usualCents, bill.lastCents) : [];
+  // A branch bill is paid from its own branch only: named here, never chosen.
+  const billBranch = bill ? payBranchLine(bill) : null;
   const category: ExpenseCategory | null = offered.find((c) => c.id === form.categoryId) ?? null;
   const cents = keypadCents(form.keypad);
   const isDrawer = mode.kind === "drawer";
@@ -247,6 +249,11 @@ export function AddExpenseSheet({
         {bill ? (
           <Text style={styles.billFor} testID="expense-bill-for">
             {payForLine(bill.dueOn, today)}
+          </Text>
+        ) : null}
+        {billBranch ? (
+          <Text style={styles.billFor} testID="expense-bill-branch">
+            {billBranch}
           </Text>
         ) : null}
         <ExpenseAmount text={keypadDisplay(form.keypad)} cents={cents} baseSize={sizing.amount} />

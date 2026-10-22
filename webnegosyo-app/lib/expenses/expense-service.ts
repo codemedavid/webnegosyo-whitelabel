@@ -83,6 +83,10 @@ export const EXPENSE_COPY = {
   missingReference: "That category, supplier or branch is no longer available. Pick another and try again.",
   invalid: "Some details don't add up. Check the amount and the date and try again.",
   billAlreadyPaid: "That bill is already marked paid for this due date. Open Bills to pay to check it.",
+  // Bills to pay fixes (20261022150000): the database's own refusals, in plain words.
+  billNotVisible: "That bill belongs to another branch, so it can't be marked here.",
+  billOtherBranch: "Pay this bill from its own branch.",
+  billPauseInPast: "Pick a day after today.",
   generic: "We couldn't save that. Please try again.",
 } as const;
 
@@ -99,6 +103,10 @@ export function describeExpenseError(error: DbError | null | undefined, context:
   if (/drawer_locked/i.test(text)) return EXPENSE_COPY.drawerLocked;
   // Paying a bill twice for one due date (the partial unique index, bills-contract §2).
   if (/expenses_bill_due_recorded_uq/i.test(text)) return EXPENSE_COPY.billAlreadyPaid;
+  // 42501 / 22023 from the bill guards (20261022150000): a rule, not a missing permission.
+  if (/That bill isn't one you can see/i.test(text)) return EXPENSE_COPY.billNotVisible;
+  if (/A branch bill is paid from its own branch/i.test(text)) return EXPENSE_COPY.billOtherBranch;
+  if (/pause_until_past/i.test(text)) return EXPENSE_COPY.billPauseInPast;
   if (/already closed|shift is closed|closed shift/i.test(text)) return EXPENSE_COPY.shiftClosed;
   if (code === "PGRST202" || code === "42883" || code === "42P01" || code === "PGRST205") return EXPENSE_COPY.notSetUp;
   if (code === "42501") return context === "drawer" ? EXPENSE_COPY.drawerNotYours : EXPENSE_COPY.noAccess;

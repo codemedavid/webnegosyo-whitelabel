@@ -7,9 +7,11 @@ import {
   billsDue,
   dueDatesBetween,
   estimateCents,
+  isBillPaused,
   nextDueDates,
   occurrencesFor,
   ordinal,
+  restartOnFor,
   ruleFromColumns,
   ruleSentence,
   ruleToColumns,
@@ -304,6 +306,152 @@ describe('occurrencesFor', () => {
   test('a bill that changes every time has no amount until it is first paid', () => {
     const rows = occurrencesFor(makeBill({ amountCents: null, startsOn: '2026-10-01', rule: { kind: 'monthly', day: 25 } }), ctx())
     expect(rows[0]).toMatchObject({ amountCents: null, isEstimate: false })
+  })
+})
+
+describe('pauses (H2)', () => {
+  test('a pause until a date that has passed lists only what fell outside the pause', () => {
+    // Arrange: paused 1 Sep – 10 Oct; 5 Aug was already late before the pause.
+    const bill = makeBill({ status: 'paused', pausedOn: '2026-09-01', pausedUntil: '2026-10-10' })
+
+    // Act
+    const rows = occurrencesFor(bill, ctx())
+
+    // Assert: 5 Sep and 5 Oct fell inside the pause, so they are never late.
+    expect(rows.map((row) => [row.dueOn, row.state])).toEqual([
+      ['2026-08-05', 'late'],
+      ['2026-11-05', 'upcoming'],
+    ])
+    expect(rows[0]).toMatchObject({ lateCount: 1, lateDueOns: ['2026-08-05'] })
+  })
+
+  test('a pause still running lists nothing before its end date', () => {
+    const bill = makeBill({ status: 'paused', pausedOn: '2026-10-01', pausedUntil: '2026-11-01' })
+    expect(occurrencesFor(bill, ctx()).map((row) => [row.dueOn, row.state])).toEqual([['2026-11-05', 'upcoming']])
+  })
+
+  test('isBillPaused: open-ended, or until a date still ahead', () => {
+    expect(isBillPaused(makeBill({ status: 'paused', pausedUntil: null }), TODAY)).toBe(true)
+    expect(isBillPaused(makeBill({ status: 'paused', pausedUntil: '2026-10-23' }), TODAY)).toBe(true)
+    expect(isBillPaused(makeBill({ status: 'paused', pausedUntil: TODAY }), TODAY)).toBe(false)
+    expect(isBillPaused(makeBill({ status: 'active' }), TODAY)).toBe(false)
+    expect(isBillPaused(makeBill({ status: 'ended' }), TODAY)).toBe(false)
+  })
+
+  test('an LPG refill that fell inside a pause comes due the day the pause ends', () => {
+    const lpg = makeBill({
+      id: 'bill-lpg',
+      rule: { kind: 'after_days', every: 10 },
+      startsOn: '2026-08-01',
+      status: 'paused',
+      pausedOn: '2026-09-01',
+      pausedUntil: '2026-10-10',
+    })
+    const rows = occurrencesFor(lpg, ctx([payment('2026-08-31', 98_000, 'bill-lpg')]))
+    expect(rows.filter((row) => row.state !== 'paid').map((row) => [row.dueOn, row.state, row.daysLate])).toEqual([
+      ['2026-10-10', 'late', 12],
+    ])
+  })
+
+  test('while the pause runs, the LPG refill waits for its end date', () => {
+    const lpg = makeBill({
+      id: 'bill-lpg',
+      rule: { kind: 'after_days', every: 10 },
+      startsOn: '2026-08-01',
+      status: 'paused',
+      pausedOn: '2026-10-01',
+      pausedUntil: '2026-11-01',
+    })
+    const rows = occurrencesFor(lpg, ctx([payment('2026-09-28', 98_000, 'bill-lpg')]))
+    expect(rows.filter((row) => row.state !== 'paid').map((row) => [row.dueOn, row.state])).toEqual([['2026-11-01', 'upcoming']])
+  })
+})
+
+describe('after_days anchor (M2)', () => {
+  const lpg = (startsOn = '2026-09-01') =>
+    makeBill({ id: 'bill-lpg', name: 'LPG', amountCents: null, rule: { kind: 'after_days', every: 10 }, startsOn })
+
+  test('counts from when the last refill was paid, when that was after its due date', () => {
+    const rows = occurrencesFor(lpg(), ctx([payment('2026-10-01', 98_000, 'bill-lpg', '2026-10-08')]))
+    expect(rows.find((row) => row.state !== 'paid')).toMatchObject({ dueOn: '2026-10-18', state: 'late', daysLate: 4 })
+  })
+
+  test('counts from the due date when the refill was paid early', () => {
+    const rows = occurrencesFor(lpg(), ctx([payment('2026-10-10', 98_000, 'bill-lpg', '2026-10-05')]))
+    expect(rows.find((row) => row.state !== 'paid')).toMatchObject({ dueOn: '2026-10-20', state: 'late', daysLate: 2 })
+  })
+
+  test('the one due date never drops off, however late', () => {
+    const rows = occurrencesFor(lpg('2026-01-01'), ctx())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ dueOn: '2026-01-01', state: 'late', lateCount: 1, daysLate: 294 })
+  })
+
+  test('the editor preview counts from when it was paid too', () => {
+    expect(nextDueDates(lpg(), TODAY, 2, [payment('2026-10-15', 98_000, 'bill-lpg', '2026-10-20')])).toEqual([
+      '2026-10-30',
+      '2026-11-09',
+    ])
+  })
+})
+
+describe('restartOnFor (H1: an edit never rewrites past due dates)', () => {
+  const paidMonths = ['2026-08-01', '2026-09-01', '2026-10-01'].map((dueOn) => payment(dueOn))
+
+  test('rent moved from the 1st to the 5th starts at the next 5th, so no month turns late', () => {
+    // Arrange
+    const edited = { id: 'bill-rent', rule: { kind: 'monthly', day: 5 } as BillRule, startsOn: '2026-08-01', endsOn: null }
+
+    // Act
+    const restart = restartOnFor(edited, paidMonths, [], TODAY)
+
+    // Assert
+    expect(restart).toBe('2026-11-05')
+    const rows = occurrencesFor(makeBill({ ...edited, startsOn: restart! }), ctx(paidMonths))
+    expect(rows.filter((row) => row.state === 'late')).toEqual([])
+  })
+
+  test('starts after the latest paid or skipped due date, even one paid ahead', () => {
+    const edited = { id: 'bill-rent', rule: { kind: 'monthly', day: 5 } as BillRule, startsOn: '2026-08-01', endsOn: null }
+    expect(restartOnFor(edited, [...paidMonths, payment('2026-11-05')], [], TODAY)).toBe('2026-12-05')
+    expect(restartOnFor(edited, paidMonths, [mark('2026-11-05', 'skipped')], TODAY)).toBe('2026-12-05')
+    expect(restartOnFor(edited, paidMonths, [mark('2026-11-05', 'snoozed', '2026-11-06')], TODAY)).toBe('2026-11-05')
+  })
+
+  test("ignores other bills' payments", () => {
+    const edited = { id: 'bill-rent', rule: { kind: 'monthly', day: 5 } as BillRule, startsOn: '2026-08-01', endsOn: null }
+    expect(restartOnFor(edited, [payment('2026-12-05', 100, 'bill-other')], [], TODAY)).toBe('2026-11-05')
+  })
+
+  test('a later start the owner picked wins', () => {
+    const edited = { id: 'bill-rent', rule: { kind: 'monthly', day: 5 } as BillRule, startsOn: '2027-01-01', endsOn: null }
+    expect(restartOnFor(edited, paidMonths, [], TODAY)).toBe('2027-01-05')
+  })
+
+  test('a yearly bill keeps its month', () => {
+    const edited = { id: 'bill-rent', rule: { kind: 'months', every: 12, day: 20 } as BillRule, startsOn: '2026-03-01', endsOn: null }
+    const restart = restartOnFor(edited, [], [], TODAY)
+    expect(restart).toBe('2027-03-20')
+    expect(ruleSentence(edited.rule, restart!)).toBe(ruleSentence(edited.rule, edited.startsOn))
+  })
+
+  test('every 2 weeks keeps its rhythm', () => {
+    const edited = { id: 'bill-rent', rule: { kind: 'weekly', every: 2, weekday: 2 } as BillRule, startsOn: '2026-10-06', endsOn: null }
+    expect(restartOnFor(edited, [], [], TODAY)).toBe('2026-11-03')
+  })
+
+  test('after_days restarts today', () => {
+    const edited = { id: 'bill-rent', rule: { kind: 'after_days', every: 10 } as BillRule, startsOn: '2026-08-01', endsOn: null }
+    expect(restartOnFor(edited, [payment('2026-10-01')], [], TODAY)).toBe(TODAY)
+  })
+
+  test('null when no due date is left before the end date', () => {
+    const ended = { id: 'bill-rent', rule: { kind: 'monthly', day: 5 } as BillRule, startsOn: '2026-08-01', endsOn: '2026-10-20' }
+    expect(restartOnFor(ended, [], [], TODAY)).toBeNull()
+    const ending = { id: 'bill-rent', rule: { kind: 'monthly', day: 5 } as BillRule, startsOn: '2026-08-01', endsOn: '2026-10-31' }
+    expect(restartOnFor(ending, [], [], TODAY)).toBeNull()
+    const lastOne = { ...ending, endsOn: '2026-11-05' }
+    expect(restartOnFor(lastOne, [], [], TODAY)).toBe('2026-11-05')
   })
 })
 

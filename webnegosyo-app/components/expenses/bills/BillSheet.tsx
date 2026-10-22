@@ -1,19 +1,24 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import type { BillPayment } from "../../../lib/expenses/bill-schedule";
+import { isBillPaused, type BillPayment } from "../../../lib/expenses/bill-schedule";
 import {
   dueLine,
-  isPausedNow,
+  monthName,
+  paidForText,
   pauseChoices,
+  pauseRefusal,
   payContextFor,
   shortDate,
+  skipChoice,
+  snoozeDueOns,
   stopNote,
   targetDueOn,
   usualAmountLine,
   type BillPayContext,
   type BillRowModel,
 } from "../../../lib/expenses/bills-screen";
+import { isPendingPayment } from "../../../lib/expenses/bills-screen-pending";
 import { shortCategoryName } from "../../../lib/expenses/category-look";
 import { formatCents } from "../../../lib/expenses/expense-format";
 import { addDays } from "../../../lib/expenses/manila-date";
@@ -25,11 +30,12 @@ import { ActionList, ActionRow, BillHero, LinkList } from "./BillSheetParts";
 import { useLinkableExpenses } from "./use-linkable-expenses";
 import type { BillWrites } from "./use-bill-writes";
 
-type Step = "main" | "link" | "manage" | "pause" | "stop";
+type Step = "main" | "link" | "unlink" | "manage" | "pause" | "stop";
 
 /** Where Android back (and "Back") goes from each inner step. */
 const BACK_TO: Readonly<Record<Exclude<Step, "main">, Step>> = {
   link: "main",
+  unlink: "main",
   manage: "main",
   pause: "manage",
   stop: "manage",
@@ -47,6 +53,8 @@ interface BillSheetProps {
   category: ExpenseCategory | null;
   categories: ReadonlyMap<string, ExpenseCategory>;
   payments: readonly BillPayment[];
+  /** The store's branches: a branch bill's pay sheet names its branch. */
+  outlets?: readonly { id: string; name: string }[];
   today: string;
   /** The oldest due date the board read payments for (for "N past payments"). */
   historyFrom: string;
@@ -91,11 +99,13 @@ export function BillSheet(props: BillSheetProps) {
   const name = bill.name;
   const { payment } = occurrence;
   const month = shortDate(dueOn, today);
-  const isPaused = isPausedNow(bill, today);
+  const isPaused = isBillPaused(bill, today);
   const isSettled = occurrence.state === "paid" || occurrence.state === "skipped";
   const canRemind = ["late", "due_today", "due_soon", "snoozed"].includes(occurrence.state);
   const amount = row.amount ?? "Amount changes";
   const lateNote = row.note ? `${row.note}. This marks the oldest one, due ${month}.` : null;
+  const skip = skipChoice(bill, occurrence, today);
+  const isWaitingToSend = payment !== null && isPendingPayment(payment);
   const categoryName = category ? shortCategoryName(category.name) : "this kind of";
 
   const mainBody = isPaused ? (
@@ -104,7 +114,7 @@ export function BillSheet(props: BillSheetProps) {
       <Button
         label="Turn it back on"
         size="lg"
-        onPress={() => void after(writes.resume(bill.id), { message: `${name} is back on` })}
+        onPress={() => void after(writes.resume(bill.id, today), { message: `${name} is back on` })}
         isLoading={writes.isBusy}
         disabled={writes.isBusy}
         testID="bill-resume"
@@ -115,7 +125,12 @@ export function BillSheet(props: BillSheetProps) {
     </>
   ) : isSettled ? (
     <>
-      {payment ? (
+      {payment && isWaitingToSend ? (
+        <Text style={styles.lead}>
+          Paid {formatCents(payment.amountCents, { compact: true })} on {shortDate(payment.spentOn, today)}. It is waiting to send
+          from this phone.
+        </Text>
+      ) : payment ? (
         <>
           <Text style={styles.lead}>
             Paid {formatCents(payment.amountCents, { compact: true })} on {shortDate(payment.spentOn, today)}.
@@ -137,6 +152,15 @@ export function BillSheet(props: BillSheetProps) {
         </>
       )}
       <ActionList>
+        {payment && !isWaitingToSend ? (
+          <ActionRow
+            icon="close"
+            label="Not for this bill"
+            hint="The expense stays; this due date is open again"
+            onPress={() => setStep("unlink")}
+            testID="bill-unlink"
+          />
+        ) : null}
         <ActionRow icon="edit" label="Edit, pause or stop this bill" onPress={() => setStep("manage")} testID="bill-manage" />
       </ActionList>
     </>
@@ -147,7 +171,7 @@ export function BillSheet(props: BillSheetProps) {
         label="Mark paid"
         size="lg"
         icon="check"
-        onPress={() => props.onPay(payContextFor(bill, dueOn, payments))}
+        onPress={() => props.onPay(payContextFor(bill, dueOn, payments, props.outlets))}
         disabled={writes.isBusy}
         testID="bill-mark-paid"
       />
@@ -157,15 +181,19 @@ export function BillSheet(props: BillSheetProps) {
           <ActionRow
             icon="bell"
             label="Remind me tomorrow"
-            onPress={() => void after(writes.snooze(bill.id, dueOn, addDays(today, 1)), { message: `We'll remind you about ${name} tomorrow` })}
+            onPress={() =>
+              void after(writes.snooze(bill.id, snoozeDueOns(occurrence), addDays(today, 1)), {
+                message: `We'll remind you about ${name} tomorrow`,
+              })
+            }
             isDisabled={writes.isBusy}
             testID="bill-snooze"
           />
         ) : null}
         <ActionRow
           icon="close"
-          label="Nothing to pay this time"
-          onPress={() => void after(writes.skip(bill.id, dueOn), { message: `${name}: nothing to pay this time`, undo: { billId: bill.id, dueOn } })}
+          label={skip.label}
+          onPress={() => void after(writes.skip(bill.id, skip.dueOn), { message: skip.done, undo: { billId: bill.id, dueOn: skip.dueOn } })}
           isDisabled={writes.isBusy}
           testID="bill-skip"
         />
@@ -194,6 +222,26 @@ export function BillSheet(props: BillSheetProps) {
     </>
   );
 
+  const unlinkBody = payment ? (
+    <>
+      <Text style={styles.lead}>
+        The {formatCents(payment.amountCents, { compact: true })} expense stays in Expenses as it is. {paidForText(name, payment.dueOn)} goes
+        back to Bills to pay.
+      </Text>
+      <Button
+        label="Not for this bill"
+        tone="danger"
+        size="lg"
+        onPress={() =>
+          void after(writes.unlink(payment.expenseId), { message: `${name} for ${monthName(payment.dueOn)} is back in Bills to pay` })
+        }
+        isLoading={writes.isBusy}
+        disabled={writes.isBusy}
+        testID="bill-unlink-confirm"
+      />
+    </>
+  ) : null;
+
   const manageBody = (
     <ActionList>
       <ActionRow icon="edit" label="Change the bill" hint="Name, amount, how often, reminders" onPress={props.onEdit} testID="bill-edit" />
@@ -204,6 +252,15 @@ export function BillSheet(props: BillSheetProps) {
     </ActionList>
   );
 
+  const pauseUntil = (until: string | null) => {
+    const refusal = pauseRefusal(until, today);
+    if (refusal) {
+      setError(refusal);
+      return;
+    }
+    void after(writes.pause(bill.id, until, today), { message: `${name} is paused` });
+  };
+
   const pauseBody = (
     <ActionList>
       {pauseChoices(today).map((choice) => (
@@ -211,7 +268,7 @@ export function BillSheet(props: BillSheetProps) {
           key={choice.key}
           icon="clock"
           label={choice.label}
-          onPress={() => void after(writes.pause(bill.id, choice.until), { message: `${name} is paused` })}
+          onPress={() => pauseUntil(choice.until)}
           isDisabled={writes.isBusy}
           testID={`bill-pause-${choice.key}`}
         />
@@ -234,10 +291,18 @@ export function BillSheet(props: BillSheetProps) {
     </>
   );
 
-  const bodies: Record<Step, React.ReactNode> = { main: mainBody, link: linkBody, manage: manageBody, pause: pauseBody, stop: stopBody };
+  const bodies: Record<Step, React.ReactNode> = {
+    main: mainBody,
+    link: linkBody,
+    unlink: unlinkBody,
+    manage: manageBody,
+    pause: pauseBody,
+    stop: stopBody,
+  };
   const titles: Record<Step, string> = {
     main: name,
     link: "I already recorded it",
+    unlink: "Not for this bill?",
     manage: `Edit, pause or stop ${name}`,
     pause: `Pause ${name}`,
     stop: `Stop ${name}?`,

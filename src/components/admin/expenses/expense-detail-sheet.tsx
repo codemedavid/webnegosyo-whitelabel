@@ -23,10 +23,12 @@ import { ReceiptPreviews } from './receipt-previews'
 import { keepOpenWhileListOpen } from './combobox'
 import { UNKNOWN_SHIFT, readDrawerShift, voidHelperText, type DrawerShift } from './drawer-shift'
 import { paidForWords } from './bills/bill-board-model'
+import { unlinkExpenseFromBill } from './bills/bill-mutations'
+import { BillUnlinkConfirm } from './bills/bill-unlink-confirm'
 import { expensesTabHref } from './expenses-tabs'
 
 type DetailState = { kind: 'loading' } | { kind: 'ready'; detail: ExpenseDetail } | { kind: 'failed'; error: string }
-type Panel = 'none' | 'void' | 'edit'
+type Panel = 'none' | 'void' | 'edit' | 'unlink'
 
 export interface ExpenseDetailSheetProps {
   /** The row that was clicked; null = closed. */
@@ -160,6 +162,21 @@ function DetailBody({
     reload()
   }
 
+  async function confirmUnlink(): Promise<void> {
+    if (!expense) return
+    setIsBusy(true)
+    const result = await unlinkExpenseFromBill(tenantSlug, expense.id)
+    setIsBusy(false)
+    if (!result.ok) {
+      setActionError(result.error)
+      return
+    }
+    toast.success('Taken off the bill. The expense stays in your book.')
+    setPanel('none')
+    setActionError(null)
+    reload()
+  }
+
   async function addReceipts(fileList: FileList | null): Promise<void> {
     if (!expense || !fileList) return
     const existing = state.kind === 'ready' ? state.detail.receipts.length : expense.receiptCount
@@ -195,6 +212,7 @@ function DetailBody({
   const supplier = expense.supplierId ? suppliers.find((entry) => entry.id === expense.supplierId) : undefined
   const paidTo = supplier?.name ?? expense.paidToName
   const branch = expense.outletId ? (outletNames.get(expense.outletId) ?? 'A branch') : 'Whole store'
+  const paidFor = expense.billId && expense.billDueOn ? paidForWords(billNames?.get(expense.billId) ?? null, expense.billDueOn) : null
   const hasInvoice = Boolean(
     expense.docType || expense.invoiceNo || expense.supplierTin || expense.vatCents !== null || expense.ewtCents !== null || expense.form2307Given,
   )
@@ -235,14 +253,28 @@ function DetailBody({
           {isMultiBranch && <Fact label="Branch">{branch}</Fact>}
           <Fact label="Paid to">{paidTo ?? <Muted>Not recorded</Muted>}</Fact>
           <Fact label="Note">{expense.note ?? <Muted>No note</Muted>}</Fact>
-          {expense.billId && expense.billDueOn && (
+          {paidFor && (
             <Fact label="Paid for">
-              <Link
-                href={expensesTabHref(tenantSlug, 'bills', null)}
-                className="font-semibold text-wn-ink underline decoration-wn-line underline-offset-4 outline-none hover:decoration-wn-ink focus-visible:ring-2 focus-visible:ring-wn-ink"
-              >
-                {paidForWords(billNames?.get(expense.billId) ?? null, expense.billDueOn)}
-              </Link>
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Link
+                  href={expensesTabHref(tenantSlug, 'bills', null)}
+                  className="font-semibold text-wn-ink underline decoration-wn-line underline-offset-4 outline-none hover:decoration-wn-ink focus-visible:ring-2 focus-visible:ring-wn-ink"
+                >
+                  {paidFor}
+                </Link>
+                {!isVoid && panel === 'none' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionError(null)
+                      setPanel('unlink')
+                    }}
+                    className="min-h-9 text-[13px] font-semibold text-wn-stone underline underline-offset-4 outline-none hover:text-wn-ink focus-visible:ring-2 focus-visible:ring-wn-ink"
+                  >
+                    Not for this bill
+                  </button>
+                )}
+              </span>
             </Fact>
           )}
           {category?.group === 'ingredients' && tracksStock && (
@@ -308,6 +340,21 @@ function DetailBody({
                 setActionError(null)
               }}
               onSave={(update) => void saveDetails(update)}
+            />
+          </Section>
+        )}
+
+        {panel === 'unlink' && paidFor && (
+          <Section title="Not for this bill">
+            <BillUnlinkConfirm
+              paidFor={paidFor}
+              isBusy={isBusy}
+              error={actionError}
+              onCancel={() => {
+                setPanel('none')
+                setActionError(null)
+              }}
+              onConfirm={() => void confirmUnlink()}
             />
           </Section>
         )}

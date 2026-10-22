@@ -1,6 +1,6 @@
 import { billsDue, stillToPay, type Bill, type BillPayment } from "../expenses/bill-schedule";
 import { BILL_TODAY, billMark, billPayment, makeBill } from "../expenses/bill-test-fixtures";
-import { billFindingCards, billForecastLine, billsForBranch, keepsBills } from "./profit-bills";
+import { billFindingCards, billFindingsInput, billForecastLine, billsForBranch, keepsBills } from "./profit-bills";
 import { findingCards } from "./profit-findings";
 import { findingHref } from "./profit-links";
 import type { ProfitFinding } from "./profit-model";
@@ -73,6 +73,7 @@ describe("findingCards with bills", () => {
 
     const cards = findingCards([rentGuess, { kind: "ingredient_estimate", severity: "info" }], "this month yet", false, {
       hasBills: true,
+      billedCategoryIds: new Set(["cat-rent"]),
       cards: bills,
     });
 
@@ -80,12 +81,31 @@ describe("findingCards with bills", () => {
   });
 
   test("a store with bills that are all paid shows no rent warning at all", () => {
-    const cards = findingCards([rentGuess], "this month yet", false, { hasBills: true, cards: [] });
+    const cards = findingCards([rentGuess], "this month yet", false, { hasBills: true, billedCategoryIds: new Set(["cat-rent"]), cards: [] });
     expect(cards).toEqual([]);
   });
 
+  test("a store with only a Kuryente bill still hears No Rent recorded this month", () => {
+    // Arrange: one bill, on electricity; rent was paid last month and not yet this month.
+    const kuryente = makeBill({ id: "bill-power", name: "Kuryente", categoryId: "cat-power", amountCents: null, rule: { kind: "monthly", day: 25 } });
+    const input = billFindingsInput([kuryente], occurrencesOf([kuryente]), OCTOBER);
+
+    // Act
+    const cards = findingCards([rentGuess], "this month yet", false, input);
+
+    // Assert
+    expect(cards.map((card) => card.key)).toEqual(["missing:cat-rent"]);
+  });
+
+  test("a stopped Rent bill gives the guess back; a paused one keeps it quiet", () => {
+    const stopped = billFindingsInput([makeBill({ status: "ended" })], [], OCTOBER);
+    expect(findingCards([rentGuess], "this month yet", false, stopped).map((card) => card.key)).toEqual(["missing:cat-rent"]);
+    const paused = billFindingsInput([makeBill({ status: "paused" })], [], OCTOBER);
+    expect(findingCards([rentGuess], "this month yet", false, paused)).toEqual([]);
+  });
+
   test("a store without bills, or bills not read yet, keeps the category guess", () => {
-    expect(findingCards([rentGuess], "this month yet", false, { hasBills: false, cards: [] }).map((card) => card.key)).toEqual([
+    expect(findingCards([rentGuess], "this month yet", false, billFindingsInput([], [], OCTOBER)).map((card) => card.key)).toEqual([
       "missing:cat-rent",
     ]);
     expect(findingCards([rentGuess], "this month yet").map((card) => card.key)).toEqual(["missing:cat-rent"]);

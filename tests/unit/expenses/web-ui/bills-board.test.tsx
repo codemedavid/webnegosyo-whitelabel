@@ -9,12 +9,17 @@ import {
   amountWords,
   buildBillBoard,
   dueWords,
+  lateBillCount,
+  lateCountWords,
+  payDueOn,
+  snoozeDueOns,
   summaryWords,
   type BoardInput,
 } from '@/components/admin/expenses/bills/bill-board-model'
 import type { Occurrence } from '@/lib/expenses/bill-schedule'
 import {
   INTERNET_BILL,
+  INTERNET_BILL_ID,
   KURYENTE_BILL,
   KURYENTE_BILL_ID,
   PAYMENTS,
@@ -27,6 +32,7 @@ import {
 import { TENANT_SLUG } from './ui-fixtures'
 
 const markBillAction = jest.fn()
+const pauseBillAction = jest.fn()
 const unmarkBillAction = jest.fn()
 const toastSuccess = jest.fn()
 
@@ -45,7 +51,7 @@ jest.mock('@/app/actions/expenses', () => ({
 jest.mock('@/app/actions/expense-bills', () => ({
   createBillAction: jest.fn(),
   updateBillAction: jest.fn(),
-  pauseBillAction: jest.fn(),
+  pauseBillAction: (...args: unknown[]) => pauseBillAction(...args),
   resumeBillAction: jest.fn(),
   endBillAction: jest.fn(),
   markBillAction: (...args: unknown[]) => markBillAction(...args),
@@ -67,6 +73,7 @@ async function renderBoard(overrides: Parameters<typeof billsPageData>[0] = {}) 
 
 beforeEach(() => {
   markBillAction.mockReset()
+  pauseBillAction.mockReset()
   unmarkBillAction.mockReset()
   toastSuccess.mockReset()
 })
@@ -118,6 +125,60 @@ describe('buildBillBoard', () => {
     expect(board.stopped.map((entry) => entry.name)).toEqual(['Old rent'])
     expect(board.summary.count).toBe(0)
   })
+
+  it('a bill paused until a later day shows only under Paused: no due dates, nothing to pay', () => {
+    const paused = bill({ status: 'paused', pausedUntil: '2026-11-01' })
+
+    const board = buildBillBoard({ ...INPUT, bills: [paused] })
+
+    expect(board.groups).toEqual([])
+    expect(board.paused.map((entry) => entry.name)).toEqual(['Rent'])
+    expect(board.summary).toEqual({ cents: 0, count: 0, hasEstimate: false })
+    expect(lateBillCount({ ...INPUT, bills: [paused] })).toBe(0)
+  })
+
+  it('once its resume day comes, a paused bill is back on the board and no longer listed as paused', () => {
+    for (const pausedUntil of ['2026-10-20', TODAY]) {
+      const lapsed = bill({ status: 'paused', pausedUntil })
+
+      const board = buildBillBoard({ ...INPUT, bills: [lapsed] })
+
+      expect(board.paused).toEqual([])
+      expect(board.groups.map((group) => [group.label, group.rows.map((row) => row.occurrence.dueOn)])).toEqual([['Later', ['2026-11-05']]])
+    }
+  })
+
+  it('a paused bill still shows what it was paid this month', () => {
+    const paused = bill({ id: INTERNET_BILL_ID, name: 'Internet', status: 'paused', pausedUntil: null, rule: { kind: 'monthly', day: 15 } })
+
+    const board = buildBillBoard({ ...INPUT, bills: [paused] })
+
+    expect(board.groups.map((group) => [group.id, group.rows.map((row) => row.occurrence.state)])).toEqual([['paid', ['paid']]])
+    expect(board.paused.map((entry) => entry.name)).toEqual(['Internet'])
+  })
+
+  it('"Remind me tomorrow" on several late months folds them back into ONE row, like the late row they were', () => {
+    const rent = bill({ startsOn: '2026-08-01' })
+    const lateMonths = ['2026-08-05', '2026-09-05', '2026-10-05']
+    const marks = lateMonths.map((dueOn) => ({ billId: RENT_BILL_ID, dueOn, kind: 'snoozed' as const, snoozedUntil: '2026-10-23' }))
+
+    const board = buildBillBoard({ bills: [rent], marks, payments: [], today: TODAY })
+
+    const rows = board.groups.flatMap((group) => group.rows)
+    expect(rows).toHaveLength(2)
+    const [snoozed] = rows.filter((row) => row.occurrence.state === 'snoozed')
+    expect(snoozed.occurrence).toMatchObject({ dueOn: '2026-10-05', lateCount: 3, lateDueOns: lateMonths, snoozedUntil: '2026-10-23' })
+    expect(lateCountWords(snoozed.occurrence)).toBe('3 payments still open')
+    expect(amountWords(snoozed.occurrence)).toBe('₱45,000')
+    expect(payDueOn(snoozed.occurrence)).toBe('2026-08-05')
+    expect(snoozeDueOns(snoozed.occurrence)).toEqual(lateMonths)
+    expect(board.summary).toEqual({ cents: 4_500_000, count: 3, hasEstimate: false })
+  })
+
+  it('counts late bills the way the Late group shows them', () => {
+    expect(lateBillCount(INPUT)).toBe(1)
+    expect(lateBillCount({ ...INPUT, bills: [KURYENTE_BILL, INTERNET_BILL] })).toBe(0)
+  })
 })
 
 describe('row words', () => {
@@ -142,6 +203,14 @@ describe('row words', () => {
     expect(dueWords({ ...base, state: 'upcoming', dueOn: '2026-11-05' }, TODAY).text).toBe('Due Nov 5')
     expect(dueWords({ ...base, state: 'snoozed', dueOn: '2026-10-20', snoozedUntil: '2026-10-23' }, TODAY).text).toBe('Reminding you tomorrow')
     expect(dueWords({ ...base, state: 'skipped' }, TODAY)).toEqual({ text: 'Nothing to pay', tone: 'calm' })
+  })
+
+  it('an "about every N days" bill last marked long ago says "Not marked in a while", not "97 days late"', () => {
+    const longLate = { ...base, state: 'late' as const, dueOn: '2026-07-17', daysLate: 97 }
+
+    expect(dueWords(longLate, TODAY, 'after_days')).toEqual({ text: 'Not marked in a while', tone: 'late' })
+    expect(dueWords({ ...longLate, daysLate: 60 }, TODAY, 'after_days').text).toBe('60 days late')
+    expect(dueWords(longLate, TODAY, 'monthly').text).toBe('97 days late')
   })
 
   it('says "about" for an estimate and multiplies a collapsed late row', () => {
@@ -200,6 +269,28 @@ describe('BillsWorkspace', () => {
 
     await act(async () => options.action.onClick())
     await waitFor(() => expect(unmarkBillAction).toHaveBeenCalledWith(TENANT_SLUG, { billId: RENT_BILL_ID, dueOn: '2026-10-05' }))
+  })
+
+  it('offers Pause, not Resume, on a bill whose pause has run out', async () => {
+    await renderBoard({ bills: [bill({ status: 'paused', pausedUntil: '2026-10-20' })], payments: [] })
+
+    expect(screen.queryByRole('region', { name: 'Paused' })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More for Rent' }), { key: 'Enter' })
+    expect(await screen.findByRole('menuitem', { name: 'Pause bill' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Resume bill' })).not.toBeInTheDocument()
+  })
+
+  it('the pause dialog refuses a resume day on or before today, in plain words, and sends nothing', async () => {
+    const { BillStatusDialog } = await import('@/components/admin/expenses/bills/bill-status-dialogs')
+    render(<BillStatusDialog target={{ kind: 'pause', bill: RENT_BILL }} onClose={jest.fn()} tenantId="t" tenantSlug={TENANT_SLUG} today={TODAY} />)
+
+    for (const day of [TODAY, '2026-10-01']) {
+      fireEvent.change(screen.getByLabelText(/Resume on/), { target: { value: day } })
+      fireEvent.click(screen.getByRole('button', { name: 'Pause bill' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Pick a day after today, or leave it blank to pause until you resume it.')
+    }
+    expect(pauseBillAction).not.toHaveBeenCalled()
   })
 
   it('invites the first bill with presets when there are none', async () => {

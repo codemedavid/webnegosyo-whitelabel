@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { colors, radius, shadow, spacing, typography } from "../../../theme/colors";
 import { Button } from "../../Button";
@@ -9,11 +9,25 @@ interface PaidForCardProps {
   /** "Rent · October". */
   text: string;
   onPress: () => void;
+  /** "Not for this bill" (asked first). Absent = not offered (a voided expense, no access). */
+  onUnlink?: () => void;
+  isUnlinking?: boolean;
 }
 
-/** "Paid for: Rent · October" on an expense that paid a bill; opens that bill. */
-export function PaidForCard({ text, onPress }: PaidForCardProps) {
-  return (
+/** The question before a wrong link is taken off: the expense itself never changes. */
+export function confirmUnlink(text: string, onConfirm: () => void): void {
+  Alert.alert("Not for this bill?", `This expense stays as it is. ${text} goes back to Bills to pay.`, [
+    { text: "Cancel", style: "cancel" },
+    { text: "Not for this bill", style: "destructive", onPress: onConfirm },
+  ]);
+}
+
+/**
+ * "Paid for: Rent · October" on an expense that paid a bill; opens that bill.
+ * "Not for this bill" undoes a wrong link (asked first).
+ */
+export function PaidForCard({ text, onPress, onUnlink, isUnlinking = false }: PaidForCardProps) {
+  const link = (
     <TouchableOpacity
       style={styles.card}
       onPress={onPress}
@@ -30,6 +44,24 @@ export function PaidForCard({ text, onPress }: PaidForCardProps) {
         <Icon name="chevron" size={16} color={colors.textTertiary} />
       </View>
     </TouchableOpacity>
+  );
+  if (!onUnlink) return link;
+  return (
+    <View style={styles.paidFor}>
+      {link}
+      <View style={styles.unlink}>
+        <Button
+          label="Not for this bill"
+          tone="ghost"
+          size="sm"
+          fullWidth={false}
+          onPress={() => confirmUnlink(text, onUnlink)}
+          isLoading={isUnlinking}
+          disabled={isUnlinking}
+          testID="expense-unlink-bill"
+        />
+      </View>
+    </View>
   );
 }
 
@@ -60,6 +92,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     ...shadow.sm,
   },
+  paidFor: { gap: spacing.xs },
+  unlink: { alignItems: "flex-end" },
   label: { ...typography.caption, color: colors.textMuted },
   value: { flexDirection: "row", alignItems: "center", gap: spacing.xs, flexShrink: 1 },
   valueText: { ...typography.body, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },

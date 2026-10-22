@@ -29,7 +29,7 @@ interface Call {
   ops: [string, unknown[]][];
 }
 
-const BUILDER_METHODS = ["select", "insert", "update", "delete", "eq", "is", "not", "in", "or", "gte", "lte", "order", "range", "limit", "single"];
+const BUILDER_METHODS = ["select", "insert", "update", "upsert", "delete", "eq", "is", "not", "in", "or", "gte", "lte", "order", "range", "limit", "single"];
 
 /** A chainable stand-in for supabase-js: awaiting a builder takes the table's next scripted answer. */
 function fakeDb(script: Record<string, Answer[]>) {
@@ -78,6 +78,7 @@ const billRow = (overrides: Partial<BillRow> = {}): BillRow => ({
   remind_days_before: 3,
   status: "active",
   paused_until: null,
+  paused_on: null,
   created_at: "2026-10-22T01:00:00Z",
   ...overrides,
 });
@@ -135,6 +136,8 @@ describe("toBill", () => {
     expect(bill.rule).toEqual({ kind: "twice_monthly", days: [15, "last"] });
     expect(bill.amountCents).toBeNull();
     expect(toBill(billRow()).amountCents).toBe(1_500_000);
+    expect(toBill(billRow({ status: "paused", paused_on: "2026-10-01" })).pausedOn).toBe("2026-10-01");
+    expect(toBill(billRow()).pausedOn).toBeNull();
   });
 
   it("refuses a row the shape CHECK should never have let in", () => {
@@ -222,44 +225,101 @@ describe("bills", () => {
     await expect(createBill(db, "t1", input(), TODAY)).rejects.toThrow(EXPENSE_COPY.noAccess);
   });
 
-  it("an edit that matches nothing says the bill is gone", async () => {
-    const { db } = fakeDb({ expense_bills: [{ data: [], error: null }] });
+  it("an edit of a bill that can't be read says the bill is gone", async () => {
+    const { db, opsOf } = fakeDb({ expense_bills: [{ data: [], error: null }] });
     await expect(updateBill(db, "t1", "b1", input(), TODAY)).rejects.toThrow(BILL_COPY.billGone);
+    expect(opsOf("update")).toHaveLength(0);
   });
 
-  it("edits a bill that started more than 400 days ago when given its saved start", async () => {
-    const old = input({ startsOn: "2024-01-01" });
-    const refused = fakeDb({});
-    await expect(updateBill(refused.db, "t1", "b1", old, TODAY)).rejects.toThrow("Pick a start date within the last 400 days");
-    expect(refused.calls).toHaveLength(0);
+  it("an edit that matches nothing says the bill is gone", async () => {
+    const { db } = fakeDb({ expense_bills: [{ data: [billRow()], error: null }, { data: [], error: null }] });
+    await expect(updateBill(db, "t1", "b1", input({ amountCents: 1_600_000 }), TODAY)).rejects.toThrow(BILL_COPY.billGone);
+  });
 
-    const { db, opsOf } = fakeDb({ expense_bills: [{ data: [billRow({ starts_on: "2024-01-01" })], error: null }] });
-    const bill = await updateBill(db, "t1", "b1", old, TODAY, "2024-01-01");
+  it("checks a NEW start date against the STORED one (L1): an old bill keeps its own, a new old date is refused", async () => {
+    const refused = fakeDb({ expense_bills: [{ data: [billRow({ starts_on: "2026-10-01" })], error: null }] });
+    await expect(updateBill(refused.db, "t1", "b1", input({ startsOn: "2024-01-01" }), TODAY)).rejects.toThrow(BILL_COPY.startTooOld);
+    expect(refused.opsOf("update")).toHaveLength(0);
+
+    const stored = billRow({ starts_on: "2024-01-01" });
+    const { db, opsOf } = fakeDb({ expense_bills: [{ data: [stored], error: null }, { data: [stored], error: null }] });
+    const bill = await updateBill(db, "t1", "b1", input({ startsOn: "2024-01-01", amountCents: 1_600_000 }), TODAY);
     expect(bill.startsOn).toBe("2024-01-01");
-    expect(opsOf("update")[0][0]).toMatchObject({ starts_on: "2024-01-01" });
+    expect(opsOf("update")[0][0]).toMatchObject({ starts_on: "2024-01-01", amount_cents: 1_600_000 });
   });
 
-  it("pause, resume and end write only the status columns", async () => {
+  it("moving rent from the 1st to the 5th starts at the next 5th, so no month turns late (H1)", async () => {
+    const { db, calls, opsOf } = fakeDb({
+      expense_bills: [{ data: [billRow({ repeat_days: [1], starts_on: "2026-08-01" })], error: null }, { data: [billRow()], error: null }],
+      expenses: [{ data: [{ id: "e1", bill_id: "b1", bill_due_on: "2026-10-01", amount_cents: "1500000", spent_on: "2026-10-01" }], error: null }],
+      expense_bill_marks: [{ data: [], error: null }],
+    });
+    await updateBill(db, "t1", "b1", input({ rule: { kind: "monthly", day: 5 }, startsOn: "2026-08-01" }), TODAY);
+    expect(opsOf("update")[0][0]).toMatchObject({ repeat_days: [5], starts_on: "2026-11-05" });
+    const bounded = calls.filter((call) => call.table !== "expense_bills").map((call) => [call.table, call.ops.find(([name]) => name === "limit")?.[1]]);
+    expect(bounded).toEqual([["expenses", [1]], ["expense_bill_marks", [1]]]);
+  });
+
+  it("an edit that keeps the rule and start date reads no history", async () => {
+    const { db, calls } = fakeDb({ expense_bills: [{ data: [billRow()], error: null }, { data: [billRow()], error: null }] });
+    await updateBill(db, "t1", "b1", input({ amountCents: 1_600_000 }), TODAY);
+    expect(calls.map((call) => call.table)).toEqual(["expense_bills", "expense_bills"]);
+  });
+
+  it("a new rule with no due date left before the end date asks for a later end date", async () => {
+    const { db, opsOf } = fakeDb({
+      expense_bills: [{ data: [billRow({ repeat_days: [1], starts_on: "2026-08-01" })], error: null }],
+      expenses: [{ data: [], error: null }],
+      expense_bill_marks: [{ data: [], error: null }],
+    });
+    const edit = input({ rule: { kind: "monthly", day: 5 }, startsOn: "2026-08-01", endsOn: "2026-10-31" });
+    await expect(updateBill(db, "t1", "b1", edit, TODAY)).rejects.toThrow(BILL_COPY.noDueLeft);
+    expect(opsOf("update")).toHaveLength(0);
+  });
+
+  it("pause and end write only the status columns (the database stamps paused_on)", async () => {
     const { db, opsOf } = fakeDb({
       expense_bills: [
-        { data: [billRow({ status: "paused", paused_until: "2026-12-01" })], error: null },
-        { data: [billRow()], error: null },
+        { data: [billRow({ status: "paused", paused_until: "2026-12-01", paused_on: TODAY })], error: null },
         { data: [billRow({ status: "ended" })], error: null },
       ],
     });
-    expect((await pauseBill(db, "t1", "b1", "2026-12-01")).status).toBe("paused");
-    expect((await resumeBill(db, "t1", "b1")).status).toBe("active");
+    expect(await pauseBill(db, "t1", "b1", "2026-12-01", TODAY)).toMatchObject({ status: "paused", pausedOn: TODAY });
     expect((await endBill(db, "t1", "b1")).status).toBe("ended");
     expect(opsOf("update").map(([columns]) => columns)).toEqual([
       { status: "paused", paused_until: "2026-12-01" },
-      { status: "active", paused_until: null },
       { status: "ended", paused_until: null },
     ]);
   });
 
+  it.each([TODAY, "2026-10-21"])("never pauses until a day already here (%s) (L7)", async (until) => {
+    const { db, calls } = fakeDb({});
+    await expect(pauseBill(db, "t1", "b1", until, TODAY)).rejects.toThrow(BILL_COPY.pauseInPast);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("resumes from the next due date on, so the paused months never come back as late (H2)", async () => {
+    const { db, opsOf } = fakeDb({
+      expense_bills: [
+        { data: [billRow({ status: "paused", paused_on: "2026-08-20", starts_on: "2026-08-01" })], error: null },
+        { data: [billRow({ starts_on: "2026-11-05" })], error: null },
+      ],
+    });
+    expect((await resumeBill(db, "t1", "b1", TODAY)).status).toBe("active");
+    expect(opsOf("update").map(([columns]) => columns)).toEqual([{ status: "active", paused_until: null, starts_on: "2026-11-05" }]);
+  });
+
+  it("resuming a bill with no due date left before its end date asks for a later end date", async () => {
+    const { db, opsOf } = fakeDb({
+      expense_bills: [{ data: [billRow({ status: "paused", starts_on: "2026-08-01", ends_on: "2026-10-31" })], error: null }],
+    });
+    await expect(resumeBill(db, "t1", "b1", TODAY)).rejects.toThrow(BILL_COPY.noDueLeft);
+    expect(opsOf("update")).toHaveLength(0);
+  });
+
   it("a stopped bill stays as it is", async () => {
     const { db } = fakeDb({ expense_bills: [{ data: null, error: { code: "42501", message: "This bill was stopped and cannot change" } }] });
-    await expect(resumeBill(db, "t1", "b1")).rejects.toThrow(BILL_COPY.billStopped);
+    await expect(endBill(db, "t1", "b1")).rejects.toThrow(BILL_COPY.billStopped);
   });
 
   it("a network failure is reported as offline", async () => {
@@ -275,30 +335,30 @@ describe("bills", () => {
 });
 
 describe("marks", () => {
-  it("replaces any mark on the due date, then inserts the new one", async () => {
+  it("marks a due date with ONE upsert, so a failed write never loses the old mark (L3)", async () => {
     const { db, calls, opsOf } = fakeDb({
-      expense_bill_marks: [
-        { data: null, error: null },
-        { data: [{ bill_id: "b1", due_on: "2026-10-05", kind: "snoozed", snoozed_until: "2026-10-23" }], error: null },
-      ],
+      expense_bill_marks: [{ data: [{ bill_id: "b1", due_on: "2026-10-05", kind: "snoozed", snoozed_until: "2026-10-23" }], error: null }],
     });
     const mark = await markBill(db, "t1", { billId: "b1", dueOn: "2026-10-05", kind: "snoozed", snoozedUntil: "2026-10-23" });
     expect(mark).toEqual({ billId: "b1", dueOn: "2026-10-05", kind: "snoozed", snoozedUntil: "2026-10-23" });
-    expect(calls.map((call) => call.ops[0][0])).toEqual(["delete", "insert"]);
-    expect(opsOf("insert")[0][0]).toEqual({ tenant_id: "t1", bill_id: "b1", due_on: "2026-10-05", kind: "snoozed", snoozed_until: "2026-10-23" });
+    expect(calls.map((call) => call.ops[0][0])).toEqual(["upsert"]);
+    expect(opsOf("upsert")[0]).toEqual([
+      { tenant_id: "t1", bill_id: "b1", due_on: "2026-10-05", kind: "snoozed", snoozed_until: "2026-10-23" },
+      { onConflict: "bill_id,due_on" },
+    ]);
   });
 
   it("a skip never carries a reminder date, and a snooze needs one", async () => {
     const { db, opsOf } = fakeDb({
-      expense_bill_marks: [{ data: null, error: null }, { data: [{ bill_id: "b1", due_on: "2026-10-05", kind: "skipped", snoozed_until: null }], error: null }],
+      expense_bill_marks: [{ data: [{ bill_id: "b1", due_on: "2026-10-05", kind: "skipped", snoozed_until: null }], error: null }],
     });
     await markBill(db, "t1", { billId: "b1", dueOn: "2026-10-05", kind: "skipped", snoozedUntil: "2026-10-23" });
-    expect(opsOf("insert")[0][0]).toMatchObject({ kind: "skipped", snoozed_until: null });
+    expect(opsOf("upsert")[0][0]).toMatchObject({ kind: "skipped", snoozed_until: null });
     await expect(markBill(db, "t1", { billId: "b1", dueOn: "2026-10-05", kind: "snoozed" })).rejects.toThrow("Pick when to be reminded.");
   });
 
   it("a mark that comes back empty is refused", async () => {
-    const { db } = fakeDb({ expense_bill_marks: [{ data: null, error: null }, { data: [], error: null }] });
+    const { db } = fakeDb({ expense_bill_marks: [{ data: [], error: null }] });
     await expect(markBill(db, "t1", { billId: "b1", dueOn: "2026-10-05", kind: "skipped" })).rejects.toThrow(BILL_COPY.billGone);
   });
 
@@ -366,6 +426,20 @@ describe("paying a bill", () => {
 });
 
 describe("describeBillError", () => {
+  it.each([
+    [{ code: "22023", message: "pause_until_past" }, "pauseInPast"],
+    [{ code: "42501", message: "That bill isn't one you can see" }, "notVisible"],
+    [{ code: "42501", message: "A branch bill is paid from its own branch" }, "otherBranch"],
+  ] as const)("names %j in plain words", (error, key) => {
+    expect(describeBillError(error)).toBe(BILL_COPY[key]);
+  });
+
+  it("says them the way the owner reads them", () => {
+    expect(BILL_COPY.notVisible).toBe("That bill belongs to another branch, so it can't be marked here.");
+    expect(BILL_COPY.otherBranch).toBe("Pay this bill from its own branch.");
+    expect(BILL_COPY.pauseInPast).toBe("Pick a day after today.");
+  });
+
   it("falls back to the expense wording", () => {
     expect(describeBillError({ code: "42501", message: "new row violates row-level security policy" })).toBe(EXPENSE_COPY.noAccess);
   });

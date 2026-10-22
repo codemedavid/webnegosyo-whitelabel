@@ -4,8 +4,8 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { listBills } from '@/lib/expenses/bills/bills-read'
-import type { Expense } from '@/lib/expenses/types'
+import { readBillBoard } from '@/lib/expenses/bills/bills-read'
+import { lateBillCount } from '@/components/admin/expenses/bills/bill-board-model'
 import type { ExpensesOutlet } from '@/components/admin/expenses/expenses-page-data'
 
 interface OutletRow {
@@ -40,17 +40,31 @@ export function outletLists(rows: readonly OutletRow[]): OutletLists {
   }
 }
 
+export interface BillsGlance {
+  /** Bill id → name, for the table's "Bill" badge and "Paid for". */
+  billNames: Record<string, string>
+  /** Late bills today, for the "N late" on the Bills to pay tab. */
+  lateCount: number
+}
+
+const NO_BILLS: BillsGlance = { billNames: {}, lateCount: 0 }
+
 /**
- * Bill names for the expenses that pay a bill (the table's "Bill" badge).
- * Advisory: the book still opens without them; the badge then says "Bill".
+ * What the expense book shows of Bills to pay: bill names and how many are
+ * late. The same bounded read as the Bills tab (bills + a ~6-month window of
+ * marks and bill payments, three small indexed queries in parallel), counted
+ * by the same engine, so the two tabs never disagree.
+ * Advisory: the book still opens without it (badge says "Bill", no late count).
  */
-export async function readBillNames(db: SupabaseClient, tenantId: string, expenses: readonly Expense[]): Promise<Record<string, string>> {
-  if (!expenses.some((expense) => expense.billId !== null)) return {}
+export async function readBillsGlance(db: SupabaseClient, tenantId: string, today: string): Promise<BillsGlance> {
   try {
-    const bills = await listBills(db, { tenantId })
-    return Object.fromEntries(bills.map((bill) => [bill.id, bill.name]))
+    const board = await readBillBoard(db, tenantId, today)
+    return {
+      billNames: Object.fromEntries(board.bills.map((bill) => [bill.id, bill.name])),
+      lateCount: lateBillCount({ ...board, today }),
+    }
   } catch (error) {
-    console.error('[expenses] bill names unavailable', error instanceof Error ? error.message : error)
-    return {}
+    console.error('[expenses] bills glance unavailable', error instanceof Error ? error.message : error)
+    return NO_BILLS
   }
 }

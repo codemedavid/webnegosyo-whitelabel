@@ -4,14 +4,28 @@
  * October" linking back to Bills to pay.
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ExpensesTabs, expensesTabHref, readExpensesTab, readMonthParam } from '@/components/admin/expenses/expenses-tabs'
 import { resolveMonth } from '@/components/admin/expenses/expense-format'
 import type { ExpensesPageData } from '@/components/admin/expenses/expenses-page-data'
 import { RENT, RENT_BILL_ID } from './bills-fixtures'
 import { CATEGORIES, TENANT_ID, TENANT_SLUG, expense } from './ui-fixtures'
 
-jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn(), replace: jest.fn(), push: jest.fn() }) }))
+const refresh = jest.fn()
+const unlinkExpenseFromBillAction = jest.fn()
+
+jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh, replace: jest.fn(), push: jest.fn() }) }))
+jest.mock('@/app/actions/expense-bills', () => ({
+  createBillAction: jest.fn(),
+  updateBillAction: jest.fn(),
+  pauseBillAction: jest.fn(),
+  resumeBillAction: jest.fn(),
+  endBillAction: jest.fn(),
+  markBillAction: jest.fn(),
+  unmarkBillAction: jest.fn(),
+  linkExpenseToBillAction: jest.fn(),
+  unlinkExpenseFromBillAction: (...args: unknown[]) => unlinkExpenseFromBillAction(...args),
+}))
 jest.mock('@/app/actions/expenses', () => ({
   recordExpenseAction: jest.fn(),
   voidExpenseAction: jest.fn(),
@@ -35,7 +49,16 @@ const TODAY = '2026-10-21'
 const rentPayment = expense({ categoryId: RENT.id, amountCents: 1_500_000, note: 'Upa', billId: RENT_BILL_ID, billDueOn: '2026-10-05' })
 const plain = expense({ note: 'Petron 11kg' })
 
-function pageData(month: string | null, billNames: Record<string, string> = { [RENT_BILL_ID]: 'Rent' }): ExpensesPageData {
+beforeEach(() => {
+  refresh.mockReset()
+  unlinkExpenseFromBillAction.mockReset()
+})
+
+function pageData(
+  month: string | null,
+  billNames: Record<string, string> = { [RENT_BILL_ID]: 'Rent' },
+  lateBillCount?: number,
+): ExpensesPageData {
   return {
     tenantId: TENANT_ID,
     tenantSlug: TENANT_SLUG,
@@ -57,6 +80,7 @@ function pageData(month: string | null, billNames: Record<string, string> = { [R
     tracksStock: false,
     canSortPayouts: true,
     initial: { add: null, view: null, categoryId: null, spentOn: null },
+    ...(lateBillCount === undefined ? {} : { lateBillCount }),
   }
 }
 
@@ -91,11 +115,23 @@ describe('tab URLs', () => {
 })
 
 describe('the expense book', () => {
-  async function renderWorkspace(month: string | null, billNames?: Record<string, string>) {
+  async function renderWorkspace(month: string | null, billNames?: Record<string, string>, lateBillCount?: number) {
     // next/jest does not hoist jest.mock above static imports: load the workspace after the mocks.
     const { ExpensesWorkspace } = await import('@/components/admin/expenses/expenses-workspace')
-    return render(<ExpensesWorkspace data={pageData(month, billNames)} />)
+    return render(<ExpensesWorkspace data={pageData(month, billNames, lateBillCount)} />)
   }
+
+  it('shows the late bills on the Bills to pay tab from the book too', async () => {
+    await renderWorkspace(null, undefined, 2)
+
+    expect(screen.getByRole('link', { name: /Bills to pay/ })).toHaveTextContent('2 late')
+  })
+
+  it('shows no late badge when nothing is late, or the bills could not be read', async () => {
+    await renderWorkspace(null)
+
+    expect(screen.getByRole('link', { name: 'Bills to pay' })).not.toHaveTextContent('late')
+  })
 
   it('links to Bills to pay, keeping the month being looked at', async () => {
     await renderWorkspace('2026-09')
@@ -135,5 +171,45 @@ describe('the expense book', () => {
     const link = await screen.findByRole('link', { name: 'Rent · October' })
     expect(link).toHaveAttribute('href', '/sukad/admin/expenses?tab=bills')
     expect(screen.getByText('Paid for')).toBeInTheDocument()
+  })
+
+  it('"Not for this bill" takes a wrong link off after a confirm, and refreshes', async () => {
+    unlinkExpenseFromBillAction.mockResolvedValue({ ok: true, data: { ...rentPayment, billId: null, billDueOn: null } })
+    await renderWorkspace(null)
+    fireEvent.click(within(screen.getByText('Upa').closest('tr') as HTMLElement).getByRole('button', { name: /^Open/ }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Not for this bill' }))
+    expect(unlinkExpenseFromBillAction).not.toHaveBeenCalled()
+    expect(screen.getByText(/isn’t for Rent · October\?/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, take it off' }))
+
+    await waitFor(() => expect(unlinkExpenseFromBillAction).toHaveBeenCalledWith(TENANT_SLUG, { expenseId: rentPayment.id }))
+    await waitFor(() => expect(refresh).toHaveBeenCalled())
+  })
+
+  it('"Not for this bill" can be called off, and a refusal is shown in words', async () => {
+    unlinkExpenseFromBillAction.mockResolvedValue({ ok: false, error: 'Only the owner can see expenses.' })
+    await renderWorkspace(null)
+    fireEvent.click(within(screen.getByText('Upa').closest('tr') as HTMLElement).getByRole('button', { name: /^Open/ }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Not for this bill' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+    expect(screen.queryByRole('button', { name: 'Yes, take it off' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not for this bill' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, take it off' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only the owner can see expenses.')
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('offers no "Not for this bill" on an expense that pays no bill', async () => {
+    await renderWorkspace(null)
+    fireEvent.click(within(screen.getByText('Petron 11kg').closest('tr') as HTMLElement).getByRole('button', { name: /^Open/ }))
+
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByText('Paid from')).toBeInTheDocument()
+    expect(within(sheet).queryByText('Paid for')).not.toBeInTheDocument()
+    expect(within(sheet).queryByRole('button', { name: 'Not for this bill' })).not.toBeInTheDocument()
   })
 })

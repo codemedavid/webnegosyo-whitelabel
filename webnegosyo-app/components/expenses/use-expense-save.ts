@@ -28,7 +28,7 @@ import {
   undoExpense,
 } from "../../lib/expenses/live-expense-queue";
 import type { CapturedReceipt } from "../../lib/expenses/receipt-files";
-import type { BillPayContext } from "../../lib/expenses/bills-screen";
+import { billPaymentOutletId, type BillPayContext } from "../../lib/expenses/bills-screen";
 import { buildUndoEntry } from "../../lib/expenses/undo-entry";
 import { knownBills, repeatOffer } from "../../lib/expenses/bill-ways-in";
 import { useExpenseOutlet, useExpenseTenant, useInvalidateExpenses } from "../../lib/expenses/use-expenses";
@@ -78,10 +78,10 @@ function payloadFor(
   return {
     kind: "book",
     createdByName: actorName,
-    // A bill's payment is filed on the bill's own branch (or the whole store).
+    // A branch bill's payment is filed on that branch; a store-wide bill's where this person records.
     draft: toBookDraft(form, {
       clientRequestId,
-      outletId: bill && bill.outletId !== undefined ? bill.outletId : input.outletId,
+      outletId: bill ? billPaymentOutletId(bill, input.outletId) : input.outletId,
       tracksStock: input.tracksStock,
       category,
       bill,

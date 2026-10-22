@@ -2,6 +2,8 @@ import { BILL_TODAY, billOf, markOf, paymentOf } from "./bills-fixtures";
 import {
   amountChips,
   amountText,
+  billPill,
+  billPaymentOutletId,
   buildBillsView,
   detailBillLink,
   dueLine,
@@ -11,9 +13,13 @@ import {
   linkWindowMonths,
   paidForText,
   pauseChoices,
+  pauseRefusal,
+  payBranchLine,
   payContextFor,
   payForLine,
   shortDate,
+  skipChoice,
+  snoozeDueOns,
   stillToPayLine,
   stopNote,
   targetDueOn,
@@ -197,7 +203,11 @@ describe("bill sheet words", () => {
       paidToName: "Aling Nena",
       supplierId: null,
       outletId: null,
+      branchName: null,
     });
+    expect(payContextFor(billOf({ outletId: "katipunan" }), "2026-10-24", payments, [{ id: "katipunan", name: "Katipunan" }]).branchName).toBe(
+      "Katipunan",
+    );
     expect(payContextFor(rent, "2026-10-24", payments)).toMatchObject({ amountCents: 1_500_000, usualCents: null, lastCents: null });
   });
 
@@ -223,6 +233,35 @@ describe("bill sheet words", () => {
       { key: "next", label: "Until 1 Nov", until: "2026-11-01" },
       { key: "after", label: "Until 1 Dec", until: "2026-12-01" },
     ]);
+  });
+
+  it("refuses a resume day on or before today, in the same words as the service", () => {
+    expect(pauseRefusal("2026-10-22", today)).toBe("Pick a day after today.");
+    expect(pauseRefusal("2026-10-01", today)).toBe("Pick a day after today.");
+    expect(pauseRefusal("2026-10-23", today)).toBeNull();
+    expect(pauseRefusal(null, today)).toBeNull();
+  });
+
+  it("files a branch bill's payment on that branch; a store-wide one where the person records", () => {
+    expect(billPaymentOutletId({ outletId: "katipunan" }, "maginhawa")).toBe("katipunan");
+    expect(billPaymentOutletId({ outletId: null }, "maginhawa")).toBe("maginhawa");
+    expect(billPaymentOutletId({}, null)).toBeNull();
+  });
+
+  it("names the locked branch on the pay sheet, never for a store-wide bill", () => {
+    expect(payBranchLine({ outletId: "katipunan", branchName: "Katipunan" })).toBe("Branch: Katipunan (this bill's branch)");
+    expect(payBranchLine({ outletId: "katipunan" })).toBe("Branch: this bill's branch");
+    expect(payBranchLine({ outletId: null })).toBeNull();
+  });
+
+  it("an \"about every N days\" bill last marked long ago says \"Not marked in a while\"", () => {
+    const lpg = billOf({ id: "bill-lpg", name: "LPG", amountCents: null, rule: { kind: "after_days", every: 10 } });
+    const late = { ...view().open[0].occurrence, billId: "bill-lpg", state: "late" as const, dueOn: "2026-07-17", daysLate: 97 };
+    expect(billPill(late, today, lpg.rule)).toEqual({ text: "Not marked in a while", tone: "late" });
+    expect(billPill({ ...late, daysLate: 60 }, today, lpg.rule).text).toBe("60 days late");
+    expect(billPill(late, today, rent.rule).text).toBe("97 days late");
+    const board = buildBillsView({ bills: [billOf({ ...lpg, startsOn: "2026-07-17" })], payments: [], marks: [], today });
+    expect(board.open[0].pill.text).toBe("Not marked in a while");
   });
 
   it("reads an estimate as about", () => {
@@ -252,6 +291,17 @@ describe("linkCandidates", () => {
     expect(linkCandidates(expenses, kuryente, due)).toEqual([]);
   });
 
+  it("offers a branch bill only that branch's expenses; a store-wide bill any branch's", () => {
+    const expenses = [
+      homeExpense({ id: "here", categoryId: "electricity", spentOn: due, outletId: "katipunan" }),
+      homeExpense({ id: "there", categoryId: "electricity", spentOn: due, outletId: "maginhawa" }),
+      homeExpense({ id: "store", categoryId: "electricity", spentOn: due, outletId: null }),
+    ];
+    const ids = (bill: Parameters<typeof linkCandidates>[1]) => linkCandidates(expenses, bill, due).map((expense) => expense.id).sort();
+    expect(ids({ ...kuryente, outletId: "katipunan" })).toEqual(["here"]);
+    expect(ids(kuryente)).toEqual(["here", "store", "there"]);
+  });
+
   it("reads the months the window touches", () => {
     expect(linkWindowMonths("2026-10-15")).toEqual(["2026-10"]);
     expect(linkWindowMonths("2026-10-03")).toEqual(["2026-09", "2026-10"]);
@@ -277,6 +327,15 @@ describe("detailBillLink", () => {
       kind: "paid_for",
       text: "Rent · October",
       href: "/(main)/expense-bills?bill=bill-rent",
+      canUnlink: true,
+    });
+  });
+
+  it("offers Not for this bill only on a recorded expense", () => {
+    const voided = homeExpense({ billId: "bill-rent", billDueOn: "2026-10-24", categoryId: "rent", status: "void" });
+    expect(detailBillLink({ expense: voided, category: rentCategory, bills: [rent], canManage: true })).toMatchObject({
+      kind: "paid_for",
+      canUnlink: false,
     });
   });
 
@@ -296,5 +355,65 @@ describe("detailBillLink", () => {
     expect(detailBillLink({ expense: { ...expense, status: "void" }, category: rentCategory, bills: [], canManage: true })).toBeNull();
     expect(detailBillLink({ expense, category: rentCategory, bills: [rent], canManage: true })).toBeNull();
     expect(detailBillLink({ expense, category: rentCategory, bills: [], canManage: false })).toBeNull();
+  });
+});
+
+describe("acting on a row of several late dates", () => {
+  const lateInternet = (result = view()) => rowsOf("late", result).find((row) => row.bill.id === "bill-internet")!;
+  const snoozedAll = (until: string) =>
+    ["2026-08-05", "2026-09-05", "2026-10-05"].map((dueOn) => markOf({ billId: "bill-internet", dueOn, kind: "snoozed", snoozedUntil: until }));
+
+  it("Remind me tomorrow quiets every late date in the row, a single one only itself", () => {
+    expect(snoozeDueOns(lateInternet().occurrence)).toEqual(["2026-08-05", "2026-09-05", "2026-10-05"]);
+    const kuryenteRow = rowsOf("late").find((row) => row.bill.id === "bill-kuryente")!;
+    expect(snoozeDueOns(kuryenteRow.occurrence)).toEqual(["2026-10-15"]);
+  });
+
+  it("a bill whose late dates are all snoozed shows ONCE, still saying how many", () => {
+    // Act
+    const result = view({ marks: snoozedAll("2026-10-23") });
+
+    // Assert
+    const rows = result.groups.flatMap((group) => group.rows).filter((row) => row.bill.id === "bill-internet");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].pill).toEqual({ text: "Reminding tomorrow", tone: "snoozed" });
+    expect(rows[0].note).toBe("3 months not marked");
+    expect(targetDueOn(rows[0].occurrence)).toBe("2026-08-05");
+    // Snoozing again (or from the reminder) covers the same three.
+    expect(snoozeDueOns(rows[0].occurrence)).toEqual(["2026-08-05", "2026-09-05", "2026-10-05"]);
+  });
+
+  it("once the snooze runs out the dates are late again, in one row", () => {
+    const result = view({ marks: snoozedAll("2026-10-22") });
+    expect(lateInternet(result).occurrence.lateCount).toBe(3);
+  });
+
+  it("Nothing to pay names the ONE month it skips when the row covers several", () => {
+    expect(skipChoice(internet, lateInternet().occurrence, today)).toEqual({
+      dueOn: "2026-08-05",
+      label: "Nothing to pay for August",
+      done: "Internet: nothing to pay for August",
+    });
+    const kuryenteRow = rowsOf("late").find((row) => row.bill.id === "bill-kuryente")!;
+    expect(skipChoice(kuryente, kuryenteRow.occurrence, today)).toEqual({
+      dueOn: "2026-10-15",
+      label: "Nothing to pay this time",
+      done: "Kuryente: nothing to pay this time",
+    });
+  });
+
+  it("a weekly bill names the day instead of the month", () => {
+    const weekly = billOf({ id: "bill-ice", name: "Ice", rule: { kind: "weekly", every: 1, weekday: 4 }, startsOn: "2026-10-01" });
+    const result = view({ bills: [weekly] });
+    const row = rowsOf("late", result)[0];
+    expect(skipChoice(weekly, row.occurrence, today).label).toBe("Nothing to pay for 1 Oct");
+  });
+
+  it("after skipping the oldest, the rest still show as one late row", () => {
+    const result = view({ marks: [markOf({ billId: "bill-internet", dueOn: "2026-08-05", kind: "skipped" })] });
+    const row = lateInternet(result);
+    expect(row.occurrence.lateCount).toBe(2);
+    expect(row.note).toBe("2 months not marked");
+    expect(targetDueOn(row.occurrence)).toBe("2026-09-05");
   });
 });

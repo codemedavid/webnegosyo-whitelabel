@@ -38,6 +38,11 @@ export const EXPENSE_MESSAGES = {
   billDueAlreadyPaid: 'That due date is already paid.',
   billMarkGone: 'That was already undone.',
   billsReadFailed: "We couldn't load your bills. Please try again.",
+  billStartTooOld: 'Pick a start date within the last 400 days.',
+  billNoDueLeft: 'This bill has no due date left before its end date. Pick a later end date, or stop the bill.',
+  billPauseInPast: 'Pick a day after today.',
+  billNotVisible: "That bill belongs to another branch, so it can't be marked here.",
+  billOtherBranch: 'Pay this bill from its own branch.',
 } as const
 
 export interface PostgresErrorLike {
@@ -69,6 +74,10 @@ const KNOWN_REFUSALS: ReadonlyArray<readonly [string, string]> = [
   // Bills to pay (20261022140000).
   ['expenses_bill_due_recorded_uq', EXPENSE_MESSAGES.billDueAlreadyPaid],
   ['This bill was stopped', EXPENSE_MESSAGES.billStopped],
+  // Bills to pay fixes (20261022150000).
+  ['pause_until_past', EXPENSE_MESSAGES.billPauseInPast],
+  ["That bill isn't one you can see", EXPENSE_MESSAGES.billNotVisible],
+  ['A branch bill is paid from its own branch', EXPENSE_MESSAGES.billOtherBranch],
 ]
 
 /** The sentence for a database refusal; `unknown` when it is not one we expect. */

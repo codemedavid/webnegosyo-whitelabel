@@ -110,7 +110,7 @@ export function BillEditorSheet({ mode, categories, branches, defaultOutletId, p
       setError({ field: check.field, message: check.message });
       return;
     }
-    const result = mode.kind === "edit" ? await writes.update(mode.bill.id, check.input, today, mode.bill.startsOn) : await writes.create(check.input, today);
+    const result = mode.kind === "edit" ? await writes.update(mode.bill.id, check.input, today) : await writes.create(check.input, today);
     if (!result.ok) {
       if (result.message) setError({ field: null, message: result.message });
       return;

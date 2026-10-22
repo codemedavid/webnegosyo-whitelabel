@@ -12,6 +12,7 @@ import {
   OPEN_STATES,
   billsDue,
   estimateCents,
+  isBillPaused,
   monthKeyOf,
   nextDueDates,
   ruleSentence,
@@ -24,6 +25,7 @@ import {
   type StillToPay,
 } from "./bill-schedule";
 import { billHref, repeatExpenseHref } from "./bills-route";
+import { isPendingPayment } from "./bills-screen-pending";
 import { shortCategoryName } from "./category-look";
 import { formatCents } from "./expense-format";
 import { addDays, daysBetween } from "./manila-date";
@@ -43,6 +45,14 @@ export const WEEK_DAYS_AHEAD = 6;
 export const LINK_WINDOW_DAYS = 10;
 /** The Expenses home card lists at most this many bills. */
 export const HOME_CARD_ROWS = 3;
+/**
+ * The board reads payments ~120 days back, so an "about every N days" bill
+ * whose last payment is older looks very late. Past this many days it reads
+ * "Not marked in a while" instead of a day count that may not be true.
+ */
+export const LONG_LATE_DAYS = 60;
+/** The service's words for a resume day already here (bills-service `BILL_COPY.pauseInPast`). */
+export const PAUSE_IN_PAST = "Pick a day after today.";
 
 function partsOf(date: string): { year: number; month: number; day: number } {
   const [year, month, day] = date.split("-").map(Number);
@@ -95,10 +105,14 @@ export interface BillPill {
   tone: BillPillTone;
 }
 
-/** The state in words: "2 days late", "Due today", "Due Thu", "Due 24 Oct", "Paid". */
-export function billPill(occurrence: Occurrence, today: string): BillPill {
+/**
+ * The state in words: "2 days late", "Due today", "Due Thu", "Due 24 Oct",
+ * "Paid". `rule` words a long-late "about every N days" bill.
+ */
+export function billPill(occurrence: Occurrence, today: string, rule?: Pick<BillRule, "kind">): BillPill {
   switch (occurrence.state) {
     case "late": {
+      if (rule?.kind === "after_days" && occurrence.daysLate > LONG_LATE_DAYS) return { text: "Not marked in a while", tone: "late" };
       const days = Math.max(1, occurrence.daysLate);
       return { text: `${days} ${days === 1 ? "day" : "days"} late`, tone: "late" };
     }
@@ -111,7 +125,7 @@ export function billPill(occurrence: Occurrence, today: string): BillPill {
     case "snoozed":
       return { text: `Reminding ${whenWords(occurrence.snoozedUntil ?? addDays(today, 1), today)}`, tone: "snoozed" };
     case "paid":
-      return { text: "Paid", tone: "paid" };
+      return { text: occurrence.payment && isPendingPayment(occurrence.payment) ? "Paid · waiting to send" : "Paid", tone: "paid" };
     case "skipped":
       return { text: "Nothing to pay", tone: "skipped" };
   }
@@ -132,9 +146,9 @@ const LATE_UNITS: Readonly<Record<BillRule["kind"], string>> = {
   after_days: "times",
 };
 
-/** "3 months not marked" for a collapsed late row; null for a single one. */
+/** "3 months not marked" for a collapsed late (or late-and-snoozed) row; null for a single one. */
 export function lateNote(occurrence: Occurrence, rule: BillRule): string | null {
-  if (occurrence.state !== "late" || occurrence.lateCount <= 1) return null;
+  if ((occurrence.state !== "late" && occurrence.state !== "snoozed") || occurrence.lateCount <= 1) return null;
   return `${occurrence.lateCount} ${LATE_UNITS[rule.kind]} not marked`;
 }
 
@@ -146,6 +160,39 @@ export function dueLine(bill: Pick<Bill, "rule" | "startsOn">, dueOn: string, to
 /** The due date a tap acts on: a collapsed late row settles its OLDEST date first. */
 export function targetDueOn(occurrence: Occurrence): string {
   return occurrence.lateDueOns[0] ?? occurrence.dueOn;
+}
+
+/**
+ * Every due date "Remind me tomorrow" quiets: all of a collapsed row's late
+ * dates (snoozing only the oldest would leave the rest late — the bill shown
+ * twice and its late reminders still firing), else the row's own date.
+ */
+export function snoozeDueOns(occurrence: Occurrence): string[] {
+  return occurrence.lateDueOns.length > 0 ? [...occurrence.lateDueOns] : [occurrence.dueOn];
+}
+
+/** Bills whose due dates are named by month ("for August"); the rest by day ("for 1 Oct"). */
+const MONTHLY_KINDS: ReadonlySet<BillRule["kind"]> = new Set(["monthly", "months"]);
+
+export interface SkipChoice {
+  /** The ONE due date skipped: a collapsed row's oldest. */
+  dueOn: string;
+  label: string;
+  /** The notice after it is done. */
+  done: string;
+}
+
+/**
+ * "Nothing to pay this time" skips one due date. On a row standing for several
+ * late ones it names which ("Nothing to pay for August"): the others stay late.
+ */
+export function skipChoice(bill: Pick<Bill, "name" | "rule">, occurrence: Occurrence, today: string): SkipChoice {
+  const dueOn = targetDueOn(occurrence);
+  if (occurrence.lateDueOns.length <= 1) {
+    return { dueOn, label: "Nothing to pay this time", done: `${bill.name}: nothing to pay this time` };
+  }
+  const which = MONTHLY_KINDS.has(bill.rule.kind) ? monthName(dueOn) : dayMonth(dueOn, today);
+  return { dueOn, label: `Nothing to pay for ${which}`, done: `${bill.name}: nothing to pay for ${which}` };
 }
 
 // ── Rows and groups ──────────────────────────────────────────────────────
@@ -220,7 +267,7 @@ function toRow(bill: Bill, occurrence: Occurrence, today: string, pill?: BillPil
     key: `${bill.id}|${occurrence.dueOn}|${occurrence.state}`,
     bill,
     occurrence,
-    pill: pill ?? billPill(occurrence, today),
+    pill: pill ?? billPill(occurrence, today, bill.rule),
     amount: amountText(occurrence),
     rule: ruleSentence(bill.rule, bill.startsOn),
     note: lateNote(occurrence, bill.rule),
@@ -237,12 +284,29 @@ function pausedPill(bill: Bill, today: string): BillPill {
   return { text: bill.pausedUntil ? `Paused till ${dayMonth(bill.pausedUntil, today)}` : "Paused", tone: "paused" };
 }
 
-/** Paused right now: open-ended, or until a day still ahead. */
-export function isPausedNow(bill: Pick<Bill, "status" | "pausedUntil">, today: string): boolean {
-  return bill.status === "paused" && (bill.pausedUntil === null || bill.pausedUntil > today);
-}
-
 type GroupedRows = Partial<Record<BillGroupKey, BillRowModel[]>>;
+
+/**
+ * Past due dates the owner snoozed together ("Remind me tomorrow" on a row of
+ * several late months) fold back into ONE row, like the late ones they were:
+ * the newest date, every date in `lateDueOns`, the earliest reminder.
+ */
+function foldSnoozedLate(open: readonly Occurrence[], today: string): Occurrence[] {
+  const isPastSnooze = (o: Occurrence) => o.state === "snoozed" && o.dueOn < today;
+  const snoozed = open.filter(isPastSnooze);
+  if (snoozed.length < 2) return [...open];
+  const dueOns = [...new Set(snoozed.flatMap((o) => (o.lateDueOns.length > 0 ? o.lateDueOns : [o.dueOn])))].sort();
+  const newest = snoozed.reduce((a, b) => (b.dueOn > a.dueOn ? b : a));
+  const until = snoozed.map((o) => o.snoozedUntil).filter((day): day is string => day !== null).sort()[0] ?? null;
+  const folded: Occurrence = {
+    ...newest,
+    daysLate: daysBetween(newest.dueOn, today),
+    lateCount: dueOns.length,
+    lateDueOns: dueOns,
+    snoozedUntil: until,
+  };
+  return [folded, ...open.filter((o) => !isPastSnooze(o))];
+}
 
 /** One bill's rows, by group. A bill with nothing near still shows once, under Later. */
 function rowsForBill(bill: Bill, occurrences: readonly Occurrence[], input: BillBoardInput): GroupedRows {
@@ -250,11 +314,14 @@ function rowsForBill(bill: Bill, occurrences: readonly Occurrence[], input: Bill
   const weekEnd = addDays(today, WEEK_DAYS_AHEAD);
   const settled = occurrences.filter((o) => o.state === "paid" || o.state === "skipped").map((o) => toRow(bill, o, today));
   if (bill.status === "ended") return { settled };
-  if (isPausedNow(bill, today)) {
+  if (isBillPaused(bill, today)) {
     const resumesOn = bill.pausedUntil ?? today;
     return { paused: [toRow(bill, blankUpcoming(bill, resumesOn, payments), today, pausedPill(bill, today))], settled };
   }
-  const open = occurrences.filter((o) => OPEN_STATES.has(o.state));
+  const open = foldSnoozedLate(
+    occurrences.filter((o) => OPEN_STATES.has(o.state)),
+    today,
+  );
   const late = open.filter((o) => o.state === "late").map((o) => toRow(bill, o, today));
   const week = open.filter((o) => o.state !== "late" && effectiveDate(o) <= weekEnd).map((o) => toRow(bill, o, today));
   if (late.length > 0 || week.length > 0) return { late, week, settled };
@@ -371,11 +438,18 @@ export interface BillPayContext {
   paidFrom: Bill["paidFrom"];
   paidToName: string | null;
   supplierId: string | null;
-  /** The bill's branch (null = whole store): the payment is filed there too. */
+  /** The bill's branch (null = whole store): a branch bill's payment is filed there, and only there. */
   outletId?: string | null;
+  /** That branch's name, for the pay sheet (null = unknown or store-wide). */
+  branchName?: string | null;
 }
 
-export function payContextFor(bill: Bill, dueOn: string, payments: readonly BillPayment[]): BillPayContext {
+export function payContextFor(
+  bill: Bill,
+  dueOn: string,
+  payments: readonly BillPayment[],
+  outlets: readonly { id: string; name: string }[] = [],
+): BillPayContext {
   const [last] = recentPayments(bill.id, payments, 1);
   return {
     billId: bill.id,
@@ -389,14 +463,35 @@ export function payContextFor(bill: Bill, dueOn: string, payments: readonly Bill
     paidToName: bill.paidToName,
     supplierId: bill.supplierId,
     outletId: bill.outletId,
+    branchName: bill.outletId === null ? null : (outlets.find((outlet) => outlet.id === bill.outletId)?.name ?? null),
   };
 }
 
 /**
- * "I already recorded it": recorded expenses in the bill's category, within
- * 10 days of the due date, not already paying a bill — closest first.
+ * Where a bill's payment is filed: a branch's bill on that branch (the
+ * database refuses any other), a store-wide bill where the person records.
  */
-export function linkCandidates(expenses: readonly Expense[], bill: Pick<Bill, "categoryId">, dueOn: string): Expense[] {
+export function billPaymentOutletId(bill: Pick<BillPayContext, "outletId">, currentOutletId: string | null): string | null {
+  return bill.outletId ?? currentOutletId;
+}
+
+/** "Branch: Katipunan (this bill's branch)" on the pay sheet; null for a store-wide bill. */
+export function payBranchLine(bill: Pick<BillPayContext, "outletId" | "branchName">): string | null {
+  if (!bill.outletId) return null;
+  return bill.branchName ? `Branch: ${bill.branchName} (this bill's branch)` : "Branch: this bill's branch";
+}
+
+/** A pause ends on a day still ahead: the refusal for one already here, else null (null = until resumed). */
+export function pauseRefusal(until: string | null, today: string): string | null {
+  return until !== null && until <= today ? PAUSE_IN_PAST : null;
+}
+
+/**
+ * "I already recorded it": recorded expenses in the bill's category, within
+ * 10 days of the due date, not already paying a bill — and for a branch's
+ * bill, recorded at that branch (the database refuses any other). Closest first.
+ */
+export function linkCandidates(expenses: readonly Expense[], bill: Pick<Bill, "categoryId" | "outletId">, dueOn: string): Expense[] {
   const distance = (expense: Expense) => Math.abs(daysBetween(dueOn, expense.spentOn));
   return expenses
     .filter(
@@ -404,6 +499,7 @@ export function linkCandidates(expenses: readonly Expense[], bill: Pick<Bill, "c
         expense.status === "recorded" &&
         expense.billId === null &&
         expense.categoryId === bill.categoryId &&
+        (bill.outletId === null || expense.outletId === bill.outletId) &&
         distance(expense) <= LINK_WINDOW_DAYS,
     )
     .sort((a, b) => distance(a) - distance(b) || b.spentOn.localeCompare(a.spentOn) || a.id.localeCompare(b.id));
@@ -462,7 +558,13 @@ export function findBillRow(view: Pick<BillsView, "groups">, billId: string, due
 }
 
 export type DetailBillLink =
-  | { kind: "paid_for"; text: string; href: string }
+  | {
+      kind: "paid_for";
+      text: string;
+      href: string;
+      /** "Not for this bill": only a recorded expense can be unlinked (the guard edits recorded rows). */
+      canUnlink: boolean;
+    }
   | { kind: "repeat"; categoryName: string; href: string }
   | null;
 
@@ -482,7 +584,12 @@ export function detailBillLink(input: {
   if (!canManage) return null;
   if (expense.billId) {
     const bill = bills.find((candidate) => candidate.id === expense.billId) ?? null;
-    return { kind: "paid_for", text: paidForText(bill?.name ?? null, expense.billDueOn), href: billHref(expense.billId) };
+    return {
+      kind: "paid_for",
+      text: paidForText(bill?.name ?? null, expense.billDueOn),
+      href: billHref(expense.billId),
+      canUnlink: expense.status === "recorded",
+    };
   }
   if (expense.status !== "recorded" || !category) return null;
   if (category.group === "ingredients" || category.group === "not_expense") return null;

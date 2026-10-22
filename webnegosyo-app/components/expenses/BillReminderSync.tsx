@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AppState } from "react-native";
 
 import { useAuthStore } from "../../stores/auth-store";
-import { reminderOwner, subscribeBillReminderResync } from "../../lib/expenses/bill-alerts";
+import { isSignedOut, reminderOwner, subscribeBillReminderResync } from "../../lib/expenses/bill-alerts";
 import { clearBillRemindersOnDevice, syncBillRemindersOnDevice } from "../../lib/expenses/bill-alerts-device";
 import { forgetBills, rememberBills } from "../../lib/expenses/bill-ways-in";
 import { useBillBoard } from "../../lib/expenses/use-bills";
@@ -20,7 +20,10 @@ const FOCUS_STALE_MS = 30_000;
  * Re-plans when the board changes (every expense or bill write invalidates
  * it), when the app comes back to the front (a new morning, a bill paid on
  * another phone), and when permission is newly granted. Clears every bill
- * reminder on sign-out or for an account that must not get them. Never asks
+ * reminder on sign-out or for an account that must not get them — also when
+ * it unmounts with the session gone (sign-out clears the store and navigates
+ * away in the same tick, so no owner-less render may come; the root layout's
+ * before-sign-out hook clears them too). Never asks
  * for permission itself. Also hands the board to the Undo bar's "Repeat"
  * (`knownBills`), so a save never starts a read to decide on a button.
  */
@@ -40,6 +43,16 @@ export function BillReminderSync() {
   const [pass, setPass] = useState(0);
 
   useEffect(() => subscribeBillReminderResync(() => setPass((value) => value + 1)), []);
+
+  // Leaving the signed-in screens: if the session is gone by then, nothing of it stays.
+  useEffect(
+    () => () => {
+      if (!isSignedOut(useAuthStore.getState())) return;
+      forgetBills();
+      void clearBillRemindersOnDevice();
+    },
+    [],
+  );
 
   useEffect(() => {
     if (ownerKey === null) return;

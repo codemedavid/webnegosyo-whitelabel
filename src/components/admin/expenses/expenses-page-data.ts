@@ -34,6 +34,8 @@ export interface ExpensesPageData {
   expenses: Expense[]
   /** Bill id → name, for expenses that pay a bill (the "Bill" badge). Absent = none read. */
   billNames?: Record<string, string>
+  /** Late bills today, for the "N late" on the Bills to pay tab. Absent / 0 = no badge (also when bills could not be read). */
+  lateBillCount?: number
   /** True when the month held more rows than one read returns. */
   isTruncated: boolean
   unsortedPayouts: UnsortedPayout[]

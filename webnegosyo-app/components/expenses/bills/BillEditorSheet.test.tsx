@@ -134,16 +134,17 @@ it("saves a changing bill without an amount", async () => {
   expect(writes.create).toHaveBeenCalledWith(expect.objectContaining({ amountCents: null, name: "Kuryente" }), BILL_TODAY);
 });
 
-it("edits an old bill, keeping its start, and says the change applies to the next ones", async () => {
+it("edits an old bill, keeping its start, and says the change applies from the next due date", async () => {
   const old = billOf({ startsOn: "2024-01-01" });
   const { writes, onSaved } = renderEditor({ kind: "edit", bill: old });
   expect(screen.getByText("Change Rent")).toBeTruthy();
   expect(screen.getByText(EDIT_NOTE)).toBeTruthy();
+  expect(EDIT_NOTE.startsWith("Changes apply from the next due date.")).toBe(true);
   expect(screen.queryByLabelText("Kuryente")).toBeNull();
 
   await act(async () => fireEvent.press(screen.getByTestId("bill-save")));
 
-  expect(writes.update).toHaveBeenCalledWith("bill-rent", expect.objectContaining({ startsOn: "2024-01-01" }), BILL_TODAY, "2024-01-01");
+  expect(writes.update).toHaveBeenCalledWith("bill-rent", expect.objectContaining({ startsOn: "2024-01-01" }), BILL_TODAY);
   expect(onSaved).toHaveBeenCalledWith(expect.anything(), false);
 });
 

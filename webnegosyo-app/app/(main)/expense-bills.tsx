@@ -180,6 +180,7 @@ function BillsBoard() {
           category={categoryIndex.get(sheetRow.bill.categoryId) ?? null}
           categories={categoryIndex}
           payments={board.board.payments}
+          outlets={outlets}
           today={today}
           historyFrom={addDays(today, -BILL_HISTORY_DAYS)}
           writes={writes}
@@ -212,7 +213,7 @@ function BillsBoard() {
             if (isFirstBill) {
               ensureBillReminderPermission().catch((error: unknown) => console.warn("[bills] reminder permission", error));
             }
-            say({ message: isNew ? `${saved.name} added to Bills to pay` : `${saved.name} saved. The next ones follow the change.` });
+            say({ message: isNew ? `${saved.name} added to Bills to pay` : `${saved.name} saved. Changes apply from the next due date.` });
           }}
           onClose={() => setSheet(null)}
         />

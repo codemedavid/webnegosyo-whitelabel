@@ -14,6 +14,7 @@ import {
   OPEN_STATES,
   billsDue,
   estimateCents,
+  isBillPaused,
   monthKeyOf,
   nextDueDates,
   paymentsOwed,
@@ -21,6 +22,7 @@ import {
   type Bill,
   type BillMark,
   type BillPayment,
+  type BillRuleKind,
   type Occurrence,
   type OccurrenceState,
   type StillToPay,
@@ -34,6 +36,12 @@ import { formatPeso } from '../expense-format'
 export const THIS_WEEK_DAYS = 7
 /** "I already recorded it" offers expenses this many days either side of the due date. */
 export const LINK_WINDOW_DAYS = 10
+/**
+ * The board reads payments ~120 days back, so an "about every N days" bill
+ * whose last payment is older looks very late. Past this many days it reads
+ * "Not marked in a while" instead of a day count that may not be true.
+ */
+export const LONG_LATE_DAYS = 60
 
 export type BoardGroupId = 'late' | 'this_week' | 'later' | 'paid'
 
@@ -104,17 +112,53 @@ function nextRowFor(bill: Bill, input: BoardInput): Occurrence | null {
   }
 }
 
+const isPastSnooze = (occurrence: Occurrence, today: string): boolean => occurrence.state === 'snoozed' && occurrence.dueOn < today
+
+/**
+ * Past due dates snoozed together ("Remind me tomorrow" on a row of several
+ * late months) fold back into ONE row per bill, like the late row they were:
+ * the newest date, every date in `lateDueOns`, the earliest reminder. The
+ * app's `bills-screen.ts` folds the same way.
+ */
+export function foldSnoozedLate(occurrences: readonly Occurrence[], today: string): Occurrence[] {
+  const snoozedByBill = new Map<string, Occurrence[]>()
+  for (const row of occurrences) {
+    if (isPastSnooze(row, today)) snoozedByBill.set(row.billId, [...(snoozedByBill.get(row.billId) ?? []), row])
+  }
+  const folded = new Map<string, Occurrence>()
+  for (const [billId, snoozed] of snoozedByBill) {
+    if (snoozed.length < 2) continue
+    const dueOns = [...new Set(snoozed.flatMap((row) => (row.lateDueOns.length > 0 ? row.lateDueOns : [row.dueOn])))].sort()
+    const newest = snoozed.reduce((a, b) => (b.dueOn > a.dueOn ? b : a))
+    const until = snoozed.map((row) => row.snoozedUntil).filter((day): day is string => day !== null).sort()[0] ?? null
+    folded.set(billId, { ...newest, daysLate: daysBetween(newest.dueOn, today), lateCount: dueOns.length, lateDueOns: dueOns, snoozedUntil: until })
+  }
+  return occurrences.flatMap((row) => {
+    const fold = isPastSnooze(row, today) ? folded.get(row.billId) : undefined
+    if (!fold) return [row]
+    // The fold takes the place of its newest date; the other snoozed dates are inside it.
+    return row.dueOn === fold.dueOn ? [fold] : []
+  })
+}
+
 export function buildBillBoard(input: BoardInput): BillBoardView {
   const context = { today: input.today, payments: input.payments, marks: input.marks }
+  const pausedIds = new Set(input.bills.filter((bill) => isBillPaused(bill, input.today)).map((bill) => bill.id))
+  // Still to pay is the engine's over ALL its occurrences (the app shows the same total). A bill
+  // paused right now is listed under Paused only; what it was already paid this month still shows.
   const occurrences = billsDue(input.bills, context)
+  const shown = foldSnoozedLate(
+    occurrences.filter((row) => !(pausedIds.has(row.billId) && OPEN_STATES.has(row.state))),
+    input.today,
+  )
   const billById = new Map(input.bills.map((bill) => [bill.id, bill]))
-  const withOpenRow = new Set(occurrences.filter((row) => OPEN_STATES.has(row.state)).map((row) => row.billId))
+  const withOpenRow = new Set(shown.filter((row) => OPEN_STATES.has(row.state)).map((row) => row.billId))
   const extra = input.bills
-    .filter((bill) => bill.status === 'active' && !withOpenRow.has(bill.id))
+    .filter((bill) => bill.status !== 'ended' && !pausedIds.has(bill.id) && !withOpenRow.has(bill.id))
     .map((bill) => nextRowFor(bill, input))
     .filter((row): row is Occurrence => row !== null)
 
-  const rows: BoardRow[] = [...occurrences, ...extra].flatMap((occurrence) => {
+  const rows: BoardRow[] = [...shown, ...extra].flatMap((occurrence) => {
     const bill = billById.get(occurrence.billId)
     return bill ? [{ key: `${bill.id}:${occurrence.dueOn}:${occurrence.state}`, bill, occurrence }] : []
   })
@@ -127,9 +171,19 @@ export function buildBillBoard(input: BoardInput): BillBoardView {
   return {
     summary: stillToPay(occurrences, monthKeyOf(input.today)),
     groups,
-    paused: input.bills.filter((bill) => bill.status === 'paused'),
+    paused: input.bills.filter((bill) => pausedIds.has(bill.id)),
     stopped: input.bills.filter((bill) => bill.status === 'ended'),
   }
+}
+
+/** How many rows the board's Late group holds: the "N late" on the Bills to pay tab. */
+export function lateCountOf(board: Pick<BillBoardView, 'groups'>): number {
+  return board.groups.find((group) => group.id === 'late')?.rows.length ?? 0
+}
+
+/** `lateCountOf(buildBillBoard(input))`, for the expense book's tab. */
+export function lateBillCount(input: BoardInput): number {
+  return lateCountOf(buildBillBoard(input))
 }
 
 // ─── Words ───────────────────────────────────────────────────────────────────
@@ -185,9 +239,10 @@ const STATE_TONE: Readonly<Record<OccurrenceState, DueTone>> = {
   skipped: 'calm',
 }
 
-function dueText(occurrence: Occurrence, today: string): string {
+function dueText(occurrence: Occurrence, today: string, ruleKind?: BillRuleKind): string {
   switch (occurrence.state) {
     case 'late':
+      if (ruleKind === 'after_days' && occurrence.daysLate > LONG_LATE_DAYS) return 'Not marked in a while'
       return occurrence.daysLate === 1 ? '1 day late' : `${occurrence.daysLate} days late`
     case 'due_today':
       return 'Due today'
@@ -203,9 +258,9 @@ function dueText(occurrence: Occurrence, today: string): string {
   }
 }
 
-/** The due pill: words AND a tone, so colour is never the only signal. */
-export function dueWords(occurrence: Occurrence, today: string): DueWords {
-  return { text: dueText(occurrence, today), tone: STATE_TONE[occurrence.state] }
+/** The due pill: words AND a tone, so colour is never the only signal. `ruleKind` words a long-late `after_days` bill. */
+export function dueWords(occurrence: Occurrence, today: string, ruleKind?: BillRuleKind): DueWords {
+  return { text: dueText(occurrence, today, ruleKind), tone: STATE_TONE[occurrence.state] }
 }
 
 /** "₱15,000", "about ₱6,200", or "Amount changes" when nothing was paid yet. A collapsed late row: every payment it stands for. */
@@ -249,15 +304,18 @@ export function isOpen(occurrence: Occurrence): boolean {
 
 /**
  * "I already recorded it": recorded expenses of the bill's category, spent
- * within ±10 days of the due date, not already paying a bill. Closest first.
+ * within ±10 days of the due date, not already paying a bill — and for a
+ * branch's bill, recorded at that branch (the database refuses any other).
+ * Closest first.
  */
-export function linkCandidates(expenses: readonly Expense[], bill: Pick<Bill, 'categoryId'>, dueOn: string): Expense[] {
+export function linkCandidates(expenses: readonly Expense[], bill: Pick<Bill, 'categoryId' | 'outletId'>, dueOn: string): Expense[] {
   return expenses
     .filter(
       (expense) =>
         expense.status === 'recorded' &&
         expense.billId === null &&
         expense.categoryId === bill.categoryId &&
+        (bill.outletId === null || expense.outletId === bill.outletId) &&
         Math.abs(daysBetween(dueOn, expense.spentOn)) <= LINK_WINDOW_DAYS,
     )
     .sort(
@@ -283,6 +341,8 @@ export interface BillPaymentPrefill {
   form: Partial<ExpenseFormState>
   /** "Usual" / "Last time" amounts for a bill that changes. */
   amountChips: AmountChip[]
+  /** A branch's bill is paid from that branch only: the dialog locks its branch to this. Null = store-wide (the form decides). */
+  branchOutletId: string | null
 }
 
 /** "15,000": how the amount field shows money. */
@@ -309,8 +369,9 @@ function amountChipsFor(bill: Bill, payments: readonly BillPayment[]): AmountChi
 /**
  * Mark paid → the Add expense dialog, pre-filled and editable: the amount of a
  * fixed bill (a changing one offers Usual / Last time), category, paid from,
- * paid to, branch, note = the bill's name, spent today, and the bill + due date
- * this payment settles.
+ * paid to, note = the bill's name, spent today, and the bill + due date this
+ * payment settles. A branch's bill is filed on (and locked to) that branch; a
+ * store-wide bill leaves the branch to the form.
  */
 export function paymentPrefill(bill: Bill, occurrence: Occurrence, payments: readonly BillPayment[], today: string): BillPaymentPrefill {
   const dueOn = payDueOn(occurrence)
@@ -324,13 +385,14 @@ export function paymentPrefill(bill: Bill, occurrence: Occurrence, payments: rea
       amountText: bill.amountCents === null ? '' : amountText(bill.amountCents),
       categoryId: bill.categoryId,
       paidFrom: bill.paidFrom,
-      outletId: bill.outletId,
+      ...(bill.outletId === null ? {} : { outletId: bill.outletId }),
       supplierId: bill.supplierId,
       paidToName: bill.supplierId ? '' : (bill.paidToName ?? ''),
       note: bill.name,
       spentOn: today,
     },
     amountChips: amountChipsFor(bill, payments),
+    branchOutletId: bill.outletId,
   }
 }
 

@@ -56,6 +56,12 @@ export interface Bill {
   status: BillStatus
   /** Only while paused; NULL = until resumed. */
   pausedUntil: string | null
+  /**
+   * The day the pause began (only while paused; set by the database). With
+   * `pausedUntil` it is the window whose due dates are never owed. NULL on a
+   * pause saved before 2026-10-22: everything before `pausedUntil` is skipped.
+   */
+  pausedOn: string | null
   createdAt: string
 }
 
@@ -133,6 +139,10 @@ const SHORTEST_MONTH_DAYS = 28
 /** Any leap year: a yearly bill on 29 Feb reads as "29 Feb". */
 const A_LEAP_YEAR = 2024
 const WEEK_DAYS = 7
+
+/** Far enough ahead to find the next due date of any rule (the longest gap is a year). */
+const NEXT_DUE_SEARCH_DAYS = 400
+const LAST_DATE = '9999-12-31'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -316,8 +326,9 @@ function weeklyDates(weekday: number, every: number, startsOn: string, lo: strin
 
 /**
  * Every due date in [from, to], on/after `startsOn` and on/before `endsOn`,
- * oldest first. `after_days` has ONE: (lastPaidDueOn ?? startsOn) + every once
- * paid, else `startsOn`.
+ * oldest first. `after_days` has ONE: anchor + every once settled (never before
+ * `startsOn`), else `startsOn`. The anchor is the later of the last settled due
+ * date and the day it was paid (`afterDaysAnchor`).
  */
 export function dueDatesBetween(bill: BillSchedule, from: string, to: string, lastPaidDueOn?: string | null): string[] {
   const lo = laterOf(from, bill.startsOn)
@@ -363,31 +374,47 @@ export function estimateCents(bill: Pick<Bill, 'id' | 'amountCents'>, payments: 
 
 // ─── Occurrences ─────────────────────────────────────────────────────────────
 
+const latestOf = (dates: readonly string[]): string | null =>
+  dates.reduce<string | null>((latest, date) => (latest === null || date > latest ? date : latest), null)
+
+/**
+ * Where "about every N days after the last one" counts from: the later of the
+ * last settled due date and the day it was paid (a refill bought a week late
+ * is due N days after the purchase). A skip counts from its due date.
+ */
+export function afterDaysAnchor(billId: string, payments: readonly BillPayment[], marks: readonly BillMark[]): string | null {
+  return latestOf([
+    ...payments.filter((payment) => payment.billId === billId).map((payment) => laterOf(payment.dueOn, payment.spentOn)),
+    ...marks.filter((mark) => mark.billId === billId && mark.kind === 'skipped').map((mark) => mark.dueOn),
+  ])
+}
+
+/** The latest due date already paid or skipped ("Nothing to pay this time"); snoozes don't count. */
+export function lastSettledDueOn(billId: string, payments: readonly BillPayment[], marks: readonly BillMark[]): string | null {
+  return latestOf([
+    ...payments.filter((payment) => payment.billId === billId).map((payment) => payment.dueOn),
+    ...marks.filter((mark) => mark.billId === billId && mark.kind === 'skipped').map((mark) => mark.dueOn),
+  ])
+}
+
 interface BillLedger {
   paymentByDue: Map<string, BillPayment>
   markByDue: Map<string, BillMark>
-  /** Latest paid or skipped due date: the `after_days` anchor. */
-  lastSettledDueOn: string | null
+  /** The `after_days` anchor (`afterDaysAnchor`). */
+  anchor: string | null
 }
 
 function ledgerOf(billId: string, ctx: BillContext): BillLedger {
   const paymentByDue = new Map<string, BillPayment>()
   const markByDue = new Map<string, BillMark>()
-  let lastSettledDueOn: string | null = null
-  const settle = (dueOn: string) => {
-    if (lastSettledDueOn === null || dueOn > lastSettledDueOn) lastSettledDueOn = dueOn
-  }
   for (const payment of ctx.payments) {
     if (payment.billId !== billId || paymentByDue.has(payment.dueOn)) continue
     paymentByDue.set(payment.dueOn, payment)
-    settle(payment.dueOn)
   }
   for (const mark of ctx.marks) {
-    if (mark.billId !== billId) continue
-    markByDue.set(mark.dueOn, mark)
-    if (mark.kind === 'skipped') settle(mark.dueOn)
+    if (mark.billId === billId) markByDue.set(mark.dueOn, mark)
   }
-  return { paymentByDue, markByDue, lastSettledDueOn }
+  return { paymentByDue, markByDue, anchor: afterDaysAnchor(billId, ctx.payments, ctx.marks) }
 }
 
 function blankOccurrence(billId: string, dueOn: string, state: OccurrenceState): Occurrence {
@@ -412,15 +439,45 @@ function openState(dueOn: string, today: string, mark: BillMark | undefined): Oc
   return daysBetween(today, dueOn) <= DUE_SOON_DAYS ? 'due_soon' : 'upcoming'
 }
 
+/** Paused right now: until resumed by hand, or until a date still ahead. A pause whose date has come acts as active. */
+export function isBillPaused(bill: Pick<Bill, 'status' | 'pausedUntil'>, today: string): boolean {
+  return bill.status === 'paused' && (bill.pausedUntil === null || bill.pausedUntil > today)
+}
+
+/**
+ * A due date a timed pause swallowed: in [pausedOn, pausedUntil). It is never
+ * owed, not even after the pause ends. A pause without `pausedOn` (saved
+ * before it was recorded) swallows everything before `pausedUntil`.
+ */
+function isInPause(bill: Bill, dueOn: string): boolean {
+  if (bill.status !== 'paused' || bill.pausedUntil === null) return false
+  return dueOn < bill.pausedUntil && (bill.pausedOn === null || dueOn >= bill.pausedOn)
+}
+
+/**
+ * The single `after_days` date. Never dropped for being old (it is the only
+ * one); a refill that fell inside a pause comes due the day the pause ends.
+ */
+function afterDaysOpen(bill: Bill, ctx: BillContext, anchor: string | null, to: string): string[] {
+  const [due] = dueDatesBetween(bill, bill.startsOn, LAST_DATE, anchor)
+  if (due === undefined) return []
+  const isHeld = (isBillPaused(bill, ctx.today) || isInPause(bill, due)) && bill.pausedUntil !== null
+  const shifted = isHeld ? laterOf(due, bill.pausedUntil as string) : due
+  if (shifted > to || (bill.endsOn !== null && shifted > bill.endsOn)) return []
+  return [shifted]
+}
+
 /** Unpaid, unskipped due dates still worth showing; none for an ended or open-ended paused bill. */
 function openDueDates(bill: Bill, ctx: BillContext, ledger: BillLedger): string[] {
   if (bill.status === 'ended') return []
   if (bill.status === 'paused' && bill.pausedUntil === null) return []
   const lookback = addDays(ctx.today, -LATE_LOOKBACK_DAYS)
-  const from = bill.status === 'paused' && bill.pausedUntil !== null ? laterOf(lookback, bill.pausedUntil) : lookback
+  // While a timed pause runs nothing before its end date shows (not even older late ones).
+  const from = isBillPaused(bill, ctx.today) ? laterOf(lookback, bill.pausedUntil as string) : lookback
   const to = addDays(ctx.today, ctx.horizonDays ?? DEFAULT_HORIZON_DAYS)
-  return dueDatesBetween(bill, from, to, ledger.lastSettledDueOn).filter(
-    (dueOn) => !ledger.paymentByDue.has(dueOn) && ledger.markByDue.get(dueOn)?.kind !== 'skipped',
+  const dates = bill.rule.kind === 'after_days' ? afterDaysOpen(bill, ctx, ledger.anchor, to) : dueDatesBetween(bill, from, to)
+  return dates.filter(
+    (dueOn) => !isInPause(bill, dueOn) && !ledger.paymentByDue.has(dueOn) && ledger.markByDue.get(dueOn)?.kind !== 'skipped',
   )
 }
 
@@ -584,8 +641,8 @@ export function nextDueDates(
   const own = bill.id === undefined ? payments : payments.filter((payment) => payment.billId === bill.id)
   const paid = new Set(own.map((payment) => payment.dueOn))
   if (bill.rule.kind === 'after_days') {
-    const anchor = own.reduce<string | null>((latest, p) => (latest === null || p.dueOn > latest ? p.dueOn : latest), null)
-    const [first] = dueDatesBetween(bill, bill.startsOn, '9999-12-31', anchor)
+    const anchor = latestOf(own.map((payment) => laterOf(payment.dueOn, payment.spentOn)))
+    const [first] = dueDatesBetween(bill, bill.startsOn, LAST_DATE, anchor)
     if (first === undefined) return []
     const every = bill.rule.every
     const dates = Array.from({ length: Math.max(0, n) }, (_, index) => addDays(first, index * every))
@@ -596,6 +653,34 @@ export function nextDueDates(
   return dueDatesBetween(bill, today, to)
     .filter((date) => !paid.has(date))
     .slice(0, Math.max(0, n))
+}
+
+// ─── Editing / resuming without rewriting the past ───────────────────────────
+
+/**
+ * The start date to save when a bill's rule or start date is edited, or when
+ * it is resumed, so the change applies from the next due date only: the first
+ * due date of `bill` (the NEW rule, counted from its own `startsOn`) on or
+ * after the latest of its `startsOn`, `today` and the day after its last paid
+ * or skipped due date. Snapping to a real due date keeps the rhythm of
+ * "every 2 weeks" and "every N months" (and a yearly bill's month). Past due
+ * dates are never re-computed with the new rule, so nothing turns late.
+ * `after_days` restarts on that day itself. Null = no due date is left before
+ * the end date (the owner moves the end date or stops the bill): any other
+ * start would either re-open the past or shift the rhythm.
+ */
+export function restartOnFor(
+  bill: BillSchedule & { id: string },
+  payments: readonly BillPayment[],
+  marks: readonly BillMark[],
+  today: string,
+): string | null {
+  const settled = lastSettledDueOn(bill.id, payments, marks)
+  const earliest = laterOf(laterOf(bill.startsOn, today), settled === null ? bill.startsOn : addDays(settled, 1))
+  if (bill.endsOn !== null && earliest > bill.endsOn) return null
+  if (bill.rule.kind === 'after_days') return earliest
+  const [first] = dueDatesBetween(bill, earliest, bill.endsOn ?? addDays(earliest, NEXT_DUE_SEARCH_DAYS))
+  return first ?? null
 }
 
 // ─── Draft validation ────────────────────────────────────────────────────────

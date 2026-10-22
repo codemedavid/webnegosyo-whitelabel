@@ -12,6 +12,7 @@ import { useLinkableExpenses } from "./use-linkable-expenses";
 import { BILL_CATEGORIES, BILL_TODAY, billOf, paymentOf } from "../../../lib/expenses/bills-fixtures";
 import { buildBillsView, findBillRow } from "../../../lib/expenses/bills-screen";
 import { homeExpense } from "../../../lib/expenses/expenses-home-fixtures";
+import type { BillPayment } from "../../../lib/expenses/bill-schedule";
 
 jest.mock("./use-linkable-expenses", () => ({
   useLinkableExpenses: jest.fn(() => ({ expenses: [], isLoading: false, error: null, retry: jest.fn() })),
@@ -31,6 +32,7 @@ function fakeWrites(overrides: Partial<BillWrites> = {}): BillWrites {
     snooze: jest.fn(() => ok({} as never)),
     unmark: jest.fn(() => ok(undefined)),
     link: jest.fn(() => ok({} as never)),
+    unlink: jest.fn(() => ok({} as never)),
     ...overrides,
   } as BillWrites;
 }
@@ -43,20 +45,26 @@ const payments = [
   paymentOf({ billId: "bill-kuryente", dueOn: "2026-09-15", amountCents: 640_000 }),
 ];
 
-function rowFor(billId: string) {
-  const view = buildBillsView({ bills: [internet, kuryente], payments, marks: [], today: BILL_TODAY });
-  return findBillRow(view, billId)!;
+function rowFor(billId: string, boardPayments: readonly BillPayment[] = payments, dueOn?: string) {
+  const view = buildBillsView({ bills: [internet, kuryente], payments: boardPayments, marks: [], today: BILL_TODAY });
+  return findBillRow(view, billId, dueOn)!;
 }
 
-function renderSheet(billId: string, writes = fakeWrites(), handlers: Partial<Record<"onPay" | "onEdit" | "onDone" | "onClose", jest.Mock>> = {}) {
+function renderSheet(
+  billId: string,
+  writes = fakeWrites(),
+  handlers: Partial<Record<"onPay" | "onEdit" | "onDone" | "onClose", jest.Mock>> = {},
+  board: { payments?: readonly BillPayment[]; dueOn?: string } = {},
+) {
   const props = { onPay: jest.fn(), onEdit: jest.fn(), onDone: jest.fn(), onClose: jest.fn(), ...handlers };
-  const row = rowFor(billId);
+  const boardPayments = board.payments ?? payments;
+  const row = rowFor(billId, boardPayments, board.dueOn);
   render(
     <BillSheet
       row={row}
       category={categories.get(row.bill.categoryId) ?? null}
       categories={categories}
-      payments={payments}
+      payments={boardPayments}
       today={BILL_TODAY}
       historyFrom="2026-06-24"
       writes={writes}
@@ -104,8 +112,51 @@ it("Nothing to pay this time skips that due date and offers Undo", async () => {
 it("Remind me tomorrow snoozes until tomorrow", async () => {
   const { writes, onDone } = renderSheet("bill-kuryente");
   await act(async () => fireEvent.press(screen.getByTestId("bill-snooze")));
-  expect(writes.snooze).toHaveBeenCalledWith("bill-kuryente", "2026-10-15", "2026-10-23");
+  expect(writes.snooze).toHaveBeenCalledWith("bill-kuryente", ["2026-10-15"], "2026-10-23");
   expect(onDone).toHaveBeenCalledWith({ message: "We'll remind you about Kuryente tomorrow" });
+});
+
+it("Remind me tomorrow on a row of several late months quiets every one of them", async () => {
+  const { writes } = renderSheet("bill-internet");
+  await act(async () => fireEvent.press(screen.getByTestId("bill-snooze")));
+  expect(writes.snooze).toHaveBeenCalledWith("bill-internet", ["2026-08-05", "2026-09-05", "2026-10-05"], "2026-10-23");
+});
+
+it("Nothing to pay on a row of several late months names the one month it skips", async () => {
+  const { writes, onDone } = renderSheet("bill-internet");
+  expect(screen.queryByText("Nothing to pay this time")).toBeNull();
+
+  await act(async () => fireEvent.press(screen.getByText("Nothing to pay for August")));
+
+  expect(writes.skip).toHaveBeenCalledWith("bill-internet", "2026-08-05");
+  expect(onDone).toHaveBeenCalledWith({
+    message: "Internet: nothing to pay for August",
+    undo: { billId: "bill-internet", dueOn: "2026-08-05" },
+  });
+});
+
+it("a paid due date offers Not for this bill, asked first, which unlinks the expense", async () => {
+  // Arrange: October's Kuryente paid by expense k3.
+  const paid = [...payments, paymentOf({ billId: "bill-kuryente", dueOn: "2026-10-15", amountCents: 612_000, expenseId: "k3" })];
+  const { writes, onDone } = renderSheet("bill-kuryente", fakeWrites(), {}, { payments: paid, dueOn: "2026-10-15" });
+
+  // Act
+  fireEvent.press(screen.getByTestId("bill-unlink"));
+  expect(screen.getByText("The ₱6,120 expense stays in Expenses as it is. Kuryente · October goes back to Bills to pay.")).toBeTruthy();
+  expect(writes.unlink).not.toHaveBeenCalled();
+  await act(async () => fireEvent.press(screen.getByTestId("bill-unlink-confirm")));
+
+  // Assert
+  expect(writes.unlink).toHaveBeenCalledWith("k3");
+  expect(onDone).toHaveBeenCalledWith({ message: "Kuryente for October is back in Bills to pay" });
+});
+
+it("a payment still waiting on this phone says so, with nothing to open or unlink yet", () => {
+  const paid = [...payments, paymentOf({ billId: "bill-kuryente", dueOn: "2026-10-15", amountCents: 612_000, expenseId: "queued:req-9" })];
+  renderSheet("bill-kuryente", fakeWrites(), {}, { payments: paid, dueOn: "2026-10-15" });
+  expect(screen.getByText(/It is waiting to send from this phone\./)).toBeTruthy();
+  expect(screen.queryByText("Open the expense")).toBeNull();
+  expect(screen.queryByTestId("bill-unlink")).toBeNull();
 });
 
 it("I already recorded it lists nearby expenses in place and links the one tapped", async () => {
@@ -150,7 +201,7 @@ it("pauses until a chosen day", async () => {
   fireEvent.press(screen.getByTestId("bill-manage"));
   fireEvent.press(screen.getByTestId("bill-pause"));
   await act(async () => fireEvent.press(screen.getByTestId("bill-pause-next")));
-  expect(writes.pause).toHaveBeenCalledWith("bill-kuryente", "2026-11-01");
+  expect(writes.pause).toHaveBeenCalledWith("bill-kuryente", "2026-11-01", BILL_TODAY);
 });
 
 it("shows a refusal in words and stays open", async () => {

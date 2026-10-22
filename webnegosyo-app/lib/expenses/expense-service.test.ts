@@ -100,6 +100,14 @@ describe("describeExpenseError", () => {
     expect(describeExpenseError({ code: "23514", message: "expenses_amount_ck" })).toBe(EXPENSE_COPY.invalid);
   });
 
+  it("names the Bills to pay refusals (20261022150000) instead of \"no access\"", () => {
+    expect(describeExpenseError({ code: "42501", message: "That bill isn't one you can see" })).toBe(
+      "That bill belongs to another branch, so it can't be marked here.",
+    );
+    expect(describeExpenseError({ code: "42501", message: "A branch bill is paid from its own branch" })).toBe("Pay this bill from its own branch.");
+    expect(describeExpenseError({ code: "22023", message: "pause_until_past" })).toBe("Pick a day after today.");
+  });
+
   it("says whose drawer it is when a drawer write is refused", () => {
     expect(describeExpenseError({ code: "42501" }, "drawer")).toBe(EXPENSE_COPY.drawerNotYours);
     expect(describeExpenseError({ code: "42501" }, "book")).toBe(EXPENSE_COPY.noAccess);

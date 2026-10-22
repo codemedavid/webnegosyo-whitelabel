@@ -77,7 +77,7 @@ it("opens as Pay Rent with the amount, category and source already in", () => {
   expect(screen.queryByTestId("expense-save-next")).toBeNull();
 });
 
-it("saves one expense linked to the bill's due date, on the bill's branch", async () => {
+it("saves one expense linked to the bill's due date; a store-wide bill keeps the branch being recorded for", async () => {
   const onClose = jest.fn();
   render(<AddExpenseSheet visible mode={{ kind: "book" }} bill={rent} onClose={onClose} />);
   fireEvent.press(screen.getByTestId("expense-save"));
@@ -85,8 +85,20 @@ it("saves one expense linked to the bill's due date, on the bill's branch", asyn
   const [entry] = jest.mocked(queueExpense).mock.calls[0];
   expect(entry.payload).toMatchObject({
     kind: "book",
-    draft: { billId: "bill-rent", billDueOn: "2026-10-24", amountCents: 1_500_000, categoryId: "rent", paidFrom: "bank", outletId: null },
+    draft: { billId: "bill-rent", billDueOn: "2026-10-24", amountCents: 1_500_000, categoryId: "rent", paidFrom: "bank", outletId: "branch-viewed" },
   });
+  expect(screen.queryByTestId("expense-bill-branch")).toBeNull();
+});
+
+it("pays a branch bill from that branch, named on the sheet", async () => {
+  const onClose = jest.fn();
+  const branchRent: BillPayContext = { ...rent, outletId: "branch-katipunan", branchName: "Katipunan" };
+  render(<AddExpenseSheet visible mode={{ kind: "book" }} bill={branchRent} onClose={onClose} />);
+  expect(screen.getByTestId("expense-bill-branch").props.children).toBe("Branch: Katipunan (this bill's branch)");
+  fireEvent.press(screen.getByTestId("expense-save"));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  const [entry] = jest.mocked(queueExpense).mock.calls[0];
+  expect(entry.payload).toMatchObject({ kind: "book", draft: { billId: "bill-rent", outletId: "branch-katipunan" } });
 });
 
 it("a changing bill starts empty and offers Usual and Last", () => {

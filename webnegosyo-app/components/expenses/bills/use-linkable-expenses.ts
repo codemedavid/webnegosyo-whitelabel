@@ -16,19 +16,19 @@ export interface LinkableExpenses {
 
 /**
  * "I already recorded it": the recorded expenses of the bill's category within
- * 10 days of the due date, read from the month(s) that window touches — the
+ * 10 days of the due date (a branch bill: that branch's only), read from the month(s) that window touches — the
  * same cached month reads the expense book uses. Reads nothing until enabled.
  */
-export function useLinkableExpenses(bill: Pick<Bill, "categoryId">, dueOn: string, enabled: boolean): LinkableExpenses {
+export function useLinkableExpenses(bill: Pick<Bill, "categoryId" | "outletId">, dueOn: string, enabled: boolean): LinkableExpenses {
   const [first, second] = linkWindowMonths(dueOn);
   const firstMonth = useExpenseMonth(first, undefined, enabled);
   const secondMonth = useExpenseMonth(second ?? first, undefined, enabled && second !== undefined);
   const firstRows = firstMonth.data?.expenses ?? NO_EXPENSES;
   const secondRows = second === undefined ? NO_EXPENSES : (secondMonth.data?.expenses ?? NO_EXPENSES);
-  const { categoryId } = bill;
+  const { categoryId, outletId } = bill;
   const expenses = useMemo(
-    () => linkCandidates([...firstRows, ...secondRows], { categoryId }, dueOn),
-    [firstRows, secondRows, categoryId, dueOn],
+    () => linkCandidates([...firstRows, ...secondRows], { categoryId, outletId }, dueOn),
+    [firstRows, secondRows, categoryId, outletId, dueOn],
   );
   const reads = second === undefined ? [firstMonth] : [firstMonth, secondMonth];
   return {

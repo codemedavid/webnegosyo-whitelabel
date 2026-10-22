@@ -2,10 +2,12 @@ import {
   BILL_ALERTS_STORAGE_KEY,
   clearBillAlerts,
   ensurePermission,
+  isSignedOut,
   planBillAlerts,
   reminderOwner,
   subscribeBillReminderResync,
   syncBillAlerts,
+  withBillAlertsCleared,
   type BillAlert,
   type BillAlertNotifier,
   type BillAlertStore,
@@ -307,5 +309,37 @@ describe("ensurePermission", () => {
     unsubscribe();
 
     expect(resync).not.toHaveBeenCalled();
+  });
+});
+
+describe("sign-out clears this phone's bill reminders", () => {
+  test("the before-sign-out hook runs the device cleanup AND the bill-reminder clear, together", async () => {
+    // Arrange
+    const calls: string[] = [];
+    const forgetToken = jest.fn(async () => void calls.push("token"));
+    const clearReminders = jest.fn(async () => void calls.push("reminders"));
+
+    // Act
+    await withBillAlertsCleared(forgetToken, clearReminders)();
+
+    // Assert
+    expect(calls.sort()).toEqual(["reminders", "token"]);
+  });
+
+  test("one failing never stops the other, and the hook never throws", async () => {
+    const clearReminders = jest.fn(async () => undefined);
+    const hook = withBillAlertsCleared(() => Promise.reject(new Error("offline")), clearReminders);
+
+    await expect(hook()).resolves.toBeUndefined();
+    expect(clearReminders).toHaveBeenCalledTimes(1);
+    await expect(withBillAlertsCleared(async () => undefined, () => Promise.reject(new Error("native")))()).resolves.toBeUndefined();
+  });
+
+  test("isSignedOut: only a settled, signed-out session (never while auth is loading)", () => {
+    const signedIn = { isLoading: false, isAuthenticated: true, tenantId: "t1", userId: "u1" };
+    expect(isSignedOut(signedIn)).toBe(false);
+    expect(isSignedOut({ ...signedIn, isAuthenticated: false })).toBe(true);
+    expect(isSignedOut({ ...signedIn, userId: null })).toBe(true);
+    expect(isSignedOut({ ...signedIn, isAuthenticated: false, isLoading: true })).toBe(false);
   });
 });

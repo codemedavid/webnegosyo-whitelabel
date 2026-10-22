@@ -112,16 +112,25 @@ function engineCheck(isEdit: boolean) {
 export const billDraftSchema = billDraftShape.superRefine(engineCheck(false))
 
 
-/** Editing a bill: the same draft plus the bill it changes (next occurrences only). */
+/**
+ * Editing a bill: the same draft plus the bill it changes (next occurrences
+ * only). The 400-day start rule needs the STORED start date, so the service
+ * (`updateBill`) runs it after reading the bill; here every other rule runs.
+ */
 export const billUpdateSchema = z.object({ billId, draft: billDraftShape.superRefine(engineCheck(true)) }).strict()
 
 export const billPauseSchema = z
   .object({
     billId,
-    /** Null / absent = paused until resumed by hand. */
+    /** Null / absent = paused until resumed by hand. Else a day still ahead (Manila). */
     pausedUntil: isoDate.nullable().optional(),
   })
   .strict()
+  .superRefine((pause, ctx) => {
+    if (pause.pausedUntil && pause.pausedUntil <= todayInManila(new Date())) {
+      ctx.addIssue({ code: 'custom', path: ['pausedUntil'], message: 'Pick a day after today.' })
+    }
+  })
 
 export const billIdSchema = z.object({ billId }).strict()
 

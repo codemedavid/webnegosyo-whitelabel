@@ -26,6 +26,12 @@ describe("billGlance", () => {
     expect(glance).toEqual({ billId: "bill-rent", title: "Rent is 2 days late", detail: "₱15,000", isLate: true });
   });
 
+  test("an \"about every N days\" bill last marked long ago is \"not marked in a while\", not a day count", () => {
+    const lpg = makeBill({ id: "bill-lpg", name: "LPG", rule: { kind: "after_days", every: 10 }, amountCents: 120_000, startsOn: "2026-07-17" });
+
+    expect(glanceFor([lpg])?.title).toBe("LPG not marked in a while");
+  });
+
   test("a bill that changes every time is shown as about its usual amount", () => {
     const glance = glanceFor([power], powerPaid);
 

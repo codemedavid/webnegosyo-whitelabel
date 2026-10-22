@@ -23,13 +23,14 @@ export function makeBill(overrides: Partial<Bill> = {}): Bill {
     remindDaysBefore: 3,
     status: 'active',
     pausedUntil: null,
+    pausedOn: null,
     createdAt: '2026-08-01T00:00:00.000Z',
     ...overrides,
   }
 }
 
-export function payment(dueOn: string, amountCents = 1_500_000, billId = 'bill-rent'): BillPayment {
-  return { billId, dueOn, expenseId: `exp-${billId}-${dueOn}`, amountCents, spentOn: dueOn }
+export function payment(dueOn: string, amountCents = 1_500_000, billId = 'bill-rent', spentOn = dueOn): BillPayment {
+  return { billId, dueOn, expenseId: `exp-${billId}-${dueOn}`, amountCents, spentOn }
 }
 
 export function mark(dueOn: string, kind: BillMark['kind'], snoozedUntil: string | null = null, billId = 'bill-rent'): BillMark {

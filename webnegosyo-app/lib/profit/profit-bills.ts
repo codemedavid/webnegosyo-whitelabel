@@ -5,7 +5,8 @@
  *  - Findings: when the store keeps bills, "Rent is due on the 5th and not
  *    marked paid" comes from the bills themselves (an open, late due date in
  *    the period), and the model's category guess ("No Rent recorded this
- *    month") is dropped. A store without bills keeps the guess.
+ *    month") is dropped FOR THE CATEGORIES A BILL COVERS. A store with only a
+ *    Kuryente bill still hears "No Rent recorded this month".
  *  - Forecast: "If you pay the 2 bills left: about ₱20,800 kept" under this
  *    month's figure — what is left once the bills still to pay are paid.
  *
@@ -77,16 +78,39 @@ export function billFindingCards(
 export interface BillFindingsInput {
   /** The store keeps bills (`keepsBills`); false = keep the model's category guess. */
   hasBills: boolean;
+  /**
+   * Categories a live (active or paused) bill covers: only THEIR guess is
+   * dropped — the bill speaks for them (a paused one is the owner's answer).
+   */
+  billedCategoryIds: ReadonlySet<string>;
   cards: readonly FindingCard[];
 }
 
-/** Bills replace the category guess; they go first, being the surest warnings. */
+/** What Profit's findings need from the bills that cover its figure. */
+export function billFindingsInput(
+  bills: readonly Bill[],
+  occurrences: readonly Occurrence[],
+  range: { fromKey: string; toKey: string },
+): BillFindingsInput {
+  const live = bills.filter((bill) => bill.status !== "ended");
+  return {
+    hasBills: keepsBills(bills),
+    billedCategoryIds: new Set(live.map((bill) => bill.categoryId)),
+    cards: billFindingCards(bills, occurrences, range),
+  };
+}
+
+/**
+ * Bills replace the category guess for the categories they cover (the rest
+ * keep it); bill warnings go first, being the surest.
+ */
 export function withBillFindings(
   findings: readonly ProfitFinding[],
   bills: BillFindingsInput | null,
 ): { findings: ProfitFinding[]; leading: FindingCard[] } {
   if (!bills?.hasBills) return { findings: [...findings], leading: [] };
-  return { findings: findings.filter((finding) => finding.kind !== "missing_recurring"), leading: [...bills.cards] };
+  const kept = findings.filter((finding) => finding.kind !== "missing_recurring" || !bills.billedCategoryIds.has(finding.categoryId));
+  return { findings: kept, leading: [...bills.cards] };
 }
 
 export interface ForecastInput {

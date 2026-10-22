@@ -136,8 +136,9 @@ function ExpenseForm({
   const [form, setForm] = useState<ExpenseFormState>(() => {
     if (fixing) return formFromExpense(fixing)
     const blank = blankForm({ today, outletId: lockedOutletId })
-    // A branch-locked account always records for its own branch, whatever the bill says.
-    if (billPayment) return { ...blank, ...billPayment.form, outletId: lockedOutletId ?? billPayment.form.outletId ?? null }
+    // A branch's bill is paid from that branch (the database refuses any other); a store-wide
+    // bill is filed where this account records (its own branch when locked).
+    if (billPayment) return { ...blank, ...billPayment.form, outletId: billPayment.branchOutletId ?? blank.outletId }
     return { ...blank, categoryId: initialCategoryId, spentOn: initialSpentOn ?? today }
   })
   const [errors, setErrors] = useState<FormErrors>({})
@@ -334,7 +335,12 @@ function ExpenseForm({
 
   const saveLabel = mode === 'fix' ? 'Save fix' : amountCents !== null ? `Save ${formatPeso(amountCents)}` : 'Save'
   const minDate = addDays(today, -MAX_DAYS_BACK)
-  const branchLabel = lockedOutletId ? (lockedBranchLabel ?? 'Your branch') : null
+  const billBranchId = mode === 'add' ? (billPayment?.branchOutletId ?? null) : null
+  const branchLabel = billBranchId
+    ? (outlets.find((outlet) => outlet.id === billBranchId)?.name ?? "The bill's branch")
+    : lockedOutletId
+      ? (lockedBranchLabel ?? 'Your branch')
+      : null
 
   return (
     <form
@@ -424,7 +430,7 @@ function ExpenseForm({
               error={errors.spentOn}
               isLocked={isDrawerFix}
             />
-            {isMultiBranch ? (
+            {isMultiBranch || billBranchId ? (
               <BranchField
                 outlets={outlets}
                 value={form.outletId}

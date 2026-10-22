@@ -48,8 +48,9 @@ import { requeueSignedOutRefusals } from "../lib/offline/order-outbox";
 import { requeueSignedOutEditRefusals } from "../lib/offline/order-edits";
 
 // Every sign-out first deletes this device's platform push token row, so a
-// shared tablet stops receiving the previous person's approval pushes.
-setBeforeSignOut(forgetPlatformDeviceToken);
+// shared tablet stops receiving the previous person's approval pushes, and
+// clears every bill reminder scheduled on this phone (they are the owner's).
+setBeforeSignOut(withBillAlertsCleared(forgetPlatformDeviceToken, clearBillRemindersOnDevice));
 
 // Bound once for the life of the process: a sign-out anywhere drops the
 // offline session snapshot, so the next launch cannot open the old store.
@@ -80,6 +81,8 @@ import * as Notifications from "expo-notifications";
 import { registerForPushNotifications, ensureOrdersChannel, ensureStockAlertsChannel, deviceChannels } from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
 import { forgetPlatformDeviceToken, upsertPlatformDeviceToken } from "../lib/announcements/service";
+import { withBillAlertsCleared } from "../lib/expenses/bill-alerts";
+import { clearBillRemindersOnDevice } from "../lib/expenses/bill-alerts-device";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { planPushRoute, readConsumed, rememberConsumed } from "../lib/approvals/push-consumed";
 import {

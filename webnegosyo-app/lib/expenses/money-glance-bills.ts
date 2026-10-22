@@ -10,6 +10,7 @@
  */
 
 import { OPEN_STATES, paymentsOwed, type Bill, type Occurrence, type OccurrenceState } from "./bill-schedule";
+import { LONG_LATE_DAYS } from "./bills-screen";
 import { formatCents } from "./expense-format";
 import { addDays, daysBetween } from "./manila-date";
 
@@ -28,8 +29,13 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-function whenWords(name: string, occurrence: Occurrence, today: string): string {
-  if (occurrence.state === "late") return `${name} is ${plural(Math.max(1, occurrence.daysLate), "day", "days")} late`;
+function whenWords(bill: Pick<Bill, "name" | "rule">, occurrence: Occurrence, today: string): string {
+  const { name } = bill;
+  if (occurrence.state === "late") {
+    // The board reads ~120 days of payments: past LONG_LATE_DAYS an "about every N days" count may not be true.
+    if (bill.rule.kind === "after_days" && occurrence.daysLate > LONG_LATE_DAYS) return `${name} not marked in a while`;
+    return `${name} is ${plural(Math.max(1, occurrence.daysLate), "day", "days")} late`;
+  }
   const ahead = daysBetween(today, occurrence.dueOn);
   if (ahead <= 0) return `${name} is due today`;
   return ahead === 1 ? `${name} is due tomorrow` : `${name} is due in ${ahead} days`;
@@ -59,14 +65,14 @@ function moreThisWeek(occurrences: readonly Occurrence[], billId: string, today:
  * due today, then due soon), or null when nothing is late or due in 3 days.
  */
 export function billGlance(bills: readonly Bill[], occurrences: readonly Occurrence[], today: string): BillGlance | null {
-  const nameOf = new Map(bills.filter((bill) => bill.status !== "ended").map((bill) => [bill.id, bill.name]));
-  const urgent = occurrences.find((row) => URGENT_STATES.has(row.state) && nameOf.has(row.billId));
+  const billOf = new Map(bills.filter((bill) => bill.status !== "ended").map((bill) => [bill.id, bill]));
+  const urgent = occurrences.find((row) => URGENT_STATES.has(row.state) && billOf.has(row.billId));
   if (!urgent) return null;
-  const more = moreThisWeek(occurrences.filter((row) => nameOf.has(row.billId)), urgent.billId, today);
+  const more = moreThisWeek(occurrences.filter((row) => billOf.has(row.billId)), urgent.billId, today);
   const parts = [amountWords(urgent) ?? "Amount changes each time", more > 0 ? `${plural(more, "more bill", "more bills")} this week` : null];
   return {
     billId: urgent.billId,
-    title: whenWords(nameOf.get(urgent.billId) as string, urgent, today),
+    title: whenWords(billOf.get(urgent.billId) as Bill, urgent, today),
     detail: parts.filter((part): part is string => part !== null).join(" · "),
     isLate: urgent.state === "late",
   };

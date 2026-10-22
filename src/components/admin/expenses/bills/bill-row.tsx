@@ -1,7 +1,7 @@
 'use client'
 
 import { AlarmClock, CalendarDays, CircleAlert, CircleCheck, Clock, Link2, MoreHorizontal, Pause, PencilLine, Play, Square, Undo2, X, type LucideIcon } from 'lucide-react'
-import { ruleSentence, type Bill } from '@/lib/expenses/bill-schedule'
+import { isBillPaused, ruleSentence, type Bill } from '@/lib/expenses/bill-schedule'
 import type { ExpenseCategory } from '@/lib/expenses/types'
 import { cn } from '@/lib/utils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -39,6 +39,8 @@ const MENU_ITEM = 'min-h-10 cursor-pointer gap-2 px-2.5 text-[14px]'
 
 interface MoreMenuProps {
   bill: Bill
+  /** Paused right now (the engine's `isBillPaused`): offer Resume instead of Pause. */
+  isPaused: boolean
   canLink: boolean
   canSnoozeRow: boolean
   canSkip: boolean
@@ -46,8 +48,7 @@ interface MoreMenuProps {
   onAction: (action: BillRowAction) => void
 }
 
-function MoreMenu({ bill, canLink, canSnoozeRow, canSkip, isBusy, onAction }: MoreMenuProps) {
-  const isPaused = bill.status === 'paused'
+function MoreMenu({ bill, isPaused, canLink, canSnoozeRow, canSkip, isBusy, onAction }: MoreMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -105,7 +106,7 @@ interface BillRowProps {
 
 export function BillRow({ row, category, branchName, today, isBusy, onAction }: BillRowProps) {
   const { bill, occurrence } = row
-  const due = dueWords(occurrence, today)
+  const due = dueWords(occurrence, today, bill.rule.kind)
   const isRowOpen = isOpen(occurrence)
   const isSkipped = occurrence.state === 'skipped'
   const lateLine = lateCountWords(occurrence)
@@ -153,6 +154,7 @@ export function BillRow({ row, category, branchName, today, isBusy, onAction }: 
         )}
         <MoreMenu
           bill={bill}
+          isPaused={isBillPaused(bill, today)}
           canLink={isRowOpen}
           canSnoozeRow={canSnooze(occurrence, today)}
           canSkip={isRowOpen}
@@ -193,7 +195,7 @@ export function PausedBillRow({ bill, category, isBusy, onAction }: PausedRowPro
           <Play className="size-4" aria-hidden />
           Resume
         </button>
-        <MoreMenu bill={bill} canLink={false} canSnoozeRow={false} canSkip={false} isBusy={isBusy} onAction={(action) => onAction(action, bill)} />
+        <MoreMenu bill={bill} isPaused canLink={false} canSnoozeRow={false} canSkip={false} isBusy={isBusy} onAction={(action) => onAction(action, bill)} />
       </div>
     </li>
   )

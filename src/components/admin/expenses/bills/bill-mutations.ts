@@ -12,6 +12,7 @@ import {
   markBillAction,
   pauseBillAction,
   resumeBillAction,
+  unlinkExpenseFromBillAction,
   unmarkBillAction,
   updateBillAction,
 } from '@/app/actions/expense-bills'
@@ -55,4 +56,9 @@ export function unmarkBill(tenantSlug: string, billId: string, dueOn: string): P
 
 export function linkExpenseToBill(tenantSlug: string, expenseId: string, billId: string, dueOn: string): Promise<ActionResult<Expense>> {
   return runAction(() => linkExpenseToBillAction(tenantSlug, { expenseId, billId, dueOn }))
+}
+
+/** "Not for this bill": the expense stays in the book; the bill's due date is open again. */
+export function unlinkExpenseFromBill(tenantSlug: string, expenseId: string): Promise<ActionResult<Expense>> {
+  return runAction(() => unlinkExpenseFromBillAction(tenantSlug, { expenseId }))
 }

@@ -154,7 +154,12 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
           </div>
         </div>
 
-        <ExpensesTabs tenantSlug={data.tenantSlug} active="expenses" monthKey={data.month.isCurrent ? null : data.month.key} />
+        <ExpensesTabs
+          tenantSlug={data.tenantSlug}
+          active="expenses"
+          monthKey={data.month.isCurrent ? null : data.month.key}
+          lateCount={data.lateBillCount ?? 0}
+        />
 
         <div className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-white px-5 py-4 ring-1 ring-border">
           <div className="min-w-0">

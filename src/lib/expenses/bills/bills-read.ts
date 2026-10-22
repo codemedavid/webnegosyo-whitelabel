@@ -57,6 +57,8 @@ export interface ExpenseBillRow {
   remind_days_before: number
   status: string
   paused_until: string | null
+  /** Added by 20261022150000; the database stamps it. */
+  paused_on: string | null
   created_at: string
 }
 
@@ -78,7 +80,7 @@ export interface BillPaymentRow {
 export const BILL_COLUMNS = [
   'id', 'tenant_id', 'outlet_id', 'name', 'category_id', 'supplier_id', 'paid_to_name', 'paid_from', 'amount_cents',
   'repeat_kind', 'repeat_every', 'repeat_days', 'repeat_weekday', 'starts_on', 'ends_on', 'remind_days_before',
-  'status', 'paused_until', 'created_at',
+  'status', 'paused_until', 'paused_on', 'created_at',
 ].join(', ')
 
 export const BILL_MARK_COLUMNS = 'bill_id, due_on, kind, snoozed_until'
@@ -108,6 +110,7 @@ export function toBill(row: ExpenseBillRow): Bill {
     remindDaysBefore: toInt(row.remind_days_before),
     status: row.status as BillStatus,
     pausedUntil: row.paused_until ?? null,
+    pausedOn: row.paused_on ?? null,
     createdAt: row.created_at,
   }
 }
@@ -229,6 +232,51 @@ export async function listBillPayments(db: ExpenseDb, query: BillWindowQuery): P
     const payment = toBillPayment(row)
     return payment ? [payment] : []
   })
+}
+
+export interface BillSettlements {
+  /** The bill's latest recorded payment (by due date), if any. */
+  payments: BillPayment[]
+  /** Its latest "Nothing to pay this time", if any. */
+  marks: BillMark[]
+}
+
+/**
+ * The latest paid and the latest skipped due date of ONE bill (one row each,
+ * both reads indexed on bill + due date), for `restartOnFor` when an edit
+ * changes the rule or the start date.
+ */
+export async function readLastSettlements(db: ExpenseDb, tenantId: string, billId: string): Promise<BillSettlements> {
+  const [paid, skipped] = (await Promise.all([
+    db
+      .from('expenses')
+      .select(BILL_PAYMENT_COLUMNS)
+      .eq('tenant_id', tenantId)
+      .eq('bill_id', billId)
+      .eq('status', 'recorded')
+      .order('bill_due_on', { ascending: false })
+      .limit(1),
+    db
+      .from('expense_bill_marks')
+      .select(`id, ${BILL_MARK_COLUMNS}`)
+      .eq('tenant_id', tenantId)
+      .eq('bill_id', billId)
+      .eq('kind', 'skipped')
+      .order('due_on', { ascending: false })
+      .limit(1),
+  ])) as [
+    { data: BillPaymentRow[] | null; error: { code?: string; message: string } | null },
+    { data: ExpenseBillMarkRow[] | null; error: { code?: string; message: string } | null },
+  ]
+  if (paid.error) throw toExpenseError('read last bill payment', paid.error, EXPENSE_MESSAGES.billsReadFailed)
+  if (skipped.error) throw toExpenseError('read last bill mark', skipped.error, EXPENSE_MESSAGES.billsReadFailed)
+  return {
+    payments: (paid.data ?? []).flatMap((row) => {
+      const payment = toBillPayment(row)
+      return payment ? [payment] : []
+    }),
+    marks: (skipped.data ?? []).map(toBillMark),
+  }
 }
 
 export interface BillBoard {
