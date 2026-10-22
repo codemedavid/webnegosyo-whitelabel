@@ -48,4 +48,6 @@ export interface ExpensesInitialLink {
   add: string | null
   view: string | null
   categoryId: string | null
+  /** `?on=YYYY-MM-DD`: the date a new entry starts on (Profit's "Record" for a past period). */
+  spentOn: string | null
 }

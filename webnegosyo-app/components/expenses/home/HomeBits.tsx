@@ -62,7 +62,7 @@ interface AddExpenseFabProps {
   onPress: () => void;
 }
 
-/** The floating ink pill, bottom-right, over the list. */
+/** The floating ink pill, bottom-centre over the list, clear of the Owl button bottom-right. */
 export function AddExpenseFab({ onPress }: AddExpenseFabProps) {
   return (
     <View style={styles.fabWrap} pointerEvents="box-none">
@@ -71,11 +71,10 @@ export function AddExpenseFab({ onPress }: AddExpenseFabProps) {
   );
 }
 
-/** First load: grey shapes where the hero and the first day will be. */
+/** First load: grey shapes where the first days will be (the hero is drawn above, waiting). */
 export function HomeSkeleton() {
   return (
     <View style={styles.skeleton} accessibilityLabel="Loading expenses" accessibilityRole="progressbar">
-      <View style={[styles.block, styles.heroBlock]} />
       <View style={[styles.block, styles.line, { width: "40%" }]} />
       <View style={[styles.block, styles.rowsBlock]} />
     </View>
@@ -107,11 +106,10 @@ const styles = StyleSheet.create({
   },
   bannerText: { ...typography.caption, color: colors.statusPending.text, flex: 1 },
   bannerAction: { ...typography.caption, fontWeight: "800", color: colors.statusPending.text },
-  fabWrap: { position: "absolute", right: spacing.xl, bottom: spacing.xl },
-  fab: { ...shadow.md, paddingHorizontal: spacing.xl },
-  skeleton: { paddingHorizontal: spacing.xl, gap: spacing.md },
+  fabWrap: { position: "absolute", left: 0, right: 0, bottom: spacing.xl, alignItems: "center" },
+  fab: { ...shadow.md, paddingHorizontal: spacing.xl, alignSelf: "center" },
+  skeleton: { gap: spacing.md, paddingTop: spacing.sm },
   block: { backgroundColor: colors.card, borderRadius: radius.lg, opacity: 0.7 },
-  heroBlock: { height: 196, backgroundColor: colors.heroInk, opacity: 0.12 },
-  line: { height: 14, borderRadius: radius.full, marginTop: spacing.md },
+  line: { height: 14, borderRadius: radius.full },
   rowsBlock: { height: 180 },
 });

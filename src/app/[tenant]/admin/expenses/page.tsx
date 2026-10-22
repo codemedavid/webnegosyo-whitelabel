@@ -150,11 +150,12 @@ async function ExpensesBook({ tenant, lockedOutletId, requestedMonth, initial }:
       initial,
     }
   } catch (error) {
-    console.error('[expenses] book unavailable', error instanceof Error ? error.message : error)
+    // The details stay in the server log; the owner gets a plain sentence (never Postgres text).
+    console.error('[expenses] book unavailable', { tenantId: tenant.id, error: error instanceof Error ? error.message : String(error) })
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         {PAGE_TITLE}
-        <ExpensesLoadFailed message={error instanceof Error ? error.message : 'Something went wrong.'} />
+        <ExpensesLoadFailed />
       </div>
     )
   }

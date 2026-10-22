@@ -1,13 +1,14 @@
 'use client'
 
 import { useId, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import type { Expense, ExpenseCategory } from '@/lib/expenses/types'
 import { MAX_REASON_LENGTH } from '@/lib/expenses/validation'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { FIELD_INPUT, FIELD_LABEL, FieldError } from './expense-form-fields'
 import { formatPeso } from './expense-format'
-import { replaceExpense } from './expense-mutations'
+import { replaceExpenseInBulk } from './expense-mutations'
 import { CategoryPicker } from './pickers'
 import { keepOpenWhileListOpen } from './combobox'
 
@@ -18,7 +19,8 @@ interface BulkRecategorizeDialogProps {
   expenses: readonly Expense[]
   categories: readonly ExpenseCategory[]
   recentExpenses: readonly Expense[]
-  onDone: () => void
+  /** After the batch, with the ids that did NOT move (kept selected for a retry). */
+  onDone: (failedIds: string[]) => void
 }
 
 /**
@@ -35,6 +37,7 @@ export function BulkRecategorizeDialog({
   onDone,
 }: BulkRecategorizeDialogProps) {
   const reasonId = useId()
+  const router = useRouter()
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [errors, setErrors] = useState<{ category?: string; reason?: string; submit?: string }>({})
@@ -56,25 +59,32 @@ export function BulkRecategorizeDialog({
       setErrors({ submit: 'They are all in that category already.' })
       return
     }
-    const failures: string[] = []
+    const target = categories.find((category) => category.id === categoryId)
+    const failures: Array<{ id: string; error: string }> = []
     setProgress({ done: 0, total: toMove.length })
     // One at a time: each is its own void + replace, and a failure must not hide the rest.
     for (const [index, expense] of toMove.entries()) {
-      const result = await replaceExpense(tenantSlug, expense.id, trimmed, { categoryId })
-      if (!result.ok) failures.push(result.error)
+      // "Went into stock" is an Ingredients answer: it never follows a row into another group.
+      const clearsStock = expense.isStockPurchase && target?.group !== 'ingredients'
+      const patch = clearsStock ? { categoryId, isStockPurchase: false } : { categoryId }
+      const result = await replaceExpenseInBulk(tenantSlug, expense.id, trimmed, patch)
+      if (!result.ok) failures.push({ id: expense.id, error: result.error })
       setProgress({ done: index + 1, total: toMove.length })
     }
     setProgress(null)
+    // One refresh for the whole batch (each row's action skips its own).
+    router.refresh()
     const moved = toMove.length - failures.length
-    const name = categories.find((category) => category.id === categoryId)?.name ?? 'the new category'
+    const name = target?.name ?? 'the new category'
+    const failedIds = failures.map((failure) => failure.id)
     if (failures.length === 0) {
       toast.success(`Moved ${moved} to ${name}.`)
-      onDone()
+      onDone(failedIds)
       onOpenChange(false)
       return
     }
-    setErrors({ submit: `${moved} moved, ${failures.length} didn’t: ${failures[0]}` })
-    onDone()
+    setErrors({ submit: `${moved} moved, ${failures.length} didn’t: ${failures[0].error} They stay selected so you can try again.` })
+    onDone(failedIds)
   }
 
   const isWorking = progress !== null

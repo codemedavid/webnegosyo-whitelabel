@@ -123,10 +123,17 @@ describe('POST /api/expenses/receipts', () => {
     expect((await upload(uploadRequest(JPEG))).status).toBe(201)
   })
 
-  it('refuses a file over 5 MB and one that is not really a photo or PDF', async () => {
-    const big = new Uint8Array(5 * 1024 * 1024 + 1)
+  it('refuses a body over what Vercel accepts (4.5 MB), with or without a declared length, and a file that is not really a photo or PDF', async () => {
+    const big = new Uint8Array(Math.ceil(4.5 * 1024 * 1024))
     big.set(JPEG)
-    expect((await upload(uploadRequest(big))).status).toBe(413)
+    // No Content-Length (a chunked phone upload): the body is read with a hard cap, never buffered whole.
+    const streamed = await upload(uploadRequest(big))
+    expect(streamed.status).toBe(413)
+    expect(await streamed.json()).toEqual({ error: 'The file is too large. Keep a receipt under 4 MB: take a smaller photo, or compress the PDF.' })
+    // A declared length over the cap is refused before anything is read.
+    const declared = await upload(uploadRequest(JPEG, { headers: { 'content-length': String(5 * 1024 * 1024) } }))
+    expect(declared.status).toBe(413)
+    expect(mockSessionRow).not.toHaveBeenCalled()
     const fake = new TextEncoder().encode('MZ this is not a jpeg')
     const response = await upload(uploadRequest(fake))
     expect(response.status).toBe(415)

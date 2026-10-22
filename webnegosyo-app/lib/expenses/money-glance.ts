@@ -11,8 +11,9 @@
 
 import { canSeeProfit } from "../profit/profit-view";
 import { isTabReachable, type TabVisibilityContext } from "../tab-visibility";
-import { formatCents } from "./expense-format";
-import type { Expense, ExpenseCategory } from "./types";
+import { formatCents, manilaDate } from "./expense-format";
+import type { QueuedExpense } from "./expense-queue";
+import type { Expense, ExpenseCategory, PaidFrom } from "./types";
 
 export interface SpendGlance {
   cents: number;
@@ -26,29 +27,77 @@ export interface GlanceText {
   detail: string;
 }
 
+/** What a spending figure reads from a row, landed or still on this phone. */
+interface SpendRow {
+  spentOn: string;
+  amountCents: number;
+  categoryId: string;
+  paidFrom: PaidFrom;
+  /** Undefined = not known on the phone (a queued drawer pay-out: its shift decides). */
+  outletId: string | null | undefined;
+}
+
+/** An expense this phone holds that the platform has not acknowledged yet. */
+export interface QueuedSpend extends SpendRow {
+  /** = its client_request_id, so it is never counted beside the row it became. */
+  requestId: string;
+}
+
+/**
+ * This phone's queued expenses as spending: refused ones are left out (they
+ * will never land unless a person re-sends them), the rest count from the
+ * moment they are typed — offline at the palengke included.
+ */
+export function queuedSpends(entries: readonly QueuedExpense[]): QueuedSpend[] {
+  return entries
+    .filter((entry) => entry.refusedReason === null)
+    .map((entry) => {
+      const { payload } = entry;
+      if (payload.kind === "book") {
+        const { draft } = payload;
+        return { requestId: entry.id, spentOn: draft.spentOn, amountCents: draft.amountCents, categoryId: draft.categoryId, paidFrom: draft.paidFrom, outletId: draft.outletId };
+      }
+      return {
+        requestId: entry.id,
+        spentOn: manilaDate(entry.createdAt),
+        amountCents: payload.input.amountCents,
+        categoryId: payload.input.categoryId,
+        paidFrom: "drawer" as const,
+        outletId: undefined,
+      };
+    });
+}
+
 /**
  * One Manila day's spending. `outletId` is the branch being viewed; null =
  * every branch. A chosen branch counts only rows filed to it, the rule the
- * month figure's read (`listExpenses`) uses.
+ * month figure's read (`listExpenses`) uses — except a queued drawer pay-out,
+ * whose branch only its shift knows: it is this phone's own drawer, so it
+ * counts. `queued` entries that already landed are counted once.
  */
 export function spentOn(
   expenses: readonly Expense[],
   categories: readonly ExpenseCategory[],
   date: string,
   outletId: string | null,
+  queued: readonly QueuedSpend[] = [],
 ): SpendGlance {
   const notExpense = new Set(categories.filter((category) => category.group === "not_expense").map((category) => category.id));
-  const spending = expenses.filter(
-    (expense) =>
-      expense.spentOn === date &&
-      expense.status === "recorded" &&
-      !notExpense.has(expense.categoryId) &&
-      (outletId === null || expense.outletId === outletId),
+  const landed = new Set(expenses.map((expense) => expense.clientRequestId).filter(Boolean));
+  const rows: SpendRow[] = [
+    ...expenses.filter((expense) => expense.status === "recorded"),
+    ...queued.filter((entry) => !landed.has(entry.requestId)),
+  ];
+  const spending = rows.filter(
+    (row) =>
+      row.spentOn === date &&
+      !notExpense.has(row.categoryId) &&
+      (outletId === null || row.outletId === undefined || row.outletId === outletId),
   );
   return {
-    cents: spending.reduce((total, expense) => total + expense.amountCents, 0),
+    cents: spending.reduce((total, row) => total + row.amountCents, 0),
     count: spending.length,
-    drawerCount: spending.filter((expense) => expense.paidFrom === "drawer").length,
+    drawerCount: spending.filter((row) => row.paidFrom === "drawer").length,
   };
 }
 
@@ -150,7 +199,11 @@ export interface MoneyAccess {
   canSeeKept: boolean;
 }
 
-/** Who sees which money row. Never money to an account without the key. */
+/**
+ * Who sees which money row. Never money to an account without the key. Profit
+ * needs reports + expenses + costs (`canSeeProfit`); `isTabReachable` now asks
+ * the same, and it is checked here too so no door into Profit can drift.
+ */
 export function moneyAccess(ctx: TabVisibilityContext, orderBackend: string | null): MoneyAccess {
   const canSeeProfitRow = isTabReachable("profit", ctx) && canSeeProfit(ctx.caller);
   return {

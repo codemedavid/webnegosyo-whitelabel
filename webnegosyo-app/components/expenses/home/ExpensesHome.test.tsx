@@ -4,12 +4,15 @@
  * when nothing does, and the filter pills carry the "Check these" count.
  */
 import React from "react";
+import { StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { HOME_CATEGORIES, homeExpense, homeQueued } from "../../../lib/expenses/expenses-home-fixtures";
 import { needsYouItems } from "../../../lib/expenses/expenses-home-needs";
 import { buildHomeRows, type BuildRowsInput } from "../../../lib/expenses/expenses-home-rows";
+import { homeTotals } from "../../../lib/expenses/expenses-home-rows";
 import { ExpenseRow } from "../ExpenseRow";
+import { ExpensesHero } from "./ExpensesHero";
 import { HomeFilterPills } from "./HomeFilterPills";
 import { NeedsYouCard } from "./NeedsYouCard";
 
@@ -93,6 +96,17 @@ describe("HomeFilterPills", () => {
     expect(onView).toHaveBeenCalledWith("check");
   });
 
+  it("gives every pill a 44pt target that still grows with large text", () => {
+    render(<HomeFilterPills view="all" checkCount={0} categoryLabel={null} onView={() => {}} onCategory={() => {}} />);
+
+    for (const pill of screen.getAllByRole("button")) {
+      const style = StyleSheet.flatten(pill.props.style);
+      const slop = pill.props.hitSlop ?? { top: 0, bottom: 0 };
+      expect(style.height).toBeUndefined();
+      expect(style.minHeight + slop.top + slop.bottom).toBeGreaterThanOrEqual(44);
+    }
+  });
+
   it("names the chosen category on its pill", () => {
     const onCategory = jest.fn();
 
@@ -100,5 +114,43 @@ describe("HomeFilterPills", () => {
     fireEvent.press(screen.getByRole("button", { name: "Category: Yelo. Change" }));
 
     expect(onCategory).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ExpensesHero", () => {
+  const props = {
+    eyebrow: "Spent in October",
+    monthShort: "Oct",
+    totals: homeTotals([]),
+    change: null,
+    clearLabel: null,
+    onClear: () => {},
+    today: { cents: 0, count: 0 },
+    kept: null,
+    onOpenProfit: () => {},
+    isTruncated: false,
+    canGoNext: false,
+    onPrevious: jest.fn(),
+    onNext: () => {},
+  };
+
+  it("shows no figure for a month that failed, but keeps the month arrows", () => {
+    // Arrange
+    const onPrevious = jest.fn();
+
+    // Act
+    render(<ExpensesHero {...props} state="failed" onPrevious={onPrevious} />);
+    fireEvent.press(screen.getByRole("button", { name: "Previous month" }));
+
+    // Assert
+    expect(screen.queryByTestId("expenses-hero-total")).toBeNull();
+    expect(screen.getByText("Not loaded")).toBeTruthy();
+    expect(onPrevious).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the total once the month is in", () => {
+    render(<ExpensesHero {...props} state="ready" />);
+
+    expect(screen.getByTestId("expenses-hero-total")).toBeTruthy();
   });
 });

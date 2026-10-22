@@ -1,4 +1,14 @@
-import { CHANGE_REASONS, VOID_REASONS, checkChange, checkVoidReason, payoutSuggestion, shortName } from "./expense-detail-sheets";
+import {
+  CHANGE_REASONS,
+  CURRENT_CATEGORY_NAME,
+  VOID_REASONS,
+  changeCategoryChoices,
+  checkChange,
+  checkVoidReason,
+  isAlreadySortedError,
+  payoutSuggestion,
+  shortName,
+} from "./expense-detail-sheets";
 import type { Expense, ExpenseCategory } from "./types";
 
 const base: Expense = {
@@ -78,5 +88,35 @@ describe("payoutSuggestion", () => {
   it("shortens a seed name for a chip", () => {
     expect(shortName("Ice (Yelo)")).toBe("Ice");
     expect(shortName("Gas / LPG")).toBe("Gas / LPG");
+  });
+});
+
+describe("changeCategoryChoices", () => {
+  it("offers the store's categories unchanged when the current one is among them", () => {
+    const offered = [lpg, ice];
+
+    expect(changeCategoryChoices(offered, "lpg")).toBe(offered);
+  });
+
+  it("keeps an archived current category on offer, so the sheet shows what the expense is filed under", () => {
+    // Arrange: the category list only carries live categories.
+    const offered = [lpg, ice];
+
+    // Act
+    const choices = changeCategoryChoices(offered, "old-cat");
+
+    // Assert
+    expect(choices.map((choice) => choice.id)).toEqual(["lpg", "ice", "old-cat"]);
+    expect(choices[2]).toMatchObject({ name: CURRENT_CATEGORY_NAME, archivedAt: null });
+  });
+});
+
+describe("isAlreadySortedError", () => {
+  it("recognises the unique refusal a second save of the same pay-out gets", () => {
+    expect(isAlreadySortedError({ code: "23505", message: "duplicate key" })).toBe(true);
+    expect(isAlreadySortedError(Object.assign(new Error("dup"), { code: "23505" }))).toBe(true);
+    expect(isAlreadySortedError(new Error("This pay-out already has a category."))).toBe(false);
+    expect(isAlreadySortedError(new Error("network"))).toBe(false);
+    expect(isAlreadySortedError(null)).toBe(false);
   });
 });

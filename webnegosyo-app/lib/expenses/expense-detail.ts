@@ -8,25 +8,18 @@
  */
 
 import { expenseHistory, type HistoryLine } from "./expense-history";
-import { PAID_FROM_LABELS, formatCents, manilaClock, manilaDate, manilaToday } from "./expense-format";
+import { PAID_FROM_LABELS, formatCents, manilaClock, manilaDate, weekdayDate } from "./expense-format";
 import type { ExpenseDetail, ExpenseReceiptRef } from "./expense-service";
 import { DEFAULT_NO_RECEIPT_THRESHOLD_CENTS, computeFlags } from "./flags";
 import { daysBetween } from "./manila-date";
 import type { Expense, ExpenseCategory, ExpenseFlag, PaidFrom } from "./types";
 
 const PDF_MIME = "application/pdf";
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // ---------------------------------------------------------------- dates
 
 /** "Wed, 22 Oct" (this year) or "Wed, 31 Dec 2025" for a Manila date. */
-export function longDayText(date: string, now: number = Date.now()): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
-  const head = `${weekday}, ${day} ${MONTHS[month - 1]}`;
-  return String(year) === manilaToday(now).slice(0, 4) ? head : `${head} ${year}`;
-}
+export const longDayText = weekdayDate;
 
 /**
  * "Wed, 22 Oct · 10:12 AM". The clock is shown only when the row was typed on
@@ -133,7 +126,11 @@ export interface FlagCallout {
 export interface FlagInput {
   expense: Expense;
   categories: readonly ExpenseCategory[];
-  /** Rows to compare against for duplicates (recent rows; may include this one). */
+  /**
+   * Rows to compare against for duplicates (may include this one). Pass the
+   * SAME rows the Expenses list flags from — the expense's month, on the same
+   * branch — so "Check these" and this screen never disagree.
+   */
   others: readonly Expense[];
   /** May add a receipt to this expense. */
   canManage: boolean;
@@ -181,7 +178,7 @@ function calloutFor(flag: ExpenseFlag, input: FlagInput): FlagCallout {
       return {
         flag,
         title: "No receipt yet",
-        body: `Spends over ${formatCents(threshold, { compact: true })} usually have one. Add a photo when you have it.`,
+        body: `Spends of ${formatCents(threshold, { compact: true })} or more usually have one. Add a photo when you have it.`,
         action: input.canManage ? { kind: "add_receipt", label: "Add photo" } : null,
       };
     }
@@ -212,6 +209,21 @@ export function flagCallouts(input: FlagInput): FlagCallout[] {
     noReceiptThresholdCents: input.noReceiptThresholdCents,
   });
   return flags.map((flag) => calloutFor(flag, input));
+}
+
+// ---------------------------------------------------------------- access
+
+/**
+ * Who may read this screen. `full` = the `expenses` key. Without it, a
+ * cashier may still open a drawer expense — the database returns only the
+ * ones they paid themselves (`expenses_read`) — but with no owner actions.
+ * Anything else, or a row that did not come back, is locked.
+ */
+export type DetailAccess = "full" | "own_drawer" | "locked";
+
+export function detailAccess(input: { canManage: boolean; expense: Pick<Expense, "paidFrom"> | null }): DetailAccess {
+  if (input.canManage) return "full";
+  return input.expense?.paidFrom === "drawer" ? "own_drawer" : "locked";
 }
 
 // ---------------------------------------------------------------- actions
@@ -287,12 +299,20 @@ export function timelineEntries(detail: ExpenseDetail, now: number = Date.now())
 export type ReceiptTile =
   | { readonly key: string; readonly kind: "photo"; readonly receiptId: string; readonly uri: string | null }
   | { readonly key: string; readonly kind: "pdf"; readonly receiptId: string }
-  | { readonly key: string; readonly kind: "waiting"; readonly uri: string; readonly isPdf: boolean };
+  | {
+      readonly key: string;
+      readonly kind: "waiting";
+      readonly uri: string;
+      readonly isPdf: boolean;
+      /** Set when the server refused the file: it stays on the phone until Try again or Remove. */
+      readonly refusedReason: string | null;
+    };
 
 export interface WaitingReceipt {
   id: string;
   fileUri: string;
   mime: string;
+  refusedReason?: string | null;
 }
 
 /**
@@ -310,7 +330,15 @@ export function receiptTiles(
       ? { key: receipt.id, kind: "pdf", receiptId: receipt.id }
       : { key: receipt.id, kind: "photo", receiptId: receipt.id, uri: links[receipt.id] ?? null },
   );
-  const local = waiting.map((entry): ReceiptTile => ({ key: entry.id, kind: "waiting", uri: entry.fileUri, isPdf: entry.mime === PDF_MIME }));
+  const local = waiting.map(
+    (entry): ReceiptTile => ({
+      key: entry.id,
+      kind: "waiting",
+      uri: entry.fileUri,
+      isPdf: entry.mime === PDF_MIME,
+      refusedReason: entry.refusedReason ?? null,
+    }),
+  );
   return [...uploaded, ...local];
 }
 

@@ -87,3 +87,17 @@ describe("buildHomeModel", () => {
     expect(result.counts.check).toBe(1);
   });
 });
+
+describe("branch on screen", () => {
+  test("a waiting entry typed for another branch is not in the hero total", () => {
+    // Arrange
+    const queued = [homeQueued({ id: "q-main", outletId: "main", amountCents: 20_000 }), homeQueued({ id: "q-north", outletId: "north", amountCents: 70_000 })];
+
+    // Act
+    const onMain = model({ expenses: october, queued, branchId: "main" });
+
+    // Assert
+    expect(onMain.totals.spentCents).toBe(1_110_000 + 20_000);
+    expect(onMain.rows.map((row) => row.queuedId).filter(Boolean)).toEqual(["q-main"]);
+  });
+});

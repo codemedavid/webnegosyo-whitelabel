@@ -148,7 +148,10 @@ export function sheetTitle(mode: AddExpenseMode, scope: ExpenseSheetScope): stri
 }
 
 /** The one main button; it always repeats the amount ("Pay ₱150 from drawer"). */
-export function primaryLabel(cents: number, mode: AddExpenseMode, scope: ExpenseSheetScope): string {
+export function primaryLabel(cents: number, mode: AddExpenseMode, scope: ExpenseSheetScope, hasCategory = true): string {
+  // The amount is in but the button is still off: say what's missing instead
+  // of showing a grey "Save ₱22,222" that won't press.
+  if (cents > 0 && !hasCategory) return "Choose a category";
   if (scope === "take_out") return saveLabel(cents, "Take out");
   if (mode.kind === "drawer") return cents > 0 ? `Pay ${formatPeso(cents)} from drawer` : "Pay from drawer";
   return saveLabel(cents);

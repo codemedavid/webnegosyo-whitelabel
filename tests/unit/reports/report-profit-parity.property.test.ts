@@ -31,6 +31,7 @@ import {
 import { toExpenseCategoryTotals, toProfitFigures, toProfitPeriods } from '@/lib/reports/read/report-profit-rows'
 import { toSalesTotals } from '@/lib/reports/read/report-rpc-rows'
 import { toReportOrder, type PlatformOrderItemRow, type PlatformOrderRow, type PlatformPaymentRow } from '@/lib/reports/read/platform-order-row'
+import { isLiveOrder } from '@/lib/reports/sales-model'
 import { toPlatformTables } from '../../fixtures/report-orders'
 import { BRANCHES, PROFIT_CATEGORIES, profitStoreArb, type ProfitStore } from '../../fixtures/profit-stores'
 import { propertyRuns } from '../../utils/property'
@@ -181,7 +182,7 @@ function materialize(store: ProfitStore, index: number, uuid: (key: string) => s
   }
 }
 
-/** Half-centavo frozen costs, a cancelled order's sale and void, edge-of-window expenses. */
+/** Half-centavo frozen costs, a cancelled order's sale and void (the void after the window), edge-of-window expenses. */
 const EDGE_STORE: ProfitStore = {
   orders: [
     // A deleted dish sold under two spellings is ONE dish (folded name), costed once.
@@ -202,6 +203,11 @@ const EDGE_STORE: ProfitStore = {
     { lineId: 'e2-a', unitCost: '99.0000' },
   ],
   movements: [
+    // e2 was sold inside the window and cancelled after it: neither its sale nor its void counts.
+    { reason: 'sale', quantityDelta: '-1.0000', unitCost: '7.0000', orderId: 'e2', outletId: null, at: WINDOW.start + 7_200_000 },
+    { reason: 'void', quantityDelta: '1.0000', unitCost: '7.0000', orderId: 'e2', outletId: null, at: WINDOW.end + DAY_MS },
+    // e1 (live) edited down: its void counts.
+    { reason: 'void', quantityDelta: '1.0000', unitCost: '3.0000', orderId: 'e1', outletId: null, at: WINDOW.end - 2 },
     { reason: 'sale', quantityDelta: '-1.0000', unitCost: '0.0050', orderId: null, outletId: null, at: WINDOW.start },
     { reason: 'void', quantityDelta: '1.0000', unitCost: '0.0050', orderId: null, outletId: null, at: WINDOW.start + 1 },
     { reason: 'sale', quantityDelta: '-3.0000', unitCost: '0.0050', orderId: null, outletId: 'b-0', at: WINDOW.end - 1 },
@@ -281,6 +287,17 @@ function rowsOf(result: Result, label: string): unknown[] {
   return result.rows ?? []
 }
 
+const inside = (at: number) => at >= WINDOW.start && at < WINDOW.end
+
+/** A non-live order whose sale is in the window and whose void is not. */
+function hasSaleCancelledAfterWindow(store: Materialized): boolean {
+  const reversed = new Set(store.raw.orders.filter((order) => !isLiveOrder(order)).map((order) => order.id))
+  const moves = store.raw.movements.filter((move) => move.orderId !== null && reversed.has(move.orderId))
+  return moves.some(
+    (sale) => sale.reason === 'sale' && inside(sale.at) && moves.some((back) => back.reason === 'void' && back.orderId === sale.orderId && !inside(back.at)),
+  )
+}
+
 const byId = <T extends { categoryId: string }>(rows: readonly T[]) => [...rows].sort((a, b) => (a.categoryId < b.categoryId ? -1 : 1))
 
 describe('SQL profit functions = the TypeScript profit engine, to the centavo', () => {
@@ -336,5 +353,7 @@ describe('SQL profit functions = the TypeScript profit engine, to the centavo', 
     expect(wholes.some((figures) => figures.groupCents.not_expense > 0)).toBe(true)
     expect(wholes.some((figures) => figures.groupCents.capex > 0)).toBe(true)
     expect(wholes.some((figures) => figures.fallbackOrders > 0 && figures.saleMovements > 0)).toBe(true)
+    // An order cancelled later: its sale inside the window, its void after it.
+    expect(stores.filter(hasSaleCancelledAfterWindow).length).toBeGreaterThan(1)
   })
 })

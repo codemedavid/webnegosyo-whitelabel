@@ -1,5 +1,5 @@
 import type { TrendBar } from "./profit-service";
-import { trendColumns, trendTitle } from "./profit-trend-view";
+import { trendColumns } from "./profit-trend-view";
 
 const bar = (key: string, profitCents: number, netSalesCents: number, isIncomplete = false): TrendBar => ({
   key,
@@ -38,9 +38,4 @@ describe("the trend columns", () => {
     expect(columns[0].spoken).toBe("Oct 19: lost ₱1,500 on ₱4,000 in sales, still running");
   });
 
-  it("names the trend by its grain", () => {
-    expect(trendTitle("day")).toBe("Day by day");
-    expect(trendTitle("week")).toBe("Week by week");
-    expect(trendTitle("month")).toBe("Month by month");
-  });
 });

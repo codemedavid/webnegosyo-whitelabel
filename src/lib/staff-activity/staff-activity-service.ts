@@ -178,7 +178,7 @@ export async function loadStaffShifts(
   let request = createAdminClient()
     .from('staff_shifts')
     .select(
-      'id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_name, is_zero_balance, closed_by_name, shift_cash_movements(kind, amount, reason, recorded_by_name, created_at)',
+      'id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_name, is_zero_balance, closed_by_name, shift_cash_movements(kind, amount, reason, recorded_by_name, created_at, expenses(status, expense_categories(name)))',
     )
     .eq('tenant_id', tenantId)
     .or(`closed_at.is.null,closed_at.gte.${query.sinceIso}`)

@@ -3,10 +3,17 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { GROUP_LABELS, sortCategories } from "../../lib/expenses/categories";
 import { categoryLook, shortCategoryName } from "../../lib/expenses/category-look";
-import { EXPENSE_GROUPS, type ExpenseCategory } from "../../lib/expenses/types";
+import { EXPENSE_GROUPS, type ExpenseCategory, type ExpenseGroup } from "../../lib/expenses/types";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Icon } from "../Icon";
 import { CategoryTile } from "./CategoryTile";
+
+/**
+ * Group headings in the list. The shared engine's labels (`GROUP_LABELS`,
+ * byte-identical with the web) say "Not an expense"; the app says "Cash moved"
+ * everywhere (rows, hero, split), so the picker does too.
+ */
+const LIST_GROUP_LABELS: Readonly<Record<ExpenseGroup, string>> = { ...GROUP_LABELS, not_expense: "Cash moved" };
 
 /** Cells in the grid before "All N": two rows of four. */
 export const GRID_CELLS = 8;
@@ -91,7 +98,7 @@ export function CategoryList({ categories, selectedId, onPick }: CategoryListPro
     <View style={styles.list}>
       {sections.map((section) => (
         <View key={section.group} style={styles.section}>
-          <Text style={styles.sectionTitle}>{GROUP_LABELS[section.group]}</Text>
+          <Text style={styles.sectionTitle}>{LIST_GROUP_LABELS[section.group]}</Text>
           {section.items.map((category) => {
             const isOn = category.id === selectedId;
             return (

@@ -1,6 +1,6 @@
 import { resolveReportPeriod, type ReportPeriod } from '@/lib/reports/period'
 import type { ProfitFinding } from '@/lib/reports/profit-model'
-import { canSeeProfit, findingCopy, parseProfitView, previousFullWindow, profitGrainFor } from '@/lib/reports/profit-view'
+import { canSeeProfit, expensesBookHref, expensesLinkFor, findingCopy, parseProfitView, previousFullWindow, profitGrainFor } from '@/lib/reports/profit-view'
 import { PROFIT_FORBIDDEN_MESSAGE, readExpenseCategories, readProfitPeriods, readProfitSummary, type ReportRpcClient } from '@/lib/reports/read/report-rpc'
 
 const TENANT = 'aaaaaaaa-0000-4000-8000-000000000001'
@@ -53,12 +53,18 @@ describe('windows', () => {
     expect(previousFullWindow(january.period)?.start).toBe(Date.parse('2026-11-30T16:00:00Z'))
   })
 
-  test('a running week is compared with the whole week before; a day with nothing', () => {
-    expect(previousFullWindow(period({ preset: 'this_week' }))).toEqual({
-      start: Date.parse('2026-10-11T16:00:00Z'),
-      end: Date.parse('2026-10-18T16:00:00Z'),
-    })
+  test('a window shorter than a month never looks back for missing bills (rent is monthly)', () => {
+    expect(previousFullWindow(period({ preset: 'this_week' }))).toBeNull()
+    expect(previousFullWindow(period({ preset: 'last_week' }))).toBeNull()
     expect(previousFullWindow(period({ preset: 'today' }))).toBeNull()
+  })
+
+  test('a custom window of a month or more is compared with the same length before', () => {
+    const custom = resolveReportPeriod({ preset: 'custom', from: '2026-08-01', to: '2026-09-30' }, NOW)
+    if (!custom.ok) throw new Error(custom.error)
+    const window = previousFullWindow(custom.period)
+    expect(window?.end).toBe(custom.period.start)
+    expect(window && window.end - window.start).toBe(custom.period.fullEnd - custom.period.start)
   })
 
   test('the trend is never finer than a day', () => {
@@ -74,21 +80,38 @@ describe('windows', () => {
   })
 })
 
-describe('the trust strip says what to do', () => {
-  const links = { adminBase: '/shop/admin', periodPhrase: 'this month yet' }
-  const copy = (finding: ProfitFinding) => findingCopy(finding, links)
-
-  test('a missing bill opens the expense book with that category ready', () => {
-    const row = copy({ kind: 'missing_recurring', severity: 'warning', categoryId: 'c-rent', categoryName: 'Rent (Upa)', systemKey: 'rent', previousCents: 1 })
-    expect(row.text).toBe('No Rent (Upa) recorded this month yet. Profit looks higher than it is.')
-    expect(row.action).toEqual({ label: 'Record', href: '/shop/admin/expenses?add=c-rent' })
+describe('links into the expense book keep the period', () => {
+  test('the current period opens this month and dates a new entry today', () => {
+    expect(expensesLinkFor(period({ preset: 'this_week' }))).toEqual({ month: '2026-10', recordOn: '2026-10-21' })
   })
 
-  test('missing recipes go to the menu, unsorted pay-outs to the unsorted view', () => {
+  test('a past period opens its own month and dates a new entry on its last day', () => {
+    expect(expensesLinkFor(period({ preset: 'last_month' }))).toEqual({ month: '2026-09', recordOn: '2026-09-30' })
+  })
+
+  test('hrefs carry the month, then the screen’s own parameters', () => {
+    const link = { month: '2026-09', recordOn: '2026-09-30' }
+    expect(expensesBookHref('/shop/admin', link)).toBe('/shop/admin/expenses?month=2026-09')
+    expect(expensesBookHref('/shop/admin', link, { category: 'c 1' })).toBe('/shop/admin/expenses?month=2026-09&category=c+1')
+  })
+})
+
+describe('the trust strip says what to do', () => {
+  const links = { adminBase: '/shop/admin', periodPhrase: 'in September', expenses: { month: '2026-09', recordOn: '2026-09-30' } }
+  const copy = (finding: ProfitFinding) => findingCopy(finding, links)
+
+  test('a missing bill opens the viewed month with that category ready, dated inside the period', () => {
+    const row = copy({ kind: 'missing_recurring', severity: 'warning', categoryId: 'c-rent', categoryName: 'Rent (Upa)', systemKey: 'rent', previousCents: 1 })
+    expect(row.text).toBe('No Rent (Upa) recorded in September. Profit looks higher than it is.')
+    expect(row.action).toEqual({ label: 'Record', href: '/shop/admin/expenses?month=2026-09&add=c-rent&on=2026-09-30' })
+  })
+
+  test('missing recipes go to the menu, unsorted pay-outs to the unsorted view of the month', () => {
     expect(copy({ kind: 'uncosted_dishes', severity: 'warning', uncostedDishes: 9, uncostedShare: 0.25 }).action?.href).toBe('/shop/admin/menu')
     const payouts = copy({ kind: 'unsorted_payouts', severity: 'warning', count: 4, cents: 120_000 })
     expect(payouts.text).toBe('4 drawer pay-outs (₱1,200) not sorted yet, so not in Expenses.')
-    expect(payouts.action?.href).toBe('/shop/admin/expenses?view=unsorted')
+    expect(payouts.action?.href).toBe('/shop/admin/expenses?month=2026-09&view=unsorted')
+    expect(copy({ kind: 'no_expenses', severity: 'warning' }).action?.href).toBe('/shop/admin/expenses?month=2026-09&add=1&on=2026-09-30')
   })
 
   test('notes about how the figure was made carry no action', () => {

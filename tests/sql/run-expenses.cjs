@@ -318,6 +318,13 @@ async function checkBookkeeper(db) {
   eq((await insertExpense(db, { category: cat.water, outlet: OUT_A1 })).rows.length, 1, 'book records at branch 1')
   eq((await insertExpense(db, { category: cat.water, outlet: OUT_A2 })).rows.length, 1, 'book records at branch 2')
 
+  await as(db, 'authenticated', U.menu)
+  eq(Number(await scalar(db, 'select count(*) from suppliers where tenant_id = $1', [T_A])), 0, 'staff without expenses or pos do not read payees (TIN, phone)')
+  await as(db, 'authenticated', U.kitchen)
+  eq(Number(await scalar(db, 'select count(*) from suppliers where tenant_id = $1', [T_A])), 0, 'nor kitchen staff')
+  await as(db, 'authenticated', U.cashier)
+  eq(Number(await scalar(db, 'select count(*) from suppliers where tenant_id = $1', [T_A])) > 0, true, 'a cashier (pos) reads payees for "Paid to"')
+
   await as(db, 'authenticated', U.ownerB)
   eq(Number(await scalar(db, 'select count(*) from expenses where tenant_id = $1', [T_A])), 0, "another store's owner sees none of A's book")
   eq(Number(await scalar(db, 'select count(*) from expense_categories where tenant_id = $1', [T_A])), 0, "nor A's categories")
@@ -428,6 +435,12 @@ async function checkReplace(db, drawerExpenseId) {
   eq(pair[0].replaces_expense_id, drawerExpenseId, 'and points at what it replaces')
   eq([pair[0].created_by, pair[0].created_by_name], [U.owner, 'Olivia Owner'], 'the replacement is recorded by whoever fixed it')
   eq([pair[1].voided_by, pair[1].void_reason], [U.owner, 'wrong category'], 'the old row names the voider and the reason')
+  eq((await admin(db, 'select expense_id from expense_receipts where expense_id in ($1, $2)', [drawerExpenseId, newId])).map((row) => row.expense_id), [newId], "the receipt moves to the corrected copy (it would read 'No receipt' otherwise)")
+
+  // Pay staff is not built: a client cannot name a staff payee.
+  await as(db, 'authenticated', U.owner)
+  const { rows: staffRow } = await db.query("insert into expenses (tenant_id, category_id, amount_cents, paid_from, created_by_name, staff_user_id) values ($1, $2, 100, 'cash', 'x', $3) returning staff_user_id", [T_A, cat.marketing, U.cashier])
+  eq(staffRow[0].staff_user_id, null, 'staff_user_id is cleared on client inserts until Pay staff exists')
 
   await as(db, 'authenticated', U.owner)
   const cashId = (await insertExpense(db, { category: cat.marketing, cents: 50000 })).rows[0].id
@@ -436,7 +449,7 @@ async function checkReplace(db, drawerExpenseId) {
   await refused(replacing(cashId), '42501', 'a direct insert cannot claim to replace a recorded row')
   const fixed = await scalar(db, "select public.replace_expense($1, 'typo', $2)", [cashId, JSON.stringify({ amount_cents: 55000, paid_from: 'gcash' })])
   eq((await rows(db, 'select amount_cents, paid_from from expenses where id = $1', [fixed]))[0], { amount_cents: 55000, paid_from: 'gcash' }, 'a non-drawer row is re-recorded with a new amount and source')
-  await refused(replacing(cashId), '23505', 'a voided row has at most one replacement')
+  await refused(replacing(cashId), '42501', 'a voided row is never re-filed by a direct insert (only replace_expense)', /replace_expense/)
   await refused(db.query("select public.replace_expense($1, '', '{}')", [fixed]), '22023', 'replace needs a void reason', /reason_required/)
   eq(await scalar(db, 'select status from expenses where id = $1', [fixed]), 'recorded', 'a refused replace leaves the row recorded')
   await as(db, 'authenticated', U.menu)
@@ -465,8 +478,12 @@ async function checkDrawerVoid(db) {
   // A pay-out whose expense was voided is not unsorted: it cannot be filed again.
   await as(db, 'authenticated', U.book)
   await refused(db.query('select public.sort_drawer_payout($1, $2, null, null, null, $3)', [await movementOf(undone), cat.ice, 'Bea']), '23505', 'a voided drawer expense\'s pay-out cannot be sorted again', /drawer_payout_already_sorted/)
+  // (movementOf reads as the service role, so it runs BEFORE switching to the cashier.)
+  const undoneMovement = await movementOf(undone)
   await as(db, 'authenticated', U.cashier)
-  await refused(db.query("insert into expenses (tenant_id, category_id, amount_cents, paid_from, shift_cash_movement_id, created_by_name) values ($1, $2, 3000, 'drawer', $3, 'Cara')", [T_A, cat.ice, await movementOf(undone)]), '23505', 'nor linked again directly', /drawer_payout_already_sorted/)
+  await refused(db.query("insert into expenses (tenant_id, category_id, amount_cents, paid_from, shift_cash_movement_id, created_by_name) values ($1, $2, 3000, 'drawer', $3, 'Cara')", [T_A, cat.ice, undoneMovement]), '23505', 'nor linked again directly', /drawer_payout_already_sorted/)
+  await refused(db.query("insert into expenses (tenant_id, category_id, amount_cents, paid_from, shift_cash_movement_id, created_by_name, replaces_expense_id) values ($1, $2, 3000, 'drawer', $3, 'Cara', $4)", [T_A, cat.ice, undoneMovement, undone]), '42501',
+    'nor re-filed as a "replacement" of the voided row after the cash went back (phantom expense)', /replace_expense/)
 
   // The owner (a cash manager) voids a cashier's drawer expense; actor name given.
   const byOwner = await record(U.cashier, S.cash1, 4000, 'eeeeeeee-0000-4000-8000-000000000102')
@@ -592,6 +609,10 @@ async function main() {
     ]) {
       await db.exec(readMigration(file))
     }
+    // get_store_activity(_summary) call helpers this stub omits.
+    await db.exec('set check_function_bodies = off')
+    await db.exec(readMigration('20261022130000_expenses_security_folds.sql'))
+    await db.exec('set check_function_bodies = on')
 
     await checkSeeding(db)
     await checkAnon(db)

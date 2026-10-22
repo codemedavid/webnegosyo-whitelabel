@@ -16,6 +16,11 @@ export const RECEIPT_BUCKET = 'expense-receipts'
 export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024
 /** Multipart framing on top of the file itself. */
 export const MAX_RECEIPT_REQUEST_BYTES = MAX_RECEIPT_BYTES + 64 * 1024
+/** Vercel refuses a function request body over 4.5 MB before our code runs. */
+const PLATFORM_BODY_LIMIT_BYTES = 4.5 * 1024 * 1024
+/** What an upload request may really carry: the tighter of our cap and the platform's. */
+export const MAX_RECEIPT_UPLOAD_REQUEST_BYTES = Math.min(MAX_RECEIPT_REQUEST_BYTES, PLATFORM_BODY_LIMIT_BYTES)
+export const RECEIPT_TOO_LARGE_MESSAGE = 'The file is too large. Keep a receipt under 4 MB: take a smaller photo, or compress the PDF.'
 export const RECEIPT_LINK_TTL_SECONDS = 5 * 60
 /** A sanity bound: an expense with this many receipts is being abused, not documented. */
 export const MAX_RECEIPTS_PER_EXPENSE = 10

@@ -23,15 +23,32 @@ describe("expenseHistory", () => {
       drawer: { shiftId: "s1", drawerName: "Cashier 1", isShiftOpen: true },
     };
     expect(expenseHistory(detail, NOW)).toEqual([
-      { key: "replaces", text: "Fixes an earlier entry (wrong amount)", when: "Today, 9:50 AM", linkExpenseId: "e1" },
-      { key: "recorded", text: "Recorded by Ana from the Cashier 1 drawer", when: "Today, 9:42 AM", linkExpenseId: null },
-      { key: "voided", text: "Voided: wrong category", when: "Today, 11:00 AM", linkExpenseId: null },
-      { key: "replacedBy", text: "Replaced by a corrected entry", when: "Today, 11:00 AM", linkExpenseId: "e3" },
+      { key: "replaces", text: "Fixes an earlier entry (wrong amount)", when: "Today · 9:50 AM", linkExpenseId: "e1" },
+      { key: "recorded", text: "Recorded by Ana from the Cashier 1 drawer", when: "Today · 9:42 AM", linkExpenseId: null },
+      { key: "voided", text: "Voided: wrong category", when: "Today · 11:00 AM", linkExpenseId: null },
+      { key: "replacedBy", text: "Replaced by a corrected entry", when: "Today · 11:00 AM", linkExpenseId: "e3" },
     ]);
   });
 
   it("names the source of a book expense", () => {
     const detail: ExpenseDetail = { expense: { ...base, paidFrom: "gcash", replacesExpenseId: null }, receipts: [], replaces: null, replacedBy: null, drawer: null };
     expect(expenseHistory(detail, NOW).map((line) => line.text)).toEqual(["Recorded by Ana from GCash"]);
+  });
+
+  it("writes an older day the way the rest of the app does: weekday, day, month", () => {
+    // Arrange
+    const detail: ExpenseDetail = {
+      expense: { ...base, replacesExpenseId: null, createdAt: "2026-10-19T01:42:00Z", spentOn: "2026-10-19" },
+      receipts: [],
+      replaces: null,
+      replacedBy: null,
+      drawer: null,
+    };
+
+    // Act
+    const [recorded] = expenseHistory(detail, NOW);
+
+    // Assert
+    expect(recorded.when).toBe("Mon, 19 Oct · 9:42 AM");
   });
 });

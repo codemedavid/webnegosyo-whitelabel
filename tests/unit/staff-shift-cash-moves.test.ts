@@ -56,9 +56,27 @@ describe('summarizeShiftCashMoves', () => {
     ])
 
     expect(summary.payOuts).toEqual([
-      { amount: 450, reason: 'LPG', recordedByName: 'Ben', createdAt: '2026-10-21T02:00:00Z' },
-      { amount: 85.5, reason: 'Ice', recordedByName: 'Ana', createdAt: '2026-10-21T03:00:00Z' },
+      { amount: 450, reason: 'LPG', recordedByName: 'Ben', createdAt: '2026-10-21T02:00:00Z', categoryName: null },
+      { amount: 85.5, reason: 'Ice', recordedByName: 'Ana', createdAt: '2026-10-21T03:00:00Z', categoryName: null },
     ])
+  })
+
+  test('names the category a pay-out was filed under (its recorded expense; a voided one is history)', () => {
+    const summary = summarizeShiftCashMoves([
+      {
+        kind: 'pay_out',
+        amount: '85.50',
+        reason: 'yelo',
+        created_at: '2026-10-21T03:00:00Z',
+        expenses: [
+          { status: 'void', expense_categories: { name: 'Other' } },
+          { status: 'recorded', expense_categories: { name: 'Ice (Yelo)' } },
+        ],
+      },
+      { kind: 'pay_out', amount: '20', reason: 'tip', created_at: '2026-10-21T04:00:00Z', expenses: [{ status: 'void', expense_categories: { name: 'Other' } }] },
+    ])
+
+    expect(summary.payOuts.map((payOut) => payOut.categoryName)).toEqual(['Ice (Yelo)', null])
   })
 
   test('sums in centavos so small amounts never drift', () => {
@@ -72,7 +90,7 @@ describe('summarizeShiftCashMoves', () => {
       { kind: 'pay_out', amount: '20', reason: '   ', recorded_by_name: null },
     ]).payOuts
 
-    expect(payOut).toEqual({ amount: 20, reason: null, recordedByName: null, createdAt: null })
+    expect(payOut).toEqual({ amount: 20, reason: null, recordedByName: null, createdAt: null, categoryName: null })
   })
 
   test('no moves (or a read without the embed) is all zeros', () => {
@@ -113,7 +131,7 @@ describe('toStaffShift', () => {
     expect(shift.paidIn).toBe(100)
     expect(shift.paidOut).toBe(85.5)
     expect(shift.payOuts).toEqual([
-      { amount: 85.5, reason: 'Ice', recordedByName: 'Ana', createdAt: '2026-10-21T03:00:00Z' },
+      { amount: 85.5, reason: 'Ice', recordedByName: 'Ana', createdAt: '2026-10-21T03:00:00Z', categoryName: null },
     ])
     expect(shift.openingFloat).toBe(500)
     expect(shift.expectedCash).toBe(1200)

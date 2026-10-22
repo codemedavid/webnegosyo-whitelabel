@@ -256,6 +256,8 @@ describe("add-expense form", () => {
     expect(primaryLabel(15_000, drawer, "spend")).toBe("Pay ₱150 from drawer");
     expect(primaryLabel(0, drawer, "spend")).toBe("Pay from drawer");
     expect(primaryLabel(50_000, drawer, "take_out")).toBe("Take out ₱500");
+    expect(primaryLabel(2_222_200, { kind: "book" }, "spend", false)).toBe("Choose a category");
+    expect(primaryLabel(0, { kind: "book" }, "spend", false)).toBe(primaryLabel(0, { kind: "book" }, "spend"));
   });
 
   it("names the drawer chip and says what the drawer should hold afterwards", () => {

@@ -41,7 +41,7 @@ export function EditDetailsForm({ expense, category, suppliers, isSaving, error,
     }
     setErrors(relevant)
     if (Object.keys(relevant).length > 0) return
-    const patch = buildPatch(expense, form, expense.amountCents)
+    const patch = buildPatch(expense, form, expense.amountCents, category)
     const changes = Object.fromEntries(Object.entries(patch).filter(([key]) => (EDITABLE_KEYS as readonly string[]).includes(key)))
     if (Object.keys(changes).length === 0) {
       onCancel()

@@ -3,6 +3,7 @@ import {
   comparisonFor,
   hasHomeParams,
   heroEyebrow,
+  homeStateForLink,
   homeSubtitle,
   isInRange,
   monthsCovering,
@@ -203,5 +204,44 @@ describe("comparisonFor", () => {
     expect(changeText({ direction: "down", percent: 12 }, "1–22 Sep")).toBe("Down 12% vs 1–22 Sep");
     expect(changeText({ direction: "same", percent: 0 }, "Sep")).toBe("Same as Sep");
     expect(changeText(null, "Sep")).toBeNull();
+  });
+});
+
+describe("homeStateForLink", () => {
+  test("a view link starts from a clean slate: this month, no category, no range", () => {
+    // Arrange
+    const asked = parseHomeParams({ view: "drawer" }, NOW);
+
+    // Act
+    const state = homeStateForLink(asked, NOW);
+
+    // Assert
+    expect(state).toEqual({ month: "2026-10", range: null, view: "drawer", categoryId: null, opens: null, addCategoryId: null });
+  });
+
+  test("a category link clears any view that was on before", () => {
+    const state = homeStateForLink(parseHomeParams({ category: "ice", month: "2026-09" }, NOW), NOW);
+
+    expect(state).toMatchObject({ month: "2026-09", range: null, view: "all", categoryId: "ice", opens: null });
+  });
+
+  test("a range link shows the range and steps from its last month", () => {
+    const state = homeStateForLink(parseHomeParams({ from: "2026-09-28", to: "2026-10-04" }, NOW), NOW);
+
+    expect(state.range).toEqual({ from: "2026-09-28", to: "2026-10-04" });
+    expect(state.month).toBe("2026-10");
+    expect(state.view).toBe("all");
+  });
+
+  test("add=1 opens the sheet with its category, without filtering the list by it", () => {
+    const state = homeStateForLink(parseHomeParams({ add: "1", category: "rent" }, NOW), NOW);
+
+    expect(state).toMatchObject({ view: "all", categoryId: null, opens: "add", addCategoryId: "rent", month: "2026-10" });
+  });
+
+  test("view=unsorted opens the sort sheet on a clean list", () => {
+    const state = homeStateForLink(parseHomeParams({ view: "unsorted" }, NOW), NOW);
+
+    expect(state).toMatchObject({ view: "all", categoryId: null, opens: "sort" });
   });
 });

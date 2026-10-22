@@ -3,7 +3,7 @@ import type { ProfitScreenData } from "./profit-service";
 import { PROFIT_LOCKED_MESSAGE, PROFIT_PLATFORM_ONLY_MESSAGE } from "./profit-view";
 import { reportWith } from "./profit-fixtures";
 
-const READY: ProfitScreenData = { status: "ready", report: reportWith(), isFirstRun: false, trend: null };
+const READY: ProfitScreenData = { status: "ready", report: reportWith(), isFirstRun: false, trend: null, trendTitle: "Last 3 months" };
 const base = { isAllowed: true, isPlatform: true, data: undefined, isLoading: false, error: null };
 
 describe("which state the Profit screen is in", () => {

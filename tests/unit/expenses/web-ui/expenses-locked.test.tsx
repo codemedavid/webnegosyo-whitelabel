@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react'
 import { expensesAccessFor } from '@/components/admin/expenses/expenses-access'
-import { ExpensesLocked } from '@/components/admin/expenses/expenses-states'
+import { ExpensesLoadFailed, ExpensesLocked } from '@/components/admin/expenses/expenses-states'
 import { TENANT_ID } from './ui-fixtures'
 
 const OTHER_TENANT = '00000000-0000-4000-8000-0000000000ff'
@@ -41,5 +41,12 @@ describe('ExpensesLocked', () => {
 
     expect(screen.getByText('Only the owner can see expenses.')).toBeInTheDocument()
     expect(screen.getByText('Ask them to turn on ‘Expenses’ for you.')).toBeInTheDocument()
+  })
+})
+
+describe('ExpensesLoadFailed', () => {
+  it('says what to do in plain words; the cause stays in the server log', () => {
+    render(<ExpensesLoadFailed />)
+    expect(screen.getByRole('alert')).toHaveTextContent('We couldn’t load your expenses.Something went wrong on our side. Reload the page to try again.')
   })
 })

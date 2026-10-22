@@ -13,8 +13,12 @@ import type { CashFlowLine, ProfitFinding } from './profit-model'
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const MANILA_OFFSET_MS = 8 * HOUR_MS
-/** A period shorter than a week has no "previous period" worth comparing bills against. */
-const WEEK_MS = 7 * DAY_MS
+/**
+ * Bills like rent and power come monthly: a window shorter than a month has
+ * no "previous period" worth comparing them against ("No Rent recorded this
+ * week" would be false almost every week).
+ */
+const MONTH_MIN_MS = 28 * DAY_MS
 
 export const PROFIT_LOCKED_MESSAGE = 'Ask the owner for cost access to see profit.'
 
@@ -54,16 +58,38 @@ function previousMonthFirst(day: string): string {
 /**
  * The whole period before this one, for "you paid rent last month but not
  * yet this month": the previous calendar month for month periods, otherwise
- * the same natural length just before. Null for periods under a week.
+ * the same natural length just before. Null for periods shorter than a month
+ * (then no "missing bill" finding is made at all).
  */
 export function previousFullWindow(period: ReportPeriod): { start: number; end: number } | null {
   if (period.preset === 'this_month' || period.preset === 'last_month') {
     return { start: dayStart(previousMonthFirst(period.from)), end: period.start }
   }
-  // A running week is still a seven-day week (as resolveComparePeriod).
-  const length = period.preset === 'this_week' ? WEEK_MS : period.fullEnd - period.start
-  if (length < WEEK_MS) return null
+  const length = period.fullEnd - period.start
+  if (length < MONTH_MIN_MS) return null
   return { start: period.start - length, end: period.start }
+}
+
+/**
+ * Where a link into the expense book lands: the book is read a month at a
+ * time (`?month=YYYY-MM`), so the month holding the period's last day, and the
+ * date a new entry defaults to (`?on=`): the period's last day, or today
+ * while the period is still running.
+ */
+export interface ExpensesLink {
+  month: string
+  recordOn: string
+}
+
+export function expensesLinkFor(period: Pick<ReportPeriod, 'to' | 'end' | 'isPartial'>): ExpensesLink {
+  const recordOn = period.isPartial ? new Date(period.end + MANILA_OFFSET_MS).toISOString().slice(0, 10) : period.to
+  return { month: recordOn.slice(0, 7), recordOn }
+}
+
+/** `/<tenant>/admin/expenses?month=…` plus the screen's own parameters, in order. */
+export function expensesBookHref(adminBase: string, link: ExpensesLink, params: Readonly<Record<string, string>> = {}): string {
+  const query = new URLSearchParams({ month: link.month, ...params })
+  return `${adminBase}/expenses?${query.toString()}`
 }
 
 export interface FindingAction {
@@ -82,6 +108,8 @@ export interface FindingLinks {
   /** `/<tenant>/admin`. */
   adminBase: string
   periodPhrase: string
+  /** The viewed period, so the expense book opens on it. */
+  expenses: ExpensesLink
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -89,22 +117,22 @@ function plural(count: number, one: string, many: string): string {
 }
 
 /** One trust-strip row per finding; each warning says what to do. */
-export function findingCopy(finding: ProfitFinding, { adminBase, periodPhrase }: FindingLinks): FindingCopy {
-  const expenses = `${adminBase}/expenses`
+export function findingCopy(finding: ProfitFinding, { adminBase, periodPhrase, expenses: link }: FindingLinks): FindingCopy {
+  const book = (params: Readonly<Record<string, string>>) => expensesBookHref(adminBase, link, params)
   switch (finding.kind) {
     case 'missing_recurring':
       return {
         key: `missing:${finding.categoryId}`,
         tone: 'warning',
         text: `No ${finding.categoryName} recorded ${periodPhrase}. Profit looks higher than it is.`,
-        action: { label: 'Record', href: `${expenses}?add=${encodeURIComponent(finding.categoryId)}` },
+        action: { label: 'Record', href: book({ add: finding.categoryId, on: link.recordOn }) },
       }
     case 'no_expenses':
       return {
         key: 'no_expenses',
         tone: 'warning',
         text: `No expenses recorded ${periodPhrase}. Empty can mean missing, so this profit is too high until they are in.`,
-        action: { label: 'Add expense', href: `${expenses}?add=1` },
+        action: { label: 'Add expense', href: book({ add: '1', on: link.recordOn }) },
       }
     case 'uncosted_dishes':
       return {
@@ -118,7 +146,7 @@ export function findingCopy(finding: ProfitFinding, { adminBase, periodPhrase }:
         key: 'unsorted_payouts',
         tone: 'warning',
         text: `${plural(finding.count, 'drawer pay-out', 'drawer pay-outs')} (${formatMoney(finding.cents)}) not sorted yet, so not in Expenses.`,
-        action: { label: 'Sort', href: `${expenses}?view=unsorted` },
+        action: { label: 'Sort', href: book({ view: 'unsorted' }) },
       }
     case 'ingredient_estimate':
       return {

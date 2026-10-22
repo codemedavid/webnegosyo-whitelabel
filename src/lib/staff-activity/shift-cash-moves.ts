@@ -20,6 +20,8 @@ export interface ShiftCashMoveRow {
   reason?: string | null
   recorded_by_name?: string | null
   created_at?: string | null
+  /** The expense a pay-out was filed as (embedded `expenses`, with its category). */
+  expenses?: ReadonlyArray<{ status?: string | null; expense_categories?: { name?: string | null } | null }> | null
 }
 
 /** One pay-out, named for the owner reading the shift. */
@@ -28,6 +30,8 @@ export interface ShiftPayOut {
   reason: string | null
   recordedByName: string | null
   createdAt: string | null
+  /** The category it was sorted into (its RECORDED expense); null = not sorted yet. */
+  categoryName: string | null
 }
 
 export interface ShiftCashMoveSummary {
@@ -60,6 +64,12 @@ function trimmedOrNull(value: string | null | undefined): string | null {
   return trimmed === '' ? null : trimmed
 }
 
+/** A voided drawer expense put the cash back: only the recorded one names the pay-out. */
+function sortedCategoryName(move: ShiftCashMoveRow): string | null {
+  const recorded = (move.expenses ?? []).find((expense) => expense.status === 'recorded')
+  return trimmedOrNull(recorded?.expense_categories?.name)
+}
+
 function byCreatedAt(a: ShiftPayOut, b: ShiftPayOut): number {
   return (a.createdAt ?? '').localeCompare(b.createdAt ?? '')
 }
@@ -75,6 +85,7 @@ export function summarizeShiftCashMoves(
       reason: trimmedOrNull(move.reason),
       recordedByName: trimmedOrNull(move.recorded_by_name),
       createdAt: move.created_at ?? null,
+      categoryName: sortedCategoryName(move),
     }))
     .sort(byCreatedAt)
 

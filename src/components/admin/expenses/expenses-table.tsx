@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import type { Expense, ExpenseCategory, ExpenseFlag } from '@/lib/expenses/types'
 import { CategoryBadge, FlagChip, NotExpenseChip, PaidFromLabel, VoidChip } from './expense-badges'
 import { dayLabel, formatMoneyOut, formatPeso, manilaDayOf, pesoWords, stampLabel, timeLabel } from './expense-format'
-import { groupByDay, pageDayGroups, type FlagsById } from './expense-list-model'
+import { groupByDay, pageDayGroups, payeeName, type FlagsById } from './expense-list-model'
 
 /** Rows rendered per page; a long month grows by this much at a time. */
 export const TABLE_PAGE_SIZE = 150
@@ -16,6 +16,8 @@ export interface ExpensesTableProps {
   rows: readonly Expense[]
   categoriesById: ReadonlyMap<string, ExpenseCategory>
   outletNames: ReadonlyMap<string, string>
+  /** Supplier id → name, for rows filed against a picked supplier. */
+  supplierNames?: ReadonlyMap<string, string>
   flagsById: FlagsById
   today: string
   isMultiBranch: boolean
@@ -44,6 +46,7 @@ export function ExpensesTable({
   rows,
   categoriesById,
   outletNames,
+  supplierNames,
   flagsById,
   today,
   isMultiBranch,
@@ -123,6 +126,7 @@ export function ExpensesTable({
                     expense={expense}
                     category={categoriesById.get(expense.categoryId)}
                     branchName={isMultiBranch ? (expense.outletId ? (outletNames.get(expense.outletId) ?? 'Branch') : 'Whole store') : null}
+                    payee={payeeName(expense, supplierNames)}
                     flags={flagsById.get(expense.id) ?? []}
                     isSelected={selectedIds.has(expense.id)}
                     onToggle={() => toggleOne(expense.id)}
@@ -156,6 +160,8 @@ interface ExpenseRowProps {
   expense: Expense
   category: ExpenseCategory | undefined
   branchName: string | null
+  /** The picked supplier's name, else the typed payee. */
+  payee: string | null
   flags: readonly ExpenseFlag[]
   isSelected: boolean
   onToggle: () => void
@@ -164,7 +170,7 @@ interface ExpenseRowProps {
 
 const TD = 'border-b border-wn-line px-3 py-2.5 align-middle'
 
-function ExpenseRow({ expense, category, branchName, flags, isSelected, onToggle, onOpen }: ExpenseRowProps) {
+function ExpenseRow({ expense, category, branchName, payee, flags, isSelected, onToggle, onOpen }: ExpenseRowProps) {
   const isVoid = expense.status === 'void'
   const isNotExpense = category?.group === 'not_expense'
   const time = rowTime(expense)
@@ -222,21 +228,16 @@ function ExpenseRow({ expense, category, branchName, flags, isSelected, onToggle
       </td>
       <td className={cn(TD, 'max-w-72')}>
         <p className={cn('truncate text-wn-ink', isVoid && 'text-wn-stone line-through')}>
-          {expense.note?.trim() || expense.paidToName || <span className="text-wn-stone">—</span>}
+          {expense.note?.trim() || payee || <span className="text-wn-stone">—</span>}
         </p>
-        {expense.note?.trim() && expense.paidToName && (
-          <p className="truncate text-[12.5px] text-wn-stone">{expense.paidToName}</p>
-        )}
-        {isVoid ? (
-          <VoidChip reason={expense.voidReason} />
-        ) : (
-          flags.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {flags.map((flag) => (
-                <FlagChip key={flag} flag={flag} />
-              ))}
-            </div>
-          )
+        {expense.note?.trim() && payee && <p className="truncate text-[12.5px] text-wn-stone">{payee}</p>}
+        {isVoid && <VoidChip reason={expense.voidReason} />}
+        {flags.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {flags.map((flag) => (
+              <FlagChip key={flag} flag={flag} />
+            ))}
+          </div>
         )}
       </td>
       <td className={cn(TD, 'whitespace-nowrap text-[13.5px]')}>

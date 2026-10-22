@@ -3,12 +3,14 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { CASH_MOVE_COPY, type CashMove } from "../../lib/cash-drawers";
 import type { DrawerExpectationRead } from "../../lib/drawer-expectation";
+import type { RefusedPayout } from "../../lib/expenses/expense-queue";
 import { formatPeso } from "../../lib/format";
 import { formatShiftElapsed } from "../../lib/shift-status";
 import type { ShiftRecord } from "../../lib/shift-service";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { RefusedPayouts } from "./RefusedPayouts";
 
 interface MyShiftCardProps {
   shift: ShiftRecord;
@@ -29,6 +31,10 @@ interface MyShiftCardProps {
   pendingLine?: string | null;
   /** Opens the expense sheet locked to this drawer. Absent = no expenses in this store yet. */
   onPayExpense?: () => void;
+  /** Pay-outs from this drawer the store did not take, with Try again / Remove. */
+  refusedPayouts?: readonly RefusedPayout[];
+  onRetryRefused?: (id: string) => Promise<void>;
+  onRemoveRefused?: (id: string) => Promise<void>;
 }
 
 /** How many moves the card lists before it stops. */
@@ -57,6 +63,9 @@ export function MyShiftCard({
   payoutLines,
   pendingLine,
   onPayExpense,
+  refusedPayouts,
+  onRetryRefused,
+  onRemoveRefused,
 }: MyShiftCardProps) {
   const ready = expectation.state === "ready" ? expectation.value : null;
   const lines: { label: string; value: string }[] = ready
@@ -135,6 +144,9 @@ export function MyShiftCard({
       ) : null}
 
       {pendingLine ? <Text style={styles.pending}>{pendingLine}</Text> : null}
+      {refusedPayouts && onRetryRefused && onRemoveRefused ? (
+        <RefusedPayouts payouts={refusedPayouts} onRetry={onRetryRefused} onRemove={onRemoveRefused} />
+      ) : null}
       {activityLine ? <Text style={styles.activity}>{activityLine}</Text> : null}
 
       {recent.length > 0 ? (

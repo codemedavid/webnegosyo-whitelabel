@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { withRequestBearer } from '@/lib/supabase/bearer-session'
-import { MAX_RECEIPT_BYTES, MAX_RECEIPT_REQUEST_BYTES } from '@/lib/expenses/receipts/rules'
+import { MAX_RECEIPT_BYTES, MAX_RECEIPT_UPLOAD_REQUEST_BYTES, RECEIPT_TOO_LARGE_MESSAGE } from '@/lib/expenses/receipts/rules'
 import {
   NO_STORE_HEADERS,
   holdsExpenses,
@@ -37,24 +37,63 @@ interface ExpenseForReceipt {
  * private object and its row. The file's type comes from its first bytes.
  *
  * 400 malformed · 401 not signed in · 403 not theirs · 404 not visible ·
- * 409 voided / too many · 413 over 5 MB · 415 not a photo or PDF · 429 slow down.
+ * 409 voided / too many · 413 over the body cap (4.5 MB, Vercel's) · 415 not a
+ * photo or PDF · 429 slow down.
  */
 export function POST(request: NextRequest): Promise<NextResponse> {
   return withRequestBearer(request, () => handleUpload(request))
 }
 
-async function readUpload(request: NextRequest): Promise<{ expenseId: string; file: Blob } | NextResponse> {
-  const declared = Number(request.headers.get('content-length') ?? '0')
-  if (Number.isFinite(declared) && declared > MAX_RECEIPT_REQUEST_BYTES) {
-    return jsonError('The file is larger than 5 MB.', 413)
+/**
+ * The body, read with a hard byte cap: never buffered whole when it is too
+ * big, whatever Content-Length says. A missing length is allowed (React
+ * Native on Android streams a file upload chunked, with no length), but it
+ * cannot be used to send more than the cap. 'too_large' once over it.
+ */
+async function readCappedBody(request: NextRequest, cap: number): Promise<Uint8Array | 'too_large' | null> {
+  const reader = request.body?.getReader()
+  if (!reader) return null
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > cap) {
+      await reader.cancel().catch(() => undefined)
+      return 'too_large'
+    }
+    chunks.push(value)
   }
-  const form = await request.formData().catch(() => null)
+  const body = new Uint8Array(total)
+  chunks.reduce((offset, chunk) => (body.set(chunk, offset), offset + chunk.byteLength), 0)
+  return body
+}
+
+async function readForm(request: NextRequest): Promise<FormData | 'too_large' | null> {
+  const declared = request.headers.get('content-length')
+  if (declared !== null) {
+    const length = Number(declared)
+    if (!Number.isFinite(length) || length < 0) return null
+    if (length > MAX_RECEIPT_UPLOAD_REQUEST_BYTES) return 'too_large'
+  }
+  const body = await readCappedBody(request, MAX_RECEIPT_UPLOAD_REQUEST_BYTES).catch(() => null)
+  if (body === null || body === 'too_large') return body
+  const contentType = request.headers.get('content-type') ?? ''
+  return new Request(request.url, { method: 'POST', body: new Blob([body as BlobPart]), headers: { 'content-type': contentType } })
+    .formData()
+    .catch(() => null)
+}
+
+async function readUpload(request: NextRequest): Promise<{ expenseId: string; file: Blob } | NextResponse> {
+  const form = await readForm(request)
+  if (form === 'too_large') return jsonError(RECEIPT_TOO_LARGE_MESSAGE, 413)
   if (!form) return jsonError('Send the receipt as a file upload.', 400)
   const expenseId = form.get('expenseId')
   const file = form.get('file')
   if (typeof expenseId !== 'string' || !UUID_RE.test(expenseId)) return jsonError('That expense could not be found.', 400)
   if (!(file instanceof Blob)) return jsonError('Choose a photo or PDF of the receipt.', 400)
-  if (file.size > MAX_RECEIPT_BYTES) return jsonError('The file is larger than 5 MB.', 413)
+  if (file.size > MAX_RECEIPT_BYTES) return jsonError(RECEIPT_TOO_LARGE_MESSAGE, 413)
   return { expenseId, file }
 }
 

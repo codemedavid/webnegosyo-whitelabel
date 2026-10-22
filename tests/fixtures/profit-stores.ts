@@ -1,7 +1,7 @@
 /**
  * Generated stores for the profit engine and its SQL twin: orders from
  * `reportOrdersArb`, plus the stock ledger (sales, voids for cancelled
- * orders, waste, counts, deliveries, transfers), dish costs at sale, expenses
+ * orders — some written days later — and for live orders edited down, waste, counts, deliveries, transfers), dish costs at sale, expenses
  * in every group (some voided, some store-wide, some stock purchases) and
  * drawer pay-outs (some sorted into an expense).
  *
@@ -11,7 +11,7 @@
  */
 import fc from 'fast-check'
 import { manilaDay, type DrawerPayout, type LedgerMovement, type ProfitCategory, type ProfitExpense } from '@/lib/reports/profit-facts'
-import type { ReportOrder } from '@/lib/reports/sales-model'
+import { isLiveOrder, type ReportOrder } from '@/lib/reports/sales-model'
 import { reportOrdersArb, type OrderWindow } from './report-orders'
 
 const HOUR_MS = 60 * 60 * 1000
@@ -67,6 +67,10 @@ const ledgerPlanArb = fc.record({
     maxLength: 3,
   }),
   lineCosts: fc.array(fc.option(fc.integer({ min: 0, max: 3_000_000 }), { freq: 3 }), { maxLength: 4 }),
+  // When a cancel's void is written: often days later, so the sale and its void land in different windows.
+  voidLagMs: fc.oneof(fc.constant(HOUR_MS), fc.integer({ min: HOUR_MS, max: 5 * DAY_MS })),
+  // A live order edited down: one sale's stock comes back, the order still counts.
+  isEditedDown: fc.boolean(),
 })
 
 const looseMovementArb = (window: OrderWindow) =>
@@ -134,7 +138,6 @@ function placedAt(order: ReportOrder, at: number): ReportOrder {
   return { ...order, at, payments: order.payments.map((payment) => ({ ...payment, at: payment.at + shift })) }
 }
 
-const REVERSED = new Set(['cancelled', 'canceled', 'refunded', 'voided'])
 
 function orderMovements(order: ReportOrder, plan: Plan): LedgerMovement[] {
   if (!plan.isTracked) return []
@@ -148,11 +151,16 @@ function orderMovements(order: ReportOrder, plan: Plan): LedgerMovement[] {
       at: order.at + sale.lagMs,
     }),
   )
-  const isReversed = REVERSED.has(order.status.trim().toLowerCase())
-  // A cancelled order gives back exactly what it took, at the same cost.
-  const voids = isReversed
-    ? sales.map((sale): LedgerMovement => ({ ...sale, reason: 'void', quantityDelta: String(sale.quantityDelta).slice(1), at: sale.at + HOUR_MS }))
-    : []
+  const isReversed = !isLiveOrder(order)
+  const giveBack = (sale: LedgerMovement): LedgerMovement => ({
+    ...sale,
+    reason: 'void',
+    quantityDelta: String(sale.quantityDelta).slice(1),
+    at: sale.at + plan.voidLagMs,
+  })
+  // A cancelled order gives back exactly what it took, at the same cost, maybe days later.
+  // A live order edited down gives back its first sale and keeps counting.
+  const voids = isReversed ? sales.map(giveBack) : plan.isEditedDown ? [giveBack(sales[0])] : []
   return [...sales, ...voids]
 }
 

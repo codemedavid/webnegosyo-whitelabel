@@ -47,6 +47,8 @@ export interface HomeModelInput {
   unsortedCount: number;
   unsortedCents: number;
   nowMs: number;
+  /** The branch on screen; undefined = every branch (see `BuildRowsInput.branchId`). */
+  branchId?: string;
 }
 
 export interface HomeChange {
@@ -101,6 +103,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     flagsById: computeFlagsForAll(input.expenses, { categories: input.categories }),
     waitingReceipts: input.waitingReceipts,
     window,
+    branchId: input.branchId,
   });
   const visible = filterRows(rows, input.filters);
   const totals = homeTotals(visible);

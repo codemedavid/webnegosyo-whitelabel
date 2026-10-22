@@ -13,6 +13,8 @@
  *
  * Scope rules, shared with the SQL:
  *   * orders, ledger movements and drawer pay-outs: created in [start, end);
+ *     a sale or void movement counts only while its order is live (an order
+ *     cancelled later takes its ingredient cost out with its sales);
  *   * expenses: `status = 'recorded'` and the Manila midnight of `spent_on`
  *     in [start, end) — so a "so far" window ending mid-day keeps today's;
  *   * a branch reads that branch's rows; "unassigned" reads the rows with no
@@ -22,7 +24,7 @@
 import type { ExpenseGroup } from '@/lib/expenses/types'
 import { toCents } from './money'
 import { lineCostCents, movementCostCents, isUsageReason, type UsageReason } from './cogs'
-import { orderFigures, type ReportOrder } from './sales-model'
+import { isLiveOrder, orderFigures, type ReportOrder } from './sales-model'
 import { itemKey } from './sales-breakdowns'
 
 type Numeric = number | string
@@ -252,10 +254,25 @@ function orderFacts(input: ProfitRawInput): ProfitFact[] {
     })
 }
 
+/** Reasons that belong to one order: they count only while that order is live, like its sales. */
+const ORDER_REASONS: ReadonlySet<string> = new Set(['sale', 'void'])
+
+/**
+ * The store's orders that are NOT live (cancelled, refunded, voided, negative),
+ * whenever they were placed. Their sale and void movements never count: the
+ * order's sales do not, and a cancel written in a later window would otherwise
+ * move its cost there. An order the caller cannot read counts as live.
+ */
+function reversedOrderIds(orders: readonly ReportOrder[]): ReadonlySet<string> {
+  return new Set(orders.filter((order) => !isLiveOrder(order)).map((order) => order.id))
+}
+
 function movementFacts(input: ProfitRawInput): ProfitFact[] {
   const { scope } = input
+  const reversed = reversedOrderIds(input.orders)
   return input.movements.flatMap((move): ProfitFact[] => {
     if (!isUsageReason(move.reason) || !inWindow(scope, move.at) || !inBranch(scope, move.outletId)) return []
+    if (ORDER_REASONS.has(move.reason) && move.orderId !== null && reversed.has(move.orderId)) return []
     return [{ kind: 'movement', day: manilaDay(move.at), reason: move.reason, cents: movementCostCents(move.quantityDelta, move.unitCost) }]
   })
 }

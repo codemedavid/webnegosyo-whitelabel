@@ -43,7 +43,8 @@ function VerdictBadge({ shift }: { shift: StaffShiftRecord }) {
 }
 
 /**
- * Cash spent out of the drawer, each with the reason the cashier typed. A
+ * Cash spent out of the drawer, each with the reason the cashier typed (and,
+ * once it is sorted into an expense, the category it was filed under). A
  * pay-out lowers the cash turned in, so without this list a drawer that bought
  * ice reads like a drawer that came up light. The recorder is named only when
  * it was not the person holding the drawer.
@@ -61,7 +62,9 @@ function ShiftPayOuts({ shift }: { shift: StaffShiftRecord }) {
         {payOuts.map((payOut, index) => (
           <li key={`${payOut.createdAt ?? ''}-${index}`} className="flex items-baseline justify-between gap-2">
             <span className="min-w-0 truncate text-muted-foreground">
-              {payOut.reason ?? 'No reason given'}
+              {payOut.categoryName && <span className="font-medium text-foreground">{payOut.categoryName}</span>}
+              {payOut.categoryName && payOut.reason ? ' · ' : ''}
+              {payOut.reason ?? (payOut.categoryName ? '' : 'No reason given')}
               {payOut.recordedByName && payOut.recordedByName !== shift.staffName
                 ? ` · by ${payOut.recordedByName}`
                 : ''}

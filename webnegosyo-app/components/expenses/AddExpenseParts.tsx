@@ -50,14 +50,10 @@ interface PaidFromRowProps {
 
 /** Where the money came from, always visible: Cash on hand · GCash · Maya · Bank · Card · Owner's pocket. */
 export function PaidFromRow({ value, onPick }: PaidFromRowProps) {
+  // Wrapped, never scrolled: six sources fit in two rows, so none is hidden
+  // off the edge (an owner never found "Owner's pocket" behind "Card").
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.scrollRow}
-      keyboardShouldPersistTaps="handled"
-      accessibilityLabel="Paid from"
-    >
+    <View style={styles.wrapRow} accessibilityLabel="Paid from" accessibilityRole="radiogroup">
       {PICKABLE_PAID_FROM.map((source) => (
         <Chip
           key={source}
@@ -67,7 +63,7 @@ export function PaidFromRow({ value, onPick }: PaidFromRowProps) {
           accessibilityLabel={`Paid from ${PAID_FROM_LABELS[source]}`}
         />
       ))}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -241,6 +237,7 @@ export function AllCategories(props: {
 
 const styles = StyleSheet.create({
   scrollRow: { gap: spacing.sm, paddingVertical: 2 },
+  wrapRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: {
     flexDirection: "row",
     alignItems: "center",

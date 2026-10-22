@@ -1,4 +1,10 @@
-import { describeShiftExpenses, payoutLines, summarizeShiftPayouts } from "./drawer-expenses";
+import {
+  describeShiftExpenses,
+  payoutLines,
+  refusedPayoutsHeadline,
+  refusedPayoutsNote,
+  summarizeShiftPayouts,
+} from "./drawer-expenses";
 
 const moves = [
   { id: "m1", kind: "pay_out" as const, amount: 1250 },
@@ -55,5 +61,23 @@ describe("summarizeShiftPayouts", () => {
     const payouts = summarizeShiftPayouts([{ id: "x", kind: "pay_in", amount: 100 }], new Map());
     expect(payoutLines(payouts)).toEqual([]);
     expect(describeShiftExpenses(payouts)).toBeNull();
+  });
+});
+
+describe("pay-outs the store did not take", () => {
+  const ice = { id: "a", categoryName: "Ice (Yelo)", cents: 12_000, reason: "This category was removed." };
+  const lpg = { id: "b", categoryName: "Gas / LPG", cents: 125_000, reason: "Not allowed." };
+
+  it("says how many did not save and how much, in plain words", () => {
+    expect(refusedPayoutsHeadline([ice])).toBe("1 pay-out didn't save · ₱120");
+    expect(refusedPayoutsHeadline([ice, lpg])).toBe("2 pay-outs didn't save · ₱1,370");
+    expect(refusedPayoutsHeadline([])).toBeNull();
+  });
+
+  it("explains why the drawer reads short without blaming anyone", () => {
+    const note = refusedPayoutsNote([ice]);
+    expect(note).toMatch(/₱120/);
+    expect(note).toMatch(/Try again/);
+    expect(note).not.toMatch(/you|your fault|mistake/i);
   });
 });

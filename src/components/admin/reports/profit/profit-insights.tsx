@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { formatMoney, formatRatio } from '@/lib/reports/format'
 import type { ExpenseCategoryTotal } from '@/lib/reports/profit-facts'
 import { PRIME_COST_BAND, type ProfitReport } from '@/lib/reports/profit-model'
-import type { FindingCopy } from '@/lib/reports/profit-view'
+import { expensesBookHref, type ExpensesLink, type FindingCopy } from '@/lib/reports/profit-view'
 import { KpiTile } from '../kpi-tile'
 import { MetricInfo } from '../metric-info'
 
@@ -110,28 +110,42 @@ interface MoneyRow {
   href: string | null
 }
 
-function rowsOf(categories: readonly ExpenseCategoryTotal[], expensesHref: string): MoneyRow[] {
+function rowsOf(categories: readonly ExpenseCategoryTotal[], adminBase: string, link: ExpensesLink): MoneyRow[] {
   const shown = categories.slice(0, SHOWN_CATEGORIES).map((row) => ({
     key: row.categoryId,
     label: row.name,
     icon: row.icon,
     cents: row.cents,
-    href: `${expensesHref}?category=${encodeURIComponent(row.categoryId)}`,
+    href: expensesBookHref(adminBase, link, { category: row.categoryId }),
   }))
   const rest = categories.slice(SHOWN_CATEGORIES)
   if (rest.length === 0) return shown
   return [
     ...shown,
-    { key: 'rest', label: `Other ${rest.length}`, icon: null, cents: rest.reduce((sum, row) => sum + row.cents, 0), href: expensesHref },
+    {
+      key: 'rest',
+      label: `Other ${rest.length}`,
+      icon: null,
+      cents: rest.reduce((sum, row) => sum + row.cents, 0),
+      href: expensesBookHref(adminBase, link),
+    },
   ]
 }
 
+interface MoneyWentListProps {
+  categories: readonly ExpenseCategoryTotal[]
+  /** `/<tenant>/admin`. */
+  adminBase: string
+  /** The viewed period: each row opens the expense book on it. */
+  expensesLink: ExpensesLink
+}
+
 /** Expenses by category, largest first, as bars (no pie). Each row opens the expense book. */
-export function MoneyWentList({ categories, expensesHref }: { categories: readonly ExpenseCategoryTotal[]; expensesHref: string }) {
+export function MoneyWentList({ categories, adminBase, expensesLink }: MoneyWentListProps) {
   if (categories.length === 0) {
     return <p className="text-[13.5px] text-muted-foreground">No expenses recorded for this period.</p>
   }
-  const rows = rowsOf(categories, expensesHref)
+  const rows = rowsOf(categories, adminBase, expensesLink)
   const largest = Math.max(...rows.map((row) => row.cents), 1)
   return (
     <ol className="flex flex-col gap-1">

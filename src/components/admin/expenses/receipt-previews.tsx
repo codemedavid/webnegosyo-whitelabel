@@ -1,16 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import { ExternalLink, FileText } from 'lucide-react'
 import type { ExpenseReceipt } from '@/lib/expenses/rows'
 import { fetchReceiptLink } from './receipt-client'
 
-type LinkState = { kind: 'loading' } | { kind: 'ready'; url: string } | { kind: 'failed'; error: string }
+type LinkState = { kind: 'loading' } | { kind: 'ready'; url: string; expiresAtMs: number } | { kind: 'failed'; error: string }
+
+/** A link this close to its expiry is treated as expired: the new tab still has to load it. */
+const EXPIRY_MARGIN_MS = 20_000
+
+function expiresAtMs(expiresAt: string): number {
+  const parsed = Date.parse(expiresAt)
+  // No expiry given: treat it as stale, so View always asks for a fresh one.
+  return Number.isNaN(parsed) ? 0 : parsed
+}
 
 /**
  * Receipts from the private bucket, each through its own 5-minute signed link,
  * fetched only when the sheet shows it. Images preview inline; a PDF opens in
- * a new tab.
+ * a new tab. A View after the link expired fetches a fresh one first.
  */
 export function ReceiptPreviews({ receipts }: { receipts: readonly ExpenseReceipt[] }) {
   if (receipts.length === 0) return null
@@ -33,12 +42,29 @@ function ReceiptTile({ receipt, number }: { receipt: ExpenseReceipt; number: num
     let isCurrent = true
     void fetchReceiptLink(receipt.id).then((result) => {
       if (!isCurrent) return
-      setLink(result.ok ? { kind: 'ready', url: result.data.url } : { kind: 'failed', error: result.error })
+      setLink(result.ok ? { kind: 'ready', url: result.data.url, expiresAtMs: expiresAtMs(result.data.expiresAt) } : { kind: 'failed', error: result.error })
     })
     return () => {
       isCurrent = false
     }
   }, [receipt.id])
+
+  function openFresh(event: MouseEvent<HTMLAnchorElement>): void {
+    if (link.kind !== 'ready' || Date.now() < link.expiresAtMs - EXPIRY_MARGIN_MS) return
+    event.preventDefault()
+    // Opened now, inside the click, so a popup blocker allows it; pointed at the fresh link once it arrives.
+    const tab = window.open('about:blank', '_blank')
+    if (tab) tab.opener = null
+    void fetchReceiptLink(receipt.id).then((result) => {
+      if (!result.ok) {
+        tab?.close()
+        setLink({ kind: 'failed', error: result.error })
+        return
+      }
+      setLink({ kind: 'ready', url: result.data.url, expiresAtMs: expiresAtMs(result.data.expiresAt) })
+      if (tab) tab.location.href = result.data.url
+    })
+  }
 
   const label = `Receipt ${number}${isPdf ? ' (PDF)' : ''}`
   if (link.kind === 'loading') {
@@ -54,6 +80,7 @@ function ReceiptTile({ receipt, number }: { receipt: ExpenseReceipt; number: num
   return (
     <a
       href={link.url}
+      onClick={openFresh}
       target="_blank"
       rel="noopener noreferrer"
       className="group relative block aspect-[4/5] overflow-hidden rounded-xl bg-wn-sand ring-1 ring-wn-line outline-none focus-visible:ring-2 focus-visible:ring-wn-ink"

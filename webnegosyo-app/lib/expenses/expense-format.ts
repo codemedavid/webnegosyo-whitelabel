@@ -107,13 +107,22 @@ export function manilaClock(iso: string): string {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** "Today", "Yesterday" or "Mon, Oct 19" for a Manila date. */
-export function dayLabel(date: string, now: number = Date.now()): string {
-  const today = manilaToday(now);
-  if (date === today) return "Today";
-  if (date === manilaDate(now - 24 * 60 * 60 * 1000)) return "Yesterday";
+/**
+ * "Wed, 22 Oct", or "Wed, 31 Dec 2025" outside this year: the app's one way
+ * to write a day (staff, daily report, expense detail all read like this).
+ */
+export function weekdayDate(date: string, now: number = Date.now()): string {
   const [year, mon, day] = date.split("-").map(Number);
   const weekday = WEEKDAYS[new Date(Date.UTC(year, mon - 1, day)).getUTCDay()];
-  return `${weekday}, ${SHORT_MONTHS[mon - 1]} ${day}`;
+  const head = `${weekday}, ${day} ${SHORT_MONTHS[mon - 1]}`;
+  return String(year) === manilaToday(now).slice(0, 4) ? head : `${head} ${year}`;
+}
+
+/** "Today", "Yesterday" or "Mon, 19 Oct" for a Manila date. */
+export function dayLabel(date: string, now: number = Date.now()): string {
+  if (date === manilaToday(now)) return "Today";
+  if (date === manilaDate(now - DAY_MS)) return "Yesterday";
+  return weekdayDate(date, now);
 }

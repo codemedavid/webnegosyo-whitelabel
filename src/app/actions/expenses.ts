@@ -22,7 +22,7 @@ import { SubscriptionPausedError } from '@/lib/billing/subscription-gate'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
 import { resolveExpenseActor } from '@/lib/expenses/actor'
-import { EXPENSE_MESSAGES } from '@/lib/expenses/errors'
+import { EXPENSE_MESSAGES, isExpenseSentence } from '@/lib/expenses/errors'
 import {
   archiveCategory,
   recordExpense,
@@ -82,6 +82,7 @@ async function runExpenseAction<S extends z.ZodType, T>(
   schema: S,
   label: string,
   work: (context: ExpenseActionContext, parsed: z.output<S>) => Promise<T>,
+  { shouldRevalidate = true }: { shouldRevalidate?: boolean } = {},
 ): Promise<ActionResult<T>> {
   const parsed = schema.safeParse(input)
   if (!parsed.success) return failure(firstIssueMessage(parsed.error))
@@ -91,12 +92,14 @@ async function runExpenseAction<S extends z.ZodType, T>(
     if ('error' in caller) return failure(caller.error)
     const db = (await createClient()) as unknown as SupabaseClient
     const data = await work({ tenantId: caller.tenantId, db, user: caller.user }, parsed.data as z.output<S>)
-    revalidatePath(expensesPath(tenantSlug))
+    if (shouldRevalidate) revalidatePath(expensesPath(tenantSlug))
     return { ok: true, data }
   } catch (error) {
-    // Service errors already carry a sentence for the owner (errors.ts).
+    // Service errors already carry a sentence for the owner (errors.ts);
+    // anything else is logged here and shown as the generic sentence.
+    const message = error instanceof Error ? error.message : ''
     console.error(`[expenses] ${label}:`, error instanceof Error ? error.message : error)
-    return failure(error instanceof Error && error.message ? error.message : EXPENSE_MESSAGES.unknown)
+    return failure(isExpenseSentence(message) ? message : EXPENSE_MESSAGES.unknown)
   }
 }
 
@@ -119,6 +122,22 @@ export async function replaceExpenseAction(tenantSlug: string, input: unknown): 
   return runExpenseAction(tenantSlug, input, replaceExpenseSchema, 'replace', async ({ db }, request) => ({
     id: await replaceExpense(db, request),
   }))
+}
+
+/**
+ * The same fix, one row of a bulk "Change category". It does NOT refresh the
+ * book: re-rendering the page once per row is slow and makes the list jump,
+ * so the screen refreshes once when the batch is done.
+ */
+export async function replaceExpenseInBulkAction(tenantSlug: string, input: unknown): Promise<ActionResult<{ id: string }>> {
+  return runExpenseAction(
+    tenantSlug,
+    input,
+    replaceExpenseSchema,
+    'bulk replace',
+    async ({ db }, request) => ({ id: await replaceExpense(db, request) }),
+    { shouldRevalidate: false },
+  )
 }
 
 export async function updateExpenseDetailsAction(tenantSlug: string, input: unknown): Promise<ActionResult<Expense>> {

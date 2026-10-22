@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { Download, FileSpreadsheet, FileText } from 'lucide-react'
+import { toast } from 'sonner'
 import { buildExportRows, exportRowsToCsv, type ExportOutlet } from '@/lib/expenses/export'
 import type { Expense, ExpenseCategory, Supplier } from '@/lib/expenses/types'
 import {
@@ -29,6 +31,56 @@ export function exportHref(range: ExportRange, format: 'csv' | 'xlsx'): string {
   return `/api/expenses/export?${params.toString()}`
 }
 
+/** Long enough for the browser to start reading the blob before its URL is freed. */
+const REVOKE_DELAY_MS = 60_000
+/** Our refusals are short sentences; anything longer is not one of them. */
+const MAX_REFUSAL_LENGTH = 300
+const EXPORT_FAILED = 'Couldn’t download the export. Try again.'
+
+function saveBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  // Revoking at once can cancel the download in some browsers (Safari, Firefox).
+  window.setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS)
+}
+
+function fileNameFrom(disposition: string | null, fallback: string): string {
+  const match = disposition?.match(/filename="([^"]+)"/)
+  return match ? match[1] : fallback
+}
+
+async function refusalText(response: Response): Promise<string> {
+  try {
+    const text = (await response.text()).trim()
+    return text !== '' && text.length <= MAX_REFUSAL_LENGTH ? text : EXPORT_FAILED
+  } catch {
+    return EXPORT_FAILED
+  }
+}
+
+/**
+ * Fetches the export and saves it. A refusal (no access, too many rows, a
+ * paused subscription) is shown as a toast, never saved as a file that holds
+ * the refusal's sentence.
+ */
+export async function downloadExport(href: string, fallbackName: string): Promise<void> {
+  try {
+    const response = await fetch(href, { cache: 'no-store' })
+    if (!response.ok) {
+      toast.error(await refusalText(response))
+      return
+    }
+    saveBlob(await response.blob(), fileNameFrom(response.headers.get('Content-Disposition'), fallbackName))
+  } catch {
+    toast.error('Couldn’t download the export. Check your connection and try again.')
+  }
+}
+
 interface ExportMenuProps {
   range: ExportRange
   monthLabel: string
@@ -36,15 +88,24 @@ interface ExportMenuProps {
 
 /** The accountant export for the month: one row per expense, voids included (plan §2.6). */
 export function ExportMenu({ range, monthLabel }: ExportMenuProps) {
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  function download(format: 'csv' | 'xlsx'): void {
+    if (isDownloading) return
+    setIsDownloading(true)
+    void downloadExport(exportHref(range, format), `expenses-${range.from}.${format}`).finally(() => setIsDownloading(false))
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          aria-busy={isDownloading || undefined}
           className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-[14px] font-bold text-wn-ink ring-1 ring-border outline-none hover:ring-wn-ink focus-visible:ring-2 focus-visible:ring-wn-ink"
         >
           <Download className="size-4" aria-hidden />
-          Export
+          {isDownloading ? 'Exporting…' : 'Export'}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
@@ -52,17 +113,13 @@ export function ExportMenu({ range, monthLabel }: ExportMenuProps) {
           {monthLabel}, for your accountant
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <a href={exportHref(range, 'xlsx')} download className="flex min-h-10 items-center gap-2.5">
-            <FileSpreadsheet className="size-4 text-wn-stone" aria-hidden />
-            Excel (.xlsx) with a summary
-          </a>
+        <DropdownMenuItem onSelect={() => download('xlsx')} className="flex min-h-10 items-center gap-2.5">
+          <FileSpreadsheet className="size-4 text-wn-stone" aria-hidden />
+          Excel (.xlsx) with a summary
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <a href={exportHref(range, 'csv')} download className="flex min-h-10 items-center gap-2.5">
-            <FileText className="size-4 text-wn-stone" aria-hidden />
-            CSV
-          </a>
+        <DropdownMenuItem onSelect={() => download('csv')} className="flex min-h-10 items-center gap-2.5">
+          <FileText className="size-4 text-wn-stone" aria-hidden />
+          CSV
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -83,12 +140,5 @@ interface SelectionExport {
  */
 export function downloadSelectionCsv({ expenses, categories, suppliers, outlets, fileName }: SelectionExport): void {
   const csv = exportRowsToCsv(buildExportRows(expenses, categories, suppliers, outlets))
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = fileName
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), fileName)
 }

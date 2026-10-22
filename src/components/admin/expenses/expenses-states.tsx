@@ -24,12 +24,13 @@ export function ExpensesLocked({ reason = 'no_permission' }: { reason?: 'no_perm
 }
 
 /** The read failed: say so, never show an empty month that might be wrong. */
-export function ExpensesLoadFailed({ message }: { message: string }) {
+/** The book could not be read. The cause is logged on the server; the screen never shows raw database text. */
+export function ExpensesLoadFailed() {
   return (
     <div role="alert" className="rounded-2xl bg-white px-6 py-10 text-center ring-1 ring-border">
       <p className="text-[17px] font-extrabold text-wn-ink">We couldn’t load your expenses.</p>
       <p className="mx-auto mt-1.5 max-w-md text-[14px] leading-snug text-wn-stone text-pretty">
-        {message} Reload the page to try again. Nothing you saved is lost.
+        Something went wrong on our side. Reload the page to try again. Nothing you saved is lost.
       </p>
     </div>
   )

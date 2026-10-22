@@ -164,8 +164,9 @@ describe('Profit overview', () => {
     await renderOverview()
     const strip = screen.getByRole('list', { name: 'Before you trust this number' })
     expect(strip).toHaveTextContent('No Rent (Upa) recorded this month yet. Profit looks higher than it is.')
-    expect(within(strip).getByRole('link', { name: /Record/ })).toHaveAttribute('href', '/shop/admin/expenses?add=c-rent')
-    expect(within(strip).getByRole('link', { name: /Sort/ })).toHaveAttribute('href', '/shop/admin/expenses?view=unsorted')
+    // The book opens on the viewed month; a new entry is dated today (this month is still running).
+    expect(within(strip).getByRole('link', { name: /Record/ })).toHaveAttribute('href', '/shop/admin/expenses?month=2026-10&add=c-rent&on=2026-10-21')
+    expect(within(strip).getByRole('link', { name: /Sort/ })).toHaveAttribute('href', '/shop/admin/expenses?month=2026-10&view=unsorted')
   })
 
   test('prime cost against the 55–65% band, ratios, and where the money went (largest first, no ingredients)', async () => {
@@ -177,6 +178,8 @@ describe('Profit overview', () => {
       .map((link) => link.textContent)
     expect(names[0]).toMatch(/^SASalaries & wages \(Sahod\)₱14,800$/)
     expect(names.some((name) => name?.includes('Ingredients'))).toBe(false)
+    const first = within(list).getAllByRole('link')[0]
+    expect(first.getAttribute('href')).toMatch(/^\/shop\/admin\/expenses\?month=2026-10&category=/)
   })
 
   test('a loss is red with an icon and the word, never colour alone', async () => {

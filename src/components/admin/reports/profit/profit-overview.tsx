@@ -3,7 +3,15 @@ import { formatMoney } from '@/lib/reports/format'
 import { bucketKeys, bucketLabel } from '@/lib/reports/period'
 import type { ProfitPeriodFigures } from '@/lib/reports/profit-facts'
 import { buildProfitReport, profitTrend, type ProfitReport } from '@/lib/reports/profit-model'
-import { findingCopy, isIncompleteBucket, previousFullWindow, profitGrainFor, type ProfitView } from '@/lib/reports/profit-view'
+import {
+  expensesBookHref,
+  expensesLinkFor,
+  findingCopy,
+  isIncompleteBucket,
+  previousFullWindow,
+  profitGrainFor,
+  type ProfitView,
+} from '@/lib/reports/profit-view'
 import type { ReportContext } from '@/lib/reports/read/report-context'
 import { readExpenseCategories, readProfitPeriods, readProfitSummary, type ReportResult } from '@/lib/reports/read/report-rpc'
 import { reportClient } from '@/lib/reports/read/load-report-context'
@@ -45,7 +53,7 @@ function trendSentence(buckets: readonly ProfitTrendBucket[]): string {
   return `Sales and profit for ${buckets.length} periods. Best: ${best.label}, ${formatMoney(best.profitCents)} profit.`
 }
 
-function FirstRun({ expensesHref }: { expensesHref: string }) {
+function FirstRun({ addHref }: { addHref: string }) {
   return (
     <div className="rounded-2xl bg-white p-5 ring-1 ring-border">
       <p className="text-[15px] font-bold text-wn-ink">Profit = Sales − Ingredients − Expenses</p>
@@ -53,7 +61,7 @@ function FirstRun({ expensesHref }: { expensesHref: string }) {
         We already know your sales. Add your first expense and we’ll do the math. Kung may binayaran ka, idagdag dito.
       </p>
       <Link
-        href={`${expensesHref}?add=1`}
+        href={addHref}
         className="mt-4 inline-flex min-h-11 items-center rounded-full bg-wn-ink px-5 text-[14px] font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         Add expense
@@ -86,10 +94,9 @@ export async function ProfitOverview({ context, view }: { context: ReportContext
     previousCategories: dataOrNull(previousCategories),
   })
   const adminBase = `/${context.tenantSlug}/admin`
-  const expensesHref = `${adminBase}/expenses`
-  const findings = report.findings.map((finding) =>
-    findingCopy(finding, { adminBase, periodPhrase: context.period.isPartial ? `${context.period.phrase} yet` : context.period.phrase }),
-  )
+  const expensesLink = expensesLinkFor(context.period)
+  const periodPhrase = context.period.isPartial ? `${context.period.phrase} yet` : context.period.phrase
+  const findings = report.findings.map((finding) => findingCopy(finding, { adminBase, periodPhrase, expenses: expensesLink }))
 
   if (!isProfitView) {
     return <CashFlowPanel cashFlow={report.cashFlow} />
@@ -99,7 +106,7 @@ export async function ProfitOverview({ context, view }: { context: ReportContext
   const buckets = periodRows ? trendBuckets(context, periodRows, report) : []
   return (
     <>
-      {summary.data.expenseCount === 0 && <FirstRun expensesHref={expensesHref} />}
+      {summary.data.expenseCount === 0 && <FirstRun addHref={expensesBookHref(adminBase, expensesLink, { add: '1', on: expensesLink.recordOn })} />}
       <div className="grid gap-5 lg:grid-cols-5">
         <div className="flex flex-col gap-3 lg:col-span-3">
           <ProfitSentenceCard report={report} caption={captionOf(context)} />
@@ -112,7 +119,7 @@ export async function ProfitOverview({ context, view }: { context: ReportContext
       </div>
       <div className="grid gap-5 lg:grid-cols-5">
         <ReportSection title="Where the money went" description="Expenses by category, largest first." className="lg:col-span-2">
-          <MoneyWentList categories={report.byCategory} expensesHref={expensesHref} />
+          <MoneyWentList categories={report.byCategory} adminBase={adminBase} expensesLink={expensesLink} />
         </ReportSection>
         <ReportSection
           title="Sales and profit over time"

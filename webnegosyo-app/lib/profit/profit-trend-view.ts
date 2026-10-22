@@ -4,7 +4,6 @@
  * unfinished. Heights are shares (0–1) of the tallest value. Pure.
  */
 
-import type { ProfitGrain } from "./profit-types";
 import type { TrendBar } from "./profit-service";
 import { formatMoney } from "./profit-view";
 
@@ -39,10 +38,4 @@ export function trendColumns(bars: readonly TrendBar[]): { columns: TrendColumn[
     };
   });
   return { columns, hasLoss: columns.some((column) => column.isLoss) };
-}
-
-const TITLES: Readonly<Record<ProfitGrain, string>> = { day: "Day by day", week: "Week by week", month: "Month by month" };
-
-export function trendTitle(grain: ProfitGrain): string {
-  return TITLES[grain];
 }

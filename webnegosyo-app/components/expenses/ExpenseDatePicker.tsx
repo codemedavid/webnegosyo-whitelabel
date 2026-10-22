@@ -80,6 +80,7 @@ function InlineCalendar({
           onChange={(_event, picked) => picked && setDraft(dateToDay(picked))}
           themeVariant="light"
           accentColor={colors.accent}
+          style={styles.calendar}
         />
         <Button label={`Use ${dayLabel(draft)}`} onPress={() => choose(draft)} size="lg" testID="expense-date-done" />
       </ScrollView>
@@ -91,4 +92,6 @@ const styles = StyleSheet.create({
   panel: { flex: 1 },
   body: { gap: spacing.md, paddingBottom: spacing.lg },
   quick: { flexDirection: "row", gap: spacing.sm },
+  // iOS draws the inline calendar at its own width; stretch it across the sheet.
+  calendar: { alignSelf: "stretch" },
 });

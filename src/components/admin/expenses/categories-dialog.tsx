@@ -44,6 +44,8 @@ interface Draft {
   group: ExpenseGroup
   needsNote: boolean
   sortOrder?: number
+  /** A starter (seeded) category: the database keeps its group and note rule. */
+  isStarter?: boolean
 }
 
 /** The gear: rename, badge, group, "needs a note", order, archive (never delete), add. */
@@ -183,7 +185,15 @@ export function CategoriesDialog({ isOpen, onOpenChange, tenantSlug, categories,
                             label={`Edit ${category.name}`}
                             disabled={isBusy}
                             onClick={() =>
-                              setEditing({ id: category.id, name: category.name, icon: category.icon ?? '', group: category.group, needsNote: category.needsNote, sortOrder: category.sortOrder })
+                              setEditing({
+                                id: category.id,
+                                name: category.name,
+                                icon: category.icon ?? '',
+                                group: category.group,
+                                needsNote: category.needsNote,
+                                sortOrder: category.sortOrder,
+                                isStarter: category.systemKey !== null,
+                              })
                             }
                           >
                             <PencilLine className="size-4" aria-hidden />
@@ -271,6 +281,12 @@ function CategoryEditor({ draft, onChange, onCancel, onSave, isBusy }: CategoryE
   const id = useId()
   const [problem, setProblem] = useState<string | null>(null)
   const groupLabelId = `${id}-group`
+  const isStarter = draft.isStarter === true
+  const lockHint = isStarter
+    ? 'Starter categories keep their group and note setting, so Profit and the phone app sort them the same way. You can still rename them or change the badge.'
+    : draft.id
+      ? 'Once a category has expenses, its group stays. Add a new category for another group.'
+      : null
 
   function save(): void {
     if (draft.name.trim() === '') {
@@ -333,8 +349,8 @@ function CategoryEditor({ draft, onChange, onCancel, onSave, isBusy }: CategoryE
         <span id={groupLabelId} className={FIELD_LABEL}>
           Counts as
         </span>
-        <Select value={draft.group} onValueChange={(group) => onChange({ ...draft, group: group as ExpenseGroup })}>
-          <SelectTrigger aria-labelledby={groupLabelId} className="min-h-11 w-full rounded-xl border-wn-line bg-white data-[size=default]:h-11">
+        <Select value={draft.group} disabled={isStarter} onValueChange={(group) => onChange({ ...draft, group: group as ExpenseGroup })}>
+          <SelectTrigger aria-labelledby={groupLabelId} aria-describedby={lockHint ? `${id}-lock` : undefined} className="min-h-11 w-full rounded-xl border-wn-line bg-white data-[size=default]:h-11">
             <SelectValue>{GROUP_LABELS[draft.group]}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -346,10 +362,23 @@ function CategoryEditor({ draft, onChange, onCancel, onSave, isBusy }: CategoryE
           </SelectContent>
         </Select>
       </div>
-      <label className="flex min-h-11 cursor-pointer items-center gap-2 self-end text-[13.5px] text-wn-ink sm:col-span-1">
-        <Checkbox checked={draft.needsNote} onCheckedChange={(checked) => onChange({ ...draft, needsNote: checked === true })} className="size-[18px]" />
+      <label
+        className={`flex min-h-11 items-center gap-2 self-end text-[13.5px] text-wn-ink sm:col-span-1 ${isStarter ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+      >
+        <Checkbox
+          checked={draft.needsNote}
+          disabled={isStarter}
+          aria-describedby={isStarter ? `${id}-lock` : undefined}
+          onCheckedChange={(checked) => onChange({ ...draft, needsNote: checked === true })}
+          className="size-[18px]"
+        />
         Needs a note
       </label>
+      {lockHint && (
+        <p id={`${id}-lock`} className="text-[12.5px] text-wn-stone sm:col-span-2">
+          {lockHint}
+        </p>
+      )}
       {problem && (
         <p id={`${id}-problem`} role="alert" className="text-[12.5px] font-semibold text-red-800 sm:col-span-2">
           {problem}

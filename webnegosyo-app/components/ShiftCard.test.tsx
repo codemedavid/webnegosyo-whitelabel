@@ -30,9 +30,12 @@ jest.mock("../lib/staff-activity/activity-service", () => ({ listOrderActivity: 
 const mockDrawerExpenses = {
   isReady: false,
   pendingFor: jest.fn(() => ({ cents: 0, count: 0, waiting: 0 })),
+  refusedFor: jest.fn((): { id: string; categoryName: string; cents: number; reason: string }[] => []),
+  retryRefused: jest.fn<Promise<void>, [string]>(async () => {}),
+  removeRefused: jest.fn<Promise<void>, [string]>(async () => {}),
   payouts: null as unknown,
   reloadPayouts: jest.fn(async () => {}),
-  settleBeforeClose: jest.fn(async () => 0),
+  settleBeforeClose: jest.fn<Promise<{ waiting: number; refused: number }>, [string]>(async () => ({ waiting: 0, refused: 0 })),
 };
 jest.mock("../lib/expenses/use-drawer-expenses", () => ({ useDrawerExpenses: () => mockDrawerExpenses }));
 // The close sheet reads which pay-outs were expenses; the floor reads them for every drawer.
@@ -78,7 +81,8 @@ beforeEach(() => {
   mockDrawerExpenses.isReady = false;
   mockDrawerExpenses.payouts = null;
   mockDrawerExpenses.pendingFor.mockReturnValue({ cents: 0, count: 0, waiting: 0 });
-  mockDrawerExpenses.settleBeforeClose.mockResolvedValue(0);
+  mockDrawerExpenses.settleBeforeClose.mockResolvedValue({ waiting: 0, refused: 0 });
+  mockDrawerExpenses.refusedFor.mockReturnValue([]);
   mockLinks = new Map();
   mockFloorLinks = null;
   mockCanManageExpenses = false;
@@ -195,11 +199,13 @@ describe("the drawer changing between the count and End shift", () => {
     const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
     await countOnly(screen, "125");
     await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
-    mockDrawerExpenses.settleBeforeClose.mockResolvedValue(1);
+    mockDrawerExpenses.settleBeforeClose.mockResolvedValue({ waiting: 1, refused: 0 });
 
     fireEvent.press(screen.getByLabelText("End shift and save the count"));
 
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/1 drawer expense is still waiting/)));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/1 drawer expense is still waiting/), expect.anything()),
+    );
     expect(closeShift).not.toHaveBeenCalled();
     expect(screen.getByLabelText("End shift and save the count")).toBeTruthy();
   });
@@ -449,12 +455,14 @@ describe("expenses from the drawer", () => {
   });
 
   it("will not count the drawer while an expense paid from it is still waiting to sync", async () => {
-    mockDrawerExpenses.settleBeforeClose.mockResolvedValue(2);
+    mockDrawerExpenses.settleBeforeClose.mockResolvedValue({ waiting: 2, refused: 0 });
     const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
 
     await countOnly(screen, "100");
 
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/2 drawer expenses are still waiting/)));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/2 drawer expenses are still waiting/), expect.anything()),
+    );
     expect(closeShift).not.toHaveBeenCalled();
   });
 
@@ -520,13 +528,134 @@ describe("expenses from the drawer", () => {
     expect(handled).not.toHaveBeenCalled();
   });
 
-  it("drops a Pay out request when there is no open shift", async () => {
+  it("says to start a shift when the register's Pay out asks with no open shift", async () => {
     jest.mocked(loadOpenShift).mockResolvedValue(null);
     jest.mocked(listOpenShifts).mockResolvedValue([]);
     const handled = jest.fn();
-    render(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={handled} />);
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={handled} />);
 
     await waitFor(() => expect(handled).toHaveBeenCalledTimes(1));
     expect(mockExpenseSheet).not.toHaveBeenCalled();
+    expect(screen.getByText("Start a shift to pay from the drawer.")).toBeTruthy();
+  });
+
+  it("acts on one Pay out request once, even when the screen hands a new callback every render", async () => {
+    // Arrange: the parent passes an inline arrow, so its identity changes on every render.
+    const handled = jest.fn();
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={() => handled()} />);
+    await waitFor(() => expect(handled).toHaveBeenCalledTimes(1));
+    const opened = mockExpenseSheet.mock.calls.length;
+
+    // Act: the parent re-renders before it clears the param.
+    screen.rerender(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={() => handled()} />);
+    screen.rerender(<ShiftCard orders={orders} pageLimit={200} isPayOutRequested onPayOutHandled={() => handled()} />);
+
+    // Assert
+    expect(handled).toHaveBeenCalledTimes(1);
+    expect(mockExpenseSheet.mock.calls.length).toBeGreaterThanOrEqual(opened);
+    expect(screen.queryByText("Start a shift to pay from the drawer.")).toBeNull();
+  });
+});
+
+describe("pay-outs the store did not take", () => {
+  const refusedIce = { id: "ice-req", categoryName: "Ice (Yelo)", cents: 12_000, reason: "This category was removed." };
+
+  beforeEach(() => {
+    mockDrawerExpenses.isReady = true;
+    mockDrawerExpenses.refusedFor.mockReturnValue([refusedIce]);
+  });
+
+  it("shows them on the shift card apart from what is waiting, with Try again and Remove right there", async () => {
+    // Arrange
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+
+    // Assert: told plainly, never as "waiting to sync".
+    await waitFor(() => expect(screen.getByText("1 pay-out didn't save · ₱120")).toBeTruthy());
+    expect(screen.getByText("This category was removed.")).toBeTruthy();
+    expect(screen.queryByText(/waiting to sync/)).toBeNull();
+
+    // Act
+    fireEvent.press(screen.getByLabelText("Try again: Ice (Yelo) ₱120"));
+
+    // Assert
+    await waitFor(() => expect(mockDrawerExpenses.retryRefused).toHaveBeenCalledWith("ice-req"));
+  });
+
+  it("removes one after the cashier confirms", async () => {
+    jest.mocked(Alert.alert).mockImplementation((_title, _message, buttons) => {
+      buttons?.find((button) => button.text === "Remove")?.onPress?.();
+    });
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByText("1 pay-out didn't save · ₱120")).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText("Remove: Ice (Yelo) ₱120"));
+
+    await waitFor(() => expect(mockDrawerExpenses.removeRefused).toHaveBeenCalledWith("ice-req"));
+  });
+
+  it("explains them on the close sheet and will not end the shift until each is sent or removed", async () => {
+    // Arrange
+    mockDrawerExpenses.settleBeforeClose.mockResolvedValue({ waiting: 0, refused: 1 });
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await countOnly(screen, "105");
+    await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+    expect(screen.getAllByText("1 pay-out didn't save · ₱120").length).toBeGreaterThan(0);
+    expect(screen.getByText(/the drawer reads ₱120 short/)).toBeTruthy();
+
+    // Act
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+
+    // Assert
+    await waitFor(() => expect(screen.getByText(/Try again or remove the pay-out that didn't save/)).toBeTruthy());
+    expect(closeShift).not.toHaveBeenCalled();
+
+    // Once it is removed, End shift closes.
+    mockDrawerExpenses.settleBeforeClose.mockResolvedValue({ waiting: 0, refused: 0 });
+    mockDrawerExpenses.refusedFor.mockReturnValue([]);
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+    await waitFor(() => expect(closeShift).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("the close guard fails closed", () => {
+  beforeEach(() => {
+    // The failure is logged for support; the test only cares what the cashier sees.
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("will not count the drawer when this phone cannot check its pay-outs, and offers Try again", async () => {
+    // Arrange
+    mockDrawerExpenses.settleBeforeClose.mockRejectedValueOnce(new Error("storage full"));
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+
+    // Act
+    await countOnly(screen, "125");
+
+    // Assert
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Not ready to close",
+        expect.stringMatching(/could not check/i),
+        expect.arrayContaining([expect.objectContaining({ text: "Try again" })]),
+      ),
+    );
+    expect(screen.queryByLabelText("End shift and save the count")).toBeNull();
+
+    // Try again (the phone can read now) opens the close sheet.
+    const buttons = jest.mocked(Alert.alert).mock.calls.at(-1)?.[2];
+    buttons?.find((button) => button.text === "Try again")?.onPress?.();
+    await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+  });
+
+  it("does not end the shift when the check fails at End shift", async () => {
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await countOnly(screen, "125");
+    await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
+    mockDrawerExpenses.settleBeforeClose.mockRejectedValueOnce(new Error("storage full"));
+
+    fireEvent.press(screen.getByLabelText("End shift and save the count"));
+
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/could not check/i), expect.anything()));
+    expect(closeShift).not.toHaveBeenCalled();
   });
 });

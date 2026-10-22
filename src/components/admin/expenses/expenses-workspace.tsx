@@ -53,13 +53,14 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
   const router = useRouter()
   // Links from other screens (Profit's trust strip) decide where the book opens.
   const [link] = useState(() =>
-    resolveInitialLink(data.initial, data.categories, { canAdd: !data.month.isFuture, canSortPayouts: data.canSortPayouts }),
+    resolveInitialLink(data.initial, data.categories, { canAdd: !data.month.isFuture, canSortPayouts: data.canSortPayouts, today: data.today }),
   )
   const [view, setView] = useState<ExpenseView>(link.view)
   const [filters, setFilters] = useState<ExpenseFilters>({ ...NO_FILTERS, categoryId: link.categoryFilter })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isAdding, setIsAdding] = useState(link.isAddOpen)
   const [addCategoryId, setAddCategoryId] = useState<string | null>(link.addCategoryId)
+  const [addSpentOn, setAddSpentOn] = useState<string | null>(link.addSpentOn)
   const [fixing, setFixing] = useState<Expense | null>(null)
   const [openExpense, setOpenExpense] = useState<Expense | null>(null)
   const [isEditingCategories, setIsEditingCategories] = useState(false)
@@ -81,7 +82,8 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
     const flags = computeFlagsForAll(data.expenses, { categories: data.categories })
     return new Map<string, readonly ExpenseFlag[]>(Object.entries(flags))
   }, [data.expenses, data.categories])
-  const context = useMemo(() => ({ categoriesById, flagsById }), [categoriesById, flagsById])
+  const supplierNames = useMemo(() => new Map(data.suppliers.map((supplier) => [supplier.id, supplier.name])), [data.suppliers])
+  const context = useMemo(() => ({ categoriesById, flagsById, supplierNames }), [categoriesById, flagsById, supplierNames])
 
   const summary = useMemo(() => summarize(data.expenses, data.categories), [data.expenses, data.categories])
   const spentCents = summary.operatingCents + summary.capexCents
@@ -317,6 +319,7 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
           rows={rows}
           categoriesById={categoriesById}
           outletNames={outletNames}
+          supplierNames={supplierNames}
           flagsById={flagsById}
           today={data.today}
           isMultiBranch={data.isMultiBranch}
@@ -332,6 +335,7 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
           if (isOpen) return
           setIsAdding(false)
           setAddCategoryId(null)
+          setAddSpentOn(null)
           setFixing(null)
         }}
         tenantSlug={data.tenantSlug}
@@ -346,6 +350,7 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
         tracksStock={data.tracksStock}
         fixing={fixing}
         initialCategoryId={addCategoryId}
+        initialSpentOn={addSpentOn}
       />
 
       <ExpenseDetailSheet
@@ -374,7 +379,7 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
           expenses={selected}
           categories={data.categories}
           recentExpenses={data.expenses}
-          onDone={() => setSelectedIds(new Set())}
+          onDone={(failedIds) => setSelectedIds(new Set(failedIds))}
         />
       )}
     </div>

@@ -6,24 +6,38 @@
  * Also the one place screens hear that the queue changed (`subscribe`), so
  * the list's "Waiting to sync" rows and the drawer's pending line update the
  * moment an entry lands, without polling.
+ *
+ * Everything here is for the SIGNED-IN person: new entries are stamped with
+ * their user id, and only their entries are sent or shown. Another person's
+ * entries stay parked on the phone (sign-out never clears them) until that
+ * person signs in again.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuthStore } from "../../stores/auth-store";
 import { getAccessTokenBounded } from "../authorized-post";
 import { getWebAppUrl } from "../web-app-url";
 import { liveExpenseDb } from "./expense-client";
-import { createExpenseQueue, type ExpenseQueue, type FlushResult, type NewQueuedExpense, type QueuedExpense } from "./expense-queue";
+import {
+  createExpenseQueue,
+  createSingleFlight,
+  type ExpenseQueue,
+  type FlushResult,
+  type NewQueuedExpense,
+  type QueuedExpense,
+} from "./expense-queue";
 import { findExpenseIdByRequest, voidExpense } from "./expense-service";
 import { sendQueuedExpense } from "./expense-sync";
 import {
   EXPENSE_RECEIPT_ROUTE,
   createReceiptQueue,
   extensionFor,
+  receiptRefusalReason,
   verdictForStatus,
   type NewQueuedReceipt,
   type QueuedReceipt,
   type ReceiptQueue,
-  type UploadVerdict,
+  type UploadAnswer,
 } from "./receipt-queue";
 import { deleteReceiptFile } from "./receipt-files";
 
@@ -32,6 +46,11 @@ const UPLOAD_TIMEOUT_MS = 45_000;
 const LINK_TIMEOUT_MS = 10_000;
 
 const listeners = new Set<() => void>();
+
+/** The person whose entries this phone sends and shows right now. */
+function currentUserId(): string | null {
+  return useAuthStore.getState().userId;
+}
 
 export function subscribeExpenseQueue(listener: () => void): () => void {
   listeners.add(listener);
@@ -63,11 +82,12 @@ function deadline(ms: number): { expiry: Promise<never>; controller: AbortContro
   return { expiry, controller, clear: () => clearTimeout(timer) };
 }
 
-async function uploadReceipt(entry: QueuedReceipt, expenseId: string): Promise<UploadVerdict> {
+async function uploadReceipt(entry: QueuedReceipt, expenseId: string): Promise<UploadAnswer> {
   const { expiry, controller, clear } = deadline(UPLOAD_TIMEOUT_MS);
   try {
     const token = await Promise.race([getAccessTokenBounded(UPLOAD_TIMEOUT_MS), expiry]);
-    if (!token) return "retry";
+    // No session right now (offline refresh): not an attempt.
+    if (!token) return "offline";
     const form = new FormData();
     form.append("expenseId", expenseId);
     // React Native's FormData streams a local file from `{ uri, name, type }`.
@@ -85,9 +105,11 @@ async function uploadReceipt(entry: QueuedReceipt, expenseId: string): Promise<U
       }),
       expiry,
     ]);
-    return verdictForStatus(response.status);
+    const verdict = verdictForStatus(response.status);
+    return verdict === "drop" ? { verdict, reason: receiptRefusalReason(response.status) } : verdict;
   } catch {
-    return "retry";
+    // Offline or timed out: no answer, not an attempt.
+    return "offline";
   } finally {
     clear();
   }
@@ -120,7 +142,7 @@ export function liveReceiptQueue(): ReceiptQueue {
  */
 export async function queueExpense(entry: NewQueuedExpense, holdMs = 0): Promise<QueuedExpense | null> {
   try {
-    const kept = await liveExpenseQueue().enqueue(entry, { holdMs });
+    const kept = await liveExpenseQueue().enqueue({ ...entry, userId: entry.userId ?? currentUserId() }, { holdMs });
     notify();
     return kept;
   } catch (error) {
@@ -132,7 +154,7 @@ export async function queueExpense(entry: NewQueuedExpense, holdMs = 0): Promise
 /** Queue a receipt for an expense (landed or not) and try to send it. Never throws. */
 export async function queueReceipt(receipt: NewQueuedReceipt): Promise<void> {
   try {
-    await liveReceiptQueue().enqueue(receipt);
+    await liveReceiptQueue().enqueue({ ...receipt, userId: receipt.userId ?? currentUserId() });
     notify();
     void flushReceipts(receipt.tenantId);
   } catch (error) {
@@ -140,44 +162,65 @@ export async function queueReceipt(receipt: NewQueuedReceipt): Promise<void> {
   }
 }
 
-let flushing: Promise<FlushResult> | null = null;
+const NO_FLUSH = (): FlushResult => ({ sent: new Map<string, string>(), waiting: 0, refused: 0 });
 
-/** Send what is waiting for this store: expenses first, then their receipts. Never throws. */
-export function flushExpenses(tenantId: string): Promise<FlushResult> {
-  if (flushing) return flushing;
-  flushing = (async () => {
-    const result = await liveExpenseQueue().flush(tenantId);
-    notify();
-    await flushReceipts(tenantId);
-    return result;
-  })()
-    .catch(() => ({ sent: new Map<string, string>(), waiting: 0, refused: 0 }))
-    .finally(() => {
-      flushing = null;
-    });
-  return flushing;
+/** One pass for one store + person: expenses first, then their receipts. */
+async function flushPass(tenantId: string, userId: string | null): Promise<FlushResult> {
+  const result = await liveExpenseQueue().flush(tenantId, userId);
+  notify();
+  await flushReceipts(tenantId, userId);
+  return result;
 }
 
-async function flushReceipts(tenantId: string): Promise<void> {
+const SEPARATOR = "\u0000";
+
+const flushFlight = createSingleFlight<FlushResult>(
+  (key) => {
+    const [tenantId, userId] = key.split(SEPARATOR);
+    return flushPass(tenantId, userId || null);
+  },
+  (earlier, later) => ({ ...later, sent: new Map([...earlier.sent, ...later.sent]) }),
+);
+
+/**
+ * Send what is waiting for this store and the signed-in person. One sync per
+ * store + person at a time; a call made while one runs (an entry just
+ * released, a Try again) gets one more pass, so it never waits for the next
+ * poll. Never throws.
+ */
+export function flushExpenses(tenantId: string): Promise<FlushResult> {
+  return flushFlight(`${tenantId}${SEPARATOR}${currentUserId() ?? ""}`).catch(NO_FLUSH);
+}
+
+async function flushReceipts(tenantId: string, userId: string | null = currentUserId()): Promise<void> {
   try {
-    await liveReceiptQueue().flush(tenantId);
+    await liveReceiptQueue().flush(tenantId, userId);
   } catch {
     // Kept on the phone; the next flush retries.
   }
   notify();
 }
 
+/** This person's waiting and refused expenses for the store. Never throws ([] when the phone cannot read). */
 export async function pendingExpenses(tenantId: string): Promise<QueuedExpense[]> {
   try {
-    return await liveExpenseQueue().pending(tenantId);
+    return await liveExpenseQueue().pending(tenantId, currentUserId());
   } catch {
     return [];
   }
 }
 
+/**
+ * Like `pendingExpenses`, but a phone that cannot read its queue THROWS: a
+ * drawer must not close on "nothing waiting" that was really "could not tell".
+ */
+export function readPendingExpensesOrThrow(tenantId: string): Promise<QueuedExpense[]> {
+  return liveExpenseQueue().pending(tenantId, currentUserId());
+}
+
 export async function pendingReceipts(tenantId: string): Promise<QueuedReceipt[]> {
   try {
-    return await liveReceiptQueue().pending(tenantId);
+    return await liveReceiptQueue().pending(tenantId, currentUserId());
   } catch {
     return [];
   }
@@ -200,9 +243,37 @@ export async function dismissQueuedExpense(id: string): Promise<boolean> {
   return wasThere;
 }
 
+/** Make this person's waiting entries due now and send. Throws only when the phone cannot write its queue. */
 export async function retryQueuedExpenses(tenantId: string): Promise<FlushResult> {
-  await liveExpenseQueue().retryNow(tenantId);
+  await liveExpenseQueue().retryNow(tenantId, currentUserId());
   return flushExpenses(tenantId);
+}
+
+/** Try again on one refused expense: clear the refusal and send it now. Never throws. */
+export async function retryRefusedExpense(tenantId: string, id: string): Promise<FlushResult> {
+  try {
+    await liveExpenseQueue().retryRefused(id);
+  } catch (error) {
+    console.warn("[expenses] could not mark the expense for another try", error);
+  }
+  notify();
+  return flushExpenses(tenantId);
+}
+
+/** Try again on one photo that stopped uploading. Never throws. */
+export async function retryReceipt(tenantId: string, id: string): Promise<void> {
+  try {
+    await liveReceiptQueue().retryRefused(id);
+  } catch (error) {
+    console.warn("[expenses] could not mark the receipt for another try", error);
+  }
+  await flushReceipts(tenantId);
+}
+
+/** Remove one photo from this phone (and its file). Never throws. */
+export async function dismissReceipt(id: string): Promise<void> {
+  await liveReceiptQueue().dismiss(id).catch((error) => console.warn("[expenses] could not remove the receipt", error));
+  notify();
 }
 
 export type ReceiptLinkResult = { status: "ok"; url: string } | { status: "error"; message: string };

@@ -108,6 +108,36 @@ export function parseHomeParams(raw: RawHomeParams, nowMs: number): HomeParams {
   };
 }
 
+/** Everything a link sets on the screen. */
+export interface LinkedHomeState {
+  month: string;
+  range: DayRange | null;
+  view: HomeView;
+  /** The list's category filter (never the Add sheet's category). */
+  categoryId: string | null;
+  opens: "add" | "sort" | null;
+  /** The category the Add sheet opens with. */
+  addCategoryId: string | null;
+}
+
+/**
+ * The whole screen a link asks for, from a clean slate: whatever the owner
+ * had filtered before is dropped, so the hero total is the figure they tapped
+ * (Profit's "Rent ₱15,000" opens on exactly that, not on Rent within an old
+ * "Drawer" filter). Nothing asked for = this month, everything.
+ */
+export function homeStateForLink(asked: HomeParams, nowMs: number): LinkedHomeState {
+  const month = asked.range ? monthOf(asked.range.to) : asked.month ?? monthOf(nowMs);
+  return {
+    month,
+    range: asked.range,
+    view: asked.view ?? "all",
+    categoryId: asked.isAdd ? null : asked.categoryId,
+    opens: asked.isAdd ? "add" : asked.isSort ? "sort" : null,
+    addCategoryId: asked.isAdd ? asked.categoryId : null,
+  };
+}
+
 /** Every `YYYY-MM` the range touches, oldest first, at most four. */
 export function monthsCovering(range: DayRange): string[] {
   const last = monthOf(range.to);

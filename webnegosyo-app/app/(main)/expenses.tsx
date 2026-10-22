@@ -12,6 +12,7 @@ import { ExportExpensesSheet } from "../../components/expenses/home/ExportExpens
 import { AddExpenseFab, HomeSearchField, HomeSkeleton, QuietBanner } from "../../components/expenses/home/HomeBits";
 import { HomeFilterPills } from "../../components/expenses/home/HomeFilterPills";
 import { HomeHero, ModeSwitch, SideBreakdown, type HomeMode } from "../../components/expenses/home/HomeSummary";
+import type { HeroState } from "../../components/expenses/home/ExpensesHero";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { IconButton } from "../../components/IconButton";
@@ -21,6 +22,7 @@ import { shortCategoryName } from "../../lib/expenses/category-look";
 import { monthLabel, monthOf, shiftMonth } from "../../lib/expenses/expense-format";
 import {
   hasHomeParams,
+  homeStateForLink,
   homeSubtitle,
   parseHomeParams,
   rangeLabel,
@@ -31,9 +33,16 @@ import {
 import { useExpenseBranchLabel, useExpenseWindow, useKeptFigure } from "../../lib/expenses/expenses-home-data";
 import { buildHomeModel } from "../../lib/expenses/expenses-home-model";
 import type { NeedsYouItem } from "../../lib/expenses/expenses-home-needs";
-import { NO_HOME_FILTERS, type HomeDay, type HomeFilters, type HomeRow } from "../../lib/expenses/expenses-home-rows";
+import {
+  NO_HOME_FILTERS,
+  knownCategoryFilters,
+  type HomeDay,
+  type HomeFilters,
+  type HomeRow,
+} from "../../lib/expenses/expenses-home-rows";
 import { dismissQueuedExpense, retryQueuedExpenses } from "../../lib/expenses/live-expense-queue";
 import {
+  useCanManageExpenses,
   useDeviceExpenseQueue,
   useExpenseCategories,
   useExpenseTenant,
@@ -58,10 +67,32 @@ const CLEARED_PARAMS = { add: undefined, category: undefined, month: undefined, 
  * The expense book (design brief §1): what the store spent in a month (or the
  * exact days Profit linked to), how it split, what needs the owner, and every
  * expense by day. The hero and the split follow the filters and search, so the
- * number always matches the list. Reached from Reports, under Money; gated on
- * the `expenses` key (cashiers pay from the drawer and never land here).
+ * number always matches the list. Reached from Reports, under Money, and by
+ * links (the assistant, Activity), so it checks the `expenses` key itself:
+ * cashiers pay from the drawer and see a locked screen here.
  */
 export default function ExpensesScreen() {
+  const canManage = useCanManageExpenses();
+  return canManage ? <ExpenseBook /> : <LockedExpenses />;
+}
+
+function LockedExpenses() {
+  return (
+    <View style={styles.screen}>
+      <ScreenHeader title="Expenses" />
+      <View style={styles.inset}>
+        <EmptyState
+          icon="lock"
+          title="Expenses are locked"
+          message="Ask the owner to turn on Expenses for your account. You can still pay from your drawer on the register."
+          inset
+        />
+      </View>
+    </View>
+  );
+}
+
+function ExpenseBook() {
   const tenantId = useExpenseTenant();
   const invalidate = useInvalidateExpenses();
   const isWide = useIsWideReports();
@@ -76,29 +107,28 @@ export default function ExpensesScreen() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Home, Profit and the drawer land here with something to show or open.
+  // Home, Profit, the drawer and the assistant land here with something to show
+  // or open. A link starts from a clean slate, so the hero is the figure tapped.
   const { add, category, month: monthParam, view, from, to } = params;
   useEffect(() => {
     const raw = { add, category, month: monthParam, view, from, to };
     if (!hasHomeParams(raw)) return;
-    const asked = parseHomeParams(raw, Date.now());
-    if (asked.range) {
-      setRange(asked.range);
-      setMonth(monthOf(asked.range.to));
-    } else if (asked.month) {
-      setRange(null);
-      setMonth(asked.month);
-    }
-    if (asked.isAdd) setSheet({ kind: "add", categoryId: asked.categoryId });
-    else if (asked.isSort) setSheet({ kind: "sort" });
-    if (asked.view || (asked.categoryId && !asked.isAdd)) {
-      setFilters({ ...NO_HOME_FILTERS, view: asked.view ?? "all", categoryId: asked.isAdd ? null : asked.categoryId });
-      setMode("list");
-    }
+    const nowMs = Date.now();
+    const linked = homeStateForLink(parseHomeParams(raw, nowMs), nowMs);
+    setRange(linked.range);
+    setMonth(linked.month);
+    setFilters({ ...NO_HOME_FILTERS, view: linked.view, categoryId: linked.categoryId });
+    setMode("list");
+    setIsSearching(false);
+    if (linked.opens === "add") setSheet({ kind: "add", categoryId: linked.addCategoryId });
+    else if (linked.opens === "sort") setSheet({ kind: "sort" });
     router.setParams(CLEARED_PARAMS);
   }, [add, category, monthParam, view, from, to]);
 
   const data = useExpenseWindow(month, range, selectedOutlet ?? undefined);
+  const isReady = data.hasData;
+  const hasFailed = data.error !== null && !isReady;
+  const heroState: HeroState = isReady ? "ready" : hasFailed ? "failed" : "loading";
   const { categories } = useExpenseCategories();
   const { expenses: recent } = useRecentExpenses(sheet?.kind === "sort");
   const queue = useDeviceExpenseQueue();
@@ -107,12 +137,15 @@ export default function ExpensesScreen() {
   const branchLabel = useExpenseBranchLabel();
 
   const unsortedCents = useMemo(() => unsorted.payouts.reduce((sum, payout) => sum + payout.amountCents, 0), [unsorted.payouts]);
+  // A link to a category this store does not have is ignored, never a pill reading just "Category".
+  const shown = useMemo(() => knownCategoryFilters(filters, categories), [filters, categories]);
+  const branchId = selectedOutlet ?? undefined;
   const model = useMemo(
     () =>
       buildHomeModel({
         month,
         range,
-        filters,
+        filters: shown,
         expenses: data.expenses,
         previous: data.previous,
         categories,
@@ -121,15 +154,16 @@ export default function ExpensesScreen() {
         unsortedCount: unsorted.payouts.length,
         unsortedCents,
         nowMs: Date.now(),
+        branchId,
       }),
-    [month, range, filters, data.expenses, data.previous, categories, queue, unsorted.payouts.length, unsortedCents],
+    [month, range, shown, data.expenses, data.previous, categories, queue, unsorted.payouts.length, unsortedCents, branchId],
   );
 
   const nowMs = Date.now();
   const baseMonth = windowMonth(month, range);
   const canGoNext = baseMonth < monthOf(nowMs);
   const windowWords = range ? rangeLabel(range, nowMs) : monthLabel(month, nowMs);
-  const categoryName = filters.categoryId ? categories.find((category) => category.id === filters.categoryId)?.name ?? "Category" : null;
+  const categoryName = shown.categoryId ? categories.find((category) => category.id === shown.categoryId)?.name ?? null : null;
   const clearLabel = model.isFiltered ? "Clear filters" : range ? `Show all of ${monthLabel(baseMonth, nowMs)}` : null;
 
   const stepMonth = (delta: number) => {
@@ -159,7 +193,7 @@ export default function ExpensesScreen() {
   };
 
   const reloadAll = useCallback(() => {
-    void invalidate();
+    invalidate().catch((error: unknown) => console.warn("[expenses] could not re-read the book", error));
   }, [invalidate]);
 
   const refresh = useCallback(
@@ -194,7 +228,14 @@ export default function ExpensesScreen() {
       }
       Alert.alert("Waiting to send", "This expense is saved on this phone and will be sent when the connection is back.", [
         { text: "OK", style: "cancel" },
-        { text: "Try now", onPress: () => void retryQueuedExpenses(tenantId).then(reloadAll) },
+        {
+          text: "Try now",
+          onPress: () => {
+            retryQueuedExpenses(tenantId)
+              .then(reloadAll)
+              .catch(() => Alert.alert("Still waiting", "It could not be sent just now. It stays on this phone and is sent on its own."));
+          },
+        },
       ]);
     },
     [tenantId, reloadAll],
@@ -218,6 +259,7 @@ export default function ExpensesScreen() {
   const hero = (
     <HomeHero
       model={model}
+      state={heroState}
       monthShort={SHORT_MONTHS[Number(baseMonth.slice(5, 7)) - 1] ?? ""}
       clearLabel={clearLabel}
       onClear={clearAll}
@@ -236,23 +278,32 @@ export default function ExpensesScreen() {
     ) : null;
   const pills = (
     <HomeFilterPills
-      view={filters.view}
+      view={shown.view}
       checkCount={model.counts.check}
       categoryLabel={categoryName ? shortCategoryName(categoryName) : null}
       onView={showView}
       onCategory={() => setSheet({ kind: "category" })}
+      gutterLeft={spacing.xl}
+      gutterRight={isWide ? 0 : spacing.xl}
     />
   );
   const isListMode = isWide || mode === "list";
+  const byCategory = <CategoryBreakdown lines={model.breakdown} onPick={showCategory} />;
+  const filterRow = isReady ? (isListMode ? pills : byCategory) : null;
   const listHeader = (
     <View style={styles.listHeader}>
       {banner}
       {isWide ? null : hero}
-      {isWide ? null : <ModeSwitch mode={mode} onMode={setMode} />}
-      {isListMode ? pills : <CategoryBreakdown lines={model.breakdown} onPick={showCategory} />}
+      {isReady && !isWide ? <ModeSwitch mode={mode} onMode={setMode} /> : null}
+      {filterRow}
     </View>
   );
-  const emptyList = model.rows.length === 0 ? (
+  const waiting = hasFailed ? (
+    <ErrorState title="Expenses could not load" message={data.error ?? undefined} onRetry={() => void data.refetch()} />
+  ) : (
+    <HomeSkeleton />
+  );
+  const nothingYet = (
     <EmptyState
       icon="receipt"
       title={`Nothing recorded for ${windowWords}`}
@@ -261,19 +312,22 @@ export default function ExpensesScreen() {
       onAction={() => setSheet({ kind: "add", categoryId: null })}
       inset
     />
-  ) : (
+  );
+  const nothingMatches = (
     <EmptyState icon="search" title="Nothing matches" message="No expense here fits these filters." actionLabel="Clear filters" onAction={clearAll} inset />
   );
+  const loadedEmpty = model.rows.length === 0 ? nothingYet : nothingMatches;
+  const emptyList = !isReady ? waiting : isListMode ? loadedEmpty : null;
 
   const list = (
     <SectionList
-      sections={isListMode ? model.days.map((day) => ({ key: day.date, day, data: [day] })) : []}
+      sections={isReady && isListMode ? model.days.map((day) => ({ key: day.date, day, data: [day] })) : []}
       keyExtractor={(day: HomeDay) => day.date}
       renderItem={({ item }) => <DayCard day={item} onOpen={openRow} />}
       renderSectionHeader={({ section }) => <DayHeader title={section.day.title} totalCents={section.day.totalCents} />}
       stickySectionHeadersEnabled
       ListHeaderComponent={listHeader}
-      ListEmptyComponent={isListMode ? emptyList : null}
+      ListEmptyComponent={emptyList}
       contentContainerStyle={[styles.list, isWide && styles.listWide]}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} />}
       keyboardShouldPersistTaps="handled"
@@ -282,18 +336,14 @@ export default function ExpensesScreen() {
     />
   );
 
-  const isFirstLoad = data.isLoading && !data.hasData;
-  const hasFailed = data.error !== null && !data.hasData;
-  const body = isFirstLoad ? (
-    <HomeSkeleton />
-  ) : hasFailed ? (
-    <ErrorState title="Expenses could not load" message={data.error ?? undefined} onRetry={() => void data.refetch()} />
-  ) : isWide ? (
+  // The header, the hero (month arrows) and Add stay up while a month loads or
+  // fails: only the list area waits, so the owner can step to another month.
+  const body = isWide ? (
     <View style={styles.columns}>
       <View style={styles.main}>{list}</View>
       <ScrollView style={styles.side} contentContainerStyle={styles.sideBody}>
         {hero}
-        <SideBreakdown model={model} onPick={showCategory} />
+        {isReady ? <SideBreakdown model={model} onPick={showCategory} /> : null}
       </ScrollView>
     </View>
   ) : (
@@ -304,7 +354,7 @@ export default function ExpensesScreen() {
     <View style={styles.screen}>
       {header}
       {body}
-      {hasFailed ? null : <AddExpenseFab onPress={() => setSheet({ kind: "add", categoryId: null })} />}
+      <AddExpenseFab onPress={() => setSheet({ kind: "add", categoryId: null })} />
 
       {sheet?.kind === "add" ? (
         <AddExpenseSheet visible mode={{ kind: "book" }} initialCategoryId={sheet.categoryId} onClose={() => setSheet(null)} onCommitted={reloadAll} />
@@ -313,7 +363,7 @@ export default function ExpensesScreen() {
         <SortPayoutsSheet payouts={unsorted.payouts} categories={categories} recent={recent} onClose={() => setSheet(null)} onSorted={reloadAll} />
       ) : null}
       {sheet?.kind === "category" ? (
-        <CategoryFilterSheet categories={categories} selectedId={filters.categoryId} onPick={showCategory} onClose={() => setSheet(null)} />
+        <CategoryFilterSheet categories={categories} selectedId={shown.categoryId} onPick={showCategory} onClose={() => setSheet(null)} />
       ) : null}
       {sheet?.kind === "export" ? (
         <ExportExpensesSheet
@@ -322,6 +372,8 @@ export default function ExpensesScreen() {
           categories={categories}
           window={model.window}
           isTruncated={data.isTruncated}
+          isLoading={heroState === "loading"}
+          hasFailed={hasFailed}
           onClose={() => setSheet(null)}
         />
       ) : null}
@@ -331,6 +383,7 @@ export default function ExpensesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  inset: { paddingHorizontal: spacing.xl },
   list: { paddingHorizontal: spacing.xl, paddingBottom: 120 },
   listWide: { paddingRight: 0 },
   listHeader: { gap: spacing.md },

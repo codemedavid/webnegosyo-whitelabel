@@ -2,11 +2,12 @@ import { BAND_LABELS, COST_GUIDES, costBand, costExplanation, costTiles, isFoodC
 import { reportWith } from "./profit-fixtures";
 
 describe("cost bands — guides for most restaurants, never verdicts", () => {
-  it("reads food cost as usual up to 38%, on the high side above, high above 45%", () => {
+  it("reads food cost as usual up to 35% (the range it explains), on the high side above, high above 45%", () => {
     expect(costBand("food", 0.2)).toBe("usual");
     expect(costBand("food", 0.33)).toBe("usual");
-    expect(costBand("food", 0.38)).toBe("usual");
-    expect(costBand("food", 0.39)).toBe("high_side");
+    expect(costBand("food", 0.35)).toBe("usual");
+    expect(costBand("food", 0.36)).toBe("high_side");
+    expect(costBand("food", 0.38)).toBe("high_side");
     expect(costBand("food", 0.45)).toBe("high_side");
     expect(costBand("food", 0.46)).toBe("high");
   });
@@ -24,9 +25,19 @@ describe("cost bands — guides for most restaurants, never verdicts", () => {
     expect(costBand("rent", 0.16)).toBe("high");
   });
 
-  it("judges the percent the tile shows, so 38.4% (shown 38%) is not called high", () => {
-    expect(costBand("food", 0.384)).toBe("usual");
-    expect(costBand("food", 0.385)).toBe("high_side");
+  it("judges the percent the tile shows, so 35.4% (shown 35%) is not called high", () => {
+    expect(costBand("food", 0.354)).toBe("usual");
+    expect(costBand("food", 0.355)).toBe("high_side");
+  });
+
+  it("calls Usual exactly what its explanation says most restaurants see", () => {
+    for (const kind of ["food", "staff", "rent"] as const) {
+      const { usualHigh, highAbove } = COST_GUIDES[kind];
+      const text = costExplanation(kind, reportWith()).paragraphs.join(" ");
+      expect(costBand(kind, usualHigh / 100)).toBe("usual");
+      expect(costBand(kind, (usualHigh + 1) / 100)).toBe("high_side");
+      expect(text).toContain(`Above ${usualHigh}% is on the high side; above ${highAbove}% is high.`);
+    }
   });
 
   it("says nothing it cannot know", () => {

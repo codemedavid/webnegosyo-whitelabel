@@ -17,11 +17,18 @@ const FALL_COLORS: Readonly<Record<FallTone, string>> = {
 };
 
 const TRACK_HEIGHT = 10;
+/**
+ * Large text grows the words up to this much; past it they wrap rather than
+ * squeezing the bar to nothing. Labels and figures size to their content
+ * (min widths keep the bars lined up at normal sizes) instead of fixed
+ * widths that cut "Ingredients" to "Ingred…" at large text.
+ */
+const FALL_TEXT_SCALE = 1.6;
 
 function FallBar({ row }: { row: FallRow }) {
   return (
     <View style={styles.fallRow} accessible accessibilityLabel={row.spoken}>
-      <Text style={styles.fallLabel} numberOfLines={1}>
+      <Text style={styles.fallLabel} maxFontSizeMultiplier={FALL_TEXT_SCALE}>
         {row.label}
       </Text>
       <View style={styles.track}>
@@ -32,7 +39,7 @@ function FallBar({ row }: { row: FallRow }) {
           ]}
         />
       </View>
-      <Text style={[styles.fallValue, row.tone === "loss" && styles.lossText]} numberOfLines={1}>
+      <Text style={[styles.fallValue, row.tone === "loss" && styles.lossText]} maxFontSizeMultiplier={FALL_TEXT_SCALE}>
         {row.valueText}
       </Text>
     </View>
@@ -86,9 +93,10 @@ const styles = StyleSheet.create({
   sentence: { ...typography.caption, color: colors.heroInkText },
   fall: { gap: spacing.sm, marginTop: spacing.md },
   fallRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 22 },
-  fallLabel: { ...typography.caption, color: colors.heroInkMuted, width: 84 },
+  fallLabel: { ...typography.caption, color: colors.heroInkMuted, minWidth: 84, maxWidth: "36%", flexShrink: 1 },
   track: {
     flex: 1,
+    minWidth: 32,
     height: TRACK_HEIGHT,
     borderRadius: radius.full,
     backgroundColor: colors.heroInkElevated,
@@ -99,7 +107,8 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700",
     color: colors.heroInkText,
-    width: 72,
+    minWidth: 72,
+    flexShrink: 0,
     textAlign: "right",
     fontVariant: ["tabular-nums"],
   },

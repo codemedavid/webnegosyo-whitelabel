@@ -6,6 +6,7 @@ import ProfitScreen from "../../app/(main)/profit";
 import { toExpenseCategoryTotals, toProfitFigures } from "./profit-rows";
 import { composeProfit, type ProfitScreenData } from "./profit-service";
 import { resolveProfitWindow } from "./profit-period";
+import type { ProfitPeriodFigures } from "./profit-types";
 import { useProfit } from "./use-profit";
 
 const mockSession = {
@@ -38,12 +39,16 @@ const summary = {
 };
 const rent = { category_id: "rent", name: "Rent (Upa)", icon: "RE", category_group: "occupancy", system_key: "rent", cents: 500_000, stock_purchase_cents: 0, expenses: 1 };
 
-function ready(overrides: Partial<typeof summary> = {}): ProfitScreenData {
+function ready(
+  overrides: Partial<typeof summary> = {},
+  extra: { everRecorded?: boolean | null; periods?: ProfitPeriodFigures[] | null } = {},
+): ProfitScreenData {
   return composeProfit(resolveProfitWindow({ preset: "this_month" }, Date.now()), {
     summary: { ok: true, data: toProfitFigures([{ ...summary, ...overrides }]) },
     categories: { ok: true, data: toExpenseCategoryTotals([rent]) },
     previousCategories: null,
-    periods: null,
+    periods: extra.periods ? { ok: true, data: extra.periods } : null,
+    everRecorded: extra.everRecorded ?? null,
   });
 }
 
@@ -130,15 +135,34 @@ describe("the answer", () => {
     expect(router.push).toHaveBeenCalledWith(expect.stringMatching(/^\/\(main\)\/expenses\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/));
   });
 
-  it("greets a store with no expenses yet, and every finding is a button", () => {
-    answer(ready({ expense_count: 0 }));
+  it("greets a store that never recorded an expense, with ONE way to add the first", () => {
+    answer(ready({ expense_count: 0 }, { everRecorded: false }));
     const screen = render(<ProfitScreen />);
     expect(screen.getByText("Profit is sales, minus ingredients, minus expenses")).toBeTruthy();
-    expect(screen.getByText(/^No expenses recorded this month/)).toBeTruthy();
+    expect(screen.queryByText(/^No expenses recorded this month/)).toBeNull();
     const buttons = screen.getAllByRole("button", { name: "Add expense" });
-    expect(buttons.length).toBe(2);
-    fireEvent.press(buttons[1]);
+    expect(buttons.length).toBe(1);
+    fireEvent.press(buttons[0]);
     expect(router.push).toHaveBeenCalledWith("/(main)/expenses?add=1");
+  });
+
+  it("never greets an established store as new when the period is merely empty", () => {
+    answer(ready({ expense_count: 0 }, { everRecorded: true }));
+    const screen = render(<ProfitScreen />);
+    expect(screen.queryByText("Profit is sales, minus ingredients, minus expenses")).toBeNull();
+    expect(screen.getByText(/^No expenses recorded this month/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Add expense" }).length).toBe(1);
+  });
+
+  it("draws the last three months, the running one striped", () => {
+    const month = (bucket: string, sales: number) => ({
+      bucket, orders: 1, netSalesCents: sales, collectedCents: sales, saleMovements: 0, ledgerCogsCents: 0, fallbackCogsCents: 0,
+      wasteCents: 0, countVarianceCents: 0, ingredientDirectCents: 0, ingredientStockCents: 0, expensesCents: 0, cashOutCents: 0,
+    });
+    answer(ready({}, { periods: [month("2026-08-01", 500_000), month("2026-09-01", 600_000)] }));
+    const screen = render(<ProfitScreen />);
+    expect(screen.getByText("Last 3 months")).toBeTruthy();
+    expect(screen.getByText(/The striped bar is still running/)).toBeTruthy();
   });
 });
 

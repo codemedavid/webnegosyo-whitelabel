@@ -16,8 +16,18 @@ const WEEK_MS = 7 * DAY_MS;
 
 /** The report functions refuse longer windows (reporting.assert_access). */
 export const MAX_PROFIT_DAYS = 93;
-/** How many bars the trend draws. */
+/** How many bars a custom range's trend draws at most. */
 export const TREND_BARS = 6;
+/** A week's trend: this week and the five before it (42 days, one read). */
+export const TREND_WEEKS = 6;
+/**
+ * A month's trend: this month and the two before it. Six months would be
+ * ~184 days, twice the report functions' 93-day cap; three whole months are
+ * at most 92 days, so the trend stays ONE bounded read on the shared database.
+ */
+export const TREND_MONTHS = 3;
+/** A custom range this long or longer is compared with the one before it for missing bills. */
+const MONTH_LIKE_DAYS = 28;
 
 export type ProfitPreset = "this_month" | "last_month" | "this_week" | "custom";
 
@@ -116,13 +126,14 @@ export function customDays(fromKey: string, toKey: string): number {
   return Math.max(0, days);
 }
 
-export type SelectionVerdict = { ok: true } | { ok: false; reason: string };
+/** A refused range: `title` names what is wrong (the alert's heading), `reason` what to do. */
+export type SelectionVerdict = { ok: true } | { ok: false; title: string; reason: string };
 
 export function checkCustomRange(fromKey: string, toKey: string, nowMs: number): SelectionVerdict {
   const days = customDays(fromKey, toKey);
-  if (days === 0) return { ok: false, reason: "The first day must come before the last." };
-  if (days > MAX_PROFIT_DAYS) return { ok: false, reason: `Pick ${MAX_PROFIT_DAYS} days or fewer.` };
-  if (fromKey > manilaDay(nowMs)) return { ok: false, reason: "That range hasn't started yet." };
+  if (days === 0) return { ok: false, title: "Check the days", reason: "The first day must come before the last." };
+  if (days > MAX_PROFIT_DAYS) return { ok: false, title: "Pick a shorter range", reason: `Pick ${MAX_PROFIT_DAYS} days or fewer.` };
+  if (fromKey > manilaDay(nowMs)) return { ok: false, title: "Pick an earlier range", reason: "That range hasn't started yet." };
   return { ok: true };
 }
 
@@ -149,6 +160,17 @@ export function resolveProfitWindow(selection: ProfitSelection, nowMs: number): 
 }
 
 /**
+ * The window as it stands at `nowMs`: a period still running reads up to now,
+ * one that has ended reads whole. The cache keeps one window per period (its
+ * days), so every refetch re-asks this instead of reusing the end of the first
+ * read — otherwise "so far" froze at the first fetch.
+ */
+export function windowAt(w: ProfitWindow, nowMs: number): ProfitWindow {
+  const isPartial = nowMs < w.fullEnd;
+  return { ...w, isPartial, end: isPartial ? Math.max(w.start, nowMs) : w.fullEnd };
+}
+
+/**
  * The whole period before this one, for "you paid rent last month but not
  * yet this month" (the web's `previousFullWindow`): the previous calendar
  * month for month periods, otherwise the same length just before. Null for
@@ -161,6 +183,17 @@ export function previousFullWindow(w: ProfitWindow): { start: number; end: numbe
   const length = w.preset === "this_week" ? WEEK_MS : w.fullEnd - w.start;
   if (length < WEEK_MS) return null;
   return { start: w.start - length, end: w.start };
+}
+
+/**
+ * The period whose bills a "No Rent recorded" check compares against — only
+ * for month-long (or longer) windows. Monthly bills paid last week say nothing
+ * about this week, so a week (or a short custom range) has no comparison and
+ * no missing-bill finding; it also saves the read.
+ */
+export function recurringCompareWindow(w: ProfitWindow): { start: number; end: number } | null {
+  const isMonthLike = w.preset === "this_month" || w.preset === "last_month" || customDays(w.fromKey, w.toKey) >= MONTH_LIKE_DAYS;
+  return isMonthLike ? previousFullWindow(w) : null;
 }
 
 /** Days for a short window, weeks otherwise: a phone fits about six bars. */
@@ -183,6 +216,39 @@ export function bucketKeys(w: ProfitWindow, grain: ProfitGrain): string[] {
     if (keys[keys.length - 1] !== key) keys.push(key);
   }
   return keys;
+}
+
+export interface TrendPlan {
+  grain: ProfitGrain;
+  /** Where the trend's one read starts; it ends where the window's read ends. */
+  start: number;
+  /** Every bar, oldest first; the last is the window's own period for week and month views. */
+  keys: string[];
+  /** The first bucket inside the window: older bars are whole earlier periods. */
+  windowKey: string;
+  title: string;
+}
+
+/**
+ * What the trend draws. A week or month view shows that period and the ones
+ * before it (6 weeks; 3 months — see TREND_MONTHS), so the current bar has
+ * something to stand beside even on its first day. A custom range shows its
+ * own days or weeks (its last six).
+ */
+export function trendPlan(w: ProfitWindow): TrendPlan {
+  if (w.preset === "this_week") {
+    const from = addDays(w.fromKey, -7 * (TREND_WEEKS - 1));
+    const keys = Array.from({ length: TREND_WEEKS }, (_, index) => addDays(from, 7 * index));
+    return { grain: "week", start: manilaMidnight(from), keys, windowKey: w.fromKey, title: `Last ${TREND_WEEKS} weeks` };
+  }
+  if (w.preset === "this_month" || w.preset === "last_month") {
+    const keys = [monthStart(w.fromKey)];
+    while (keys.length < TREND_MONTHS) keys.unshift(previousMonthStart(keys[0]));
+    return { grain: "month", start: manilaMidnight(keys[0]), keys, windowKey: monthStart(w.fromKey), title: `Last ${TREND_MONTHS} months` };
+  }
+  const grain = trendGrainFor(w);
+  const keys = bucketKeys(w, grain).slice(-TREND_BARS);
+  return { grain, start: w.start, keys, windowKey: bucketOf(w.fromKey, grain), title: grain === "day" ? "Day by day" : "Week by week" };
 }
 
 export function bucketLabel(bucket: string, grain: ProfitGrain): string {

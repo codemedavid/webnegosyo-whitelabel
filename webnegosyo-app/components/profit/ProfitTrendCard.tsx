@@ -3,8 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Svg, { Defs, Line, Pattern, Rect } from "react-native-svg";
 
 import type { TrendBar } from "../../lib/profit/profit-service";
-import type { ProfitGrain } from "../../lib/profit/profit-types";
-import { trendColumns, trendTitle, type TrendColumn } from "../../lib/profit/profit-trend-view";
+import { trendColumns, type TrendColumn } from "../../lib/profit/profit-trend-view";
 import { colors, spacing, typography } from "../../theme/colors";
 import { SectionHeader } from "../SectionHeader";
 import { profitCard } from "./profit-styles";
@@ -58,11 +57,12 @@ function Column({ column, half, hasLoss }: { column: TrendColumn; half: number; 
 
 interface ProfitTrendCardProps {
   bars: readonly TrendBar[];
-  grain: ProfitGrain;
+  /** "Last 6 weeks", "Last 3 months", "Day by day" (lib/profit/profit-period.ts `trendPlan`). */
+  title: string;
 }
 
-/** Profit per day or week in the period, sales faint behind, losses below the line, the running one striped. */
-export function ProfitTrendCard({ bars, grain }: ProfitTrendCardProps) {
+/** Profit per period, the chosen one last, sales faint behind, losses below the line, the running one striped. */
+export function ProfitTrendCard({ bars, title }: ProfitTrendCardProps) {
   if (bars.length < 2) return null;
   const { columns, hasLoss } = trendColumns(bars);
   const half = hasLoss ? CHART_HEIGHT / 2 : CHART_HEIGHT;
@@ -70,7 +70,7 @@ export function ProfitTrendCard({ bars, grain }: ProfitTrendCardProps) {
   return (
     <View>
       <SectionHeader
-        title={trendTitle(grain)}
+        title={title}
         hint={hasOpen ? "Kept, with sales behind it. The striped bar is still running." : "Kept, with sales behind it."}
       />
       <View style={profitCard.card}>

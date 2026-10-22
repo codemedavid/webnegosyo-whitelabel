@@ -3,7 +3,6 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-nativ
 
 import { colors, radius, spacing, typography } from "../../../theme/colors";
 import { sheetText } from "../../drawer/DrawerSheet";
-import { Icon } from "../../Icon";
 
 interface ChoicePillProps {
   label: string;
@@ -30,16 +29,6 @@ export function ChoicePill({ label, isOn, onPress, testID }: ChoicePillProps) {
 
 export function PillRow({ children }: { children: React.ReactNode }) {
   return <View style={styles.pills}>{children}</View>;
-}
-
-/** The row at the top of an in-place step that goes back one step. */
-export function BackRow({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.back} accessibilityRole="button" accessibilityLabel={label} testID="sheet-back">
-      <Icon name="chevron-left" size={18} color={colors.textPrimary} />
-      <Text style={styles.backText}>{label}</Text>
-    </TouchableOpacity>
-  );
 }
 
 interface TextFieldProps {
@@ -102,8 +91,6 @@ const styles = StyleSheet.create({
   pillOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   pillText: { ...typography.caption, fontWeight: "700", color: colors.textPrimary },
   pillTextOn: { color: colors.textOnDark },
-  back: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 44, alignSelf: "flex-start" },
-  backText: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
   input: {
     ...typography.body,
     color: colors.textPrimary,

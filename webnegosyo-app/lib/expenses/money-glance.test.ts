@@ -5,10 +5,12 @@ import {
   keptRow,
   monthSpentDetail,
   profitRowDetail,
+  queuedSpends,
   spentOn,
   spentTodayRow,
   unsortedRow,
 } from "./money-glance";
+import type { QueuedExpense } from "./expense-queue";
 import type { Expense, ExpenseCategory } from "./types";
 
 function category(id: string, name: string, group: ExpenseCategory["group"]): ExpenseCategory {
@@ -105,6 +107,63 @@ describe("spentOn", () => {
     // Assert
     expect(makati).toEqual({ cents: 400_00, count: 1, drawerCount: 0 });
     expect(all).toEqual({ cents: 750_00, count: 3, drawerCount: 1 });
+  });
+});
+
+describe("spending still on this phone", () => {
+  function queued(id: string, overrides: Partial<QueuedExpense> & { amountCents?: number; spentOn?: string; outletId?: string | null } = {}): QueuedExpense {
+    const { amountCents = 200_00, spentOn: day = "2026-10-22", outletId = null, ...rest } = overrides;
+    return {
+      id,
+      tenantId: "t1",
+      payload: {
+        kind: "book",
+        draft: { amountCents, categoryId: "lpg", spentOn: day, paidFrom: "cash", outletId, clientRequestId: id },
+        createdByName: "Owner",
+      },
+      categoryName: "Gas / LPG",
+      attempts: 0,
+      retryAt: null,
+      createdAt: Date.parse("2026-10-22T02:00:00Z"),
+      refusedReason: null,
+      ...rest,
+    };
+  }
+
+  function drawerQueued(id: string, amountCents: number): QueuedExpense {
+    return {
+      ...queued(id),
+      payload: { kind: "drawer", input: { shiftId: "s1", amountCents, categoryId: "ice", clientRequestId: id, recordedByName: "Ana" } },
+    };
+  }
+
+  it("counts today's unsent entries, but not refused ones or ones that already landed", () => {
+    // Arrange
+    const landed = [expense({ id: "a", amountCents: 100_00, clientRequestId: "q-landed" })];
+    const entries = [
+      queued("q-new", { amountCents: 300_00 }),
+      queued("q-landed", { amountCents: 100_00 }),
+      queued("q-refused", { amountCents: 999_00, refusedReason: "Category archived" }),
+      queued("q-yesterday", { amountCents: 50_00, spentOn: "2026-10-21" }),
+    ];
+
+    // Act
+    const glance = spentOn(landed, categories, "2026-10-22", null, queuedSpends(entries));
+
+    // Assert
+    expect(glance).toEqual({ cents: 400_00, count: 2, drawerCount: 0 });
+  });
+
+  it("dates a queued drawer pay-out by when it was typed and counts it as from the drawer", () => {
+    const glance = spentOn([], categories, "2026-10-22", null, queuedSpends([drawerQueued("d1", 150_00)]));
+
+    expect(glance).toEqual({ cents: 150_00, count: 1, drawerCount: 1 });
+  });
+
+  it("keeps a queued book entry to its branch, and counts this phone's drawer pay-out in any branch view", () => {
+    const entries = queuedSpends([queued("q-bgc", { outletId: "bgc" }), drawerQueued("d1", 150_00)]);
+
+    expect(spentOn([], categories, "2026-10-22", "makati", entries)).toEqual({ cents: 150_00, count: 1, drawerCount: 1 });
   });
 });
 

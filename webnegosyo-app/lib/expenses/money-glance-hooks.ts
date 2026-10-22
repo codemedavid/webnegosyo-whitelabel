@@ -15,9 +15,9 @@ import { resourceKey } from "../backends/query-keys";
 import type { CashMove } from "../cash-drawers";
 import { listCashMoves } from "../cash-drawer-service";
 import { ALL_BRANCHES, resolveProfitBranch } from "../profit/profit-branch";
-import type { ProfitReport } from "../profit/profit-model";
 import { resolveProfitWindow } from "../profit/profit-period";
-import { useProfit } from "../profit/use-profit";
+import type { ProfitGlance } from "../profit/profit-service";
+import { useProfitGlance } from "../profit/use-profit";
 import { useResource } from "../query/use-resource";
 import { loadOpenShift } from "../shift-service";
 import { useAccountBranchScope, useBranchScope } from "../use-branch-scope";
@@ -26,34 +26,60 @@ import { liveExpenseDb } from "./expense-client";
 import { manilaToday, monthLabel, monthOf } from "./expense-format";
 import { monthSpentCents } from "./expense-list";
 import { listMovementLinks, type MovementLink } from "./expense-service";
-import { spentOn, type SpendGlance } from "./money-glance";
+import { queuedSpends, spentOn, type SpendGlance } from "./money-glance";
 import { SHIFT_LINKS_RESOURCE } from "./use-drawer-expenses";
-import { useExpenseCategories, useExpenseMonth, useExpenseTenant, useRecentExpenses } from "./use-expenses";
+import {
+  useDeviceExpenseQueue,
+  useExpenseCategories,
+  useExpenseMonth,
+  useExpenseTenant,
+  useRecentExpenses,
+} from "./use-expenses";
+
+/**
+ * Today's Manila date, re-read whenever the screen comes back into view: Home
+ * stays mounted for days, so a value taken once would keep yesterday's
+ * "Spent today" (and last month's "Kept") past midnight.
+ */
+export function useManilaDay(): string {
+  const [day, setDay] = useState(manilaToday);
+  useFocusEffect(
+    useCallback(() => {
+      setDay(manilaToday());
+    }, []),
+  );
+  // A render after midnight (any re-render) moves on too, without waiting for a focus.
+  const now = manilaToday();
+  return now > day ? now : day;
+}
 
 /**
  * Today's spending from the recent rows (already on the phone for the repeat
- * chips), for the branch being viewed — a branch-locked account always reads
- * its own branch (`useBranchScope` only narrows). Null until the categories
- * are in: without them cash merely moved (owner took cash, deposits) would
- * briefly read as spending.
+ * chips) plus what this phone still holds unsent, for the branch being viewed
+ * — a branch-locked account always reads its own branch (`useBranchScope`
+ * only narrows). Null until the categories are in: without them cash merely
+ * moved (owner took cash, deposits) would briefly read as spending.
  */
 export function useSpentToday(isEnabled: boolean): SpendGlance | null {
   const recent = useRecentExpenses(isEnabled);
   const categoriesRead = useExpenseCategories();
+  const queue = useDeviceExpenseQueue();
   const scope = useBranchScope();
+  const today = useManilaDay();
   const outletId = scope.kind === "branch" ? scope.outletId : null;
   const categories = categoriesRead.data;
   const hasData = recent.data !== undefined;
+  const queued = useMemo(() => queuedSpends(queue.expenses), [queue.expenses]);
   return useMemo(
-    () => (isEnabled && hasData && categories ? spentOn(recent.expenses, categories, manilaToday(), outletId) : null),
-    [isEnabled, hasData, recent.expenses, categories, outletId],
+    () => (isEnabled && hasData && categories ? spentOn(recent.expenses, categories, today, outletId, queued) : null),
+    [isEnabled, hasData, recent.expenses, categories, today, outletId, queued],
   );
 }
 
 /** This month's spending, read exactly as the Expenses screen reads it (same cache entry). Null until the categories are in. */
 export function useMonthSpent(): { cents: number; monthName: string } | null {
   const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
-  const month = monthOf(Date.now());
+  const month = monthOf(useManilaDay());
   const read = useExpenseMonth(month, selectedOutlet ?? undefined);
   const categories = useExpenseCategories().data;
   const expenses = read.data?.expenses;
@@ -63,19 +89,23 @@ export function useMonthSpent(): { cents: number; monthName: string } | null {
   );
 }
 
-/** This month's profit, on the Profit screen's own cache entry (same window and branch rule). */
-export function useKeptThisMonth(isEnabled: boolean): ProfitReport | null {
+/**
+ * This month's profit for a glance (same window and branch rule as Profit):
+ * the Profit screen's cached read when fresh, else one summary RPC — Home and
+ * Reports re-read on every focus, on a database every store shares.
+ */
+export function useKeptThisMonth(isEnabled: boolean): ProfitGlance | null {
   const accountOutletName = useAuthStore((s) => s.outletName);
   const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
   const account = useAccountBranchScope();
   const { outlets } = useOutlets();
-  const today = manilaToday();
-  // Keyed to the Manila day: the window's identity changes with the clock.
+  const today = useManilaDay();
+  // Keyed to the Manila day: the window's identity changes with the clock,
+  // and the read's end comes from `windowAt` when it runs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const period = useMemo(() => resolveProfitWindow({ preset: "this_month" }, Date.now()), [today]);
   const { branch } = resolveProfitBranch({ account, accountOutletName, outlets, choice: selectedOutlet ?? ALL_BRANCHES });
-  const profit = useProfit(period, branch, isEnabled);
-  return isEnabled && profit.data?.status === "ready" ? profit.data.report : null;
+  return useProfitGlance(period, branch, isEnabled);
 }
 
 /** Whether this person has a shift open right now — re-read whenever the screen comes back into view. */

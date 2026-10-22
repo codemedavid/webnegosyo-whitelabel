@@ -6,7 +6,7 @@
  * "Pay an expense" must open in a dead zone, and the chips come from them.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/query-core";
 
@@ -108,19 +108,20 @@ export function useTracksStock(): boolean {
   return result.data === true;
 }
 
-export function useExpenseMonth(month: string, outletId: string | null | undefined) {
+/** One month's book; `enabled: false` reads nothing (the detail screen before its row is known). */
+export function useExpenseMonth(month: string, outletId: string | null | undefined, enabled = true) {
   const tenantId = useExpenseTenant();
   const fetcher = useCallback(
     () => listExpenses(liveExpenseDb, { tenantId: tenantId as string, month, outletId }),
     [tenantId, month, outletId],
   );
   const result = useResource<ExpenseMonth>(
-    tenantId ? resourceKey(EXPENSE_MONTH_RESOURCE, tenantId, month, outletId ?? "all") : null,
+    tenantId && enabled ? resourceKey(EXPENSE_MONTH_RESOURCE, tenantId, month, outletId ?? "all") : null,
     fetcher,
     { staleTime: LIST_STALE_MS },
   );
   useRefetchOnScreenFocus({
-    enabled: tenantId !== null,
+    enabled: tenantId !== null && enabled,
     staleMs: LIST_STALE_MS,
     dataUpdatedAt: result.dataUpdatedAt,
     isFetching: result.isRefetching,
@@ -202,22 +203,36 @@ export interface DeviceQueue {
 
 const EMPTY_QUEUE: DeviceQueue = { expenses: [], receipts: [], waitingReceipts: new Set() };
 
-/** What this phone still holds for the store, re-read whenever the queue changes. */
+/**
+ * What this phone still holds for the store and the signed-in person,
+ * re-read whenever the queue changes or someone else signs in. Reads can
+ * finish out of order (a slow read from before a sync): only the newest one
+ * is applied.
+ */
 export function useDeviceExpenseQueue(): DeviceQueue {
   const tenantId = useExpenseTenant();
+  // The queue only hands out the signed-in person's entries (live-expense-queue).
+  const userId = useAuthStore((s) => s.userId);
   const [queue, setQueue] = useState<DeviceQueue>(EMPTY_QUEUE);
+  const latestRead = useRef(0);
 
   useEffect(() => {
     if (!tenantId) {
+      latestRead.current += 1;
       setQueue(EMPTY_QUEUE);
       return;
     }
     let isActive = true;
     const read = () => {
-      void Promise.all([pendingExpenses(tenantId), pendingReceipts(tenantId)]).then(([expenses, receipts]) => {
-        if (!isActive) return;
-        setQueue({ expenses, receipts, waitingReceipts: new Set(receipts.map((receipt) => receipt.clientRequestId)) });
-      });
+      latestRead.current += 1;
+      const readId = latestRead.current;
+      Promise.all([pendingExpenses(tenantId), pendingReceipts(tenantId)])
+        .then(([expenses, receipts]) => {
+          if (!isActive || readId !== latestRead.current) return;
+          setQueue({ expenses, receipts, waitingReceipts: new Set(receipts.map((receipt) => receipt.clientRequestId)) });
+        })
+        // Keeps what was shown; the next queue change reads again.
+        .catch((error: unknown) => console.warn("[expenses] could not read this phone's queue", error));
     };
     read();
     const unsubscribe = subscribeExpenseQueue(read);
@@ -225,7 +240,7 @@ export function useDeviceExpenseQueue(): DeviceQueue {
       isActive = false;
       unsubscribe();
     };
-  }, [tenantId]);
+  }, [tenantId, userId]);
 
   return queue;
 }

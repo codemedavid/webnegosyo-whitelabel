@@ -27,6 +27,9 @@ export const EXPENSE_MESSAGES = {
   spentOnTooOld: "An expense can't be dated more than 400 days back.",
   reasonRequired: 'Say why.',
   drawerShiftClosed: "This shift is closed, so the cash can't go back into the drawer. Use Fix to change the category instead.",
+  starterCategoryLocked: 'A starter category keeps its group and its "Needs a note" setting. You can still rename it or change its badge.',
+  categoryGroupLocked: 'This category already has expenses, so its group stays. Add a new category in the other group instead.',
+  drawerVoidNotHolder: 'Only the cashier holding this drawer, or someone who manages cash, can void it and put the money back.',
   unknown: "We couldn't save that. Please try again.",
   readFailed: "We couldn't load your expenses. Please try again.",
 } as const
@@ -42,7 +45,7 @@ function mentions(error: PostgresErrorLike, word: string): boolean {
   return [error.message, error.details, error.hint].some((text) => typeof text === 'string' && text.includes(word))
 }
 
-/** Refusals the expense SQL raises by name (migrations 20261022120000/120100). */
+/** Refusals the expense SQL raises by name (migrations 20261022120000/120100/130000). */
 const KNOWN_REFUSALS: ReadonlyArray<readonly [string, string]> = [
   ['movement_not_found', EXPENSE_MESSAGES.payoutGone],
   ['expenses_movement_recorded_uq', EXPENSE_MESSAGES.payoutAlreadySorted],
@@ -52,6 +55,11 @@ const KNOWN_REFUSALS: ReadonlyArray<readonly [string, string]> = [
   ['spent_on_in_future', EXPENSE_MESSAGES.spentOnFuture],
   ['spent_on_too_old', EXPENSE_MESSAGES.spentOnTooOld],
   ['reason_required', EXPENSE_MESSAGES.reasonRequired],
+  // 42501 from expense_categories_guard: a rule, not a missing permission.
+  ['A starter category keeps its group', EXPENSE_MESSAGES.starterCategoryLocked],
+  ['already has expenses; its group cannot change', EXPENSE_MESSAGES.categoryGroupLocked],
+  // 42501 from void_expense on a drawer expense.
+  ['cash manager can put cash back', EXPENSE_MESSAGES.drawerVoidNotHolder],
 ]
 
 /** The sentence for a database refusal; `unknown` when it is not one we expect. */
@@ -77,6 +85,13 @@ export function expenseErrorMessage(error: PostgresErrorLike): string {
     default:
       return EXPENSE_MESSAGES.unknown
   }
+}
+
+const SENTENCES: ReadonlySet<string> = new Set(Object.values(EXPENSE_MESSAGES))
+
+/** Whether a message is one of ours (safe to show), not a raw database or runtime text. */
+export function isExpenseSentence(message: string): boolean {
+  return SENTENCES.has(message)
 }
 
 /** Logs the raw refusal and returns an Error carrying only the sentence. */

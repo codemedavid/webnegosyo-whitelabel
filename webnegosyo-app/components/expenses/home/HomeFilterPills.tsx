@@ -14,12 +14,17 @@ interface PillProps {
   accessibilityLabel?: string;
 }
 
+/** Drawn 40 tall so the row stays light; the slop takes the target to 44pt. */
+const PILL_MIN_HEIGHT = 40;
+const PILL_SLOP = { top: 2, bottom: 2, left: 0, right: 0 };
+
 function Pill({ label, isOn, onPress, count, trailingIcon, accessibilityLabel }: PillProps) {
   const fg = isOn ? colors.textOnDark : colors.textPrimary;
   return (
     <TouchableOpacity
       style={[styles.pill, isOn && styles.pillOn]}
       onPress={onPress}
+      hitSlop={PILL_SLOP}
       activeOpacity={0.75}
       accessibilityRole="button"
       accessibilityState={{ selected: isOn }}
@@ -52,12 +57,28 @@ interface HomeFilterPillsProps {
   categoryLabel: string | null;
   onView: (view: HomeView) => void;
   onCategory: () => void;
+  /** The list's side padding; the row bleeds through it so pills scroll to the screen edge instead of being cut at the gutter. */
+  gutterLeft?: number;
+  gutterRight?: number;
 }
 
 /** All · Drawer · No receipt · Check these (count) · Category. Ink when on. */
-export function HomeFilterPills({ view, checkCount, categoryLabel, onView, onCategory }: HomeFilterPillsProps) {
+export function HomeFilterPills({
+  view,
+  checkCount,
+  categoryLabel,
+  onView,
+  onCategory,
+  gutterLeft = 0,
+  gutterRight = 0,
+}: HomeFilterPillsProps) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginLeft: -gutterLeft, marginRight: -gutterRight }}
+      contentContainerStyle={[styles.row, { paddingLeft: gutterLeft, paddingRight: gutterRight }]}
+    >
       {VIEW_PILLS.map((pill) => (
         <Pill
           key={pill.view}
@@ -85,7 +106,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    height: 36,
+    minHeight: PILL_MIN_HEIGHT,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md + 2,
     borderRadius: radius.full,
     backgroundColor: colors.card,

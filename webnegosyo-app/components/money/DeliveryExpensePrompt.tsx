@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { deliveryExpensePrefill, type RecordedMovement } from "../../lib/expenses/money-glance";
 import { useCanManageExpenses, useExpenseCategories } from "../../lib/expenses/use-expenses";
@@ -26,6 +27,9 @@ export function DeliveryExpensePrompt({ movement, onDismiss }: DeliveryExpensePr
   const canRecord = useCanManageExpenses();
   const { categories } = useExpenseCategories();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  // Clear of the home indicator on phones that have one.
+  const insets = useSafeAreaInsets();
+  const bottom = Math.max(spacing.xl, insets.bottom + spacing.sm);
   const prefill = useMemo(() => (movement ? deliveryExpensePrefill(movement) : null), [movement]);
   const ingredientsId = categories.find((category) => category.systemKey === INGREDIENTS_KEY)?.id ?? null;
 
@@ -39,18 +43,23 @@ export function DeliveryExpensePrompt({ movement, onDismiss }: DeliveryExpensePr
   return (
     <>
       {isSheetOpen ? null : (
-        <View style={styles.card} accessibilityLiveRegion="polite">
-          <View style={styles.well}>
-            <Icon name="receipt" size={18} color={colors.accent} />
+        <View style={[styles.card, { bottom }]} accessibilityLiveRegion="polite" testID="delivery-expense-prompt">
+          <View style={styles.lead}>
+            <View style={styles.well}>
+              <Icon name="receipt" size={18} color={colors.accent} />
+            </View>
+            <View style={styles.copy}>
+              <Text style={styles.title}>Paid for this delivery?</Text>
+              <Text style={styles.detail} numberOfLines={2}>
+                {prefill.note}
+              </Text>
+            </View>
           </View>
-          <View style={styles.copy}>
-            <Text style={styles.title}>Paid for this delivery?</Text>
-            <Text style={styles.detail} numberOfLines={1}>
-              {prefill.note}
-            </Text>
+          {/* On a narrow phone the buttons wrap under the words instead of squeezing them. */}
+          <View style={styles.actions}>
+            <Button label="Not now" size="sm" tone="ghost" onPress={onDismiss} fullWidth={false} accessibilityLabel="Dismiss" />
+            <Button label="Record it" size="sm" onPress={() => setIsSheetOpen(true)} fullWidth={false} />
           </View>
-          <Button label="Record it" size="sm" onPress={() => setIsSheetOpen(true)} fullWidth={false} />
-          <Button label="Not now" size="sm" tone="ghost" onPress={onDismiss} fullWidth={false} accessibilityLabel="Dismiss" />
         </View>
       )}
       {isSheetOpen ? (
@@ -71,6 +80,7 @@ export function DeliveryExpensePrompt({ movement, onDismiss }: DeliveryExpensePr
 const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: spacing.sm,
     backgroundColor: colors.card,
@@ -80,9 +90,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: spacing.xl,
     right: spacing.xl,
-    bottom: spacing.xl,
     ...shadow.md,
   },
+  // Words take the row; below ~200pt they keep it and the buttons go under.
+  lead: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexGrow: 1, flexShrink: 1, flexBasis: 200 },
+  actions: { flexDirection: "row", gap: spacing.xs, marginLeft: "auto" },
   well: {
     width: 36,
     height: 36,

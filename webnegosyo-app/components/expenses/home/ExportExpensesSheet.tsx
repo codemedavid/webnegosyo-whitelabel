@@ -13,6 +13,10 @@ interface ExportExpensesSheetProps {
   categories: readonly ExpenseCategory[];
   window: DayRange;
   isTruncated: boolean;
+  /** The window has not come back yet: never say "No expenses" for a month still loading. */
+  isLoading: boolean;
+  /** The window failed to load: there is nothing true to export. */
+  hasFailed: boolean;
   onClose: () => void;
 }
 
@@ -23,12 +27,20 @@ const FAILED_MESSAGE = "The file could not be shared. Try again.";
  * from, amount, recorded by, status, receipts) through the shared export
  * sheet and share call. The whole window, whatever the filters show.
  */
-export function ExportExpensesSheet({ label, expenses, categories, window, isTruncated, onClose }: ExportExpensesSheetProps) {
+export function ExportExpensesSheet({ label, expenses, categories, window, isTruncated, isLoading, hasFailed, onClose }: ExportExpensesSheetProps) {
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const built = useMemo(() => buildExpenseCsv(expenses, categories, window), [expenses, categories, window]);
 
   const exportNow = async () => {
+    if (isLoading) {
+      setError(`Still loading ${label}. Try again in a moment.`);
+      return;
+    }
+    if (hasFailed) {
+      setError(`${label} did not load. Close this, pull down to try again, then export.`);
+      return;
+    }
     if (built.count === 0) {
       setError(`No expenses to export for ${label}.`);
       return;
@@ -45,9 +57,13 @@ export function ExportExpensesSheet({ label, expenses, categories, window, isTru
     }
   };
 
-  const coverage = isTruncated
-    ? `Only the first ${built.count} rows fit on the phone. Export from the web for the whole book.`
-    : `${built.count} ${built.count === 1 ? "expense" : "expenses"}, voided ones marked.`;
+  const coverage = isLoading
+    ? `Loading ${label}…`
+    : hasFailed
+      ? `${label} did not load.`
+      : isTruncated
+        ? `Only the first ${built.count} rows fit on the phone. Export from the web for the whole book.`
+        : `${built.count} ${built.count === 1 ? "expense" : "expenses"}, voided ones marked.`;
 
   return (
     <ExportSheet

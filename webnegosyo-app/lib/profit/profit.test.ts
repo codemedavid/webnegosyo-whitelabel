@@ -7,7 +7,15 @@ import {
   trendGrainFor,
 } from "./profit-period";
 import { toExpenseCategoryTotals, toProfitFigures, toProfitPeriods } from "./profit-rows";
-import { callProfit, composeProfit, readProfit, PROFIT_FAILED_MESSAGE, type ProfitRpcClient } from "./profit-service";
+import {
+  anyExpenseRecorded,
+  callProfit,
+  composeProfit,
+  readProfit,
+  readProfitGlance,
+  PROFIT_FAILED_MESSAGE,
+  type ProfitRpcClient,
+} from "./profit-service";
 import {
   PROFIT_LOCKED_MESSAGE,
   canSeeProfit,
@@ -110,7 +118,7 @@ describe("profit windows", () => {
 
   it("holds a custom range to the report functions' 93 days", () => {
     expect(checkCustomRange("2026-07-01", "2026-10-01", NOW)).toEqual({ ok: true });
-    expect(checkCustomRange("2026-06-01", "2026-10-01", NOW)).toEqual({ ok: false, reason: "Pick 93 days or fewer." });
+    expect(checkCustomRange("2026-06-01", "2026-10-01", NOW)).toEqual({ ok: false, title: "Pick a shorter range", reason: "Pick 93 days or fewer." });
     expect(checkCustomRange("2026-10-05", "2026-10-01", NOW).ok).toBe(false);
     const w = resolveProfitWindow({ preset: "custom", fromKey: "2026-10-01", toKey: "2026-10-10" }, NOW);
     expect(w).toMatchObject({ start: MANILA("2026-10-01"), end: MANILA("2026-10-11"), isPartial: false, label: "Oct 1 – Oct 10" });
@@ -172,7 +180,8 @@ describe("reading profit", () => {
       "report_profit_summary",
       { p_tenant: "t1", p_from: new Date(w.start).toISOString(), p_to: new Date(NOW).toISOString(), p_outlet: "o1" },
     ]);
-    expect(calls[3][1]).toMatchObject({ p_grain: "week" });
+    // The trend: this month and the two before it, in one read within 93 days.
+    expect(calls[3][1]).toMatchObject({ p_grain: "month", p_from: new Date(MANILA("2026-08-01")).toISOString(), p_to: new Date(NOW).toISOString() });
     if (result.status !== "ready") throw new Error(result.status);
     const { report } = result;
     // Doesn't track stock: every ingredient purchase is the estimate.
@@ -190,8 +199,47 @@ describe("reading profit", () => {
       action: { kind: "record", label: "Record", categoryId: "rent" },
     });
     expect(rows.find((row) => row.key === "unsorted_payouts")?.action).toEqual({ kind: "sort", label: "Sort" });
-    expect(result.trend?.map((bar) => bar.label)).toEqual(["Sep 28", "Oct 5", "Oct 12", "Oct 19"]);
-    expect(result.trend?.[3].isIncomplete).toBe(true);
+    expect(result.trend?.map((bar) => bar.label)).toEqual(["Aug", "Sep", "Oct"]);
+    expect(result.trend?.map((bar) => bar.isIncomplete)).toEqual([false, false, true]);
+    expect(result.trendTitle).toBe("Last 3 months");
+  });
+
+  it("reads a week without the bills comparison, its trend over six weeks", async () => {
+    // Arrange
+    const week = resolveProfitWindow({ preset: "this_week" }, NOW);
+    const { client, calls } = fakeClient({ report_profit_summary: [{ data: [summaryRow], error: null }] });
+
+    // Act
+    const result = await readProfit(client, week, { tenantId: "t1", branch: { outletId: null, unassigned: false } });
+
+    // Assert: no "No Rent recorded this week" because rent was paid last week.
+    expect(calls.map(([fn]) => fn)).toEqual(["report_profit_summary", "report_expenses_by_category", "report_profit_by_period"]);
+    expect(calls[2][1]).toMatchObject({ p_grain: "week", p_from: new Date(MANILA("2026-09-14")).toISOString() });
+    if (result.status !== "ready") throw new Error(result.status);
+    expect(result.report.findings.some((finding) => finding.kind === "missing_recurring")).toBe(false);
+    expect(result.trend?.map((bar) => bar.label)).toEqual(["Sep 14", "Sep 21", "Sep 28", "Oct 5", "Oct 12", "Oct 19"]);
+    expect(result.trend?.[5].isIncomplete).toBe(true);
+    expect(result.trendTitle).toBe("Last 6 weeks");
+  });
+
+  it("prices an earlier period by its own ingredient basis, the current one by the window's", async () => {
+    const tracked = { ...summaryRow, sale_movements: 4, ledger_cogs_cents: 3_000_000 };
+    const period = (bucket: string, saleMovements: number) => ({
+      bucket, orders: 1, net_sales_cents: 10_000_000, collected_cents: 0, sale_movements: saleMovements,
+      ledger_cogs_cents: saleMovements > 0 ? 3_000_000 : 0, fallback_cogs_cents: 0, waste_cents: 0, count_variance_cents: 0,
+      ingredient_direct_cents: 0, ingredient_stock_cents: 5_000_000, expenses_cents: 0, cash_out_cents: 0,
+    });
+    const { client } = fakeClient({
+      report_profit_summary: [{ data: [tracked], error: null }],
+      report_profit_by_period: [{ data: [period("2026-09-01", 0), period("2026-10-01", 4)], error: null }],
+    });
+
+    const result = await readProfit(client, w, { tenantId: "t1", branch: { outletId: null, unassigned: false } });
+
+    if (result.status !== "ready") throw new Error(result.status);
+    // September never counted stock: its ₱50,000 of stock purchases is its ingredient cost.
+    // October counts stock: the recipes' ₱30,000, not the purchases.
+    expect(result.trend?.map((bar) => bar.profitCents)).toEqual([0, 5_000_000, 7_000_000]);
   });
 
   it("says who to ask when the database refuses profit", async () => {
@@ -220,14 +268,69 @@ describe("reading profit", () => {
     expect(composed.status === "ready" && composed.trend).toBeNull();
   });
 
-  it("is first-run until the first expense", () => {
-    const composed = composeProfit(w, {
-      summary: { ok: true, data: toProfitFigures([{ ...summaryRow, expense_count: 0 }]) },
-      categories: { ok: true, data: [] },
-      previousCategories: null,
-      periods: null,
+  it("is first-run only for a store that never recorded an expense, not for an empty window", () => {
+    const empty = (everRecorded: boolean | null) =>
+      composeProfit(w, {
+        summary: { ok: true, data: toProfitFigures([{ ...summaryRow, expense_count: 0 }]) },
+        categories: { ok: true, data: [] },
+        previousCategories: null,
+        periods: null,
+        everRecorded,
+      });
+    const isFirstRun = (data: ReturnType<typeof empty>) => data.status === "ready" && data.isFirstRun;
+    expect(isFirstRun(empty(false))).toBe(true);
+    // An established store on a Monday's "This week".
+    expect(isFirstRun(empty(true))).toBe(false);
+    // Unknown never greets an established store as new.
+    expect(isFirstRun(empty(null))).toBe(false);
+  });
+
+  it("asks whether the store ever recorded an expense only when the window has none", async () => {
+    const hasAnyExpense = jest.fn(async () => true);
+    const busy = fakeClient({ report_profit_summary: [{ data: [summaryRow], error: null }] });
+    await readProfit(busy.client, w, { tenantId: "t1", branch: { outletId: null, unassigned: false } }, { hasAnyExpense });
+    expect(hasAnyExpense).not.toHaveBeenCalled();
+
+    const quiet = fakeClient({ report_profit_summary: [{ data: [{ ...summaryRow, expense_count: 0 }], error: null }] });
+    const result = await readProfit(quiet.client, w, { tenantId: "t1", branch: { outletId: null, unassigned: false } }, {
+      hasAnyExpense: async () => false,
     });
-    expect(composed.status === "ready" && composed.isFirstRun).toBe(true);
+    expect(result.status === "ready" && result.isFirstRun).toBe(true);
+  });
+
+  it("checks for any expense with one indexed row, and says unknown when it cannot", async () => {
+    const limit = jest.fn(async () => ({ data: [{ id: "e1" }], error: null }));
+    const eq = jest.fn(() => ({ limit }));
+    const db = { from: jest.fn(() => ({ select: jest.fn(() => ({ eq })) })) };
+    expect(await anyExpenseRecorded(db, "t1")).toBe(true);
+    expect(db.from).toHaveBeenCalledWith("expenses");
+    expect(eq).toHaveBeenCalledWith("tenant_id", "t1");
+    expect(limit).toHaveBeenCalledWith(1);
+
+    limit.mockResolvedValueOnce({ data: [], error: null });
+    expect(await anyExpenseRecorded(db, "t1")).toBe(false);
+    limit.mockResolvedValueOnce({ data: null, error: { code: "XX000" } } as never);
+    expect(await anyExpenseRecorded(db, "t1")).toBeNull();
+  });
+
+  it("reads a glance with the summary alone, to the same figure", async () => {
+    const { client, calls } = fakeClient({ report_profit_summary: [{ data: [summaryRow], error: null }] });
+
+    const glance = await readProfitGlance(client, w, { tenantId: "t1", branch: { outletId: null, unassigned: false } });
+
+    expect(calls.map(([fn]) => fn)).toEqual(["report_profit_summary"]);
+    expect(glance).toEqual({
+      status: "ready",
+      glance: { profitCents: 18_240_000 - 6_410_000 - 2_633_000, ratios: { profit: (18_240_000 - 6_410_000 - 2_633_000) / 18_240_000 }, isPartial: true },
+    });
+  });
+
+  it("says who to ask when the database refuses a glance", async () => {
+    const { client } = fakeClient({ report_profit_summary: [{ data: null, error: { code: "42501" } }] });
+    expect(await readProfitGlance(client, w, { tenantId: "t1", branch: { outletId: null, unassigned: false } })).toEqual({
+      status: "locked",
+      message: PROFIT_LOCKED_MESSAGE,
+    });
   });
 });
 

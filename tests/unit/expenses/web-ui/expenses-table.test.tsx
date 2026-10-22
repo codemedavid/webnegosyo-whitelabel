@@ -4,7 +4,7 @@
  */
 
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { filterExpenses, groupByDay, NO_FILTERS, pageDayGroups } from '@/components/admin/expenses/expense-list-model'
+import { filterExpenses, groupByDay, NO_FILTERS, pageDayGroups, payeeName, viewCounts } from '@/components/admin/expenses/expense-list-model'
 import { CATEGORIES, ICE, LPG, OWNER_DRAW, expense } from './ui-fixtures'
 
 const categoriesById = new Map(CATEGORIES.map((category) => [category.id, category]))
@@ -16,6 +16,7 @@ const voidToday = expense({ categoryId: LPG.id, amountCents: 50_000, spentOn: '2
 const drawOn19 = expense({ categoryId: OWNER_DRAW.id, amountCents: 300_000, spentOn: '2026-10-19', createdAt: '2026-10-19T09:00:00.000Z' })
 const iceOn19 = expense({ categoryId: ICE.id, amountCents: 8_050, spentOn: '2026-10-19', createdAt: '2026-10-19T02:00:00.000Z', receiptCount: 1 })
 const ALL = [iceOn19, voidToday, drawOn19, lpgToday, iceToday]
+const SUPPLIER_ID = '00000000-0000-4000-8000-0000000000aa'
 
 describe('groupByDay', () => {
   it('groups newest day first and totals only real spending', () => {
@@ -45,6 +46,25 @@ describe('groupByDay', () => {
       const rows = filterExpenses(ALL, 'all', { ...NO_FILTERS, search: query }, context)
       expect(rows.map((row) => row.id)).toEqual([lpgToday.id])
     }
+  })
+
+  it('finds an expense by its picked supplier’s name (paid_to_name is empty then)', () => {
+    const fromSupplier = expense({ categoryId: ICE.id, supplierId: SUPPLIER_ID, paidToName: null, spentOn: '2026-10-20' })
+    const withSuppliers = { ...context, supplierNames: new Map([[SUPPLIER_ID, 'Aling Nena Ice Plant']]) }
+
+    const rows = filterExpenses([...ALL, fromSupplier], 'all', { ...NO_FILTERS, search: 'nena' }, withSuppliers)
+
+    expect(rows.map((row) => row.id)).toEqual([fromSupplier.id])
+    expect(payeeName(fromSupplier, withSuppliers.supplierNames)).toBe('Aling Nena Ice Plant')
+    expect(payeeName(iceToday, withSuppliers.supplierNames)).toBe('Mang Ben')
+  })
+
+  it('lists a void voided after hours under Needs a look', () => {
+    const lateVoid = expense({ categoryId: LPG.id, status: 'void', voidReason: 'oops', voidedAt: '2026-10-20T17:30:00.000Z' })
+    const flagged = { ...context, flagsById: new Map([[lateVoid.id, ['after_hours_void' as const]], [voidToday.id, []]]) }
+
+    expect(filterExpenses([...ALL, lateVoid], 'needs_look', NO_FILTERS, flagged).map((row) => row.id)).toEqual([lateVoid.id])
+    expect(viewCounts([...ALL, lateVoid], 0, flagged).needs_look).toBe(1)
   })
 
   it('shows only drawer pay-outs in the Drawer view', () => {
@@ -91,6 +111,26 @@ describe('ExpensesTable', () => {
     expect(screen.getByText(/Voided · Entered twice/)).toBeInTheDocument()
     // Drawer rows carry the till badge.
     expect(screen.getAllByText('Drawer')).toHaveLength(2)
+  })
+
+  it('shows the picked supplier under Note / Paid to instead of a dash', async () => {
+    const { ExpensesTable } = await import('@/components/admin/expenses/expenses-table')
+    const fromSupplier = expense({ categoryId: ICE.id, supplierId: SUPPLIER_ID, paidToName: null })
+    render(
+      <ExpensesTable
+        rows={[fromSupplier]}
+        categoriesById={categoriesById}
+        outletNames={new Map()}
+        supplierNames={new Map([[SUPPLIER_ID, 'Aling Nena Ice Plant']])}
+        flagsById={new Map()}
+        today="2026-10-21"
+        isMultiBranch={false}
+        selectedIds={new Set()}
+        onSelectionChange={jest.fn()}
+        onOpen={jest.fn()}
+      />,
+    )
+    expect(screen.getByText('Aling Nena Ice Plant')).toBeInTheDocument()
   })
 
   it('opens a row from its keyboard button, and only recorded rows can be selected', async () => {

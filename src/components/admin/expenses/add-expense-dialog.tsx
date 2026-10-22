@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { CircleCheck, Lock, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { addDays } from '@/lib/expenses/manila-date'
@@ -52,6 +53,8 @@ export interface AddExpenseDialogProps {
   fixing?: Expense | null
   /** Add mode: a category picked before opening (a deep link from Profit). */
   initialCategoryId?: string | null
+  /** Add mode: the date to start on (a deep link from Profit for a past period); null = today. */
+  initialSpentOn?: string | null
   /** After a save; the page refreshes its data. */
   onSaved?: (expenseId: string) => void
 }
@@ -113,15 +116,21 @@ function ExpenseForm({
   tracksStock = false,
   fixing = null,
   initialCategoryId = null,
+  initialSpentOn = null,
   onSaved,
 }: AddExpenseDialogProps) {
   const idPrefix = useId().replace(/:/g, '')
   const mode = fixing ? 'fix' : 'add'
   const isDrawerFix = fixing?.paidFrom === 'drawer'
   const amountRef = useRef<HTMLInputElement>(null)
+  /** Set synchronously: two ⌘Enter presses before React re-renders must not save twice. */
+  const isSavingRef = useRef(false)
+  const router = useRouter()
 
   const [form, setForm] = useState<ExpenseFormState>(() =>
-    fixing ? formFromExpense(fixing) : { ...blankForm({ today, outletId: lockedOutletId }), categoryId: initialCategoryId },
+    fixing
+      ? formFromExpense(fixing)
+      : { ...blankForm({ today, outletId: lockedOutletId }), categoryId: initialCategoryId, spentOn: initialSpentOn ?? today },
   )
   const [errors, setErrors] = useState<FormErrors>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -135,7 +144,8 @@ function ExpenseForm({
 
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
   const category = form.categoryId ? categoriesById.get(form.categoryId) : undefined
-  const preview = validateForm(form, { categoriesById, nowMs: Date.now(), mode })
+  const validateContext = { categoriesById, nowMs: Date.now(), mode, originalSpentOn: fixing?.spentOn } as const
+  const preview = validateForm(form, validateContext)
   const amountCents = preview.amountCents
   const isIngredient = category?.group === 'ingredients'
   const hasInvoiceDetails = Boolean(
@@ -197,6 +207,8 @@ function ExpenseForm({
     if (files.length === 0) return
     const failures = await uploadReceipts(expenseId, files)
     if (failures.length > 0) toast.error(`Saved, but a receipt didn’t attach. ${failures[0]} Open the expense to try again.`)
+    // The save's own refresh ran before the upload: re-read so the row shows its receipt.
+    router.refresh()
   }
 
   function offerUndo(expenseId: string, label: string): void {
@@ -219,8 +231,17 @@ function ExpenseForm({
   }
 
   async function save(): Promise<void> {
-    if (isSaving) return
-    const checked = validateForm(form, { categoriesById, nowMs: Date.now(), mode })
+    if (isSavingRef.current) return
+    isSavingRef.current = true
+    try {
+      await saveOnce()
+    } finally {
+      isSavingRef.current = false
+    }
+  }
+
+  async function saveOnce(): Promise<void> {
+    const checked = validateForm(form, { ...validateContext, nowMs: Date.now() })
     setErrors(checked.errors)
     setSubmitError(null)
     if (hasErrors(checked.errors) || checked.amountCents === null) {
@@ -232,7 +253,7 @@ function ExpenseForm({
     setIsSaving(true)
 
     if (fixing) {
-      const patch = buildPatch(fixing, form, savedAmount)
+      const patch = buildPatch(fixing, form, savedAmount, category)
       if (Object.keys(patch).length === 0) {
         setIsSaving(false)
         setSubmitError('Nothing changed yet. Change a field, or use Edit details for notes and invoice fields.')
@@ -251,7 +272,7 @@ function ExpenseForm({
       return
     }
 
-    const result = await recordExpense(tenantSlug, buildDraft(form, savedAmount, requestId))
+    const result = await recordExpense(tenantSlug, buildDraft(form, savedAmount, requestId, category))
     setIsSaving(false)
     if (!result.ok) {
       // Same request id on retry: the server returns the first save, never a copy.

@@ -232,6 +232,33 @@ describe('profit: windows and trend', () => {
     expect(manilaDayOnOrAfter(START - 1)).toBe('2026-10-01')
   })
 
+  test('an order cancelled after the window: its sale and its void stay out of ingredient cost, like its sales', () => {
+    // Sold Sep 30 (inside a September window), cancelled Oct 3 (the next window).
+    const septStart = Date.parse('2026-08-31T16:00:00.000Z')
+    const soldAt = START - 6 * 60 * 60 * 1000
+    const cancelledAt = START + 2 * 24 * 60 * 60 * 1000
+    const sale = { reason: 'sale', quantityDelta: '-2.0000', unitCost: '10.0000', outletId: null }
+    const movements = [
+      { ...sale, orderId: 'cancelled-later', at: soldAt },
+      { ...sale, reason: 'void', quantityDelta: '2.0000', orderId: 'cancelled-later', at: cancelledAt },
+      // A live order's sale and a partial void from an edit still count.
+      { ...sale, orderId: 'live', at: soldAt },
+      { ...sale, reason: 'void', quantityDelta: '1.0000', orderId: 'live', at: cancelledAt },
+      // No order (a manual sale), or an order the caller cannot read: counted.
+      { ...sale, orderId: null, at: soldAt },
+      { ...sale, orderId: 'unknown', at: soldAt },
+    ]
+    const orders = [
+      order({ id: 'cancelled-later', at: soldAt, status: 'cancelled' }),
+      order({ id: 'live', at: soldAt }),
+    ]
+    const september = profitFigures(raw({ scope: { start: septStart, end: START, outletId: null, unassigned: false }, orders, movements }))
+    const october = profitFigures(raw({ orders, movements }))
+    expect(september.ledgerCogsCents).toBe(3 * 2_000)
+    expect(september.saleMovements).toBe(3)
+    expect(october.ledgerCogsCents).toBe(-1_000)
+  })
+
   test('the trend zero-fills missing buckets', () => {
     expect(profitTrend(['2026-10-01', '2026-10-02'], [], 'purchases')).toEqual([
       expect.objectContaining({ bucket: '2026-10-01', profitCents: 0 }),

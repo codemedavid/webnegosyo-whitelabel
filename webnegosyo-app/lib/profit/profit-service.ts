@@ -9,8 +9,8 @@
  */
 
 import { withDeadline } from "../offline/deadline";
-import { buildProfitReport, profitTrend, type ProfitReport, type ProfitTrendPoint } from "./profit-model";
-import { bucketKeys, bucketLabel, previousFullWindow, trendGrainFor, TREND_BARS, type ProfitWindow } from "./profit-period";
+import { buildProfitReport, ingredientBasisOf, profitTrend, type ProfitReport } from "./profit-model";
+import { bucketLabel, recurringCompareWindow, trendPlan, type ProfitWindow } from "./profit-period";
 import { toExpenseCategoryTotals, toProfitFigures, toProfitPeriods } from "./profit-rows";
 import type { ExpenseCategoryTotal, ProfitFigures, ProfitPeriodFigures } from "./profit-types";
 import { PROFIT_LOCKED_MESSAGE } from "./profit-view";
@@ -89,39 +89,51 @@ export interface TrendBar {
   isIncomplete: boolean;
 }
 
+type FailedStatus = "locked" | "invalid" | "not_set_up" | "failed";
+
 export type ProfitScreenData =
-  | { status: "ready"; report: ProfitReport; isFirstRun: boolean; trend: TrendBar[] | null }
-  | { status: "locked" | "invalid" | "not_set_up" | "failed"; message: string };
+  | { status: "ready"; report: ProfitReport; isFirstRun: boolean; trend: TrendBar[] | null; trendTitle: string }
+  | { status: FailedStatus; message: string };
 
 export interface ProfitReads {
   summary: ProfitResult<ProfitFigures>;
   categories: ProfitResult<ExpenseCategoryTotal[]>;
   previousCategories: ProfitResult<ExpenseCategoryTotal[]> | null;
   periods: ProfitResult<ProfitPeriodFigures[]> | null;
+  /** Whether the store has EVER recorded an expense; null = not asked or unknown. */
+  everRecorded?: boolean | null;
 }
 
+/**
+ * One bar per planned bucket. Buckets inside the window use the window's
+ * ingredient basis (so they add up to the hero exactly); whole earlier
+ * periods use their own (a store that started counting stock this month
+ * was estimating from purchases before).
+ */
 function trendBars(w: ProfitWindow, periods: readonly ProfitPeriodFigures[], report: ProfitReport): TrendBar[] {
-  const grain = trendGrainFor(w);
-  const keys = bucketKeys(w, grain);
-  const points: ProfitTrendPoint[] = profitTrend(keys, periods, report.ingredientBasis);
-  return points
-    .map((point, index) => ({
-      key: point.bucket,
-      label: bucketLabel(point.bucket, grain),
+  const plan = trendPlan(w);
+  const byBucket = new Map(periods.map((row) => [row.bucket, row]));
+  return plan.keys.map((key, index) => {
+    const basis = key >= plan.windowKey ? report.ingredientBasis : ingredientBasisOf(byBucket.get(key)?.saleMovements ?? 0);
+    const [point] = profitTrend([key], periods, basis);
+    return {
+      key,
+      label: bucketLabel(key, plan.grain),
       profitCents: point.profitCents,
       netSalesCents: point.netSalesCents,
-      isIncomplete: w.isPartial && index === keys.length - 1,
-    }))
-    .slice(-TREND_BARS);
+      isIncomplete: w.isPartial && index === plan.keys.length - 1,
+    };
+  });
+}
+
+function failedStatus(kind: ProfitFailureKind): FailedStatus {
+  return kind === "forbidden" ? "locked" : kind;
 }
 
 /** Four reads → what the screen shows. The summary and categories must both land; the rest is optional. */
 export function composeProfit(w: ProfitWindow, reads: ProfitReads): ProfitScreenData {
   const blocking = !reads.summary.ok ? reads.summary : !reads.categories.ok ? reads.categories : null;
-  if (blocking && !blocking.ok) {
-    const status = blocking.kind === "forbidden" ? "locked" : blocking.kind;
-    return { status, message: blocking.message };
-  }
+  if (blocking && !blocking.ok) return { status: failedStatus(blocking.kind), message: blocking.message };
   if (!reads.summary.ok || !reads.categories.ok) return { status: "failed", message: PROFIT_FAILED_MESSAGE };
   const report = buildProfitReport({
     figures: reads.summary.data,
@@ -131,22 +143,91 @@ export function composeProfit(w: ProfitWindow, reads: ProfitReads): ProfitScreen
   return {
     status: "ready",
     report,
-    isFirstRun: reads.summary.data.expenseCount === 0,
+    // First run = the store has never recorded an expense, not "none in this
+    // window": an established store on a Monday's "This week" is not new.
+    // Unknown counts as not first-run; the no_expenses finding still offers Add.
+    isFirstRun: reads.summary.data.expenseCount === 0 && reads.everRecorded === false,
     trend: reads.periods?.ok ? trendBars(w, reads.periods.data, report) : null,
+    trendTitle: trendPlan(w).title,
   };
 }
 
+export interface ProfitReadOptions {
+  /** Asked only when the window has no expenses: has the store ever recorded one? */
+  hasAnyExpense?: () => Promise<boolean | null>;
+}
+
 /** Everything the screen needs, read in parallel as the user. Never throws. */
-export async function readProfit(client: ProfitRpcClient, w: ProfitWindow, args: Omit<ProfitArgs, "start" | "end">): Promise<ProfitScreenData> {
+export async function readProfit(
+  client: ProfitRpcClient,
+  w: ProfitWindow,
+  args: Omit<ProfitArgs, "start" | "end">,
+  options: ProfitReadOptions = {},
+): Promise<ProfitScreenData> {
   const current: ProfitArgs = { ...args, start: w.start, end: w.end };
-  const previous = previousFullWindow(w);
-  const [summary, categories, previousCategories, periods] = await Promise.all([
-    callProfit(client, "report_profit_summary", baseArgs(current), toProfitFigures),
+  const previous = recurringCompareWindow(w);
+  const plan = trendPlan(w);
+  const summaryRead = callProfit(client, "report_profit_summary", baseArgs(current), toProfitFigures);
+  const everRead = summaryRead.then((summary) =>
+    summary.ok && summary.data.expenseCount === 0 && options.hasAnyExpense ? options.hasAnyExpense().catch(() => null) : null,
+  );
+  const [summary, categories, previousCategories, periods, everRecorded] = await Promise.all([
+    summaryRead,
     callProfit(client, "report_expenses_by_category", baseArgs(current), toExpenseCategoryTotals),
     previous
       ? callProfit(client, "report_expenses_by_category", baseArgs({ ...current, ...previous }), toExpenseCategoryTotals)
       : Promise.resolve(null),
-    callProfit(client, "report_profit_by_period", { ...baseArgs(current), p_grain: trendGrainFor(w) }, toProfitPeriods),
+    callProfit(client, "report_profit_by_period", { ...baseArgs({ ...current, start: plan.start }), p_grain: plan.grain }, toProfitPeriods),
+    everRead,
   ]);
-  return composeProfit(w, { summary, categories, previousCategories, periods });
+  return composeProfit(w, { summary, categories, previousCategories, periods, everRecorded });
+}
+
+/** The two figures a glance (Home, Reports, Expenses) shows. */
+export interface ProfitGlance {
+  profitCents: number;
+  ratios: { profit: number | null };
+  isPartial: boolean;
+}
+
+export type ProfitGlanceData = { status: "ready"; glance: ProfitGlance } | { status: FailedStatus; message: string };
+
+/** A ready Profit read, cut down to what a glance shows. */
+export function glanceOf(report: ProfitReport, w: Pick<ProfitWindow, "isPartial">): ProfitGlance {
+  return { profitCents: report.profitCents, ratios: { profit: report.ratios.profit }, isPartial: w.isPartial };
+}
+
+/**
+ * The light read behind a glance: the summary function alone (one RPC, not
+ * Profit's four), shaped by the same model so the figure equals the screen's.
+ * Every tenant shares this database, and Home re-reads on every focus.
+ */
+export async function readProfitGlance(client: ProfitRpcClient, w: ProfitWindow, args: Omit<ProfitArgs, "start" | "end">): Promise<ProfitGlanceData> {
+  const summary = await callProfit(client, "report_profit_summary", baseArgs({ ...args, start: w.start, end: w.end }), toProfitFigures);
+  if (!summary.ok) return { status: failedStatus(summary.kind), message: summary.message };
+  const report = buildProfitReport({ figures: summary.data, categories: [], previousCategories: null });
+  return { status: "ready", glance: glanceOf(report, w) };
+}
+
+/** The slice of supabase-js the first-run check uses. */
+export interface ExpenseTableClient {
+  from(table: string): any; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+
+/**
+ * Has this store ever recorded an expense? One indexed row (limit 1 on
+ * `expenses_tenant_spent_idx`), as the user, so RLS decides. Null when the
+ * read fails: "unknown" never greets an established store as new.
+ */
+export async function anyExpenseRecorded(db: ExpenseTableClient, tenantId: string): Promise<boolean | null> {
+  try {
+    const reply = (await withDeadline(
+      Promise.resolve(db.from("expenses").select("id").eq("tenant_id", tenantId).limit(1)),
+      REQUEST_MS,
+    )) as { data: unknown; error: unknown };
+    if (reply.error) return null;
+    return Array.isArray(reply.data) && reply.data.length > 0;
+  } catch {
+    return null;
+  }
 }

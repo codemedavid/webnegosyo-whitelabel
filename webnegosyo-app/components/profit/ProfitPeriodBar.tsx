@@ -5,6 +5,9 @@ import type { ProfitPreset } from "../../lib/profit/profit-period";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { SegmentedControl } from "../SegmentedControl";
 
+/** The pills are drawn 36pt tall; this makes the tap target the 44pt minimum. */
+const PILL_HIT_SLOP = { top: 4, bottom: 4, left: 0, right: 0 };
+
 const PERIODS: readonly { label: string; value: ProfitPreset }[] = [
   { label: "This week", value: "this_week" },
   { label: "This month", value: "this_month" },
@@ -39,6 +42,7 @@ export function ProfitPeriodBar({ preset, onPick, branches }: ProfitPeriodBarPro
               key={pill.key}
               style={[styles.pill, pill.isOn && styles.pillOn]}
               onPress={pill.onPress}
+              hitSlop={PILL_HIT_SLOP}
               activeOpacity={0.75}
               accessibilityRole="radio"
               accessibilityState={{ selected: pill.isOn }}
@@ -57,7 +61,8 @@ export function ProfitPeriodBar({ preset, onPick, branches }: ProfitPeriodBarPro
 
 const styles = StyleSheet.create({
   wrap: { gap: spacing.md },
-  pills: { gap: spacing.sm, paddingVertical: 2 },
+  // Vertical room for the hit slop, so the ScrollView does not clip the taps.
+  pills: { gap: spacing.sm, paddingVertical: PILL_HIT_SLOP.top },
   pill: {
     minHeight: 36,
     justifyContent: "center",

@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { categoryLook } from "../../lib/expenses/category-look";
+import type { RefusedPayout } from "../../lib/expenses/expense-queue";
 import { formatCents } from "../../lib/expenses/expense-format";
 import type { CloseLine, CloseReview, CountVerdict } from "../../lib/expenses/money-glance-close";
 import type { ExpenseCategory } from "../../lib/expenses/types";
@@ -10,6 +11,7 @@ import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { CategoryTile } from "../expenses/CategoryTile";
 import { DrawerSheet, sheetText } from "./DrawerSheet";
+import { RefusedPayouts } from "./RefusedPayouts";
 
 interface CloseShiftSheetProps {
   review: CloseReview;
@@ -21,6 +23,13 @@ interface CloseShiftSheetProps {
   onClose: () => void;
   /** Absent for staff who cannot open Expenses. */
   onOpenExpenses?: () => void;
+  /**
+   * Pay-outs from this drawer the store did not take: they explain a short
+   * count, and the cashier can try again or remove them right here.
+   */
+  refusedPayouts?: readonly RefusedPayout[];
+  onRetryRefused?: (id: string) => Promise<void>;
+  onRemoveRefused?: (id: string) => Promise<void>;
 }
 
 const VERDICT_TONE: Record<CountVerdict["kind"], { bg: string; fg: string }> = {
@@ -38,7 +47,18 @@ const money = (cents: number): string => formatCents(cents, { compact: true });
  * count and the difference, stated plainly and without blame. "End shift"
  * saves exactly what is on the sheet.
  */
-export function CloseShiftSheet({ review, notice = null, categories, isBusy, onEnd, onClose, onOpenExpenses }: CloseShiftSheetProps) {
+export function CloseShiftSheet({
+  review,
+  notice = null,
+  categories,
+  isBusy,
+  onEnd,
+  onClose,
+  onOpenExpenses,
+  refusedPayouts,
+  onRetryRefused,
+  onRemoveRefused,
+}: CloseShiftSheetProps) {
   const tone = VERDICT_TONE[review.verdict.kind];
   return (
     <DrawerSheet visible title={review.title} subtitle={review.subtitle} onClose={onClose} isBusy={isBusy}>
@@ -93,6 +113,10 @@ export function CloseShiftSheet({ review, notice = null, categories, isBusy, onE
           <Text style={styles.calloutBody}>{review.handOver}</Text>
         </View>
       </View>
+
+      {refusedPayouts && onRetryRefused && onRemoveRefused ? (
+        <RefusedPayouts payouts={refusedPayouts} onRetry={onRetryRefused} onRemove={onRemoveRefused} isExplained />
+      ) : null}
 
       {notice ? (
         <Text style={styles.notice} accessibilityRole="alert" accessibilityLiveRegion="assertive">

@@ -3,7 +3,13 @@ import { StyleSheet, Text } from "react-native";
 
 import { NOTE_MAX } from "../../lib/expenses/add-expense-form";
 import { rankCategoriesForPicker } from "../../lib/expenses/categories";
-import { CHANGE_REASONS, VOID_REASONS, checkChange, checkVoidReason } from "../../lib/expenses/expense-detail-sheets";
+import {
+  CHANGE_REASONS,
+  VOID_REASONS,
+  changeCategoryChoices,
+  checkChange,
+  checkVoidReason,
+} from "../../lib/expenses/expense-detail-sheets";
 import { PAID_FROM_LABELS, PICKABLE_PAID_FROM, formatCents } from "../../lib/expenses/expense-format";
 import { VOID_REASON_MAX, type ExpensePatch } from "../../lib/expenses/expense-service";
 import type { Expense, ExpenseCategory, PaidFrom } from "../../lib/expenses/types";
@@ -11,7 +17,7 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { CashInput, DrawerSheet, sheetText } from "../drawer/DrawerSheet";
 import { CategoryGrid, CategoryList } from "./CategoryPicker";
-import { BackRow, ChoicePill, PillRow, ReasonField, TextField } from "./detail/SheetParts";
+import { ChoicePill, PillRow, ReasonField, TextField } from "./detail/SheetParts";
 
 /** Turns a thrown write into words for the sheet. */
 function messageOf(error: unknown, fallback: string): string {
@@ -101,7 +107,9 @@ const NO_RECENT: readonly Expense[] = [];
 /**
  * Change = void + a corrected copy; the old version stays in the history. A
  * drawer row keeps its amount, date and drawer — the cash really left — so only
- * its category and note can change. "All categories" swaps in place.
+ * its category and note can change. "All categories" swaps in place, and its
+ * "Back" (Android's too) returns to the form with the edit kept. A category
+ * the store has since archived still shows as the chosen one.
  */
 export function ChangeExpenseSheet({ expense, categories, recent = NO_RECENT, onConfirm, onClose }: ChangeExpenseSheetProps) {
   const isDrawer = expense.paidFrom === "drawer";
@@ -113,8 +121,9 @@ export function ChangeExpenseSheet({ expense, categories, recent = NO_RECENT, on
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const { isBusy, run } = useSingleFlight();
-  const ranked = useMemo(() => rankCategoriesForPicker(categories, recent, new Date()), [categories, recent]);
-  const category = categories.find((candidate) => candidate.id === categoryId);
+  const choices = useMemo(() => changeCategoryChoices(categories, expense.categoryId), [categories, expense.categoryId]);
+  const ranked = useMemo(() => rankCategoriesForPicker(choices, recent, new Date()), [choices, recent]);
+  const category = choices.find((candidate) => candidate.id === categoryId);
 
   const edited = (apply: () => void) => {
     apply();
@@ -132,9 +141,8 @@ export function ChangeExpenseSheet({ expense, categories, recent = NO_RECENT, on
 
   if (step === "categories") {
     return (
-      <DrawerSheet visible title="Pick a category" onClose={onClose} isBusy={isBusy}>
-        <BackRow label="Back to the change" onPress={() => setStep("form")} />
-        <CategoryList categories={categories} selectedId={categoryId} onPick={pick} />
+      <DrawerSheet visible title="Pick a category" onClose={() => setStep("form")} closeLabel="Back" isBusy={isBusy}>
+        <CategoryList categories={choices} selectedId={categoryId} onPick={pick} />
       </DrawerSheet>
     );
   }

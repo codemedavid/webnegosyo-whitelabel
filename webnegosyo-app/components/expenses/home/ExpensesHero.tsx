@@ -10,8 +10,20 @@ import { Icon, type IconName } from "../../Icon";
 import { BigAmount } from "../BigAmount";
 import { HeroSplit } from "./HeroSplit";
 
+/** `loading`/`failed`: the month has not come back, so no figure is shown (never a false ₱0). */
+export type HeroState = "ready" | "loading" | "failed";
+
+const PENDING_TEXT: Readonly<Record<Exclude<HeroState, "ready">, string>> = {
+  loading: "Loading…",
+  failed: "Not loaded",
+};
+
+/** The Kept link and the Clear chip are drawn small on the ink card; this reaches 44pt. */
+const SMALL_TARGET_SLOP = { top: 12, bottom: 12, left: 8, right: 8 };
+
 interface ExpensesHeroProps {
   eyebrow: string;
+  state?: HeroState;
   /** "Oct": the month the arrows step from. */
   monthShort: string;
   totals: HomeTotals;
@@ -69,9 +81,10 @@ function countWord(count: number): string {
  * the store kept. Every figure follows the filters, so it matches the list.
  */
 export function ExpensesHero(props: ExpensesHeroProps) {
-  const { totals, today, kept } = props;
+  const { totals, today, kept, state = "ready" } = props;
+  const isReady = state === "ready";
   const changeIcon = props.change ? CHANGE_ICONS[props.change.direction] : null;
-  const hasFooter = today !== null || kept !== null;
+  const hasFooter = isReady && (today !== null || kept !== null);
   return (
     <View style={styles.card} accessibilityRole="summary">
       <View style={styles.topRow}>
@@ -86,8 +99,14 @@ export function ExpensesHero(props: ExpensesHeroProps) {
       </View>
 
       <View style={styles.amountRow}>
-        <BigAmount cents={totals.spentCents} color={colors.heroInkText} size={40} testID="expenses-hero-total" />
-        {props.change ? (
+        {isReady ? (
+          <BigAmount cents={totals.spentCents} color={colors.heroInkText} size={40} testID="expenses-hero-total" />
+        ) : (
+          <Text style={styles.pending} testID="expenses-hero-pending">
+            {PENDING_TEXT[state]}
+          </Text>
+        )}
+        {isReady && props.change ? (
           <View style={styles.changePill}>
             {changeIcon ? <Icon name={changeIcon} size={12} color={colors.heroInkText} /> : null}
             <Text style={styles.changeText}>{props.change.text}</Text>
@@ -96,20 +115,26 @@ export function ExpensesHero(props: ExpensesHeroProps) {
       </View>
 
       {props.clearLabel ? (
-        <TouchableOpacity style={styles.clear} onPress={props.onClear} hitSlop={8} accessibilityRole="button" accessibilityLabel={props.clearLabel}>
+        <TouchableOpacity
+          style={styles.clear}
+          onPress={props.onClear}
+          hitSlop={SMALL_TARGET_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={props.clearLabel}
+        >
           <Icon name="close" size={12} color={colors.heroInkText} />
           <Text style={styles.clearText}>{props.clearLabel}</Text>
         </TouchableOpacity>
       ) : null}
 
-      <HeroSplit split={totals.split} />
+      {isReady ? <HeroSplit split={totals.split} /> : null}
 
-      {totals.cashMovedCents > 0 ? (
+      {isReady && totals.cashMovedCents > 0 ? (
         <Text style={styles.note}>
           Cash moved, not counted: {formatCents(totals.cashMovedCents, { compact: true })}
         </Text>
       ) : null}
-      {props.isTruncated ? (
+      {isReady && props.isTruncated ? (
         <Text style={styles.note}>Too many rows to show on the phone; this total may be short. Open it on the web.</Text>
       ) : null}
 
@@ -126,6 +151,7 @@ export function ExpensesHero(props: ExpensesHeroProps) {
             <TouchableOpacity
               style={styles.kept}
               onPress={props.onOpenProfit}
+              hitSlop={SMALL_TARGET_SLOP}
               accessibilityRole="button"
               accessibilityLabel={`${kept.isPartial ? "Kept so far" : "Kept"} ${formatCents(kept.cents, { compact: true })}. Open Profit`}
             >
@@ -169,6 +195,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   changeText: { ...typography.small, fontWeight: "700", color: colors.heroInkText },
+  pending: { ...typography.title, color: colors.heroInkMuted, paddingVertical: spacing.xs },
   clear: {
     flexDirection: "row",
     alignItems: "center",

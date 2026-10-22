@@ -8,7 +8,7 @@ import { NOTE_MAX } from "../../lib/expenses/add-expense-form";
 import { rankCategoriesForPicker } from "../../lib/expenses/categories";
 import { categoryLook } from "../../lib/expenses/category-look";
 import { liveExpenseDb } from "../../lib/expenses/expense-client";
-import { payoutSuggestion, shortName } from "../../lib/expenses/expense-detail-sheets";
+import { isAlreadySortedError, payoutSuggestion, shortName } from "../../lib/expenses/expense-detail-sheets";
 import { dayLabel, formatCents, manilaClock, manilaDate } from "../../lib/expenses/expense-format";
 import { sortDrawerPayout } from "../../lib/expenses/expense-service";
 import { suggestCategoryForReason } from "../../lib/expenses/sort-suggest";
@@ -19,7 +19,7 @@ import { DrawerSheet, sheetText } from "../drawer/DrawerSheet";
 import { Icon } from "../Icon";
 import { CategoryGrid, CategoryList } from "./CategoryPicker";
 import { CategoryTile } from "./CategoryTile";
-import { BackRow, TextField } from "./detail/SheetParts";
+import { TextField } from "./detail/SheetParts";
 
 interface SortPayoutsSheetProps {
   payouts: readonly UnsortedPayout[];
@@ -33,7 +33,7 @@ interface SortPayoutsSheetProps {
 type Step = "list" | "item" | "categories";
 
 function whenOf(payout: UnsortedPayout): string {
-  return `${dayLabel(manilaDate(Date.parse(payout.createdAt)))}, ${manilaClock(payout.createdAt)}`;
+  return `${dayLabel(manilaDate(Date.parse(payout.createdAt)))} · ${manilaClock(payout.createdAt)}`;
 }
 
 function PayoutRow({ payout, categories, onOpen }: { payout: UnsortedPayout; categories: readonly ExpenseCategory[]; onOpen: () => void }) {
@@ -61,12 +61,16 @@ function PayoutRow({ payout, categories, onOpen }: { payout: UnsortedPayout; cat
   );
 }
 
+const ALREADY_SORTED = "That pay-out already had a category.";
+
 /**
  * Old drawer pay-outs (from builds before expenses) waiting for a category.
  * ONE sheet whose body steps in place: the list, then one pay-out (amount
  * locked, a "Looks like Ice" guess), then every category if needed. Save links
  * it with `sort_drawer_payout`, which inserts one expense and changes nothing
- * that already exists.
+ * that already exists. A saved pay-out leaves the list at once (it can't be
+ * sorted twice before the re-read), and "Back" — the header button and
+ * Android's — steps back one level; only the list's "Done" closes.
  */
 export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorted }: SortPayoutsSheetProps) {
   const [step, setStep] = useState<Step>("list");
@@ -75,8 +79,11 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sortedIds, setSortedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [notice, setNotice] = useState<string | null>(null);
   const inFlight = useRef(false);
 
+  const waiting = useMemo(() => payouts.filter((payout) => !sortedIds.has(payout.movementId)), [payouts, sortedIds]);
   const ranked = useMemo(() => rankCategoriesForPicker(categories, recent, new Date()), [categories, recent]);
   const category = categories.find((candidate) => candidate.id === categoryId) ?? null;
   const suggested = selected ? payoutSuggestion(selected.reason, categories, categoryId) : null;
@@ -88,6 +95,7 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
     setCategoryId(guess?.confidence === "high" ? guess.categoryId : null);
     setNote(payout.reason);
     setError(null);
+    setNotice(null);
     setStep("item");
   };
   const pick = (picked: ExpenseCategory) => {
@@ -98,6 +106,12 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
   const backToList = () => {
     setSelected(null);
     setStep("list");
+  };
+  const markSorted = (payout: UnsortedPayout, message: string) => {
+    setSortedIds((current) => new Set([...current, payout.movementId]));
+    setNotice(message);
+    backToList();
+    onSorted();
   };
 
   const save = async () => {
@@ -119,9 +133,12 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
         note: note.trim() || null,
         recordedByName: await readActorName(),
       });
-      backToList();
-      onSorted();
+      markSorted(selected, `Saved ${formatCents(selected.amountCents, { compact: true })} as ${shortName(category.name)}.`);
     } catch (saveError) {
+      if (isAlreadySortedError(saveError)) {
+        markSorted(selected, ALREADY_SORTED);
+        return;
+      }
       setError(saveError instanceof Error ? saveError.message : "We couldn't save that. Please try again.");
     } finally {
       inFlight.current = false;
@@ -131,8 +148,7 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
 
   if (step === "categories" && selected) {
     return (
-      <DrawerSheet visible title="Pick a category" onClose={onClose} closeLabel="Done" isBusy={isSaving}>
-        <BackRow label={`Back to ${formatCents(selected.amountCents, { compact: true })}`} onPress={() => setStep("item")} />
+      <DrawerSheet visible title="Pick a category" onClose={() => setStep("item")} closeLabel="Back" isBusy={isSaving}>
         <CategoryList categories={categories} selectedId={categoryId} onPick={pick} />
       </DrawerSheet>
     );
@@ -144,11 +160,10 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
         visible
         title={`${formatCents(selected.amountCents, { compact: true })} from the drawer`}
         subtitle={`${selected.recordedByName} · ${whenOf(selected)}`}
-        onClose={onClose}
-        closeLabel="Done"
+        onClose={backToList}
+        closeLabel="Back"
         isBusy={isSaving}
       >
-        <BackRow label="All pay-outs" onPress={backToList} />
         {selected.reason ? <Text style={styles.reason}>“{selected.reason}”</Text> : null}
         {suggested ? (
           <TouchableOpacity
@@ -196,8 +211,14 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
       onClose={onClose}
       closeLabel="Done"
     >
-      {payouts.length === 0 ? <Text style={styles.reason}>All done. Every pay-out has a category.</Text> : null}
-      {payouts.map((payout) => (
+      {notice ? (
+        <View style={styles.notice} accessibilityLiveRegion="polite">
+          <Icon name="check" size={16} color={colors.success} />
+          <Text style={styles.noticeText}>{notice}</Text>
+        </View>
+      ) : null}
+      {waiting.length === 0 ? <Text style={styles.reason}>All done. Every pay-out has a category.</Text> : null}
+      {waiting.map((payout) => (
         <PayoutRow key={payout.movementId} payout={payout} categories={categories} onOpen={() => open(payout)} />
       ))}
     </DrawerSheet>
@@ -206,6 +227,15 @@ export function SortPayoutsSheet({ payouts, categories, recent, onClose, onSorte
 
 const styles = StyleSheet.create({
   reason: { ...typography.body, color: colors.textSecondary, fontStyle: "italic" },
+  notice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.successLight,
+  },
+  noticeText: { ...typography.caption, fontWeight: "700", color: colors.textPrimary, flex: 1 },
   suggestion: {
     flexDirection: "row",
     alignItems: "center",

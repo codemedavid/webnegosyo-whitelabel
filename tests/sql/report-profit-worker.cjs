@@ -16,7 +16,7 @@
 // order_item_costs and shift_cash_movements with their LIVE select policies
 // (pg_policies, 2026-10-21), and the REAL migrations: permission keys,
 // discount sync, the sales report functions, the expense book
-// (20261022120000) and the profit functions (20261022120300).
+// (20261022120000) and the profit functions (20261022120300 + 20261022130100).
 const { readFileSync } = require('node:fs')
 const { PGlite } = require('@electric-sql/pglite')
 const { installPlatformAuth, as, reset, readMigration } = require('./lib/platform-auth.cjs')
@@ -194,6 +194,7 @@ async function build(scenario) {
   await db.exec(readMigration('20261014150000_report_payments_name_aliases.sql'))
   await db.exec(readMigration('20261022120000_expenses.sql'))
   await db.exec(readMigration('20261022120300_report_profit.sql'))
+  await db.exec(readMigration('20261022130100_report_profit_live_orders.sql'))
 
   const seed = scenario.seed
   await insertRows(db, 'tenants', seed.tenants)

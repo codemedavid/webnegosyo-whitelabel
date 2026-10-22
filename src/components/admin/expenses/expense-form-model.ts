@@ -127,6 +127,8 @@ export interface ValidateContext {
   categoriesById: ReadonlyMap<string, ExpenseCategory>
   nowMs: number
   mode: 'add' | 'fix'
+  /** Fix: the date the row already has. Left unchanged, it is not re-checked (a row may be older than 400 days). */
+  originalSpentOn?: string
 }
 
 export interface ValidatedForm {
@@ -151,7 +153,8 @@ export function validateForm(state: ExpenseFormState, context: ValidateContext):
   }
   if (state.note.trim().length > MAX_NOTE_LENGTH) errors.note = `Keep the note under ${MAX_NOTE_LENGTH} characters.`
 
-  const dateProblem = spentOnProblem(state.spentOn, context.nowMs)
+  const isDateUnchanged = context.mode === 'fix' && context.originalSpentOn === state.spentOn
+  const dateProblem = isDateUnchanged ? null : spentOnProblem(state.spentOn, context.nowMs)
   if (dateProblem) errors.spentOn = dateProblem
 
   const tin = normalizeTin(state.supplierTin)
@@ -205,8 +208,17 @@ function taxDetails(state: ExpenseFormState): TaxDetails {
   }
 }
 
-/** What a new expense sends. Call only after `validateForm` passed. */
-export function buildDraft(state: ExpenseFormState, amountCents: number, clientRequestId: string): ExpenseDraft {
+/**
+ * What a new expense sends. Call only after `validateForm` passed. The stock
+ * answer is asked for Ingredients only, so it is sent only for an Ingredients
+ * category (an answer given before switching category never sticks).
+ */
+export function buildDraft(
+  state: ExpenseFormState,
+  amountCents: number,
+  clientRequestId: string,
+  category: Pick<ExpenseCategory, 'group'> | undefined,
+): ExpenseDraft {
   return {
     amountCents,
     categoryId: state.categoryId as string,
@@ -216,7 +228,7 @@ export function buildDraft(state: ExpenseFormState, amountCents: number, clientR
     note: blankToNull(state.note),
     supplierId: state.supplierId,
     paidToName: state.supplierId ? null : blankToNull(state.paidToName),
-    isStockPurchase: state.isStockPurchase === true,
+    isStockPurchase: category?.group === 'ingredients' && state.isStockPurchase === true,
     clientRequestId,
     ...taxDetails(state),
   }
@@ -228,8 +240,13 @@ export type ExpensePatch = Partial<Omit<ExpenseDraft, 'clientRequestId'>>
  * Only what changed, for `replace_expense`. A drawer row never sends amount,
  * date, source or branch: the cash really left that drawer (`drawer_locked`).
  */
-export function buildPatch(original: Expense, state: ExpenseFormState, amountCents: number): ExpensePatch {
-  const next = buildDraft(state, amountCents, '')
+export function buildPatch(
+  original: Expense,
+  state: ExpenseFormState,
+  amountCents: number,
+  category: Pick<ExpenseCategory, 'group'> | undefined,
+): ExpensePatch {
+  const next = buildDraft(state, amountCents, '', category)
   const isDrawer = original.paidFrom === 'drawer'
   const candidate: ExpensePatch = {
     categoryId: next.categoryId,

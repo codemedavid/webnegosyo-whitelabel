@@ -58,8 +58,10 @@ export function homeExpense(overrides: Partial<Expense>): Expense {
   };
 }
 
-export function homeQueued(overrides: Partial<QueuedExpense> & { spentOn?: string; amountCents?: number; categoryId?: string; note?: string }): QueuedExpense {
-  const { spentOn = "2026-10-22", amountCents = 15_000, categoryId = "ice", note = "", ...rest } = overrides;
+export function homeQueued(
+  overrides: Partial<QueuedExpense> & { spentOn?: string; amountCents?: number; categoryId?: string; note?: string; outletId?: string | null },
+): QueuedExpense {
+  const { spentOn = "2026-10-22", amountCents = 15_000, categoryId = "ice", note = "", outletId = null, ...rest } = overrides;
   return {
     id: "req-q",
     tenantId: "t1",
@@ -76,7 +78,7 @@ export function homeQueued(overrides: Partial<QueuedExpense> & { spentOn?: strin
         categoryId,
         spentOn,
         paidFrom: "cash",
-        outletId: null,
+        outletId,
         note,
         clientRequestId: rest.id ?? "req-q",
       },

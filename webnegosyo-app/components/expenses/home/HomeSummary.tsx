@@ -8,7 +8,7 @@ import { spacing } from "../../../theme/colors";
 import { SectionHeader } from "../../SectionHeader";
 import { SegmentedControl } from "../../SegmentedControl";
 import { CategoryBreakdown } from "./CategoryBreakdown";
-import { ExpensesHero } from "./ExpensesHero";
+import { ExpensesHero, type HeroState } from "./ExpensesHero";
 import { NeedsYouCard } from "./NeedsYouCard";
 
 export type HomeMode = "list" | "category";
@@ -20,6 +20,8 @@ const MODES: readonly { label: string; value: HomeMode }[] = [
 
 export interface HomeHeroProps {
   model: HomeModel;
+  /** Whether the month on screen has come back; the hero shows no figure until it has. */
+  state?: HeroState;
   monthShort: string;
   /** "Clear filters", "Show all of October", or null when there is nothing to clear. */
   clearLabel: string | null;
@@ -40,6 +42,7 @@ export function HomeHero(props: HomeHeroProps) {
     <View style={styles.stack}>
       <ExpensesHero
         eyebrow={model.eyebrow}
+        state={props.state}
         monthShort={props.monthShort}
         totals={model.totals}
         change={model.change}

@@ -7,7 +7,42 @@ import { spacing } from "../../theme/colors";
 import { UndoBar } from "../UndoBar";
 
 /** The tab bar's rows above the home indicator (app/(main)/_layout.tsx TAB_BAR_CONTENT_HEIGHT). */
-const TAB_BAR_CONTENT_HEIGHT = 56;
+export const TAB_BAR_CONTENT_HEIGHT = 56;
+/**
+ * (main) screens registered with `tabBarStyle: { display: "none" }` in
+ * app/(main)/_layout.tsx (pinned by ExpenseUndoHost.test.tsx). On them the
+ * bar sits on the home indicator, not 56pt above a bar that is not there.
+ */
+export const ROUTES_WITHOUT_TAB_BAR: readonly string[] = ["pos-loyalty", "receipt-editor", "tutorial/[chapterId]"];
+
+/** The route under (main), as the layout names it: ["(main)", "tutorial", "[chapterId]"] → "tutorial/[chapterId]". */
+function routeName(segments: readonly string[]): string {
+  return segments.filter((segment) => !(segment.startsWith("(") && segment.endsWith(")"))).join("/");
+}
+
+const NO_SEGMENTS: readonly string[] = [];
+
+/**
+ * expo-router's `useSegments`, resolved once and lazily: the host is also
+ * rendered by component tests that run without a router (its native half is
+ * absent under Jest), where the bar keeps its tab-bar position.
+ */
+const useRouteSegments: () => readonly string[] = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const router = require("expo-router") as { useSegments?: () => string[] };
+    return typeof router.useSegments === "function" ? router.useSegments : () => NO_SEGMENTS;
+  } catch {
+    return () => NO_SEGMENTS;
+  }
+})();
+
+/** How far above the screen's bottom edge the bar docks. */
+export function undoBarBottom(segments: readonly string[], insetBottom: number): number {
+  const homeIndicator = Math.max(insetBottom, spacing.sm);
+  const hasTabBar = !ROUTES_WITHOUT_TAB_BAR.includes(routeName(segments));
+  return (hasTabBar ? TAB_BAR_CONTENT_HEIGHT : 0) + homeIndicator + spacing.sm;
+}
 /** Above any stacked layer on the screen (floating "Add expense" pill, Owl launcher). */
 const HOST_Z_INDEX = 20;
 
@@ -45,11 +80,13 @@ export function ExpenseUndoBar({ style }: { style?: StyleProp<ViewStyle> }) {
 
 /**
  * Mounted once in the (main) layout beside `ExpenseSync`: the undo bar for a
- * save, docked above the tab bar on whatever screen the sheet closed onto.
+ * save, docked above the tab bar on whatever screen the sheet closed onto —
+ * or on the home indicator where that screen hides the tab bar.
  */
 export function ExpenseUndoHost() {
   const insets = useSafeAreaInsets();
-  const bottom = TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, spacing.sm) + spacing.sm;
+  const segments = useRouteSegments();
+  const bottom = undoBarBottom(segments, insets.bottom);
   return <ExpenseUndoBar style={[styles.host, { bottom }]} />;
 }
 

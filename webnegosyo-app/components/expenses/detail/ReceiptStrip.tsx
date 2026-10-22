@@ -41,9 +41,9 @@ function TileBody({ tile, isSigning, isOpening }: { tile: ReceiptTile; isSigning
         </View>
       )}
       {tile.kind === "waiting" ? (
-        <View style={styles.waiting}>
+        <View style={[styles.waiting, tile.refusedReason ? styles.refused : null]}>
           <Text style={styles.waitingText} numberOfLines={2}>
-            Waiting to upload
+            {tile.refusedReason ? "Didn't upload" : "Waiting to upload"}
           </Text>
         </View>
       ) : null}
@@ -52,16 +52,20 @@ function TileBody({ tile, isSigning, isOpening }: { tile: ReceiptTile; isSigning
 }
 
 function tileLabel(tile: ReceiptTile, index: number): string {
-  if (tile.kind === "waiting") return `Receipt ${index + 1}, waiting to upload`;
+  if (tile.kind === "waiting") return `Receipt ${index + 1}, ${tile.refusedReason ? "did not upload" : "waiting to upload"}`;
   return tile.kind === "pdf" ? `Receipt ${index + 1}, PDF` : `Receipt ${index + 1}`;
 }
 
-/** Receipt thumbnails in a row, then "Add photo". Tap a photo to see it full screen. */
+/**
+ * Receipt thumbnails in a row, then "Add photo" for another. Tap a photo to
+ * see it full screen. With none yet it just says so: the screen already
+ * offers "Add receipt" in its bottom bar (and in the flag, when one is due).
+ */
 export function ReceiptStrip({ tiles, isSigning, openingPdfId, canAdd, onAdd, onOpenPhoto, onOpenPdf }: ReceiptStripProps) {
-  if (tiles.length === 0 && !canAdd) {
+  if (tiles.length === 0) {
     return (
       <View style={styles.card}>
-        <Text style={styles.empty}>No receipt yet.</Text>
+        <Text style={styles.empty}>No receipts yet.</Text>
       </View>
     );
   }
@@ -107,6 +111,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.xs },
   tileLabel: { ...typography.small, fontWeight: "700", color: colors.textMuted },
   waiting: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.scrim, paddingHorizontal: 4, paddingVertical: 3 },
+  refused: { backgroundColor: colors.danger },
   waitingText: { ...typography.small, fontSize: 9, lineHeight: 11, fontWeight: "700", color: colors.textOnDark, textAlign: "center" },
   add: {
     alignItems: "center",

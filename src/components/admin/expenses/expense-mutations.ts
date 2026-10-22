@@ -11,6 +11,7 @@ import {
   archiveCategoryAction,
   recordExpenseAction,
   replaceExpenseAction,
+  replaceExpenseInBulkAction,
   saveCategoryAction,
   saveSupplierAction,
   sortDrawerPayoutAction,
@@ -54,6 +55,16 @@ export function replaceExpense(
   patch: ReplacePatchInput,
 ): Promise<ActionResult<{ id: string }>> {
   return run(() => replaceExpenseAction(tenantSlug, { expenseId, reason, patch }))
+}
+
+/** One row of a bulk change: no page refresh; the caller refreshes once at the end. */
+export function replaceExpenseInBulk(
+  tenantSlug: string,
+  expenseId: string,
+  reason: string,
+  patch: ReplacePatchInput,
+): Promise<ActionResult<{ id: string }>> {
+  return run(() => replaceExpenseInBulkAction(tenantSlug, { expenseId, reason, patch }))
 }
 
 export function updateExpenseDetails(tenantSlug: string, update: ExpenseDetailsUpdateInput): Promise<ActionResult<Expense>> {

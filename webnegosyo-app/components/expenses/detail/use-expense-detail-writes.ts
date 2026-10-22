@@ -24,6 +24,8 @@ export function refuseInDemo(): boolean {
   return true;
 }
 
+const PHOTO_NOT_SAVED = "The photo could not be saved. Try again.";
+
 interface WriteContext {
   tenantId: string | null;
   expense: Expense | null;
@@ -38,7 +40,7 @@ export function useExpenseDetailWrites({ tenantId, expense, reload, onWritten }:
     if (!tenantId || !expense) return;
     const outcome = await captureReceipt(source).catch(() => null);
     if (!outcome) {
-      Alert.alert("Receipt", "The photo could not be saved. Try again.");
+      Alert.alert("Receipt", PHOTO_NOT_SAVED);
       return;
     }
     if (outcome.status !== "captured") {
@@ -47,9 +49,21 @@ export function useExpenseDetailWrites({ tenantId, expense, reload, onWritten }:
       return;
     }
     const clientRequestId = expense.clientRequestId ?? expense.id;
-    await queueReceipt({ tenantId, clientRequestId, expenseId: expense.id, ...outcome.receipt });
-    await flushExpenses(tenantId);
-    await reload();
+    try {
+      await queueReceipt({ tenantId, clientRequestId, expenseId: expense.id, ...outcome.receipt });
+    } catch (error) {
+      console.warn("[expenses] could not keep the receipt on this phone", error);
+      Alert.alert("Receipt", PHOTO_NOT_SAVED);
+      return;
+    }
+    try {
+      await flushExpenses(tenantId);
+      await reload();
+    } catch (error) {
+      // The photo is safe in the phone's queue; the sync sends it later.
+      console.warn("[expenses] receipt kept; sending failed", error);
+      Alert.alert("Receipt", "Saved on this phone. It uploads when the connection is back.");
+    }
   };
 
   const addReceipt = () => {
@@ -63,13 +77,19 @@ export function useExpenseDetailWrites({ tenantId, expense, reload, onWritten }:
 
   const openPdf = async (receiptId: string) => {
     setOpeningPdfId(receiptId);
-    const link = await fetchReceiptLink(receiptId);
-    setOpeningPdfId(null);
-    if (link.status === "error") {
-      Alert.alert("Receipt", link.message);
-      return;
+    try {
+      const link = await fetchReceiptLink(receiptId);
+      if (link.status === "error") {
+        Alert.alert("Receipt", link.message);
+        return;
+      }
+      await Linking.openURL(link.url);
+    } catch (error) {
+      console.warn("[expenses] could not open the receipt", error);
+      Alert.alert("Receipt", "The receipt could not be opened. Try again.");
+    } finally {
+      setOpeningPdfId(null);
     }
-    void Linking.openURL(link.url);
   };
 
   const confirmVoid = async (reason: string) => {

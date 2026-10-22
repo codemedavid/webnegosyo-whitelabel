@@ -12,8 +12,9 @@ const clampPercent = (ratio: number): number => Math.min(Math.max(ratio, 0), 1) 
 export function FoodStaffBar({ report }: { report: ProfitReport }) {
   const prime = report.ratios.prime;
   if (prime === null) return null;
-  const low = PRIME_COST_BAND.low * 100;
-  const high = PRIME_COST_BAND.high * 100;
+  // Rounded: 0.55 * 100 is 55.00000000000001 in floating point.
+  const low = Math.round(PRIME_COST_BAND.low * 100);
+  const high = Math.round(PRIME_COST_BAND.high * 100);
   return (
     <View style={profitCard.card}>
       <Text style={profitCard.title}>Food + staff: {formatRatio(prime)} of sales</Text>

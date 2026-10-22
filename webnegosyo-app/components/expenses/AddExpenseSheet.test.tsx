@@ -88,16 +88,17 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-it("is amount first: Pay stays off until there is an amount and a category, and always shows the amount", () => {
+it("is amount first: Pay stays off until there is an amount and a category, and says what is missing", () => {
   const screen = render(<AddExpenseSheet visible mode={drawerMode} onClose={jest.fn()} />);
   expect(screen.getByText("Pay from the drawer")).toBeTruthy();
   expect(screen.getByText("Cashier 1 drawer")).toBeTruthy();
 
   typeAmount(screen, ["1", "2", "5", "0"]);
-  expect(screen.getByText("Pay ₱1,250 from drawer")).toBeTruthy();
+  expect(screen.getByText("Choose a category")).toBeTruthy();
   expect(screen.getByTestId("expense-save").props.accessibilityState).toMatchObject({ disabled: true });
 
   fireEvent.press(screen.getByLabelText("Gas / LPG"));
+  expect(screen.getByText("Pay ₱1,250 from drawer")).toBeTruthy();
   expect(screen.getByTestId("expense-save").props.accessibilityState).toMatchObject({ disabled: false });
   expect(screen.getByLabelText("Amount: 1,250 pesos")).toBeTruthy();
   expect(screen.getByText("After this the drawer should hold ₱250")).toBeTruthy();
@@ -262,6 +263,7 @@ it("offers only the not-an-expense kinds when taking cash out", () => {
   expect(screen.getByLabelText("Owner took cash")).toBeTruthy();
   expect(screen.queryByLabelText("Gas / LPG")).toBeNull();
   typeAmount(screen, ["5", "0", "0"]);
+  fireEvent.press(screen.getByLabelText("Owner took cash"));
   expect(screen.getByText("Take out ₱500")).toBeTruthy();
 });
 
@@ -273,4 +275,43 @@ it("records nothing in demo mode", async () => {
   fireEvent.press(screen.getByTestId("expense-save"));
   await act(async () => {});
   expect(queueExpense).not.toHaveBeenCalled();
+});
+
+describe("Android back", () => {
+  function pressBack(screen: Screen) {
+    const { Modal: NativeModal } = jest.requireActual("react-native") as typeof import("react-native");
+    act(() => screen.UNSAFE_getByType(NativeModal).props.onRequestClose());
+  }
+
+  it("steps back from All categories to the amount instead of closing the sheet", () => {
+    // Arrange
+    const onClose = jest.fn();
+    const screen = render(<AddExpenseSheet visible mode={bookMode} onClose={onClose} />);
+    typeAmount(screen, ["1", "2", "5", "0"]);
+    fireEvent.press(screen.getByTestId("category-all"));
+    expect(screen.queryByTestId("keypad-1")).toBeNull();
+
+    // Act
+    pressBack(screen);
+
+    // Assert: still open, amount kept.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Amount: 1,250 pesos")).toBeTruthy();
+
+    // A second back closes it.
+    pressBack(screen);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("folds the note away before it closes the sheet", () => {
+    const onClose = jest.fn();
+    const screen = render(<AddExpenseSheet visible mode={bookMode} onClose={onClose} />);
+    fireEvent.press(screen.getByTestId("expense-extra-note"));
+    expect(screen.getByLabelText("Note")).toBeTruthy();
+
+    pressBack(screen);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Note")).toBeNull();
+  });
 });

@@ -106,8 +106,8 @@ describe('StaffShiftHistory', () => {
             paidIn: 100,
             paidOut: 535.5,
             payOuts: [
-              { amount: 450, reason: 'LPG', recordedByName: 'Ben Reyes', createdAt: '2026-09-19T02:00:00Z' },
-              { amount: 85.5, reason: 'Ice', recordedByName: 'Ana Cruz', createdAt: '2026-09-19T03:00:00Z' },
+              { amount: 450, reason: 'LPG', recordedByName: 'Ben Reyes', createdAt: '2026-09-19T02:00:00Z', categoryName: null },
+              { amount: 85.5, reason: 'Ice', recordedByName: 'Ana Cruz', createdAt: '2026-09-19T03:00:00Z', categoryName: 'Ice (Yelo)' },
             ],
           }),
         ]}
@@ -120,7 +120,8 @@ describe('StaffShiftHistory', () => {
     expect(payOuts).toHaveTextContent('Paid out ₱535.50')
     expect(payOuts).toHaveTextContent('LPG · by Ben Reyes')
     expect(payOuts).toHaveTextContent('₱450.00')
-    expect(payOuts).toHaveTextContent('Ice')
+    // Sorted into an expense: its category leads, the cashier's words follow.
+    expect(payOuts).toHaveTextContent('Ice (Yelo) · Ice')
     expect(payOuts).not.toHaveTextContent('by Ana Cruz') // the drawer's own holder is not repeated
     expect(screen.getByTestId('staff-shift-history')).toHaveTextContent('₱100.00 added mid-shift')
   })

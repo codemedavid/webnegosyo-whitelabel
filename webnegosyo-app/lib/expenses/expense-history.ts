@@ -17,7 +17,7 @@ export interface HistoryLine {
 
 function when(iso: string | null, now: number): string | null {
   if (!iso) return null;
-  return `${dayLabel(manilaDate(Date.parse(iso)), now)}, ${manilaClock(iso)}`;
+  return `${dayLabel(manilaDate(Date.parse(iso)), now)} · ${manilaClock(iso)}`;
 }
 
 export function expenseHistory(detail: ExpenseDetail, now: number = Date.now()): HistoryLine[] {

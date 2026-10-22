@@ -1,4 +1,6 @@
+import { computeFlagsForAll } from "./flags";
 import {
+  detailAccess,
   detailActions,
   factRows,
   flagCallouts,
@@ -132,7 +134,7 @@ describe("flagCallouts", () => {
       {
         flag: "no_receipt",
         title: "No receipt yet",
-        body: "Spends over ₱1,000 usually have one. Add a photo when you have it.",
+        body: "Spends of ₱1,000 or more usually have one. Add a photo when you have it.",
         action: { kind: "add_receipt", label: "Add photo" },
       },
     ]);
@@ -140,7 +142,7 @@ describe("flagCallouts", () => {
 
   it("follows the store's own receipt threshold", () => {
     const callouts = flagCallouts({ expense: { ...base, amountCents: 60_000 }, categories, others: [], canManage: true, noReceiptThresholdCents: 50_000 });
-    expect(callouts[0].body).toBe("Spends over ₱500 usually have one. Add a photo when you have it.");
+    expect(callouts[0].body).toBe("Spends of ₱500 or more usually have one. Add a photo when you have it.");
   });
 
   it("offers no fix to someone who cannot change the expense", () => {
@@ -233,10 +235,10 @@ describe("timelineEntries", () => {
       },
     );
     expect(timelineEntries(detail, NOW)).toEqual([
-      { key: "replaces", text: "Changed from an earlier version (Wrong amount)", when: "Today, 10:00 AM", linkExpenseId: "e0", tone: "neutral" },
-      { key: "recorded", text: "Recorded by Ben Santos from the Front till drawer", when: "Today, 10:12 AM", linkExpenseId: null, tone: "good" },
-      { key: "voided", text: "Voided: Wrong category", when: "Today, 11:00 AM", linkExpenseId: null, tone: "danger" },
-      { key: "replacedBy", text: "Changed — see the new version", when: "Today, 11:00 AM", linkExpenseId: "e3", tone: "neutral" },
+      { key: "replaces", text: "Changed from an earlier version (Wrong amount)", when: "Today · 10:00 AM", linkExpenseId: "e0", tone: "neutral" },
+      { key: "recorded", text: "Recorded by Ben Santos from the Front till drawer", when: "Today · 10:12 AM", linkExpenseId: null, tone: "good" },
+      { key: "voided", text: "Voided: Wrong category", when: "Today · 11:00 AM", linkExpenseId: null, tone: "danger" },
+      { key: "replacedBy", text: "Changed — see the new version", when: "Today · 11:00 AM", linkExpenseId: "e3", tone: "neutral" },
     ]);
   });
 });
@@ -257,8 +259,17 @@ describe("receipts", () => {
       { key: "r1", kind: "photo", receiptId: "r1", uri: "https://signed/1" },
       { key: "r2", kind: "pdf", receiptId: "r2" },
       { key: "r3", kind: "photo", receiptId: "r3", uri: null },
-      { key: "q1", kind: "waiting", uri: "file:///q1.jpg", isPdf: false },
-      { key: "q2", kind: "waiting", uri: "file:///q2.pdf", isPdf: true },
+      { key: "q1", kind: "waiting", uri: "file:///q1.jpg", isPdf: false, refusedReason: null },
+      { key: "q2", kind: "waiting", uri: "file:///q2.pdf", isPdf: true, refusedReason: null },
+    ]);
+  });
+
+  it("keeps a photo the server refused on screen, with why, so it can be tried again or removed", () => {
+    const tiles = receiptTiles([], {}, [
+      { id: "q1", fileUri: "file:///q1.jpg", mime: "image/jpeg", refusedReason: "This file is too big. Take the photo again." },
+    ]);
+    expect(tiles).toEqual([
+      { key: "q1", kind: "waiting", uri: "file:///q1.jpg", isPdf: false, refusedReason: "This file is too big. Take the photo again." },
     ]);
   });
 
@@ -271,5 +282,40 @@ describe("receipts", () => {
       { key: "r3", uri: "https://signed/3", isWaiting: false },
       { key: "q1", uri: "file:///q1.jpg", isWaiting: true },
     ]);
+  });
+});
+
+describe("detailAccess", () => {
+  it("opens everything for an account with the expenses key", () => {
+    expect(detailAccess({ canManage: true, expense: { ...base, paidFrom: "bank" } })).toBe("full");
+    expect(detailAccess({ canManage: true, expense: null })).toBe("full");
+  });
+
+  it("lets a cashier read a drawer expense (the database only returns their own), with no owner actions", () => {
+    expect(detailAccess({ canManage: false, expense: base })).toBe("own_drawer");
+  });
+
+  it("locks a non-drawer row or a row that did not come back for an account without the key", () => {
+    expect(detailAccess({ canManage: false, expense: { ...base, paidFrom: "gcash" } })).toBe("locked");
+    expect(detailAccess({ canManage: false, expense: null })).toBe("locked");
+  });
+});
+
+describe("duplicate rule matches the Expenses list", () => {
+  it("flags exactly what 'Check these' flags when given the same month's rows", () => {
+    // Arrange: the month as Home reads it.
+    const month: Expense[] = [
+      { ...base, id: "a", paidFrom: "cash", spentOn: "2026-10-20" },
+      { ...base, id: "b", paidFrom: "cash", spentOn: "2026-10-21" },
+      { ...base, id: "c", paidFrom: "cash", spentOn: "2026-10-01", amountCents: 50_000 },
+      { ...base, id: "d", paidFrom: "cash", spentOn: "2026-10-05", categoryId: "other", amountCents: 50_000, receiptCount: 1 },
+    ];
+    const asListed = computeFlagsForAll(month, { categories });
+
+    // Act + Assert
+    for (const expense of month) {
+      const shown = flagCallouts({ expense, categories, others: month, canManage: true }).map((callout) => callout.flag);
+      expect(shown).toEqual(asListed[expense.id]);
+    }
   });
 });

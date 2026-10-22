@@ -1,5 +1,5 @@
 /**
- * Links into the expense book from Profit's trust strip: ?add=, ?view=, ?category=.
+ * Links into the expense book from Profit's trust strip: ?add=, ?on=, ?view=, ?category=.
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
@@ -26,7 +26,7 @@ jest.mock('@/app/actions/expenses', () => ({
 jest.mock('sonner', () => ({ toast: Object.assign(jest.fn(), { success: jest.fn(), error: jest.fn() }) }))
 
 const TODAY = '2026-10-21'
-const OPTIONS = { canAdd: true, canSortPayouts: true }
+const OPTIONS = { canAdd: true, canSortPayouts: true, today: TODAY }
 
 function pageData(initial: ExpensesPageData['initial']): ExpensesPageData {
   return {
@@ -65,17 +65,31 @@ beforeEach(() => replace.mockReset())
 
 describe('reading the link', () => {
   it('turns ?add=1 into "open, no category" and ?add=<id> into that category', () => {
-    expect(readInitialLink({ add: '1' })).toEqual({ add: '', view: null, categoryId: null })
-    expect(readInitialLink({ add: ICE.id, view: 'unsorted', category: LPG.id })).toEqual({ add: ICE.id, view: 'unsorted', categoryId: LPG.id })
+    expect(readInitialLink({ add: '1' })).toEqual({ add: '', view: null, categoryId: null, spentOn: null })
+    expect(readInitialLink({ add: ICE.id, view: 'unsorted', category: LPG.id, on: '2026-09-30' })).toEqual({
+      add: ICE.id,
+      view: 'unsorted',
+      categoryId: LPG.id,
+      spentOn: '2026-09-30',
+    })
   })
 
   it('ignores what it does not know instead of failing', () => {
-    const resolved = resolveInitialLink({ add: 'not-a-category', view: 'everything', categoryId: 'gone' }, CATEGORIES, OPTIONS)
-    expect(resolved).toEqual({ isAddOpen: true, addCategoryId: null, view: 'all', categoryFilter: '__any__' })
+    const resolved = resolveInitialLink({ add: 'not-a-category', view: 'everything', categoryId: 'gone', spentOn: '2026-02-30' }, CATEGORIES, OPTIONS)
+    expect(resolved).toEqual({ isAddOpen: true, addCategoryId: null, addSpentOn: null, view: 'all', categoryFilter: '__any__' })
+  })
+
+  it('dates a new entry on the linked day, only when it is a day an expense may have', () => {
+    const on = (spentOn: string) => resolveInitialLink({ add: '', view: null, categoryId: null, spentOn }, CATEGORIES, OPTIONS).addSpentOn
+    expect(on('2026-09-30')).toBe('2026-09-30')
+    expect(on(TODAY)).toBe(TODAY)
+    expect(on('2026-10-22')).toBeNull()
+    expect(on('2024-01-01')).toBeNull()
+    expect(on('yesterday')).toBeNull()
   })
 
   it('never opens Add on a month that has not started', () => {
-    expect(resolveInitialLink({ add: '', view: null, categoryId: null }, CATEGORIES, { ...OPTIONS, canAdd: false }).isAddOpen).toBe(false)
+    expect(resolveInitialLink({ add: '', view: null, categoryId: null, spentOn: null }, CATEGORIES, { ...OPTIONS, canAdd: false }).isAddOpen).toBe(false)
   })
 
   it('drops only `add` from the URL', () => {
@@ -88,15 +102,23 @@ describe('reading the link', () => {
 
 describe('ExpensesWorkspace deep links', () => {
   it('?add=<categoryId> opens Add expense on that category, then cleans the URL', async () => {
-    await renderWorkspace({ add: ICE.id, view: null, categoryId: null }, `/sukad/admin/expenses?month=2026-10&add=${ICE.id}`)
+    await renderWorkspace({ add: ICE.id, view: null, categoryId: null, spentOn: null }, `/sukad/admin/expenses?month=2026-10&add=${ICE.id}`)
 
     expect(await screen.findByRole('heading', { name: 'New expense' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /What was it for/ })).toHaveValue(ICE.name)
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/sukad/admin/expenses?month=2026-10', { scroll: false }))
   })
 
+  it('?on=<day> (Record from Profit for a past period) dates the new entry inside that period, and drops on with add', async () => {
+    await renderWorkspace({ add: ICE.id, view: null, categoryId: null, spentOn: '2026-09-30' }, `/sukad/admin/expenses?month=2026-09&add=${ICE.id}&on=2026-09-30`)
+
+    expect(await screen.findByRole('heading', { name: 'New expense' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Date paid')).toHaveValue('2026-09-30')
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/sukad/admin/expenses?month=2026-09', { scroll: false }))
+  })
+
   it('?add=1 opens it with no category', async () => {
-    await renderWorkspace({ add: '', view: null, categoryId: null }, '/sukad/admin/expenses?add=1')
+    await renderWorkspace({ add: '', view: null, categoryId: null, spentOn: null }, '/sukad/admin/expenses?add=1')
 
     expect(await screen.findByRole('heading', { name: 'New expense' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /What was it for/ })).toHaveValue('')
@@ -104,7 +126,7 @@ describe('ExpensesWorkspace deep links', () => {
   })
 
   it('?view=unsorted opens the Unsorted view, and leaves the URL alone', async () => {
-    await renderWorkspace({ add: null, view: 'unsorted', categoryId: null }, '/sukad/admin/expenses?view=unsorted')
+    await renderWorkspace({ add: null, view: 'unsorted', categoryId: null, spentOn: null }, '/sukad/admin/expenses?view=unsorted')
 
     expect(screen.getByRole('heading', { name: '1 drawer pay-out to sort' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Unsorted/ })).toHaveAttribute('aria-pressed', 'true')
@@ -112,7 +134,7 @@ describe('ExpensesWorkspace deep links', () => {
   })
 
   it('?category=<id> applies the category filter', async () => {
-    await renderWorkspace({ add: null, view: null, categoryId: LPG.id }, `/sukad/admin/expenses?category=${LPG.id}`)
+    await renderWorkspace({ add: null, view: null, categoryId: LPG.id, spentOn: null }, `/sukad/admin/expenses?category=${LPG.id}`)
 
     expect(screen.getByText('Petron 11kg')).toBeInTheDocument()
     expect(screen.queryByText('Mang Ben ice')).not.toBeInTheDocument()

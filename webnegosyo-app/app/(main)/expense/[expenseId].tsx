@@ -16,9 +16,11 @@ import { FactsCard } from "../../../components/expenses/detail/FactsCard";
 import { FlagCallouts } from "../../../components/expenses/detail/FlagCallouts";
 import { HistoryTimeline } from "../../../components/expenses/detail/HistoryTimeline";
 import { ReceiptStrip } from "../../../components/expenses/detail/ReceiptStrip";
+import { RefusedReceipts } from "../../../components/expenses/detail/RefusedReceipts";
 import { refuseInDemo, useExpenseDetailWrites } from "../../../components/expenses/detail/use-expense-detail-writes";
 import { categoryLook } from "../../../lib/expenses/category-look";
 import {
+  detailAccess,
   detailActions,
   factRows,
   flagCallouts,
@@ -29,22 +31,28 @@ import {
   type FlagAction,
 } from "../../../lib/expenses/expense-detail";
 import { useReceiptLinks } from "../../../lib/expenses/expense-detail-receipts";
+import { dismissReceipt, retryReceipt } from "../../../lib/expenses/live-expense-queue";
+import { monthOf } from "../../../lib/expenses/expense-format";
 import type { ExpenseReceiptRef } from "../../../lib/expenses/expense-service";
+import type { Expense } from "../../../lib/expenses/types";
 import {
   useCanManageExpenses,
   useDeviceExpenseQueue,
   useExpenseCategories,
   useExpenseDetail,
+  useExpenseMonth,
   useExpenseTenant,
   useInvalidateExpenses,
   useRecentExpenses,
 } from "../../../lib/expenses/use-expenses";
 import { useOutlets } from "../../../lib/use-outlets";
+import { useBranchContextStore } from "../../../stores/branch-context-store";
 import { colors, spacing, typography } from "../../../theme/colors";
 
 type Sheet = "change" | "void" | null;
 
 const NO_RECEIPTS: ExpenseReceiptRef[] = [];
+const NO_EXPENSES: Expense[] = [];
 
 function openExpense(expenseId: string) {
   router.push(`/(main)/expense/${expenseId}` as never);
@@ -55,6 +63,11 @@ function openExpense(expenseId: string) {
  * flag explained with its fix, the facts, receipt thumbnails that open full
  * screen, and the history. Change = void + a corrected copy; Void needs a
  * reason; a drawer expense voided while its shift is open puts the cash back.
+ *
+ * Reached by links too (Activity's "Open expense", the assistant), so it
+ * checks access itself: the `expenses` key opens everything; a cashier may
+ * read a drawer expense they paid (the database returns only those), with no
+ * owner actions; anything else is locked.
  */
 export default function ExpenseDetailScreen() {
   const { expenseId } = useLocalSearchParams<{ expenseId: string }>();
@@ -63,7 +76,7 @@ export default function ExpenseDetailScreen() {
   const canManage = useCanManageExpenses();
   const detailRead = useExpenseDetail(typeof expenseId === "string" ? expenseId : null);
   const { categories } = useExpenseCategories();
-  const { expenses: recent } = useRecentExpenses();
+  const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
   const queue = useDeviceExpenseQueue();
   const { outlets } = useOutlets();
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -71,6 +84,10 @@ export default function ExpenseDetailScreen() {
 
   const detail = detailRead.data ?? null;
   const expense = detail?.expense ?? null;
+  // Duplicates are judged against the SAME rows the Expenses list flags from
+  // (this expense's month, same branch, same cache), so both always agree.
+  const month = useExpenseMonth(expense ? monthOf(expense.spentOn) : "", selectedOutlet ?? undefined, expense !== null);
+  const { expenses: recent } = useRecentExpenses(sheet === "change");
   const signing = useReceiptLinks(tenantId, detail?.receipts ?? NO_RECEIPTS);
   const writes = useExpenseDetailWrites({ tenantId, expense, reload, onWritten: () => setSheet(null) });
 
@@ -86,6 +103,20 @@ export default function ExpenseDetailScreen() {
       <View style={styles.screen}>
         <BackHeader title="Expense" />
         <LoadingState message="Opening the expense..." />
+      </View>
+    );
+  }
+  const access = detailAccess({ canManage, expense });
+  if (access === "locked" && !(detailRead.error && !detail)) {
+    return (
+      <View style={styles.screen}>
+        <BackHeader title="Expense" />
+        <EmptyState
+          icon="lock"
+          title="Expenses are locked"
+          message="You can open the drawer expenses you paid. Ask the owner for Expenses access to see the rest."
+          inset
+        />
       </View>
     );
   }
@@ -112,7 +143,12 @@ export default function ExpenseDetailScreen() {
   const actions = detailActions({ canManage, expense, drawer: detail.drawer });
   const branchName =
     outlets.length === 0 ? null : expense.outletId ? outlets.find((o) => o.id === expense.outletId)?.name ?? "Another branch" : "Whole store";
-  const callouts = flagCallouts({ expense, categories, others: recent, canManage: actions.canAddReceipt });
+  const callouts = flagCallouts({
+    expense,
+    categories,
+    others: month.data?.expenses ?? NO_EXPENSES,
+    canManage: actions.canAddReceipt,
+  });
   const status = statusPill({
     expense,
     isChange: detail.replaces !== null,
@@ -155,6 +191,13 @@ export default function ExpenseDetailScreen() {
           onAdd={writes.addReceipt}
           onOpenPhoto={openPhoto}
           onOpenPdf={(receiptId) => void writes.openPdf(receiptId)}
+        />
+        <RefusedReceipts
+          tiles={tiles}
+          onRetry={(receiptId) => {
+            if (tenantId) void retryReceipt(tenantId, receiptId);
+          }}
+          onRemove={(receiptId) => void dismissReceipt(receiptId)}
         />
 
         <SectionHeader title="History" style={styles.section} />

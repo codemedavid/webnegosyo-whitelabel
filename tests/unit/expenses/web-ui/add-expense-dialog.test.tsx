@@ -8,6 +8,14 @@ import { CATEGORIES, ELECTRICITY, LPG, OTHER, TENANT_SLUG } from './ui-fixtures'
 const recordExpenseAction = jest.fn()
 const voidExpenseAction = jest.fn()
 const toastSuccess = jest.fn()
+const refresh = jest.fn()
+const uploadReceipts = jest.fn()
+
+jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh, replace: jest.fn(), push: jest.fn() }) }))
+jest.mock('@/components/admin/expenses/receipt-client', () => ({
+  ...jest.requireActual('@/components/admin/expenses/receipt-client'),
+  uploadReceipts: (...args: unknown[]) => uploadReceipts(...args),
+}))
 
 jest.mock('@/app/actions/expenses', () => ({
   recordExpenseAction: (...args: unknown[]) => recordExpenseAction(...args),
@@ -58,6 +66,9 @@ beforeEach(() => {
   recordExpenseAction.mockReset()
   voidExpenseAction.mockReset()
   toastSuccess.mockReset()
+  refresh.mockReset()
+  uploadReceipts.mockReset()
+  uploadReceipts.mockResolvedValue([])
   recordExpenseAction.mockImplementation(async (_slug: string, draft: { categoryId: string; amountCents: number }) => ({
     ok: true,
     data: { id: 'saved-1', ...draft },
@@ -156,6 +167,45 @@ describe('AddExpenseDialog', () => {
 
     options.action.onClick()
     await waitFor(() => expect(voidExpenseAction).toHaveBeenCalledWith(TENANT_SLUG, { expenseId: 'saved-1', reason: 'Undo' }))
+  })
+
+  it('saves once when ⌘Enter is pressed twice before the first save answers', async () => {
+    let answer: (value: unknown) => void = () => undefined
+    recordExpenseAction.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+    await renderDialog()
+
+    fireEvent.change(amountInput(), { target: { value: '1250' } })
+    pickCategory('lpg')
+    fireEvent.keyDown(amountInput(), { key: 'Enter', metaKey: true })
+    fireEvent.keyDown(amountInput(), { key: 'Enter', metaKey: true })
+    answer({ ok: true, data: { id: 'saved-1' } })
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+    expect(recordExpenseAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-reads the book after a receipt is attached, so the row shows its paperclip', async () => {
+    const { container } = await renderDialog()
+
+    fireEvent.change(amountInput(), { target: { value: '1250' } })
+    pickCategory('lpg')
+    const file = new File(['%PDF-1.4'], 'receipt.pdf', { type: 'application/pdf' })
+    fireEvent.change(container.ownerDocument.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save ₱1,250' }))
+
+    await waitFor(() => expect(uploadReceipts).toHaveBeenCalledWith('saved-1', [file]))
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not re-read the book when nothing was attached (the save already refreshed it)', async () => {
+    await renderDialog()
+
+    fireEvent.change(amountInput(), { target: { value: '1250' } })
+    pickCategory('lpg')
+    fireEvent.click(screen.getByRole('button', { name: 'Save ₱1,250' }))
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+    expect(refresh).not.toHaveBeenCalled()
   })
 
   it('shows the server’s refusal and keeps what was typed', async () => {

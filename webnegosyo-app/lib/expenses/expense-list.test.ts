@@ -91,7 +91,7 @@ describe("buildExpenseSections", () => {
 
     expect(sections.map((s) => [s.title, s.totalCents])).toEqual([
       ["Today", 145_000],
-      ["Mon, Oct 19", 1_500_000],
+      ["Mon, 19 Oct", 1_500_000],
     ]);
     // The waiting row sits on top of its day and does not count until it lands.
     expect(sections[0].rows.map((r) => r.key)).toEqual(["queued:req-q", "a", "b"]);

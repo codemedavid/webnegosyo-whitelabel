@@ -26,7 +26,6 @@ import {
   checkCustomRange,
   manilaDay,
   resolveProfitWindow,
-  trendGrainFor,
   type ProfitPreset,
   type ProfitSelection,
 } from "../../lib/profit/profit-period";
@@ -95,7 +94,10 @@ export default function ProfitScreen() {
   const state = profitScreenState({ isAllowed, isPlatform, data: profit.data, isLoading: profit.isLoading, error: profit.error });
 
   const findings = useMemo(
-    () => (state.kind === "ready" ? findingCards(state.data.report.findings, findingPhrase(period.phrase, period.isPartial)) : []),
+    () =>
+      state.kind === "ready"
+        ? findingCards(state.data.report.findings, findingPhrase(period.phrase, period.isPartial), state.data.isFirstRun)
+        : [],
     // The phrase follows the chosen period, not the clock.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [profit.data, period.phrase, period.isPartial],
@@ -113,7 +115,7 @@ export default function ProfitScreen() {
     const keys = selectionToKeys(picked, Date.now());
     const verdict = checkCustomRange(keys.fromKey, keys.toKey, Date.now());
     if (!verdict.ok) {
-      Alert.alert("Pick a shorter range", verdict.reason);
+      Alert.alert(verdict.title, verdict.reason);
       return;
     }
     setIsPickingRange(false);
@@ -163,7 +165,6 @@ export default function ProfitScreen() {
           <ProfitBody
             data={state.data}
             period={period}
-            grain={trendGrainFor(period)}
             findings={findings}
             isWide={isWide}
             onAddExpense={() => go(`${EXPENSES_ROUTE}?add=1`)}

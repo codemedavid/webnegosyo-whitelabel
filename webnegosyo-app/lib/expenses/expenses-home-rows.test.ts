@@ -9,6 +9,7 @@ import {
   groupByDay,
   homeTotals,
   isFiltered,
+  knownCategoryFilters,
   todaySummary,
   viewCounts,
   wholePercents,
@@ -207,13 +208,13 @@ describe("groupByDay", () => {
 
     const days = groupByDay(rows, HOME_NOW);
 
-    expect(days.map((day) => day.title)).toEqual(["Today · Thu 22 Oct", "Yesterday · Wed 21 Oct", "Mon 19 Oct"]);
+    expect(days.map((day) => day.title)).toEqual(["Today · Thu, 22 Oct", "Yesterday · Wed, 21 Oct", "Mon, 19 Oct"]);
     expect(days.map((day) => day.totalCents)).toEqual([133_000, 215_000, 1_500_000]);
     expect(days.reduce((sum, day) => sum + day.totalCents, 0)).toBe(homeTotals(rows).spentCents);
   });
 
   test("names the year of a day from another year", () => {
-    expect(dayTitle("2025-12-29", HOME_NOW)).toBe("Mon 29 Dec 2025");
+    expect(dayTitle("2025-12-29", HOME_NOW)).toBe("Mon, 29 Dec 2025");
   });
 });
 
@@ -231,5 +232,39 @@ describe("categoryBreakdown", () => {
 
   test("is empty when nothing was spent", () => {
     expect(categoryBreakdown([])).toEqual([]);
+  });
+});
+
+describe("branch filter on this phone's entries", () => {
+  const atMain = homeQueued({ id: "q-main", outletId: "main" });
+  const atNorth = homeQueued({ id: "q-north", outletId: "north" });
+  const storeWide = homeQueued({ id: "q-store" });
+
+  test("keeps every queued entry when all branches are on screen", () => {
+    const rows = buildHomeRows(input({ queued: [atMain, atNorth, storeWide] }));
+
+    expect(rows.map((row) => row.queuedId).sort()).toEqual(["q-main", "q-north", "q-store"]);
+  });
+
+  test("keeps only the chosen branch's queued entries, like the book's own read", () => {
+    // Arrange
+    const rows = buildHomeRows(input({ queued: [atMain, atNorth, storeWide], branchId: "main" }));
+
+    // Assert
+    expect(rows.map((row) => row.queuedId)).toEqual(["q-main"]);
+  });
+});
+
+describe("knownCategoryFilters", () => {
+  test("drops a category the store does not have, so no pill reads just 'Category'", () => {
+    const filters = { ...NO_HOME_FILTERS, view: "drawer" as const, categoryId: "made-up" };
+
+    expect(knownCategoryFilters(filters, HOME_CATEGORIES)).toEqual({ ...filters, categoryId: null });
+  });
+
+  test("keeps a real category and returns the same object", () => {
+    const filters = { ...NO_HOME_FILTERS, categoryId: "ice" };
+
+    expect(knownCategoryFilters(filters, HOME_CATEGORIES)).toBe(filters);
   });
 });

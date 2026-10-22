@@ -8,6 +8,24 @@ import { Icon } from "../Icon";
 /** Key height on a normal phone; shorter on a small screen so the amount never shrinks first. */
 export const KEY_HEIGHT = 54;
 export const COMPACT_KEY_HEIGHT = 44;
+/** Tall phones (Pro Max, Plus) get bigger keys and digits instead of an empty band above the keypad. */
+export const TALL_KEY_HEIGHT = 64;
+
+const COMPACT_WINDOW = 740;
+const TALL_WINDOW = 880;
+
+export interface SheetSizing {
+  /** Keypad key height. */
+  key: number;
+  /** Amount digit size before long amounts step down. */
+  amount: number;
+}
+
+export function sheetSizing(windowHeight: number): SheetSizing {
+  if (windowHeight < COMPACT_WINDOW) return { key: COMPACT_KEY_HEIGHT, amount: 40 };
+  if (windowHeight >= TALL_WINDOW) return { key: TALL_KEY_HEIGHT, amount: 54 };
+  return { key: KEY_HEIGHT, amount: 46 };
+}
 
 const KEY_RADIUS = 12;
 

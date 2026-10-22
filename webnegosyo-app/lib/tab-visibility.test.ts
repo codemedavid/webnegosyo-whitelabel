@@ -126,6 +126,21 @@ describe("isTabReachable", () => {
     const host = { ...owner, caller: { ...owner.caller, isOwner: false, permissions: ["customers"] } };
     expect(isTabReachable(REPORTS_TAB, host)).toBe(true);
   });
+
+  it("opens no door into Profit for an account that would meet its lock screen", () => {
+    // Arrange: the tab rides `reports`, the screen also needs expenses + costs.
+    const staff = (permissions: string[]) => ({ ...owner, caller: { role: "admin", isOwner: false, permissions } });
+
+    // Assert
+    expect(isTabReachable("profit", staff(["reports"]))).toBe(false);
+    expect(isTabReachable("profit", staff(["reports", "expenses"]))).toBe(false);
+    expect(isTabReachable("profit", staff(["reports", "expenses", "costs"]))).toBe(true);
+    expect(isTabReachable("profit", owner)).toBe(true);
+    // `reports` alone opens no app report (they ride `analytics`), so the hub
+    // that only held a locked Profit row is gone too; with Expenses it stays.
+    expect(isTabReachable(REPORTS_TAB, staff(["reports"]))).toBe(false);
+    expect(isTabReachable(REPORTS_TAB, staff(["reports", "expenses"]))).toBe(true);
+  });
 });
 
 describe("the bar", () => {

@@ -9,7 +9,7 @@
  * never a voided row, a refused entry, or cash merely moved.
  */
 
-import { PAID_FROM_LABELS, manilaClock, manilaDate, manilaToday } from "./expense-format";
+import { PAID_FROM_LABELS, dayLabel, manilaClock, manilaDate, manilaToday, weekdayDate } from "./expense-format";
 import type { QueuedExpense } from "./expense-queue";
 import { amountOf } from "./expense-queue";
 import type { DayRange, HomeView } from "./expenses-home";
@@ -61,6 +61,13 @@ export interface BuildRowsInput {
   waitingReceipts: ReadonlySet<string>;
   /** The days on screen. */
   window: DayRange;
+  /**
+   * The branch on screen; undefined = every branch. Same rule as the book's
+   * own read (`listExpenses`), so an entry still on this phone shows only
+   * under the branch it was typed for. A drawer entry carries no branch (the
+   * shift decides it) and is always kept: it is this phone's own drawer.
+   */
+  branchId?: string;
 }
 
 const NO_FLAGS: readonly ExpenseFlag[] = [];
@@ -181,6 +188,11 @@ function rowForQueued(entry: QueuedExpense, category: ExpenseCategory | undefine
   };
 }
 
+function isOnBranch(entry: QueuedExpense, branchId: string | undefined): boolean {
+  if (branchId === undefined || entry.payload.kind === "drawer") return true;
+  return entry.payload.draft.outletId === branchId;
+}
+
 function compareRows(a: HomeRow, b: HomeRow): number {
   if (a.date !== b.date) return a.date < b.date ? 1 : -1;
   const aQueued = a.queuedId !== null ? 0 : 1;
@@ -195,7 +207,7 @@ export function buildHomeRows(input: BuildRowsInput): HomeRow[] {
   const categoryById = new Map(input.categories.map((category) => [category.id, category]));
   const landed = new Set(input.expenses.map((expense) => expense.clientRequestId).filter(Boolean));
   const queuedRows = input.queued
-    .filter((entry) => !landed.has(entry.id))
+    .filter((entry) => !landed.has(entry.id) && isOnBranch(entry, input.branchId))
     .map((entry) => rowForQueued(entry, categoryById.get(queuedFields(entry).categoryId), input.waitingReceipts.has(entry.id)))
     .filter((row) => isInRange(row.date, input.window));
   const bookRows = input.expenses
@@ -224,6 +236,16 @@ export interface HomeFilters {
 }
 
 export const NO_HOME_FILTERS: HomeFilters = { view: "all", categoryId: null, search: "" };
+
+/**
+ * The filters with a category the store does not have dropped (an old link,
+ * an archived category): the pill then reads "Category", unpicked, and the
+ * list is not emptied by a filter nobody can see.
+ */
+export function knownCategoryFilters(filters: HomeFilters, categories: readonly ExpenseCategory[]): HomeFilters {
+  if (filters.categoryId === null || categories.some((category) => category.id === filters.categoryId)) return filters;
+  return { ...filters, categoryId: null };
+}
 
 export function isFiltered(filters: HomeFilters): boolean {
   return filters.view !== "all" || filters.categoryId !== null || filters.search.trim() !== "";
@@ -333,20 +355,11 @@ export function todaySummary(rows: readonly HomeRow[], nowMs: number): { cents: 
   return { cents: todays.reduce((sum, row) => sum + countedCents(row), 0), count: todays.length };
 }
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** "Today · Thu 22 Oct", "Yesterday · Wed 21 Oct", "Mon 19 Oct", "Mon 29 Dec 2025". */
+/** "Today · Thu, 22 Oct", "Yesterday · Wed, 21 Oct", "Mon, 19 Oct", "Mon, 29 Dec 2025". */
 export function dayTitle(date: string, nowMs: number): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
-  const today = manilaToday(nowMs);
-  const yearPart = String(year) === today.slice(0, 4) ? "" : ` ${year}`;
-  const plain = `${weekday} ${day} ${SHORT_MONTHS[month - 1]}${yearPart}`;
-  if (date === today) return `Today · ${plain}`;
-  if (date === manilaDate(nowMs - DAY_MS)) return `Yesterday · ${plain}`;
-  return plain;
+  const plain = weekdayDate(date, nowMs);
+  const label = dayLabel(date, nowMs);
+  return label === plain ? plain : `${label} · ${plain}`;
 }
 
 export interface HomeDay {

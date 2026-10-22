@@ -25,7 +25,7 @@ import { CountDrawerSheet, type CountTarget } from "./drawer/CountDrawerSheet";
 import { AddExpenseSheet, type ExpenseSheetScope } from "./expenses/AddExpenseSheet";
 import { CloseShiftSheet } from "./drawer/CloseShiftSheet";
 import { useDrawerExpenses } from "../lib/expenses/use-drawer-expenses";
-import { payoutLines, summarizeShiftPayouts } from "../lib/expenses/drawer-expenses";
+import { REFUSED_BLOCKS_CLOSE, payoutLines, summarizeShiftPayouts } from "../lib/expenses/drawer-expenses";
 import { formatPeso as formatCentsPeso } from "../lib/expenses/keypad";
 import { liveExpenseDb } from "../lib/expenses/expense-client";
 import { listMovementLinks, type MovementLink } from "../lib/expenses/expense-service";
@@ -43,6 +43,10 @@ const CASH_SETUP_ROUTE = "/(main)/cash-drawers";
 const DRAWER_EXPENSES_ROUTE = "/(main)/expenses?view=drawer";
 /** Shown on the close sheet when "End shift" found the drawer's figure moved since the count. */
 const DRAWER_CHANGED_NOTICE = "The drawer changed while you were counting. Check the new total.";
+/** The phone could not read or write its own list of pay-outs: never assume "nothing waiting". */
+const SETTLE_FAILED_TEXT = "This phone could not check its drawer pay-outs. Try again in a moment.";
+/** The register's "Pay out" with no shift open on this phone. */
+const PAY_OUT_NEEDS_SHIFT = "Start a shift to pay from the drawer.";
 
 /**
  * Clock in / clock out, cash in / out, and — for an owner or manager — every
@@ -144,8 +148,19 @@ interface PendingClose {
   notice: string | null;
 }
 
-/** A fresh read of the drawer for a close: the sheet to show, or why it cannot close yet. */
-type PreparedClose = { kind: "ready"; pending: PendingClose } | { kind: "blocked"; reason: string };
+/**
+ * A fresh read of the drawer for a close: the sheet to show (with how many of
+ * its pay-outs the store did not take), or why it cannot close yet.
+ */
+type PreparedClose = { kind: "ready"; pending: PendingClose; refused: number } | { kind: "blocked"; reason: string };
+
+/** "Not ready to close", with a way to try the same step again. */
+function alertNotReady(reason: string, retry: () => void): void {
+  Alert.alert("Not ready to close", reason, [
+    { text: "Not now", style: "cancel" },
+    { text: "Try again", onPress: retry },
+  ]);
+}
 
 function waitingToSyncText(waiting: number): string {
   return `${waiting} drawer ${waiting === 1 ? "expense is" : "expenses are"} still waiting to sync. Connect to the internet, then end the shift.`;
@@ -178,6 +193,8 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const [pendingClose, setPendingClose] = useState<PendingClose | null>(null);
   // "Pay an expense" / "Take out cash" from my own drawer (plan §4.1).
   const [expenseScope, setExpenseScope] = useState<ExpenseSheetScope | null>(null);
+  // The register asked to pay out with no shift open: say so on the clock-in card.
+  const [payOutHint, setPayOutHint] = useState<string | null>(null);
   // What this person did to web orders during the shift. Read separately
   // from the drawer and never added to it: a confirmed web order is the
   // store's money, not this drawer's (shift-drawer.ts).
@@ -386,10 +403,18 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const prepareClose = async (shift: ShiftRecord, counted: number): Promise<PreparedClose> => {
     if (!tenantId) return { kind: "blocked", reason: "Try again." };
     // Cash this phone paid out must be on the server before the count is
-    // judged, or the drawer reads over by exactly that much.
+    // judged, or the drawer reads over by exactly that much. Fails CLOSED: a
+    // phone that cannot tell what it still holds does not close.
+    let refused = 0;
     if (shift.id === myShift?.id) {
-      const waiting = await drawerExpenses.settleBeforeClose(shift.id).catch(() => 0);
-      if (waiting > 0) return { kind: "blocked", reason: waitingToSyncText(waiting) };
+      try {
+        const settled = await drawerExpenses.settleBeforeClose(shift.id);
+        if (settled.waiting > 0) return { kind: "blocked", reason: waitingToSyncText(settled.waiting) };
+        refused = settled.refused;
+      } catch (error) {
+        console.warn("[shift] could not settle this phone's drawer pay-outs", error);
+        return { kind: "blocked", reason: SETTLE_FAILED_TEXT };
+      }
     }
     // Re-read this drawer's moves first: a pickup recorded on another
     // tablet since this screen loaded would otherwise read as a shortage.
@@ -415,7 +440,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
       reconciliation: final,
       counted,
     });
-    return { kind: "ready", pending: { shift, expectedInDrawer: rec.expectedInDrawer, counted, review, notice: null } };
+    return { kind: "ready", pending: { shift, expectedInDrawer: rec.expectedInDrawer, counted, review, notice: null }, refused };
   };
 
   const handleCount = (counted: number) =>
@@ -423,7 +448,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
       if (refuseInDemo() || !tenantId || !countTarget) return;
       const prepared = await prepareClose(countTarget.shift, counted);
       if (prepared.kind === "blocked") {
-        Alert.alert("Not ready to close", prepared.reason);
+        alertNotReady(prepared.reason, () => void handleCount(counted));
         return;
       }
       setCountTarget(null);
@@ -437,7 +462,13 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
       // drawer again rather than write the figure frozen at the count.
       const prepared = await prepareClose(pendingClose.shift, pendingClose.counted);
       if (prepared.kind === "blocked") {
-        Alert.alert("Not ready to close", prepared.reason);
+        alertNotReady(prepared.reason, () => void handleEndShift());
+        return;
+      }
+      // A pay-out the store did not take is cash that left without a record:
+      // the cashier sends it again or removes it on this sheet first.
+      if (prepared.refused > 0) {
+        setPendingClose({ ...prepared.pending, notice: REFUSED_BLOCKS_CLOSE });
         return;
       }
       if (hasDrawerChanged(pendingClose.expectedInDrawer, prepared.pending.expectedInDrawer)) {
@@ -476,19 +507,35 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   };
 
   // The register's "Pay out": open "Pay from the drawer" once the drawer is known.
+  // The parent may hand a new callback every render: read it from a ref so the
+  // request is acted on once, not again on each render before it is cleared.
+  const onPayOutHandledRef = useRef(onPayOutHandled);
   useEffect(() => {
-    if (!isPayOutRequested || !floor.isLoaded) return;
+    onPayOutHandledRef.current = onPayOutHandled;
+  }, [onPayOutHandled]);
+  const hasHandledPayOut = useRef(false);
+  useEffect(() => {
+    if (!isPayOutRequested) {
+      hasHandledPayOut.current = false;
+      return;
+    }
+    if (hasHandledPayOut.current || !floor.isLoaded) return;
     // Wait only while the categories are still loading; once they failed (or
     // the store has none) the request is cleared, never left to pop later.
     if (myShift && !drawerExpenses.isReady && !haveCategoriesSettled) return;
-    if (myShift && drawerExpenses.isReady && !useAuthStore.getState().isDemo) {
+    hasHandledPayOut.current = true;
+    if (!myShift) {
+      setPayOutHint(PAY_OUT_NEEDS_SHIFT);
+    } else if (drawerExpenses.isReady && !useAuthStore.getState().isDemo) {
       setMoveTarget(null);
       setExpenseScope("spend");
     }
-    onPayOutHandled?.();
-  }, [isPayOutRequested, floor.isLoaded, myShift, drawerExpenses.isReady, haveCategoriesSettled, onPayOutHandled]);
+    onPayOutHandledRef.current?.();
+  }, [isPayOutRequested, floor.isLoaded, myShift, drawerExpenses.isReady, haveCategoriesSettled]);
 
   const myPending = myShift ? drawerExpenses.pendingFor(myShift.id) : { cents: 0, count: 0, waiting: 0 };
+  // Refused pay-outs are not "waiting": they are shown on their own, with Try again / Remove.
+  const myRefused = myShift ? drawerExpenses.refusedFor(myShift.id) : [];
   const pendingLine =
     myPending.count > 0
       ? `${myPending.count} ${myPending.count === 1 ? "expense" : "expenses"} waiting to sync · −${formatCentsPeso(myPending.cents)} already out of the drawer`
@@ -532,6 +579,9 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           onPayExpense={drawerExpenses.isReady ? () => openExpenseSheet("spend") : undefined}
           payoutLines={drawerExpenses.payouts ? payoutLines(drawerExpenses.payouts) : null}
           pendingLine={pendingLine}
+          refusedPayouts={myRefused}
+          onRetryRefused={drawerExpenses.retryRefused}
+          onRemoveRefused={drawerExpenses.removeRefused}
         />
       ) : (
         <ClockInCard
@@ -539,6 +589,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           isBusy={busy}
           canManage={canManage}
           notice={notice}
+          hint={payOutHint}
           onClockIn={(drawerId, floatText) => void handleClockIn(drawerId, floatText)}
           onSetUpDrawers={() => router.push(CASH_SETUP_ROUTE)}
         />
@@ -600,6 +651,9 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           isBusy={busy}
           onEnd={() => void handleEndShift()}
           onClose={() => setPendingClose(null)}
+          refusedPayouts={pendingClose.shift.id === myShift?.id ? myRefused : undefined}
+          onRetryRefused={drawerExpenses.retryRefused}
+          onRemoveRefused={drawerExpenses.removeRefused}
           onOpenExpenses={
             canOpenExpenses
               ? () => {

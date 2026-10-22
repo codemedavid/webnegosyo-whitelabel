@@ -12,8 +12,11 @@
  * - Occupancy (rent) 6–10% of sales: Restaurant Resource Group and NRA
  *   occupancy-cost guides; above ~15% is widely called a problem.
  *
- * The band judges the WHOLE percent the tile shows, so "38%" is never called
- * high because it was really 38.4%. Pure.
+ * The label and the explanation read the SAME numbers: "Usual" is exactly the
+ * range the sheet says most restaurants land in (up to `usualHigh`), so 36%
+ * food cost is never "Usual" beside a sentence that says 28–35%. The band
+ * judges the WHOLE percent the tile shows, so "35%" is never called high
+ * because it was really 35.4%. Pure.
  */
 
 import { UNCOSTED_SHARE_LIMIT, type ProfitReport } from "./profit-model";
@@ -24,19 +27,17 @@ export type CostBand = "usual" | "high_side" | "high" | "unknown" | "none";
 export type BandTone = "good" | "warn" | "bad" | "neutral";
 
 interface CostGuide {
-  /** The range most restaurants land in, in whole percent (for the explanation). */
+  /** The range most restaurants land in, in whole percent. Up to `usualHigh` reads "Usual"; above it, "On the high side". */
   readonly usualLow: number;
   readonly usualHigh: number;
-  /** Above this whole percent: "On the high side". */
-  readonly highSideAbove: number;
   /** Above this whole percent: "High". */
   readonly highAbove: number;
 }
 
 export const COST_GUIDES: Readonly<Record<CostKind, CostGuide>> = {
-  food: { usualLow: 28, usualHigh: 35, highSideAbove: 38, highAbove: 45 },
-  staff: { usualLow: 25, usualHigh: 35, highSideAbove: 35, highAbove: 45 },
-  rent: { usualLow: 6, usualHigh: 10, highSideAbove: 10, highAbove: 15 },
+  food: { usualLow: 28, usualHigh: 35, highAbove: 45 },
+  staff: { usualLow: 25, usualHigh: 35, highAbove: 45 },
+  rent: { usualLow: 6, usualHigh: 10, highAbove: 15 },
 };
 
 export const BAND_LABELS: Readonly<Record<CostBand, string>> = {
@@ -62,7 +63,7 @@ export function costBand(kind: CostKind, ratio: number | null): CostBand {
   const percent = Math.round(ratio * 100);
   const guide = COST_GUIDES[kind];
   if (percent > guide.highAbove) return "high";
-  if (percent > guide.highSideAbove) return "high_side";
+  if (percent > guide.usualHigh) return "high_side";
   return "usual";
 }
 
@@ -125,7 +126,7 @@ export interface CostExplanation {
 function guideLine(kind: CostKind): string {
   const guide = COST_GUIDES[kind];
   const range = kind === "food" ? `${guide.usualLow}–${guide.usualHigh}%` : `${guide.usualHigh}% or less`;
-  return `As a guide, most restaurants land at ${range}. Above ${guide.highSideAbove}% is on the high side; above ${guide.highAbove}% is high.`;
+  return `As a guide, most restaurants land at ${range}. Above ${guide.usualHigh}% is on the high side; above ${guide.highAbove}% is high.`;
 }
 
 const SOFT_NOTE = "These guides come from restaurant averages, not rules: a café, a bakery or a carinderia can sit differently and still do well.";

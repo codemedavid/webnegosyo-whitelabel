@@ -45,7 +45,7 @@ import { BackRow, DrawerLine, ExtrasRow, FoldInput, PaidFromRow, RepeatRow, Stoc
 import { CategoryGrid, CategoryList } from "./CategoryPicker";
 import { ExpenseAmount } from "./ExpenseAmount";
 import { ExpenseDatePicker, IS_DATE_PICKER_INLINE } from "./ExpenseDatePicker";
-import { COMPACT_KEY_HEIGHT, ExpenseKeypad, KEY_HEIGHT } from "./ExpenseKeypad";
+import { ExpenseKeypad, sheetSizing } from "./ExpenseKeypad";
 import { expenseExtras } from "./expense-extras";
 import { ExpenseUndoBar } from "./ExpenseUndoHost";
 import { promptForReceipt } from "./receipt-prompt";
@@ -54,8 +54,6 @@ import { useExpenseSave } from "./use-expense-save";
 export { UNDO_WINDOW_MS } from "../../stores/expense-undo-store";
 export type { ExpenseSheetScope } from "../../lib/expenses/add-expense-form";
 
-/** Below this window height the keypad shrinks before the amount does (plan §5.6). */
-const COMPACT_HEIGHT = 740;
 /** Scrim left showing above the sheet on a phone, under the status bar. */
 const SCRIM_GAP = 8;
 const SHEET_RADIUS = 22;
@@ -102,7 +100,7 @@ export function AddExpenseSheet({
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const isCentered = useCenteredDialog();
-  const isCompact = height < COMPACT_HEIGHT;
+  const sizing = sheetSizing(height);
 
   const { categories, isLoading: isLoadingCategories, error: categoriesError } = useExpenseCategories();
   const { expenses: recent } = useRecentExpenses(visible);
@@ -152,6 +150,16 @@ export function AddExpenseSheet({
     onClose();
   };
 
+  // Android back steps out of an inner panel (all categories, date, note,
+  // paid to) first, so the typed amount is never lost to one press.
+  const back = () => {
+    if (panel !== null) {
+      setPanel(null);
+      return;
+    }
+    close();
+  };
+
   const onKey = (key: KeypadKey) => {
     const keypad = pressKey(form.keypad, key);
     if (keypad !== form.keypad) update({ ...form, keypad });
@@ -197,7 +205,7 @@ export function AddExpenseSheet({
 
   const afterCents = drawerAfterCents(mode, cents);
   const isTyping = panel === "note" || panel === "paidTo";
-  const label = primaryLabel(cents, mode, scope);
+  const label = primaryLabel(cents, mode, scope, form.categoryId !== null);
   const sheetFrame = isCentered
     ? [centeredDialog.sheet, { height: Math.min(height - spacing.xl * 2, MAX_DIALOG_HEIGHT), paddingBottom: spacing.lg }]
     : { flex: 1, marginTop: insets.top + SCRIM_GAP, paddingBottom: Math.max(insets.bottom, spacing.md) };
@@ -221,7 +229,7 @@ export function AddExpenseSheet({
     <>
       <View style={styles.top}>
         {mode.kind === "drawer" ? <DrawerLine chipLabel={drawerChipLabel(mode)} availableCents={mode.availableCents} /> : null}
-        <ExpenseAmount text={keypadDisplay(form.keypad)} cents={cents} isCompact={isCompact} />
+        <ExpenseAmount text={keypadDisplay(form.keypad)} cents={cents} baseSize={sizing.amount} />
         {mode.kind === "book" ? <PaidFromRow value={form.paidFrom} onPick={(paidFrom) => update({ ...form, paidFrom })} /> : null}
       </View>
       <View style={styles.middle}>
@@ -266,7 +274,7 @@ export function AddExpenseSheet({
             {error}
           </Text>
         ) : null}
-        {isTyping ? null : <ExpenseKeypad onKey={onKey} keyHeight={isCompact ? COMPACT_KEY_HEIGHT : KEY_HEIGHT} isDisabled={isSaving} />}
+        {isTyping ? null : <ExpenseKeypad onKey={onKey} keyHeight={sizing.key} isDisabled={isSaving} />}
         <View style={styles.footer}>
           {hasNextButton ? (
             <Button
@@ -299,7 +307,7 @@ export function AddExpenseSheet({
   );
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={close} transparent>
+    <Modal visible={visible} animationType="slide" onRequestClose={back} transparent>
       <KeyboardAvoidingView
         style={[styles.backdrop, isCentered && centeredDialog.backdrop]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}

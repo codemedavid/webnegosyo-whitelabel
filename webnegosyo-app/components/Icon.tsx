@@ -684,11 +684,11 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Line x1={14} y1={13.5} x2={14} y2={16.5} />
     </>
   ),
-  // An ice cube in perspective: yelo.
+  // A snowflake: yelo. (A cube read as the packaging box beside it.)
   ice: (
     <>
-      <Path d="M12 3l7.5 4.3v8.7L12 20.5 4.5 16V7.3z" />
-      <Path d="M4.5 7.3L12 11.6l7.5-4.3M12 11.6v8.9" />
+      <Path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" />
+      <Path d="M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5" />
     </>
   ),
   // A tall cup with a straw: drinks and bar stock.

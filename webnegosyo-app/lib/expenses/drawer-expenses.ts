@@ -12,6 +12,7 @@
 
 import type { CashMove } from "../cash-drawers";
 import { formatPeso } from "./keypad";
+import type { RefusedPayout } from "./expense-queue";
 import type { MovementLink } from "./expense-service";
 
 export interface PayoutBucket {
@@ -99,3 +100,24 @@ export function describeShiftExpenses(payouts: ShiftPayouts): string | null {
   if (takenOut.count > 0) parts.push(`Cash taken out ${formatPeso(takenOut.cents)} (${takenOut.count}).`);
   return parts.length > 0 ? parts.join(" ") : null;
 }
+
+function refusedTotal(payouts: readonly Pick<RefusedPayout, "cents">[]): number {
+  return payouts.reduce((sum, payout) => sum + payout.cents, 0);
+}
+
+/** "1 pay-out didn't save · ₱120" — null when there is none. */
+export function refusedPayoutsHeadline(payouts: readonly Pick<RefusedPayout, "cents">[]): string | null {
+  if (payouts.length === 0) return null;
+  const noun = payouts.length === 1 ? "pay-out" : "pay-outs";
+  return `${payouts.length} ${noun} didn't save · ${formatPeso(refusedTotal(payouts))}`;
+}
+
+/** Why the count reads short while they are on the phone, and what to do about it. */
+export function refusedPayoutsNote(payouts: readonly Pick<RefusedPayout, "cents">[]): string {
+  return `The cash left the drawer, but the store has no record of it yet, so the drawer reads ${formatPeso(
+    refusedTotal(payouts),
+  )} short. Try again, or remove it and let the owner know.`;
+}
+
+/** Shown on the close sheet when End shift is tapped while one is still on the phone. */
+export const REFUSED_BLOCKS_CLOSE = "Try again or remove the pay-out that didn't save, then end the shift.";

@@ -58,3 +58,38 @@ export function payoutSuggestion(
   if (!guess || guess.categoryId === chosenId) return null;
   return categories.find((category) => category.id === guess.categoryId) ?? null;
 }
+
+/** What the Change sheet calls a category the store no longer lists. */
+export const CURRENT_CATEGORY_NAME = "Current category";
+/** Sorts it after the store's own categories. */
+const STAND_IN_SORT_ORDER = Number.MAX_SAFE_INTEGER;
+
+/**
+ * The categories the Change sheet offers. The store's list carries only live
+ * categories, so an expense filed under one since archived would open with
+ * nothing chosen; it is offered (and shown chosen) under a plain name, and
+ * keeping it sends no category change.
+ */
+export function changeCategoryChoices(categories: readonly ExpenseCategory[], currentId: string): readonly ExpenseCategory[] {
+  if (categories.some((category) => category.id === currentId)) return categories;
+  const standIn: ExpenseCategory = {
+    id: currentId,
+    tenantId: categories[0]?.tenantId ?? "",
+    systemKey: null,
+    name: CURRENT_CATEGORY_NAME,
+    icon: null,
+    group: "other",
+    needsNote: false,
+    sortOrder: STAND_IN_SORT_ORDER,
+    archivedAt: null,
+  };
+  return [...categories, standIn];
+}
+
+/** Postgres unique_violation: the pay-out was sorted already (another tap, another phone). */
+const UNIQUE_VIOLATION = "23505";
+
+export function isAlreadySortedError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false;
+  return (error as { code: unknown }).code === UNIQUE_VIOLATION;
+}

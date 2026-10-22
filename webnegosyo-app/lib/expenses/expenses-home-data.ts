@@ -15,7 +15,7 @@ import { resourceKey } from "../backends/query-keys";
 import { resolveProfitBranch, ALL_BRANCHES } from "../profit/profit-branch";
 import { resolveProfitWindow, type ProfitSelection } from "../profit/profit-period";
 import { canSeeProfit } from "../profit/profit-view";
-import { useProfit } from "../profit/use-profit";
+import { useProfitGlance } from "../profit/use-profit";
 import { useResource } from "../query/use-resource";
 import { useAccountBranchScope } from "../use-branch-scope";
 import { useOutlets } from "../use-outlets";
@@ -122,15 +122,15 @@ export function useKeptFigure(month: string, range: DayRange | null): KeptFigure
   const { outlets } = useOutlets();
 
   // Only the month in progress: stepping back through months must not start a
-  // fresh four-RPC Profit read each time. This shares Home's cached read.
+  // fresh Profit read each time. The light glance read (one summary call, or
+  // the Profit screen's cached result) is the one Home's "Kept" row shares.
   const isCurrentMonth = range === null && month === monthOf(Date.now());
   const isEnabled = isCurrentMonth && canSeeProfit({ role, isOwner, permissions }) && orderBackend === "platform";
   const period = resolveProfitWindow(profitSelectionFor(month, range, Date.now()), Date.now());
   const { branch } = resolveProfitBranch({ account, accountOutletName, outlets, choice: selectedOutlet ?? ALL_BRANCHES });
-  const profit = useProfit(period, branch, isEnabled);
-  const data = profit.data;
-  if (!isEnabled || data?.status !== "ready") return null;
-  return { cents: data.report.profitCents, isPartial: period.isPartial };
+  const glance = useProfitGlance(period, branch, isEnabled);
+  if (!isEnabled || glance === null) return null;
+  return { cents: glance.profitCents, isPartial: glance.isPartial };
 }
 
 /** "Main branch", "All branches", or null for a one-branch store. */

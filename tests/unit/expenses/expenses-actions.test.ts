@@ -96,6 +96,13 @@ describe('recordExpenseAction', () => {
     expect(await recordExpenseAction('lolys-cafe', draft)).toEqual({ ok: false, error: 'Add a note for this category.' })
     expect(mockRevalidate).not.toHaveBeenCalled()
   })
+
+  it('never shows an unexpected error’s raw text (it is logged on the server)', async () => {
+    const { recordExpenseAction } = await load()
+    mockRecord.mockRejectedValue(new Error('relation "public.expenses" does not exist'))
+    expect(await recordExpenseAction('lolys-cafe', draft)).toEqual({ ok: false, error: "We couldn't save that. Please try again." })
+    expect(console.error).toHaveBeenCalledWith('[expenses] record:', 'relation "public.expenses" does not exist')
+  })
 })
 
 describe('the other actions', () => {
@@ -112,6 +119,17 @@ describe('the other actions', () => {
       ok: true,
       data: { id: 'new-id' },
     })
+  })
+
+  it('a bulk row fixes like replace but leaves the page refresh to the end of the batch', async () => {
+    const { replaceExpenseInBulkAction } = await load()
+    mockReplace.mockResolvedValue('new-id')
+    expect(await replaceExpenseInBulkAction('lolys-cafe', { expenseId: EXPENSE, reason: 'wrong', patch: { categoryId: CATEGORY } })).toEqual({
+      ok: true,
+      data: { id: 'new-id' },
+    })
+    expect(mockVerify).toHaveBeenCalledWith(TENANT, 'expenses')
+    expect(mockRevalidate).not.toHaveBeenCalled()
   })
 
   it('saves a category for the resolved store only', async () => {

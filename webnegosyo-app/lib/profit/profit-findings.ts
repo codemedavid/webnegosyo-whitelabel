@@ -83,6 +83,13 @@ export function findingCard(finding: ProfitFinding, periodPhrase: string): Findi
   };
 }
 
-export function findingCards(findings: readonly ProfitFinding[], periodPhrase: string): FindingCard[] {
-  return findings.map((finding) => findingCard(finding, periodPhrase));
+/**
+ * The cards under the answer. On a store's first run the welcome card already
+ * says "Add your first expense" with its own button, so the "No expenses
+ * recorded" card would only repeat it (two Add buttons).
+ */
+export function findingCards(findings: readonly ProfitFinding[], periodPhrase: string, isFirstRun = false): FindingCard[] {
+  return findings
+    .filter((finding) => !(isFirstRun && finding.kind === "no_expenses"))
+    .map((finding) => findingCard(finding, periodPhrase));
 }
