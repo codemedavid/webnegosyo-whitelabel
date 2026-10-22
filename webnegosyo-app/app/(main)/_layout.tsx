@@ -14,6 +14,9 @@ import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint"
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
 import { PrinterWarmUp } from "../../components/PrinterWarmUp";
 import { OfflineSalesSync } from "../../components/OfflineSalesSync";
+import { ExpenseSync } from "../../components/expenses/ExpenseSync";
+import { ExpenseUndoHost } from "../../components/expenses/ExpenseUndoHost";
+import { BillReminderSync } from "../../components/expenses/BillReminderSync";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
@@ -90,6 +93,12 @@ export default function MainLayout() {
       <PrinterWarmUp />
       {/* Watches the connection and replays counter sales taken offline. */}
       <OfflineSalesSync />
+      {/* Sends expenses (and their receipts) this phone kept while offline. */}
+      <ExpenseSync />
+      {/* Keeps the owner's morning bill reminders in line with Bills to pay. */}
+      <BillReminderSync />
+      {/* The Undo bar after an expense save, on whatever screen the sheet closed onto. */}
+      <ExpenseUndoHost />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}
@@ -184,6 +193,12 @@ export default function MainLayout() {
         />
         <Tabs.Screen name="daily-report" options={{ href: show("daily-report"), title: "Stock report" }} />
         <Tabs.Screen name="branches" options={{ href: show("branches"), title: "Compare branches" }} />
+        {/* Money: the expense book — what the store spent (`expenses` key). */}
+        <Tabs.Screen name="expenses" options={{ href: show("expenses"), title: "Expenses" }} />
+        {/* Money: Bills to pay — rent, kuryente, sahod (`expenses`), entered from Expenses. */}
+        <Tabs.Screen name="expense-bills" options={{ href: show("expense-bills"), title: "Bills to pay" }} />
+        {/* Money: Profit = Sales − Ingredients − Expenses (`reports`; the screen re-checks expenses + costs). */}
+        <Tabs.Screen name="profit" options={{ href: show("profit"), title: "Profit" }} />
         {/* Store activity — the store's view (owners, activity_view, approve_requests). */}
         <Tabs.Screen name="activity" options={{ href: show("activity"), title: "Activity" }} />
 
@@ -207,6 +222,8 @@ export default function MainLayout() {
         <Tabs.Screen name="ingredient/edit/[ingredientId]" options={{ href: null, title: "Edit ingredient" }} />
         <Tabs.Screen name="payment/[methodId]" options={{ href: null, title: "Payment Method" }} />
         <Tabs.Screen name="voucher/[voucherId]" options={{ href: null, title: "Voucher" }} />
+        {/* One expense: receipt, history, Fix / Void — pushed from Expenses. */}
+        <Tabs.Screen name="expense/[expenseId]" options={{ href: null, title: "Expense" }} />
         <Tabs.Screen name="category/[categoryId]" options={{ href: null, title: "Category" }} />
         <Tabs.Screen name="campaign/[campaignId]" options={{ href: null, title: "Campaign" }} />
         {/* One automatic text's settings and message — pushed from Texts. */}

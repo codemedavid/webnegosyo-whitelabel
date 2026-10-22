@@ -58,6 +58,8 @@ describe("resolveOwlLink", () => {
     expect(resolveOwlLink("/menu", "seacook", WEB)).toEqual({ kind: "app", href: "/(main)/product-management" });
     expect(resolveOwlLink("/loyalty", "seacook", WEB)).toEqual({ kind: "app", href: "/(main)/loyalty" });
     expect(resolveOwlLink("/orders", "seacook", WEB)).toEqual({ kind: "app", href: "/(main)/orders" });
+    expect(resolveOwlLink("/expenses", "seacook", WEB)).toEqual({ kind: "app", href: "/(main)/expenses" });
+    expect(resolveOwlLink("/reports/profit", "seacook", WEB)).toEqual({ kind: "app", href: "/(main)/profit" });
     expect(resolveOwlLink("/menu/0b6c1f8e-4b1a-4c3e-9d2a-1234567890ab", "seacook", WEB)).toEqual({
       kind: "app",
       href: "/(main)/product/0b6c1f8e-4b1a-4c3e-9d2a-1234567890ab",

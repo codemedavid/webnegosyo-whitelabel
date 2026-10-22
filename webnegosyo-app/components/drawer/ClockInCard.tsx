@@ -14,6 +14,8 @@ interface ClockInCardProps {
   canManage: boolean;
   /** Why tills cannot be offered right now (branch not chosen, read failed). */
   notice: string | null;
+  /** A plain pointer, not a problem: "Start a shift to pay from the drawer." */
+  hint?: string | null;
   onClockIn: (drawerId: string | null, floatText: string) => void;
   onSetUpDrawers: () => void;
 }
@@ -26,7 +28,7 @@ interface ClockInCardProps {
  * that, not the cashier. A till someone else holds is shown, not hidden, so
  * "where is Cashier 2?" answers itself ("In use · Ana").
  */
-export function ClockInCard({ board, isBusy, canManage, notice, onClockIn, onSetUpDrawers }: ClockInCardProps) {
+export function ClockInCard({ board, isBusy, canManage, notice, hint = null, onClockIn, onSetUpDrawers }: ClockInCardProps) {
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [floatText, setFloatText] = useState<string | null>(null);
 
@@ -61,6 +63,11 @@ export function ClockInCard({ board, isBusy, canManage, notice, onClockIn, onSet
           : "Count the cash already in the drawer so your takings reconcile at close."}
       </Text>
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+      {hint ? (
+        <Text style={styles.hint} accessibilityLiveRegion="polite">
+          {hint}
+        </Text>
+      ) : null}
 
       {hasDrawers ? (
         <View style={styles.grid} accessibilityRole="radiogroup">
@@ -164,6 +171,14 @@ const styles = StyleSheet.create({
   title: { ...typography.heading, color: colors.textPrimary },
   meta: { ...typography.caption, color: colors.textSecondary },
   notice: { ...typography.caption, color: colors.danger, fontWeight: "600" },
+  hint: {
+    ...typography.caption,
+    fontWeight: "600",
+    color: colors.statusPending.text,
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs },
   tile: {
     flexGrow: 1,

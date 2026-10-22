@@ -14,7 +14,7 @@
  */
 import { readFileSync } from 'fs'
 import path from 'path'
-import { IMPLIED_BY, ORDER_READ_KEYS, PAYMENT_READ_KEYS } from '@/lib/staff-permissions'
+import { IMPLIED_BY, OPT_IN_PERMISSION_KEYS, ORDER_READ_KEYS, PAYMENT_READ_KEYS } from '@/lib/staff-permissions'
 
 const migration = (name: string): string =>
   readFileSync(path.join(process.cwd(), 'supabase', 'migrations', name), 'utf8')
@@ -64,6 +64,25 @@ describe('20261013120050 app_user_has_permission', () => {
 
   it('backfills nobody: it only teaches the rule', () => {
     expect(KEYS).not.toMatch(/update public\.app_users/)
+  })
+})
+
+describe('20261022130200 expenses is opt-in', () => {
+  const OPT_IN = code(migration('20261022130200_expenses_opt_in.sql'))
+  const body = functionBody(OPT_IN, 'app_user_has_permission')
+
+  it('keeps every opt-in key of the registry out of legacy full access', () => {
+    expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(OPT_IN_PERMISSION_KEYS)})`)
+    expect(OPT_IN_PERMISSION_KEYS).toContain('expenses')
+  })
+
+  it('keeps the containments, the definer shape and the grants', () => {
+    expect(body).toContain("(p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))")
+    expect(body).toContain("(p_permission = 'reports' and 'analytics' = any (au.permissions))")
+    expect(OPT_IN).toMatch(/security definer\s+set search_path = ''/)
+    expect(OPT_IN).toContain('revoke all on function public.app_user_has_permission(uuid, text) from public, anon;')
+    expect(OPT_IN).toContain('grant execute on function public.app_user_has_permission(uuid, text) to authenticated, service_role;')
+    expect(OPT_IN).not.toMatch(/update public\.app_users/)
   })
 })
 

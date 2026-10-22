@@ -1,5 +1,7 @@
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
+import { getRequestCaller } from '@/lib/auth/request-caller'
+import { canSeeProfit } from '@/lib/reports/profit-view'
 import { loadReportPage } from '@/lib/reports/read/load-report-context'
 import { reportHref } from '@/lib/reports/report-links'
 import { ChartSkeleton, KpiRowSkeleton } from '@/components/admin/reports'
@@ -11,6 +13,7 @@ import {
   reportsPath,
 } from '@/components/admin/reports/sales/report-page-chrome'
 import { ReportRefused, ReportUnsupported } from '@/components/admin/reports/sales/report-states'
+import { ProfitEntryCard } from '@/components/admin/reports/profit/profit-chrome'
 import { SalesOverview } from '@/components/admin/reports/sales/sales-overview'
 
 interface SalesReportPageProps {
@@ -41,6 +44,8 @@ export default async function SalesReportPage({ params, searchParams }: SalesRep
 
   const { context } = page
   const path = reportsPath(context)
+  const { appUser, roleError } = await getRequestCaller()
+  const showsProfit = canSeeProfit(roleError ? null : appUser, context.tenantId)
   return (
     <ReportPageFrame>
       <ReportHeader context={context} title={TITLE} description={DESCRIPTION} path={path} />
@@ -57,6 +62,7 @@ export default async function SalesReportPage({ params, searchParams }: SalesRep
       >
         <SalesOverview context={context} />
       </Suspense>
+      {showsProfit && <ProfitEntryCard tenantSlug={context.tenantSlug} filter={context.filter} />}
       <ReportFooter />
     </ReportPageFrame>
   )

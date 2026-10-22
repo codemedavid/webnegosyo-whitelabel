@@ -31,7 +31,14 @@ const SHIFT_COLUMNS =
   "id, tenant_id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_id, drawer_name, is_zero_balance, closed_by_name";
 
 /** History rows also carry their cash moves, so turnover counts mid-shift pickups. */
-const HISTORY_COLUMNS = `${SHIFT_COLUMNS}, shift_cash_movements(kind, amount)`;
+const HISTORY_COLUMNS = `${SHIFT_COLUMNS}, shift_cash_movements(kind, amount, reason, created_at)`;
+
+/** One pay-out on a shift's history row: what was spent from the drawer, and why. */
+export interface ShiftPayOut {
+  amount: number;
+  reason: string | null;
+  createdAt: string | null;
+}
 
 /** One shift, as the screens consume it. */
 export interface ShiftRecord {
@@ -59,6 +66,8 @@ export interface ShiftRecord {
   closedByName: string | null;
   /** Pay ins / outs / pickups — present on history reads only. */
   moves?: CashMoveTotals;
+  /** Each pay-out with its reason, oldest first — present on history reads only. */
+  payOuts?: ShiftPayOut[];
 }
 
 interface ShiftRow {
@@ -77,7 +86,26 @@ interface ShiftRow {
   drawer_name?: string | null;
   is_zero_balance?: boolean | null;
   closed_by_name?: string | null;
-  shift_cash_movements?: { kind: string; amount: number | string }[] | null;
+  shift_cash_movements?: CashMoveRow[] | null;
+}
+
+interface CashMoveRow {
+  kind: string;
+  amount: number | string;
+  reason?: string | null;
+  created_at?: string | null;
+}
+
+/** The pay-outs among a shift's cash moves, oldest first, reasons trimmed. */
+function toPayOuts(rows: readonly CashMoveRow[]): ShiftPayOut[] {
+  return rows
+    .filter((m) => m.kind === "pay_out")
+    .map((m) => ({
+      amount: Number(m.amount),
+      reason: m.reason?.trim() ? m.reason.trim() : null,
+      createdAt: m.created_at ?? null,
+    }))
+    .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
 }
 
 /**
@@ -114,6 +142,7 @@ function toShift(row: ShiftRow): ShiftRecord {
                 row.shift_cash_movements.map((m) => ({ kind: m.kind as CashMoveKind, amount: Number(m.amount) })),
               )
             : NO_CASH_MOVES,
+          payOuts: toPayOuts(row.shift_cash_movements),
         }
       : {}),
   };

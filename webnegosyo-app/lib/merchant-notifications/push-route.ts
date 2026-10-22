@@ -1,8 +1,11 @@
 // Where a tapped push lands. One router for every push kind the app knows,
 // so the root layout has one listener. Order pushes carry neither shape and
-// are left to the order screens, as before.
+// are left to the order screens, as before. Bill reminders are LOCAL
+// notifications (lib/expenses/bill-alerts.ts) but a tap on them arrives
+// through the same response listener.
 
 import { announcementRouteFromPushData } from "../announcements/popup";
+import { billReminderRouteFromPushData } from "../expenses/bill-links";
 import { ingredientHref } from "../navigation";
 
 export const NOTIFICATIONS_ROUTE = "/(main)/notifications" as const;
@@ -19,5 +22,5 @@ function stockAlertRouteFromPushData(data: unknown): string | null {
 }
 
 export function routeFromPushData(data: unknown): string | null {
-  return announcementRouteFromPushData(data) ?? stockAlertRouteFromPushData(data);
+  return announcementRouteFromPushData(data) ?? stockAlertRouteFromPushData(data) ?? billReminderRouteFromPushData(data);
 }

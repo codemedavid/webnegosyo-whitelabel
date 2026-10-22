@@ -58,6 +58,11 @@ export const STAFF_PERMISSION_KEYS = [
   // Phase 3/5), so screens hide them. Given once to every 'menu' holder
   // alongside 'inventory'.
   'costs',
+  // The expense book: recording, fixing and voiding expenses, the categories
+  // and suppliers they file under. Its own key, implied by nothing: spending
+  // the store's money is not reading its sales ('reports') or pricing its
+  // ingredients ('costs'). The profit page needs this AND 'costs'.
+  'expenses',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -150,6 +155,10 @@ export const STAFF_PERMISSION_LABELS: Record<
     label: 'Costs & Profit',
     description: 'See and change what ingredients cost, dish costs, gross profit and food cost %',
   },
+  expenses: {
+    label: 'Expenses',
+    description: 'Record, fix and void expenses, manage categories and suppliers, see the expense book.',
+  },
 }
 
 export const MAX_STAFF_PER_TENANT = 3
@@ -185,10 +194,12 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
  * `null` predates staff management and means "everything that existed then".
  * Watching every colleague's refunds and approving another person's money
  * moves are new kinds of trust, so a legacy account must not wake up holding
- * them. Mirrored in SQL by `public.app_user_has_permission` and in the three
+ * them. The expense book (salaries, rent, owner draws) and the Profit it
+ * feeds are the same kind of trust (owner's call, 2026-10-22): a person is
+ * given Expenses by name. Mirrored in SQL by `public.app_user_has_permission` and in the three
  * other registry copies (staff-permissions-parity.test.ts pins all of them).
  */
-export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses'] as const satisfies readonly StaffPermissionKey[]
 
 /** Whether full access (`permissions: null`) grants `key`. */
 export function isGrantedByFullAccess(key: string): boolean {
@@ -311,6 +322,9 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Sales reports (Phase 1 routes register here before they exist, so the
   // first page under /admin/reports can never ship open to every account).
   reports: 'reports',
+  // The expense book. The profit page lives under reports and re-checks
+  // 'expenses' + 'costs' inside the page.
+  expenses: 'expenses',
   'boost-sales': 'analytics',
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
@@ -394,6 +408,11 @@ const MOBILE_TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // app's TAB_PERMISSIONS (webnegosyo-app/lib/staff-permissions.ts).
   inventory: 'inventory',
   'daily-report': 'costs',
+  // The expense book; the profit screen rides 'reports' and re-checks
+  // 'expenses' + 'costs' itself. Mirrors the app's TAB_PERMISSIONS.
+  expenses: 'expenses',
+  'expense-bills': 'expenses',
+  profit: 'reports',
 }
 
 export function permissionForMobileTab(tab: string): StaffPermissionKey | null {

@@ -12,7 +12,12 @@ function sales(count: number): string {
   return `${count} ${count === 1 ? "sale" : "sales"}`;
 }
 
-export function offlineBannerText(status: string, counts: BannerCounts): string | null {
+/**
+ * `expensesWaiting`: expenses saved on this phone that have not reached the
+ * server yet (lib/expenses/live-expense-queue.ts) — said so the cashier does
+ * not wipe the phone or assume the owner can already see them.
+ */
+export function offlineBannerText(status: string, counts: BannerCounts, expensesWaiting = 0): string | null {
   const parts: string[] = [];
   if (status === "offline") {
     parts.push(
@@ -25,6 +30,9 @@ export function offlineBannerText(status: string, counts: BannerCounts): string 
   }
   if (counts.stuck > 0) {
     parts.push(`${sales(counts.stuck)} could not sync — check the order list`);
+  }
+  if (expensesWaiting > 0) {
+    parts.push(`${expensesWaiting} ${expensesWaiting === 1 ? "expense" : "expenses"} waiting to send`);
   }
   return parts.length === 0 ? null : parts.join(" · ");
 }

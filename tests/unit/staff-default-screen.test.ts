@@ -3,6 +3,7 @@ import {
   selectableDefaultScreens,
   validateDefaultTab,
 } from '@/lib/staff-default-screen'
+import { isGrantedByFullAccess } from '@/lib/staff-permissions'
 
 /**
  * The screens an owner may pin a staff account to.
@@ -40,9 +41,11 @@ describe('selectableDefaultScreens', () => {
     expect(offered).not.toContain('analytics')
   })
 
-  it('offers an owner every screen', () => {
+  it('offers full access every screen except those behind an opt-in key (Expenses is ticked per person)', () => {
     const offered = selectableDefaultScreens({ permissions: FULL_ACCESS })
-    expect(offered).toHaveLength(DEFAULT_SCREEN_OPTIONS.length)
+    const reachable = DEFAULT_SCREEN_OPTIONS.filter((o) => o.permission === null || isGrantedByFullAccess(o.permission))
+    expect(offered).toHaveLength(reachable.length)
+    expect(offered.map((o) => o.tab)).not.toContain('expenses')
   })
 
   it('offers the ungated screens to a staff member holding nothing yet', () => {

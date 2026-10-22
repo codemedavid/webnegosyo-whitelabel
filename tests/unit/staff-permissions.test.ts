@@ -61,6 +61,8 @@ describe('staff permission registry', () => {
       'reports',
       'inventory',
       'costs',
+      // The expense book: record, fix and void expenses. Implied by nothing.
+      'expenses',
     ])
   })
 
@@ -122,8 +124,8 @@ describe('hasPermission', () => {
 })
 
 describe('opt-in permissions (activity_view, approve_requests)', () => {
-  it('names exactly the two store-activity keys', () => {
-    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests'])
+  it('names exactly the two store-activity keys and the expense book', () => {
+    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests', 'expenses'])
   })
 
   it('labels them for the owner picking them', () => {

@@ -41,7 +41,7 @@ actor_user_id uuid null, actor_name text null (snapshot; null actor = "System"/"
 approved_by uuid null, approved_by_name text null,
 amount numeric null (pesos, signed from the store's point of view: money out negative),
 quantity numeric null (signed), unit text null, reason text null, note text null,
-subject_type text null ('order','ingredient','menu_item','shift','member','voucher','staff','setting','approval','count','transfer'),
+subject_type text null ('order','ingredient','menu_item','shift','member','voucher','staff','setting','approval','count','transfer','expense'),
 subject_ref text null (id as text — NO foreign keys; survives order deletion),
 order_number text null (display, e.g. '#14' daily number or short id),
 backend text null ('platform'|'convex'|'supabase'), external_order_id text null,
@@ -63,6 +63,9 @@ Indexes: (tenant_id, occurred_at desc, id desc); (tenant_id, outlet_id, occurred
 | menu | menu.price_changed, menu.availability_changed, menu.item_added, menu.item_removed |
 | team | staff.added, staff.removed, staff.access_changed, settings.changed, rules.changed, assistant.action_confirmed, campaign.status_changed, voucher.status_changed |
 | approvals | approval.requested, approval.approved, approval.declined, approval.expired, approval.withdrawn, approval.executed, approval.failed |
+| expenses | expense.recorded, expense.voided |
+
+`expenses` was added by `20261022120200_expenses_activity_and_bucket.sql` (docs/plans/expenses/contract.md §6): `expense.recorded` on every new expense (amount negative, money out; a drawer expense also keeps its `cash.pay_out` row), `expense.voided` on recorded → void (amount positive, reason = the void reason; SENSITIVE — `after_hours` is added like the other sensitive kinds in `store_activity_write`). subject_type `expense`, subject_ref = the expense id. The taxonomy test reads the NEWEST migration that defines each CHECK / vocabulary function.
 
 ### Flags (closed vocabulary)
 

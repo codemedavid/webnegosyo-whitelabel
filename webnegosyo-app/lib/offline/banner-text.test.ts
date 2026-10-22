@@ -25,3 +25,16 @@ describe("offlineBannerText", () => {
     );
   });
 });
+
+describe("expenses waiting on this phone", () => {
+  it("says how many expenses are still to send, alongside any sales", () => {
+    expect(offlineBannerText("online", { pending: 0, stuck: 0 }, 1)).toBe("1 expense waiting to send");
+    expect(offlineBannerText("offline", { pending: 2, stuck: 0 }, 3)).toBe(
+      "Offline — 2 sales saved on this device · 3 expenses waiting to send"
+    );
+  });
+
+  it("stays silent when no expense is waiting", () => {
+    expect(offlineBannerText("online", { pending: 0, stuck: 0 }, 0)).toBeNull();
+  });
+});

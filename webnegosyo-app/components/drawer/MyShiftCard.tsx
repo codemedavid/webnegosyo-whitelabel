@@ -3,12 +3,14 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { CASH_MOVE_COPY, type CashMove } from "../../lib/cash-drawers";
 import type { DrawerExpectationRead } from "../../lib/drawer-expectation";
+import type { RefusedPayout } from "../../lib/expenses/expense-queue";
 import { formatPeso } from "../../lib/format";
 import { formatShiftElapsed } from "../../lib/shift-status";
 import type { ShiftRecord } from "../../lib/shift-service";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { RefusedPayouts } from "./RefusedPayouts";
 
 interface MyShiftCardProps {
   shift: ShiftRecord;
@@ -20,6 +22,19 @@ interface MyShiftCardProps {
   nowMs: number;
   onCashMove: () => void;
   onEndShift: () => void;
+  /**
+   * The shift's pay-outs told apart (expenses / taken out / unsorted / undone),
+   * replacing the single "Paid out" line. Null = not known yet, or no expenses here.
+   */
+  payoutLines?: readonly { label: string; value: string }[] | null;
+  /** "2 expenses waiting to sync · −₱1,370" — already out of the drawer, not yet on the server. */
+  pendingLine?: string | null;
+  /** Opens the expense sheet locked to this drawer. Absent = no expenses in this store yet. */
+  onPayExpense?: () => void;
+  /** Pay-outs from this drawer the store did not take, with Try again / Remove. */
+  refusedPayouts?: readonly RefusedPayout[];
+  onRetryRefused?: (id: string) => Promise<void>;
+  onRemoveRefused?: (id: string) => Promise<void>;
 }
 
 /** How many moves the card lists before it stops. */
@@ -37,14 +52,32 @@ function clock(iso: string): string {
  * is judged against; every line under it is a term of that sum, in the order
  * money moved: float in, sales in, moves in and out.
  */
-export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, onCashMove, onEndShift }: MyShiftCardProps) {
+export function MyShiftCard({
+  shift,
+  expectation,
+  moves,
+  activityLine,
+  nowMs,
+  onCashMove,
+  onEndShift,
+  payoutLines,
+  pendingLine,
+  onPayExpense,
+  refusedPayouts,
+  onRetryRefused,
+  onRemoveRefused,
+}: MyShiftCardProps) {
   const ready = expectation.state === "ready" ? expectation.value : null;
   const lines: { label: string; value: string }[] = ready
     ? [
         { label: shift.isZeroBalance ? "Starting cash (zero balance)" : "Starting cash", value: formatPeso(shift.openingFloat) },
         { label: "My cash sales", value: `+${formatPeso(ready.summary.cashTotal)}` },
         ...(ready.moves.payIn > 0 ? [{ label: "Paid in", value: `+${formatPeso(ready.moves.payIn)}` }] : []),
-        ...(ready.moves.payOut > 0 ? [{ label: "Paid out", value: `−${formatPeso(ready.moves.payOut)}` }] : []),
+        ...(payoutLines
+          ? payoutLines
+          : ready.moves.payOut > 0
+            ? [{ label: "Paid out", value: `−${formatPeso(ready.moves.payOut)}` }]
+            : []),
         ...(ready.moves.collected > 0 ? [{ label: "Collected", value: `−${formatPeso(ready.moves.collected)}` }] : []),
       ]
     : [];
@@ -110,6 +143,10 @@ export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, on
         </View>
       ) : null}
 
+      {pendingLine ? <Text style={styles.pending}>{pendingLine}</Text> : null}
+      {refusedPayouts && onRetryRefused && onRemoveRefused ? (
+        <RefusedPayouts payouts={refusedPayouts} onRetry={onRetryRefused} onRemove={onRemoveRefused} />
+      ) : null}
       {activityLine ? <Text style={styles.activity}>{activityLine}</Text> : null}
 
       {recent.length > 0 ? (
@@ -132,6 +169,17 @@ export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, on
         </View>
       ) : null}
 
+      {onPayExpense ? (
+        <Button
+          label="Pay an expense"
+          tone="secondary"
+          icon="receipt"
+          onPress={onPayExpense}
+          fullWidth
+          style={styles.payExpense}
+          accessibilityHint="Pay for ice, LPG or a rider from this drawer and save it as an expense"
+        />
+      ) : null}
       <View style={styles.actions}>
         <Button
           label="Cash in / out"
@@ -139,7 +187,7 @@ export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, on
           icon="payments"
           onPress={onCashMove}
           style={styles.flex}
-          accessibilityHint="Record a pay in, pay out or a cash drop"
+          accessibilityHint="Add cash, take cash out or record a pickup"
         />
         <Button label="End shift" onPress={onEndShift} style={styles.endShift} accessibilityHint="Count the drawer and close your shift" />
       </View>
@@ -191,6 +239,8 @@ const styles = StyleSheet.create({
   handoverText: { ...typography.caption, fontWeight: "700", color: colors.heroInkText },
   handoverMeta: { ...typography.small, color: colors.heroInkMuted },
   activity: { ...typography.small, color: colors.heroInkMuted },
+  pending: { ...typography.small, fontWeight: "700", color: colors.heroInkText },
+  payExpense: { marginTop: spacing.sm },
   moves: { gap: 6 },
   move: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   moveText: { ...typography.small, color: colors.heroInkMuted, flex: 1 },

@@ -238,6 +238,11 @@ describe("routeFromPushData", () => {
     expect(routeFromPushData({ announcementId: "a1", kind: "post" })).toBe("/(main)/whats-new/a1");
   });
 
+  it("opens Bills to pay from a bill reminder: one bill opens its sheet, a bundle the list", () => {
+    expect(routeFromPushData({ type: "bill_reminder", billIds: ["bill-rent"] })).toBe("/(main)/expense-bills?bill=bill-rent");
+    expect(routeFromPushData({ type: "bill_reminder", billIds: ["bill-rent", "bill-power"] })).toBe("/(main)/expense-bills");
+  });
+
   it("ignores pushes it does not know, like new orders", () => {
     expect(routeFromPushData({ orderId: "o1" })).toBeNull();
     expect(routeFromPushData(null)).toBeNull();

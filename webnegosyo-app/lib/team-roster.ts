@@ -99,6 +99,10 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
     label: "Costs",
     description: "What things cost: ingredient prices, dish cost, and food cost %",
   },
+  expenses: {
+    label: "Expenses",
+    description: "Record, fix and void expenses, manage categories and suppliers, see the expense book.",
+  },
 };
 
 /** Every grantable permission, in registry order, labelled for the owner. */
@@ -142,6 +146,8 @@ const SCREEN_LABELS: Record<string, string> = {
   portfolio: "Branches",
   branches: "Compare Branches",
   "branch-menu": "Branch Menu",
+  expenses: "Expenses",
+  profit: "Profit",
 };
 
 /**
