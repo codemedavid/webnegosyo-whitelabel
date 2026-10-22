@@ -285,7 +285,8 @@ async function checkStaffWithoutKey(db) {
   await refused(db.query("insert into suppliers (tenant_id, name) values ($1, 'Aling Nena')", [T_A]), '42501', 'staff without expenses cannot add suppliers')
 
   await as(db, 'authenticated', U.legacy)
-  eq(Number(await scalar(db, 'select count(*) from expenses')) > 0, true, 'legacy full access (permissions NULL) holds expenses')
+  eq(Number(await scalar(db, 'select count(*) from expenses')), 0, 'legacy full access (permissions NULL) does NOT hold expenses: it is opt-in, ticked per person')
+  await refused(insertExpense(db, { category: cat.rent }), '42501', 'nor can it record one')
 }
 
 async function checkBookkeeper(db) {
@@ -613,6 +614,7 @@ async function main() {
     await db.exec('set check_function_bodies = off')
     await db.exec(readMigration('20261022130000_expenses_security_folds.sql'))
     await db.exec('set check_function_bodies = on')
+    await db.exec(readMigration('20261022130200_expenses_opt_in.sql'))
 
     await checkSeeding(db)
     await checkAnon(db)

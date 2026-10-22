@@ -127,7 +127,7 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
  * Mirror of `OPT_IN_PERMISSION_KEYS` in src/lib/staff-permissions.ts (see the
  * reasoning there); the parity test pins every copy.
  */
-export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses'] as const satisfies readonly StaffPermissionKey[]
 
 function isGrantedByFullAccess(key: string): boolean {
   return !(OPT_IN_PERMISSION_KEYS as readonly string[]).includes(key)

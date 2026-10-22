@@ -2,8 +2,8 @@
  * The `expenses` key (docs/plans/expenses/contract.md §7).
  *
  * Recording, fixing and voiding expenses moves the store's own money, so it
- * is its own grant: not opt-in (a legacy full-access account holds it, like
- * every other non-opt-in key), and implied by nothing — neither the sales
+ * is its own grant: opt-in (a legacy full-access account does NOT hold it;
+ * the owner ticks it per person — owner's call 2026-10-22), and implied by nothing — neither the sales
  * books ('reports') nor ingredient prices ('costs') let anyone spend.
  */
 import {
@@ -37,9 +37,10 @@ describe('the expenses key', () => {
     expect(validatePermissionKeys(['expenses'])).toEqual(['expenses'])
   })
 
-  test('is not opt-in: a legacy full-access account holds it', () => {
-    expect(OPT_IN_PERMISSION_KEYS).not.toContain('expenses')
-    expect(hasPermission(staff(null), 'expenses')).toBe(true)
+  test('is opt-in: a legacy full-access account does not hold it, a named grant does', () => {
+    expect(OPT_IN_PERMISSION_KEYS).toContain('expenses')
+    expect(hasPermission(staff(null), 'expenses')).toBe(false)
+    expect(hasPermission(staff(['expenses']), 'expenses')).toBe(true)
   })
 
   test('is implied by nothing and implies nothing', () => {

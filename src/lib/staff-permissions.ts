@@ -194,10 +194,12 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
  * `null` predates staff management and means "everything that existed then".
  * Watching every colleague's refunds and approving another person's money
  * moves are new kinds of trust, so a legacy account must not wake up holding
- * them. Mirrored in SQL by `public.app_user_has_permission` and in the three
+ * them. The expense book (salaries, rent, owner draws) and the Profit it
+ * feeds are the same kind of trust (owner's call, 2026-10-22): a person is
+ * given Expenses by name. Mirrored in SQL by `public.app_user_has_permission` and in the three
  * other registry copies (staff-permissions-parity.test.ts pins all of them).
  */
-export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses'] as const satisfies readonly StaffPermissionKey[]
 
 /** Whether full access (`permissions: null`) grants `key`. */
 export function isGrantedByFullAccess(key: string): boolean {
