@@ -668,14 +668,15 @@ function twiceMonthlyCollides(rule: BillRule): boolean {
   return a === b
 }
 
-function scheduleProblem(draft: BillDraft, today: string): Problem {
+function scheduleProblem(draft: BillDraft, today: string, savedStartsOn: string | null): Problem {
   const ruleMessage = ruleProblem(draft.rule)
   if (ruleMessage) return { field: 'rule', message: ruleMessage }
   if (twiceMonthlyCollides(draft.rule)) {
     return { field: 'rule', message: 'Pick two days that never fall on the same date' }
   }
   if (!isRealDate(draft.startsOn)) return { field: 'startsOn', message: 'Pick a start date' }
-  if (daysBetween(draft.startsOn, today) > BILL_START_MAX_AGE_DAYS) {
+  // Only a NEW start date is bounded: a bill running for years keeps its own.
+  if (draft.startsOn !== savedStartsOn && daysBetween(draft.startsOn, today) > BILL_START_MAX_AGE_DAYS) {
     return { field: 'startsOn', message: `Pick a start date within the last ${BILL_START_MAX_AGE_DAYS} days` }
   }
   if (draft.endsOn !== null && !isRealDate(draft.endsOn)) return { field: 'endsOn', message: 'Pick an end date' }
@@ -691,10 +692,16 @@ function scheduleProblem(draft: BillDraft, today: string): Problem {
 
 /**
  * A bill draft's first problem, in the owner's words. `today` (Manila) bounds
- * the start date: no more than 400 days ago.
+ * a new start date: no more than 400 days ago. When editing, pass the saved
+ * bill's `startsOn` so an old bill can still be changed.
  */
-export function validateBillDraft(draft: BillDraft, today: string): BillDraftCheck {
-  const problem = textProblem(draft) ?? moneyProblem(draft) ?? scheduleProblem(draft, today)
+export function validateBillDraft(
+  draft: BillDraft,
+  today: string,
+  options: { savedStartsOn?: string | null } = {},
+): BillDraftCheck {
+  const problem =
+    textProblem(draft) ?? moneyProblem(draft) ?? scheduleProblem(draft, today, options.savedStartsOn ?? null)
   return problem ? { ok: false, ...problem } : { ok: true }
 }
 

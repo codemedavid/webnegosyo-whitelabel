@@ -9,22 +9,19 @@ import { createClient } from '@/lib/supabase/server'
 import type { UnsortedPayout } from '@/lib/expenses/types'
 import { expensesAccessFor } from '@/components/admin/expenses/expenses-access'
 import { manilaToday, resolveMonth, shiftMonth } from '@/components/admin/expenses/expense-format'
-import type { ExpensesOutlet, ExpensesPageData } from '@/components/admin/expenses/expenses-page-data'
+import type { ExpensesPageData } from '@/components/admin/expenses/expenses-page-data'
 import { ExpensesSkeleton } from '@/components/admin/expenses/expenses-skeleton'
 import { ExpensesLoadFailed, ExpensesLocked } from '@/components/admin/expenses/expenses-states'
 import { ExpensesWorkspace } from '@/components/admin/expenses/expenses-workspace'
 import { readInitialLink } from '@/components/admin/expenses/expenses-deep-link'
 import type { ExpensesInitialLink } from '@/components/admin/expenses/expenses-page-data'
+import { readExpensesTab, readMonthParam } from '@/components/admin/expenses/expenses-tabs'
+import { BillsBook } from './bills-book'
+import { outletLists, readBillNames, readOutlets } from './expenses-reads'
 
 interface ExpensesPageProps {
   params: Promise<{ tenant: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
-}
-
-interface OutletRow {
-  id: string
-  name: string
-  is_active: boolean | null
 }
 
 const PAGE_TITLE = (
@@ -56,19 +53,21 @@ export default async function ExpensesPage({ params, searchParams }: ExpensesPag
   }
 
   const requestedMonth = Array.isArray(query.month) ? query.month[0] : query.month
+  const tab = readExpensesTab(query)
+  const book = {
+    id: tenant.id,
+    slug: tenantSlug,
+    isMultiBranch: isMultiBranchEnabled(tenant),
+    tracksStock: (tenant as { inventory_enabled?: boolean | null }).inventory_enabled === true,
+  }
+  const lockedOutletId = access.scope.kind === 'branch' ? access.scope.outletId : null
   return (
-    <Suspense key={requestedMonth ?? 'current'} fallback={<ExpensesSkeleton />}>
-      <ExpensesBook
-        tenant={{
-          id: tenant.id,
-          slug: tenantSlug,
-          isMultiBranch: isMultiBranchEnabled(tenant),
-          tracksStock: (tenant as { inventory_enabled?: boolean | null }).inventory_enabled === true,
-        }}
-        lockedOutletId={access.scope.kind === 'branch' ? access.scope.outletId : null}
-        requestedMonth={requestedMonth ?? null}
-        initial={readInitialLink(query)}
-      />
+    <Suspense key={`${tab}-${requestedMonth ?? 'current'}`} fallback={<ExpensesSkeleton />}>
+      {tab === 'bills' ? (
+        <BillsBook tenant={book} lockedOutletId={lockedOutletId} monthKey={readMonthParam(query)} />
+      ) : (
+        <ExpensesBook tenant={book} lockedOutletId={lockedOutletId} requestedMonth={requestedMonth ?? null} initial={readInitialLink(query)} />
+      )}
     </Suspense>
   )
 }
@@ -78,18 +77,6 @@ interface ExpensesBookProps {
   lockedOutletId: string | null
   requestedMonth: string | null
   initial: ExpensesInitialLink
-}
-
-async function readOutlets(db: SupabaseClient, tenantId: string): Promise<OutletRow[]> {
-  const { data, error } = await db
-    .from('outlets')
-    .select('id, name, is_active')
-    .eq('tenant_id', tenantId)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true })
-  // A failed read must not look like "no branches": that would hide the branch picker.
-  if (error) throw new Error(`Could not read the store's branches: ${error.message}`)
-  return (data ?? []) as OutletRow[]
 }
 
 async function readUnsorted(db: SupabaseClient, tenantId: string, from: string, to: string): Promise<UnsortedPayout[]> {
@@ -124,10 +111,8 @@ async function ExpensesBook({ tenant, lockedOutletId, requestedMonth, initial }:
       }),
       readUnsorted(db, tenant.id, month.from, month.to),
     ])
-    const activeOutlets: ExpensesOutlet[] = outletRows
-      .filter((outlet) => outlet.is_active === true)
-      .map((outlet) => ({ id: outlet.id, name: outlet.name }))
-    const outletNames = Object.fromEntries(outletRows.map((outlet) => [outlet.id, outlet.name]))
+    const { active: activeOutlets, names: outletNames } = outletLists(outletRows)
+    const billNames = await readBillNames(db, tenant.id, list.expenses)
     data = {
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
@@ -143,6 +128,7 @@ async function ExpensesBook({ tenant, lockedOutletId, requestedMonth, initial }:
       lockedOutletId,
       lockedBranchLabel: lockedOutletId ? (outletNames[lockedOutletId] ?? 'Your branch') : null,
       expenses: list.expenses,
+      billNames,
       isTruncated: list.isTruncated,
       unsortedPayouts: lockedOutletId ? unsorted.filter((payout) => payout.outletId === lockedOutletId) : unsorted,
       tracksStock: tenant.tracksStock,

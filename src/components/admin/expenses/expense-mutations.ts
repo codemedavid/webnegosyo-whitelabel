@@ -30,7 +30,8 @@ import type {
 
 const OFFLINE = 'Couldn’t reach the server. Check your connection and try again.'
 
-async function run<T>(call: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+/** Calls one action; a throw (network drop, server crash) comes back as a sentence. */
+export async function runAction<T>(call: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
   try {
     const result = await call()
     if (!result || typeof result !== 'object' || !('ok' in result)) return { ok: false, error: 'Something went wrong. Try again.' }
@@ -41,11 +42,11 @@ async function run<T>(call: () => Promise<ActionResult<T>>): Promise<ActionResul
 }
 
 export function recordExpense(tenantSlug: string, draft: ExpenseDraft): Promise<ActionResult<Expense>> {
-  return run(() => recordExpenseAction(tenantSlug, draft))
+  return runAction(() => recordExpenseAction(tenantSlug, draft))
 }
 
 export function voidExpense(tenantSlug: string, expenseId: string, reason: string): Promise<ActionResult<null>> {
-  return run(() => voidExpenseAction(tenantSlug, { expenseId, reason }))
+  return runAction(() => voidExpenseAction(tenantSlug, { expenseId, reason }))
 }
 
 export function replaceExpense(
@@ -54,7 +55,7 @@ export function replaceExpense(
   reason: string,
   patch: ReplacePatchInput,
 ): Promise<ActionResult<{ id: string }>> {
-  return run(() => replaceExpenseAction(tenantSlug, { expenseId, reason, patch }))
+  return runAction(() => replaceExpenseAction(tenantSlug, { expenseId, reason, patch }))
 }
 
 /** One row of a bulk change: no page refresh; the caller refreshes once at the end. */
@@ -64,25 +65,25 @@ export function replaceExpenseInBulk(
   reason: string,
   patch: ReplacePatchInput,
 ): Promise<ActionResult<{ id: string }>> {
-  return run(() => replaceExpenseInBulkAction(tenantSlug, { expenseId, reason, patch }))
+  return runAction(() => replaceExpenseInBulkAction(tenantSlug, { expenseId, reason, patch }))
 }
 
 export function updateExpenseDetails(tenantSlug: string, update: ExpenseDetailsUpdateInput): Promise<ActionResult<Expense>> {
-  return run(() => updateExpenseDetailsAction(tenantSlug, update))
+  return runAction(() => updateExpenseDetailsAction(tenantSlug, update))
 }
 
 export function sortDrawerPayout(tenantSlug: string, input: SortDrawerPayoutInput): Promise<ActionResult<{ id: string }>> {
-  return run(() => sortDrawerPayoutAction(tenantSlug, input))
+  return runAction(() => sortDrawerPayoutAction(tenantSlug, input))
 }
 
 export function saveCategory(tenantSlug: string, input: CategorySaveInput): Promise<ActionResult<ExpenseCategory>> {
-  return run(() => saveCategoryAction(tenantSlug, input))
+  return runAction(() => saveCategoryAction(tenantSlug, input))
 }
 
 export function archiveCategory(tenantSlug: string, input: ArchiveCategoryInput): Promise<ActionResult<ExpenseCategory>> {
-  return run(() => archiveCategoryAction(tenantSlug, input))
+  return runAction(() => archiveCategoryAction(tenantSlug, input))
 }
 
 export function saveSupplier(tenantSlug: string, input: SupplierSaveInput): Promise<ActionResult<Supplier>> {
-  return run(() => saveSupplierAction(tenantSlug, input))
+  return runAction(() => saveSupplierAction(tenantSlug, input))
 }

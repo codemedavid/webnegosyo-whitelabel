@@ -15,6 +15,7 @@ import { ExpenseDetailSheet } from './expense-detail-sheet'
 import { formatPeso, pesoWords } from './expense-format'
 import { EXPENSE_VIEWS, EXPENSE_VIEW_LABELS, NO_FILTERS, filterExpenses, hasActiveFilters, viewCounts, type ExpenseFilters, type ExpenseView } from './expense-list-model'
 import { ExpensesFilterBar } from './expenses-filter-bar'
+import { ExpensesTabs } from './expenses-tabs'
 import { resolveInitialLink, urlWithoutAdd } from './expenses-deep-link'
 import type { ExpensesPageData } from './expenses-page-data'
 import { EmptyMonth, NoMatches, ProfitHint } from './expenses-states'
@@ -78,6 +79,7 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
 
   const categoriesById = useMemo(() => new Map(data.categories.map((category) => [category.id, category])), [data.categories])
   const outletNames = useMemo(() => new Map(Object.entries(data.outletNames)), [data.outletNames])
+  const billNames = useMemo(() => new Map(Object.entries(data.billNames ?? {})), [data.billNames])
   const flagsById = useMemo(() => {
     const flags = computeFlagsForAll(data.expenses, { categories: data.categories })
     return new Map<string, readonly ExpenseFlag[]>(Object.entries(flags))
@@ -151,6 +153,8 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
             )}
           </div>
         </div>
+
+        <ExpensesTabs tenantSlug={data.tenantSlug} active="expenses" monthKey={data.month.isCurrent ? null : data.month.key} />
 
         <div className="flex flex-wrap items-end justify-between gap-4 rounded-2xl bg-white px-5 py-4 ring-1 ring-border">
           <div className="min-w-0">
@@ -320,6 +324,7 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
           categoriesById={categoriesById}
           outletNames={outletNames}
           supplierNames={supplierNames}
+          billNames={billNames}
           flagsById={flagsById}
           today={data.today}
           isMultiBranch={data.isMultiBranch}
@@ -364,6 +369,7 @@ export function ExpensesWorkspace({ data }: { data: ExpensesPageData }) {
         isMultiBranch={data.isMultiBranch}
         flagsById={flagsById}
         tracksStock={data.tracksStock}
+        billNames={billNames}
         onFix={openFix}
       />
 

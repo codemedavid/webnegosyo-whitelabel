@@ -32,6 +32,8 @@ export interface ExpensesPageData {
   lockedBranchLabel: string | null
   /** The month's expenses, voided rows included (shown struck through). */
   expenses: Expense[]
+  /** Bill id → name, for expenses that pay a bill (the "Bill" badge). Absent = none read. */
+  billNames?: Record<string, string>
   /** True when the month held more rows than one read returns. */
   isTruncated: boolean
   unsortedPayouts: UnsortedPayout[]

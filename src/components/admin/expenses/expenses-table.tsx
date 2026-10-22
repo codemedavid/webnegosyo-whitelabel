@@ -5,7 +5,7 @@ import { Paperclip } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
 import type { Expense, ExpenseCategory, ExpenseFlag } from '@/lib/expenses/types'
-import { CategoryBadge, FlagChip, NotExpenseChip, PaidFromLabel, VoidChip } from './expense-badges'
+import { BillBadge, CategoryBadge, FlagChip, NotExpenseChip, PaidFromLabel, VoidChip } from './expense-badges'
 import { dayLabel, formatMoneyOut, formatPeso, manilaDayOf, pesoWords, stampLabel, timeLabel } from './expense-format'
 import { groupByDay, pageDayGroups, payeeName, type FlagsById } from './expense-list-model'
 
@@ -18,6 +18,8 @@ export interface ExpensesTableProps {
   outletNames: ReadonlyMap<string, string>
   /** Supplier id → name, for rows filed against a picked supplier. */
   supplierNames?: ReadonlyMap<string, string>
+  /** Bill id → name, for rows that pay a bill. */
+  billNames?: ReadonlyMap<string, string>
   flagsById: FlagsById
   today: string
   isMultiBranch: boolean
@@ -47,6 +49,7 @@ export function ExpensesTable({
   categoriesById,
   outletNames,
   supplierNames,
+  billNames,
   flagsById,
   today,
   isMultiBranch,
@@ -127,6 +130,7 @@ export function ExpensesTable({
                     category={categoriesById.get(expense.categoryId)}
                     branchName={isMultiBranch ? (expense.outletId ? (outletNames.get(expense.outletId) ?? 'Branch') : 'Whole store') : null}
                     payee={payeeName(expense, supplierNames)}
+                    billName={expense.billId ? (billNames?.get(expense.billId) ?? null) : undefined}
                     flags={flagsById.get(expense.id) ?? []}
                     isSelected={selectedIds.has(expense.id)}
                     onToggle={() => toggleOne(expense.id)}
@@ -162,6 +166,8 @@ interface ExpenseRowProps {
   branchName: string | null
   /** The picked supplier's name, else the typed payee. */
   payee: string | null
+  /** Pays a bill: its name (null = unknown); undefined = not a bill payment. */
+  billName?: string | null
   flags: readonly ExpenseFlag[]
   isSelected: boolean
   onToggle: () => void
@@ -170,7 +176,7 @@ interface ExpenseRowProps {
 
 const TD = 'border-b border-wn-line px-3 py-2.5 align-middle'
 
-function ExpenseRow({ expense, category, branchName, payee, flags, isSelected, onToggle, onOpen }: ExpenseRowProps) {
+function ExpenseRow({ expense, category, branchName, payee, billName, flags, isSelected, onToggle, onOpen }: ExpenseRowProps) {
   const isVoid = expense.status === 'void'
   const isNotExpense = category?.group === 'not_expense'
   const time = rowTime(expense)
@@ -232,6 +238,11 @@ function ExpenseRow({ expense, category, branchName, payee, flags, isSelected, o
         </p>
         {expense.note?.trim() && payee && <p className="truncate text-[12.5px] text-wn-stone">{payee}</p>}
         {isVoid && <VoidChip reason={expense.voidReason} />}
+        {billName !== undefined && (
+          <div className="mt-1">
+            <BillBadge name={billName} />
+          </div>
+        )}
         {flags.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {flags.map((flag) => (

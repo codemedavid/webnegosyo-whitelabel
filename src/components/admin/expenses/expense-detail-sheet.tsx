@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Ban, Lock, Paperclip, PencilLine, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
@@ -21,6 +22,8 @@ import { MAX_RECEIPTS_PER_EXPENSE, RECEIPT_ACCEPT, uploadReceipts } from './rece
 import { ReceiptPreviews } from './receipt-previews'
 import { keepOpenWhileListOpen } from './combobox'
 import { UNKNOWN_SHIFT, readDrawerShift, voidHelperText, type DrawerShift } from './drawer-shift'
+import { paidForWords } from './bills/bill-board-model'
+import { expensesTabHref } from './expenses-tabs'
 
 type DetailState = { kind: 'loading' } | { kind: 'ready'; detail: ExpenseDetail } | { kind: 'failed'; error: string }
 type Panel = 'none' | 'void' | 'edit'
@@ -37,6 +40,8 @@ export interface ExpenseDetailSheetProps {
   isMultiBranch: boolean
   flagsById: ReadonlyMap<string, readonly ExpenseFlag[]>
   tracksStock: boolean
+  /** Bill id → name, for "Paid for: Rent · October". */
+  billNames?: ReadonlyMap<string, string>
   onFix: (expense: Expense) => void
 }
 
@@ -63,6 +68,7 @@ function DetailBody({
   isMultiBranch,
   flagsById,
   tracksStock,
+  billNames,
   onFix,
 }: ExpenseDetailSheetProps & { expense: Expense }) {
   const router = useRouter()
@@ -229,6 +235,16 @@ function DetailBody({
           {isMultiBranch && <Fact label="Branch">{branch}</Fact>}
           <Fact label="Paid to">{paidTo ?? <Muted>Not recorded</Muted>}</Fact>
           <Fact label="Note">{expense.note ?? <Muted>No note</Muted>}</Fact>
+          {expense.billId && expense.billDueOn && (
+            <Fact label="Paid for">
+              <Link
+                href={expensesTabHref(tenantSlug, 'bills', null)}
+                className="font-semibold text-wn-ink underline decoration-wn-line underline-offset-4 outline-none hover:decoration-wn-ink focus-visible:ring-2 focus-visible:ring-wn-ink"
+              >
+                {paidForWords(billNames?.get(expense.billId) ?? null, expense.billDueOn)}
+              </Link>
+            </Fact>
+          )}
           {category?.group === 'ingredients' && tracksStock && (
             <Fact label="Stock count">{expense.isStockPurchase ? 'Went into stock' : 'Not added to stock'}</Fact>
           )}

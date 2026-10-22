@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, HandCoins, Inbox, Landmark, Smartphone, TriangleAlert, Ban, type LucideIcon } from 'lucide-react'
+import { Banknote, CalendarClock, CreditCard, HandCoins, Inbox, Landmark, Smartphone, TriangleAlert, Ban, type LucideIcon } from 'lucide-react'
 import type { ExpenseCategory, ExpenseFlag, PaidFrom } from '@/lib/expenses/types'
 import { cn } from '@/lib/utils'
 import { PAID_FROM_LABELS } from './expense-format'
@@ -80,6 +80,21 @@ export function VoidChip({ reason }: { reason: string | null }) {
     <span className="inline-flex max-w-full items-center gap-1 text-[12px] font-semibold text-wn-stone">
       <Ban className="size-3 shrink-0" aria-hidden />
       <span className="truncate">Voided{reason ? ` · ${reason}` : ''}</span>
+    </span>
+  )
+}
+
+/** A payment of a bill (Bills to pay): "Bill", with the bill's name for the tooltip and screen readers. */
+export function BillBadge({ name }: { name: string | null }) {
+  const title = name ? `Pays the bill: ${name}` : 'Pays a bill'
+  return (
+    <span
+      title={title}
+      className="inline-flex items-center gap-1 rounded-full bg-wn-sand px-2 py-0.5 text-[11.5px] font-semibold text-wn-ink ring-1 ring-wn-line"
+    >
+      <CalendarClock className="size-3" aria-hidden />
+      Bill
+      <span className="sr-only">{name ? `: ${name}` : ''}</span>
     </span>
   )
 }

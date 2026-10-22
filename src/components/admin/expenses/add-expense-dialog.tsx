@@ -29,6 +29,8 @@ import { CategoryPicker, SupplierPicker } from './pickers'
 import { keepOpenWhileListOpen } from './combobox'
 import { ReceiptAttach, acceptReceiptFiles } from './receipt-attach'
 import { MAX_RECEIPTS_PER_EXPENSE, uploadReceipts } from './receipt-client'
+import { BillAmountChips } from './bills/bill-amount-chips'
+import type { BillPaymentPrefill } from './bills/bill-board-model'
 
 /** How long the "Saved · Undo" toast stays (plan §5.1). */
 const UNDO_TOAST_MS = 6000
@@ -55,6 +57,8 @@ export interface AddExpenseDialogProps {
   initialCategoryId?: string | null
   /** Add mode: the date to start on (a deep link from Profit for a past period); null = today. */
   initialSpentOn?: string | null
+  /** Pay a bill (Bills to pay → Mark paid): pre-filled, and the saved expense settles that due date. */
+  billPayment?: BillPaymentPrefill | null
   /** After a save; the page refreshes its data. */
   onSaved?: (expenseId: string) => void
 }
@@ -86,7 +90,8 @@ const FIELD_INPUT_SUFFIX: Readonly<Record<string, string>> = {
 }
 
 export function AddExpenseDialog(props: AddExpenseDialogProps) {
-  const { isOpen, onOpenChange, fixing } = props
+  const { isOpen, onOpenChange, fixing, billPayment } = props
+  const formKey = fixing?.id ?? (billPayment ? `bill-${billPayment.billId}-${billPayment.billDueOn}` : 'new')
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
@@ -96,7 +101,7 @@ export function AddExpenseDialog(props: AddExpenseDialogProps) {
         onEscapeKeyDown={keepOpenWhileListOpen}
       >
         {/* Remounts per opening (and per expense being fixed), so a form never inherits the last one's state. */}
-        {isOpen && <ExpenseForm key={fixing?.id ?? 'new'} {...props} />}
+        {isOpen && <ExpenseForm key={formKey} {...props} />}
       </DialogContent>
     </Dialog>
   )
@@ -117,6 +122,7 @@ function ExpenseForm({
   fixing = null,
   initialCategoryId = null,
   initialSpentOn = null,
+  billPayment = null,
   onSaved,
 }: AddExpenseDialogProps) {
   const idPrefix = useId().replace(/:/g, '')
@@ -127,11 +133,13 @@ function ExpenseForm({
   const isSavingRef = useRef(false)
   const router = useRouter()
 
-  const [form, setForm] = useState<ExpenseFormState>(() =>
-    fixing
-      ? formFromExpense(fixing)
-      : { ...blankForm({ today, outletId: lockedOutletId }), categoryId: initialCategoryId, spentOn: initialSpentOn ?? today },
-  )
+  const [form, setForm] = useState<ExpenseFormState>(() => {
+    if (fixing) return formFromExpense(fixing)
+    const blank = blankForm({ today, outletId: lockedOutletId })
+    // A branch-locked account always records for its own branch, whatever the bill says.
+    if (billPayment) return { ...blank, ...billPayment.form, outletId: lockedOutletId ?? billPayment.form.outletId ?? null }
+    return { ...blank, categoryId: initialCategoryId, spentOn: initialSpentOn ?? today }
+  })
   const [errors, setErrors] = useState<FormErrors>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -272,7 +280,9 @@ function ExpenseForm({
       return
     }
 
-    const result = await recordExpense(tenantSlug, buildDraft(form, savedAmount, requestId, category))
+    const draft = buildDraft(form, savedAmount, requestId, category)
+    const billLink = billPayment ? { billId: billPayment.billId, billDueOn: billPayment.billDueOn } : {}
+    const result = await recordExpense(tenantSlug, { ...draft, ...billLink })
     setIsSaving(false)
     if (!result.ok) {
       // Same request id on retry: the server returns the first save, never a copy.
@@ -282,6 +292,11 @@ function ExpenseForm({
     await attachAfterSave(result.data.id)
     offerUndo(result.data.id, label)
     onSaved?.(result.data.id)
+    if (billPayment) {
+      // One payment per due date: the bill moves to Paid, so the dialog closes.
+      onOpenChange(false)
+      return
+    }
     // Stay open for the next one (palengke runs come in batches); keep the date, source and branch.
     setLastSaved(label)
     setForm((current) => ({ ...blankForm({ today, paidFrom: current.paidFrom, outletId: current.outletId }), spentOn: current.spentOn }))
@@ -337,12 +352,12 @@ function ExpenseForm({
     >
       <header className="border-b border-wn-line px-6 pb-4 pt-5 pr-12">
         <DialogTitle className="text-[19px] font-extrabold tracking-[-0.01em] text-wn-ink">
-          {mode === 'fix' ? 'Fix this expense' : 'New expense'}
+          {mode === 'fix' ? 'Fix this expense' : (billPayment?.title ?? 'New expense')}
         </DialogTitle>
         <DialogDescription className="mt-1 text-[13.5px] text-wn-stone">
           {mode === 'fix'
             ? 'We void the old entry and save the corrected one. Both stay in the history.'
-            : 'Kung may binayaran ka, idagdag dito. Amount first, then what it was for.'}
+            : (billPayment?.description ?? 'Kung may binayaran ka, idagdag dito. Amount first, then what it was for.')}
         </DialogDescription>
       </header>
 
@@ -375,6 +390,10 @@ function ExpenseForm({
             error={errors.amount}
             isLocked={isDrawerFix}
           />
+
+          {billPayment && billPayment.amountChips.length > 0 && (
+            <BillAmountChips chips={billPayment.amountChips} onPick={(amountText) => update({ amountText })} />
+          )}
 
           <CategoryPicker
             inputId={fieldInputId(idPrefix, 'category')}

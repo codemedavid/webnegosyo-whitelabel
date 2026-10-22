@@ -449,6 +449,13 @@ describe('validateBillDraft', () => {
     expect(validateBillDraft(makeDraft(overrides), TODAY)).toEqual({ ok: false, field, message })
   })
 
+  test('editing a bill that started long ago keeps its own start date', () => {
+    const old = makeDraft({ startsOn: '2024-01-05' })
+    expect(validateBillDraft(old, TODAY)).toMatchObject({ ok: false, field: 'startsOn' })
+    expect(validateBillDraft(old, TODAY, { savedStartsOn: '2024-01-05' })).toEqual({ ok: true })
+    expect(validateBillDraft(makeDraft({ startsOn: '2024-02-05' }), TODAY, { savedStartsOn: '2024-01-05' })).toMatchObject({ ok: false, field: 'startsOn' })
+  })
+
   test('a start exactly 400 days ago is fine', () => {
     expect(validateBillDraft(makeDraft({ startsOn: '2025-09-17' }), TODAY)).toEqual({ ok: true })
   })

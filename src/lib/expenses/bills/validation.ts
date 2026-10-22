@@ -85,7 +85,7 @@ const optionalText = z
  * `amountCents` null = "changes every time". The engine's `validateBillDraft`
  * runs on the parsed value (the day it is parsed is "today" in Manila).
  */
-export const billDraftSchema = z
+const billDraftShape = z
   .object({
     name: z.string({ message: 'Give the bill a name.' }).max(MAX_TEXT_INPUT).transform((value) => value.trim()),
     categoryId: uuid('Pick a category.'),
@@ -100,13 +100,20 @@ export const billDraftSchema = z
     remindDaysBefore: z.number().int('Pick how many days before.'),
   })
   .strict()
-  .superRefine((draft, ctx) => {
-    const check = validateBillDraft(draft, todayInManila(new Date()))
+
+/** The engine's rules on a parsed draft. An edit keeps its own start date, however old. */
+function engineCheck(isEdit: boolean) {
+  return (draft: z.infer<typeof billDraftShape>, ctx: z.RefinementCtx): void => {
+    const check = validateBillDraft(draft, todayInManila(new Date()), { savedStartsOn: isEdit ? draft.startsOn : null })
     if (!check.ok) ctx.addIssue({ code: 'custom', path: [check.field], message: `${check.message}.` })
-  })
+  }
+}
+
+export const billDraftSchema = billDraftShape.superRefine(engineCheck(false))
+
 
 /** Editing a bill: the same draft plus the bill it changes (next occurrences only). */
-export const billUpdateSchema = z.object({ billId, draft: billDraftSchema }).strict()
+export const billUpdateSchema = z.object({ billId, draft: billDraftShape.superRefine(engineCheck(true)) }).strict()
 
 export const billPauseSchema = z
   .object({
