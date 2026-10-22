@@ -45,7 +45,9 @@ export type FindingAction =
   | { kind: "record"; label: string; categoryId: string }
   | { kind: "add"; label: string }
   | { kind: "sort"; label: string }
-  | { kind: "recipes"; label: string };
+  | { kind: "recipes"; label: string }
+  /** A bill with an unpaid due date (lib/profit/profit-bills.ts); opens that bill. */
+  | { kind: "bill"; label: string; billId: string };
 
 export interface FindingRow {
   key: string;

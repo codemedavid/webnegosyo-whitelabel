@@ -68,7 +68,8 @@ export const WORKSPACES: readonly Workspace[] = [
     // Activity is the store's own log (refunds, cancels, stock, drawers): read
     // beside the sales it explains.
     // Expenses sit with the reports they explain: what went out beside what came in.
-    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts", "activity", "expenses", "profit"],
+    // Bills to pay sits right after the expense book it reminds the owner to fill.
+    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts", "activity", "expenses", "expense-bills", "profit"],
     defaultTab: "analytics",
   },
   {

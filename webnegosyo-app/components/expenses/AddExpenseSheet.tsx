@@ -30,9 +30,10 @@ import {
   type AddExpenseMode,
   type ExpenseSheetScope,
 } from "../../lib/expenses/add-expense-form";
+import { amountChips, payForLine, type BillPayContext } from "../../lib/expenses/bills-screen";
 import { rankCategoriesForPicker } from "../../lib/expenses/categories";
 import { manilaToday, spokenCents } from "../../lib/expenses/expense-format";
-import { formatPeso, keypadCents, keypadDisplay, pressKey, type KeypadKey } from "../../lib/expenses/keypad";
+import { formatPeso, keypadCents, keypadDisplay, keypadFromCents, pressKey, type KeypadKey } from "../../lib/expenses/keypad";
 import type { CapturedReceipt } from "../../lib/expenses/receipt-files";
 import { repeatSuggestions } from "../../lib/expenses/repeat-chips";
 import { useExpenseCategories, useRecentExpenses, useTracksStock } from "../../lib/expenses/use-expenses";
@@ -41,7 +42,7 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 import { centeredDialog, useCenteredDialog } from "../pos/dialog-layout";
-import { BackRow, DrawerLine, ExtrasRow, FoldInput, PaidFromRow, RepeatRow, StockQuestion } from "./AddExpenseParts";
+import { BackRow, Chip, DrawerLine, ExtrasRow, FoldInput, PaidFromRow, RepeatRow, StockQuestion } from "./AddExpenseParts";
 import { CategoryGrid, CategoryList } from "./CategoryPicker";
 import { ExpenseAmount } from "./ExpenseAmount";
 import { ExpenseDatePicker, IS_DATE_PICKER_INLINE } from "./ExpenseDatePicker";
@@ -76,6 +77,12 @@ interface AddExpenseSheetProps {
   initialAmountCents?: number;
   initialNote?: string;
   initialIsStockPurchase?: boolean;
+  /**
+   * "Mark paid" on a bill: titled "Pay Rent", a fixed bill's amount typed in
+   * (a changing one offers "Usual" / "Last" chips), its category and source
+   * picked, and the saved expense linked to that due date.
+   */
+  bill?: BillPayContext | null;
 }
 
 /**
@@ -96,6 +103,7 @@ export function AddExpenseSheet({
   initialAmountCents,
   initialNote,
   initialIsStockPurchase,
+  bill = null,
 }: AddExpenseSheetProps) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -105,16 +113,18 @@ export function AddExpenseSheet({
   const { categories, isLoading: isLoadingCategories, error: categoriesError } = useExpenseCategories();
   const { expenses: recent } = useRecentExpenses(visible);
   const tracksStock = useTracksStock();
-  const { isSaving, save } = useExpenseSave({ mode, tracksStock, onCommitted });
+  const { isSaving, save } = useExpenseSave({ mode, tracksStock, onCommitted, bill });
 
-  const opening = { initialCategoryId, initialAmountCents, initialNote, initialIsStockPurchase };
+  const opening = { initialCategoryId, initialAmountCents, initialNote, initialIsStockPurchase, bill };
   const [form, setForm] = useState<AddExpenseForm>(() => formForOpening({ ...opening, today: manilaToday(), paidFrom: "cash" }));
   const [panel, setPanel] = useState<Panel>(null);
   const [receipt, setReceipt] = useState<CapturedReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // The caller's values are applied every time the sheet opens, and again if they change while open.
-  const openKey = visible ? JSON.stringify([initialCategoryId, initialAmountCents ?? null, initialNote ?? null, initialIsStockPurchase ?? null]) : null;
+  const openKey = visible
+    ? JSON.stringify([initialCategoryId, initialAmountCents ?? null, initialNote ?? null, initialIsStockPurchase ?? null, bill?.billId ?? null, bill?.dueOn ?? null])
+    : null;
   const lastOpenKey = useRef(openKey);
   useEffect(() => {
     if (openKey === lastOpenKey.current) return;
@@ -128,13 +138,18 @@ export function AddExpenseSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openKey]);
 
-  const offered = useMemo(() => categoriesForScope(categories, scope), [categories, scope]);
+  const offered = useMemo(() => categoriesForScope(categories, scope, bill), [categories, scope, bill]);
   const ranked = useMemo(() => rankCategoriesForPicker(offered, recent, new Date()), [offered, recent]);
-  const suggestions = useMemo(() => (scope === "take_out" ? [] : repeatSuggestions(recent, offered)), [recent, offered, scope]);
+  const isBill = bill !== null;
+  const suggestions = useMemo(
+    () => (scope === "take_out" || isBill ? [] : repeatSuggestions(recent, offered)),
+    [recent, offered, scope, isBill],
+  );
+  const billChips = bill && bill.amountCents === null ? amountChips(bill.usualCents, bill.lastCents) : [];
   const category: ExpenseCategory | null = offered.find((c) => c.id === form.categoryId) ?? null;
   const cents = keypadCents(form.keypad);
   const isDrawer = mode.kind === "drawer";
-  const hasNextButton = !isDrawer && scope === "spend";
+  const hasNextButton = !isDrawer && scope === "spend" && !isBill;
   const today = manilaToday();
 
   const update = (next: AddExpenseForm) => {
@@ -205,7 +220,7 @@ export function AddExpenseSheet({
 
   const afterCents = drawerAfterCents(mode, cents);
   const isTyping = panel === "note" || panel === "paidTo";
-  const label = primaryLabel(cents, mode, scope, form.categoryId !== null);
+  const label = primaryLabel(cents, mode, scope, form.categoryId !== null, bill);
   const sheetFrame = isCentered
     ? [centeredDialog.sheet, { height: Math.min(height - spacing.xl * 2, MAX_DIALOG_HEIGHT), paddingBottom: spacing.lg }]
     : { flex: 1, marginTop: insets.top + SCRIM_GAP, paddingBottom: Math.max(insets.bottom, spacing.md) };
@@ -229,7 +244,24 @@ export function AddExpenseSheet({
     <>
       <View style={styles.top}>
         {mode.kind === "drawer" ? <DrawerLine chipLabel={drawerChipLabel(mode)} availableCents={mode.availableCents} /> : null}
+        {bill ? (
+          <Text style={styles.billFor} testID="expense-bill-for">
+            {payForLine(bill.dueOn, today)}
+          </Text>
+        ) : null}
         <ExpenseAmount text={keypadDisplay(form.keypad)} cents={cents} baseSize={sizing.amount} />
+        {billChips.length > 0 ? (
+          <View style={styles.billChips}>
+            {billChips.map((chip) => (
+              <Chip
+                key={chip.label}
+                label={chip.label}
+                isOn={cents === chip.cents}
+                onPress={() => update({ ...form, keypad: keypadFromCents(chip.cents) })}
+              />
+            ))}
+          </View>
+        ) : null}
         {mode.kind === "book" ? <PaidFromRow value={form.paidFrom} onPick={(paidFrom) => update({ ...form, paidFrom })} /> : null}
       </View>
       <View style={styles.middle}>
@@ -317,7 +349,7 @@ export function AddExpenseSheet({
           {isCentered ? null : <View style={styles.grab} />}
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-              {sheetTitle(mode, scope)}
+              {sheetTitle(mode, scope, bill)}
             </Text>
             <TouchableOpacity onPress={close} disabled={isSaving} style={styles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={styles.cancelText}>Cancel</Text>
@@ -364,6 +396,8 @@ const styles = StyleSheet.create({
   cancel: { minHeight: 44, justifyContent: "center", paddingLeft: spacing.sm },
   cancelText: { ...typography.body, fontWeight: "600", color: colors.textSecondary },
   top: { gap: spacing.sm },
+  billFor: { ...typography.caption, fontWeight: "600", color: colors.textMuted },
+  billChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   middle: { flex: 1 },
   middleBody: { gap: spacing.md, paddingBottom: spacing.md },
   undo: { position: "absolute", left: 0, right: 0, bottom: spacing.sm },

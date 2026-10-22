@@ -28,7 +28,9 @@ import {
   undoExpense,
 } from "../../lib/expenses/live-expense-queue";
 import type { CapturedReceipt } from "../../lib/expenses/receipt-files";
+import type { BillPayContext } from "../../lib/expenses/bills-screen";
 import { buildUndoEntry } from "../../lib/expenses/undo-entry";
+import { knownBills, repeatOffer } from "../../lib/expenses/bill-ways-in";
 import { useExpenseOutlet, useExpenseTenant, useInvalidateExpenses } from "../../lib/expenses/use-expenses";
 import type { ExpenseCategory } from "../../lib/expenses/types";
 
@@ -50,13 +52,23 @@ interface ExpenseSaveOptions {
   mode: AddExpenseMode;
   tracksStock: boolean;
   onCommitted?: () => void;
+  /** Paying a bill: the saved expense carries its id and due date. */
+  bill?: BillPayContext | null;
 }
 
 function payloadFor(
   form: AddExpenseForm,
-  input: { mode: AddExpenseMode; category: ExpenseCategory; clientRequestId: string; actorName: string; outletId: string | null; tracksStock: boolean },
+  input: {
+    mode: AddExpenseMode;
+    category: ExpenseCategory;
+    clientRequestId: string;
+    actorName: string;
+    outletId: string | null;
+    tracksStock: boolean;
+    bill?: BillPayContext | null;
+  },
 ): QueuedExpensePayload {
-  const { mode, category, clientRequestId, actorName } = input;
+  const { mode, category, clientRequestId, actorName, bill } = input;
   if (mode.kind === "drawer") {
     return {
       kind: "drawer",
@@ -66,7 +78,14 @@ function payloadFor(
   return {
     kind: "book",
     createdByName: actorName,
-    draft: toBookDraft(form, { clientRequestId, outletId: input.outletId, tracksStock: input.tracksStock, category }),
+    // A bill's payment is filed on the bill's own branch (or the whole store).
+    draft: toBookDraft(form, {
+      clientRequestId,
+      outletId: bill && bill.outletId !== undefined ? bill.outletId : input.outletId,
+      tracksStock: input.tracksStock,
+      category,
+      bill,
+    }),
   };
 }
 
@@ -76,7 +95,7 @@ function payloadFor(
  * undo store then counts down — so Undo never has to void anything, a dead
  * zone never loses an entry, and a replay can never record it twice.
  */
-export function useExpenseSave({ mode, tracksStock, onCommitted }: ExpenseSaveOptions) {
+export function useExpenseSave({ mode, tracksStock, onCommitted, bill = null }: ExpenseSaveOptions) {
   const tenantId = useExpenseTenant();
   const outletId = useExpenseOutlet();
   const invalidate = useInvalidateExpenses();
@@ -99,17 +118,29 @@ export function useExpenseSave({ mode, tracksStock, onCommitted }: ExpenseSaveOp
     try {
       const clientRequestId = newLocalOrderId();
       const actorName = await readActorName();
-      const payload = payloadFor(form, { mode, category, clientRequestId, actorName, outletId, tracksStock });
+      const payload = payloadFor(form, { mode, category, clientRequestId, actorName, outletId, tracksStock, bill });
       const kept = await queueExpense({ tenantId, payload, categoryName: category.name }, UNDO_WINDOW_MS);
       if (!kept) return { status: "failed", reason: "This phone could not keep the expense. Free up some space and try again." };
       if (receipt) {
         await queueReceipt({ tenantId, clientRequestId, expenseId: null, fileUri: receipt.fileUri, mime: receipt.mime });
       }
       const isQueued = savesToPhoneOnly(await pendingExpenses(tenantId), { isOffline: isOffline(), exceptId: clientRequestId });
+      const message = savedMessage(category.name, keypadCents(form.keypad), isQueued);
+      // Rent, kuryente, sahod… with no bill yet: "Pay this every month?" → the bill editor.
+      const offer = repeatOffer({
+        isBook: payload.kind === "book",
+        category,
+        billId: payload.kind === "book" ? (payload.draft.billId ?? bill?.billId) : null,
+        bills: knownBills(tenantId),
+        amountCents: keypadCents(form.keypad),
+        spentOn: form.spentOn,
+        savedMessage: message,
+      });
       expenseUndoStore.getState().show(
         buildUndoEntry({
           id: clientRequestId,
-          message: savedMessage(category.name, keypadCents(form.keypad), isQueued),
+          message,
+          offer,
           tenantId,
           actorName,
           queue: { commit: commitQueuedExpense, undo: undoExpense },

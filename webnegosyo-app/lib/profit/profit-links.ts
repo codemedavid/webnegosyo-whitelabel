@@ -4,6 +4,7 @@
  * docs/plans/expenses/app-design.md), never just the month. Pure.
  */
 
+import { billHref } from "../expenses/bill-links";
 import { manilaDay, type ProfitWindow } from "./profit-period";
 import type { FindingAction } from "./profit-view";
 
@@ -41,6 +42,8 @@ export function findingHref(action: FindingAction): string {
       return `${EXPENSES_ROUTE}?view=unsorted`;
     case "recipes":
       return RECIPES_ROUTE;
+    case "bill":
+      return billHref(action.billId);
   }
 }
 

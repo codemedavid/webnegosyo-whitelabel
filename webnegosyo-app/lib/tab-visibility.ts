@@ -60,6 +60,8 @@ export const SUBSCREEN_TABS: readonly string[] = [
   "customers",
   "loyalty",
   "texts",
+  // Bills to pay (rent, kuryente, sahod): reminders the expense book answers.
+  "expense-bills",
 ];
 
 /**

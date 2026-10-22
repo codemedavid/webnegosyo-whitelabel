@@ -6,6 +6,7 @@
  */
 
 import type { IconName } from "../../components/Icon";
+import { withBillFindings, type BillFindingsInput } from "./profit-bills";
 import type { ProfitFinding } from "./profit-model";
 import { findingRow, formatMoney, formatRatio, type FindingAction } from "./profit-view";
 
@@ -87,9 +88,23 @@ export function findingCard(finding: ProfitFinding, periodPhrase: string): Findi
  * The cards under the answer. On a store's first run the welcome card already
  * says "Add your first expense" with its own button, so the "No expenses
  * recorded" card would only repeat it (two Add buttons).
+ *
+ * A store that keeps bills (`bills.hasBills`) hears about a missing payment
+ * from its bills ("Rent is due on the 5th and not marked paid"), first; the
+ * model's category guess is only for stores without bills. `null` = the bills
+ * are not known (still loading): the guess stays until they are.
  */
-export function findingCards(findings: readonly ProfitFinding[], periodPhrase: string, isFirstRun = false): FindingCard[] {
-  return findings
-    .filter((finding) => !(isFirstRun && finding.kind === "no_expenses"))
-    .map((finding) => findingCard(finding, periodPhrase));
+export function findingCards(
+  findings: readonly ProfitFinding[],
+  periodPhrase: string,
+  isFirstRun = false,
+  bills: BillFindingsInput | null = null,
+): FindingCard[] {
+  const { findings: kept, leading } = withBillFindings(findings, bills);
+  return [
+    ...leading,
+    ...kept
+      .filter((finding) => !(isFirstRun && finding.kind === "no_expenses"))
+      .map((finding) => findingCard(finding, periodPhrase)),
+  ];
 }

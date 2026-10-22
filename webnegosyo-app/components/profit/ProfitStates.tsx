@@ -36,13 +36,22 @@ export function ProfitSkeleton() {
   );
 }
 
-/** Before the first expense: what profit is, and the one way to start. */
-export function FirstRunCard({ onAdd }: { onAdd: () => void }) {
+interface FirstRunCardProps {
+  onAdd: () => void;
+  /** The second way in: rent, kuryente and sahod as Bills to pay. */
+  onSetUpBills?: () => void;
+}
+
+/** Before the first expense: what profit is, and the ways to start. */
+export function FirstRunCard({ onAdd, onSetUpBills }: FirstRunCardProps) {
   return (
     <View style={profitCard.card}>
       <Text style={profitCard.title}>Profit is sales, minus ingredients, minus expenses</Text>
       <Text style={styles.body}>We already know your sales. Add your first expense and we’ll do the math.</Text>
       <Button label="Add expense" icon="plus" onPress={onAdd} style={styles.firstRunButton} />
+      {onSetUpBills ? (
+        <Button label="Set up monthly bills" icon="calendar" tone="secondary" onPress={onSetUpBills} testID="profit-first-run-bills" />
+      ) : null}
     </View>
   );
 }

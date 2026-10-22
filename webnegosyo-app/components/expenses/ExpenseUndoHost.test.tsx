@@ -1,8 +1,11 @@
 import fs from "fs";
 import path from "path";
+import React from "react";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 
+import { expenseUndoStore, type UndoEntry } from "../../stores/expense-undo-store";
 import { spacing } from "../../theme/colors";
-import { ROUTES_WITHOUT_TAB_BAR, TAB_BAR_CONTENT_HEIGHT, undoBarBottom } from "./ExpenseUndoHost";
+import { ExpenseUndoBar, ROUTES_WITHOUT_TAB_BAR, TAB_BAR_CONTENT_HEIGHT, undoBarBottom } from "./ExpenseUndoHost";
 
 jest.mock("expo-router", () => ({ useSegments: () => [] }));
 
@@ -38,5 +41,65 @@ describe("where the undo bar sits", () => {
   it("drops to the home indicator on a screen without a tab bar, instead of floating mid-air", () => {
     expect(undoBarBottom(["(main)", "receipt-editor"], 34)).toBe(34 + spacing.sm);
     expect(undoBarBottom(["(main)", "tutorial", "[chapterId]"], 0)).toBe(spacing.sm + spacing.sm);
+  });
+});
+
+describe("Repeat on the undo bar", () => {
+  function entry(id: string, offer: UndoEntry["offer"]): UndoEntry {
+    return {
+      id,
+      message: "Saved · Rent ₱15,000",
+      offer,
+      commit: jest.fn(async () => {}),
+      undo: jest.fn(async () => ({ status: "undone" as const })),
+    };
+  }
+
+  const repeat = {
+    label: "Repeat",
+    message: "Saved · Rent ₱15,000 · Pay this every month?",
+    href: "/(main)/expense-bills?new=1&category=cat-rent&amount=1500000&day=5&name=Rent",
+  };
+
+  afterEach(() => {
+    const current = expenseUndoStore.getState().current;
+    if (current) act(() => expenseUndoStore.getState().commit(current.id));
+  });
+
+  it("asks to pay it every month and opens the bill editor, keeping Undo", () => {
+    // Arrange
+    const navigate = jest.fn();
+    act(() => expenseUndoStore.getState().show(entry("r-repeat-1", repeat)));
+    render(<ExpenseUndoBar onNavigate={navigate} />);
+
+    // Act
+    expect(screen.getByText("Saved · Rent ₱15,000 · Pay this every month?")).toBeTruthy();
+    fireEvent.press(screen.getByRole("button", { name: "Repeat" }));
+
+    // Assert
+    expect(navigate).toHaveBeenCalledWith(repeat.href);
+    expect(screen.queryByRole("button", { name: "Repeat" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(screen.getByText("Saved · Rent ₱15,000")).toBeTruthy();
+  });
+
+  it("Undo still takes the expense back while Repeat is offered", async () => {
+    const saved = entry("r-repeat-2", repeat);
+    act(() => expenseUndoStore.getState().show(saved));
+    render(<ExpenseUndoBar onNavigate={jest.fn()} />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Undo" }));
+    });
+
+    expect(saved.undo).toHaveBeenCalledTimes(1);
+    expect(saved.commit).not.toHaveBeenCalled();
+  });
+
+  it("an ordinary save shows only Undo", () => {
+    act(() => expenseUndoStore.getState().show(entry("r-plain", null)));
+    render(<ExpenseUndoBar onNavigate={jest.fn()} />);
+    expect(screen.queryByRole("button", { name: "Repeat" })).toBeNull();
+    expect(screen.getByText("Saved · Rent ₱15,000")).toBeTruthy();
   });
 });

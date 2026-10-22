@@ -16,6 +16,7 @@
  */
 
 import { validateCashMove } from "../cash-drawers";
+import type { BillPayContext } from "./bills-screen";
 import type { QueuedExpense } from "./expense-queue";
 import { EMPTY_KEYPAD, MAX_AMOUNT_CENTS, formatPeso, keypadCents, keypadFromCents, type KeypadState } from "./keypad";
 import { addDays } from "./manila-date";
@@ -80,6 +81,8 @@ export interface OpeningValues {
   initialAmountCents?: number;
   initialNote?: string;
   initialIsStockPurchase?: boolean;
+  /** Paying a bill ("Mark paid"): its amount (fixed bills), category, source and payee come first. */
+  bill?: BillPayContext | null;
 }
 
 function isUsableAmount(cents: number | undefined): cents is number {
@@ -88,6 +91,15 @@ function isUsableAmount(cents: number | undefined): cents is number {
 
 /** The form a sheet opens with: what the caller already knows ("Record what you paid"), else empty. */
 export function formForOpening(values: OpeningValues): AddExpenseForm {
+  const { bill } = values;
+  if (bill) {
+    return {
+      ...emptyForm(values.today, bill.paidFrom),
+      keypad: isUsableAmount(bill.amountCents ?? undefined) ? keypadFromCents(bill.amountCents as number) : EMPTY_KEYPAD,
+      categoryId: bill.categoryId,
+      paidToName: (bill.paidToName ?? "").slice(0, PAID_TO_MAX),
+    };
+  }
   const empty = emptyForm(values.today, values.paidFrom);
   return {
     ...empty,
@@ -142,16 +154,24 @@ export function saveLabel(cents: number, verb = "Save"): string {
   return cents > 0 ? `${verb} ${formatPeso(cents)}` : verb;
 }
 
-export function sheetTitle(mode: AddExpenseMode, scope: ExpenseSheetScope): string {
+export function sheetTitle(mode: AddExpenseMode, scope: ExpenseSheetScope, bill?: BillPayContext | null): string {
+  if (bill) return `Pay ${bill.name}`;
   if (scope === "take_out") return "Take out cash";
   return mode.kind === "drawer" ? "Pay from the drawer" : "New expense";
 }
 
 /** The one main button; it always repeats the amount ("Pay ₱150 from drawer"). */
-export function primaryLabel(cents: number, mode: AddExpenseMode, scope: ExpenseSheetScope, hasCategory = true): string {
+export function primaryLabel(
+  cents: number,
+  mode: AddExpenseMode,
+  scope: ExpenseSheetScope,
+  hasCategory = true,
+  bill?: BillPayContext | null,
+): string {
   // The amount is in but the button is still off: say what's missing instead
   // of showing a grey "Save ₱22,222" that won't press.
   if (cents > 0 && !hasCategory) return "Choose a category";
+  if (bill) return cents > 0 ? `Save ${formatPeso(cents)} · ${bill.name} paid` : `Type what you paid for ${bill.name}`;
   if (scope === "take_out") return saveLabel(cents, "Take out");
   if (mode.kind === "drawer") return cents > 0 ? `Pay ${formatPeso(cents)} from drawer` : "Pay from drawer";
   return saveLabel(cents);
@@ -223,8 +243,11 @@ function trimmedOrNull(text: string, max: number): string | null {
 
 export function toBookDraft(
   form: AddExpenseForm,
-  input: { clientRequestId: string; outletId: string | null; tracksStock: boolean; category: ExpenseCategory },
+  input: { clientRequestId: string; outletId: string | null; tracksStock: boolean; category: ExpenseCategory; bill?: BillPayContext | null },
 ): ExpenseDraft {
+  const { bill } = input;
+  // Paying a bill links the expense to that due date (both or neither) and keeps the bill's supplier.
+  const billLink = bill ? { billId: bill.billId, billDueOn: bill.dueOn, supplierId: bill.supplierId } : {};
   return {
     amountCents: keypadCents(form.keypad),
     categoryId: input.category.id,
@@ -235,6 +258,7 @@ export function toBookDraft(
     paidToName: trimmedOrNull(form.paidToName, PAID_TO_MAX),
     isStockPurchase: asksStockQuestion(input.category, input.tracksStock) && form.isStockPurchase === true,
     clientRequestId: input.clientRequestId,
+    ...billLink,
   };
 }
 
@@ -301,8 +325,12 @@ export function savedMessage(categoryName: string, cents: number, isQueued: bool
 export function categoriesForScope(
   categories: readonly ExpenseCategory[],
   scope: ExpenseSheetScope,
+  bill?: BillPayContext | null,
 ): ExpenseCategory[] {
-  return categories.filter((category) =>
-    scope === "take_out" ? category.group === "not_expense" : category.group !== "not_expense",
+  return categories.filter(
+    (category) =>
+      // A bill may sit on a "cash moved" category (a loan payment): paying it keeps it.
+      category.id === bill?.categoryId ||
+      (scope === "take_out" ? category.group === "not_expense" : category.group !== "not_expense"),
   );
 }

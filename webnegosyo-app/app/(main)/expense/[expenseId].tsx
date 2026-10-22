@@ -10,6 +10,7 @@ import { LoadingState } from "../../../components/LoadingState";
 import { SectionHeader } from "../../../components/SectionHeader";
 import { ChangeExpenseSheet, VoidExpenseSheet } from "../../../components/expenses/ExpenseActionSheets";
 import { ReceiptViewer } from "../../../components/expenses/ReceiptViewer";
+import { PaidForCard, RepeatThis } from "../../../components/expenses/bills/BillDetailLink";
 import { ActionBar } from "../../../components/expenses/detail/ActionBar";
 import { DetailHero } from "../../../components/expenses/detail/DetailHero";
 import { FactsCard } from "../../../components/expenses/detail/FactsCard";
@@ -18,6 +19,7 @@ import { HistoryTimeline } from "../../../components/expenses/detail/HistoryTime
 import { ReceiptStrip } from "../../../components/expenses/detail/ReceiptStrip";
 import { RefusedReceipts } from "../../../components/expenses/detail/RefusedReceipts";
 import { refuseInDemo, useExpenseDetailWrites } from "../../../components/expenses/detail/use-expense-detail-writes";
+import { detailBillLink } from "../../../lib/expenses/bills-screen";
 import { categoryLook } from "../../../lib/expenses/category-look";
 import {
   detailAccess,
@@ -45,6 +47,7 @@ import {
   useInvalidateExpenses,
   useRecentExpenses,
 } from "../../../lib/expenses/use-expenses";
+import { useBillBoard } from "../../../lib/expenses/use-bills";
 import { useOutlets } from "../../../lib/use-outlets";
 import { useBranchContextStore } from "../../../stores/branch-context-store";
 import { colors, spacing, typography } from "../../../theme/colors";
@@ -90,6 +93,8 @@ export default function ExpenseDetailScreen() {
   const { expenses: recent } = useRecentExpenses(sheet === "change");
   const signing = useReceiptLinks(tenantId, detail?.receipts ?? NO_RECEIPTS);
   const writes = useExpenseDetailWrites({ tenantId, expense, reload, onWritten: () => setSheet(null) });
+  // Bills name the bill this paid ("Paid for: Rent · October"), and hide "Repeat this" once one exists.
+  const billBoard = useBillBoard(undefined, canManage && expense !== null);
 
   const requestKey = expense ? expense.clientRequestId ?? expense.id : null;
   const tiles = useMemo(() => {
@@ -166,6 +171,13 @@ export default function ExpenseDetailScreen() {
     Alert.alert("Receipt", "This photo could not be opened yet. Try again in a moment.");
   };
   const openSheet = (next: Exclude<Sheet, null>) => !refuseInDemo() && setSheet(next);
+  const billLink = detailBillLink({ expense, category: category ?? null, bills: billBoard.board.bills, canManage });
+  const billLinkView =
+    billLink?.kind === "paid_for" ? (
+      <PaidForCard text={billLink.text} onPress={() => router.push(billLink.href as never)} />
+    ) : billLink?.kind === "repeat" && billBoard.data !== undefined ? (
+      <RepeatThis categoryName={billLink.categoryName} onPress={() => router.push(billLink.href as never)} />
+    ) : null;
 
   return (
     <View style={styles.screen}>
@@ -180,6 +192,7 @@ export default function ExpenseDetailScreen() {
         <DetailHero look={categoryLook(category)} amountCents={expense.amountCents} title={heroTitle} status={status} isVoid={isVoid} />
         <FlagCallouts callouts={callouts} onAction={onFlag} />
         <FactsCard rows={factRows({ detail, branchName })} />
+        {billLinkView}
         {actions.closedShiftNote ? <Text style={styles.note}>{actions.closedShiftNote}</Text> : null}
 
         <SectionHeader title="Receipts" style={styles.section} />

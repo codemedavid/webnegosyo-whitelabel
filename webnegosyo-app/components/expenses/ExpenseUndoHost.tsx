@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Alert, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -37,6 +37,20 @@ const useRouteSegments: () => readonly string[] = (() => {
   }
 })();
 
+type Push = (href: string) => void;
+
+/** expo-router's `router.push`, resolved lazily for the same reason as `useRouteSegments`. */
+const pushRoute: Push = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const router = require("expo-router") as { router?: { push?: (href: never) => void } };
+    const push = router.router?.push;
+    return typeof push === "function" ? (href: string) => push(href as never) : () => undefined;
+  } catch {
+    return () => undefined;
+  }
+})();
+
 /** How far above the screen's bottom edge the bar docks. */
 export function undoBarBottom(segments: readonly string[], insetBottom: number): number {
   const homeIndicator = Math.max(insetBottom, spacing.sm);
@@ -54,11 +68,14 @@ const HOST_Z_INDEX = 20;
  * (the sheet's own while it is open, and the host's under it) never send or
  * undo anything twice.
  */
-export function ExpenseUndoBar({ style }: { style?: StyleProp<ViewStyle> }) {
+export function ExpenseUndoBar({ style, onNavigate = pushRoute }: { style?: StyleProp<ViewStyle>; onNavigate?: Push }) {
   const current = useExpenseUndo((state) => state.current);
   const commit = useExpenseUndo((state) => state.commit);
   const undo = useExpenseUndo((state) => state.undo);
+  // The entry whose offer was taken: its button goes, Undo and the countdown stay.
+  const [tookOfferFor, setTookOfferFor] = useState<string | null>(null);
   if (!current) return null;
+  const offer = current.offer && tookOfferFor !== current.id ? current.offer : null;
 
   const onUndo = async () => {
     const outcome = await undo(current.id);
@@ -69,10 +86,21 @@ export function ExpenseUndoBar({ style }: { style?: StyleProp<ViewStyle> }) {
     <View style={style} pointerEvents="box-none" testID="expense-undo-bar">
       <UndoBar
         key={current.id}
-        message={current.message}
+        message={offer ? offer.message : current.message}
         durationMs={UNDO_WINDOW_MS}
         onUndo={() => void onUndo()}
         onCommit={() => commit(current.id)}
+        secondaryAction={
+          offer
+            ? {
+                label: offer.label,
+                onPress: () => {
+                  setTookOfferFor(current.id);
+                  onNavigate(offer.href);
+                },
+              }
+            : null
+        }
       />
     </View>
   );

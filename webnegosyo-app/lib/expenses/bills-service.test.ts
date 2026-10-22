@@ -29,7 +29,7 @@ interface Call {
   ops: [string, unknown[]][];
 }
 
-const BUILDER_METHODS = ["select", "insert", "update", "delete", "eq", "is", "not", "in", "gte", "lte", "order", "range", "limit", "single"];
+const BUILDER_METHODS = ["select", "insert", "update", "delete", "eq", "is", "not", "in", "or", "gte", "lte", "order", "range", "limit", "single"];
 
 /** A chainable stand-in for supabase-js: awaiting a builder takes the table's next scripted answer. */
 function fakeDb(script: Record<string, Answer[]>) {
@@ -143,11 +143,13 @@ describe("toBill", () => {
 });
 
 describe("reads", () => {
-  it("lists bills by name, paged, with the branch filter", async () => {
+  it("lists bills by name, paged, with the branch filter (the branch's own + the whole store's)", async () => {
     const { db, opsOf } = fakeDb({ expense_bills: [{ data: [billRow()], error: null }] });
-    const bills = await listBills(db, "t1", "o1");
+    const branch = "00000000-0000-4000-8000-0000000000a1";
+    const bills = await listBills(db, "t1", branch);
+    expect(opsOf("or")).toEqual([[`outlet_id.eq.${branch},outlet_id.is.null`]]);
     expect(bills.map((bill) => bill.id)).toEqual(["b1"]);
-    expect(opsOf("eq")).toEqual(expect.arrayContaining([["tenant_id", "t1"], ["outlet_id", "o1"]]));
+    expect(opsOf("eq")).toEqual(expect.arrayContaining([["tenant_id", "t1"]]));
     expect(opsOf("range")).toEqual([[0, 999]]);
   });
 
@@ -223,6 +225,18 @@ describe("bills", () => {
   it("an edit that matches nothing says the bill is gone", async () => {
     const { db } = fakeDb({ expense_bills: [{ data: [], error: null }] });
     await expect(updateBill(db, "t1", "b1", input(), TODAY)).rejects.toThrow(BILL_COPY.billGone);
+  });
+
+  it("edits a bill that started more than 400 days ago when given its saved start", async () => {
+    const old = input({ startsOn: "2024-01-01" });
+    const refused = fakeDb({});
+    await expect(updateBill(refused.db, "t1", "b1", old, TODAY)).rejects.toThrow("Pick a start date within the last 400 days");
+    expect(refused.calls).toHaveLength(0);
+
+    const { db, opsOf } = fakeDb({ expense_bills: [{ data: [billRow({ starts_on: "2024-01-01" })], error: null }] });
+    const bill = await updateBill(db, "t1", "b1", old, TODAY, "2024-01-01");
+    expect(bill.startsOn).toBe("2024-01-01");
+    expect(opsOf("update")[0][0]).toMatchObject({ starts_on: "2024-01-01" });
   });
 
   it("pause, resume and end write only the status columns", async () => {

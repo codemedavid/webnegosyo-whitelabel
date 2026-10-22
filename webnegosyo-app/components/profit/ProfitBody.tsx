@@ -19,7 +19,11 @@ interface ProfitBodyProps {
   period: ProfitWindow;
   findings: readonly FindingCard[];
   isWide: boolean;
+  /** "If you pay the 2 bills left: about ₱20,800 kept"; null = say nothing. */
+  forecast?: string | null;
   onAddExpense: () => void;
+  /** First run's second way in: "Set up monthly bills". */
+  onSetUpBills?: () => void;
   onFinding: (card: FindingCard) => void;
   onOpenCategory: (categoryId: string) => void;
   onOpenAllExpenses: () => void;
@@ -35,14 +39,16 @@ export function ProfitBody({
   period,
   findings,
   isWide,
+  forecast = null,
   onAddExpense,
+  onSetUpBills,
   onFinding,
   onOpenCategory,
   onOpenAllExpenses,
 }: ProfitBodyProps) {
   const { report } = data;
-  const firstRun = data.isFirstRun ? <FirstRunCard onAdd={onAddExpense} /> : null;
-  const hero = <ProfitHero report={report} period={period} />;
+  const firstRun = data.isFirstRun ? <FirstRunCard onAdd={onAddExpense} onSetUpBills={onSetUpBills} /> : null;
+  const hero = <ProfitHero report={report} period={period} forecast={forecast} />;
   const tiles = <CostTiles report={report} />;
   const foodStaff = <FoodStaffBar report={report} />;
   const went = <MoneyWentCard report={report} onOpenCategory={onOpenCategory} onOpenAll={onOpenAllExpenses} />;

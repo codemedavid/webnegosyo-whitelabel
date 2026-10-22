@@ -264,6 +264,8 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // The expense book: what the store spent, on what, to whom. Mapped
   // explicitly because an unmapped tab defaults to ALLOWED.
   expenses: "expenses",
+  // Bills to pay: reminders for the book's own payments, same key as the book.
+  "expense-bills": "expenses",
   // Profit = sales − costs − expenses. The tab rides "reports" (its sales
   // figure); the screen re-checks "expenses" and "costs" itself.
   profit: "reports",

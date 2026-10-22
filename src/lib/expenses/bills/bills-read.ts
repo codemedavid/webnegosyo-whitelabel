@@ -20,6 +20,9 @@ import { toInt } from '../rows'
 import { firstIssueMessage } from '../validation'
 import { billWindowSchema } from './validation'
 
+/** A branch id is only ever put in a filter string once it is a plain uuid. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** A store has a handful of bills; past this something is wrong, and it is flagged. */
 export const MAX_BILL_ROWS = 2_000
 /** Marks and payments in one window (a few per bill per month). */
@@ -163,7 +166,8 @@ export async function listBills(db: ExpenseDb, query: BillListQuery): Promise<Bi
       .select(BILL_COLUMNS, withCount ? { count: 'exact' } : {})
       .eq('tenant_id', query.tenantId)
     if (query.outletId === null) builder = builder.is('outlet_id', null)
-    else if (query.outletId) builder = builder.eq('outlet_id', query.outletId)
+    // A branch sees its own bills AND the whole store's (rent paid for every branch).
+    else if (query.outletId && UUID.test(query.outletId)) builder = builder.or(`outlet_id.eq.${query.outletId},outlet_id.is.null`)
     return builder.order('name', { ascending: true }).order('id', { ascending: true }).range(from, to) as unknown as Page<ExpenseBillRow>
   }
   const result = await selectAllPages<ExpenseBillRow>(page, { maxRows: MAX_BILL_ROWS, label: 'expense_bills' })

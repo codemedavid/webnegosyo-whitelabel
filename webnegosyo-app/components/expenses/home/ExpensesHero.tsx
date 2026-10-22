@@ -39,6 +39,13 @@ interface ExpensesHeroProps {
   canGoNext: boolean;
   onPrevious: () => void;
   onNext: () => void;
+  /** "₱24,500 still to pay · 3 bills" → Bills to pay; null when nothing is open this month. */
+  bills?: HeroBillsLine | null;
+}
+
+export interface HeroBillsLine {
+  text: string;
+  onPress: () => void;
 }
 
 interface StepProps {
@@ -81,10 +88,10 @@ function countWord(count: number): string {
  * the store kept. Every figure follows the filters, so it matches the list.
  */
 export function ExpensesHero(props: ExpensesHeroProps) {
-  const { totals, today, kept, state = "ready" } = props;
+  const { totals, today, kept, state = "ready", bills = null } = props;
   const isReady = state === "ready";
   const changeIcon = props.change ? CHANGE_ICONS[props.change.direction] : null;
-  const hasFooter = isReady && (today !== null || kept !== null);
+  const hasFooter = isReady && (today !== null || kept !== null || bills !== null);
   return (
     <View style={styles.card} accessibilityRole="summary">
       <View style={styles.topRow}>
@@ -162,6 +169,22 @@ export function ExpensesHero(props: ExpensesHeroProps) {
               <Icon name="chevron" size={14} color={kept.cents >= 0 ? colors.heroInkPositive : colors.dangerLight} />
             </TouchableOpacity>
           ) : null}
+          {bills ? (
+            <TouchableOpacity
+              style={styles.billsLine}
+              onPress={bills.onPress}
+              hitSlop={SMALL_TARGET_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel={`${bills.text}. Open Bills to pay`}
+              testID="expenses-hero-bills"
+            >
+              <Icon name="calendar" size={14} color={colors.heroInkMuted} />
+              <Text style={[styles.footerText, styles.billsText]} numberOfLines={1}>
+                {bills.text}
+              </Text>
+              <Icon name="chevron" size={14} color={colors.heroInkText} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -224,6 +247,8 @@ const styles = StyleSheet.create({
   footerText: { ...typography.caption, color: colors.heroInkMuted },
   footerStrong: { ...typography.caption, fontWeight: "800", color: colors.heroInkText, fontVariant: ["tabular-nums"] },
   kept: { flexDirection: "row", alignItems: "center", minHeight: 32 },
+  billsLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 32, flexBasis: "100%" },
+  billsText: { flex: 1, color: colors.heroInkText, fontWeight: "700" },
   positive: { color: colors.heroInkPositive },
   loss: { color: colors.dangerLight },
 });

@@ -411,6 +411,7 @@ const MOBILE_TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // The expense book; the profit screen rides 'reports' and re-checks
   // 'expenses' + 'costs' itself. Mirrors the app's TAB_PERMISSIONS.
   expenses: 'expenses',
+  'expense-bills': 'expenses',
   profit: 'reports',
 }
 

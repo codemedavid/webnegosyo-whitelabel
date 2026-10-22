@@ -7,22 +7,30 @@
  */
 
 import type { IconName } from "../../components/Icon";
+import { ordinal } from "./bill-schedule";
+import type { BillSuggestionView } from "./bill-ways-in";
 import { formatCents } from "./expense-format";
 import type { HomeView } from "./expenses-home";
 import type { HomeRow } from "./expenses-home-rows";
 import { DEFAULT_NO_RECEIPT_THRESHOLD_CENTS } from "./flags";
 
-export type NeedsYouAction = { kind: "sort" } | { kind: "view"; view: HomeView };
+export type NeedsYouAction =
+  | { kind: "sort" }
+  | { kind: "view"; view: HomeView }
+  /** Open the bill editor pre-filled (`bills-route.ts` `makeBillTarget` + `makeBillHref`); `name` = the bill's name. */
+  | { kind: "make_bill"; categoryId: string; typicalDay: number; typicalCents: number; name?: string };
 export type NeedsYouTone = "warning" | "accent" | "info" | "danger";
 
 export interface NeedsYouItem {
-  key: "unsorted" | "no_receipt" | "duplicate" | "phone";
+  key: "unsorted" | "no_receipt" | "duplicate" | "phone" | "make_bill";
   icon: IconName;
   tone: NeedsYouTone;
   title: string;
   detail: string;
   cta: string;
   action: NeedsYouAction;
+  /** A second, quiet button that puts the item away ("Not now"); the card calls `onDismiss`. */
+  dismissLabel?: string;
 }
 
 export interface NeedsYouInput {
@@ -32,6 +40,8 @@ export interface NeedsYouInput {
   unsortedCents: number;
   /** The store's no-receipt threshold; defaults to the flag's default. */
   noReceiptThresholdCents?: number;
+  /** "Make it a bill?" (`useBillSuggestion`): at most one, shown last. */
+  billSuggestion?: BillSuggestionView | null;
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -98,6 +108,32 @@ function phoneItem(waiting: number, refused: number): NeedsYouItem {
   };
 }
 
+function listWords(words: readonly string[]): string {
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/** "Kuryente comes every month — you paid it around the 24th in August and September. Want a reminder?" */
+export function makeBillItem(suggestion: BillSuggestionView): NeedsYouItem {
+  const months = suggestion.monthNames.length > 0 ? ` in ${listWords(suggestion.monthNames)}` : "";
+  return {
+    key: "make_bill",
+    icon: "calendar",
+    tone: "accent",
+    title: `${suggestion.name} comes every month`,
+    detail: `You paid it around the ${ordinal(suggestion.typicalDay)}${months}. Want a reminder?`,
+    cta: "Make it a bill",
+    dismissLabel: "Not now",
+    action: {
+      kind: "make_bill",
+      categoryId: suggestion.categoryId,
+      typicalDay: suggestion.typicalDay,
+      typicalCents: suggestion.typicalCents,
+      name: suggestion.name,
+    },
+  };
+}
+
 export function needsYouItems(input: NeedsYouInput): NeedsYouItem[] {
   const recorded = input.rows.filter((row) => row.status === "recorded");
   const noReceipt = recorded.filter((row) => row.flags.includes("no_receipt")).length;
@@ -109,5 +145,6 @@ export function needsYouItems(input: NeedsYouInput): NeedsYouItem[] {
   if (noReceipt > 0) items.push(noReceiptItem(noReceipt, input.noReceiptThresholdCents ?? DEFAULT_NO_RECEIPT_THRESHOLD_CENTS));
   if (duplicates > 0) items.push(duplicateItem(duplicates));
   if (waiting + refused > 0) items.push(phoneItem(waiting, refused));
+  if (input.billSuggestion) items.push(makeBillItem(input.billSuggestion));
   return items;
 }

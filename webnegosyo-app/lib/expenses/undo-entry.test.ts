@@ -48,3 +48,12 @@ describe("undo entry", () => {
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("undo entry offer", () => {
+  it("carries a Repeat offer to the bar untouched, and none by default", () => {
+    const offer = { label: "Repeat", message: "Saved · Rent ₱15,000 · Pay this every month?", href: "/(main)/expense-bills?new=1" };
+    const base = { id: "r1", message: "Saved · Rent ₱15,000", tenantId: "t1", actorName: "Ana", queue: queue(), refresh: jest.fn(async () => {}) };
+    expect(buildUndoEntry({ ...base, offer }).offer).toEqual(offer);
+    expect(buildUndoEntry(base).offer).toBeNull();
+  });
+});

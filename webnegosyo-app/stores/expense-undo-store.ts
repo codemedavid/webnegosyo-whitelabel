@@ -28,10 +28,20 @@ export const SETTLED_MEMORY = 50;
 
 export type UndoResult = { status: "undone" } | { status: "error"; message: string };
 
+/** A second button beside Undo ("Repeat" → make it a monthly bill); it never sends or undoes anything. */
+export interface UndoEntryOffer {
+  label: string;
+  /** The bar's words while the offer stands ("Saved · Rent ₱15,000 · Pay this every month?"). */
+  message: string;
+  /** Where the button goes. */
+  href: string;
+}
+
 export interface UndoEntry {
   /** The expense's client request id. */
   id: string;
   message: string;
+  offer?: UndoEntryOffer | null;
   /** Sends it now (its window closed). */
   commit: () => Promise<void>;
   /** Takes it back. */

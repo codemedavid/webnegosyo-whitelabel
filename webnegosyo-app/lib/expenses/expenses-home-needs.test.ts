@@ -127,3 +127,41 @@ describe("buildExpenseCsv", () => {
     expect(expenseCsvFileName(OCTOBER)).toBe("expenses_2026-10-01_2026-10-31.csv");
   });
 });
+
+describe("Make it a bill? in Needs you", () => {
+  const kuryente = { categoryId: "cat-power", name: "Kuryente", typicalDay: 24, typicalCents: 620_000, monthNames: ["August", "September"] };
+
+  test("asks once, in plain words, with a way to put it off", () => {
+    // Act
+    const items = needsYouItems({ rows: [], unsortedCount: 0, unsortedCents: 0, billSuggestion: kuryente });
+
+    // Assert
+    expect(items).toEqual([
+      {
+        key: "make_bill",
+        icon: "calendar",
+        tone: "accent",
+        title: "Kuryente comes every month",
+        detail: "You paid it around the 24th in August and September. Want a reminder?",
+        cta: "Make it a bill",
+        dismissLabel: "Not now",
+        action: { kind: "make_bill", categoryId: "cat-power", typicalDay: 24, typicalCents: 620_000, name: "Kuryente" },
+      },
+    ]);
+  });
+
+  test("comes after everything the owner must fix", () => {
+    const items = needsYouItems({ rows: [], unsortedCount: 2, unsortedCents: 10_000, billSuggestion: kuryente });
+    expect(items.map((item) => item.key)).toEqual(["unsorted", "make_bill"]);
+  });
+
+  test("three months read as a list", () => {
+    const [item] = needsYouItems({
+      rows: [],
+      unsortedCount: 0,
+      unsortedCents: 0,
+      billSuggestion: { ...kuryente, typicalDay: 1, monthNames: ["July", "August", "September"] },
+    });
+    expect(item.detail).toBe("You paid it around the 1st in July, August and September. Want a reminder?");
+  });
+});

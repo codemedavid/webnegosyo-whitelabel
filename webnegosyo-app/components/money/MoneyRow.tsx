@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-import { colors, spacing, typography } from "../../theme/colors";
+import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Icon, type IconName } from "../Icon";
 
 export type MoneyRowTone = "ink" | "good" | "accent" | "danger";
@@ -21,6 +21,8 @@ interface MoneyRowProps {
   onPress: () => void;
   /** Set on every row but the last inside one card. */
   isGrouped?: boolean;
+  /** A "do this" pill in place of the chevron ("Pay"); it does what the row does. */
+  actionLabel?: string;
   testID?: string;
 }
 
@@ -31,7 +33,7 @@ const WELL_SIZE = 36;
  * made of underneath, and a chevron — Home's "Spent today", Reports' "Money"
  * rows (design screen 06). Figures use equal-width digits.
  */
-export function MoneyRow({ icon, tone, title, detail, onPress, isGrouped = false, testID }: MoneyRowProps) {
+export function MoneyRow({ icon, tone, title, detail, onPress, isGrouped = false, actionLabel, testID }: MoneyRowProps) {
   const well = WELL[tone];
   return (
     <TouchableOpacity
@@ -40,6 +42,7 @@ export function MoneyRow({ icon, tone, title, detail, onPress, isGrouped = false
       style={[styles.row, isGrouped && styles.grouped]}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${detail}`}
+      accessibilityHint={actionLabel}
       testID={testID}
     >
       <View style={[styles.well, { backgroundColor: well.bg }]}>
@@ -49,11 +52,17 @@ export function MoneyRow({ icon, tone, title, detail, onPress, isGrouped = false
         <Text style={styles.title} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={styles.detail} numberOfLines={1}>
+        <Text style={styles.detail} numberOfLines={2}>
           {detail}
         </Text>
       </View>
-      <Icon name="chevron" size={16} color={colors.textTertiary} />
+      {actionLabel ? (
+        <View style={styles.pill} testID={testID ? `${testID}-action` : undefined}>
+          <Text style={styles.pillText}>{actionLabel}</Text>
+        </View>
+      ) : (
+        <Icon name="chevron" size={16} color={colors.textTertiary} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -72,4 +81,13 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: 2 },
   title: { ...typography.body, fontWeight: "700", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
   detail: { ...typography.caption, color: colors.textSecondary, fontVariant: ["tabular-nums"] },
+  pill: {
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pillText: { ...typography.caption, fontWeight: "800", color: colors.textOnDark },
 });

@@ -31,7 +31,10 @@ import {
 } from "../../lib/profit/profit-period";
 import { profitScreenState } from "../../lib/profit/profit-screen-state";
 import { canSeeProfit, findingPhrase } from "../../lib/profit/profit-view";
+import { billForecastLine } from "../../lib/profit/profit-bills";
 import { useProfit } from "../../lib/profit/use-profit";
+import { useProfitBills } from "../../lib/profit/use-profit-bills";
+import { newBillHref } from "../../lib/expenses/bill-links";
 import { colors, spacing } from "../../theme/colors";
 
 type ProfitView = "profit" | "cash";
@@ -92,19 +95,29 @@ export default function ProfitScreen() {
   const branchView = resolveProfitBranch({ account, accountOutletName, outlets, choice });
   const profit = useProfit(period, branchView.branch, isAllowed && isPlatform);
   const state = profitScreenState({ isAllowed, isPlatform, data: profit.data, isLoading: profit.isLoading, error: profit.error });
+  const range = readRange(period);
+  // Bills to pay: the surest "not paid yet" warnings, and what is left once they are paid.
+  const bills = useProfitBills(isAllowed && isPlatform, branchView.branch, range);
 
   const findings = useMemo(
     () =>
       state.kind === "ready"
-        ? findingCards(state.data.report.findings, findingPhrase(period.phrase, period.isPartial), state.data.isFirstRun)
+        ? findingCards(state.data.report.findings, findingPhrase(period.phrase, period.isPartial), state.data.isFirstRun, bills.findings)
         : [],
     // The phrase follows the chosen period, not the clock.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profit.data, period.phrase, period.isPartial],
+    [profit.data, period.phrase, period.isPartial, bills.findings],
   );
+  const forecast =
+    state.kind === "ready"
+      ? billForecastLine({
+          profitCents: state.data.report.profitCents,
+          isCurrentPartialMonth: period.preset === "this_month" && period.isPartial,
+          still: bills.still,
+        })
+      : null;
 
   const refresh = useCallback(() => refreshWithMinSpinner([profit.refetch], setIsRefreshing), [profit.refetch]);
-  const range = readRange(period);
 
   const pickPeriod = (preset: ProfitPreset) => {
     if (preset === "custom") setIsPickingRange(true);
@@ -167,7 +180,9 @@ export default function ProfitScreen() {
             period={period}
             findings={findings}
             isWide={isWide}
+            forecast={forecast}
             onAddExpense={() => go(`${EXPENSES_ROUTE}?add=1`)}
+            onSetUpBills={() => go(newBillHref())}
             onFinding={onFinding}
             onOpenCategory={(categoryId) => go(expensesHref(range, categoryId))}
             onOpenAllExpenses={() => go(expensesHref(range))}

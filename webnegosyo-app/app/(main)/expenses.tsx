@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { AddExpenseSheet } from "../../components/expenses/AddExpenseSheet";
 import { SortPayoutsSheet } from "../../components/expenses/SortPayoutsSheet";
+import { BillsCard, BillsDoor } from "../../components/expenses/home/BillsCard";
 import { CategoryFilterSheet } from "../../components/expenses/home/CategoryFilterSheet";
 import { CategoryBreakdown } from "../../components/expenses/home/CategoryBreakdown";
 import { DayCard, DayHeader } from "../../components/expenses/home/ExpenseDay";
@@ -18,6 +19,15 @@ import { ErrorState } from "../../components/ErrorState";
 import { IconButton } from "../../components/IconButton";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { useIsWideReports } from "../../components/reports/ReportsColumns";
+import { BILLS_PATH, billHref, makeBillHref, makeBillTarget } from "../../lib/expenses/bills-route";
+import {
+  buildBillsView,
+  payContextFor,
+  stillToPayLine,
+  targetDueOn,
+  type BillPayContext,
+  type BillRowModel,
+} from "../../lib/expenses/bills-screen";
 import { shortCategoryName } from "../../lib/expenses/category-look";
 import { monthLabel, monthOf, shiftMonth } from "../../lib/expenses/expense-format";
 import {
@@ -41,8 +51,11 @@ import {
   type HomeRow,
 } from "../../lib/expenses/expenses-home-rows";
 import { dismissQueuedExpense, retryQueuedExpenses } from "../../lib/expenses/live-expense-queue";
+import { useBillSuggestion } from "../../lib/expenses/use-bill-suggestion";
+import { useBillBoard } from "../../lib/expenses/use-bills";
 import {
   useCanManageExpenses,
+  useCategoryIndex,
   useDeviceExpenseQueue,
   useExpenseCategories,
   useExpenseTenant,
@@ -58,6 +71,7 @@ type Sheet =
   | { kind: "sort" }
   | { kind: "category" }
   | { kind: "export" }
+  | { kind: "pay"; context: BillPayContext }
   | null;
 
 const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -135,6 +149,14 @@ function ExpenseBook() {
   const unsorted = useUnsortedPayouts(true);
   const kept = useKeptFigure(month, range);
   const branchLabel = useExpenseBranchLabel();
+  const categoryIndex = useCategoryIndex(categories);
+  // "Make it a bill?" in Needs you (this screen only renders for accounts that manage expenses).
+  const idea = useBillSuggestion(true, selectedOutlet ?? undefined);
+  const bills = useBillBoard(selectedOutlet ?? undefined);
+  const billsView = useMemo(
+    () => buildBillsView({ bills: bills.board.bills, payments: bills.board.payments, marks: bills.board.marks, today: bills.today }),
+    [bills.board, bills.today],
+  );
 
   const unsortedCents = useMemo(() => unsorted.payouts.reduce((sum, payout) => sum + payout.amountCents, 0), [unsorted.payouts]);
   // A link to a category this store does not have is ignored, never a pill reading just "Category".
@@ -155,8 +177,9 @@ function ExpenseBook() {
         unsortedCents,
         nowMs: Date.now(),
         branchId,
+        billSuggestion: idea.suggestion,
       }),
-    [month, range, shown, data.expenses, data.previous, categories, queue, unsorted.payouts.length, unsortedCents, branchId],
+    [month, range, shown, data.expenses, data.previous, categories, queue, unsorted.payouts.length, unsortedCents, branchId, idea.suggestion],
   );
 
   const nowMs = Date.now();
@@ -184,8 +207,15 @@ function ExpenseBook() {
     setSheet(null);
   };
   const onNeed = (item: NeedsYouItem) => {
-    if (item.action.kind === "sort") setSheet({ kind: "sort" });
-    else showView(item.action.view);
+    const { action } = item;
+    // "Make it a bill?" opens the add-bill sheet pre-filled (values re-checked in bills-route).
+    if (action.kind === "make_bill") {
+      const target = makeBillTarget(action);
+      if (target) router.push(makeBillHref(target) as never);
+      return;
+    }
+    if (action.kind === "sort") setSheet({ kind: "sort" });
+    else showView(action.view);
   };
   const toggleSearch = () => {
     if (isSearching) setFilters((current) => ({ ...current, search: "" }));
@@ -256,6 +286,25 @@ function ExpenseBook() {
     </ScreenHeader>
   );
 
+  // Bills belong to the month being lived: the hero line and the card show only on this month.
+  const isThisMonth = range === null && month === monthOf(nowMs);
+  const billsLine = isThisMonth && bills.data !== undefined ? stillToPayLine(billsView.still) : null;
+  const openBills = () => router.push(BILLS_PATH as never);
+  const payBill = (row: BillRowModel) =>
+    setSheet({ kind: "pay", context: payContextFor(row.bill, targetDueOn(row.occurrence), bills.board.payments) });
+  const hasNoBills = bills.data !== undefined && billsView.billCount === 0 && billsView.groups.length === 0;
+  const billsCard = hasNoBills ? (
+    <BillsDoor onPress={openBills} />
+  ) : isThisMonth ? (
+    <BillsCard
+      rows={billsView.open}
+      categories={categoryIndex}
+      onOpen={(row) => router.push(billHref(row.bill.id) as never)}
+      onPay={payBill}
+      onSeeAll={openBills}
+    />
+  ) : null;
+
   const hero = (
     <HomeHero
       model={model}
@@ -270,6 +319,11 @@ function ExpenseBook() {
       onPrevious={() => stepMonth(-1)}
       onNext={() => stepMonth(1)}
       onNeed={onNeed}
+      onDismissNeed={(item) => {
+        if (item.action.kind === "make_bill") idea.dismiss(item.action.categoryId);
+      }}
+      bills={billsLine ? { text: billsLine, onPress: openBills } : null}
+      billsCard={billsCard}
     />
   );
   const banner =
@@ -358,6 +412,9 @@ function ExpenseBook() {
 
       {sheet?.kind === "add" ? (
         <AddExpenseSheet visible mode={{ kind: "book" }} initialCategoryId={sheet.categoryId} onClose={() => setSheet(null)} onCommitted={reloadAll} />
+      ) : null}
+      {sheet?.kind === "pay" ? (
+        <AddExpenseSheet visible mode={{ kind: "book" }} bill={sheet.context} onClose={() => setSheet(null)} onCommitted={reloadAll} />
       ) : null}
       {sheet?.kind === "sort" ? (
         <SortPayoutsSheet payouts={unsorted.payouts} categories={categories} recent={recent} onClose={() => setSheet(null)} onSorted={reloadAll} />

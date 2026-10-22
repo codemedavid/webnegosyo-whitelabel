@@ -13,6 +13,7 @@ import {
   type DayRange,
   type HomeView,
 } from "./expenses-home";
+import type { BillSuggestionView } from "./bill-ways-in";
 import { needsYouItems, type NeedsYouItem } from "./expenses-home-needs";
 import {
   buildHomeRows,
@@ -49,6 +50,8 @@ export interface HomeModelInput {
   nowMs: number;
   /** The branch on screen; undefined = every branch (see `BuildRowsInput.branchId`). */
   branchId?: string;
+  /** "Make it a bill?" for Needs you (`useBillSuggestion`); null/undefined = none. */
+  billSuggestion?: BillSuggestionView | null;
 }
 
 export interface HomeChange {
@@ -118,7 +121,12 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     change: previous === null ? null : changeOf(percentChange(totals.spentCents, previous), comparisonFor(input.month, input.nowMs).label),
     today: isCurrentMonth ? todaySummary(visible, input.nowMs) : null,
     breakdown: categoryBreakdown(filterRows(rows, input.filters, { ignoreCategory: true })),
-    needs: needsYouItems({ rows, unsortedCount: input.unsortedCount, unsortedCents: input.unsortedCents }),
+    needs: needsYouItems({
+      rows,
+      unsortedCount: input.unsortedCount,
+      unsortedCents: input.unsortedCents,
+      billSuggestion: input.billSuggestion,
+    }),
     counts: viewCounts(rows),
     isFiltered: filtered,
     eyebrow: heroEyebrow({ month: input.month, range: input.range, isFiltered: filtered }, input.nowMs),

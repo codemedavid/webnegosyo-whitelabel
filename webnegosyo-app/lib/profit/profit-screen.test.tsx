@@ -8,6 +8,7 @@ import { composeProfit, type ProfitScreenData } from "./profit-service";
 import { resolveProfitWindow } from "./profit-period";
 import type { ProfitPeriodFigures } from "./profit-types";
 import { useProfit } from "./use-profit";
+import { useProfitBills, type ProfitBills } from "./use-profit-bills";
 
 const mockSession = {
   role: "admin",
@@ -29,6 +30,9 @@ jest.mock("../../stores/branch-context-store", () => {
 jest.mock("../use-branch-scope", () => ({ useAccountBranchScope: () => ({ kind: "all" }) }));
 jest.mock("../use-outlets", () => ({ useOutlets: () => ({ outlets: [] }) }));
 jest.mock("./use-profit", () => ({ useProfit: jest.fn() }));
+jest.mock("./use-profit-bills", () => ({ useProfitBills: jest.fn() }));
+
+const NO_BILLS: ProfitBills = { findings: null, still: null };
 
 const summary = {
   orders: 10, net_sales_cents: 1_000_000, collected_cents: 1_000_000, sale_movements: 0, ledger_cogs_cents: 0, fallback_cogs_cents: 0,
@@ -67,6 +71,7 @@ function answer(data: ProfitScreenData | undefined, extra: { isLoading?: boolean
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(useProfitBills).mockReturnValue(NO_BILLS);
   mockSession.isOwner = true;
   mockSession.permissions = null;
   mockSession.orderBackend = "platform";
@@ -146,6 +151,13 @@ describe("the answer", () => {
     expect(router.push).toHaveBeenCalledWith("/(main)/expenses?add=1");
   });
 
+  it("offers monthly bills as the second way to start", () => {
+    answer(ready({ expense_count: 0 }, { everRecorded: false }));
+    const screen = render(<ProfitScreen />);
+    fireEvent.press(screen.getByRole("button", { name: "Set up monthly bills" }));
+    expect(router.push).toHaveBeenCalledWith("/(main)/expense-bills?new=1");
+  });
+
   it("never greets an established store as new when the period is merely empty", () => {
     answer(ready({ expense_count: 0 }, { everRecorded: true }));
     const screen = render(<ProfitScreen />);
@@ -163,6 +175,45 @@ describe("the answer", () => {
     const screen = render(<ProfitScreen />);
     expect(screen.getByText("Last 3 months")).toBeTruthy();
     expect(screen.getByText(/The striped bar is still running/)).toBeTruthy();
+  });
+});
+
+describe("bills to pay", () => {
+  it("says what is left once this month's bills are paid, under the answer", () => {
+    jest.mocked(useProfitBills).mockReturnValue({ findings: null, still: { cents: 1_000_000, count: 2, hasEstimate: true } });
+    answer(ready({ occupancy_cents: 0, staff_cents: 0 }));
+    const screen = render(<ProfitScreen />);
+    // ₱10,000 − ₱4,000 = ₱6,000 kept; minus ₱10,000 still to pay.
+    expect(screen.getByTestId("profit-hero-forecast").props.children).toBe("If you pay the 2 bills left: about ₱4,000 lost");
+  });
+
+  it("says nothing about bills when none are left to pay", () => {
+    jest.mocked(useProfitBills).mockReturnValue({ findings: null, still: { cents: 0, count: 0, hasEstimate: false } });
+    answer(ready());
+    expect(render(<ProfitScreen />).queryByTestId("profit-hero-forecast")).toBeNull();
+  });
+
+  it("an unpaid bill replaces the category guess and opens that bill", () => {
+    jest.mocked(useProfitBills).mockReturnValue({
+      still: null,
+      findings: {
+        hasBills: true,
+        cards: [
+          {
+            key: "bill:bill-rent",
+            tone: "warning",
+            icon: "calendar",
+            title: "Rent is due on the 5th and not marked paid",
+            detail: "₱15,000. Until it’s in, profit looks higher than it is.",
+            action: { kind: "bill", label: "Pay", billId: "bill-rent" },
+          },
+        ],
+      },
+    });
+    answer(ready());
+    const screen = render(<ProfitScreen />);
+    fireEvent.press(screen.getByRole("button", { name: "Pay" }));
+    expect(router.push).toHaveBeenCalledWith("/(main)/expense-bills?bill=bill-rent");
   });
 });
 

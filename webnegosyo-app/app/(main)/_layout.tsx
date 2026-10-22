@@ -16,6 +16,7 @@ import { PrinterWarmUp } from "../../components/PrinterWarmUp";
 import { OfflineSalesSync } from "../../components/OfflineSalesSync";
 import { ExpenseSync } from "../../components/expenses/ExpenseSync";
 import { ExpenseUndoHost } from "../../components/expenses/ExpenseUndoHost";
+import { BillReminderSync } from "../../components/expenses/BillReminderSync";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
@@ -94,6 +95,8 @@ export default function MainLayout() {
       <OfflineSalesSync />
       {/* Sends expenses (and their receipts) this phone kept while offline. */}
       <ExpenseSync />
+      {/* Keeps the owner's morning bill reminders in line with Bills to pay. */}
+      <BillReminderSync />
       {/* The Undo bar after an expense save, on whatever screen the sheet closed onto. */}
       <ExpenseUndoHost />
       {/* Renders only while a superadmin is viewing another store. */}
@@ -192,6 +195,8 @@ export default function MainLayout() {
         <Tabs.Screen name="branches" options={{ href: show("branches"), title: "Compare branches" }} />
         {/* Money: the expense book — what the store spent (`expenses` key). */}
         <Tabs.Screen name="expenses" options={{ href: show("expenses"), title: "Expenses" }} />
+        {/* Money: Bills to pay — rent, kuryente, sahod (`expenses`), entered from Expenses. */}
+        <Tabs.Screen name="expense-bills" options={{ href: show("expense-bills"), title: "Bills to pay" }} />
         {/* Money: Profit = Sales − Ingredients − Expenses (`reports`; the screen re-checks expenses + costs). */}
         <Tabs.Screen name="profit" options={{ href: show("profit"), title: "Profit" }} />
         {/* Store activity — the store's view (owners, activity_view, approve_requests). */}

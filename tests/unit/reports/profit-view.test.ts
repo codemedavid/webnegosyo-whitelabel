@@ -24,7 +24,7 @@ function period(preset: Parameters<typeof resolveReportPeriod>[0]): ReportPeriod
 describe('who sees profit', () => {
   test.each([
     ['the owner', staff([], { is_owner: true }), true],
-    ['legacy full access (NULL permissions)', staff(null), true],
+    ['legacy full access (NULL permissions): Expenses is opt-in, so no Profit', staff(null), false],
     ['reports + expenses + costs', staff(['reports', 'expenses', 'costs']), true],
     ['a branch manager with all three', staff(['reports', 'expenses', 'costs'], { outlet_id: 'b1' }), true],
     ['reports only', staff(['reports']), false],

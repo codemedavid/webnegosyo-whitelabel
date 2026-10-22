@@ -214,12 +214,15 @@ type Page<T> = Promise<{ data: T[] | null; error: { message: string } | null }>;
 /** undefined = every bill the caller reaches; null = store-wide only; a uuid = that branch. */
 export type BillOutletFilter = string | null | undefined;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Every bill the caller may see (any status), by name. */
 export async function listBills(db: ExpenseDb, tenantId: string, outletId?: BillOutletFilter): Promise<Bill[]> {
   const fetchPage = (start: number, end: number) => {
     let builder = db.from("expense_bills").select(BILL_COLUMNS).eq("tenant_id", tenantId);
     if (outletId === null) builder = builder.is("outlet_id", null);
-    else if (typeof outletId === "string") builder = builder.eq("outlet_id", outletId);
+    // A branch sees its own bills AND the whole store's (rent paid for every branch).
+    else if (typeof outletId === "string" && UUID.test(outletId)) builder = builder.or(`outlet_id.eq.${outletId},outlet_id.is.null`);
     return withDeadline(
       Promise.resolve(builder.order("name", { ascending: true }).order("id", { ascending: true }).range(start, end)) as Page<BillRow>,
       REQUEST_MS,
@@ -335,8 +338,9 @@ function blankToNull(value: string | null | undefined): string | null {
 }
 
 /** Validates with the shared engine (same words as the web), then maps to columns. */
-function billColumns(input: BillInput, today: string): Record<string, unknown> {
-  const check = validateBillDraft(input, today);
+function billColumns(input: BillInput, today: string, savedStartsOn: string | null = null): Record<string, unknown> {
+  // An edited bill keeps its own start, however old (only a NEW start is bounded).
+  const check = validateBillDraft(input, today, { savedStartsOn });
   if (!check.ok) throw new ExpenseWriteError(check.message, { code: "22023" });
   return {
     name: input.name.trim(),
@@ -369,15 +373,20 @@ async function updateBillRow(db: ExpenseDb, tenantId: string, billId: string, co
   return toBill(single<BillRow>(data, BILL_COPY.billGone, "P0002"));
 }
 
-/** Edits a bill. Only its next occurrences change; past payments are expenses and stay. */
+/**
+ * Edits a bill. Only its next occurrences change; past payments are expenses
+ * and stay. `savedStartsOn` = the bill's stored start, so a bill that began
+ * more than 400 days ago can still be edited.
+ */
 export async function updateBill(
   db: ExpenseDb,
   tenantId: string,
   billId: string,
   input: BillInput,
   today: string,
+  savedStartsOn: string | null = null,
 ): Promise<Bill> {
-  return updateBillRow(db, tenantId, billId, billColumns(input, today));
+  return updateBillRow(db, tenantId, billId, billColumns(input, today, savedStartsOn));
 }
 
 /** Pauses a bill until a date, or until resumed by hand (null). */

@@ -82,6 +82,7 @@ export const EXPENSE_COPY = {
   alreadyVoided: "That expense was already voided or doesn't exist.",
   missingReference: "That category, supplier or branch is no longer available. Pick another and try again.",
   invalid: "Some details don't add up. Check the amount and the date and try again.",
+  billAlreadyPaid: "That bill is already marked paid for this due date. Open Bills to pay to check it.",
   generic: "We couldn't save that. Please try again.",
 } as const;
 
@@ -96,6 +97,8 @@ export function describeExpenseError(error: DbError | null | undefined, context:
   if (/note_required/i.test(text)) return EXPENSE_COPY.noteRequired;
   if (/drawer_shift_closed/i.test(text)) return EXPENSE_COPY.drawerShiftClosed;
   if (/drawer_locked/i.test(text)) return EXPENSE_COPY.drawerLocked;
+  // Paying a bill twice for one due date (the partial unique index, bills-contract §2).
+  if (/expenses_bill_due_recorded_uq/i.test(text)) return EXPENSE_COPY.billAlreadyPaid;
   if (/already closed|shift is closed|closed shift/i.test(text)) return EXPENSE_COPY.shiftClosed;
   if (code === "PGRST202" || code === "42883" || code === "42P01" || code === "PGRST205") return EXPENSE_COPY.notSetUp;
   if (code === "42501") return context === "drawer" ? EXPENSE_COPY.drawerNotYours : EXPENSE_COPY.noAccess;

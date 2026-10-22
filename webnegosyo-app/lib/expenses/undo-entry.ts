@@ -9,7 +9,7 @@
  * closes. The queue is injected so this runs under the node suite.
  */
 
-import type { UndoEntry, UndoResult } from "../../stores/expense-undo-store";
+import type { UndoEntry, UndoEntryOffer, UndoResult } from "../../stores/expense-undo-store";
 
 export interface UndoQueue {
   /** Ends the hold and sends; `sent` holds what landed this pass (`commitQueuedExpense`). */
@@ -29,13 +29,16 @@ export interface UndoEntryInput {
   refresh: () => Promise<void>;
   /** After it was sent or undone — the drawer re-reads its cash (`onCommitted`). */
   onSettled?: () => void;
+  /** "Repeat" for rent, utilities, staff (`repeatOffer`, bill-ways-in.ts). */
+  offer?: UndoEntryOffer | null;
 }
 
 export function buildUndoEntry(input: UndoEntryInput): UndoEntry {
-  const { id, message, tenantId, actorName, queue, refresh, onSettled } = input;
+  const { id, message, tenantId, actorName, queue, refresh, onSettled, offer = null } = input;
   return {
     id,
     message,
+    offer,
     commit: async () => {
       try {
         const result = await queue.commit(tenantId, id);

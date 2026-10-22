@@ -49,6 +49,8 @@ function FallBar({ row }: { row: FallRow }) {
 interface ProfitHeroProps {
   report: ProfitReport;
   period: Pick<ProfitWindow, "preset" | "label" | "isPartial" | "fromKey" | "toKey" | "phrase">;
+  /** Bills to pay: "If you pay the 2 bills left: about ₱20,800 kept" (this month only). */
+  forecast?: string | null;
 }
 
 /**
@@ -56,7 +58,7 @@ interface ProfitHeroProps {
  * one bar that falls from sales through ingredients and expenses to what is
  * left. A loss is said in words and drawn in a light red that reads on ink.
  */
-export function ProfitHero({ report, period }: ProfitHeroProps) {
+export function ProfitHero({ report, period, forecast = null }: ProfitHeroProps) {
   const verdict = profitVerdict(report);
   const notInProfit = notInProfitLine(report);
   return (
@@ -71,6 +73,11 @@ export function ProfitHero({ report, period }: ProfitHeroProps) {
         />
       </View>
       <Text style={styles.sentence}>{heroSentence(report, period)}</Text>
+      {forecast ? (
+        <Text style={styles.forecast} testID="profit-hero-forecast">
+          {forecast}
+        </Text>
+      ) : null}
       <View style={styles.fall}>
         {fallingBars(report).map((row) => (
           <FallBar key={row.key} row={row} />
@@ -91,6 +98,7 @@ const styles = StyleSheet.create({
   },
   eyebrow: { ...typography.eyebrow, color: colors.heroInkMuted, marginBottom: spacing.xs },
   sentence: { ...typography.caption, color: colors.heroInkText },
+  forecast: { ...typography.caption, color: colors.heroInkMuted, fontVariant: ["tabular-nums"] },
   fall: { gap: spacing.sm, marginTop: spacing.md },
   fallRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 22 },
   fallLabel: { ...typography.caption, color: colors.heroInkMuted, minWidth: 84, maxWidth: "36%", flexShrink: 1 },

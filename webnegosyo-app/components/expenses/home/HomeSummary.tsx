@@ -8,7 +8,7 @@ import { spacing } from "../../../theme/colors";
 import { SectionHeader } from "../../SectionHeader";
 import { SegmentedControl } from "../../SegmentedControl";
 import { CategoryBreakdown } from "./CategoryBreakdown";
-import { ExpensesHero, type HeroState } from "./ExpensesHero";
+import { ExpensesHero, type HeroBillsLine, type HeroState } from "./ExpensesHero";
 import { NeedsYouCard } from "./NeedsYouCard";
 
 export type HomeMode = "list" | "category";
@@ -33,6 +33,12 @@ export interface HomeHeroProps {
   onPrevious: () => void;
   onNext: () => void;
   onNeed: (item: NeedsYouItem) => void;
+  /** "Not now" on a Needs-you item that offers it ("Make it a bill?"). */
+  onDismissNeed?: (item: NeedsYouItem) => void;
+  /** The hero's "₱X still to pay · N bills" line. */
+  bills?: HeroBillsLine | null;
+  /** The Bills to pay card (or the one-line set-up door), drawn right under the hero. */
+  billsCard?: React.ReactNode;
 }
 
 /** The ink hero and the "Needs you" card: the top of the screen on a phone, the side column on a tablet. */
@@ -55,8 +61,10 @@ export function HomeHero(props: HomeHeroProps) {
         canGoNext={props.canGoNext}
         onPrevious={props.onPrevious}
         onNext={props.onNext}
+        bills={props.bills}
       />
-      <NeedsYouCard items={model.needs} onAction={props.onNeed} />
+      {props.billsCard}
+      <NeedsYouCard items={model.needs} onAction={props.onNeed} onDismiss={props.onDismissNeed} />
     </View>
   );
 }

@@ -16,7 +16,7 @@ import type { CashMove } from "../cash-drawers";
 import { listCashMoves } from "../cash-drawer-service";
 import { ALL_BRANCHES, resolveProfitBranch } from "../profit/profit-branch";
 import { resolveProfitWindow } from "../profit/profit-period";
-import type { ProfitGlance } from "../profit/profit-service";
+import type { ProfitBranch, ProfitGlance } from "../profit/profit-service";
 import { useProfitGlance } from "../profit/use-profit";
 import { useResource } from "../query/use-resource";
 import { loadOpenShift } from "../shift-service";
@@ -95,17 +95,22 @@ export function useMonthSpent(): { cents: number; monthName: string } | null {
  * Reports re-read on every focus, on a database every store shares.
  */
 export function useKeptThisMonth(isEnabled: boolean): ProfitGlance | null {
-  const accountOutletName = useAuthStore((s) => s.outletName);
-  const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
-  const account = useAccountBranchScope();
-  const { outlets } = useOutlets();
   const today = useManilaDay();
   // Keyed to the Manila day: the window's identity changes with the clock,
   // and the read's end comes from `windowAt` when it runs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const period = useMemo(() => resolveProfitWindow({ preset: "this_month" }, Date.now()), [today]);
+  return useProfitGlance(period, useKeptThisMonthBranch(), isEnabled);
+}
+
+/** The branch "Kept this month" covers (Profit's rule): its bills are the ones "left to pay". */
+export function useKeptThisMonthBranch(): ProfitBranch {
+  const accountOutletName = useAuthStore((s) => s.outletName);
+  const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
+  const account = useAccountBranchScope();
+  const { outlets } = useOutlets();
   const { branch } = resolveProfitBranch({ account, accountOutletName, outlets, choice: selectedOutlet ?? ALL_BRANCHES });
-  return useProfitGlance(period, branch, isEnabled);
+  return branch;
 }
 
 /** Whether this person has a shift open right now — re-read whenever the screen comes back into view. */
