@@ -40,6 +40,8 @@ function expense(overrides: Partial<Expense>): Expense {
     createdByName: "Owner",
     createdAt: "2026-10-21T00:00:00Z",
     receiptCount: 0,
+    billId: null,
+    billDueOn: null,
     docType: null,
     invoiceNo: null,
     supplierTin: null,

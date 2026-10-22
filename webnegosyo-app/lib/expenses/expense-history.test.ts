@@ -9,7 +9,7 @@ const base: Expense = {
   note: null, amountCents: 125_000, spentOn: "2026-10-21", paidFrom: "drawer", shiftCashMovementId: "m1",
   isStockPurchase: false, status: "recorded", voidReason: null, voidedBy: null, voidedAt: null,
   replacesExpenseId: "e1", clientRequestId: null, createdBy: null, createdByName: "Ana",
-  createdAt: "2026-10-21T01:42:00Z", receiptCount: 0, docType: null, invoiceNo: null, supplierTin: null,
+  createdAt: "2026-10-21T01:42:00Z", receiptCount: 0, billId: null, billDueOn: null, docType: null, invoiceNo: null, supplierTin: null,
   vatCents: null, ewtCents: null, ewtRate: null, form2307Given: false,
 };
 

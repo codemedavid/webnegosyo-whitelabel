@@ -98,6 +98,9 @@ export interface ExpenseRow {
   created_by_name: string
   created_at: string
   updated_at?: string
+  /** Bills to pay (20261022140000); optional so a narrower select still maps. */
+  bill_id?: string | null
+  bill_due_on?: string | null
   expense_receipts?: ReceiptCountEmbed
 }
 
@@ -145,7 +148,7 @@ export const EXPENSE_COLUMNS = [
   'amount_cents', 'spent_on', 'paid_from', 'shift_cash_movement_id', 'is_stock_purchase', 'doc_type',
   'invoice_no', 'supplier_tin', 'vat_cents', 'ewt_cents', 'ewt_rate', 'form_2307_given', 'status',
   'void_reason', 'voided_by', 'voided_at', 'replaces_expense_id', 'client_request_id', 'created_by',
-  'created_by_name', 'created_at',
+  'created_by_name', 'created_at', 'bill_id', 'bill_due_on',
 ].join(', ')
 
 /** The expense columns plus a receipt count (RLS on receipts follows the expense). */
@@ -246,6 +249,8 @@ export function toExpense(row: ExpenseRow, receiptCount?: number): Expense {
     createdByName: row.created_by_name,
     createdAt: row.created_at,
     receiptCount: receiptCount ?? receiptCountOf(row.expense_receipts),
+    billId: row.bill_id ?? null,
+    billDueOn: row.bill_due_on ?? null,
   }
 }
 
@@ -323,6 +328,8 @@ export function expenseDraftToInsert(draft: ExpenseDraftInput, context: ExpenseI
       ['supplier_id', draft.supplierId],
       ['paid_to_name', draft.paidToName],
       ['is_stock_purchase', draft.isStockPurchase],
+      ['bill_id', draft.billId],
+      ['bill_due_on', draft.billDueOn],
     ]),
     ...taxColumns(draft),
   }

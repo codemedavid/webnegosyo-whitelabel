@@ -47,6 +47,8 @@ export function homeExpense(overrides: Partial<Expense>): Expense {
     createdByName: "Owner",
     createdAt: "2026-10-22T00:00:00Z",
     receiptCount: 0,
+    billId: null,
+    billDueOn: null,
     docType: null,
     invoiceNo: null,
     supplierTin: null,

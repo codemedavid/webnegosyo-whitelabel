@@ -75,6 +75,8 @@ export function makeExpense(overrides: Partial<Expense> = {}): Expense {
     ewtCents: null,
     ewtRate: null,
     form2307Given: false,
+    billId: null,
+    billDueOn: null,
     ...overrides,
   }
 }

@@ -187,6 +187,9 @@ export interface ExpenseRow {
   created_by: string | null;
   created_by_name: string | null;
   created_at: string;
+  /** Bills to pay (20261022140000); optional so a narrower select still maps. */
+  bill_id?: string | null;
+  bill_due_on?: string | null;
   expense_receipts?: { count: number }[] | null;
 }
 
@@ -194,7 +197,7 @@ export const EXPENSE_COLUMNS =
   "id, tenant_id, outlet_id, category_id, supplier_id, paid_to_name, staff_user_id, note, amount_cents, spent_on, " +
   "paid_from, shift_cash_movement_id, is_stock_purchase, doc_type, invoice_no, supplier_tin, vat_cents, ewt_cents, " +
   "ewt_rate, form_2307_given, status, void_reason, voided_by, voided_at, replaces_expense_id, client_request_id, " +
-  "created_by, created_by_name, created_at, expense_receipts(count)";
+  "created_by, created_by_name, created_at, bill_id, bill_due_on, expense_receipts(count)";
 
 function nullableNumber(value: number | string | null): number | null {
   if (value === null || value === undefined) return null;
@@ -234,6 +237,8 @@ export function toExpense(row: ExpenseRow): Expense {
     createdByName: row.created_by_name ?? "Staff",
     createdAt: row.created_at,
     receiptCount: row.expense_receipts?.[0]?.count ?? 0,
+    billId: row.bill_id ?? null,
+    billDueOn: row.bill_due_on ?? null,
   };
 }
 
@@ -628,6 +633,9 @@ export async function recordExpense(
         is_stock_purchase: draft.isStockPurchase === true,
         client_request_id: draft.clientRequestId,
         created_by_name: createdByName.slice(0, 80) || "Staff",
+        // Paying a bill: both or neither (the database's expenses_bill_pair_ck).
+        bill_id: draft.billId ?? null,
+        bill_due_on: draft.billDueOn ?? null,
       })
       .select("id")
       .single(),

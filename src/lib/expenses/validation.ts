@@ -157,6 +157,19 @@ function checkTaxBelowAmount(value: TaxAmounts, ctx: z.RefinementCtx): void {
   }
 }
 
+interface BillLink {
+  billId?: string | null
+  billDueOn?: string | null
+}
+
+/** Paying a bill names the bill AND the due date it settles, or neither (bills-contract §2). */
+function checkBillPair(value: BillLink, ctx: z.RefinementCtx): void {
+  const hasBill = value.billId != null
+  const hasDueOn = value.billDueOn != null
+  if (hasBill && !hasDueOn) ctx.addIssue({ code: 'custom', path: ['billDueOn'], message: 'Pick which due date this pays.' })
+  if (!hasBill && hasDueOn) ctx.addIssue({ code: 'custom', path: ['billId'], message: 'Pick which bill this pays.' })
+}
+
 // ---------------------------------------------------------------------------
 // Expenses
 // ---------------------------------------------------------------------------
@@ -174,10 +187,13 @@ export const expenseDraftSchema = z
     paidToName: optionalText(MAX_PAID_TO_LENGTH, 'Paid to'),
     isStockPurchase: z.boolean().optional(),
     clientRequestId: uuid('This request is missing its id. Reload and try again.'),
+    billId: uuid('That bill could not be found.').nullable().optional(),
+    billDueOn: isoDate.nullable().optional(),
     ...taxFields,
   })
   .strict()
   .superRefine(checkTaxBelowAmount)
+  .superRefine(checkBillPair)
 
 /** A cashier paying an expense out of their open drawer (`DrawerExpenseDraft`). */
 export const drawerExpenseDraftSchema = z

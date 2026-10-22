@@ -49,7 +49,7 @@ function expense(id: string, overrides: Partial<Expense>): Expense {
     id, tenantId: "t1", outletId: null, categoryId: "lpg", supplierId: null, paidToName: null, staffUserId: null, note: null,
     amountCents: 100_00, spentOn: "2026-10-22", paidFrom: "cash", shiftCashMovementId: null, isStockPurchase: false,
     status: "recorded", voidReason: null, voidedBy: null, voidedAt: null, replacesExpenseId: null, clientRequestId: null,
-    createdBy: null, createdByName: "Owner", createdAt: "2026-10-22T02:00:00Z", receiptCount: 0, docType: null,
+    createdBy: null, createdByName: "Owner", createdAt: "2026-10-22T02:00:00Z", receiptCount: 0, billId: null, billDueOn: null, docType: null,
     invoiceNo: null, supplierTin: null, vatCents: null, ewtCents: null, ewtRate: null, form2307Given: false,
     ...overrides,
   };

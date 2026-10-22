@@ -98,6 +98,10 @@ export interface Expense extends TaxDetails {
   createdByName: string
   createdAt: string
   receiptCount: number
+  /** The bill this expense pays (Bills to pay); set together with `billDueOn`. */
+  billId: string | null
+  /** The bill's due date this expense settles (`YYYY-MM-DD`); null when `billId` is. */
+  billDueOn: string | null
 }
 
 /** What a person fills in to record a NON-drawer expense. */
@@ -112,6 +116,9 @@ export interface ExpenseDraft extends Partial<TaxDetails> {
   paidToName?: string | null
   isStockPurchase?: boolean
   clientRequestId: string
+  /** Paying a bill: both set, or neither (bills-contract §2). */
+  billId?: string | null
+  billDueOn?: string | null
 }
 
 /** What a cashier fills in to pay an expense from their open drawer. */

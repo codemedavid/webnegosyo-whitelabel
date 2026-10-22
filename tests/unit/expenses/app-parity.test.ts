@@ -29,6 +29,9 @@ const PORTED_MODULES = [
   'sort-suggest.ts',
   'flags.ts',
   'totals.ts',
+  'bill-schedule.ts',
+  'bill-reminders.ts',
+  'bill-suggestions.ts',
 ] as const
 
 function read(dir: string, file: string): string {

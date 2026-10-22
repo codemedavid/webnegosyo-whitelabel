@@ -32,6 +32,12 @@ export const EXPENSE_MESSAGES = {
   drawerVoidNotHolder: 'Only the cashier holding this drawer, or someone who manages cash, can void it and put the money back.',
   unknown: "We couldn't save that. Please try again.",
   readFailed: "We couldn't load your expenses. Please try again.",
+  // Bills to pay (bills-contract.md)
+  billGone: "That bill isn't available.",
+  billStopped: 'This bill was stopped, so it stays as it is. Add a new bill instead.',
+  billDueAlreadyPaid: 'That due date is already paid.',
+  billMarkGone: 'That was already undone.',
+  billsReadFailed: "We couldn't load your bills. Please try again.",
 } as const
 
 export interface PostgresErrorLike {
@@ -45,7 +51,7 @@ function mentions(error: PostgresErrorLike, word: string): boolean {
   return [error.message, error.details, error.hint].some((text) => typeof text === 'string' && text.includes(word))
 }
 
-/** Refusals the expense SQL raises by name (migrations 20261022120000/120100/130000). */
+/** Refusals the expense SQL raises by name (migrations 20261022120000/120100/130000/140000). */
 const KNOWN_REFUSALS: ReadonlyArray<readonly [string, string]> = [
   ['movement_not_found', EXPENSE_MESSAGES.payoutGone],
   ['expenses_movement_recorded_uq', EXPENSE_MESSAGES.payoutAlreadySorted],
@@ -60,6 +66,9 @@ const KNOWN_REFUSALS: ReadonlyArray<readonly [string, string]> = [
   ['already has expenses; its group cannot change', EXPENSE_MESSAGES.categoryGroupLocked],
   // 42501 from void_expense on a drawer expense.
   ['cash manager can put cash back', EXPENSE_MESSAGES.drawerVoidNotHolder],
+  // Bills to pay (20261022140000).
+  ['expenses_bill_due_recorded_uq', EXPENSE_MESSAGES.billDueAlreadyPaid],
+  ['This bill was stopped', EXPENSE_MESSAGES.billStopped],
 ]
 
 /** The sentence for a database refusal; `unknown` when it is not one we expect. */

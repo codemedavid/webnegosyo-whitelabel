@@ -34,6 +34,8 @@ import { addDays } from "./manila-date";
 import { PROFIT_RESOURCE } from "../profit/use-profit";
 // Read at call time only: use-drawer-expenses imports this module too.
 import { SHIFT_LINKS_RESOURCE } from "./use-drawer-expenses";
+// Read at call time only: use-bills imports this module too.
+import { EXPENSE_BILLS_RESOURCE } from "./use-bills";
 import type { QueuedReceipt } from "./receipt-queue";
 import type { Expense, ExpenseCategory, UnsortedPayout } from "./types";
 
@@ -171,7 +173,8 @@ export function useExpenseDetail(expenseId: string | null) {
 
 /**
  * Re-read everything expenses show after a write or a sync — and what they
- * feed: Profit, and the drawer's split of its pay-outs, so a figure sent from
+ * feed: Profit, the drawer's split of its pay-outs, and Bills to pay (an
+ * expense can pay or, voided, free a bill's due date), so a figure sent from
  * this phone shows there too.
  */
 export function invalidateExpenses(client: QueryClient, tenantId: string | null): Promise<void> {
@@ -183,6 +186,7 @@ export function invalidateExpenses(client: QueryClient, tenantId: string | null)
       EXPENSE_UNSORTED_RESOURCE,
       PROFIT_RESOURCE,
       SHIFT_LINKS_RESOURCE,
+      EXPENSE_BILLS_RESOURCE,
     ].map((name) => invalidateResource(client, name, tenantId)),
   ).then(() => undefined);
 }

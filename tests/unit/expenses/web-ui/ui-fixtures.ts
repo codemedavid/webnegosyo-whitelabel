@@ -71,6 +71,8 @@ export function expense(overrides: Partial<Expense> = {}): Expense {
     createdByName: 'Ana',
     createdAt: '2026-10-21T01:42:00.000Z',
     receiptCount: 0,
+    billId: null,
+    billDueOn: null,
     ...overrides,
   }
 }

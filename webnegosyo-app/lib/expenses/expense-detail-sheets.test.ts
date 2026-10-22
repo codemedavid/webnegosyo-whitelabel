@@ -16,7 +16,7 @@ const base: Expense = {
   note: "LPG 11kg", amountCents: 118_000, spentOn: "2026-10-22", paidFrom: "cash", shiftCashMovementId: null,
   isStockPurchase: false, status: "recorded", voidReason: null, voidedBy: null, voidedAt: null,
   replacesExpenseId: null, clientRequestId: "req-1", createdBy: null, createdByName: "Ben",
-  createdAt: "2026-10-22T02:12:00Z", receiptCount: 0, docType: null, invoiceNo: null, supplierTin: null,
+  createdAt: "2026-10-22T02:12:00Z", receiptCount: 0, billId: null, billDueOn: null, docType: null, invoiceNo: null, supplierTin: null,
   vatCents: null, ewtCents: null, ewtRate: null, form2307Given: false,
 };
 
