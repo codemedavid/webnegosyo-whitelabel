@@ -13,6 +13,7 @@
  * how the superadmin dashboard came to report zeros for every Convex tenant.
  */
 import { fetchCustomerOrderFacts } from '@/lib/queries/customer-facts'
+import { fakeSupabaseTables } from '../fixtures/fake-supabase-tables'
 
 type Row = Record<string, unknown>
 
@@ -66,6 +67,45 @@ function fakeClient(
 
   return { client: { from } as never, calls }
 }
+
+/** `count` distinct orders, one minute apart, in random-looking id order. */
+function manyOrders(count: number): Array<Record<string, unknown>> {
+  const start = Date.parse('2026-09-01T00:00:00.000Z')
+  return Array.from({ length: count }, (_, index) => ({
+    id: `order-${index}`, tenant_id: 'tenant-1', customer_id: 'customer-a', customer_contact: null, status: 'delivered',
+    payment_status: 'paid', outlet_id: null, total: 10, source: 'web',
+    created_at: new Date(start + ((index * 7919) % count) * 60_000).toISOString(),
+    updated_at: '2026-09-01T03:00:00.000Z',
+  }))
+}
+
+/**
+ * The 1000-row-capped platform fake, with a hook that runs before each read
+ * settles (to hold reads open, or to change the table between pages).
+ */
+function delayedTables(
+  tables: Record<string, Array<Record<string, unknown>>>,
+  beforeRead?: (table: string) => Promise<void>,
+  failures: Record<string, string> = {},
+) {
+  const fake = fakeSupabaseTables(tables, failures)
+  const inner = fake.client as unknown as { from: (table: string) => Record<string, unknown> }
+  const client = {
+    from(table: string) {
+      const query = inner.from(table)
+      const settle = query.then as (resolve: unknown, reject: unknown) => Promise<unknown>
+      query.then = async (resolve: unknown, reject: unknown) => {
+        await beforeRead?.(table)
+        return settle(resolve, reject)
+      }
+      return query
+    },
+  }
+  return { client: client as never, requests: fake.requests }
+}
+
+/** The Reports tab reads the whole history. */
+const LIFETIME = { days: 90, includeLifetime: true, platformClient: undefined as never }
 
 const PLATFORM_TENANT = { id: 'tenant-1', order_backend: 'platform' as const }
 const CONVEX_TENANT = {
@@ -204,66 +244,108 @@ describe('fetchCustomerOrderFacts', () => {
     expect(result.coverage.complete).toBe(true)
   })
 
-  it('reads eight item chunks in two bounded waves while preserving every order and item', async () => {
+  it('reads item chunks through at most eight lanes while preserving every order and item', async () => {
     jest.useFakeTimers()
     try {
-      const orders = Array.from({ length: 800 }, (_, index) => ({
-        id: `order-${index}`, customer_id: 'customer-a', status: 'delivered',
-        total: 10, created_at: '2026-09-01T02:00:00.000Z', source: 'web',
-      }))
+      const orders = manyOrders(3000)
       let active = 0
       let peak = 0
-      const { client, calls } = fakeClient({
-        orders: { data: orders },
-        order_items: { data: orders.map(order => ({
+      const { client, requests } = delayedTables({
+        orders,
+        order_items: orders.map(order => ({
           order_id: order.id, menu_item_id: order.id, menu_item_name: 'Latte', quantity: 1, price: 10,
-        })) },
-      }, async record => {
-        if (record.table !== 'order_items') return
+        })),
+      }, async table => {
+        if (table !== 'order_items') return
         active++
         peak = Math.max(peak, active)
         await new Promise(resolve => setTimeout(resolve, 20))
         active--
       })
-      let completed = false
-      const pending = fetchCustomerOrderFacts(PLATFORM_TENANT, { days: 30, platformClient: client })
-        .then(result => { completed = true; return result })
+      const pending = fetchCustomerOrderFacts(PLATFORM_TENANT, { ...LIFETIME, platformClient: client })
 
-      await jest.advanceTimersByTimeAsync(40)
-      expect(completed).toBe(true)
+      await jest.advanceTimersByTimeAsync(200)
       const result = await pending
-      expect(peak).toBe(4)
-      expect(calls.filter(call => call.table === 'order_items')).toHaveLength(8)
+      expect(peak).toBe(8)
+      // 150 order ids per request keeps the URL bounded: 3000 orders = 20 reads.
+      expect(requests.filter(call => call.table === 'order_items')).toHaveLength(20)
       expect(result.coverage.complete).toBe(true)
-      expect(result.facts).toHaveLength(800)
-      result.facts.forEach((fact, index) => {
-        expect(fact.externalOrderId).toBe(orders[index].id)
-        expect(fact.items).toEqual([expect.objectContaining({ menuItemId: orders[index].id })])
-      })
+      expect(result.facts).toHaveLength(3000)
+      for (const fact of result.facts) {
+        expect(fact.items).toEqual([expect.objectContaining({ menuItemId: fact.externalOrderId })])
+      }
     } finally {
       jest.useRealTimers()
     }
   })
 
-  it('keeps order totals and stops further batches when item reads fail', async () => {
-    const orders = Array.from({ length: 800 }, (_, index) => ({
-      id: `order-${index}`, customer_id: 'customer-a', status: 'delivered',
-      total: 10, created_at: '2026-09-01T02:00:00.000Z', source: 'web',
-    }))
-    const { client, calls } = fakeClient({
-      orders: { data: orders },
-      order_items: { error: { message: 'item database unavailable' } },
+  it('reads order pages side by side once the first page comes back full', async () => {
+    jest.useFakeTimers()
+    try {
+      let active = 0
+      let peak = 0
+      const { client, requests } = delayedTables({ orders: manyOrders(4500), order_items: [] }, async table => {
+        if (table !== 'orders') return
+        active++
+        peak = Math.max(peak, active)
+        await new Promise(resolve => setTimeout(resolve, 20))
+        active--
+      })
+      const pending = fetchCustomerOrderFacts(PLATFORM_TENANT, { ...LIFETIME, platformClient: client })
+
+      await jest.advanceTimersByTimeAsync(200)
+      const result = await pending
+      expect(peak).toBeGreaterThan(1)
+      expect(requests.filter(call => call.table === 'orders').every(call => call.returned <= 1000)).toBe(true)
+      expect(new Set(result.facts.map(fact => fact.externalOrderId)).size).toBe(4500)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('neither loses nor doubles an order when a new one arrives mid-read', async () => {
+    const orders = manyOrders(2500)
+    let orderReads = 0
+    const { client } = delayedTables({ orders, order_items: [] }, async table => {
+      if (table !== 'orders') return
+      orderReads++
+      if (orderReads === 2) {
+        orders.push({ ...manyOrders(1)[0], id: 'order-new', created_at: '2026-12-31T00:00:00.000Z' })
+      }
     })
 
-    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { days: 30, platformClient: client })
+    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { ...LIFETIME, platformClient: client })
 
-    expect(result.facts).toHaveLength(800)
+    const ids = result.facts.map(fact => fact.externalOrderId)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (let index = 0; index < 2500; index++) expect(ids).toContain(`order-${index}`)
+  })
+
+  it('returns the newest order first', async () => {
+    const { client } = delayedTables({ orders: manyOrders(1500), order_items: [] })
+
+    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { ...LIFETIME, platformClient: client })
+
+    const times = result.facts.map(fact => fact.orderedAt)
+    expect(times).toEqual([...times].sort().reverse())
+  })
+
+  it('keeps order totals and stops starting item reads when one fails', async () => {
+    const { client, requests } = delayedTables(
+      { orders: manyOrders(3000), order_items: [] },
+      undefined,
+      { order_items: 'item database unavailable' },
+    )
+
+    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { ...LIFETIME, platformClient: client })
+
+    expect(result.facts).toHaveLength(3000)
     expect(result.facts.every(fact => fact.netTotal === 10 && fact.items.length === 0)).toBe(true)
     expect(result.coverage).toEqual({
       complete: false,
       note: expect.stringContaining('item database unavailable'),
     })
-    expect(calls.filter(call => call.table === 'order_items')).toHaveLength(4)
+    expect(requests.filter(call => call.table === 'order_items').length).toBeLessThanOrEqual(8)
   })
 
   it('paginates line items within an order chunk', async () => {
@@ -272,15 +354,15 @@ describe('fetchCustomerOrderFacts', () => {
         id: 'large-order', customer_id: 'customer-a', status: 'delivered',
         total: 6000, created_at: '2026-09-01T02:00:00.000Z', source: 'web',
       }] },
-      order_items: { data: Array.from({ length: 600 }, (_, index) => ({
+      order_items: { data: Array.from({ length: 1600 }, (_, index) => ({
         order_id: 'large-order', menu_item_id: `menu-${index}`,
         menu_item_name: `Dish ${index}`, quantity: 1, price: 10,
       })) },
     })
 
-    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { days: 30, platformClient: client })
+    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { ...LIFETIME, platformClient: client })
 
-    expect(result.facts[0].items).toHaveLength(600)
+    expect(result.facts[0].items).toHaveLength(1600)
     expect(result.coverage.complete).toBe(true)
     expect(calls.filter(call => call.table === 'order_items')).toHaveLength(2)
   })

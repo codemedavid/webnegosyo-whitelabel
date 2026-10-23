@@ -215,14 +215,6 @@ describe("runPlatformAnalyticsQuery — figures", () => {
     ]);
   });
 
-  it("asks PostgREST for the cancelled-order exclusion rather than filtering after the cap", async () => {
-    const { client, calls } = fakePlatformClient({ orders: [{ data: [], error: null }] });
-
-    await runPlatformAnalyticsQuery(client, TENANT, "analytics:getTrends", { daysBack: 30 });
-
-    expect(opsOf(calls, "neq")).toContainEqual(["status", "cancelled"]);
-  });
-
   it("reads the previous period separately for sales growth", async () => {
     const { client, calls } = fakePlatformClient({
       orders: [
@@ -447,5 +439,152 @@ describe("runPlatformAnalyticsQuery — split tenders", () => {
     const ops = payments.flatMap((c) => c.ops);
     expect(ops).toContainEqual({ method: "neq", args: ["orders.status", "cancelled"] });
     expect(ops).toContainEqual({ method: "range", args: expect.any(Array) });
+  });
+});
+
+/**
+ * A busy store's Analytics screen used to time out: its nine queries each
+ * downloaded the same window (five copies of the orders alone), whole
+ * `customer_data` blobs included, one 1000-row page after another.
+ */
+describe("runPlatformAnalyticsQuery — one download per window", () => {
+  const START = Date.parse("2026-09-02T16:00:00.000Z");
+  const END = START + 7 * 24 * 60 * 60 * 1000;
+  const WINDOW = { startMs: START, endMs: END };
+
+  it("reads the window's orders, lines, payments and events once for the whole screen", async () => {
+    // Arrange
+    const { client, calls } = fakePlatformClient({
+      orders: [
+        { data: [orderRow()], error: null },
+        { data: [], error: null },
+      ],
+      order_items: [{ data: [], error: null }],
+      order_payments: [{ data: [], error: null }],
+      analytics_events: [{ data: [], error: null }],
+    });
+    const refs = [
+      "analytics:getSalesAnalytics",
+      "analytics:getRevenueBreakdown",
+      "analytics:getPaymentMethodAnalytics",
+      "analytics:getOrderHeatmap",
+      "analytics:getCustomerInsights",
+      "analytics:getTopItems",
+      "analytics:getUpsellTrends",
+      "analytics:getUpsellAnalytics",
+    ];
+
+    // Act
+    await Promise.all(refs.map((ref) => runPlatformAnalyticsQuery(client, TENANT, ref, WINDOW)));
+
+    // Assert
+    const reads = (table: string) => calls.filter((call) => call.table === table).length;
+    expect(reads("orders")).toBe(2); // the window, and the one before it for growth
+    expect(reads("order_items")).toBe(1);
+    expect(reads("order_payments")).toBe(1);
+    expect(reads("analytics_events")).toBe(1);
+  });
+
+  it("shares rolling windows asked for a few milliseconds apart", async () => {
+    // Arrange
+    const { client, calls } = fakePlatformClient({ orders: [{ data: [orderRow()], error: null }] });
+    const now = jest.spyOn(Date, "now");
+
+    // Act
+    now.mockReturnValueOnce(NOW + 3);
+    const heatmap = runPlatformAnalyticsQuery(client, TENANT, "analytics:getOrderHeatmap", { daysBack: 30 });
+    now.mockReturnValueOnce(NOW + 9);
+    const insights = runPlatformAnalyticsQuery(client, TENANT, "analytics:getCustomerInsights", { daysBack: 30 });
+    await Promise.all([heatmap, insights]);
+
+    // Assert
+    expect(calls.filter((call) => call.table === "orders")).toHaveLength(1);
+  });
+
+  it("still leaves cancelled orders out of the figures that never counted them", async () => {
+    // Arrange
+    const { client } = fakePlatformClient({
+      orders: [
+        { data: [orderRow(), orderRow({ id: "x", status: "cancelled", total: "999" })], error: null },
+        { data: [], error: null },
+      ],
+      order_payments: [{ data: [], error: null }],
+    });
+
+    // Act
+    const [sales, breakdown] = (await Promise.all([
+      runPlatformAnalyticsQuery(client, TENANT, "analytics:getSalesAnalytics", WINDOW),
+      runPlatformAnalyticsQuery(client, TENANT, "analytics:getRevenueBreakdown", WINDOW),
+    ])) as [{ cancelledOrders: number }, { byOrderType: { revenue: number; count: number }[] }];
+
+    // Assert
+    expect(sales.cancelledOrders).toBe(1);
+    expect(breakdown.byOrderType).toEqual([expect.objectContaining({ revenue: 250, count: 1 })]);
+  });
+
+  it("downloads only the identity keys of customer_data, and still recognises the guest", async () => {
+    // Arrange
+    const blobGuest = { customer_contact: null, cd_phone: "0917 123 4567" };
+    const { client, calls } = fakePlatformClient({
+      orders: [
+        {
+          data: [orderRow({ id: "a", ...blobGuest }), orderRow({ id: "b", ...blobGuest })],
+          error: null,
+        },
+      ],
+    });
+
+    // Act
+    const insights = (await runPlatformAnalyticsQuery(
+      client,
+      TENANT,
+      "analytics:getCustomerInsights",
+      WINDOW
+    )) as { totalCustomers: number; returningCustomers: number };
+
+    // Assert
+    const [columns] = opsOf(calls, "select")[0] as [string];
+    expect(columns.split(",").map((column) => column.trim())).not.toContain("customer_data");
+    expect(columns).toContain("cd_phone:customer_data->phone");
+    expect(insights).toMatchObject({ totalCustomers: 1, returningCustomers: 1 });
+  });
+
+  it("reads every window oldest first, so a sale rung up mid-read cannot shift a page", async () => {
+    // Arrange
+    const { client, calls } = fakePlatformClient({
+      orders: [{ data: [], error: null }],
+      order_items: [{ data: [], error: null }],
+    });
+
+    // Act
+    await Promise.all([
+      runPlatformAnalyticsQuery(client, TENANT, "analytics:getOrderHeatmap", WINDOW),
+      runPlatformAnalyticsQuery(client, TENANT, "analytics:getTopItems", WINDOW),
+    ]);
+
+    // Assert
+    for (const call of calls) {
+      const orderings = call.ops.filter((op) => op.method === "order").map((op) => op.args[1]);
+      expect(orderings).toEqual([{ ascending: true }, { ascending: true }]);
+    }
+  });
+
+  it("lets one query give up without cancelling the read another query shares", async () => {
+    // Arrange
+    const { client } = fakePlatformClient({ orders: [{ data: [orderRow()], error: null }] });
+    const quitter = new AbortController();
+
+    // Act
+    const abandoned = runPlatformAnalyticsQuery(
+      client, TENANT, "analytics:getOrderHeatmap", WINDOW, undefined, quitter.signal
+    );
+    const kept = runPlatformAnalyticsQuery(
+      client, TENANT, "analytics:getCustomerInsights", WINDOW, undefined, new AbortController().signal
+    );
+    quitter.abort();
+
+    // Assert
+    await expect(abandoned).rejects.toMatchObject({ name: "AbortError" });
+    await expect(kept).resolves.toMatchObject({ totalCustomers: 1 });
   });
 });
