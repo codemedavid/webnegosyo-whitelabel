@@ -4,9 +4,13 @@
  *
  * This module only FETCHES: it applies the window, the tenant guard and the
  * branch scope, coerces PostgREST rows, and hands them to the pure compute
- * modules, which own the arithmetic. Every read is bounded (`STATS_LIMIT`) and
- * every read is tenant-scoped — see `platform-client.ts` for why RLS is not
- * enough on its own.
+ * modules, which own the arithmetic. Every read is bounded and every read is
+ * tenant-scoped — see `platform-client.ts` for why RLS is not enough on its own.
+ *
+ * A screen asks many questions of ONE window (the Analytics screen sends nine),
+ * so the bulk reads are shared while in flight (`shared-read.ts`): each window's
+ * orders, lines, payments and events cross the network once, whichever figures
+ * they feed.
  */
 
 import {
@@ -38,12 +42,16 @@ import {
   asRecord,
   boundedInt,
   readAllPages,
+  readEveryRow,
   requireTenant,
   scopeToBranch,
   toNumber,
+  withAbortSignal,
   type PlatformClient,
 } from "./platform-client";
 import type { BranchScope } from "../branch-scope";
+import { IDENTITY_BLOB_KEYS } from "../customer-identity";
+import { sharedRead } from "./shared-read";
 import { parseItemSalesArgs, readItemSales } from "./supabase-item-sales";
 
 /** Refs this module serves. */
@@ -72,17 +80,34 @@ const MAX_DAYS_BACK = 366;
 const MAX_TOP_ITEMS = 100;
 const DEFAULT_TOP_ITEMS = 10;
 
-/** Only what the analytics arithmetic reads — not the full order row. */
-const ANALYTICS_ORDER_COLUMNS =
-  "id, created_at, status, total, source, order_type, payment_method_name, customer_name, customer_contact, customer_data, outlet_id";
+/**
+ * Most rows one window may add up on the phone. Past it the read is refused
+ * rather than summed in part; a window that big belongs to a server report.
+ */
+const ANALYTICS_ROW_LIMIT = 50_000;
+
+/** Prefix of the identity keys selected out of `customer_data`. */
+const BLOB_KEY_PREFIX = "cd_";
+
+/**
+ * Only what the analytics arithmetic reads — not the full order row. Of the
+ * `customer_data` blob (most of a row's bytes) only the keys a guest can be
+ * recognised by come down, each as its own JSON value.
+ */
+const ANALYTICS_ORDER_COLUMNS = [
+  "id, created_at, status, total, source, order_type, payment_method_name, customer_name, customer_contact, outlet_id",
+  ...IDENTITY_BLOB_KEYS.map((key) => `${BLOB_KEY_PREFIX}${key}:customer_data->${key}`),
+].join(", ");
 
 /**
  * Line items scoped through an inner join on their parent order, which also
  * carries the window and the cancellation filter so the cap applies to the
- * rows that matter rather than to the whole history.
+ * rows that matter rather than to the whole history. The join is EMPTY
+ * (`orders!inner()`): it filters and orders, but repeats none of the order's
+ * columns on every line — over half of each line's bytes before.
  */
 const ANALYTICS_ITEM_COLUMNS =
-  "order_id, menu_item_id, menu_item_name, quantity, subtotal, is_upsell_item, orders!inner(tenant_id, created_at, status, outlet_id)";
+  "id, order_id, menu_item_id, menu_item_name, quantity, subtotal, is_upsell_item, orders!inner()";
 
 /**
  * Settlement rows of the window's orders, so a bill paid by several methods
@@ -90,7 +115,7 @@ const ANALYTICS_ITEM_COLUMNS =
  * the branch and the cancellation filter, as the line-item read does.
  */
 const ANALYTICS_PAYMENT_COLUMNS =
-  "order_id, kind, amount, payment_method_name, orders!inner(tenant_id, created_at, status, outlet_id)";
+  "id, order_id, kind, amount, payment_method_name, orders!inner()";
 
 const UPSELL_EVENT_TYPES = ["upsell_shown", "upsell_clicked", "upsell_converted"];
 const BUNDLE_EVENT_TYPES = ["bundle_viewed", "bundle_added"];
@@ -107,7 +132,8 @@ interface AnalyticsOrderRow {
   payment_method_name: string | null;
   customer_name: string | null;
   customer_contact: string | null;
-  customer_data: unknown;
+  /** `cd_<key>`: one identity key of `customer_data`, or null when absent. */
+  [blobKey: `cd_${string}`]: unknown;
 }
 
 interface AnalyticsItemRow {
@@ -147,8 +173,17 @@ function toAnalyticsOrder(row: AnalyticsOrderRow): AnalyticsOrder {
     paymentMethod: row.payment_method_name ?? undefined,
     customerName: row.customer_name ?? "",
     customerContact: row.customer_contact ?? "",
-    customerData: row.customer_data,
+    customerData: identityBlob(row),
   };
+}
+
+/** The identity keys of `customer_data` back in their blob, or null if none. */
+function identityBlob(row: AnalyticsOrderRow): Record<string, unknown> | null {
+  const entries = IDENTITY_BLOB_KEYS.flatMap((key) => {
+    const value = row[`${BLOB_KEY_PREFIX}${key}`];
+    return value === null || value === undefined ? [] : [[key, value] as const];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 function toAnalyticsItem(row: AnalyticsItemRow): AnalyticsItem {
@@ -206,18 +241,29 @@ function explicitWindow(args: Record<string, unknown>): Window | null {
   return { startMs, endMs };
 }
 
+const MINUTE_MS = 60_000;
+
+/**
+ * "Now", to the minute. Queries a screen sends together resolve their rolling
+ * windows a few milliseconds apart; on the same minute they name the same
+ * window and share one read.
+ */
+function nowToTheMinute(): number {
+  return Math.floor(Date.now() / MINUTE_MS) * MINUTE_MS;
+}
+
 /** `daysBack` as Convex reads it: a rolling window ending now. */
 function rollingWindow(args: Record<string, unknown>, defaultDays: number): Window {
   const explicit = explicitWindow(args);
   if (explicit) return explicit;
 
   const days = boundedInt(args.daysBack, defaultDays, 1, MAX_DAYS_BACK);
-  return { startMs: Date.now() - days * DAY_MS };
+  return { startMs: nowToTheMinute() - days * DAY_MS };
 }
 
 /** The window immediately before `window`, of the same length. */
 function previousWindow(window: Window): Window {
-  const endMs = window.endMs ?? Date.now();
+  const endMs = window.endMs ?? nowToTheMinute();
   return { startMs: window.startMs - (endMs - window.startMs), endMs: window.startMs };
 }
 
@@ -240,179 +286,214 @@ function productWindow(period: ProductPeriod, nowMs: number): Window {
 
 // --- reads --------------------------------------------------------------------------
 
+/** Who is asking, and how to stop asking. */
+interface ReadContext {
+  /** Unsignalled: a shared read attaches its own signal, a private one the caller's. */
+  client: PlatformClient;
+  tenantId: string;
+  scope: BranchScope;
+  signal?: AbortSignal;
+}
+
+const clientIds = new WeakMap<PlatformClient, number>();
+let lastClientId = 0;
+
+/** Everything that decides a bulk read's rows, as one key. */
+function readKey(ctx: ReadContext, kind: string, window: Window): string {
+  if (!clientIds.has(ctx.client)) clientIds.set(ctx.client, ++lastClientId);
+  const branch = ctx.scope.kind === "all" ? "all" : ctx.scope.outletId;
+  const end = window.endMs ?? "now";
+  return `${kind}|${clientIds.get(ctx.client)}|${ctx.tenantId}|${branch}|${window.startMs}|${end}`;
+}
+
+/** `read` once for every caller asking `kind` of the same window right now. */
+function shared<T>(
+  ctx: ReadContext,
+  kind: string,
+  window: Window,
+  read: (client: PlatformClient) => Promise<T>
+): Promise<T> {
+  return sharedRead(readKey(ctx, kind, window), ctx.signal, (signal) =>
+    read(withAbortSignal(ctx.client, signal))
+  );
+}
+
+/** The caller's own client, for a read nobody else asks for. */
+function ownClient(ctx: ReadContext): PlatformClient {
+  return ctx.signal ? withAbortSignal(ctx.client, ctx.signal) : ctx.client;
+}
+
+function boundCreatedAt(
+  builder: ReturnType<PlatformClient["from"]>,
+  column: string,
+  window: Window
+): ReturnType<PlatformClient["from"]> {
+  const bounded = builder.gte(column, new Date(window.startMs).toISOString());
+  return window.endMs === undefined ? bounded : bounded.lt(column, new Date(window.endMs).toISOString());
+}
+
 interface ReadOptions {
   includeCancelled?: boolean;
 }
 
+/**
+ * The window's orders. Cancelled orders come down too and are dropped here, so
+ * the sales figures (which count cancellations) and every other figure share
+ * one read; with `readEveryRow` refusing an over-full window, they can no
+ * longer crowd real sales out of a capped one.
+ */
 async function fetchOrders(
-  client: PlatformClient,
-  tenantId: string,
-  scope: BranchScope,
+  ctx: ReadContext,
   window: Window,
   options: ReadOptions = {}
 ): Promise<AnalyticsOrder[]> {
-  const build = () => {
-    let builder = scopeToBranch(
-      client.from("orders").select(ANALYTICS_ORDER_COLUMNS).eq("tenant_id", tenantId),
-      scope
-    ).gte("created_at", new Date(window.startMs).toISOString());
-
-    if (window.endMs !== undefined) {
-      builder = builder.lt("created_at", new Date(window.endMs).toISOString());
-    }
-    // Pushed to PostgREST rather than filtered after the cap: on a busy store a
-    // post-filter would let cancelled rows crowd real sales out of the window.
-    if (!options.includeCancelled) {
-      builder = builder.neq("status", "cancelled");
-    }
-    // `id` breaks created_at ties so no row shifts between pages.
-    return builder.order("created_at", { ascending: false }).order("id", { ascending: false });
-  };
-
-  const rows = await readAllPages<AnalyticsOrderRow>(build);
-  return rows.map(toAnalyticsOrder);
+  const orders = await shared(ctx, "orders", window, async (client) => {
+    const rows = await readEveryRow<AnalyticsOrderRow>(
+      () =>
+        boundCreatedAt(
+          scopeToBranch(
+            client.from("orders").select(ANALYTICS_ORDER_COLUMNS).eq("tenant_id", ctx.tenantId),
+            ctx.scope
+          ),
+          "created_at",
+          window
+        )
+          // Oldest first, `id` breaking ties — see `readEveryRow`.
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true }),
+      { maxRows: ANALYTICS_ROW_LIMIT }
+    );
+    return rows.map(toAnalyticsOrder);
+  });
+  return options.includeCancelled ? orders : orders.filter((order) => order.status !== "cancelled");
 }
 
 /** Line items of the non-cancelled orders in the window. */
-async function fetchItems(
-  client: PlatformClient,
-  tenantId: string,
-  scope: BranchScope,
-  window: Window
-): Promise<AnalyticsItem[]> {
-  const build = () => {
-    let builder = scopeToBranch(
-      client
-        .from("order_items")
-        .select(ANALYTICS_ITEM_COLUMNS)
-        .eq("orders.tenant_id", tenantId)
-        .gte("orders.created_at", new Date(window.startMs).toISOString())
-        .neq("orders.status", "cancelled"),
-      scope,
-      "orders.outlet_id"
+function fetchItems(ctx: ReadContext, window: Window): Promise<AnalyticsItem[]> {
+  return shared(ctx, "items", window, async (client) => {
+    const rows = await readEveryRow<AnalyticsItemRow>(
+      () =>
+        // The bounds belong on the JOINED order: an item has no date of its own,
+        // so without the upper one a window asking for one day would take that
+        // day's first item and every item sold since.
+        boundCreatedAt(
+          scopeToBranch(
+            client
+              .from("order_items")
+              .select(ANALYTICS_ITEM_COLUMNS)
+              .eq("orders.tenant_id", ctx.tenantId)
+              .neq("orders.status", "cancelled"),
+            ctx.scope,
+            "orders.outlet_id"
+          ),
+          "orders.created_at",
+          window
+        )
+          .order("orders(created_at)", { ascending: true })
+          .order("id", { ascending: true }),
+      { maxRows: ANALYTICS_ROW_LIMIT }
+    );
+    return rows.map(toAnalyticsItem);
+  });
+}
+
+/** Settlement rows of the window's non-cancelled orders, by order. */
+function fetchPayments(ctx: ReadContext, window: Window): Promise<Map<string, AnalyticsPayment[]>> {
+  return shared(ctx, "payments", window, async (client) => {
+    const rows = await readEveryRow<AnalyticsPaymentRow>(
+      () => {
+        const builder = scopeToBranch(
+          client
+            .from("order_payments")
+            .select(ANALYTICS_PAYMENT_COLUMNS)
+            .eq("tenant_id", ctx.tenantId)
+            .eq("orders.tenant_id", ctx.tenantId)
+            // A payment never predates its order, so this bound is safe and lets
+            // the read use the ledger's (tenant_id, created_at) index.
+            .gte("created_at", new Date(window.startMs).toISOString())
+            .neq("orders.status", "cancelled"),
+          ctx.scope,
+          "orders.outlet_id"
+        );
+        return boundCreatedAt(builder, "orders.created_at", window)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true });
+      },
+      { maxRows: ANALYTICS_ROW_LIMIT }
     );
 
-    // The upper bound belongs on the JOINED order, not on the item: an item has
-    // no date of its own, so without this a window asking for one day would take
-    // that day's first item and every item sold since.
-    if (window.endMs !== undefined) {
-      builder = builder.lt("orders.created_at", new Date(window.endMs).toISOString());
+    const byOrder = new Map<string, AnalyticsPayment[]>();
+    for (const row of rows) {
+      const payment: AnalyticsPayment = {
+        kind: row.kind ?? "charge",
+        amount: toNumber(row.amount),
+        method: row.payment_method_name ?? undefined,
+      };
+      byOrder.set(row.order_id, [...(byOrder.get(row.order_id) ?? []), payment]);
     }
-    return builder
-      .order("orders(created_at)", { ascending: false })
-      .order("id", { ascending: false });
-  };
-
-  const rows = await readAllPages<AnalyticsItemRow>(build);
-  return rows.map(toAnalyticsItem);
+    return byOrder;
+  });
 }
 
 /**
  * The window's orders, each with its settlement ledger. Only the payment-method
  * figures need the ledger, so only they pay for the second read.
  */
-async function fetchOrdersWithPayments(
-  client: PlatformClient,
-  tenantId: string,
-  scope: BranchScope,
-  window: Window
-): Promise<AnalyticsOrder[]> {
-  const build = () => {
-    let builder = scopeToBranch(
-      client
-        .from("order_payments")
-        .select(ANALYTICS_PAYMENT_COLUMNS)
-        .eq("tenant_id", tenantId)
-        .eq("orders.tenant_id", tenantId)
-        // A payment never predates its order, so this bound is safe and lets
-        // the read use the ledger's (tenant_id, created_at) index.
-        .gte("created_at", new Date(window.startMs).toISOString())
-        .gte("orders.created_at", new Date(window.startMs).toISOString())
-        .neq("orders.status", "cancelled"),
-      scope,
-      "orders.outlet_id"
-    );
-    if (window.endMs !== undefined) {
-      builder = builder.lt("orders.created_at", new Date(window.endMs).toISOString());
-    }
-    return builder.order("created_at", { ascending: true }).order("id", { ascending: true });
-  };
-
-  const [orders, rows] = await Promise.all([
-    fetchOrders(client, tenantId, scope, window),
-    readAllPages<AnalyticsPaymentRow>(build),
-  ]);
-
-  const byOrder = new Map<string, AnalyticsPayment[]>();
-  for (const row of rows) {
-    const payment: AnalyticsPayment = {
-      kind: row.kind ?? "charge",
-      amount: toNumber(row.amount),
-      method: row.payment_method_name ?? undefined,
-    };
-    byOrder.set(row.order_id, [...(byOrder.get(row.order_id) ?? []), payment]);
-  }
+async function fetchOrdersWithPayments(ctx: ReadContext, window: Window): Promise<AnalyticsOrder[]> {
+  const [orders, byOrder] = await Promise.all([fetchOrders(ctx, window), fetchPayments(ctx, window)]);
   return orders.map((order) => {
     const payments = byOrder.get(order.id);
     return payments ? { ...order, payments } : order;
   });
 }
 
-async function fetchEvents(
-  client: PlatformClient,
-  tenantId: string,
+function fetchEvents(
+  ctx: ReadContext,
   types: readonly string[],
-  scope: BranchScope,
   window: Window
 ): Promise<AnalyticsEvent[]> {
-  const build = () => {
-    let builder = client.from("analytics_events")
-      .select("type, created_at")
-      .eq("tenant_id", tenantId);
-    if (scope.kind === "branch") {
-      // Checkout historically used outletId; newer event producers use outlet_id.
-      // Prefer the canonical key if both exist. Quote PostgREST filter values.
-      const id = JSON.stringify(scope.outletId);
-      builder = builder.or(`metadata->>outlet_id.eq.${id},and(metadata->>outlet_id.is.null,metadata->>outletId.eq.${id})`);
-    }
-    builder = builder
-      .in("type", types)
-      .gte("created_at", new Date(window.startMs).toISOString());
-
-    if (window.endMs !== undefined) {
-      builder = builder.lt("created_at", new Date(window.endMs).toISOString());
-    }
-    return builder.order("created_at", { ascending: false }).order("id", { ascending: false });
-  };
-
-  const rows = await readAllPages<AnalyticsEventRow>(build);
-  return rows.map(toAnalyticsEvent);
+  return shared(ctx, `events:${types.join(",")}`, window, async (client) => {
+    const rows = await readEveryRow<AnalyticsEventRow>(
+      () => {
+        let builder = client.from("analytics_events")
+          .select("id, type, created_at")
+          .eq("tenant_id", ctx.tenantId);
+        if (ctx.scope.kind === "branch") {
+          // Checkout historically used outletId; newer event producers use outlet_id.
+          // Prefer the canonical key if both exist. Quote PostgREST filter values.
+          const id = JSON.stringify(ctx.scope.outletId);
+          builder = builder.or(`metadata->>outlet_id.eq.${id},and(metadata->>outlet_id.is.null,metadata->>outletId.eq.${id})`);
+        }
+        return boundCreatedAt(builder.in("type", types), "created_at", window)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true });
+      },
+      { maxRows: ANALYTICS_ROW_LIMIT }
+    );
+    return rows.map(toAnalyticsEvent);
+  });
 }
 
-async function fetchCosts(client: PlatformClient, tenantId: string): Promise<ProductCost[]> {
+async function fetchCosts(ctx: ReadContext): Promise<ProductCost[]> {
+  const client = ownClient(ctx);
   const rows = await readAllPages<ProductCostRow>(() =>
     client
       .from("product_costs")
       .select("menu_item_id, cost_price")
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", ctx.tenantId)
       .order("menu_item_id", { ascending: true })
   );
   return rows.map(toProductCost);
 }
 
-async function fetchProductRows(
-  client: PlatformClient,
-  tenantId: string,
-  scope: BranchScope,
-  args: Record<string, unknown>
-) {
+async function fetchProductRows(ctx: ReadContext, args: Record<string, unknown>) {
   const period = resolveProductPeriod(args.period);
   const nowMs = Date.now();
-  const window = productWindow(period, nowMs);
+  const window = productWindow(period, nowToTheMinute());
   const [orders, items, costs] = await Promise.all([
-    fetchOrders(client, tenantId, scope, window),
-    fetchItems(client, tenantId, scope, window),
-    fetchCosts(client, tenantId),
+    fetchOrders(ctx, window),
+    fetchItems(ctx, window),
+    fetchCosts(ctx),
   ]);
   return computeProductAnalytics({ orders, items, costs, period, nowMs });
 }
@@ -422,67 +503,64 @@ async function fetchProductRows(
 /**
  * `scope` is the effective viewing branch: the account restriction narrowed
  * by the owner's selection. An aggregate cannot be narrowed after computing.
+ *
+ * `client` must NOT carry the caller's signal: a read shared with other
+ * queries attaches its own, so one query giving up never cancels another's
+ * answer. `signal` is the caller's.
  */
 export async function runPlatformAnalyticsQuery(
   client: PlatformClient,
   tenantId: string,
   ref: string,
   args: unknown,
-  scope: BranchScope = STORE_WIDE
+  scope: BranchScope = STORE_WIDE,
+  signal?: AbortSignal
 ): Promise<unknown> {
-  const tenant = requireTenant(tenantId);
+  const ctx: ReadContext = { client, tenantId: requireTenant(tenantId), scope, signal };
   const params = asRecord(args);
 
   switch (ref) {
     case "analytics:getUpsellAnalytics":
-      return computeUpsellAnalytics(
-        await fetchEvents(client, tenant, UPSELL_EVENT_TYPES, scope, rollingWindow(params, 7))
-      );
+      return computeUpsellAnalytics(await fetchEvents(ctx, UPSELL_EVENT_TYPES, rollingWindow(params, 7)));
     case "analytics:getBundleAnalytics":
-      return computeBundleAnalytics(
-        await fetchEvents(client, tenant, BUNDLE_EVENT_TYPES, scope, rollingWindow(params, 7))
-      );
+      return computeBundleAnalytics(await fetchEvents(ctx, BUNDLE_EVENT_TYPES, rollingWindow(params, 7)));
     case "analytics:getTopItems":
       return computeTopItems(
-        await fetchItems(client, tenant, scope, rollingWindow(params, 7)),
+        await fetchItems(ctx, rollingWindow(params, 7)),
         boundedInt(params.limit, DEFAULT_TOP_ITEMS, 1, MAX_TOP_ITEMS)
       );
     case "analytics:getTrends":
-      return computeTrends(await fetchOrders(client, tenant, scope, localDayWindow(params, 30)));
+      return computeTrends(await fetchOrders(ctx, localDayWindow(params, 30)));
     case "analytics:getRevenueBreakdown":
-      return computeRevenueBreakdown(
-        await fetchOrdersWithPayments(client, tenant, scope, rollingWindow(params, 7))
-      );
+      return computeRevenueBreakdown(await fetchOrdersWithPayments(ctx, rollingWindow(params, 7)));
     case "analytics:getUpsellTrends": {
       const window = rollingWindow(params, 7);
       const [events, items] = await Promise.all([
-        fetchEvents(client, tenant, UPSELL_EVENT_TYPES, scope, window),
-        fetchItems(client, tenant, scope, window),
+        fetchEvents(ctx, UPSELL_EVENT_TYPES, window),
+        fetchItems(ctx, window),
       ]);
       return computeUpsellTrends(events, items);
     }
     case "analytics:getSalesAnalytics": {
       const window = rollingWindow(params, 7);
       const [current, previous] = await Promise.all([
-        fetchOrders(client, tenant, scope, window, { includeCancelled: true }),
-        fetchOrders(client, tenant, scope, previousWindow(window), { includeCancelled: true }),
+        fetchOrders(ctx, window, { includeCancelled: true }),
+        fetchOrders(ctx, previousWindow(window), { includeCancelled: true }),
       ]);
       return computeSalesAnalytics(current, previous);
     }
     case "analytics:getPaymentMethodAnalytics":
-      return computePaymentMethodAnalytics(
-        await fetchOrdersWithPayments(client, tenant, scope, rollingWindow(params, 7))
-      );
+      return computePaymentMethodAnalytics(await fetchOrdersWithPayments(ctx, rollingWindow(params, 7)));
     case "analytics:getOrderHeatmap":
-      return computeOrderHeatmap(await fetchOrders(client, tenant, scope, rollingWindow(params, 30)));
+      return computeOrderHeatmap(await fetchOrders(ctx, rollingWindow(params, 30)));
     case "analytics:getCustomerInsights":
-      return computeCustomerInsights(await fetchOrders(client, tenant, scope, rollingWindow(params, 30)));
+      return computeCustomerInsights(await fetchOrders(ctx, rollingWindow(params, 30)));
     case "analytics:getItemSales":
-      return readItemSales(client, tenant, scope, parseItemSalesArgs(params));
+      return readItemSales(ownClient(ctx), ctx.tenantId, scope, parseItemSalesArgs(params));
     case "productAnalytics:getAll":
-      return fetchProductRows(client, tenant, scope, params);
+      return fetchProductRows(ctx, params);
     case "productAnalytics:getPortfolioSummary":
-      return summarizePortfolio(await fetchProductRows(client, tenant, scope, params));
+      return summarizePortfolio(await fetchProductRows(ctx, params));
     default:
       throw new Error(`Query "${ref}" is not supported by the platform backend.`);
   }

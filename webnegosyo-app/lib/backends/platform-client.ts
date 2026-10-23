@@ -98,6 +98,70 @@ export async function readAllPages<Row>(
   return rows;
 }
 
+/** Pages a report read keeps on the wire at once after its first page. */
+export const REPORT_PAGE_CONCURRENCY = 4;
+
+export interface ReadEveryRowOptions {
+  /** More matching rows than this is refused, never summed in part. */
+  maxRows: number;
+  concurrency?: number;
+}
+
+/**
+ * Every row a report window matches, with the pages after the first read side
+ * by side. Read one after another, a busy store's month was ~9 pages of ~0.9 s
+ * each on a phone — past the 12 s deadline before anything was added up.
+ *
+ * `build` must return a FRESH query each call, ordered OLDEST FIRST with a
+ * unique tiebreak. Pages are fetched at slightly different moments, and newest
+ * first a sale rung up mid-read would push a row from a page not yet read into
+ * one already read (lost) or the other way (counted twice); oldest first it
+ * lands after the last page. Rows with an `id` are de-duplicated as a backstop
+ * for a late, back-dated row.
+ *
+ * Reaching `maxRows` THROWS. `readAllPages` returns the first `maxRows` and
+ * stops, which a report then sums as the whole window: a store selling 15,000
+ * lines a month read its top items short by a third with no warning.
+ */
+export async function readEveryRow<Row>(
+  build: () => PlatformQueryBuilder,
+  { maxRows, concurrency = REPORT_PAGE_CONCURRENCY }: ReadEveryRowOptions
+): Promise<Row[]> {
+  const readPage = async (index: number) => {
+    const from = index * PLATFORM_PAGE_SIZE;
+    return (await unwrap<Row[] | null>(build().range(from, from + PLATFORM_PAGE_SIZE - 1))) ?? [];
+  };
+
+  const pages: Row[][] = [await readPage(0)];
+  const pageLimit = Math.ceil(maxRows / PLATFORM_PAGE_SIZE);
+  let next = 1;
+  while (pages[pages.length - 1].length === PLATFORM_PAGE_SIZE) {
+    if (next >= pageLimit) {
+      throw new Error(
+        `This period has more than ${maxRows.toLocaleString("en-US")} records to add up on the phone. Pick a shorter period.`
+      );
+    }
+    const indexes = Array.from({ length: Math.min(concurrency, pageLimit - next) }, (_, i) => next + i);
+    const batch = await Promise.all(indexes.map(readPage));
+    next += indexes.length;
+    // A short page is the end; anything read past it is empty or a duplicate.
+    const end = batch.findIndex((page) => page.length < PLATFORM_PAGE_SIZE);
+    pages.push(...(end === -1 ? batch : batch.slice(0, end + 1)));
+  }
+  return withoutRepeats(pages.flat());
+}
+
+function withoutRepeats<Row>(rows: Row[]): Row[] {
+  const seen = new Set<unknown>();
+  return rows.filter((row) => {
+    const id = (row as { id?: unknown } | null)?.id;
+    if (id === undefined || id === null) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 /**
  * The same client, with `signal` attached to every read it builds.
  *

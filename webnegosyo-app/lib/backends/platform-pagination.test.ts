@@ -1,4 +1,4 @@
-import { PLATFORM_PAGE_SIZE, readAllPages } from "./platform-client";
+import { PLATFORM_PAGE_SIZE, readAllPages, readEveryRow } from "./platform-client";
 import { fakePlatformClient, opsOf } from "./testing/fake-platform-client";
 
 /**
@@ -151,5 +151,103 @@ describe("platform reads past the per-request cap", () => {
     // Assert
     expect(stats.totalOrders).toBe(PLATFORM_PAGE_SIZE + 83);
     expect(stats.totalRevenue).toBe((PLATFORM_PAGE_SIZE + 83) * 100);
+  });
+});
+
+describe("readEveryRow", () => {
+  it("reads the pages after a full first page side by side", async () => {
+    // Arrange
+    const { client, calls } = fakePlatformClient({
+      orders: [
+        { data: rows(PLATFORM_PAGE_SIZE), error: null },
+        { data: rows(PLATFORM_PAGE_SIZE, PLATFORM_PAGE_SIZE), error: null },
+        { data: rows(PLATFORM_PAGE_SIZE, PLATFORM_PAGE_SIZE * 2), error: null },
+        { data: rows(12, PLATFORM_PAGE_SIZE * 3), error: null },
+      ],
+    });
+    let active = 0;
+    let peak = 0;
+    const build = () => {
+      const query = client.from("orders").select("id");
+      const settle = query.then.bind(query);
+      return Object.assign(query, {
+        then: (async (resolve: never, reject: never) => {
+          active += 1;
+          peak = Math.max(peak, active);
+          await new Promise((done) => setTimeout(done, 5));
+          active -= 1;
+          return settle(resolve, reject);
+        }) as typeof query.then,
+      });
+    };
+
+    // Act
+    const result = await readEveryRow<{ id: string }>(build, { maxRows: 50_000, concurrency: 3 });
+
+    // Assert
+    expect(result).toHaveLength(PLATFORM_PAGE_SIZE * 3 + 12);
+    expect(peak).toBe(3);
+    expect(calls).toHaveLength(4);
+  });
+
+  it("costs one request when the first page is short", async () => {
+    // Arrange
+    const { client, calls } = fakePlatformClient({ orders: [{ data: rows(3), error: null }] });
+
+    // Act
+    const result = await readEveryRow(() => client.from("orders").select("id"), { maxRows: 50_000 });
+
+    // Assert
+    expect(result).toHaveLength(3);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("drops a row read twice when a late row shifted it across a page edge", async () => {
+    // Arrange
+    const { client } = fakePlatformClient({
+      orders: [
+        { data: rows(PLATFORM_PAGE_SIZE), error: null },
+        { data: rows(5, PLATFORM_PAGE_SIZE - 1), error: null },
+      ],
+    });
+
+    // Act
+    const result = await readEveryRow<{ id: string }>(() => client.from("orders").select("id"), {
+      maxRows: 50_000,
+    });
+
+    // Assert
+    expect(result).toHaveLength(PLATFORM_PAGE_SIZE + 4);
+    expect(new Set(result.map((row) => row.id)).size).toBe(result.length);
+  });
+
+  it("refuses a window bigger than the cap instead of summing part of it", async () => {
+    // Arrange
+    const { client } = fakePlatformClient({
+      orders: [
+        { data: rows(PLATFORM_PAGE_SIZE), error: null },
+        { data: rows(PLATFORM_PAGE_SIZE, PLATFORM_PAGE_SIZE), error: null },
+      ],
+    });
+
+    // Act + Assert
+    await expect(
+      readEveryRow(() => client.from("orders").select("id"), { maxRows: PLATFORM_PAGE_SIZE * 2 })
+    ).rejects.toThrow(/shorter period/i);
+  });
+
+  it("throws a page's database error", async () => {
+    // Arrange
+    const { client } = fakePlatformClient({
+      orders: [
+        { data: rows(PLATFORM_PAGE_SIZE), error: null },
+        { data: null, error: { message: "statement timeout" } },
+      ],
+    });
+
+    // Act + Assert
+    await expect(
+      readEveryRow(() => client.from("orders").select("id"), { maxRows: 50_000 })
+    ).rejects.toThrow("statement timeout");
   });
 });

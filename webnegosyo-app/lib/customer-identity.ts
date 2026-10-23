@@ -46,6 +46,13 @@ const PHONE_KEYS = ["customer_phone", "phone", "mobile", "contact_number"] as co
 const EMAIL_KEYS = ["customer_email", "email"] as const;
 const NAME_KEYS = ["customer_name", "name"] as const;
 
+/**
+ * The blob keys `resolveOrderIdentityKey` can read a guest from. A bulk read
+ * that only needs the identity selects these instead of the whole blob, which
+ * is most of an order row's bytes.
+ */
+export const IDENTITY_BLOB_KEYS: readonly string[] = [...PHONE_KEYS, ...EMAIL_KEYS];
+
 export interface CustomerIdentityInput {
   name?: string | null;
   contact?: string | null;
