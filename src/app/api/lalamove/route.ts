@@ -21,6 +21,8 @@ import {
   releaseLalamoveBookingClaim,
 } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
+import { callerHasFeature } from '@/lib/gov-discount-ledger/caller-scope'
+import { isOrderInScope, resolveBranchScope } from '@/lib/outlets/branch-scope'
 import type { Database, Tenant } from '@/types/database'
 import type { PlatformAction } from '@/lib/platform-staff/permissions'
 
@@ -42,7 +44,10 @@ import type { PlatformAction } from '@/lib/platform-staff/permissions'
  * Authenticated with the caller's own Supabase access token — the same trust
  * level as /api/vouchers/redeem, which the register already calls — and then
  * authorised against `app_users`, because the order and tenant are read with
- * the service key and that read bypasses RLS entirely.
+ * the service key and that read bypasses RLS entirely: the caller must hold
+ * `orders` (booking bills the store's Lalamove account), and a branch-locked
+ * account may only act on its own branch's orders (RLS would have applied
+ * that; the service-key read applies it here).
  */
 
 type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee' | 'requote'
@@ -73,6 +78,7 @@ interface OrderRow {
   lalamove_quotation_id: string | null
   lalamove_order_id: string | null
   lalamove_status: string | null
+  outlet_id: string | null
 }
 
 function fail(error: string, status = 200): NextResponse {
@@ -106,6 +112,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const caller = await requireBearerStoreCaller(request, tenantId, LALAMOVE_OP_VERBS[op as LalamoveOp])
   if (!caller.ok) return caller.response
+  if (!caller.appUser || !callerHasFeature(caller.appUser, 'orders')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const branchScope = resolveBranchScope({
+    role: caller.appUser.role,
+    is_owner: caller.appUser.is_owner,
+    outlet_id: caller.appUser.outlet_id,
+  })
 
   const admin = createAdminClient()
 
@@ -131,14 +145,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: orderData } = await admin
     .from('orders')
     .select(
-      'id, customer_name, customer_contact, customer_data, lalamove_quotation_id, lalamove_order_id, lalamove_status',
+      'id, customer_name, customer_contact, customer_data, lalamove_quotation_id, lalamove_order_id, lalamove_status, outlet_id',
     )
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
   const order = orderData as unknown as OrderRow | null
-  if (!order) {
+  // Another branch's order reads as missing, as it would through RLS.
+  if (!order || !isOrderInScope(branchScope, order)) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 

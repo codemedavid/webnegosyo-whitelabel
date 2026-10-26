@@ -62,6 +62,7 @@ const ORDER = {
   lalamove_quotation_id: 'quote-1',
   lalamove_order_id: null,
   lalamove_status: null,
+  outlet_id: null,
 }
 
 /**
@@ -86,6 +87,7 @@ const PLATFORM_ORDER_COLUMNS = new Set([
   'lalamove_driver_name',
   'lalamove_driver_phone',
   'lalamove_tracking_url',
+  'outlet_id',
 ])
 
 function unknownOrderColumn(select: string): string | null {
@@ -721,5 +723,84 @@ describe('POST /api/lalamove', () => {
     expect(res.status).toBe(404)
     const service = await import('@/lib/lalamove-service')
     expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['menu-only staff', ['menu']],
+    ['kitchen staff', ['kitchen']],
+    ['an account with no grants', []],
+  ])('refuses %s: delivery booking is orders work', async (_name, permissions) => {
+    // Booking bills the store's Lalamove account; membership alone is not enough.
+    appUserSingleMock.mockResolvedValue({
+      data: { role: 'admin', tenant_id: 't1', is_owner: false, permissions, outlet_id: null },
+      error: null,
+    })
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+    expect(res.status).toBe(403)
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+    expect(adminUpdateMock).not.toHaveBeenCalled()
+  })
+
+  test('lets orders staff book', async () => {
+    appUserSingleMock.mockResolvedValue({
+      data: { role: 'admin', tenant_id: 't1', is_owner: false, permissions: ['orders'], outlet_id: null },
+      error: null,
+    })
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+    expect(res.status).toBe(200)
+  })
+
+  test.each(['book', 'sync', 'cancel', 'requote'])(
+    'a branch-locked account cannot %s another branch\'s order',
+    async (op) => {
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', is_owner: false, permissions: ['orders'], outlet_id: 'branch-a' },
+        error: null,
+      })
+      orderRow = { ...ORDER, outlet_id: 'branch-b', lalamove_order_id: op === 'book' || op === 'requote' ? null : 'lala-1' }
+
+      const { POST } = await import('@/app/api/lalamove/route')
+      const res = await POST(makeRequest({ op, tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+      expect(res.status).toBe(404)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+      expect(service.getLalamoveOrder).not.toHaveBeenCalled()
+      expect(service.cancelLalamoveOrder).not.toHaveBeenCalled()
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+      expect(adminUpdateMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test('a branch-locked account cannot act on an unattributed order', async () => {
+    appUserSingleMock.mockResolvedValue({
+      data: { role: 'admin', tenant_id: 't1', is_owner: false, permissions: ['orders'], outlet_id: 'branch-a' },
+      error: null,
+    })
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+    expect(res.status).toBe(404)
+  })
+
+  test('a branch-locked account books its own branch\'s order', async () => {
+    appUserSingleMock.mockResolvedValue({
+      data: { role: 'admin', tenant_id: 't1', is_owner: false, permissions: ['orders'], outlet_id: 'branch-a' },
+      error: null,
+    })
+    orderRow = { ...ORDER, outlet_id: 'branch-a' }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+    expect(res.status).toBe(200)
   })
 })
