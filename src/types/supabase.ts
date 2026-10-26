@@ -7929,6 +7929,7 @@ export type Database = {
           enabled_kinds: string[]
           id_photo_mode: string
           is_bir_registered_pos: boolean
+          online_claims_enabled: boolean
           pos_min: string | null
           pos_ptu_no: string | null
           pos_serial_no: string | null
@@ -7950,6 +7951,7 @@ export type Database = {
           enabled_kinds?: string[]
           id_photo_mode?: string
           is_bir_registered_pos?: boolean
+          online_claims_enabled?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
           pos_serial_no?: string | null
@@ -7971,6 +7973,7 @@ export type Database = {
           enabled_kinds?: string[]
           id_photo_mode?: string
           is_bir_registered_pos?: boolean
+          online_claims_enabled?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
           pos_serial_no?: string | null

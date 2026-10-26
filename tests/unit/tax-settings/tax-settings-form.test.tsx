@@ -87,6 +87,18 @@ describe('TaxSettingsForm', () => {
     expect(saveTaxSettingsAction.mock.calls[0][2]).toMatchObject({ vatStatus: 'vat', approvalRule: 'always' })
   })
 
+  it('keeps online Senior/PWD claims off until the owner switches them on', async () => {
+    await renderForm({ isSetUp: true, canEdit: true })
+
+    const onlineSwitch = screen.getByRole('switch', { name: /claim it when ordering online/i })
+    expect(onlineSwitch.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(onlineSwitch)
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(saveTaxSettingsAction).toHaveBeenCalled())
+    expect(saveTaxSettingsAction.mock.calls[0][2]).toMatchObject({ onlineClaimsEnabled: true })
+  })
+
   it('gives read-only staff the same page with every control disabled and no save bar', async () => {
     await renderForm({ isSetUp: true, canEdit: false })
 
