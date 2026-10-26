@@ -36,6 +36,7 @@ import { requireCheckoutOutlet, withOrderOutlet } from '@/lib/outlets/order-outl
 import { parseOrderLines } from '@/lib/checkout/order-line-schema'
 import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
+import { judgeOrderPaymentMethod, readOrderPaymentMethod } from '@/lib/checkout/order-payment-method'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
@@ -138,9 +139,15 @@ export async function createOrderAction(
   deliveryFee?: number,
   lalamoveQuotationId?: string,
   paymentMethodId?: string,
-  paymentMethodName?: string,
-  paymentMethodDetails?: string,
-  paymentMethodQrCodeUrl?: string,
+  /**
+   * IGNORED, all three. Kept so the positional signature the checkout calls
+   * stays stable: the order records the STORED method's name, account details
+   * and QR, read by `paymentMethodId` (see `judgeOrderPaymentMethod`). A sent
+   * name or account number used to be stored as-is.
+   */
+  _clientPaymentMethodName?: string,
+  _clientPaymentMethodDetails?: string,
+  _clientPaymentMethodQrCodeUrl?: string,
   /**
    * IGNORED. Kept only so the positional signature the checkout calls stays
    * stable: the service charge is recomputed from the tenant's own order type
@@ -244,6 +251,9 @@ export async function createOrderAction(
     // Convex deploy key routes the order and the Loyverse token backs the live
     // stock check below.
     const supabaseAdmin = createAdminClient()
+    // The chosen payment method, read alongside (one primary-key read; never
+    // rejects). Judged once the order type is known, below.
+    const paymentMethodRead = readOrderPaymentMethod(supabaseAdmin, tenantId, paymentMethodId)
     const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
     if (!tenantContext.ok) {
       return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
@@ -294,6 +304,25 @@ export async function createOrderAction(
     if (tenantConfig.lalamove_enabled === true && !orderTypeRow) {
       return { success: false, refused: true, error: 'Please select a valid order type before continuing.' }
     }
+
+    // ── Payment method (authoritative; every backend) ──
+    // Only the id is believed. The method must be one the storefront offers
+    // for this order type, and the STORED name / account details / QR are
+    // what the order records — the browser's copies used to be stored as sent.
+    // A proof-required method needs a screenshot or a reference, the same rule
+    // the checkout preflights (`isPaymentProofMissing`) before "Order Placed!".
+    const paymentVerdict = judgeOrderPaymentMethod({
+      requestedId: paymentMethodId,
+      read: await paymentMethodRead,
+      orderTypeId: orderTypeRow ? orderTypeId : null,
+      proof: safePaymentProof,
+    })
+    if (paymentVerdict.kind === 'refuse') return { success: false, refused: true, error: paymentVerdict.error }
+    if (paymentVerdict.kind === 'abort') return { success: false, error: paymentVerdict.error }
+    const trustedPaymentMethodId = paymentVerdict.method?.id
+    const trustedPaymentMethodName = paymentVerdict.method?.name
+    const trustedPaymentMethodDetails = paymentVerdict.method?.details ?? undefined
+    const trustedPaymentMethodQrCodeUrl = paymentVerdict.method?.qrCodeUrl ?? undefined
 
     // ── Live Loyverse stock verification (authoritative; every order backend) ──
     // The synced mirror can always be stale — a webhook may be unregistered or
@@ -690,7 +719,7 @@ export async function createOrderAction(
         orderTypeName: orderTypeRow?.name ?? null,
         deliveryFee: effectiveDeliveryFee,
         serviceCharge,
-        paymentMethodName,
+        paymentMethodName: trustedPaymentMethodName,
         customerData: effectiveCustomerData,
       },
       captureCustomer,
@@ -730,10 +759,10 @@ export async function createOrderAction(
         customerData: effectiveCustomerData,
         deliveryFee: effectiveDeliveryFee,
         lalamoveQuotationId,
-        paymentMethodId,
-        paymentMethodName,
-        paymentMethodDetails,
-        paymentMethodQrCodeUrl,
+        paymentMethodId: trustedPaymentMethodId,
+        paymentMethodName: trustedPaymentMethodName,
+        paymentMethodDetails: trustedPaymentMethodDetails,
+        paymentMethodQrCodeUrl: trustedPaymentMethodQrCodeUrl,
         serviceChargeAmount: serviceCharge,
         scheduledForISO: validatedScheduledISO,
         paymentProof: safePaymentProof,
@@ -785,10 +814,10 @@ export async function createOrderAction(
         convexCustomerData,
         effectiveDeliveryFee,
         lalamoveQuotationId,
-        paymentMethodId,
-        paymentMethodName,
-        paymentMethodDetails,
-        paymentMethodQrCodeUrl,
+        trustedPaymentMethodId,
+        trustedPaymentMethodName,
+        trustedPaymentMethodDetails,
+        trustedPaymentMethodQrCodeUrl,
         serviceCharge,
         validatedScheduledISO,
         pricing.application.discountLines
@@ -809,10 +838,10 @@ export async function createOrderAction(
       effectiveCustomerData,
       effectiveDeliveryFee,
       lalamoveQuotationId,
-      paymentMethodId,
-      paymentMethodName,
-      paymentMethodDetails,
-      paymentMethodQrCodeUrl,
+      trustedPaymentMethodId,
+      trustedPaymentMethodName,
+      trustedPaymentMethodDetails,
+      trustedPaymentMethodQrCodeUrl,
       serviceCharge,
       validatedScheduledISO,
       safePaymentProof,
