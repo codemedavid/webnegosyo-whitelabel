@@ -95,15 +95,29 @@ const PUBLIC_MCP_METHODS = new Set([
 ])
 
 /**
+ * Real handshakes are a few hundred bytes and at most a couple of messages.
+ * The caps keep an anonymous caller from handing the SDK's validator a large
+ * payload (GHSA-46jr-4wx8-v453: memory exhaustion while validating one request).
+ */
+const MAX_PUBLIC_HANDSHAKE_BYTES = 16 * 1024
+const MAX_PUBLIC_HANDSHAKE_MESSAGES = 10
+
+/**
  * Handshake methods that OAuth MCP clients send before they have a token.
  * Anything else, including `tools/call`, is protected.
  */
 async function isPublicMcpHandshake(req: Request): Promise<boolean> {
   if (req.method !== 'POST') return false
+  const declaredLength = Number(req.headers.get('content-length') ?? '0')
+  if (declaredLength > MAX_PUBLIC_HANDSHAKE_BYTES) return false
   try {
-    const payload = await req.clone().json() as unknown
+    const body = await req.clone().text()
+    if (body.length > MAX_PUBLIC_HANDSHAKE_BYTES) return false
+    const payload = JSON.parse(body) as unknown
     const messages = Array.isArray(payload) ? payload : [payload]
-    return messages.length > 0 && messages.every(isPublicMcpMessage)
+    return messages.length > 0
+      && messages.length <= MAX_PUBLIC_HANDSHAKE_MESSAGES
+      && messages.every(isPublicMcpMessage)
   } catch {
     return false
   }
