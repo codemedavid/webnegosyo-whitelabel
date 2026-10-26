@@ -4,8 +4,11 @@ import { BriefcaseIcon, StarIcon } from "./platform-icons";
 
 interface ListingStatsProps {
   listing: AppStoreListing | null;
-  /** Shown when the App Store can't be read: the version this page offers. */
-  fallbackVersion: string;
+  /**
+   * Shown when the App Store can't be read: the iOS version this page offers.
+   * Never another platform's — null shows a dash.
+   */
+  fallbackVersion: string | null;
 }
 
 interface StatCell {
@@ -30,7 +33,9 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-function buildCells(listing: AppStoreListing | null, fallbackVersion: string): StatCell[] {
+const UNKNOWN_VERSION = "—";
+
+function buildCells(listing: AppStoreListing | null, fallbackVersion: string | null): StatCell[] {
   const ratingCell: StatCell[] =
     listing?.rating != null
       ? [
@@ -54,7 +59,7 @@ function buildCells(listing: AppStoreListing | null, fallbackVersion: string): S
     },
     {
       label: "Version",
-      value: listing?.version ?? fallbackVersion,
+      value: listing?.version ?? fallbackVersion ?? UNKNOWN_VERSION,
       caption: releasedOn ?? "Latest",
     },
     { label: "Made for", value: "PH", caption: "Food businesses" },

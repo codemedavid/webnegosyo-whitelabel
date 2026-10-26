@@ -1,40 +1,43 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { registerClient } from '@/lib/mcp/oauth-service'
 import { OAUTH_CORS_HEADERS } from '@/lib/mcp/oauth-config'
+import { parseClientRegistration } from '@/lib/mcp/oauth-registration'
+import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
 
 // RFC 7591 — OAuth 2.0 Dynamic Client Registration. Claude/ChatGPT POST their
 // name + redirect URIs here and receive a client_id. Public clients (PKCE, no
-// secret), so this is intentionally unauthenticated per the MCP OAuth profile.
+// secret), so this is intentionally unauthenticated per the MCP OAuth profile —
+// which is why it is capped (oauth-registration.ts) and rate limited per IP.
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-interface RegistrationBody {
-  client_name?: string
-  redirect_uris?: unknown
-}
+/** A client registers once per connection attempt; Cursor retries a few times. */
+const REGISTER_RATE_LIMIT: RateLimitOptions = { limit: 20, windowSec: 600, onRedisFailure: 'instance' }
 
 export async function POST(req: Request): Promise<Response> {
-  let body: RegistrationBody
+  const ip = getClientIP(req) ?? 'unknown'
+  const rate = await checkRateLimit(`mcp-register:${ip}`, REGISTER_RATE_LIMIT)
+  if (!rate.allowed) {
+    return Response.json(
+      { error: 'slow_down', error_description: 'Too many client registrations. Try again later.' },
+      { status: 429, headers: { ...OAUTH_CORS_HEADERS, 'Retry-After': String(rate.retryAfterSec) } },
+    )
+  }
+
+  let body: unknown
   try {
-    body = (await req.json()) as RegistrationBody
+    body = await req.json()
   } catch {
     return oauthError('invalid_client_metadata', 'Request body must be JSON', 400)
   }
 
-  const redirectUris = Array.isArray(body.redirect_uris)
-    ? body.redirect_uris.filter((u): u is string => typeof u === 'string')
-    : []
-
-  if (redirectUris.length === 0) {
-    return oauthError('invalid_client_metadata', 'At least one redirect_uri is required', 400)
-  }
+  const parsed = parseClientRegistration(body)
+  if (!parsed.ok) return oauthError(parsed.error, parsed.description, 400)
 
   try {
-    const client = await registerClient(createAdminClient(), {
-      client_name: typeof body.client_name === 'string' ? body.client_name : 'MCP Client',
-      redirect_uris: redirectUris,
-    })
+    const client = await registerClient(createAdminClient(), parsed.value)
 
     return Response.json(
       {
@@ -48,7 +51,8 @@ export async function POST(req: Request): Promise<Response> {
       { status: 201, headers: OAUTH_CORS_HEADERS },
     )
   } catch (error) {
-    return oauthError('invalid_client_metadata', error instanceof Error ? error.message : 'Registration failed', 400)
+    console.error('[SmartMenu OAuth] client registration failed', error instanceof Error ? error.message : error)
+    return oauthError('invalid_client_metadata', 'Registration failed', 400)
   }
 }
 
