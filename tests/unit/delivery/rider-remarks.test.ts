@@ -1,11 +1,16 @@
 /** @jest-environment node */
-import { findDeliveryDetails } from '@/lib/delivery/delivery-details'
+import { classifyDetailKey, findDeliveryDetails } from '@/lib/delivery/delivery-details'
 import { buildRiderRemarks, RIDER_REMARKS_MAX_LENGTH } from '@/lib/delivery/rider-remarks'
 import * as convexRemarks from '../../../convex-template/convex/lalamoveRemarks'
 
 const IMPLEMENTATIONS = [
-  { name: 'web', findDeliveryDetails, buildRiderRemarks },
-  { name: 'convex', findDeliveryDetails: convexRemarks.findDeliveryDetails, buildRiderRemarks: convexRemarks.buildRiderRemarks },
+  { name: 'web', classifyDetailKey, findDeliveryDetails, buildRiderRemarks },
+  {
+    name: 'convex',
+    classifyDetailKey: convexRemarks.classifyDetailKey,
+    findDeliveryDetails: convexRemarks.findDeliveryDetails,
+    buildRiderRemarks: convexRemarks.buildRiderRemarks,
+  },
 ]
 
 describe.each(IMPLEMENTATIONS)('findDeliveryDetails ($name)', (impl) => {
@@ -27,7 +32,7 @@ describe.each(IMPLEMENTATIONS)('findDeliveryDetails ($name)', (impl) => {
         'Floor / Unit': '3F',
       }),
     ).toEqual({ unit: '3F', landmark: 'Near Petron', riderNote: 'Gate is green' })
-    expect(impl.findDeliveryDetails({ palatandaan: 'Tapat ng simbahan', Notes: 'Pakibusina' })).toEqual({
+    expect(impl.findDeliveryDetails({ palatandaan: 'Tapat ng simbahan', 'Paalala sa rider': 'Pakibusina' })).toEqual({
       unit: '',
       landmark: 'Tapat ng simbahan',
       riderNote: 'Pakibusina',
@@ -47,6 +52,45 @@ describe.each(IMPLEMENTATIONS)('findDeliveryDetails ($name)', (impl) => {
         notes: 42,
       }),
     ).toEqual({ unit: '', landmark: '', riderNote: '' })
+  })
+})
+
+describe.each(IMPLEMENTATIONS)('classifyDetailKey rider note ($name)', (impl) => {
+  it.each([
+    'Note to Rider',
+    'Rider instructions',
+    'Driver note',
+    'Courier remarks',
+    'Delivery Notes',
+    'Delivery instructions',
+    'deliveryNote',
+    'riderNote',
+    'Directions',
+    'Paalala sa rider',
+    'Bilin sa drayber',
+    'Mensahe para sa tagahatid',
+  ])('reads %p as the rider note', (key) => {
+    expect(impl.classifyDetailKey(key)).toBe('riderNote')
+  })
+
+  it.each([
+    'Notes',
+    'notes',
+    'Remarks',
+    'Instructions',
+    'Special instructions',
+    'specialinstructions',
+    'Order notes',
+    'Additional notes',
+    'Paalala',
+    'Delivery time',
+    'Preferred delivery date',
+  ])('does not read the general question %p as the rider note', (key) => {
+    expect(impl.classifyDetailKey(key)).toBeNull()
+  })
+
+  it('leaves a plain "Notes" answer out of the rider details', () => {
+    expect(impl.findDeliveryDetails({ Notes: 'Less ice please' }).riderNote).toBe('')
   })
 })
 

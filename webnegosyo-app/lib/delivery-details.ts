@@ -40,15 +40,23 @@ const UNIT_WORDS = new Set([
   'unit', 'floor', 'flr', 'bldg', 'building', 'room', 'rm', 'apartment', 'apt',
   'condo', 'tower', 'suite', 'blk', 'block', 'lot', 'house',
 ])
+/** A question naming the rider (or the way there) is for the rider on its own. */
+const RIDER_WORDS = new Set([
+  'rider', 'riders', 'driver', 'drivers', 'drayber', 'courier', 'tagahatid',
+  'direction', 'directions',
+])
+/** "Delivery" alone is a time or a date; with a note word it is a note for the trip. */
+const DELIVERY_WORDS = new Set(['delivery', 'deliver', 'hatid', 'pagdeliver'])
+/** A bare "Notes" is the store's general question, never the rider's. */
 const NOTE_WORDS = new Set([
-  'note', 'notes', 'remark', 'remarks', 'rider', 'driver', 'instruction',
-  'instructions', 'direction', 'directions',
+  'note', 'notes', 'remark', 'remarks', 'instruction', 'instructions',
+  'paalala', 'bilin', 'mensahe', 'message',
 ])
 /** A note about the FOOD is for the kitchen, not the rider. */
 const KITCHEN_WORDS = new Set(['kitchen', 'food', 'order', 'item', 'items', 'allergy', 'allergies', 'special'])
 /** Run-together labels ("nearestlandmark") have no word breaks to split on. */
 const LANDMARK_FRAGMENTS = ['landmark', 'palatandaan']
-const NOTE_FRAGMENTS = ['instruction', 'rider']
+const RIDER_FRAGMENTS = ['rider', 'driver', 'courier', 'deliverynote', 'deliveryinstruction', 'deliveryremark']
 
 function labelWords(key: string): string[] {
   return key
@@ -67,6 +75,11 @@ function hasFragment(key: string, fragments: string[]): boolean {
   return fragments.some((fragment) => joined.includes(fragment))
 }
 
+function isRiderNoteLabel(key: string, words: string[]): boolean {
+  if (hasAny(words, RIDER_WORDS) || hasFragment(key, RIDER_FRAGMENTS)) return true
+  return hasAny(words, DELIVERY_WORDS) && hasAny(words, NOTE_WORDS)
+}
+
 /** Which detail a merchant-named question holds, or null. */
 export function classifyDetailKey(key: string): DetailKind | null {
   if (NEVER_DETAIL_KEYS.has(key)) return null
@@ -75,7 +88,7 @@ export function classifyDetailKey(key: string): DetailKind | null {
   if (hasAny(words, LANDMARK_WORDS) || hasFragment(key, LANDMARK_FRAGMENTS)) return 'landmark'
   if (hasAny(words, UNIT_WORDS)) return 'unit'
   if (hasAny(words, KITCHEN_WORDS)) return null
-  if (hasAny(words, NOTE_WORDS) || hasFragment(key, NOTE_FRAGMENTS)) return 'riderNote'
+  if (isRiderNoteLabel(key, words)) return 'riderNote'
   return null
 }
 
