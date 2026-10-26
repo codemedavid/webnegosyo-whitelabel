@@ -244,13 +244,15 @@ describe('POST /api/vouchers/redeem', () => {
     expect(redeemMock.mock.calls[0][1]).toMatchObject({ outletId: 'outlet-2' })
   })
 
-  test('refuses a branch that is not part of the store', async () => {
+  test('burns a store-wide sale naming a branch outside the store under no branch', async () => {
+    // The burn runs after the customer paid; refusing it would leave the code
+    // unspent. The branch is attribution only, so a stale one is dropped.
     appUserSingleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1', is_owner: true, outlet_id: null }, error: null })
     const { POST } = await import('@/app/api/vouchers/redeem/route')
     const res = await POST(makeRequest({ ...VALID_BODY, outletId: 'other-store-branch' }, 'Bearer t'))
 
-    expect(res.status).toBe(400)
-    expect(redeemMock).not.toHaveBeenCalled()
+    expect(res.status).toBe(200)
+    expect(redeemMock.mock.calls[0][1]).toMatchObject({ outletId: null })
   })
 
   test.each([['menu'], ['orders'], ['customers']])('refuses staff without pos (holding %s)', async (key) => {
