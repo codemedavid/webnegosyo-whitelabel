@@ -28,8 +28,9 @@ const staff = (permissions: string[] | null): PermissionHolder => ({
 const appStaff = (permissions: string[] | null) => ({ role: 'admin', isOwner: false, permissions })
 
 describe('the expenses key', () => {
-  test('is registered last, with the contract label and description', () => {
-    expect(STAFF_PERMISSION_KEYS[STAFF_PERMISSION_KEYS.length - 1]).toBe('expenses')
+  test('is registered right after costs, with the contract label and description', () => {
+    // Later keys (cash_manage) append after it; the picker keeps this order.
+    expect(STAFF_PERMISSION_KEYS.indexOf('expenses')).toBe(STAFF_PERMISSION_KEYS.indexOf('costs') + 1)
     expect(STAFF_PERMISSION_LABELS.expenses).toEqual({
       label: 'Expenses',
       description: 'Record, fix and void expenses, manage categories and suppliers, see the expense book.',

@@ -103,6 +103,11 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
     label: "Expenses",
     description: "Record, fix and void expenses, manage categories and suppliers, see the expense book.",
   },
+  cash_manage: {
+    label: "Cash & day close",
+    description:
+      "Set up cash drawers, pick up cash, close others' shifts, receive remittances and close the business day. Give it to supervisors you trust with cash.",
+  },
 };
 
 /** Every grantable permission, in registry order, labelled for the owner. */

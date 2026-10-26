@@ -140,4 +140,20 @@ describe('staff permission registry parity', () => {
     expect(permissionForMobileTab('inventory')).toBe('inventory')
     expect(permissionForMobileTab('daily-report')).toBe('costs')
   })
+
+  /**
+   * Sub-screens reached from a hub row, not a workspace tab, are invisible to
+   * the check above. The cash-manager screens are exactly that kind, and an
+   * unmapped app screen defaults to ALLOWED — so the web copy names them and
+   * the app must agree.
+   */
+  it('names the same grant as the merchant app for the cash-manager sub-screens', () => {
+    for (const tab of ['cash-drawers', 'remittances', 'day-close']) {
+      expect({ tab, key: permissionForMobileTab(tab) }).toEqual({ tab, key: 'cash_manage' })
+      const holder = { role: 'admin', isOwner: false, permissions: ['cash_manage'] }
+      const storeSetup = { role: 'admin', isOwner: false, permissions: ['store_setup', 'pos'] }
+      expect({ tab, allowed: appIsTabAllowed(holder, tab) }).toEqual({ tab, allowed: true })
+      expect({ tab, allowed: appIsTabAllowed(storeSetup, tab) }).toEqual({ tab, allowed: false })
+    }
+  })
 })

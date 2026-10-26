@@ -67,6 +67,12 @@ export const STAFF_PERMISSION_KEYS = [
   // The expense book: record, fix and void expenses, categories, suppliers.
   // Implied by nothing — spending money is not reading sales or costs.
   "expenses",
+  // Cash & day close: set up drawers, pick up cash, close others' shifts,
+  // receive remittances, close the business day. Used to ride "store_setup";
+  // backfilled once onto every store_setup holder (20261027120100), not
+  // implied by it, and not opt-in (full access keeps it). A cashier's own
+  // shift needs only "pos".
+  "cash_manage",
 ] as const;
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];
@@ -269,6 +275,14 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Profit = sales − costs − expenses. The tab rides "reports" (its sales
   // figure); the screen re-checks "expenses" and "costs" itself.
   profit: "reports",
+  // The cash-manager screens: every till of the branch, cash pickups, the
+  // remittance inbox and the day close. Mapped explicitly because an unmapped
+  // tab defaults to ALLOWED, which would put another cashier's drawer in front
+  // of anyone who can ring a sale. A cashier's own shift report
+  // ("shift-sales") stays unmapped: report_shift_sales decides on the server.
+  "cash-drawers": "cash_manage",
+  remittances: "cash_manage",
+  "day-close": "cash_manage",
 };
 
 /**
@@ -281,6 +295,11 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
  */
 const TAB_ANY_OF: Readonly<Record<string, readonly StaffPermissionKey[]>> = {
   activity: ["activity_view", "approve_requests"],
+  // Shift & remit rules hold two owners' decisions: the business-day cutoff
+  // (beside operating hours, so "settings" — it moves every report) and the
+  // cash rules ("cash_manage"). Each section re-checks its own key and the
+  // RPCs refuse the other; the screen opens for either.
+  "cash-rules": ["cash_manage", "settings"],
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {

@@ -63,6 +63,16 @@ export const STAFF_PERMISSION_KEYS = [
   // the store's money is not reading its sales ('reports') or pricing its
   // ingredients ('costs'). The profit page needs this AND 'costs'.
   'expenses',
+  // Cash & day close: setting up drawers, picking up cash from someone else's
+  // drawer, closing another person's shift, receiving remittances and closing
+  // the business day. Used to ride 'store_setup' (app_user_manages_cash); it
+  // is its own grant so a supervisor can hold the cash without the
+  // storefront. NOT opt-in (legacy full access held cash management before,
+  // and keeps it) and NOT in IMPLIED_BY: every 'store_setup' holder was given
+  // it once by migration 20261027120100, so nobody lost the drawer screens,
+  // and the owner can separate the two afterwards. A cashier's OWN shift
+  // (clock in, count, remit) needs only 'pos'.
+  'cash_manage',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -158,6 +168,11 @@ export const STAFF_PERMISSION_LABELS: Record<
   expenses: {
     label: 'Expenses',
     description: 'Record, fix and void expenses, manage categories and suppliers, see the expense book.',
+  },
+  cash_manage: {
+    label: 'Cash & day close',
+    description:
+      "Set up cash drawers, pick up cash, close others' shifts, receive remittances and close the business day. Give it to supervisors you trust with cash.",
   },
 }
 
@@ -325,6 +340,9 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // The expense book. The profit page lives under reports and re-checks
   // 'expenses' + 'costs' inside the page.
   expenses: 'expenses',
+  // Cash & remits: shifts by business day, drawers, remittances, day close and
+  // the cash rules. A cashier's own shift lives in the app and needs only 'pos'.
+  cash: 'cash_manage',
   'boost-sales': 'analytics',
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
@@ -413,6 +431,12 @@ const MOBILE_TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   expenses: 'expenses',
   'expense-bills': 'expenses',
   profit: 'reports',
+  // Cash-manager screens. Mirrors the app's TAB_PERMISSIONS; "cash-rules" is
+  // any-of there (cash_manage or settings, it holds the business-day cutoff),
+  // so it is not named in this single-key map.
+  'cash-drawers': 'cash_manage',
+  remittances: 'cash_manage',
+  'day-close': 'cash_manage',
 }
 
 export function permissionForMobileTab(tab: string): StaffPermissionKey | null {

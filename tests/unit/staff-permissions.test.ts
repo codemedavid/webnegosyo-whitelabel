@@ -63,6 +63,9 @@ describe('staff permission registry', () => {
       'costs',
       // The expense book: record, fix and void expenses. Implied by nothing.
       'expenses',
+      // Cash & day close: drawers, pickups, others' shifts, remittances, day
+      // close. Not opt-in; backfilled from store_setup, not implied by it.
+      'cash_manage',
     ])
   })
 

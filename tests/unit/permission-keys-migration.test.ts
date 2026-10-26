@@ -170,3 +170,30 @@ describe('20261013120200 order reads need a permission (HIGH-3)', () => {
     expect(ORDERS).toContain('grant execute on function public.app_user_holds_any_permission(uuid, text[]) to anon, authenticated, service_role;')
   })
 })
+
+describe('20261027120100 cash_manage carved out of store_setup', () => {
+  const CASH = code(migration('20261027120100_cash_manage_permission.sql'))
+
+  it('backfills only scoped, non-owner store_setup holders, once, with triggers off for that statement', () => {
+    const backfill = CASH.slice(CASH.indexOf('set session_replication_role = replica;'), CASH.indexOf('set session_replication_role = origin;'))
+    expect(backfill).toContain("array['cash_manage']")
+    expect(backfill).toContain("au.role = 'admin'")
+    expect(backfill).toContain('au.is_owner is not true')
+    expect(backfill).toContain('au.permissions is not null')
+    expect(backfill).toContain("'store_setup' = any (au.permissions)")
+    expect(backfill).toContain("not ('cash_manage' = any (au.permissions))")
+  })
+
+  it('makes app_user_manages_cash the registry key, the same rule as canManageCash', () => {
+    const body = functionBody(CASH, 'app_user_manages_cash')
+    expect(body).toContain("public.app_user_has_permission(target_tenant_id, 'cash_manage')")
+    expect(body).not.toContain('store_setup')
+    expect(CASH).toMatch(/security invoker\s+set search_path = ''/)
+  })
+
+  it('needs no SQL key list: cash_manage is neither opt-in nor implied, and the live body is left alone', () => {
+    expect(OPT_IN_PERMISSION_KEYS).not.toContain('cash_manage')
+    expect(Object.keys(IMPLIED_BY)).not.toContain('cash_manage')
+    expect(CASH).not.toContain('function public.app_user_has_permission(')
+  })
+})
