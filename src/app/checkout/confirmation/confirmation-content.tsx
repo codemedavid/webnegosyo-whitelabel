@@ -5,14 +5,14 @@ import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft, Sparkles } from
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
-import type { CheckoutLeadWithPaymentMethod } from '@/types/database'
+import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
 import { trackMetaEvent } from '@/lib/meta-pixel'
 import { uploadPaymentProofImage, isImageKitConfigured } from '@/lib/imagekit-upload'
 
 const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 
 interface ConfirmationContentProps {
-  lead: CheckoutLeadWithPaymentMethod
+  lead: CheckoutLeadConfirmation
 }
 
 /**
@@ -49,7 +49,7 @@ function NextStepsCard() {
   )
 }
 
-function getPaymentTermLabel(paymentTerm: CheckoutLeadWithPaymentMethod['payment_term']) {
+function getPaymentTermLabel(paymentTerm: CheckoutLeadConfirmation['payment_term']) {
   switch (paymentTerm) {
     case 'downpayment_50':
       return '50% Downpayment'
