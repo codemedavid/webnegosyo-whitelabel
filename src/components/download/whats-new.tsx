@@ -11,8 +11,10 @@ const VISIBLE_NOTES = 3;
 function NoteList({ notes }: { notes: readonly string[] }) {
   return (
     <ul className="space-y-2.5">
-      {notes.map((note) => (
-        <li key={note} className="flex gap-3 text-[15px] leading-relaxed text-white/75">
+      {notes.map((note, index) => (
+        // Notes can repeat ("Bug fixes"); the position makes the key unique and
+        // is stable because the list never reorders.
+        <li key={`${index}-${note}`} className="flex gap-3 text-[15px] leading-relaxed text-white/75">
           <span className="mt-[0.6em] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--dl-amber)]" aria-hidden />
           <span>{note}</span>
         </li>

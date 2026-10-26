@@ -63,8 +63,8 @@ function HeroFan() {
 export default async function DownloadPage() {
   const listing = await fetchAppStoreListing();
   const iosApp = mobileDownloads.find((app) => app.platform === "ios");
-  const androidApp = mobileDownloads.find((app) => app.platform === "android");
-  const fallbackVersion = androidApp?.version ?? iosApp?.version ?? DESKTOP_VERSION;
+  // The stats row is the App Store listing: only the iOS build's own version may stand in for it.
+  const iosFallbackVersion = iosApp?.version ?? null;
   // The version line and the disclaimer only mean something while there is a
   // desktop build to download; every card reads "Coming soon" otherwise.
   const hasDesktopBuild = desktopDownloads.some((build) => build.available);
@@ -130,7 +130,7 @@ export default async function DownloadPage() {
             <HeroFan />
           </div>
 
-          <ListingStats listing={listing} fallbackVersion={fallbackVersion} />
+          <ListingStats listing={listing} fallbackVersion={iosFallbackVersion} />
         </section>
 
         <ScreenshotRail screens={APP_SCREENS} />
