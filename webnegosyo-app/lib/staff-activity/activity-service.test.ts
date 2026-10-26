@@ -11,7 +11,12 @@
 // module still imports it, and the real one reaches expo-constants.
 jest.mock("../supabase", () => ({ supabase: { from: jest.fn() } }));
 
-import { ACTIVITY_PAGE_SIZE, ACTIVITY_ROW_CEILING, listOrderActivity } from "./activity-service";
+import {
+  ACTIVITY_PAGE_SIZE,
+  ACTIVITY_ROW_CEILING,
+  listOrderActivity,
+  loadLastSeenAt,
+} from "./activity-service";
 
 interface Call {
   ranges: [number, number][];
@@ -117,5 +122,58 @@ describe("listOrderActivity paging", () => {
     await expect(
       listOrderActivity("t1", { sinceIso: "2026-10-01T00:00:00Z" }, db as never),
     ).rejects.toThrow(/could not be read.*boom/);
+  });
+});
+
+/** A db answering one fixed result per table for a `.limit(1)` read. */
+function lastSeenDb(answers: Record<string, { data: unknown[] | null; error: { message: string } | null }>) {
+  return {
+    from: jest.fn((table: string) => {
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        order: () => builder,
+        limit: () => Promise.resolve(answers[table]),
+      };
+      return builder;
+    }),
+  };
+}
+
+describe("loadLastSeenAt", () => {
+  it("finds activity outside the screen's period", async () => {
+    const db = lastSeenDb({
+      order_status_events: { data: [{ occurred_at: "2026-10-24T10:44:11Z" }], error: null },
+      staff_shifts: { data: [{ opened_at: "2026-10-23T12:00:20Z", closed_at: null }], error: null },
+    });
+
+    await expect(loadLastSeenAt("t1", "u1", db as never)).resolves.toBe("2026-10-24T10:44:11Z");
+  });
+
+  it("counts a shift that closed after the last order touch", async () => {
+    const db = lastSeenDb({
+      order_status_events: { data: [{ occurred_at: "2026-10-24T10:44:11Z" }], error: null },
+      staff_shifts: { data: [{ opened_at: "2026-10-24T01:00:00Z", closed_at: "2026-10-24T11:30:00Z" }], error: null },
+    });
+
+    await expect(loadLastSeenAt("t1", "u1", db as never)).resolves.toBe("2026-10-24T11:30:00Z");
+  });
+
+  it("answers null for someone who never did anything", async () => {
+    const db = lastSeenDb({
+      order_status_events: { data: [], error: null },
+      staff_shifts: { data: [], error: null },
+    });
+
+    await expect(loadLastSeenAt("t1", "u1", db as never)).resolves.toBeNull();
+  });
+
+  it("throws rather than reading a failed lookup as never active", async () => {
+    const db = lastSeenDb({
+      order_status_events: { data: null, error: { message: "boom" } },
+      staff_shifts: { data: [], error: null },
+    });
+
+    await expect(loadLastSeenAt("t1", "u1", db as never)).rejects.toThrow(/boom/);
   });
 });
