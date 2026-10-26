@@ -93,11 +93,6 @@ FACEBOOK_PAGE_ACCESS_TOKEN=your_page_access_token_here
 FACEBOOK_VERIFY_TOKEN=your_custom_verify_token_here
 FACEBOOK_APP_SECRET=your_app_secret_here
 
-# Google Maps Places API (Optional - for better POI search)
-# Get from: https://console.cloud.google.com/apis/credentials
-# Enable "Places API" for your project
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
-
 # Meta Pixel / Conversions API (Optional - for landing page and checkout tracking)
 NEXT_PUBLIC_META_PIXEL_ID=your_meta_pixel_id_here
 META_PIXEL_ID=your_meta_pixel_id_here
@@ -143,22 +138,6 @@ META_TEST_EVENT_CODE=your_test_event_code_here
    - In Webhooks section, click your webhook
    - Click "Subscribe" next to your Page
    - Now your bot will receive messages!
-
-========================================
-  GOOGLE MAPS SETUP
-========================================
-
-1. Go to https://console.cloud.google.com/
-2. Create a new project or select existing
-3. Enable "Places API"
-4. Go to Credentials → Create API Key
-5. Restrict the key to "Places API" for security
-6. Copy your API key
-7. Add to .env.local
-
-Note: Google Places has better coverage of commercial establishments,
-shopping malls, and landmarks in Philippines. Use as fallback when
-Mapbox doesn't find specific places.
 
 ========================================
   CUSTOM DOMAINS (VERCEL DOMAINS API)

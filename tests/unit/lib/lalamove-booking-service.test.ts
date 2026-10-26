@@ -4,6 +4,7 @@ import type { Tenant } from '@/types/database'
 const retrieve = jest.fn()
 const create = jest.fn()
 const createQuotation = jest.fn()
+const withRecipients = jest.fn()
 jest.mock('@lalamove/lalamove-js', () => ({
   Config: jest.fn(),
   ClientModule: jest.fn(() => ({ Quotation: { retrieve, create: createQuotation }, Order: { create } })),
@@ -17,7 +18,8 @@ jest.mock('@lalamove/lalamove-js', () => ({
     orderPayload: () => {
       const builder = {
         withIsPODEnabled: () => builder, withQuotationID: () => builder,
-        withSender: () => builder, withRecipients: () => builder,
+        withSender: () => builder,
+        withRecipients: (recipients: unknown) => { withRecipients(recipients); return builder },
         withMetadata: () => builder, build: () => ({}),
       }
       return builder
@@ -74,4 +76,12 @@ test('a malformed stored API key is refused before Lalamove is called', async ()
   await expect(createLalamoveQuotation(badTenant, 'Store', { lat: 14.6, lng: 121 }, 'Home', { lat: 14.7, lng: 121.1 }))
     .rejects.toThrow(/API key/)
   expect(createQuotation).not.toHaveBeenCalled()
+})
+
+test('sends the rider remarks with the drop-off, and an empty string when there are none', async () => {
+  const { createLalamoveOrder } = await import('@/lib/lalamove-service')
+  await createLalamoveOrder(tenant, 'q1', 'Store', '+639170000000', 'Ana', '+639170000001', {}, 'Landmark: Blue gate')
+  expect(withRecipients).toHaveBeenLastCalledWith([expect.objectContaining({ stopId: 'b', remarks: 'Landmark: Blue gate' })])
+  await book()
+  expect(withRecipients).toHaveBeenLastCalledWith([expect.objectContaining({ remarks: '' })])
 })

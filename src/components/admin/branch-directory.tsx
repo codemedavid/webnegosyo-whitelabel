@@ -140,6 +140,7 @@ export function BranchDirectory({
     return (
       <OutletForm
         mapboxEnabled={mapboxEnabled}
+        tenantId={tenantId}
         outlet={null}
         isSaving={isBusy}
         onCancel={() => setIsCreating(false)}

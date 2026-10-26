@@ -59,6 +59,7 @@ import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-his
 import { discountItemsText, orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
+import { buildDeliveryCard, isDeliveryDetailRow } from "../../../lib/delivery-card";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
 import { GovDiscountCard } from "../../../components/order/GovDiscountCard";
@@ -154,6 +155,9 @@ interface OrderDetail {
   source: string;
   total: number;
   deliveryAddress?: string;
+  /** A Convex order's own pin; platform orders keep it in customerData. */
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
   deliveryFee?: number;
   /**
    * The service charge already inside `total`, when the backend stored one.
@@ -674,7 +678,17 @@ export default function OrderDetailScreen() {
     .map((it) => it.menuItemId)
     .filter((id): id is string => !!id);
   const { images: itemImages } = useOrderItemImages(itemImageIds);
-  const customerDetailRows = buildCustomerDetailRows(order?.customerData);
+  // The Delivery card shows the unit, landmark and rider note itself, so the
+  // generic details list leaves them out rather than printing them twice.
+  const customerDetailRows = buildCustomerDetailRows(order?.customerData).filter(
+    (row) => !isDeliveryDetailRow(row.key, order?.customerData),
+  );
+  const deliveryCard = buildDeliveryCard({
+    address: order?.deliveryAddress,
+    customerData: order?.customerData,
+    latitude: order?.deliveryLatitude,
+    longitude: order?.deliveryLongitude,
+  });
 
   /** Resolves true once the new status is saved; every refusal is shown. */
   const handleUpdateStatus = async (newStatus: OrderStatus, why?: OrderEventReason): Promise<boolean> => {
@@ -1002,7 +1016,21 @@ export default function OrderDetailScreen() {
       {(order.deliveryAddress || (order.deliveryFee ?? 0) > 0) && (
         <Card title="Delivery" style={styles.section}>
           {order.deliveryAddress ? <Text style={styles.value}>{order.deliveryAddress}</Text> : null}
+          {deliveryCard.lines.map((line) => (
+            <Text key={line.label} style={styles.sub}>
+              {line.label}: {line.value}
+            </Text>
+          ))}
           {order.deliveryFee != null && <Text style={styles.sub}>Fee: ₱{order.deliveryFee.toFixed(2)}</Text>}
+          {deliveryCard.mapUrl ? (
+            <TouchableOpacity
+              onPress={() => void openExternalUrl(deliveryCard.mapUrl)}
+              accessibilityRole="link"
+              accessibilityLabel="Open the delivery address in Google Maps"
+            >
+              <Text style={styles.proofLink}>Open in Google Maps</Text>
+            </TouchableOpacity>
+          ) : null}
         </Card>
       )}
 

@@ -13,6 +13,7 @@ import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secre
 import { checkLalamoveKey, describeLalamoveEnvironmentMismatch } from '@/lib/lalamove-keys'
 import { detachTenantDomains, type TenantDomainColumns } from '@/lib/domains/detach-tenant-domains'
 import { withNewTenantFeatureDefaults } from '@/lib/new-tenant-feature-defaults'
+import { validateStorePin } from '@/lib/delivery/store-pin-rules'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -141,6 +142,34 @@ export function refineDistanceDelivery(
   }
 }
 
+export interface StorePinConfig {
+  restaurant_latitude?: number | null
+  restaurant_longitude?: number | null
+  lalamove_enabled?: boolean | null
+  lalamove_market?: string | null
+  distance_delivery_enabled?: boolean | null
+}
+
+/**
+ * The pickup pin rules (`src/lib/delivery/store-pin-rules.ts`) on the tenant
+ * form. A missing pin for distance pricing is already reported by
+ * `refineDistanceDelivery`, so it is only REQUIRED here for Lalamove — the
+ * owner sees one message per problem, not two.
+ */
+export function refineStorePin(value: StorePinConfig, ctx: z.RefinementCtx): void {
+  // Omitted coordinates keep the stored pin (partial writes: MCP, provisioning),
+  // so there is nothing to judge; only a pin that is sent, or cleared with null, is checked.
+  if (value.restaurant_latitude === undefined && value.restaurant_longitude === undefined) return
+  const message = validateStorePin({
+    lat: value.restaurant_latitude,
+    lng: value.restaurant_longitude,
+    market: value.lalamove_market,
+    lalamoveEnabled: value.lalamove_enabled,
+    isPinRequired: value.lalamove_enabled === true && value.distance_delivery_enabled !== true,
+  })
+  if (message) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message })
+}
+
 /** Keep a long multi-issue report readable; the rest stay in the log. */
 const MAX_REPORTED_VALIDATION_ISSUES = 3
 
@@ -257,8 +286,9 @@ export const tenantSchema = z.object({
   flash_screen_duration_ms: z.number().int().min(500).max(15000).optional(),
   // Restaurant address for Lalamove pickup / distance-based delivery store location
   restaurant_address: z.string().optional().or(z.literal('')).optional(),
-  restaurant_latitude: z.number().optional(),
-  restaurant_longitude: z.number().optional(),
+  // null clears the pin; omitted leaves it as it is.
+  restaurant_latitude: z.number().nullable().optional(),
+  restaurant_longitude: z.number().nullable().optional(),
   // Distance-based delivery fee (non-Lalamove path)
   distance_delivery_enabled: z.boolean().default(false),
   delivery_price_per_km: z.number().min(0).nullable().optional(),
@@ -288,7 +318,7 @@ export const tenantSchema = z.object({
   // Email notifications
   admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
   email_notifications_enabled: z.boolean().default(false),
-}).superRefine(refineDistanceDelivery).superRefine(refineLalamoveKeys).superRefine((val, ctx) => {
+}).superRefine(refineDistanceDelivery).superRefine(refineStorePin).superRefine(refineLalamoveKeys).superRefine((val, ctx) => {
   // Loyverse must be fully connected when enabled — a half-configured tenant
   // would silently skip every catalog sync and receipt push.
   if (!val.loyverse_enabled) return

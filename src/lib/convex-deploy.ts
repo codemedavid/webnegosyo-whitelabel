@@ -121,7 +121,9 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // Existing v34 tenants must receive these function updates too.
 // v36 splits payment-method analytics by the settlement ledger, so a bill paid
 // ₱120 by GCash and the rest in cash counts under both methods.
-const CURRENT_SCHEMA_VERSION = 36;
+// v37 sends the rider remarks (unit, landmark, note, address, pin link) with
+// every Lalamove booking instead of the bare address.
+const CURRENT_SCHEMA_VERSION = 37;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

@@ -281,6 +281,11 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   // checkouts are gated by the hours. A pre-launch store refuses both.
   const openStatus = useStoreOpenStatus(tenant)
 
+  const selectedDeliveryOutlet = useMemo(() => {
+    const chosen = outlet.choices.find((choice) => choice.outlet.id === outlet.selectedOutletId)?.outlet
+    return chosen ? { id: chosen.id, latitude: chosen.latitude, longitude: chosen.longitude } : null
+  }, [outlet.choices, outlet.selectedOutletId])
+
   // Delivery fee for the picked address: Lalamove quote OR distance-based fee.
   const {
     deliveryFee: quotedDeliveryFee,
@@ -295,6 +300,9 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     getDeliveryQuoteError,
   } = useDeliveryQuote({
     tenant,
+    // The trip starts at the chosen branch when it is pinned; the server reads
+    // the branch itself, this only names it and keys the re-quote.
+    outlet: selectedDeliveryOutlet,
     isDeliveryOrder: selectedOrderTypeData?.type === 'delivery',
     deliveryAddress: customerData.delivery_address,
     deliveryLat: customerData.delivery_lat,

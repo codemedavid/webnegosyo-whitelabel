@@ -11,6 +11,10 @@ const baseTenant = {
   primary_color: '#000000',
   secondary_color: '#ffffff',
   messenger_page_id: '123456',
+  // A Lalamove store needs its pickup pin (store-pin-rules).
+  restaurant_address: '12 Mabini St, Antipolo',
+  restaurant_latitude: 14.5861,
+  restaurant_longitude: 121.1761,
 }
 
 describe('tenantSchema — Lalamove keys', () => {

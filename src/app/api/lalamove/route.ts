@@ -23,6 +23,8 @@ import {
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import { callerHasFeature } from '@/lib/gov-discount-ledger/caller-scope'
 import { isOrderInScope, resolveBranchScope } from '@/lib/outlets/branch-scope'
+import { buildRiderRemarks } from '@/lib/delivery/rider-remarks'
+import { loadDeliveryOrigin, type OriginStore } from '@/lib/delivery/delivery-origin-server'
 import type { Database, Tenant } from '@/types/database'
 import type { PlatformAction } from '@/lib/platform-staff/permissions'
 
@@ -75,10 +77,11 @@ interface OrderRow {
     delivery_lng?: number | string | null
     [field: string]: unknown
   } | null
+  /** The branch fulfilling the order; its pin is the pickup when set. */
+  outlet_id: string | null
   lalamove_quotation_id: string | null
   lalamove_order_id: string | null
   lalamove_status: string | null
-  outlet_id: string | null
 }
 
 function fail(error: string, status = 200): NextResponse {
@@ -145,7 +148,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: orderData } = await admin
     .from('orders')
     .select(
-      'id, customer_name, customer_contact, customer_data, lalamove_quotation_id, lalamove_order_id, lalamove_status, outlet_id',
+      'id, customer_name, customer_contact, customer_data, outlet_id, lalamove_quotation_id, lalamove_order_id, lalamove_status',
     )
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
@@ -213,6 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           order.customer_name || 'Customer',
           recipient.phone,
           { orderId, tenantId },
+          buildRiderRemarks(order.customer_data),
         )
       } catch (error) {
         if (error instanceof LalamoveBookingError && !error.bookingMayExist) {
@@ -262,17 +266,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return fail('This order has no delivery coordinates to quote against')
       }
 
-      const pickupAddress = tenant.restaurant_address
-      const pickupLat = toFiniteNumber(tenant.restaurant_latitude)
-      const pickupLng = toFiniteNumber(tenant.restaurant_longitude)
-      if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
+      // The order's branch pin when it has one, else the store's — read here,
+      // filtered by this tenant, never taken from the caller.
+      const pickup = await loadDeliveryOrigin(admin, tenant as unknown as OriginStore, order.outlet_id, { isOrderBranch: true })
+      if (!pickup.ok) return fail('Could not read the branch for this order. Please try again.', 503)
+      if (!pickup.origin || !pickup.origin.address) {
         return fail('Your store pickup address and map pin are not set. Add them in delivery settings.')
       }
 
       const quotation = await createLalamoveQuotation(
         tenant,
-        pickupAddress,
-        { lat: pickupLat, lng: pickupLng },
+        pickup.origin.address,
+        pickup.origin.point,
         deliveryAddress,
         { lat: deliveryLat, lng: deliveryLng },
       )
