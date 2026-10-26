@@ -27,6 +27,8 @@ import { claimLalamoveBooking, persistLalamoveBooking, releaseLalamoveBookingCla
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import { buildRiderRemarks } from '@/lib/delivery/rider-remarks'
 import {
+  INVALID_BRANCH_MESSAGE,
+  isClientOutletIdValid,
   loadDeliveryOrigin,
   ORIGIN_TENANT_COLUMNS,
   type DeliveryOriginOptions,
@@ -143,6 +145,9 @@ export async function createQuotationAction(
       !isLongitude(deliveryLng)
     ) {
       return { success: false, error: 'Please choose a valid delivery address.' }
+    }
+    if (!isClientOutletIdValid(outletId)) {
+      return { success: false, error: INVALID_BRANCH_MESSAGE }
     }
 
     const clientRate = await checkActionRateLimit('lalamove-quote-client', QUOTATION_CLIENT_RATE_LIMIT)

@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({
   tenantId: z.string().uuid(),
   at: latLngSchema,
-  outletId: z.string().trim().min(1).max(64).nullish(),
+  outletId: z.string().uuid().nullish(),
 })
 
 const BUDGETS = {

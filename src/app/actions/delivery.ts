@@ -19,6 +19,7 @@ import {
   quoteDistanceFromOrigin,
   type DistancePricedStore,
 } from '@/lib/delivery/distance-quote-server'
+import { INVALID_BRANCH_MESSAGE, isClientOutletIdValid } from '@/lib/delivery/delivery-origin-server'
 
 export interface DistanceDeliveryQuoteResult {
   fee: number
@@ -48,6 +49,9 @@ export async function calculateDistanceDeliveryFeeAction(
     const destination = toLatLng(deliveryLat, deliveryLng)
     if (!destination) {
       return { success: false, error: 'Invalid delivery coordinates' }
+    }
+    if (!isClientOutletIdValid(outletId)) {
+      return { success: false, error: INVALID_BRANCH_MESSAGE }
     }
 
     // Only the columns needed for pricing — never the secret lalamove_* keys,

@@ -11,7 +11,8 @@ const tenant = {
   delivery_price_per_km: 10, delivery_min_fee: 50, delivery_radius_km: 8,
   restaurant_address: 'Main St', restaurant_latitude: 14.6, restaurant_longitude: 121.0,
 }
-const outlets = [{ id: 'b1', tenant_id: 't1', is_active: true, address: 'Branch', latitude: 14.7, longitude: 121.1, delivery_radius_km: 3 }]
+const BRANCH_ID = '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d84'
+const outlets = [{ id: BRANCH_ID, tenant_id: 't1', is_active: true, address: 'Branch', latitude: 14.7, longitude: 121.1, delivery_radius_km: 3 }]
 
 describe('calculateDistanceDeliveryFeeAction', () => {
   beforeEach(() => {
@@ -21,7 +22,7 @@ describe('calculateDistanceDeliveryFeeAction', () => {
 
   it('measures from the chosen branch and uses its radius', async () => {
     const { calculateDistanceDeliveryFeeAction } = await import('@/app/actions/delivery')
-    const result = await calculateDistanceDeliveryFeeAction('t1', 14.71, 121.11, 'b1')
+    const result = await calculateDistanceDeliveryFeeAction('t1', 14.71, 121.11, BRANCH_ID)
     expect(measureRoadDistanceKm.mock.calls[0]).toEqual([{ lat: 14.7, lng: 121.1 }, { lat: 14.71, lng: 121.11 }])
     expect(result).toEqual({ success: true, data: { fee: 50, distanceKm: 4, withinRadius: false, radiusKm: 3 } })
   })
@@ -38,5 +39,12 @@ describe('calculateDistanceDeliveryFeeAction', () => {
     await expect(calculateDistanceDeliveryFeeAction('t1', Number.NaN, 121)).resolves.toMatchObject({ success: false })
     createClient.mockResolvedValue(fakeSupabaseTables({ tenants: [{ ...tenant, lalamove_enabled: true }], outlets }).client)
     await expect(calculateDistanceDeliveryFeeAction('t1', 14.6, 121)).resolves.toMatchObject({ success: false })
+  })
+
+  it('refuses a branch id that is not a uuid without pricing anything', async () => {
+    const { calculateDistanceDeliveryFeeAction } = await import('@/app/actions/delivery')
+    const result = await calculateDistanceDeliveryFeeAction('t1', 14.71, 121.11, "b1' or 1=1")
+    expect(result).toEqual({ success: false, error: expect.stringContaining('branch') })
+    expect(measureRoadDistanceKm).not.toHaveBeenCalled()
   })
 })

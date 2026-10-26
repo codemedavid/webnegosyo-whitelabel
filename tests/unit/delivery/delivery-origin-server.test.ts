@@ -54,3 +54,11 @@ describe('loadDeliveryOrigin', () => {
     await expect(loadDeliveryOrigin(client, store, 'b1')).resolves.toEqual({ ok: false })
   })
 })
+
+describe('isClientOutletIdValid', () => {
+  it('accepts no branch or a uuid, and refuses anything else', async () => {
+    const { isClientOutletIdValid } = await import('@/lib/delivery/delivery-origin-server')
+    for (const id of [null, undefined, '', '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d84']) expect(isClientOutletIdValid(id)).toBe(true)
+    for (const id of ['b1', "x' or 1=1", 42, {}, '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d8']) expect(isClientOutletIdValid(id)).toBe(false)
+  })
+})

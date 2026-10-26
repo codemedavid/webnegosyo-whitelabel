@@ -26,6 +26,7 @@ import {
   type OriginStoreFields,
 } from '@/lib/delivery/delivery-origin'
 import { isMultiBranchEnabled, type MultiBranchTenantFields } from '@/lib/outlets/multi-branch-flag'
+import { isUuid } from '@/lib/uuid'
 
 /** The outlet columns an origin needs. */
 export const ORIGIN_OUTLET_COLUMNS = 'id, address, latitude, longitude, delivery_radius_km'
@@ -34,6 +35,18 @@ export const ORIGIN_TENANT_COLUMNS =
   'restaurant_address, restaurant_latitude, restaurant_longitude, delivery_radius_km, multi_branch_enabled'
 
 export type OriginStore = OriginStoreFields & MultiBranchTenantFields & { id: string }
+
+/** Shown when a browser sends a branch id that cannot be one (not a uuid). */
+export const INVALID_BRANCH_MESSAGE = 'We could not find that branch. Please choose it again.'
+
+/**
+ * Whether a branch id sent by a browser or the app may be looked up: none at
+ * all, or a uuid. Anything else is refused at the boundary rather than handed
+ * to a uuid column filter (a hard PostgREST error, reported as "unreadable").
+ */
+export function isClientOutletIdValid(outletId: unknown): boolean {
+  return outletId === null || outletId === undefined || outletId === '' || isUuid(outletId)
+}
 
 export type DeliveryOriginLookup = { ok: true; origin: DeliveryOrigin | null } | { ok: false }
 

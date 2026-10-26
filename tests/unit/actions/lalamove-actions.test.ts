@@ -60,6 +60,8 @@ const TENANT = {
 
 const SECRETS = { lalamove_api_key: 'key', lalamove_secret_key: 'secret' }
 
+const BRANCH_ID = '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d84'
+
 describe('lalamove server actions', () => {
   let tenantRow: Record<string, unknown> | null
   let orderRow: Record<string, unknown> | null
@@ -251,11 +253,11 @@ describe('lalamove server actions', () => {
 
     test('quotes from the order\'s branch pin when the store runs branches', async () => {
       tenantRow = { ...TENANT, multi_branch_enabled: true }
-      outletRow = { id: 'branch-1', address: 'Branch St, Pasig', latitude: 14.57, longitude: 121.08, delivery_radius_km: null }
+      outletRow = { id: BRANCH_ID, address: 'Branch St, Pasig', latitude: 14.57, longitude: 121.08, delivery_radius_km: null }
       orderRow = {
         id: 'order-1',
         lalamove_order_id: null,
-        outlet_id: 'branch-1',
+        outlet_id: BRANCH_ID,
         customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
       }
       const service = await import('@/lib/lalamove-service')
@@ -270,7 +272,7 @@ describe('lalamove server actions', () => {
       expect(service.createLalamoveQuotation).toHaveBeenCalledWith(
         expect.objectContaining({ id: 't1' }), 'Branch St, Pasig', { lat: 14.57, lng: 121.08 }, '12 Mabini St', { lat: 14.7, lng: 121.05 },
       )
-      expect(eqMock).toHaveBeenCalledWith('outlets', 'id', 'branch-1')
+      expect(eqMock).toHaveBeenCalledWith('outlets', 'id', BRANCH_ID)
       expect(eqMock).toHaveBeenCalledWith('outlets', 'tenant_id', 't1')
     })
 
@@ -452,31 +454,42 @@ describe('lalamove server actions', () => {
 
     test('quotes from the chosen branch, and the signature names that branch', async () => {
       tenantRow = { ...TENANT, multi_branch_enabled: true }
-      outletRow = { id: 'branch-1', address: 'Branch St, Pasig', latitude: 14.57, longitude: 121.08, delivery_radius_km: 5 }
+      outletRow = { id: BRANCH_ID, address: 'Branch St, Pasig', latitude: 14.57, longitude: 121.08, delivery_radius_km: 5 }
       const service = await mockQuote()
 
       const { createQuotationAction } = await import('@/app/actions/lalamove')
       const { verifyDeliveryQuote } = await import('@/lib/checkout/delivery-quote-signature')
-      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1, 'branch-1')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1, BRANCH_ID)
 
       expect(result.success).toBe(true)
       const call = (service.createLalamoveQuotation as unknown as jest.Mock).mock.calls[0]
       expect(call[1]).toBe('Branch St, Pasig')
       expect(call[2]).toEqual({ lat: 14.57, lng: 121.08 })
       const destination = { address: 'Home', lat: 14.7, lng: 121.1 }
-      expect(verifyDeliveryQuote(result.data?.quoteSignature, { tenantId: 't1', quotationId: 'q1', destination, originOutletId: 'branch-1' }))
+      expect(verifyDeliveryQuote(result.data?.quoteSignature, { tenantId: 't1', quotationId: 'q1', destination, originOutletId: BRANCH_ID }))
         .toEqual({ ok: true, fee: 100 })
       expect(verifyDeliveryQuote(result.data?.quoteSignature, { tenantId: 't1', quotationId: 'q1', destination }))
         .toEqual({ ok: false, reason: 'mismatch' })
     })
 
-    test('quotes a pinned branch even when the store itself has no pin', async () => {
-      tenantRow = { ...TENANT, multi_branch_enabled: true, restaurant_latitude: null, restaurant_longitude: null }
-      outletRow = { id: 'branch-1', address: 'Branch St', latitude: 14.57, longitude: 121.08, delivery_radius_km: null }
+    test('refuses a branch id that is not a uuid before any quote', async () => {
+      tenantRow = { ...TENANT, multi_branch_enabled: true }
       const service = await mockQuote()
 
       const { createQuotationAction } = await import('@/app/actions/lalamove')
       const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1, 'branch-1')
+
+      expect(result).toEqual({ success: false, error: expect.stringContaining('branch') })
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+    })
+
+    test('quotes a pinned branch even when the store itself has no pin', async () => {
+      tenantRow = { ...TENANT, multi_branch_enabled: true, restaurant_latitude: null, restaurant_longitude: null }
+      outletRow = { id: BRANCH_ID, address: 'Branch St', latitude: 14.57, longitude: 121.08, delivery_radius_km: null }
+      const service = await mockQuote()
+
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1, BRANCH_ID)
 
       expect(result.success).toBe(true)
       expect(service.createLalamoveQuotation).toHaveBeenCalled()

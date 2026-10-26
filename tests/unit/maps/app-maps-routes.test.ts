@@ -262,16 +262,25 @@ describe('POST /api/maps/delivery-quote', () => {
   it('prices from the branch the order belongs to when one is named', async () => {
     tenantRow = { ...tenantRow, multi_branch_enabled: true }
     outletRow = {
-      id: 'branch-1', tenant_id: TENANT, is_active: true,
+      id: '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d84', tenant_id: TENANT, is_active: true,
       address: 'Branch St', latitude: 14.61, longitude: 121.01, delivery_radius_km: 5,
     }
     const { quote } = await loadRoutes()
 
-    const response = await quote(post('/api/maps/delivery-quote', { ...body, outletId: 'branch-1' }))
+    const response = await quote(post('/api/maps/delivery-quote', { ...body, outletId: '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d84' }))
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ fee: 90, distanceKm: 6, withinRadius: false, radiusKm: 5 })
     expect(measureRoadDistanceKm).toHaveBeenCalledWith({ lat: 14.61, lng: 121.01 }, { lat: 14.62, lng: 121.02 })
+  })
+
+  it('rejects a branch id that is not a uuid before reading anything', async () => {
+    const { quote } = await loadRoutes()
+
+    const response = await quote(post('/api/maps/delivery-quote', { ...body, outletId: 'branch-1' }))
+
+    expect(response.status).toBe(400)
+    expect(measureRoadDistanceKm).not.toHaveBeenCalled()
   })
 
   it('answers 409 when the store has no pin of its own', async () => {
