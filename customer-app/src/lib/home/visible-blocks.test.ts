@@ -60,6 +60,14 @@ describe('resolveFeaturedItems', () => {
     ])
   })
 
+  it('falls back to available dishes with photos when the store has flagged none', () => {
+    const block = { source: 'featured' as const, itemIds: [] }
+    const unflagged = catalog.items.map((item) => ({ ...item, isFeatured: false }))
+    const picked = resolveFeaturedItems(block, unflagged)
+    expect(picked.length).toBeGreaterThan(0)
+    expect(picked.every((item) => item.isAvailable && item.imageUrl !== null)).toBe(true)
+  })
+
   it('keeps manual order and skips items no longer on the menu', () => {
     const block = { source: 'manual' as const, itemIds: ['item-croissant', 'gone', 'item-latte'] }
     expect(resolveFeaturedItems(block, catalog.items).map((item) => item.id)).toEqual(['item-croissant', 'item-latte'])

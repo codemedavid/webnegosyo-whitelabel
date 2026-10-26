@@ -7,6 +7,8 @@ interface CartState {
   lines: CartLine[]
   mode: OrderMode
   outletId: string | null
+  /** What the last add put in the bag (its own quantity, not the merged line's) — the Added sheet shows it. */
+  lastAdded: CartLine | null
   add: (line: CartLine) => void
   setQuantity: (lineId: string, quantity: number) => void
   clear: () => void
@@ -18,7 +20,8 @@ export const useCart = create<CartState>((set) => ({
   lines: [],
   mode: 'pickup',
   outletId: null,
-  add: (line) => set((state) => ({ lines: addLine(state.lines, line) })),
+  lastAdded: null,
+  add: (line) => set((state) => ({ lines: addLine(state.lines, line), lastAdded: line })),
   setQuantity: (lineId, quantity) => set((state) => ({ lines: updateQuantity(state.lines, lineId, quantity) })),
   clear: () => set({ lines: [] }),
   setMode: (mode) => set({ mode }),

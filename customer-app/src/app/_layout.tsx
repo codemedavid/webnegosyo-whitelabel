@@ -69,6 +69,16 @@ function ThemedStack() {
             sheetCornerRadius: 28,
           }}
         />
+        <Stack.Screen
+          name="edit-name"
+          options={{
+            presentation: 'formSheet',
+            headerShown: false,
+            sheetAllowedDetents: 'fitToContents',
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
         <Stack.Screen name="sign-in" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="checkout" options={{ title: 'Review order' }} />
         <Stack.Screen name="order/[id]" options={{ title: 'Your order' }} />

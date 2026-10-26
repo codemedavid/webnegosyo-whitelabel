@@ -101,7 +101,7 @@ const group = (
   name: string,
   minSelect: number,
   maxSelect: number | null,
-  options: Array<[string, string, number, boolean?]>,
+  options: [string, string, number, boolean?][],
   selectionMode: 'choice' | 'quantity' = 'choice',
 ) => ({
   id,
@@ -228,6 +228,33 @@ export const VALID_CATALOG = {
     },
   ],
   pairings: [{ sourceItemId: 'item-latte', targetItemIds: ['item-croissant', 'item-ensaymada'] }],
+  paymentMethods: [
+    {
+      id: 'pm-online',
+      name: 'GCash, Maya or card',
+      kind: 'online' as const,
+      instructions: null,
+      requiresProof: false,
+      orderTypeIds: [],
+    },
+    {
+      id: 'pm-gcash',
+      name: 'GCash transfer',
+      kind: 'manual' as const,
+      instructions: 'Send to 0917 123 4567 (Kape Demo Inc.) and keep your reference number.',
+      requiresProof: true,
+      orderTypeIds: [],
+    },
+    // Cash only at the counter: the store does not send riders out to collect it.
+    {
+      id: 'pm-cash',
+      name: 'Cash',
+      kind: 'cash' as const,
+      instructions: null,
+      requiresProof: false,
+      orderTypeIds: ['ot-pickup', 'ot-dine'],
+    },
+  ],
 }
 
 export const VALID_LOYALTY = {
@@ -268,11 +295,30 @@ export const VALID_ORDER_DETAIL = {
   orderTypeName: 'Pick Up',
   outletName: 'BGC High Street',
   lines: [
-    { id: 'l1', name: 'Caffè Latte', quantity: 2, options: ['Grande 16oz', 'Oat milk'], lineTotal: 390 },
-    { id: 'l2', name: 'Butter Croissant', quantity: 1, options: [], lineTotal: 95 },
+    {
+      id: 'l1',
+      itemId: 'item-latte',
+      selections: { size: { grande: 1 }, milk: { oat: 1 } },
+      name: 'Caffè Latte',
+      quantity: 2,
+      options: ['Grande 16oz', 'Oat milk'],
+      lineTotal: 390,
+    },
+    { id: 'l2', itemId: 'item-croissant', selections: {}, name: 'Butter Croissant', quantity: 1, options: [], lineTotal: 95 },
   ],
   totals: { subtotal: 485, discount: 0, serviceCharge: 0, deliveryFee: 0, total: 485 },
   paymentStatus: 'paid' as const,
   paymentMethodName: 'GCash',
   estimatedReadyAt: '2026-09-30T02:25:00Z',
+}
+
+export const VALID_ORDER_DRAFT = {
+  orderTypeId: 'ot-pickup',
+  outletId: 'outlet-bgc',
+  lines: [{ itemId: 'item-latte', quantity: 2, selections: { size: { grande: 1 }, milk: { oat: 1 } } }],
+  paymentMethodId: 'pm-gcash',
+  voucherCode: null,
+  rewardId: null,
+  deliveryAddress: null,
+  notes: '',
 }

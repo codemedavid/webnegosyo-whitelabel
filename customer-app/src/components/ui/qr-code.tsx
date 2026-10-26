@@ -1,4 +1,4 @@
-import qrcode from 'qrcode-generator'
+import qrcodeGenerator from 'qrcode-generator'
 import { useMemo } from 'react'
 import Svg, { Path, Rect } from 'react-native-svg'
 
@@ -12,7 +12,7 @@ interface QrCodeProps {
 /** One SVG path for the whole matrix — cheaper to draw than a rect per module. */
 export function QrCode({ value, size, color = '#000000', background = '#FFFFFF' }: QrCodeProps) {
   const { path, count } = useMemo(() => {
-    const qr = qrcode(0, 'M')
+    const qr = qrcodeGenerator(0, 'M')
     qr.addData(value)
     qr.make()
     const modules = qr.getModuleCount()

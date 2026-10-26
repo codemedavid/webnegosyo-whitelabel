@@ -21,7 +21,13 @@ export function StampGrid({ filled, total, size = 44, filledColor, emptyColor, i
     <View
       accessible
       accessibilityLabel={`${filled} of ${total} stamps collected`}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap, width: STAMPS_PER_ROW * size + (STAMPS_PER_ROW - 1) * gap }}
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap,
+        // Rounded up: an exact fractional width wrapped the fifth stamp onto the next row.
+        width: Math.ceil(STAMPS_PER_ROW * size + (STAMPS_PER_ROW - 1) * gap) + 1,
+      }}
     >
       {Array.from({ length: total }, (_, index) => {
         const isFilled = index < filled

@@ -9,6 +9,7 @@ import { OrderHeader } from '@/components/menu/order-header'
 import { AppText } from '@/components/ui/app-text'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppConfig, useCatalog } from '@/lib/data/hooks'
+import { defaultOutlet } from '@/lib/branch/availability'
 import { buildMenuRows, type MenuRow } from '@/lib/menu/menu-rows'
 import { sectionForIndex } from '@/lib/menu/scroll-spy'
 import { useCart } from '@/lib/stores/cart'
@@ -48,11 +49,12 @@ export default function OrderScreen() {
     () => (catalog ? buildMenuRows(catalog.categories, catalog.items, query) : { rows: [], headerIndices: [], sections: [] }),
     [catalog, query],
   )
-  const outlet = catalog?.outlets.find((candidate) => candidate.id === outletId) ?? catalog?.outlets[0]
+  const startingOutlet = catalog ? defaultOutlet(catalog.outlets, mode) : undefined
+  const outlet = catalog?.outlets.find((candidate) => candidate.id === outletId) ?? startingOutlet
 
   useEffect(() => {
-    if (!outletId && catalog?.outlets[0]) setOutlet(catalog.outlets[0].id)
-  }, [catalog, outletId, setOutlet])
+    if (!outletId && startingOutlet) setOutlet(startingOutlet.id)
+  }, [startingOutlet, outletId, setOutlet])
 
   const jumpToSection = useCallback(
     (index: number) => {
@@ -73,12 +75,15 @@ export default function OrderScreen() {
   }, [requestedCategory, menu.sections, jumpToSection])
 
   const headerIndicesRef = useRef(menu.headerIndices)
-  headerIndicesRef.current = menu.headerIndices
-  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken<MenuRow>[] }) => {
+  useEffect(() => {
+    headerIndicesRef.current = menu.headerIndices
+  }, [menu.headerIndices])
+  // Stable identity: it only reads refs, so the list never sees a new callback.
+  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken<MenuRow>[] }) => {
     if (isJumping.current) return
     const first = viewableItems.find((token) => token.isViewable)?.index
     if (first !== null && first !== undefined) setActiveSection(sectionForIndex(first, headerIndicesRef.current))
-  }).current
+  }, [])
 
   if (!config) return null
 

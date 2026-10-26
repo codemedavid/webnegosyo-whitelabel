@@ -83,6 +83,27 @@ export const appOutletSchema = z.object({
 
 export type AppOutlet = z.infer<typeof appOutletSchema>
 
+/**
+ * How a customer can pay. `online` is the merchant's own PayMongo and only
+ * appears when `features.onlinePayments`; `manual` is a transfer (GCash, bank)
+ * shown with the store's instructions; `cash` is paid on pickup or delivery.
+ */
+export const APP_PAYMENT_KINDS = ['cash', 'online', 'manual'] as const
+export type AppPaymentKind = (typeof APP_PAYMENT_KINDS)[number]
+
+export const appPaymentMethodSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  kind: z.enum(APP_PAYMENT_KINDS),
+  instructions: z.string().max(2000).nullable(),
+  /** The store wants a screenshot or reference number before it confirms. */
+  requiresProof: z.boolean(),
+  /** Order types this method is offered for (the web's payment_method_order_types); empty = every type. */
+  orderTypeIds: z.array(z.string().min(1)),
+})
+
+export type AppPaymentMethod = z.infer<typeof appPaymentMethodSchema>
+
 export const appPairingSchema = z.object({
   sourceItemId: z.string().min(1),
   targetItemIds: z.array(z.string().min(1)).max(6),
@@ -96,6 +117,7 @@ export const appCatalogSchema = z.object({
   orderTypes: z.array(appOrderTypeSchema),
   outlets: z.array(appOutletSchema),
   pairings: z.array(appPairingSchema),
+  paymentMethods: z.array(appPaymentMethodSchema),
 })
 
 export type AppCatalog = z.infer<typeof appCatalogSchema>
