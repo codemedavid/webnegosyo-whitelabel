@@ -214,10 +214,12 @@ describe('tenantSchema — shared distance-delivery rule', () => {
   test('accepts a store pinned at the equator/prime meridian (0 is a real coordinate)', async () => {
     const { tenantSchema } = await import('@/lib/tenants-service')
 
-    // A non-PH market: a Philippine store at 0,0 is refused as outside the
-    // country (below), but 0 itself must never be read as "not set".
+    // A non-PH Lalamove market: a Philippine store at 0,0 is refused as outside
+    // the country (below), but 0 itself must never be read as "not set". The
+    // market only counts while Lalamove is on (`delivery-market.ts`).
     const parsed = tenantSchema.parse({
       ...DISTANCE_DELIVERY_INPUT,
+      lalamove_enabled: true,
       lalamove_market: 'SG',
       delivery_min_fee: 0,
       restaurant_latitude: 0,
