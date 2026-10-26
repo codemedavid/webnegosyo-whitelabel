@@ -19,6 +19,9 @@ const SELF_AUTHENTICATED_API_PREFIXES = [
   '/api/loyalty/maintenance',
   '/api/loyverse/reconcile',
   '/api/sms/automations/tick',
+  // Customer-app API: public store data keyed by the build's own app id (and,
+  // from Phase 3, opaque customer sessions) — never a Supabase cookie session.
+  '/api/app/v1/',
 ] as const
 
 /** Paths the tenant rewrite must never touch: global API routes and the image optimiser. */

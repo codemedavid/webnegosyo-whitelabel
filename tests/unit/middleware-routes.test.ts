@@ -49,7 +49,7 @@ describe('tenantAdminSlugFor', () => {
 })
 
 describe('isSelfAuthenticatedApiRoute', () => {
-  it.each(['/api/webhook', '/api/loyalty/maintenance', '/api/loyverse/reconcile', '/api/messenger/send'])(
+  it.each(['/api/webhook', '/api/loyalty/maintenance', '/api/loyverse/reconcile', '/api/messenger/send', '/api/app/v1/config'])(
     'bypasses %s',
     (path) => {
       expect(isSelfAuthenticatedApiRoute(path)).toBe(true)
@@ -58,6 +58,7 @@ describe('isSelfAuthenticatedApiRoute', () => {
 
   it('does not bypass ordinary API routes', () => {
     expect(isSelfAuthenticatedApiRoute('/api/ai/parse-menu')).toBe(false)
+    expect(isSelfAuthenticatedApiRoute('/api/appointments')).toBe(false)
   })
 })
 

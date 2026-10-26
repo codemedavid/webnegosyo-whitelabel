@@ -1440,6 +1440,414 @@ export type Database = {
           },
         ]
       }
+      expense_bill_marks: {
+        Row: {
+          bill_id: string
+          created_at: string
+          created_by: string | null
+          due_on: string
+          id: string
+          kind: string
+          snoozed_until: string | null
+          tenant_id: string
+        }
+        Insert: {
+          bill_id: string
+          created_at?: string
+          created_by?: string | null
+          due_on: string
+          id?: string
+          kind: string
+          snoozed_until?: string | null
+          tenant_id: string
+        }
+        Update: {
+          bill_id?: string
+          created_at?: string
+          created_by?: string | null
+          due_on?: string
+          id?: string
+          kind?: string
+          snoozed_until?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_bill_marks_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "expense_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bill_marks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_bills: {
+        Row: {
+          amount_cents: number | null
+          category_id: string
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          ends_on: string | null
+          id: string
+          name: string
+          outlet_id: string | null
+          paid_from: string
+          paid_to_name: string | null
+          paused_on: string | null
+          paused_until: string | null
+          remind_days_before: number
+          repeat_days: number[] | null
+          repeat_every: number
+          repeat_kind: string
+          repeat_weekday: number | null
+          starts_on: string
+          status: string
+          supplier_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          ends_on?: string | null
+          id?: string
+          name: string
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          paused_on?: string | null
+          paused_until?: string | null
+          remind_days_before?: number
+          repeat_days?: number[] | null
+          repeat_every?: number
+          repeat_kind: string
+          repeat_weekday?: number | null
+          starts_on: string
+          status?: string
+          supplier_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number | null
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          ends_on?: string | null
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          paused_on?: string | null
+          paused_until?: string | null
+          remind_days_before?: number
+          repeat_days?: number[] | null
+          repeat_every?: number
+          repeat_kind?: string
+          repeat_weekday?: number | null
+          starts_on?: string
+          status?: string
+          supplier_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_bills_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_categories: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          grp: string
+          icon: string | null
+          id: string
+          name: string
+          needs_note: boolean
+          sort_order: number
+          system_key: string | null
+          tenant_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          grp: string
+          icon?: string | null
+          id?: string
+          name: string
+          needs_note?: boolean
+          sort_order?: number
+          system_key?: string | null
+          tenant_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          grp?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          needs_note?: boolean
+          sort_order?: number
+          system_key?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_categories_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_receipts: {
+        Row: {
+          bytes: number
+          created_at: string
+          expense_id: string
+          id: string
+          mime: string
+          object_path: string
+          outlet_id: string | null
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          bytes: number
+          created_at?: string
+          expense_id: string
+          id?: string
+          mime: string
+          object_path: string
+          outlet_id?: string | null
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          bytes?: number
+          created_at?: string
+          expense_id?: string
+          id?: string
+          mime?: string
+          object_path?: string
+          outlet_id?: string | null
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_receipts_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_receipts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount_cents: number
+          bill_due_on: string | null
+          bill_id: string | null
+          category_id: string
+          client_request_id: string | null
+          created_at: string
+          created_by: string | null
+          created_by_name: string
+          doc_type: string | null
+          ewt_cents: number | null
+          ewt_rate: number | null
+          form_2307_given: boolean
+          id: string
+          invoice_no: string | null
+          is_stock_purchase: boolean
+          note: string | null
+          outlet_id: string | null
+          paid_from: string
+          paid_to_name: string | null
+          replaces_expense_id: string | null
+          shift_cash_movement_id: string | null
+          spent_on: string
+          staff_user_id: string | null
+          status: string
+          supplier_id: string | null
+          supplier_tin: string | null
+          tenant_id: string
+          updated_at: string
+          vat_cents: number | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount_cents: number
+          bill_due_on?: string | null
+          bill_id?: string | null
+          category_id: string
+          client_request_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_name: string
+          doc_type?: string | null
+          ewt_cents?: number | null
+          ewt_rate?: number | null
+          form_2307_given?: boolean
+          id?: string
+          invoice_no?: string | null
+          is_stock_purchase?: boolean
+          note?: string | null
+          outlet_id?: string | null
+          paid_from: string
+          paid_to_name?: string | null
+          replaces_expense_id?: string | null
+          shift_cash_movement_id?: string | null
+          spent_on?: string
+          staff_user_id?: string | null
+          status?: string
+          supplier_id?: string | null
+          supplier_tin?: string | null
+          tenant_id: string
+          updated_at?: string
+          vat_cents?: number | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          bill_due_on?: string | null
+          bill_id?: string | null
+          category_id?: string
+          client_request_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string
+          doc_type?: string | null
+          ewt_cents?: number | null
+          ewt_rate?: number | null
+          form_2307_given?: boolean
+          id?: string
+          invoice_no?: string | null
+          is_stock_purchase?: boolean
+          note?: string | null
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          replaces_expense_id?: string | null
+          shift_cash_movement_id?: string | null
+          spent_on?: string
+          staff_user_id?: string | null
+          status?: string
+          supplier_id?: string | null
+          supplier_tin?: string | null
+          tenant_id?: string
+          updated_at?: string
+          vat_cents?: number | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "expense_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_replaces_expense_id_fkey"
+            columns: ["replaces_expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_shift_cash_movement_id_fkey"
+            columns: ["shift_cash_movement_id"]
+            isOneToOne: false
+            referencedRelation: "shift_cash_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       facebook_pages: {
         Row: {
           created_at: string
@@ -7929,6 +8337,7 @@ export type Database = {
           enabled_kinds: string[]
           id_photo_mode: string
           is_bir_registered_pos: boolean
+          online_claims_enabled: boolean
           pos_min: string | null
           pos_ptu_no: string | null
           pos_serial_no: string | null
@@ -7950,6 +8359,7 @@ export type Database = {
           enabled_kinds?: string[]
           id_photo_mode?: string
           is_bir_registered_pos?: boolean
+          online_claims_enabled?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
           pos_serial_no?: string | null
@@ -7971,6 +8381,7 @@ export type Database = {
           enabled_kinds?: string[]
           id_photo_mode?: string
           is_bir_registered_pos?: boolean
+          online_claims_enabled?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
           pos_serial_no?: string | null
@@ -8062,6 +8473,63 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "subscription_payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          default_category_id: string | null
+          id: string
+          kind: string
+          name: string
+          note: string | null
+          phone: string | null
+          tenant_id: string
+          tin: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_category_id?: string | null
+          id?: string
+          kind?: string
+          name: string
+          note?: string | null
+          phone?: string | null
+          tenant_id: string
+          tin?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_category_id?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          note?: string | null
+          phone?: string | null
+          tenant_id?: string
+          tin?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppliers_default_category_id_fkey"
+            columns: ["default_category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "suppliers_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -8163,6 +8631,121 @@ export type Database = {
             foreignKeyName: "tag_definitions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_app_configs: {
+        Row: {
+          draft: Json
+          published: Json | null
+          published_at: string | null
+          published_version: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          draft?: Json
+          published?: Json | null
+          published_at?: string | null
+          published_version?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          draft?: Json
+          published?: Json | null
+          published_at?: string | null
+          published_version?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_app_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_apps: {
+        Row: {
+          android_package: string
+          app_store_url: string | null
+          asc_app_id: string | null
+          bundle_id: string
+          created_at: string
+          display_name: string
+          icon_url: string | null
+          latest_version_android: string | null
+          latest_version_ios: string | null
+          listing: Json
+          min_version_android: string | null
+          min_version_ios: string | null
+          play_store_url: string | null
+          play_track: string
+          splash_background: string | null
+          splash_url: string | null
+          status: string
+          store_account: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          android_package: string
+          app_store_url?: string | null
+          asc_app_id?: string | null
+          bundle_id: string
+          created_at?: string
+          display_name: string
+          icon_url?: string | null
+          latest_version_android?: string | null
+          latest_version_ios?: string | null
+          listing?: Json
+          min_version_android?: string | null
+          min_version_ios?: string | null
+          play_store_url?: string | null
+          play_track?: string
+          splash_background?: string | null
+          splash_url?: string | null
+          status?: string
+          store_account?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          android_package?: string
+          app_store_url?: string | null
+          asc_app_id?: string | null
+          bundle_id?: string
+          created_at?: string
+          display_name?: string
+          icon_url?: string | null
+          latest_version_android?: string | null
+          latest_version_ios?: string | null
+          listing?: Json
+          min_version_android?: string | null
+          min_version_ios?: string | null
+          play_store_url?: string | null
+          play_track?: string
+          splash_background?: string | null
+          splash_url?: string | null
+          status?: string
+          store_account?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_apps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -10107,6 +10690,10 @@ export type Database = {
         }
         Returns: Json
       }
+      ensure_expense_categories: {
+        Args: { p_tenant_id: string }
+        Returns: undefined
+      }
       execute_approval: {
         Args: { p_approval_id: string; p_tenant_id: string }
         Returns: Json
@@ -10121,6 +10708,11 @@ export type Database = {
       }
       execute_refund: { Args: { p_approval_id: string }; Returns: Json }
       execute_stock_writeoff: { Args: { p_approval_id: string }; Returns: Json }
+      expense_actor_name: { Args: never; Returns: string }
+      expense_category_for: {
+        Args: { p_category_id: string; p_note: string; p_tenant_id: string }
+        Returns: string
+      }
       expire_approval_requests: {
         Args: { p_limit?: number; p_tenant_id?: string }
         Returns: number
@@ -10179,67 +10771,12 @@ export type Database = {
       get_customer_order: {
         Args: { p_order_id: string }
         Returns: {
-          amount_paid: number
-          cancel_reason: string | null
-          client_order_id: string | null
-          created_at: string
-          customer_contact: string | null
-          customer_data: Json | null
-          customer_id: string | null
-          customer_name: string | null
-          daily_number: number | null
-          delivery_fee: number | null
-          discount_data: Json | null
-          discount_total: number
-          edited_at: string | null
-          edited_by: string | null
-          has_bundle_items: boolean
-          has_upsell_items: boolean
+          customer_name: string
+          daily_number: number
           id: string
-          item_count: number | null
-          lalamove_driver_id: string | null
-          lalamove_driver_name: string | null
-          lalamove_driver_phone: string | null
-          lalamove_order_id: string | null
-          lalamove_quotation_id: string | null
-          lalamove_status: string | null
-          lalamove_tracking_url: string | null
-          loyverse_push_error: string | null
-          loyverse_push_status: string | null
-          loyverse_pushed_at: string | null
-          loyverse_receipt_number: string | null
-          order_date: string | null
-          order_token_expires_at: string | null
-          order_token_hash: string | null
-          order_type: string | null
-          order_type_id: string | null
-          outlet_id: string | null
-          payment_method_details: string | null
-          payment_method_id: string | null
-          payment_method_name: string | null
-          payment_method_qr_code_url: string | null
-          payment_proof_public_id: string | null
-          payment_proof_reference: string | null
-          payment_proof_uploaded_at: string | null
-          payment_proof_url: string | null
-          payment_status: string | null
-          prep_minutes: number | null
-          promised_ready_at: string | null
-          revision_number: number
-          scheduled_for: string | null
-          service_charge_amount: number | null
-          source: string
           status: string
-          tenant_id: string
           total: number
-          updated_at: string
         }[]
-        SetofOptions: {
-          from: "*"
-          to: "orders"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
       get_store_activity: {
         Args: {
@@ -10480,6 +11017,20 @@ export type Database = {
         Args: { p_cost_usd: number; p_tenant_id: string; p_tokens: number }
         Returns: undefined
       }
+      record_drawer_expense: {
+        Args: {
+          p_amount_cents: number
+          p_category_id: string
+          p_client_request_id: string
+          p_is_stock_purchase?: boolean
+          p_note: string
+          p_paid_to_name: string
+          p_recorded_by_name: string
+          p_shift_id: string
+          p_supplier_id: string
+        }
+        Returns: string
+      }
       record_sms_sender_info: {
         Args: {
           p_app: string
@@ -10530,6 +11081,29 @@ export type Database = {
         Args: { p_order_id: string; p_tenant_id: string }
         Returns: number
       }
+      replace_expense: {
+        Args: { p_expense_id: string; p_patch: Json; p_reason: string }
+        Returns: string
+      }
+      report_expenses_by_category: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          category_group: string
+          category_id: string
+          cents: number
+          expenses: number
+          icon: string
+          name: string
+          stock_purchase_cents: number
+          system_key: string
+        }[]
+      }
       report_payments: {
         Args: {
           p_from: string
@@ -10544,6 +11118,71 @@ export type Database = {
           method_id: string
           method_key: string
           orders: number
+        }[]
+      }
+      report_profit_by_period: {
+        Args: {
+          p_from: string
+          p_grain: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          bucket: string
+          cash_out_cents: number
+          collected_cents: number
+          count_variance_cents: number
+          expenses_cents: number
+          fallback_cogs_cents: number
+          ingredient_direct_cents: number
+          ingredient_stock_cents: number
+          ledger_cogs_cents: number
+          net_sales_cents: number
+          orders: number
+          sale_movements: number
+          waste_cents: number
+        }[]
+      }
+      report_profit_summary: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          admin_cents: number
+          capex_cents: number
+          collected_cents: number
+          costed_dishes: number
+          costed_quantity: number
+          count_variance_cents: number
+          dish_costs_visible: boolean
+          expense_count: number
+          fallback_cogs_cents: number
+          fallback_orders: number
+          ingredient_stock_cents: number
+          ingredients_cents: number
+          ledger_cogs_cents: number
+          net_sales_cents: number
+          not_expense_cents: number
+          occupancy_cents: number
+          operating_cents: number
+          orders: number
+          other_cents: number
+          sale_movements: number
+          sold_dishes: number
+          sold_quantity: number
+          staff_cents: number
+          store_wide_expense_cents: number
+          uncosted_movements: number
+          unsorted_payout_cents: number
+          unsorted_payouts: number
+          utilities_cents: number
+          waste_cents: number
         }[]
       }
       report_sales_by_category: {
@@ -10750,6 +11389,17 @@ export type Database = {
           sales: number
         }[]
       }
+      sort_drawer_payout: {
+        Args: {
+          p_category_id: string
+          p_movement_id: string
+          p_note: string
+          p_paid_to_name: string
+          p_recorded_by_name: string
+          p_supplier_id: string
+        }
+        Returns: string
+      }
       stock_movement_frozen_cost: {
         Args: {
           p_item_id: string
@@ -10788,6 +11438,13 @@ export type Database = {
       store_activity_caller_scope: {
         Args: { p_tenant_id: string }
         Returns: Record<string, unknown>
+      }
+      store_activity_capture_expense: {
+        Args: {
+          p_event: string
+          r: Database["public"]["Tables"]["expenses"]["Row"]
+        }
+        Returns: undefined
       }
       store_activity_capture_inventory_audit_log: {
         Args: { r: Database["public"]["Tables"]["inventory_audit_log"]["Row"] }
@@ -11108,6 +11765,10 @@ export type Database = {
       verify_staff_approval_pin: {
         Args: { p_pin: string; p_tenant_id: string; p_user_id: string }
         Returns: string
+      }
+      void_expense: {
+        Args: { p_actor_name?: string; p_expense_id: string; p_reason: string }
+        Returns: undefined
       }
       withdraw_approval: {
         Args: { p_actor: string; p_id: string; p_tenant_id: string }
