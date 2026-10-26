@@ -89,6 +89,13 @@ describe('updateTenantDeliveryForAdminAction — pickup pin', () => {
     expect(result).toMatchObject({ success: true })
   })
 
+  it('reads a stale Lalamove market on a store without Lalamove as the Philippines', async () => {
+    storeRow = { lalamove_enabled: false, lalamove_market: 'HK' }
+    const result = await save({ restaurant_latitude: 22.3193, restaurant_longitude: 114.1694 })
+    expect(result).toEqual({ error: expect.stringContaining('outside the Philippines') })
+    expect(update).not.toHaveBeenCalled()
+  })
+
   it('refuses rather than guess when the store settings cannot be read', async () => {
     readError = { message: 'timeout' }
     const result = await save({ restaurant_latitude: 13.9358, restaurant_longitude: 121.6129 })

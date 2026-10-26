@@ -144,6 +144,7 @@ async function denyUnlessBranchPinValid(tenantId: string, fields: BranchPinField
     lat: fields.latitude,
     lng: fields.longitude,
     market: store.lalamove_market,
+    lalamoveEnabled: store.lalamove_enabled,
     isPinRequired: fields.supports_delivery === true && isStorePinRequired(store),
     subject: 'branch',
   })

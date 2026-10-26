@@ -551,6 +551,7 @@ export async function createOrderAction(
       pin: deliveryPin,
       origin: null,
       market: (tenantConfig as { lalamove_market?: string | null }).lalamove_market,
+      lalamoveEnabled: tenantConfig.lalamove_enabled === true,
     }).isBlocked) {
       return await refuse(OUTSIDE_COUNTRY_PIN_MESSAGE)
     }

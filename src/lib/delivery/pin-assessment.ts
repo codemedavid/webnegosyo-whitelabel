@@ -12,6 +12,7 @@
  */
 
 import { haversineDistanceKm, type LatLng } from '@/lib/delivery-fee'
+import { isPhilippineDeliveryMarket } from '@/lib/delivery/delivery-market'
 
 /** Past this (when the store sets no radius) a pin is worth a second look. */
 export const DEFAULT_FAR_PIN_KM = 30
@@ -36,7 +37,9 @@ export interface PinAssessment {
 export interface PinAssessmentInput {
   pin: LatLng | null
   origin: LatLng | null
+  /** `tenants.lalamove_market`; only read while `lalamoveEnabled` (see `delivery-market.ts`). */
   market?: string | null
+  lalamoveEnabled?: boolean | null
   radiusKm?: number | null
 }
 
@@ -49,13 +52,9 @@ export function isInsidePhilippines(point: LatLng): boolean {
   )
 }
 
-function isPhilippineMarket(market: string | null | undefined): boolean {
-  return (market ?? 'PH').trim().toUpperCase() === 'PH'
-}
-
-export function assessDeliveryPin({ pin, origin, market, radiusKm }: PinAssessmentInput): PinAssessment {
+export function assessDeliveryPin({ pin, origin, market, lalamoveEnabled, radiusKm }: PinAssessmentInput): PinAssessment {
   if (!pin) return { isBlocked: false, warning: null }
-  if (isPhilippineMarket(market) && !isInsidePhilippines(pin)) return { isBlocked: true, warning: null }
+  if (isPhilippineDeliveryMarket({ lalamoveEnabled, market }) && !isInsidePhilippines(pin)) return { isBlocked: true, warning: null }
   if (!origin) return { isBlocked: false, warning: null }
 
   const distanceKm = haversineDistanceKm(origin.lat, origin.lng, pin.lat, pin.lng)

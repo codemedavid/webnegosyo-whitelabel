@@ -60,7 +60,7 @@ describe('CheckoutAddressField', () => {
 describe('buildDeliveryPinCheck', () => {
   it('words each warning for the customer', async () => {
     const { buildDeliveryPinCheck } = await import('@/components/customer/checkout-templates/checkout-address-field')
-    const check = buildDeliveryPinCheck({ origin: { lat: 14.6255, lng: 121.0672 }, radiusKm: null, market: 'PH', placeName: 'Brew Café' })
+    const check = buildDeliveryPinCheck({ origin: { lat: 14.6255, lng: 121.0672 }, radiusKm: null, market: 'PH', lalamoveEnabled: true, placeName: 'Brew Café' })
 
     expect(check({ lat: 14.65, lng: 121.05 })).toBeNull()
     expect(check({ lat: 14.6255, lng: 121.0672 })).toEqual({ isBlocked: false, message: 'This pin is on Brew Café itself. Move it to your address.' })
@@ -69,5 +69,12 @@ describe('buildDeliveryPinCheck', () => {
       isBlocked: true,
       message: 'This spot is outside the Philippines. Move the pin to your delivery address.',
     })
+  })
+
+  it('reads a stale Lalamove market on a store without Lalamove as the Philippines', async () => {
+    const { buildDeliveryPinCheck } = await import('@/components/customer/checkout-templates/checkout-address-field')
+    const check = buildDeliveryPinCheck({ origin: null, radiusKm: null, market: 'HK', lalamoveEnabled: false, placeName: 'Brew Café' })
+    expect(check({ lat: 22.3, lng: 114.17 })?.isBlocked).toBe(true)
+    expect(check({ lat: 14.65, lng: 121.05 })).toBeNull()
   })
 })

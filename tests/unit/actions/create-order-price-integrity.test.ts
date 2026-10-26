@@ -542,6 +542,21 @@ describe('createOrderAction — price integrity', () => {
     expect(createOrder).not.toHaveBeenCalled()
   })
 
+  test('reads a stale Lalamove market on a store without Lalamove as the Philippines', async () => {
+    tableRows = {
+      ...tableRows,
+      tenants: platformTenant({
+        lalamove_enabled: false, lalamove_market: 'HK',
+        distance_delivery_enabled: true, delivery_price_per_km: 10, delivery_min_fee: 50, delivery_radius_km: 5000,
+        restaurant_latitude: 14.5995, restaurant_longitude: 120.9842,
+      }),
+      order_types: { ...pickup, name: 'Delivery', type: 'delivery' },
+    }
+    const result = await place(orderArgs({ deliveryFee: 50, customerData: { delivery_address: 'Kowloon', delivery_lat: 22.3, delivery_lng: 114.17 } }))
+    expect(result).toMatchObject({ success: false, refused: true })
+    expect(result.error).toMatch(/Philippines/)
+  })
+
   test('reads the order type once, even when every consumer needs it', async () => {
     // Minimum, web availability, advance schedule, distance fee and service
     // charge all read the order type; this used to be four separate queries.

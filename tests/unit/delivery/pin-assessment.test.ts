@@ -21,7 +21,14 @@ describe('assessDeliveryPin', () => {
 
   it('blocks a pin outside the Philippines for a PH store', () => {
     expect(assessDeliveryPin({ pin: { lat: 22.3, lng: 114.17 }, origin: store, market: 'PH' }).isBlocked).toBe(true)
-    expect(assessDeliveryPin({ pin: { lat: 22.3, lng: 114.17 }, origin: null, market: 'HK' }).isBlocked).toBe(false)
+    expect(assessDeliveryPin({ pin: { lat: 22.3, lng: 114.17 }, origin: null, market: 'HK', lalamoveEnabled: true }).isBlocked).toBe(false)
+  })
+
+  it('reads a stale market on a store without Lalamove as the Philippines', () => {
+    const manila = { lat: 14.6, lng: 121.0 }
+    expect(assessDeliveryPin({ pin: manila, origin: null, market: 'HK', lalamoveEnabled: false }).isBlocked).toBe(false)
+    expect(assessDeliveryPin({ pin: { lat: 22.3, lng: 114.17 }, origin: null, market: 'HK', lalamoveEnabled: false }).isBlocked).toBe(true)
+    expect(assessDeliveryPin({ pin: { lat: 22.3, lng: 114.17 }, origin: null, market: '  ', lalamoveEnabled: true }).isBlocked).toBe(true)
   })
 
   it('warns when the pin sits on the store itself', () => {

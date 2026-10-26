@@ -7,12 +7,13 @@
  * refused with a message the owner can act on:
  *
  * - both halves or neither (half a pin is a broken save, never a choice);
- * - inside the Philippines for a PH store — an unset market counts as PH,
- *   because every store on the platform trades there;
+ * - inside the Philippines for a PH store — an unset market, or any market
+ *   on a store without Lalamove, counts as PH (`delivery-market.ts`);
  * - required when Lalamove or distance pricing is on, since riders pick up
  *   at the pin and fees are measured from it.
  */
 
+import { PHILIPPINE_MARKET, isPhilippineDeliveryMarket } from '@/lib/delivery/delivery-market'
 import { isInsidePhilippines } from '@/lib/delivery/pin-assessment'
 
 export const LALAMOVE_MARKETS = [
@@ -25,7 +26,7 @@ export const LALAMOVE_MARKETS = [
   { code: 'VN', label: 'Vietnam' },
 ] as const
 
-export const DEFAULT_LALAMOVE_MARKET = 'PH'
+export const DEFAULT_LALAMOVE_MARKET = PHILIPPINE_MARKET
 
 export const STORE_PIN_MESSAGES = {
   incomplete: 'The store pin is incomplete. Pick the address again so the map sets the pin.',
@@ -37,7 +38,9 @@ export const STORE_PIN_MESSAGES = {
 export interface StorePinInput {
   lat: number | null | undefined
   lng: number | null | undefined
+  /** `tenants.lalamove_market`; only read while `lalamoveEnabled` (see `delivery-market.ts`). */
   market?: string | null
+  lalamoveEnabled?: boolean | null
   isPinRequired: boolean
   subject?: 'store' | 'branch'
 }
@@ -51,17 +54,12 @@ function isSet(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function isPhilippineMarket(market: string | null | undefined): boolean {
-  const code = (market ?? '').trim().toUpperCase()
-  return code === '' || code === DEFAULT_LALAMOVE_MARKET
-}
-
 export function isStorePinRequired(store: StorePinRequirementFields): boolean {
   return store.lalamove_enabled === true || store.distance_delivery_enabled === true
 }
 
 /** A message to show the owner, or null when the pin may be saved. */
-export function validateStorePin({ lat, lng, market, isPinRequired, subject = 'store' }: StorePinInput): string | null {
+export function validateStorePin({ lat, lng, market, lalamoveEnabled, isPinRequired, subject = 'store' }: StorePinInput): string | null {
   const hasLat = isSet(lat)
   const hasLng = isSet(lng)
   if (hasLat !== hasLng) return STORE_PIN_MESSAGES.incomplete
@@ -69,6 +67,6 @@ export function validateStorePin({ lat, lng, market, isPinRequired, subject = 's
     if (!isPinRequired) return null
     return subject === 'branch' ? STORE_PIN_MESSAGES.branchRequired : STORE_PIN_MESSAGES.required
   }
-  if (isPhilippineMarket(market) && !isInsidePhilippines({ lat, lng })) return STORE_PIN_MESSAGES.outsidePhilippines
+  if (isPhilippineDeliveryMarket({ lalamoveEnabled, market }) && !isInsidePhilippines({ lat, lng })) return STORE_PIN_MESSAGES.outsidePhilippines
   return null
 }

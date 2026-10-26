@@ -84,6 +84,14 @@ describe('createOutletAction — branch pin', () => {
     expect(result).toEqual({ success: false, error: expect.stringContaining('outside the Philippines') })
   })
 
+  test('reads a stale Lalamove market on a store without Lalamove as the Philippines', async () => {
+    storeRow = { lalamove_enabled: false, lalamove_market: 'HK', distance_delivery_enabled: true }
+    const foreign = await createOutletAction('t1', 'cafe', { ...BRANCH, latitude: 22.3193, longitude: 114.1694 } as never)
+    expect(foreign).toEqual({ success: false, error: expect.stringContaining('outside the Philippines') })
+    const home = await createOutletAction('t1', 'cafe', BRANCH as never)
+    expect(home.success).toBe(true)
+  })
+
   test('refuses rather than guess when the store settings cannot be read', async () => {
     storeError = { message: 'timeout' }
     const result = await createOutletAction('t1', 'cafe', BRANCH as never)

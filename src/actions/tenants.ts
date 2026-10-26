@@ -587,6 +587,7 @@ async function checkDeliveryPin(
     lat: parsed.restaurant_latitude,
     lng: parsed.restaurant_longitude,
     market: store.lalamove_market,
+    lalamoveEnabled: store.lalamove_enabled,
     isPinRequired: isStorePinRequired({
       lalamove_enabled: store.lalamove_enabled,
       distance_delivery_enabled: parsed.distance_delivery_enabled,

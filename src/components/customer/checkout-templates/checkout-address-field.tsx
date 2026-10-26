@@ -59,10 +59,17 @@ export function buildDeliveryPinCheck(input: {
   origin: LatLng | null
   radiusKm: number | null
   market: string | null | undefined
+  lalamoveEnabled: boolean | null | undefined
   placeName: string
 }): (point: LatLng) => PinCheckView | null {
   return (point) => {
-    const assessment = assessDeliveryPin({ pin: point, origin: input.origin, market: input.market, radiusKm: input.radiusKm })
+    const assessment = assessDeliveryPin({
+      pin: point,
+      origin: input.origin,
+      market: input.market,
+      lalamoveEnabled: input.lalamoveEnabled,
+      radiusKm: input.radiusKm,
+    })
     if (assessment.isBlocked) {
       return { isBlocked: true, message: 'This spot is outside the Philippines. Move the pin to your delivery address.' }
     }
@@ -96,14 +103,15 @@ export function CheckoutAddressField({
   const radiusKm = origin?.radiusKm ?? null
   const placeName = (origin?.source === 'outlet' ? branch?.name : tenant?.name)?.trim() || 'the store'
   const market = tenant?.lalamove_market
+  const lalamoveEnabled = tenant?.lalamove_enabled
 
   const biasCenter = useMemo(
     () => (originLat !== undefined && originLng !== undefined ? { lat: originLat, lng: originLng } : null),
     [originLat, originLng],
   )
   const check = useMemo(
-    () => buildDeliveryPinCheck({ origin: biasCenter, radiusKm, market, placeName }),
-    [biasCenter, radiusKm, market, placeName],
+    () => buildDeliveryPinCheck({ origin: biasCenter, radiusKm, market, lalamoveEnabled, placeName }),
+    [biasCenter, radiusKm, market, lalamoveEnabled, placeName],
   )
 
   const handleAddressChange = useCallback(

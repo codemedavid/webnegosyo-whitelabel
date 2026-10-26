@@ -26,7 +26,15 @@ describe('validateStorePin', () => {
   it('refuses a pin outside the Philippines for a PH store (unset market counts as PH)', () => {
     expect(validateStorePin({ lat: 22.3193, lng: 114.1694, market: 'PH', isPinRequired: false })).toBe(STORE_PIN_MESSAGES.outsidePhilippines)
     expect(validateStorePin({ lat: 0, lng: 0, market: null, isPinRequired: false })).toBe(STORE_PIN_MESSAGES.outsidePhilippines)
-    expect(validateStorePin({ lat: 22.3193, lng: 114.1694, market: 'hk', isPinRequired: true })).toBeNull()
+    expect(validateStorePin({ lat: 22.3193, lng: 114.1694, market: 'hk', lalamoveEnabled: true, isPinRequired: true })).toBeNull()
+  })
+
+  it('reads a stale market on a store without Lalamove as the Philippines', () => {
+    expect(validateStorePin({ ...QC, market: 'HK', lalamoveEnabled: false, isPinRequired: true })).toBeNull()
+    expect(validateStorePin({ lat: 22.3193, lng: 114.1694, market: 'HK', lalamoveEnabled: false, isPinRequired: false }))
+      .toBe(STORE_PIN_MESSAGES.outsidePhilippines)
+    expect(validateStorePin({ lat: 22.3193, lng: 114.1694, market: ' ', lalamoveEnabled: true, isPinRequired: false }))
+      .toBe(STORE_PIN_MESSAGES.outsidePhilippines)
   })
 
   it('uses branch wording when asked', () => {

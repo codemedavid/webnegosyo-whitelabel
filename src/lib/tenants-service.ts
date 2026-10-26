@@ -164,6 +164,7 @@ export function refineStorePin(value: StorePinConfig, ctx: z.RefinementCtx): voi
     lat: value.restaurant_latitude,
     lng: value.restaurant_longitude,
     market: value.lalamove_market,
+    lalamoveEnabled: value.lalamove_enabled,
     isPinRequired: value.lalamove_enabled === true && value.distance_delivery_enabled !== true,
   })
   if (message) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message })
