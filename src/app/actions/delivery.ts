@@ -15,6 +15,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { distanceConfigFromTenant, quoteDistanceDelivery, toLatLng } from '@/lib/delivery-fee'
 import { measureRoadDistanceKm } from '@/lib/maps/road-distance-server'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
+import { checkActionRateLimit } from '@/lib/action-rate-limit'
 
 export interface DistanceDeliveryQuoteResult {
   fee: number
@@ -31,6 +33,20 @@ const PRICING_COLUMNS =
   'lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude'
 
 /**
+ * Anonymous, and every call may spend a paid road-distance lookup. Same caps as
+ * the Lalamove quotation (`createQuotationAction`): per client IP so one visitor
+ * cannot use up the store's budget, per store to bound the spend. Both fail
+ * open — a Redis outage must not take delivery quotes away from customers.
+ */
+const DISTANCE_FEE_RATE_LIMIT = { limit: 30, windowSec: 60 }
+const DISTANCE_FEE_CLIENT_RATE_LIMIT = { limit: 10, windowSec: 60 }
+
+const QUOTE_RATE_LIMITED: DistanceDeliveryQuoteResponse = {
+  success: false,
+  error: 'Too many delivery quotes requested. Please try again in a moment.',
+}
+
+/**
  * Compute the distance-based delivery fee for a customer's selected address.
  * Returns `{ success: true, data }` with the fee + range info, or `{ success: false, error }`.
  */
@@ -44,6 +60,15 @@ export async function calculateDistanceDeliveryFeeAction(
     if (!destination) {
       return { success: false, error: 'Invalid delivery coordinates' }
     }
+    if (typeof tenantId !== 'string' || tenantId === '') {
+      return { success: false, error: 'Restaurant not found' }
+    }
+
+    const clientRate = await checkActionRateLimit('distance-fee-client', DISTANCE_FEE_CLIENT_RATE_LIMIT)
+    if (!clientRate.allowed) return QUOTE_RATE_LIMITED
+
+    const rate = await checkRateLimit(`distance-fee:${tenantId}`, DISTANCE_FEE_RATE_LIMIT)
+    if (!rate.allowed) return QUOTE_RATE_LIMITED
 
     const supabase = await createClient()
     const { data: tenant, error } = await supabase.from('tenants').select(PRICING_COLUMNS).eq('id', tenantId).single()
