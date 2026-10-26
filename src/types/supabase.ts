@@ -10182,67 +10182,12 @@ export type Database = {
       get_customer_order: {
         Args: { p_order_id: string }
         Returns: {
-          amount_paid: number
-          cancel_reason: string | null
-          client_order_id: string | null
-          created_at: string
-          customer_contact: string | null
-          customer_data: Json | null
-          customer_id: string | null
-          customer_name: string | null
-          daily_number: number | null
-          delivery_fee: number | null
-          discount_data: Json | null
-          discount_total: number
-          edited_at: string | null
-          edited_by: string | null
-          has_bundle_items: boolean
-          has_upsell_items: boolean
+          customer_name: string
+          daily_number: number
           id: string
-          item_count: number | null
-          lalamove_driver_id: string | null
-          lalamove_driver_name: string | null
-          lalamove_driver_phone: string | null
-          lalamove_order_id: string | null
-          lalamove_quotation_id: string | null
-          lalamove_status: string | null
-          lalamove_tracking_url: string | null
-          loyverse_push_error: string | null
-          loyverse_push_status: string | null
-          loyverse_pushed_at: string | null
-          loyverse_receipt_number: string | null
-          order_date: string | null
-          order_token_expires_at: string | null
-          order_token_hash: string | null
-          order_type: string | null
-          order_type_id: string | null
-          outlet_id: string | null
-          payment_method_details: string | null
-          payment_method_id: string | null
-          payment_method_name: string | null
-          payment_method_qr_code_url: string | null
-          payment_proof_public_id: string | null
-          payment_proof_reference: string | null
-          payment_proof_uploaded_at: string | null
-          payment_proof_url: string | null
-          payment_status: string | null
-          prep_minutes: number | null
-          promised_ready_at: string | null
-          revision_number: number
-          scheduled_for: string | null
-          service_charge_amount: number | null
-          source: string
           status: string
-          tenant_id: string
           total: number
-          updated_at: string
         }[]
-        SetofOptions: {
-          from: "*"
-          to: "orders"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
       get_store_activity: {
         Args: {
