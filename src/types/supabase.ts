@@ -1440,6 +1440,161 @@ export type Database = {
           },
         ]
       }
+      expense_bill_marks: {
+        Row: {
+          bill_id: string
+          created_at: string
+          created_by: string | null
+          due_on: string
+          id: string
+          kind: string
+          snoozed_until: string | null
+          tenant_id: string
+        }
+        Insert: {
+          bill_id: string
+          created_at?: string
+          created_by?: string | null
+          due_on: string
+          id?: string
+          kind: string
+          snoozed_until?: string | null
+          tenant_id: string
+        }
+        Update: {
+          bill_id?: string
+          created_at?: string
+          created_by?: string | null
+          due_on?: string
+          id?: string
+          kind?: string
+          snoozed_until?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_bill_marks_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "expense_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bill_marks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_bills: {
+        Row: {
+          amount_cents: number | null
+          category_id: string
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          ends_on: string | null
+          id: string
+          name: string
+          outlet_id: string | null
+          paid_from: string
+          paid_to_name: string | null
+          paused_on: string | null
+          paused_until: string | null
+          remind_days_before: number
+          repeat_days: number[] | null
+          repeat_every: number
+          repeat_kind: string
+          repeat_weekday: number | null
+          starts_on: string
+          status: string
+          supplier_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          ends_on?: string | null
+          id?: string
+          name: string
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          paused_on?: string | null
+          paused_until?: string | null
+          remind_days_before?: number
+          repeat_days?: number[] | null
+          repeat_every?: number
+          repeat_kind: string
+          repeat_weekday?: number | null
+          starts_on: string
+          status?: string
+          supplier_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number | null
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          ends_on?: string | null
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          paused_on?: string | null
+          paused_until?: string | null
+          remind_days_before?: number
+          repeat_days?: number[] | null
+          repeat_every?: number
+          repeat_kind?: string
+          repeat_weekday?: number | null
+          starts_on?: string
+          status?: string
+          supplier_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_bills_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expense_categories: {
         Row: {
           archived_at: string | null
@@ -1541,6 +1696,8 @@ export type Database = {
       expenses: {
         Row: {
           amount_cents: number
+          bill_due_on: string | null
+          bill_id: string | null
           category_id: string
           client_request_id: string | null
           created_at: string
@@ -1573,6 +1730,8 @@ export type Database = {
         }
         Insert: {
           amount_cents: number
+          bill_due_on?: string | null
+          bill_id?: string | null
           category_id: string
           client_request_id?: string | null
           created_at?: string
@@ -1605,6 +1764,8 @@ export type Database = {
         }
         Update: {
           amount_cents?: number
+          bill_due_on?: string | null
+          bill_id?: string | null
           category_id?: string
           client_request_id?: string | null
           created_at?: string
@@ -1636,6 +1797,13 @@ export type Database = {
           voided_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "expenses_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "expense_bills"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "expenses_category_id_fkey"
             columns: ["category_id"]
@@ -10794,6 +10962,7 @@ export type Database = {
           p_amount_cents: number
           p_category_id: string
           p_client_request_id: string
+          p_is_stock_purchase?: boolean
           p_note: string
           p_paid_to_name: string
           p_recorded_by_name: string
