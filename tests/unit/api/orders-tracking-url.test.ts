@@ -21,7 +21,7 @@ jest.mock('@/lib/queries/fetch-app-user-scope', () => ({
   fetchAppUserScope: jest.fn(),
 }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }))
-jest.mock('@/lib/order-tracking-service', () => ({ fetchOrderTrackingData: jest.fn() }))
+jest.mock('@/lib/order-tracking-service', () => ({ fetchOrderTrackingContext: jest.fn() }))
 
 const ORDER_ID = '7d1c3a2e-5b4f-4c8d-9e0a-1b2c3d4e5f60'
 
@@ -65,8 +65,8 @@ describe('POST /api/orders/tracking-url — order ownership', () => {
     })
 
     const tracking = await import('@/lib/order-tracking-service')
-    trackingMock = tracking.fetchOrderTrackingData as unknown as typeof trackingMock
-    trackingMock.mockResolvedValue({ data: { status: 'pending' }, error: null })
+    trackingMock = tracking.fetchOrderTrackingContext as unknown as typeof trackingMock
+    trackingMock.mockResolvedValue({ data: { status: 'pending', loyaltyIdentity: { outletId: null } }, error: null })
   })
 
   test('mints the URL for an order found in the caller’s tenant', async () => {
@@ -90,6 +90,52 @@ describe('POST /api/orders/tracking-url — order ownership', () => {
     expect(res.status).toBe(404)
     const body = (await res.json()) as Record<string, unknown>
     expect(body.url).toBeUndefined()
+  })
+
+  async function asCaller(appUser: Record<string, unknown>) {
+    const scope = await import('@/lib/queries/fetch-app-user-scope')
+    ;(scope.fetchAppUserScope as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue({
+      appUser: { role: 'admin', tenant_id: 't1', is_owner: false, ...appUser },
+    })
+  }
+
+  test.each([['menu'], ['settings'], ['customers']])(
+    'refuses staff holding only %s: a tracking token reads the order',
+    async (key) => {
+      await asCaller({ permissions: [key], outlet_id: null })
+      const { POST } = await import('@/app/api/orders/tracking-url/route')
+
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID }))
+
+      expect(res.status).toBe(403)
+      expect(trackingMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([['orders'], ['pos'], ['kitchen'], ['tables']])('lets %s staff print the receipt QR', async (key) => {
+    await asCaller({ permissions: [key], outlet_id: null })
+    const { POST } = await import('@/app/api/orders/tracking-url/route')
+
+    expect((await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID }))).status).toBe(200)
+  })
+
+  test('refuses a branch-locked account another branch’s order', async () => {
+    await asCaller({ permissions: ['pos'], outlet_id: 'branch-a' })
+    trackingMock.mockResolvedValue({ data: { status: 'pending', loyaltyIdentity: { outletId: 'branch-b' } }, error: null })
+    const { POST } = await import('@/app/api/orders/tracking-url/route')
+
+    const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID }))
+
+    expect(res.status).toBe(404)
+    expect(((await res.json()) as Record<string, unknown>).url).toBeUndefined()
+  })
+
+  test('mints for a branch-locked account’s own branch order', async () => {
+    await asCaller({ permissions: ['pos'], outlet_id: 'branch-a' })
+    trackingMock.mockResolvedValue({ data: { status: 'pending', loyaltyIdentity: { outletId: 'branch-a' } }, error: null })
+    const { POST } = await import('@/app/api/orders/tracking-url/route')
+
+    expect((await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID }))).status).toBe(200)
   })
 
   test('refuses a caller from another tenant before any order lookup', async () => {

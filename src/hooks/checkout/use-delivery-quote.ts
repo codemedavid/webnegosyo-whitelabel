@@ -13,12 +13,16 @@
  *    order-type list reloads, each of which re-requested a paid quote;
  *  - state is one immutable object, so a reset can never leave half the fields
  *    describing the previous address.
+ *
+ * The trip starts at the chosen branch when it is pinned (`outlet`), else at
+ * the store. The server reads the branch itself; only its id is sent.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { createQuotationAction } from '@/app/actions/lalamove'
 import { calculateDistanceDeliveryFeeAction } from '@/app/actions/delivery'
 import { resolveDeliveryQuotePlan } from '@/lib/delivery-quote'
+import { usablePin } from '@/lib/delivery/delivery-origin'
 import type { Tenant } from '@/types/database'
 
 export interface DeliveryQuoteState {
@@ -58,8 +62,17 @@ type DeliveryTenantFields = Pick<
   'id' | 'lalamove_enabled' | 'distance_delivery_enabled' | 'restaurant_address' | 'restaurant_latitude' | 'restaurant_longitude'
 >
 
+/** The branch the order comes from — its pin, when set, is where the trip starts. */
+export interface DeliveryQuoteOutlet {
+  id: string
+  latitude?: number | string | null
+  longitude?: number | string | null
+}
+
 export interface UseDeliveryQuoteInput {
   tenant: DeliveryTenantFields | null
+  /** The selected branch; null/absent for a single-location store. */
+  outlet?: DeliveryQuoteOutlet | null
   isDeliveryOrder: boolean
   deliveryAddress: string | undefined
   deliveryLat: string | undefined
@@ -78,6 +91,7 @@ function failedQuote(message: string): DeliveryQuoteState {
 
 async function requestQuote(
   tenant: DeliveryTenantFields,
+  outletId: string | null,
   kind: 'lalamove' | 'distance',
   address: string,
   lat: number,
@@ -91,7 +105,8 @@ async function requestQuote(
       Number(tenant.restaurant_longitude),
       address,
       lat,
-      lng
+      lng,
+      outletId
     )
     if (!result.success || !result.data) {
       console.error('Failed to fetch delivery quote:', result.error)
@@ -113,7 +128,7 @@ async function requestQuote(
     }
   }
 
-  const result = await calculateDistanceDeliveryFeeAction(tenant.id, lat, lng)
+  const result = await calculateDistanceDeliveryFeeAction(tenant.id, lat, lng, outletId)
   if (!result.success || !result.data) {
     console.error('Failed to calculate delivery fee:', result.error)
     toast.error(result.error || 'Failed to get delivery fee')
@@ -133,6 +148,7 @@ async function requestQuote(
 
 export function useDeliveryQuote({
   tenant,
+  outlet = null,
   isDeliveryOrder,
   deliveryAddress,
   deliveryLat,
@@ -148,12 +164,18 @@ export function useDeliveryQuote({
   const restaurantAddress = tenant?.restaurant_address
   const restaurantLatitude = tenant?.restaurant_latitude
   const restaurantLongitude = tenant?.restaurant_longitude
+  const outletId = outlet?.id ?? null
+  const outletPin = outlet ? usablePin(outlet.latitude, outlet.longitude) : null
+  // Where the trip starts, for deciding whether a quote is possible at all:
+  // the branch pin when there is one, else the store's.
+  const originLatitude = outletPin?.lat ?? restaurantLatitude
+  const originLongitude = outletPin?.lng ?? restaurantLongitude
   // Invalidate during render, before effects run: the same address label may
   // describe a different map pin, and a branch/store may have moved its pickup.
   const requestKey = JSON.stringify([
     tenantId, lalamoveEnabled, distanceEnabled, restaurantAddress,
-    restaurantLatitude, restaurantLongitude, isDeliveryOrder,
-    deliveryAddress, deliveryLat, deliveryLng, attempt,
+    restaurantLatitude, restaurantLongitude, outletId, originLatitude, originLongitude,
+    isDeliveryOrder, deliveryAddress, deliveryLat, deliveryLng, attempt,
   ])
   const quote = snapshot.requestKey === requestKey ? snapshot.value : IDLE_DELIVERY_QUOTE
 
@@ -178,8 +200,8 @@ export function useDeliveryQuote({
       isDeliveryOrder,
       lalamoveEnabled,
       distanceEnabled,
-      restaurantLatitude,
-      restaurantLongitude,
+      restaurantLatitude: originLatitude,
+      restaurantLongitude: originLongitude,
       deliveryLatitude: deliveryLat,
       deliveryLongitude: deliveryLng,
     })
@@ -188,7 +210,7 @@ export function useDeliveryQuote({
     // customer sees `plan.message`; warn (not error) so the dev overlay stays
     // quiet for an already-handled state.
     if (plan.kind === 'misconfigured') {
-      console.warn(`[Checkout] Delivery enabled for tenant ${tenantId} but restaurant coordinates are missing`)
+      console.warn(`[Checkout] Delivery enabled for tenant ${tenantId} but no store or branch coordinates are set`)
       setQuote(failedQuote(plan.message))
       return
     }
@@ -211,7 +233,7 @@ export function useDeliveryQuote({
       restaurant_longitude: restaurantLongitude,
     }
 
-    requestQuote(tenantFields, plan.kind, deliveryAddress, parseFloat(deliveryLat ?? ''), parseFloat(deliveryLng ?? ''))
+    requestQuote(tenantFields, outletId, plan.kind, deliveryAddress, parseFloat(deliveryLat ?? ''), parseFloat(deliveryLng ?? ''))
       .then((next) => {
         // A newer address (or unmount) superseded this request: drop it.
         if (!isCancelled) setQuote(next)
@@ -233,6 +255,9 @@ export function useDeliveryQuote({
     restaurantAddress,
     restaurantLatitude,
     restaurantLongitude,
+    outletId,
+    originLatitude,
+    originLongitude,
     isDeliveryOrder,
     deliveryAddress,
     deliveryLat,

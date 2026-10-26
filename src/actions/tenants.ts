@@ -23,6 +23,7 @@ import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-ba
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 import { syncTenantConvexConfig, convexConfigSyncWarning } from '@/lib/convex-config-sync'
 import { requirePlatformPermission } from '@/lib/platform-staff/guard'
+import { isStorePinRequired, validateStorePin } from '@/lib/delivery/store-pin-rules'
 import type { PlatformPermission } from '@/lib/platform-staff/permissions'
 import { superadminOnlyRefusal, superadminOnlyTenantChanges } from '@/lib/platform-staff/tenant-edit-scope'
 
@@ -196,8 +197,9 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       flash_screen_duration_ms: parsed.flash_screen_duration_ms ?? undefined,
       // Restaurant address
       restaurant_address: parsed.restaurant_address || undefined,
-      restaurant_latitude: parsed.restaurant_latitude || undefined,
-      restaurant_longitude: parsed.restaurant_longitude || undefined,
+      // Passed through, not `|| undefined`: 0 is a coordinate, null clears the pin.
+      restaurant_latitude: parsed.restaurant_latitude,
+      restaurant_longitude: parsed.restaurant_longitude,
       // Lalamove configuration (credentials go to tenant_secrets below)
       lalamove_enabled: parsed.lalamove_enabled,
       lalamove_market: parsed.lalamove_market || undefined,
@@ -405,8 +407,9 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     flash_screen_duration_ms: parsed.flash_screen_duration_ms ?? undefined,
     // Restaurant address
     restaurant_address: parsed.restaurant_address || undefined,
-    restaurant_latitude: parsed.restaurant_latitude || undefined,
-    restaurant_longitude: parsed.restaurant_longitude || undefined,
+    // Passed through, not `|| undefined`: 0 is a coordinate, null clears the pin.
+    restaurant_latitude: parsed.restaurant_latitude,
+    restaurant_longitude: parsed.restaurant_longitude,
     // Lalamove configuration (credentials go to tenant_secrets below)
     lalamove_enabled: parsed.lalamove_enabled,
     lalamove_market: parsed.lalamove_market || undefined,
@@ -559,6 +562,39 @@ const deliveryUpdateSchema = z.object({
 
 export type DeliveryUpdateInput = z.infer<typeof deliveryUpdateSchema>
 
+/**
+ * The pickup-pin rules (`store-pin-rules.ts`) for the Delivery settings save.
+ * Whether Lalamove is on, and in which market, is read from the row: those are
+ * superadmin settings this form never sends. A failed read refuses the save —
+ * guessing "no Lalamove" would let a Lalamove store save without a pin.
+ */
+async function checkDeliveryPin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  parsed: DeliveryUpdateInput,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('tenants')
+    .select('lalamove_enabled, lalamove_market')
+    .eq('id', tenantId)
+    .single()
+  if (error || !data) {
+    console.error('[tenants] delivery pin check: store read failed', tenantId, error)
+    return 'Could not check your delivery settings. Please try again.'
+  }
+  const store = data as { lalamove_enabled?: boolean | null; lalamove_market?: string | null }
+  return validateStorePin({
+    lat: parsed.restaurant_latitude,
+    lng: parsed.restaurant_longitude,
+    market: store.lalamove_market,
+    lalamoveEnabled: store.lalamove_enabled,
+    isPinRequired: isStorePinRequired({
+      lalamove_enabled: store.lalamove_enabled,
+      distance_delivery_enabled: parsed.distance_delivery_enabled,
+    }),
+  })
+}
+
 export async function updateTenantDeliveryForAdminAction(tenantId: string, input: DeliveryUpdateInput) {
   const supabase = await createClient()
 
@@ -570,6 +606,9 @@ export async function updateTenantDeliveryForAdminAction(tenantId: string, input
     return { error: result.error.issues[0]?.message ?? 'Invalid delivery settings' }
   }
   const parsed = result.data
+
+  const pinError = await checkDeliveryPin(supabase, tenantId, parsed)
+  if (pinError) return { error: pinError }
 
   const query = supabase
     .from('tenants')

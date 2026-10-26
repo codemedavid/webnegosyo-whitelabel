@@ -123,3 +123,47 @@ it('does not re-render the checkout for every keystroke of an un-picked address'
   expect(result.current.isFetchingDeliveryFee).toBe(false)
   expect(createQuotationAction).not.toHaveBeenCalled()
 })
+
+describe('the branch the order comes from', () => {
+  const branch = { id: 'branch-1', latitude: 14.57, longitude: 121.08 }
+
+  it('asks the server to quote from the chosen branch', async () => {
+    jest.mocked(createQuotationAction).mockResolvedValueOnce(quotation())
+    renderHook(() => useDeliveryQuote({ ...input, outlet: branch }))
+    await act(async () => {})
+    expect(jest.mocked(createQuotationAction).mock.calls[0][7]).toBe('branch-1')
+  })
+
+  it('re-quotes when the customer switches branch, never showing the old branch\'s fee', async () => {
+    jest.mocked(createQuotationAction)
+      .mockResolvedValueOnce(quotation())
+      .mockImplementationOnce(() => new Promise(() => {}))
+    const { result, rerender } = renderHook((props: UseDeliveryQuoteInput) => useDeliveryQuote(props), {
+      initialProps: { ...input, outlet: branch },
+    })
+    await act(async () => {})
+    expect(result.current.deliveryFee).toBe(80)
+
+    rerender({ ...input, outlet: { id: 'branch-2', latitude: 14.6, longitude: 121.0 } })
+
+    expect(result.current.deliveryFee).toBeNull()
+    expect(createQuotationAction).toHaveBeenCalledTimes(2)
+    expect(jest.mocked(createQuotationAction).mock.calls[1][7]).toBe('branch-2')
+  })
+
+  it('quotes a pinned branch even when the store has no pin of its own', async () => {
+    jest.mocked(createQuotationAction).mockResolvedValueOnce(quotation())
+    const unpinnedStore = { ...input.tenant!, restaurant_latitude: undefined, restaurant_longitude: undefined }
+    const { result } = renderHook(() => useDeliveryQuote({ ...input, tenant: unpinnedStore, outlet: branch }))
+    await act(async () => {})
+    expect(result.current.deliveryFee).toBe(80)
+    expect(result.current.deliveryFeeError).toBeNull()
+  })
+
+  it('sends no branch for a single-location store', async () => {
+    jest.mocked(createQuotationAction).mockResolvedValueOnce(quotation())
+    renderHook(() => useDeliveryQuote(input))
+    await act(async () => {})
+    expect(jest.mocked(createQuotationAction).mock.calls[0][7]).toBeNull()
+  })
+})

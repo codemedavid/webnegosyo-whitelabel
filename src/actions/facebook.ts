@@ -3,15 +3,9 @@
 import { createClient } from '@/lib/supabase/server'
 import {
   getTenantPageByPageId,
-  getTenantUserAccessToken,
   getTenantActivePageById,
 } from '@/lib/facebook/page-tokens'
 import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
-import type { Database } from '@/types/database'
-
-type FacebookPagesRow = Database['public']['Tables']['facebook_pages']['Row']
-type FacebookPagesInsert = Database['public']['Tables']['facebook_pages']['Insert']
-type FacebookPagesUpdate = Database['public']['Tables']['facebook_pages']['Update']
 
 /**
  * Connecting, disconnecting and resubscribing a page — and reading the owner's
@@ -49,124 +43,9 @@ export async function getFacebookPagesAction(tenantId: string) {
   }
 }
 
-/**
- * Connect a Facebook page to a tenant
- * Called after user selects a page from OAuth flow
- */
-export async function connectFacebookPageAction(
-  tenantId: string,
-  pageId: string,
-  pageName: string,
-  pageAccessToken: string,
-  userAccessToken: string,
-  tempId: string
-) {
-  try {
-    await verifyTenantPermission(tenantId, FACEBOOK_MANAGEMENT_PERMISSION)
-
-    const supabase = await createClient()
-
-    // Check if page is already connected
-    const { data: existingPageData } = await supabase
-      .from('facebook_pages')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('page_id', pageId)
-      .maybeSingle()
-
-    const existingPage = existingPageData as { id: string } | null
-    if (existingPage) {
-      // Update existing connection
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: updateError } = await (supabase as any)
-        .from('facebook_pages')
-        .update({
-          page_name: pageName,
-          page_access_token: pageAccessToken,
-          user_access_token: userAccessToken,
-          is_active: true,
-        } as FacebookPagesUpdate)
-        .eq('id', existingPage.id)
-
-      if (updateError) {
-        return { success: false, error: updateError.message }
-      }
-
-      // Update tenant's facebook_page_id if not set
-      const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('facebook_page_id')
-        .eq('id', tenantId)
-        .single()
-
-      const tenant = tenantData as { facebook_page_id: string | null } | null
-      if (tenant && !tenant.facebook_page_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any)
-          .from('tenants')
-          .update({ facebook_page_id: existingPage.id })
-          .eq('id', tenantId)
-      }
-
-      // Delete temporary record
-      if (tempId) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('facebook_pages').delete().eq('id', tempId) as any)
-      }
-
-      return { success: true, data: { page_id: existingPage.id } }
-    }
-
-    // Create new connection
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: newPageData, error: insertError } = await (supabase as any)
-      .from('facebook_pages')
-      .insert({
-        tenant_id: tenantId,
-        page_id: pageId,
-        page_name: pageName,
-        page_access_token: pageAccessToken,
-        user_access_token: userAccessToken,
-        is_active: true,
-      } as FacebookPagesInsert)
-      .select()
-      .single()
-
-    const newPage = newPageData as FacebookPagesRow | null
-    if (insertError || !newPage) {
-      return { success: false, error: insertError?.message || 'Failed to create Facebook page connection' }
-    }
-
-    // Update tenant's facebook_page_id if not set
-    const { data: tenantData } = await supabase
-      .from('tenants')
-      .select('facebook_page_id')
-      .eq('id', tenantId)
-      .single()
-
-    const tenant = tenantData as { facebook_page_id: string | null } | null
-    if (tenant && !tenant.facebook_page_id) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
-        .from('tenants')
-        .update({ facebook_page_id: newPage.id })
-        .eq('id', tenantId)
-    }
-
-    // Delete temporary record
-    if (tempId) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('facebook_pages').delete().eq('id', tempId) as any)
-    }
-
-    return { success: true, data: { page_id: newPage.id } }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to connect Facebook page',
-    }
-  }
-}
+// Connecting a page is POST /api/auth/facebook/connect: it reads the page
+// token from Facebook server-side. There is deliberately no server action that
+// takes page or user tokens from the browser.
 
 /**
  * Disconnect a Facebook page from a tenant
@@ -217,32 +96,6 @@ export async function disconnectFacebookPageAction(tenantId: string, pageId: str
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to disconnect Facebook page',
-    }
-  }
-}
-
-/**
- * Get temporary user token for fetching pages
- * Used during OAuth callback to fetch user's pages
- */
-export async function getTempUserTokenAction(tenantId: string, tempId: string) {
-  try {
-    await verifyTenantPermission(tenantId, FACEBOOK_MANAGEMENT_PERMISSION)
-
-    // The read is filtered on tenant_id as well as the row id
-    // (getTenantUserAccessToken), so another store's temp row reads as missing.
-    const tempRecordData = { user_access_token: await getTenantUserAccessToken(tenantId, tempId) }
-
-    const tempRecord = tempRecordData as { user_access_token: string | null } | null
-    if (!tempRecord || !tempRecord.user_access_token) {
-      return { success: false, error: 'Temporary record not found or expired' }
-    }
-
-    return { success: true, data: { user_access_token: tempRecord.user_access_token } }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to get temporary token',
     }
   }
 }

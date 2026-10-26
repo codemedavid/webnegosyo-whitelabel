@@ -25,6 +25,10 @@ const HIDDEN_FIELDS = new Set([
   'messenger_psid',
   'delivery_lat',
   'delivery_lng',
+  // The confirm-pin address field's bookkeeping: the label the pin was
+  // picked under, and whether the customer confirmed it on the map.
+  'delivery_pin_address',
+  'delivery_pin_confirmed',
   'customer_name',
   'customer_phone',
   'customer_contact',
@@ -53,6 +57,10 @@ const HIDDEN_FIELDS = new Set([
 const LABEL_OVERRIDES: Record<string, string> = {
   outlet_name: 'Branch',
   scheduled_for_label: 'Scheduled For',
+  // The address field's built-in details (src/lib/delivery/delivery-details.ts).
+  delivery_unit: 'Unit / Floor',
+  delivery_landmark: 'Landmark',
+  delivery_rider_note: 'Note to rider',
 };
 
 export interface CustomerDetailRow {

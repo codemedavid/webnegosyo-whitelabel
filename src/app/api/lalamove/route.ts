@@ -21,6 +21,10 @@ import {
   releaseLalamoveBookingClaim,
 } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
+import { callerHasFeature } from '@/lib/gov-discount-ledger/caller-scope'
+import { isOrderInScope, resolveBranchScope } from '@/lib/outlets/branch-scope'
+import { buildRiderRemarks } from '@/lib/delivery/rider-remarks'
+import { loadDeliveryOrigin, type OriginStore } from '@/lib/delivery/delivery-origin-server'
 import type { Database, Tenant } from '@/types/database'
 import type { PlatformAction } from '@/lib/platform-staff/permissions'
 
@@ -42,7 +46,10 @@ import type { PlatformAction } from '@/lib/platform-staff/permissions'
  * Authenticated with the caller's own Supabase access token — the same trust
  * level as /api/vouchers/redeem, which the register already calls — and then
  * authorised against `app_users`, because the order and tenant are read with
- * the service key and that read bypasses RLS entirely.
+ * the service key and that read bypasses RLS entirely: the caller must hold
+ * `orders` (booking bills the store's Lalamove account), and a branch-locked
+ * account may only act on its own branch's orders (RLS would have applied
+ * that; the service-key read applies it here).
  */
 
 type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee' | 'requote'
@@ -70,6 +77,8 @@ interface OrderRow {
     delivery_lng?: number | string | null
     [field: string]: unknown
   } | null
+  /** The branch fulfilling the order; its pin is the pickup when set. */
+  outlet_id: string | null
   lalamove_quotation_id: string | null
   lalamove_order_id: string | null
   lalamove_status: string | null
@@ -106,6 +115,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const caller = await requireBearerStoreCaller(request, tenantId, LALAMOVE_OP_VERBS[op as LalamoveOp])
   if (!caller.ok) return caller.response
+  if (!caller.appUser || !callerHasFeature(caller.appUser, 'orders')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const branchScope = resolveBranchScope({
+    role: caller.appUser.role,
+    is_owner: caller.appUser.is_owner,
+    outlet_id: caller.appUser.outlet_id,
+  })
 
   const admin = createAdminClient()
 
@@ -131,14 +148,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: orderData } = await admin
     .from('orders')
     .select(
-      'id, customer_name, customer_contact, customer_data, lalamove_quotation_id, lalamove_order_id, lalamove_status',
+      'id, customer_name, customer_contact, customer_data, outlet_id, lalamove_quotation_id, lalamove_order_id, lalamove_status',
     )
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
   const order = orderData as unknown as OrderRow | null
-  if (!order) {
+  // Another branch's order reads as missing, as it would through RLS.
+  if (!order || !isOrderInScope(branchScope, order)) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
@@ -198,6 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           order.customer_name || 'Customer',
           recipient.phone,
           { orderId, tenantId },
+          buildRiderRemarks(order.customer_data),
         )
       } catch (error) {
         if (error instanceof LalamoveBookingError && !error.bookingMayExist) {
@@ -247,17 +266,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return fail('This order has no delivery coordinates to quote against')
       }
 
-      const pickupAddress = tenant.restaurant_address
-      const pickupLat = toFiniteNumber(tenant.restaurant_latitude)
-      const pickupLng = toFiniteNumber(tenant.restaurant_longitude)
-      if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
+      // The order's branch pin when it has one, else the store's — read here,
+      // filtered by this tenant, never taken from the caller.
+      const pickup = await loadDeliveryOrigin(admin, tenant as unknown as OriginStore, order.outlet_id, { isOrderBranch: true })
+      if (!pickup.ok) return fail('Could not read the branch for this order. Please try again.', 503)
+      if (!pickup.origin || !pickup.origin.address) {
         return fail('Your store pickup address and map pin are not set. Add them in delivery settings.')
       }
 
       const quotation = await createLalamoveQuotation(
         tenant,
-        pickupAddress,
-        { lat: pickupLat, lng: pickupLng },
+        pickup.origin.address,
+        pickup.origin.point,
         deliveryAddress,
         { lat: deliveryLat, lng: deliveryLng },
       )

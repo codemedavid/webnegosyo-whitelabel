@@ -6,6 +6,11 @@ import {
   type CheckoutPaymentTerm,
 } from './payment-terms'
 import { generateReferenceNumber } from './reference-number'
+import {
+  CHECKOUT_LEAD_CONFIRMATION_SELECT,
+  toCheckoutLeadConfirmation,
+  type CheckoutLeadConfirmation,
+} from './confirmation'
 import type {
   CheckoutLead,
   CheckoutLeadStatus,
@@ -154,37 +159,49 @@ export async function createPaidCheckoutLead(input: {
   return { data: null, error: 'Failed to generate unique reference number' }
 }
 
-// Get checkout lead by reference number (for confirmation page)
-export async function getCheckoutLeadByRef(
+// Get checkout lead by reference number (for the public confirmation page)
+export async function getCheckoutLeadConfirmationByRef(
   ref: string
-): Promise<{ data: CheckoutLeadWithPaymentMethod | null; error: string | null }> {
+): Promise<{ data: CheckoutLeadConfirmation | null; error: string | null }> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('checkout_leads')
-    .select('*, platform_payment_methods(*)')
+    .select(CHECKOUT_LEAD_CONFIRMATION_SELECT)
     .eq('reference_number', ref)
-    .single()
+    .maybeSingle()
 
   if (error) return { data: null, error: error.message }
-  return { data: data as CheckoutLeadWithPaymentMethod, error: null }
+  const lead = toCheckoutLeadConfirmation(data)
+  return lead ? { data: lead, error: null } : { data: null, error: 'Not found' }
 }
 
-// Update payment proof
+/**
+ * Attach a payment proof. Only while the lead still awaits payment: once
+ * staff mark it paid (or cancel it) the proof they checked is final. The
+ * service role ignores RLS, so a zero-row update is the refusal.
+ */
 export async function uploadPaymentProof(
   referenceNumber: string,
   paymentProofUrl: string
 ): Promise<MutationResult> {
   const supabase = createAdminClient()
-  const { error } = await supabase
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
     .from('checkout_leads')
     .update({
       payment_proof_url: paymentProofUrl,
-      payment_proof_uploaded_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      payment_proof_uploaded_at: now,
+      updated_at: now,
     })
     .eq('reference_number', referenceNumber)
+    .eq('status', 'initiated')
+    .select('id')
 
-  return { error: error?.message ?? null }
+  if (error) return { error: error.message }
+  if (!Array.isArray(data) || data.length === 0) {
+    return { error: 'This order is no longer waiting for a payment proof.' }
+  }
+  return { error: null }
 }
 
 // Update status (superadmin)

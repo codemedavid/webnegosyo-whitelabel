@@ -46,9 +46,18 @@ describe('parseServerPlaces', () => {
         coordinates: { lat: 14.5527, lng: 121.0219 },
         countryCode: 'PH',
         towns: ['Makati', 'Legazpi Village', 'San Lorenzo'],
+        isStreetLevel: false,
       },
     ])
     expect(parseServerPlaces(null)).toEqual([])
+  })
+
+  it('marks a place Apple found on a street as street-level', async () => {
+    const { parseServerPlaces } = await load()
+    const [street] = parseServerPlaces({
+      results: [{ ...makati, structuredAddress: { ...makati.structuredAddress, thoroughfare: 'Legazpi St', subThoroughfare: '12' } }],
+    })
+    expect(street.isStreetLevel).toBe(true)
   })
 })
 

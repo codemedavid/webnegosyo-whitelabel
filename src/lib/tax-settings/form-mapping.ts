@@ -54,6 +54,7 @@ export function formValuesFromProfile(profile: TaxProfile | null): TaxSettingsFo
     approvalThreshold: String(source.approvalThreshold),
     serviceChargeMode: source.serviceChargeMode,
     idPhotoMode: source.idPhotoMode,
+    onlineClaimsEnabled: source.onlineClaimsEnabled,
   }
 }
 
@@ -91,6 +92,7 @@ export function profileFromFormValues(values: TaxSettingsFormValues): TaxProfile
     approvalThreshold: toThreshold(values.approvalThreshold),
     serviceChargeMode: values.serviceChargeMode,
     idPhotoMode: values.idPhotoMode,
+    onlineClaimsEnabled: values.onlineClaimsEnabled,
   }
 }
 
