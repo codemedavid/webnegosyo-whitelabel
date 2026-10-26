@@ -10,6 +10,9 @@
 
 import type { PaymentMethod } from '@/types/database'
 
+/** All the proof rule reads of a method; the server passes its stored row. */
+type ProofRuleMethod = Pick<PaymentMethod, 'require_payment_proof'>
+
 /** ImageKit folder where customer payment screenshots are stored. */
 export const PAYMENT_PROOF_FOLDER = 'payment-proofs'
 
@@ -30,7 +33,7 @@ function hasValue(value: string | null | undefined): boolean {
 
 /** Whether the selected payment method requires proof of payment. */
 export function isPaymentProofRequired(
-  method: PaymentMethod | null | undefined,
+  method: ProofRuleMethod | null | undefined,
 ): boolean {
   return Boolean(method?.require_payment_proof)
 }
@@ -40,7 +43,7 @@ export function isPaymentProofRequired(
  * Always true when no method is selected or the method does not require proof.
  */
 export function isPaymentProofSatisfied(
-  method: PaymentMethod | null | undefined,
+  method: ProofRuleMethod | null | undefined,
   input: PaymentProofInput,
 ): boolean {
   if (!isPaymentProofRequired(method)) return true
@@ -52,7 +55,7 @@ export function isPaymentProofSatisfied(
  * otherwise null.
  */
 export function getPaymentProofError(
-  method: PaymentMethod | null | undefined,
+  method: ProofRuleMethod | null | undefined,
   input: PaymentProofInput,
 ): string | null {
   if (isPaymentProofSatisfied(method, input)) return null

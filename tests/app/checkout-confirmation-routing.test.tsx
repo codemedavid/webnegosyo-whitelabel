@@ -39,6 +39,23 @@ describe('checkout confirmation routing', () => {
     expect(page).toEqual(expect.objectContaining({}))
   })
 
+  it('loads a new 8-character reference the same way', async () => {
+    fetchCheckoutLeadByRef.mockResolvedValue({ data: { reference_number: 'WN-20261026-ABCD2345' } })
+
+    await ConfirmationPage({ searchParams: Promise.resolve({ confirm: 'WN-20261026-ABCD2345' }) })
+
+    expect(fetchCheckoutLeadByRef).toHaveBeenCalledWith('WN-20261026-ABCD2345')
+    expect(notFound).not.toHaveBeenCalled()
+  })
+
+  it('calls notFound when the lookup returns nothing (unknown or rate limited)', async () => {
+    fetchCheckoutLeadByRef.mockResolvedValue({ data: null, error: 'Too many lookups. Please try again later.' })
+
+    await ConfirmationPage({ searchParams: Promise.resolve({ confirm: 'WN-20261026-ABCD2345' }) })
+
+    expect(notFound).toHaveBeenCalled()
+  })
+
   it('calls notFound when the confirm query param is missing', async () => {
     await ConfirmationPage({
       searchParams: Promise.resolve({}),

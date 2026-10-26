@@ -17,11 +17,18 @@ jest.mock('@/lib/distributed-rate-limit', () => ({
   checkRateLimit: jest.fn(async () => ({ allowed: true, remaining: 10, retryAfterSec: 0 })),
 }))
 
+process.env.API_SECRET = 'route-test-secret'
+
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01])
 const UPLOADED = {
   url: 'https://ik.imagekit.io/demo/payment-proofs/proof_x.jpg',
   fileId: 'f1',
   filePath: 'payment-proofs/proof_x.jpg',
+}
+
+async function tokenFor(fileId: string): Promise<string> {
+  const { signProofDeleteToken } = await import('@/lib/payment-proof-delete-token')
+  return signProofDeleteToken(fileId) as string
 }
 
 async function load() {
@@ -72,7 +79,7 @@ describe('POST /api/payment-proof/upload', () => {
     const res = await upload.POST(uploadRequest(new Blob([JPEG], { type: 'image/jpeg' }), { folder: 'tenants' }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual(UPLOADED)
+    expect(await res.json()).toEqual({ ...UPLOADED, deleteToken: await tokenFor(UPLOADED.fileId) })
     const [bytes, options] = uploadBuffer.mock.calls[0]
     expect(Array.from(bytes.slice(0, 3))).toEqual([0xff, 0xd8, 0xff])
     // The caller's folder field is ignored.
@@ -155,7 +162,9 @@ describe('POST /api/payment-proof/delete', () => {
     deleteProof.mockResolvedValue('deleted')
 
     // The claimed filePath is inside the folder; the id could be anything.
-    const res = await del.POST(deleteRequest({ fileId: 'logo-file-id', filePath: 'payment-proofs/a.jpg' }))
+    const res = await del.POST(deleteRequest({
+      fileId: 'logo-file-id', filePath: 'payment-proofs/a.jpg', deleteToken: await tokenFor('logo-file-id'),
+    }))
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ success: true, deleted: true })
@@ -166,7 +175,9 @@ describe('POST /api/payment-proof/delete', () => {
     const { deleteProof, del } = await load()
     deleteProof.mockResolvedValue('forbidden')
 
-    const res = await del.POST(deleteRequest({ fileId: 'logo-file-id', filePath: 'payment-proofs/a.jpg' }))
+    const res = await del.POST(deleteRequest({
+      fileId: 'logo-file-id', filePath: 'payment-proofs/a.jpg', deleteToken: await tokenFor('logo-file-id'),
+    }))
 
     expect(res.status).toBe(403)
   })
@@ -175,10 +186,29 @@ describe('POST /api/payment-proof/delete', () => {
     const { deleteProof, del } = await load()
     deleteProof.mockResolvedValue('deleted')
 
-    const res = await del.POST(deleteRequest({ fileId: 'f1' }))
+    const res = await del.POST(deleteRequest({ fileId: 'f1', deleteToken: await tokenFor('f1') }))
 
     expect(res.status).toBe(200)
     expect(deleteProof).toHaveBeenCalled()
+  })
+
+  it('refuses a token minted for another file (a customer cannot delete someone else’s proof)', async () => {
+    const { deleteProof, del } = await load()
+
+    const res = await del.POST(deleteRequest({ fileId: 'victim-file', deleteToken: await tokenFor('my-file') }))
+
+    expect(res.status).toBe(403)
+    expect(deleteProof).not.toHaveBeenCalled()
+  })
+
+  it('answers a tokenless request (older app builds) as a no-op, never a delete', async () => {
+    const { deleteProof, del } = await load()
+
+    const res = await del.POST(deleteRequest({ fileId: 'victim-file', filePath: 'payment-proofs/a.jpg' }))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, deleted: false })
+    expect(deleteProof).not.toHaveBeenCalled()
   })
 
   it('keeps accepting a legacy Cloudinary { publicId } body as a no-op', async () => {
@@ -194,7 +224,7 @@ describe('POST /api/payment-proof/delete', () => {
     const { deleteProof, checkRateLimit, del } = await load()
     checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 60 })
 
-    const res = await del.POST(deleteRequest({ fileId: 'f1' }))
+    const res = await del.POST(deleteRequest({ fileId: 'f1', deleteToken: await tokenFor('f1') }))
 
     expect(res.status).toBe(429)
     expect(deleteProof).not.toHaveBeenCalled()
