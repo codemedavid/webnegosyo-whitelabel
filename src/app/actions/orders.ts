@@ -209,12 +209,6 @@ export async function createOrderAction(
       return { success: false, refused: true, error: 'Invalid tenant ID' }
     }
 
-    // A Senior/PWD claim is 20% + VAT off for anyone who types an ID, with no
-    // session: orders carrying one are limited per client IP (fail open).
-    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
-    const claimRefusal = await govClaimLimitRefusal(tenantId, governmentClaim)
-    if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
-
     // ── Boundary validation (this is a public server action) ──
     // Shape only: a price that passes is still just a claim, floored below.
     // Nothing the web checkout builds can fail these, so a refusal here never
@@ -255,6 +249,17 @@ export async function createOrderAction(
       return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
     }
     const { tenantConfig, tenantSecrets } = tenantContext
+
+    // A Senior/PWD claim is 20% + VAT off for anyone who types an ID, with no
+    // session: orders carrying one the store will price (well-formed, online
+    // claims on) are limited per client IP (fail open).
+    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
+    const claimRefusal = await govClaimLimitRefusal(tenantId, governmentClaim, async () => {
+      const { createSupabaseLedgerStore } = await import('@/lib/gov-discount-ledger/supabase-store')
+      const profile = await createSupabaseLedgerStore(supabaseAdmin).loadTaxProfile(tenantId)
+      return profile?.onlineClaimsEnabled === true
+    })
+    if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
 
     if (tenantConfig.inventory_enabled === true && items.some((item) => item.option_ids?.length || item.addon_ids?.length)) {
       const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
