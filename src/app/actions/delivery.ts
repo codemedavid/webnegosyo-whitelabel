@@ -38,7 +38,9 @@ const PRICING_COLUMNS =
  * cannot use up the store's budget, per store to bound the spend. Both fail
  * open — a Redis outage must not take delivery quotes away from customers.
  */
-const DISTANCE_FEE_RATE_LIMIT = { limit: 30, windowSec: 60 }
+// The store ceiling sits well above a few visitors' worth so a handful of IPs
+// cannot use it up and lock every customer out of a delivery fee.
+const DISTANCE_FEE_RATE_LIMIT = { limit: 120, windowSec: 60 }
 const DISTANCE_FEE_CLIENT_RATE_LIMIT = { limit: 10, windowSec: 60 }
 
 const QUOTE_RATE_LIMITED: DistanceDeliveryQuoteResponse = {
