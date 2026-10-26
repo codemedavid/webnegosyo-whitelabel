@@ -32,6 +32,7 @@ import type { Expense, ExpenseCategory, Supplier } from './types'
 import type {
   ArchiveCategoryInput,
   CategorySaveInput,
+  DrawerExpenseDraftInput,
   ExpenseDetailsUpdateInput,
   ExpenseDraftInput,
   ReplaceExpenseInput,
@@ -128,6 +129,34 @@ export async function replaceExpense(db: ExpenseDb, input: ReplaceExpenseInput):
   })
   if (error) throw toExpenseError('replace expense', error)
   return expectId('replace expense', data)
+}
+
+/**
+ * Pays an expense out of an open drawer: the pay-out and the expense in one
+ * transaction (`record_drawer_expense`, SECURITY INVOKER, so the drawer's own
+ * rule decides — own drawer, or a cash manager of that branch). A retried
+ * `clientRequestId` returns the first expense and takes no more cash out.
+ * Returns the expense id.
+ */
+export async function recordDrawerExpense(db: ExpenseDb, input: DrawerExpenseDraftInput, actor: ExpenseActor): Promise<string> {
+  const { data, error } = await db.rpc('record_drawer_expense', {
+    p_shift_id: input.shiftId,
+    p_amount_cents: input.amountCents,
+    p_category_id: input.categoryId,
+    p_note: input.note ?? null,
+    p_supplier_id: input.supplierId ?? null,
+    p_paid_to_name: input.paidToName ?? null,
+    p_recorded_by_name: actorName(actor),
+    p_client_request_id: input.clientRequestId,
+    // Sent only when yes: a "no" is the default, and keeps working on a database without the argument.
+    ...(input.isStockPurchase === true ? { p_is_stock_purchase: true } : {}),
+  })
+  if (error) {
+    // The drawer's row-level rule refusing the pay-out is about whose drawer it is, not the expense book.
+    const override = error.code === '42501' && /row-level security/i.test(error.message ?? '') ? EXPENSE_MESSAGES.drawerNotYours : undefined
+    throw toExpenseError('record drawer expense', error, override)
+  }
+  return expectId('record drawer expense', data)
 }
 
 /** Files an existing drawer pay-out under a category; returns the expense id. */

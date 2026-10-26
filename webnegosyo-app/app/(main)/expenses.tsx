@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { AddExpenseSheet } from "../../components/expenses/AddExpenseSheet";
+import { NewExpenseSheet } from "../../components/expenses/NewExpenseSheet";
 import { SortPayoutsSheet } from "../../components/expenses/SortPayoutsSheet";
 import { BillsCard, BillsDoor } from "../../components/expenses/home/BillsCard";
 import { CategoryFilterSheet } from "../../components/expenses/home/CategoryFilterSheet";
@@ -413,7 +414,7 @@ function ExpenseBook() {
       <AddExpenseFab onPress={() => setSheet({ kind: "add", categoryId: null })} />
 
       {sheet?.kind === "add" ? (
-        <AddExpenseSheet visible mode={{ kind: "book" }} initialCategoryId={sheet.categoryId} onClose={() => setSheet(null)} onCommitted={reloadAll} />
+        <NewExpenseSheet initialCategoryId={sheet.categoryId} onClose={() => setSheet(null)} onCommitted={reloadAll} />
       ) : null}
       {sheet?.kind === "pay" ? (
         <AddExpenseSheet visible mode={{ kind: "book" }} bill={sheet.context} onClose={() => setSheet(null)} onCommitted={reloadAll} />

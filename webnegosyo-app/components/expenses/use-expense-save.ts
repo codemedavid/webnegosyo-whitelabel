@@ -72,7 +72,7 @@ function payloadFor(
   if (mode.kind === "drawer") {
     return {
       kind: "drawer",
-      input: { ...toDrawerDraft(form, { clientRequestId, shiftId: mode.shiftId, category }), recordedByName: actorName },
+      input: { ...toDrawerDraft(form, { clientRequestId, shiftId: mode.shiftId, category, tracksStock: input.tracksStock }), recordedByName: actorName },
     };
   }
   return {

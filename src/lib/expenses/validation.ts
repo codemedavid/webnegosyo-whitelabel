@@ -195,7 +195,10 @@ export const expenseDraftSchema = z
   .superRefine(checkTaxBelowAmount)
   .superRefine(checkBillPair)
 
-/** A cashier paying an expense out of their open drawer (`DrawerExpenseDraft`). */
+/**
+ * Paying an expense out of an open drawer (`DrawerExpenseDraft`): a cashier's
+ * own, or — for someone who manages cash — any open drawer they reach.
+ */
 export const drawerExpenseDraftSchema = z
   .object({
     shiftId: uuid('Open a drawer first.'),
@@ -205,6 +208,7 @@ export const drawerExpenseDraftSchema = z
     supplierId: uuid('Choose who was paid.').nullable().optional(),
     paidToName: optionalText(MAX_PAID_TO_LENGTH, 'Paid to'),
     clientRequestId: uuid('This request is missing its id. Reload and try again.'),
+    isStockPurchase: z.boolean().optional(),
   })
   .strict()
 

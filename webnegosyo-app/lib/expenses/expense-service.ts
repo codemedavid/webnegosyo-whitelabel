@@ -75,7 +75,7 @@ export const EXPENSE_COPY = {
   notSetUp: "Expenses aren't switched on for this store yet. Ask the owner to update the app.",
   noAccess: "You don't have access to expenses.",
   drawerNotYours: "You can only pay expenses from your own open drawer.",
-  shiftClosed: "This drawer is already closed. Open a drawer first.",
+  shiftClosed: "That drawer's shift is already closed. Pay from an open drawer or pick another source.",
   noteRequired: "Add a note for this category.",
   drawerLocked: "A drawer expense keeps its amount and date. Record a pay in on the drawer to correct the cash.",
   drawerShiftClosed: "This shift is closed, so the cash can't go back into the drawer. Use Fix to change the category instead.",
@@ -678,6 +678,9 @@ export async function recordDrawerExpense(db: ExpenseDb, input: DrawerExpenseInp
       p_paid_to_name: blankToNull(input.paidToName),
       p_recorded_by_name: input.recordedByName.slice(0, 80) || "Staff",
       p_client_request_id: input.clientRequestId,
+      // 20261026120000: the stock answer. Sent only when yes, so a "no" also
+      // works against a database that predates the argument.
+      ...(input.isStockPurchase === true ? { p_is_stock_purchase: true } : {}),
     }),
     "drawer",
   );

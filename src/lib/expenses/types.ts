@@ -130,6 +130,19 @@ export interface DrawerExpenseDraft {
   supplierId?: string | null
   paidToName?: string | null
   clientRequestId: string
+  /** "Went into your stock count?" Yes — so Profit counts it once (20261026120000; sent only when true). */
+  isStockPurchase?: boolean
+}
+
+/** One open drawer an expense may be paid from ("Take from a cashier's drawer"). */
+export interface PayableDrawer {
+  shiftId: string
+  /** The till's name at clock-in; null = a personal drawer. */
+  drawerName: string | null
+  staffName: string
+  isMine: boolean
+  outletId: string | null
+  openedAt: string
 }
 
 /** A drawer pay-out recorded without a category (older app builds). */

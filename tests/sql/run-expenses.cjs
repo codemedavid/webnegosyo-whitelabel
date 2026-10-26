@@ -519,6 +519,56 @@ async function checkDrawerVoid(db) {
   eq((await corrections(S.cash2)).length, 0, 'and Fix never touches the drawer')
 }
 
+/**
+ * "Take from a cashier's drawer": the owner's + Expense pays from a drawer
+ * someone else is holding. The drawer's own rule decides — a cash manager
+ * (owner, full access, store_setup) of that branch may; nobody else may.
+ */
+async function checkTakeFromCashierDrawer(db) {
+  const managerA1 = '00000000-0000-4000-8000-000000000010'
+  const managerA2 = '00000000-0000-4000-8000-000000000011'
+  await admin(db, 'insert into auth.users select unnest(array[$1::uuid, $2::uuid])', [managerA1, managerA2])
+  await admin(db, `insert into app_users (user_id, role, tenant_id, is_owner, permissions, outlet_id, display_name) values
+    ($1, 'admin', $3, false, '{store_setup,expenses}', $4, 'Mia Manager'),
+    ($2, 'admin', $3, false, '{store_setup,expenses}', $5, 'Max Manager')`, [managerA1, managerA2, T_A, OUT_A1, OUT_A2])
+
+  const before = await movementCount(db)
+  await as(db, 'authenticated', U.owner)
+  const id = await scalar(db, RECORD, [S.cash1, 30000, cat.ice, null, 'Owner', 'eeeeeeee-0000-4000-8000-000000000201'])
+  eq(typeof id, 'string', "the owner pays an expense from a cashier's open drawer")
+  const taken = (await admin(db, `select m.shift_id, m.kind, m.amount, m.recorded_by, m.recorded_by_name, m.outlet_id,
+    e.paid_from, e.outlet_id as expense_outlet, e.created_by from expenses e join shift_cash_movements m on m.id = e.shift_cash_movement_id where e.id = $1`, [id]))[0]
+  eq(taken, {
+    shift_id: S.cash1, kind: 'pay_out', amount: '300.00', recorded_by: U.owner, recorded_by_name: 'Olivia Owner', outlet_id: OUT_A1,
+    paid_from: 'drawer', expense_outlet: OUT_A1, created_by: U.owner,
+  }, "the pay-out leaves the cashier's drawer in the owner's name, on that drawer's branch")
+  eq(await movementCount(db), before + 1, 'one pay-out for it')
+
+  await as(db, 'authenticated', managerA1)
+  eq(typeof await scalar(db, RECORD, [S.cash1, 1000, cat.ice, null, 'Mia', null]), 'string', "a store_setup manager of the drawer's branch may take from it")
+  await as(db, 'authenticated', managerA2)
+  await refused(db.query(RECORD, [S.cash1, 1000, cat.ice, null, 'Max', null]), 'P0002', "a manager of another branch may not (that drawer's shift is not even visible)", /shift_not_found/)
+  await as(db, 'authenticated', U.book)
+  await refused(db.query(RECORD, [S.cash1, 1000, cat.ice, null, 'Bea', null]), '42501', 'expenses without cash management may not take from a cashier\'s drawer')
+  await as(db, 'authenticated', U.ownerB)
+  await refused(db.query(RECORD, [S.cash1, 1000, cat.ice, null, 'Bo', null]), 'P0002', "another store's owner may not (the shift is invisible)", /shift_not_found/)
+  await as(db, 'authenticated', U.owner)
+  await refused(db.query(RECORD, [S.cash2, 1000, cat.ice, null, 'Owner', null]), 'P0001', 'nor may anyone once that shift closed', /already closed/)
+  eq(await movementCount(db), before + 2, 'refusals leave no pay-out behind')
+
+  // 20261026120000: the stock answer is kept on the drawer path too.
+  await as(db, 'authenticated', U.owner)
+  const stocked = await scalar(db, 'select public.record_drawer_expense($1, $2, $3, null, null, null, $4, null, true) as id', [S.cash1, 45000, cat.ingredients, 'Owner'])
+  eq((await admin(db, 'select is_stock_purchase, paid_from from expenses where id = $1', [stocked]))[0], { is_stock_purchase: true, paid_from: 'drawer' }, '"went into stock" is kept on a drawer ingredient buy (counted once in Profit)')
+  await as(db, 'authenticated', U.cashier)
+  const named = await scalar(db, `select public.record_drawer_expense(p_shift_id => $1, p_amount_cents => 2000, p_category_id => $2, p_note => null,
+    p_supplier_id => null, p_paid_to_name => null, p_recorded_by_name => 'Cara', p_client_request_id => null) as id`, [S.cash1, cat.ice])
+  eq((await admin(db, 'select is_stock_purchase from expenses where id = $1', [named]))[0].is_stock_purchase, false, "an older build's eight named arguments still resolve, and default to not-stock")
+  eq(Number((await admin(db, "select count(*) from pg_proc where proname = 'record_drawer_expense'"))[0].count), 1, 'one record_drawer_expense, so a named call is never ambiguous')
+  await asAnon(db)
+  await refused(db.query('select public.record_drawer_expense($1, 100, $2, null, null, null, $3, null, true)', [S.cash1, cat.ice, 'x']), '42501', 'anon cannot call the new signature')
+}
+
 async function checkReceipts(db, ownerExpenseId, drawerExpenseId, voidedId) {
   const pathFor = (expenseId, file = 'ffffffff-0000-4000-8000-000000000001.jpg') => `${T_A}/${expenseId}/${file}`
   await as(db, 'authenticated', U.owner)
@@ -615,6 +665,7 @@ async function main() {
     await db.exec(readMigration('20261022130000_expenses_security_folds.sql'))
     await db.exec('set check_function_bodies = on')
     await db.exec(readMigration('20261022130200_expenses_opt_in.sql'))
+    await db.exec(readMigration('20261026120000_drawer_expense_stock_flag.sql'))
 
     await checkSeeding(db)
     await checkAnon(db)
@@ -629,8 +680,9 @@ async function main() {
     await checkReplace(db, drawerExpenseId)
     await checkDrawerVoid(db)
     await checkActivity(db, ownerVoidedId)
+    await checkTakeFromCashierDrawer(db)
     await checkBucketAndTenantDeletion(db)
-    console.log(`Expenses: ${checks} checks passed (seed, anon, owner, staff without key, book-keeper, branch lock, cashier drawer path, sorting, replace, drawer void, receipts, activity, bucket, store deletion).`)
+    console.log(`Expenses: ${checks} checks passed (seed, anon, owner, staff without key, book-keeper, branch lock, cashier drawer path, sorting, replace, drawer void, receipts, activity, take from a cashier's drawer, bucket, store deletion).`)
   } finally {
     await db.close()
   }

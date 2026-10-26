@@ -6,6 +6,7 @@ import { PAID_FROM_LABELS, PICKABLE_PAID_FROM } from "../../lib/expenses/expense
 import { formatPeso } from "../../lib/expenses/keypad";
 import type { RepeatSuggestion } from "../../lib/expenses/repeat-chips";
 import type { BookPaidFrom } from "../../lib/expenses/add-expense-form";
+import { drawerSourceLabel, type DrawerSource } from "../../lib/expenses/drawer-sources";
 import type { ExpenseCategory } from "../../lib/expenses/types";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Icon, type IconName } from "../Icon";
@@ -46,19 +47,31 @@ export function Chip({ label, isOn = false, onPress, icon, isDashed = false, acc
 interface PaidFromRowProps {
   value: BookPaidFrom;
   onPick: (next: BookPaidFrom) => void;
+  /** "Cashier drawer": offered when there is an open drawer this person may take from. */
+  drawerChoice?: { isOn: boolean; onPress: () => void } | null;
 }
 
-/** Where the money came from, always visible: Cash on hand · GCash · Maya · Bank · Card · Owner's pocket. */
-export function PaidFromRow({ value, onPick }: PaidFromRowProps) {
-  // Wrapped, never scrolled: six sources fit in two rows, so none is hidden
+/** Where the money came from, always visible: Cashier drawer · Cash on hand · GCash · Maya · Bank · Card · Owner's pocket. */
+export function PaidFromRow({ value, onPick, drawerChoice = null }: PaidFromRowProps) {
+  const isDrawerOn = drawerChoice?.isOn === true;
+  // Wrapped, never scrolled: the sources fit in two rows, so none is hidden
   // off the edge (an owner never found "Owner's pocket" behind "Card").
   return (
     <View style={styles.wrapRow} accessibilityLabel="Paid from" accessibilityRole="radiogroup">
+      {drawerChoice ? (
+        <Chip
+          label={CASHIER_DRAWER_LABEL}
+          icon="payments"
+          isOn={isDrawerOn}
+          onPress={drawerChoice.onPress}
+          accessibilityLabel={`Paid from ${CASHIER_DRAWER_LABEL}`}
+        />
+      ) : null}
       {PICKABLE_PAID_FROM.map((source) => (
         <Chip
           key={source}
           label={PAID_FROM_LABELS[source]}
-          isOn={source === value}
+          isOn={!isDrawerOn && source === value}
           onPress={() => onPick(source)}
           accessibilityLabel={`Paid from ${PAID_FROM_LABELS[source]}`}
         />
@@ -67,13 +80,17 @@ export function PaidFromRow({ value, onPick }: PaidFromRowProps) {
   );
 }
 
+export const CASHIER_DRAWER_LABEL = "Cashier drawer";
+
 interface DrawerLineProps {
   chipLabel: string;
   /** "Drawer has ₱4,620"; null = unknown, said nothing. */
   availableCents: number | null;
+  /** Several open drawers: "Change" picks another. */
+  onChange?: () => void;
 }
 
-export function DrawerLine({ chipLabel, availableCents }: DrawerLineProps) {
+export function DrawerLine({ chipLabel, availableCents, onChange }: DrawerLineProps) {
   return (
     <View style={styles.drawerLine}>
       <View style={styles.drawerChip} accessible accessibilityLabel={`Paid from ${chipLabel}`}>
@@ -87,6 +104,47 @@ export function DrawerLine({ chipLabel, availableCents }: DrawerLineProps) {
           Drawer has <Text style={styles.strong}>{formatPeso(Math.max(0, availableCents))}</Text>
         </Text>
       ) : null}
+      {onChange ? (
+        <TouchableOpacity onPress={onChange} style={styles.drawerChange} accessibilityRole="button" accessibilityLabel="Change drawer">
+          <Text style={styles.drawerChangeText}>Change</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+interface DrawerPickListProps {
+  drawers: readonly DrawerSource[];
+  selectedId: string | null;
+  onPick: (drawer: DrawerSource) => void;
+}
+
+/** "Pay from which drawer?": every open drawer this person may take from. */
+export function DrawerPickList({ drawers, selectedId, onPick }: DrawerPickListProps) {
+  return (
+    <View style={styles.pickList} accessibilityRole="radiogroup" accessibilityLabel="Open drawers">
+      {drawers.map((drawer) => {
+        const isOn = drawer.shiftId === selectedId;
+        const label = drawerSourceLabel(drawer);
+        return (
+          <TouchableOpacity
+            key={drawer.shiftId}
+            onPress={() => onPick(drawer)}
+            style={[styles.pickRow, isOn && styles.pickRowOn]}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: isOn }}
+            accessibilityLabel={label}
+          >
+            <View style={styles.drawerDot} />
+            <Text style={styles.pickText} numberOfLines={1}>
+              {label}
+            </Text>
+            {drawer.availableCents !== null ? (
+              <Text style={styles.drawerHas}>{formatPeso(Math.max(0, drawer.availableCents))}</Text>
+            ) : null}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -269,6 +327,22 @@ const styles = StyleSheet.create({
   drawerDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.success },
   drawerChipText: { ...typography.caption, fontWeight: "700", color: colors.success, flexShrink: 1 },
   drawerHas: { ...typography.caption, color: colors.textMuted },
+  drawerChange: { minHeight: 44, justifyContent: "center", paddingLeft: spacing.sm },
+  drawerChangeText: { ...typography.caption, fontWeight: "700", color: colors.accent },
+  pickList: { gap: spacing.sm },
+  pickRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1.5,
+    borderColor: colors.surfaceSubtle,
+  },
+  pickRowOn: { backgroundColor: colors.accentLight, borderColor: colors.accent },
+  pickText: { ...typography.body, fontWeight: "600", color: colors.textPrimary, flex: 1 },
   strong: { fontWeight: "800", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
 
   extras: { flexDirection: "row", gap: spacing.sm },

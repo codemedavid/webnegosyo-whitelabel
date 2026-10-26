@@ -154,7 +154,7 @@ describe("add-expense form", () => {
 
   it("builds a drawer draft for the shift", () => {
     const form = selectCategory(typed(["1", "2", "5", "0"]), "c-lpg");
-    expect(toDrawerDraft(form, { clientRequestId: "r2", shiftId: "s1", category: lpg })).toEqual({
+    expect(toDrawerDraft(form, { clientRequestId: "r2", shiftId: "s1", category: lpg, tracksStock: true })).toEqual({
       shiftId: "s1",
       amountCents: 125_000,
       categoryId: "c-lpg",
@@ -162,6 +162,14 @@ describe("add-expense form", () => {
       paidToName: null,
       clientRequestId: "r2",
     });
+  });
+
+  it("keeps 'went into stock' on a drawer ingredient buy, and sends nothing for a no", () => {
+    const yes = { ...selectCategory(typed(["4", "5", "0"]), "c-ice"), isStockPurchase: true };
+    expect(toDrawerDraft(yes, { clientRequestId: "r3", shiftId: "s1", category: ice, tracksStock: true }).isStockPurchase).toBe(true);
+    expect(toDrawerDraft({ ...yes, isStockPurchase: false }, { clientRequestId: "r3", shiftId: "s1", category: ice, tracksStock: true })).not.toHaveProperty("isStockPurchase");
+    // A store that doesn't count stock was never asked.
+    expect(toDrawerDraft(yes, { clientRequestId: "r3", shiftId: "s1", category: ice, tracksStock: false })).not.toHaveProperty("isStockPurchase");
   });
 
   it("keeps the source and the day for the next entry of a batch, and nothing else", () => {

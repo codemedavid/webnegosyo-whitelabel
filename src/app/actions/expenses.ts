@@ -16,15 +16,18 @@
 
 import { revalidatePath } from 'next/cache'
 import type { SupabaseClient, User } from '@supabase/supabase-js'
-import type { z } from 'zod'
+import { z } from 'zod'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { SubscriptionPausedError } from '@/lib/billing/subscription-gate'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
 import { resolveExpenseActor } from '@/lib/expenses/actor'
 import { EXPENSE_MESSAGES, isExpenseSentence } from '@/lib/expenses/errors'
+import { listPayableDrawers } from '@/lib/expenses/read/payable-drawers'
+import { hasPermission } from '@/lib/staff-permissions'
 import {
   archiveCategory,
+  recordDrawerExpense,
   recordExpense,
   replaceExpense,
   saveCategory,
@@ -33,10 +36,11 @@ import {
   updateExpenseDetails,
   voidExpense,
 } from '@/lib/expenses/expense-service'
-import type { ActionResult, Expense, ExpenseCategory, Supplier } from '@/lib/expenses/types'
+import type { ActionResult, Expense, ExpenseCategory, PayableDrawer, Supplier } from '@/lib/expenses/types'
 import {
   archiveCategorySchema,
   categorySaveSchema,
+  drawerExpenseDraftSchema,
   expenseDetailsUpdateSchema,
   expenseDraftSchema,
   firstIssueMessage,
@@ -50,9 +54,12 @@ interface ExpenseActionContext {
   tenantId: string
   db: SupabaseClient
   user: User
+  /** Owner, full access or store_setup: may take from a drawer someone else holds. */
+  managesCash: boolean
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/i
+const NO_INPUT = z.object({}).strict()
 
 function expensesPath(tenantSlug: string): string {
   return `/${encodeURIComponent(tenantSlug)}/admin/expenses`
@@ -63,13 +70,13 @@ function failure<T>(error: string): ActionResult<T> {
 }
 
 /** The store and a caller who holds `expenses` on it, or the sentence to show. */
-async function authorize(tenantSlug: string): Promise<{ tenantId: string; user: User } | { error: string }> {
+async function authorize(tenantSlug: string): Promise<{ tenantId: string; user: User; managesCash: boolean } | { error: string }> {
   if (!SLUG_RE.test(tenantSlug)) return { error: 'This store could not be found.' }
   const tenant = await getCachedTenantBySlug(tenantSlug)
   if (!tenant) return { error: 'This store could not be found.' }
   try {
-    const { user } = await verifyTenantPermission(tenant.id, 'expenses')
-    return { tenantId: tenant.id, user: user as User }
+    const { user, userRole } = await verifyTenantPermission(tenant.id, 'expenses')
+    return { tenantId: tenant.id, user: user as User, managesCash: hasPermission(userRole, 'store_setup') }
   } catch (error) {
     if (error instanceof SubscriptionPausedError) return { error: error.message }
     return { error: EXPENSE_MESSAGES.noAccess }
@@ -91,7 +98,7 @@ async function runExpenseAction<S extends z.ZodType, T>(
     const caller = await authorize(tenantSlug)
     if ('error' in caller) return failure(caller.error)
     const db = (await createClient()) as unknown as SupabaseClient
-    const data = await work({ tenantId: caller.tenantId, db, user: caller.user }, parsed.data as z.output<S>)
+    const data = await work({ tenantId: caller.tenantId, db, user: caller.user, managesCash: caller.managesCash }, parsed.data as z.output<S>)
     if (shouldRevalidate) revalidatePath(expensesPath(tenantSlug))
     return { ok: true, data }
   } catch (error) {
@@ -107,6 +114,29 @@ async function runExpenseAction<S extends z.ZodType, T>(
 export async function recordExpenseAction(tenantSlug: string, input: unknown): Promise<ActionResult<Expense>> {
   return runExpenseAction(tenantSlug, input, expenseDraftSchema, 'record', async ({ tenantId, db, user }, draft) =>
     recordExpense(db, tenantId, draft, await resolveExpenseActor(db, user)),
+  )
+}
+
+/**
+ * "Take from a cashier's drawer": pays the expense out of an open drawer (the
+ * caller's own, or any they reach when they manage cash). The pay-out and the
+ * expense land together; the database decides whose drawer it may be.
+ */
+export async function recordDrawerExpenseAction(tenantSlug: string, input: unknown): Promise<ActionResult<{ id: string }>> {
+  return runExpenseAction(tenantSlug, input, drawerExpenseDraftSchema, 'record drawer', async ({ db, user }, draft) => ({
+    id: await recordDrawerExpense(db, draft, await resolveExpenseActor(db, user)),
+  }))
+}
+
+/** The open drawers the form may offer under "Cashier drawer"; a read, so nothing is refreshed. */
+export async function listPayableDrawersAction(tenantSlug: string): Promise<ActionResult<PayableDrawer[]>> {
+  return runExpenseAction(
+    tenantSlug,
+    {},
+    NO_INPUT,
+    'list drawers',
+    ({ tenantId, db, user, managesCash }) => listPayableDrawers(db, { tenantId, userId: user.id, managesCash }),
+    { shouldRevalidate: false },
   )
 }
 

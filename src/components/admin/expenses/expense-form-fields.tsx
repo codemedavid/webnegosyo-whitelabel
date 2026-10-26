@@ -3,6 +3,8 @@
 import { useId, type ReactNode, type Ref } from 'react'
 import { Lock } from 'lucide-react'
 import { parsePesoInput } from '@/lib/expenses/keypad'
+import { payableDrawerLabel } from '@/lib/expenses/read/payable-drawers'
+import type { PayableDrawer } from '@/lib/expenses/types'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PaidFromIcon } from './expense-badges'
@@ -91,25 +93,51 @@ export function AmountField({ inputId, inputRef, value, onChange, error, isLocke
 interface PaidFromFieldProps {
   value: WebPaidFrom
   onChange: (value: WebPaidFrom) => void
+  /** Open drawers this person may take from; empty = no "Cashier drawer" pill. */
+  drawers?: readonly PayableDrawer[]
+  /** The drawer picked; null = paid from `value`. */
+  drawerShiftId?: string | null
+  onPickDrawer?: (drawer: PayableDrawer) => void
 }
 
-/** Where the money came from, as six pills (a radio group: arrow keys move). Never "Drawer" on the web. */
-export function PaidFromField({ value, onChange }: PaidFromFieldProps) {
+const PILL =
+  'relative inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[13.5px] font-semibold ring-1 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-wn-ink has-[:focus-visible]:ring-offset-2'
+const PILL_ON = 'bg-wn-ink text-white ring-wn-ink'
+const PILL_OFF = 'bg-white text-wn-ink ring-wn-line hover:ring-wn-ink/50'
+
+/**
+ * Where the money came from, as pills (a radio group: arrow keys move).
+ * "Cashier drawer" leads when there is an open drawer this person may take
+ * from; picking it takes the cash out of that drawer ("Take from a cashier's
+ * drawer"). With several open drawers, a second row asks which.
+ */
+export function PaidFromField({ value, onChange, drawers = [], drawerShiftId = null, onPickDrawer }: PaidFromFieldProps) {
   const name = useId()
+  const drawerName = useId()
+  const isDrawerOn = drawerShiftId !== null
+  const canPickDrawer = drawers.length > 0 && onPickDrawer !== undefined
   return (
     <fieldset className="flex flex-col gap-1.5">
       <legend className={cn(FIELD_LABEL, 'mb-1.5')}>Paid from</legend>
       <div className="flex flex-wrap gap-1.5">
+        {canPickDrawer && (
+          <label className={cn(PILL, isDrawerOn ? PILL_ON : PILL_OFF)}>
+            <input
+              type="radio"
+              name={name}
+              value="drawer"
+              checked={isDrawerOn}
+              onChange={() => onPickDrawer(drawers.find((drawer) => drawer.shiftId === drawerShiftId) ?? drawers[0])}
+              className="sr-only"
+            />
+            <PaidFromIcon paidFrom="drawer" className={cn('size-3.5', isDrawerOn ? 'text-white' : 'text-wn-stone')} />
+            {CASHIER_DRAWER_LABEL}
+          </label>
+        )}
         {WEB_PAID_FROM.map((option) => {
-          const isChecked = option === value
+          const isChecked = !isDrawerOn && option === value
           return (
-            <label
-              key={option}
-              className={cn(
-                'relative inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[13.5px] font-semibold ring-1 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-wn-ink has-[:focus-visible]:ring-offset-2',
-                isChecked ? 'bg-wn-ink text-white ring-wn-ink' : 'bg-white text-wn-ink ring-wn-line hover:ring-wn-ink/50',
-              )}
-            >
+            <label key={option} className={cn(PILL, isChecked ? PILL_ON : PILL_OFF)}>
               <input
                 type="radio"
                 name={name}
@@ -124,9 +152,40 @@ export function PaidFromField({ value, onChange }: PaidFromFieldProps) {
           )
         })}
       </div>
+      {canPickDrawer && isDrawerOn && (
+        <div className="mt-1 flex flex-col gap-1.5 rounded-xl bg-wn-sand px-3.5 py-3 ring-1 ring-wn-line">
+          {drawers.length > 1 ? (
+            <div role="radiogroup" aria-label="Which drawer" className="flex flex-wrap gap-1.5">
+              {drawers.map((drawer) => {
+                const isChecked = drawer.shiftId === drawerShiftId
+                return (
+                  <label key={drawer.shiftId} className={cn(PILL, isChecked ? PILL_ON : PILL_OFF)}>
+                    <input
+                      type="radio"
+                      name={drawerName}
+                      value={drawer.shiftId}
+                      checked={isChecked}
+                      onChange={() => onPickDrawer(drawer)}
+                      className="sr-only"
+                    />
+                    {payableDrawerLabel(drawer)}
+                  </label>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-[13.5px] font-semibold text-wn-ink">{payableDrawerLabel(drawers[0])}</p>
+          )}
+          <p className="text-[12.5px] text-wn-stone">
+            The cash comes out of this drawer today, so the cashier’s count expects it. Check the drawer has it.
+          </p>
+        </div>
+      )}
     </fieldset>
   )
 }
+
+export const CASHIER_DRAWER_LABEL = 'Cashier drawer'
 
 interface DateFieldProps {
   inputId: string

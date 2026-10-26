@@ -12,6 +12,8 @@ const mockRecord = jest.fn()
 const mockVoid = jest.fn()
 const mockReplace = jest.fn()
 const mockSaveCategory = jest.fn()
+const mockRecordDrawer = jest.fn()
+const mockListDrawers = jest.fn()
 const db = { kind: 'session-client' }
 
 jest.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => mockRevalidate(...args) }))
@@ -21,6 +23,7 @@ jest.mock('@/lib/supabase/server', () => ({ createClient: async () => db }))
 jest.mock('@/lib/expenses/actor', () => ({ resolveExpenseActor: async () => ({ displayName: 'Ana' }) }))
 jest.mock('@/lib/expenses/expense-service', () => ({
   recordExpense: (...args: unknown[]) => mockRecord(...args),
+  recordDrawerExpense: (...args: unknown[]) => mockRecordDrawer(...args),
   voidExpense: (...args: unknown[]) => mockVoid(...args),
   replaceExpense: (...args: unknown[]) => mockReplace(...args),
   saveCategory: (...args: unknown[]) => mockSaveCategory(...args),
@@ -29,6 +32,8 @@ jest.mock('@/lib/expenses/expense-service', () => ({
   archiveCategory: jest.fn(),
   saveSupplier: jest.fn(),
 }))
+
+jest.mock('@/lib/expenses/read/payable-drawers', () => ({ listPayableDrawers: (...args: unknown[]) => mockListDrawers(...args) }))
 
 async function load() {
   return import('@/app/actions/expenses')
@@ -137,5 +142,49 @@ describe('the other actions', () => {
     mockSaveCategory.mockResolvedValue({ id: 'c1', name: 'Yelo' })
     await saveCategoryAction('lolys-cafe', { name: 'Yelo', group: 'ingredients' })
     expect(mockSaveCategory).toHaveBeenCalledWith(db, TENANT, { name: 'Yelo', group: 'ingredients' })
+  })
+})
+
+describe("Take from a cashier's drawer", () => {
+  const SHIFT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  const drawerDraft = { shiftId: SHIFT, amountCents: 30_000, categoryId: CATEGORY, clientRequestId: REQUEST, isStockPurchase: true }
+
+  it('pays from the drawer as the caller, through the expenses key, and refreshes the book', async () => {
+    const { recordDrawerExpenseAction } = await load()
+    mockRecordDrawer.mockResolvedValue(EXPENSE)
+
+    const result = await recordDrawerExpenseAction('lolys-cafe', drawerDraft)
+
+    expect(result).toEqual({ ok: true, data: { id: EXPENSE } })
+    expect(mockVerify).toHaveBeenCalledWith(TENANT, 'expenses')
+    expect(mockRecordDrawer).toHaveBeenCalledWith(db, expect.objectContaining({ shiftId: SHIFT, isStockPurchase: true }), { displayName: 'Ana' })
+    expect(mockRevalidate).toHaveBeenCalledWith('/lolys-cafe/admin/expenses')
+  })
+
+  it('refuses a date or a source: the drawer decides both', async () => {
+    const { recordDrawerExpenseAction } = await load()
+    expect((await recordDrawerExpenseAction('lolys-cafe', { ...drawerDraft, spentOn: '2026-10-01' })).ok).toBe(false)
+    expect((await recordDrawerExpenseAction('lolys-cafe', { ...drawerDraft, paidFrom: 'cash' })).ok).toBe(false)
+    expect(mockRecordDrawer).not.toHaveBeenCalled()
+  })
+
+  it('lists every open drawer for someone who manages cash, without refreshing anything', async () => {
+    const { listPayableDrawersAction } = await load()
+    mockListDrawers.mockResolvedValue([])
+
+    await listPayableDrawersAction('lolys-cafe')
+
+    expect(mockListDrawers).toHaveBeenCalledWith(db, { tenantId: TENANT, userId: 'owner-1', managesCash: true })
+    expect(mockRevalidate).not.toHaveBeenCalled()
+  })
+
+  it('lists only their own drawer for an expenses holder who does not manage cash', async () => {
+    const { listPayableDrawersAction } = await load()
+    mockVerify.mockResolvedValue({ user: { id: 'book-1' }, userRole: { role: 'admin', is_owner: false, permissions: ['expenses', 'pos'] } })
+    mockListDrawers.mockResolvedValue([])
+
+    await listPayableDrawersAction('lolys-cafe')
+
+    expect(mockListDrawers).toHaveBeenCalledWith(db, { tenantId: TENANT, userId: 'book-1', managesCash: false })
   })
 })

@@ -9,7 +9,7 @@
  */
 
 import { parsePesoInput } from '@/lib/expenses/keypad'
-import type { DocType, Expense, ExpenseCategory, ExpenseDraft, PaidFrom, TaxDetails } from '@/lib/expenses/types'
+import type { DocType, DrawerExpenseDraft, Expense, ExpenseCategory, ExpenseDraft, PaidFrom, TaxDetails } from '@/lib/expenses/types'
 import { MAX_NOTE_LENGTH, MAX_REASON_LENGTH, normalizeTin, spentOnProblem } from '@/lib/expenses/validation'
 
 export type WebPaidFrom = Exclude<PaidFrom, 'drawer'>
@@ -19,6 +19,11 @@ export interface ExpenseFormState {
   categoryId: string | null
   spentOn: string
   paidFrom: WebPaidFrom
+  /**
+   * "Cashier drawer": the open shift this is paid out of, which then decides
+   * the date (today) and the branch. null = paid from `paidFrom`.
+   */
+  drawerShiftId: string | null
   /** null = whole store. */
   outletId: string | null
   supplierId: string | null
@@ -52,6 +57,7 @@ export function blankForm({ today, paidFrom = 'cash', outletId = null }: BlankFo
     categoryId: null,
     spentOn: today,
     paidFrom,
+    drawerShiftId: null,
     outletId,
     supplierId: null,
     paidToName: '',
@@ -81,6 +87,8 @@ export function formFromExpense(expense: Expense): ExpenseFormState {
     categoryId: expense.categoryId,
     spentOn: expense.spentOn,
     paidFrom: expense.paidFrom === 'drawer' ? 'cash' : expense.paidFrom,
+    // Fix never moves cash: a drawer row stays on its drawer, locked (buildPatch).
+    drawerShiftId: null,
     outletId: expense.outletId,
     supplierId: expense.supplierId,
     paidToName: expense.paidToName ?? '',
@@ -157,6 +165,9 @@ export function validateForm(state: ExpenseFormState, context: ValidateContext):
   const dateProblem = isDateUnchanged ? null : spentOnProblem(state.spentOn, context.nowMs)
   if (dateProblem) errors.spentOn = dateProblem
 
+  // Paying from a drawer sends no invoice details (they are added afterwards), so none can block it.
+  if (state.drawerShiftId !== null) return { errors, amountCents: amountCents !== null && amountCents > 0 ? amountCents : null }
+
   const tin = normalizeTin(state.supplierTin)
   if (tin !== '' && !TIN_PATTERN.test(tin)) errors.supplierTin = 'A TIN is 9 digits, plus a 3–5 digit branch code if it has one.'
 
@@ -232,6 +243,36 @@ export function buildDraft(
     clientRequestId,
     ...taxDetails(state),
   }
+}
+
+/**
+ * What paying from a drawer sends. The drawer decides the date (today) and the
+ * branch; invoice details are added afterwards from the expense. Call only
+ * after `validateForm` passed and a drawer is picked.
+ */
+export function buildDrawerDraft(
+  state: ExpenseFormState,
+  amountCents: number,
+  clientRequestId: string,
+  category: Pick<ExpenseCategory, 'group'> | undefined,
+): DrawerExpenseDraft {
+  const isStockPurchase = category?.group === 'ingredients' && state.isStockPurchase === true
+  return {
+    shiftId: state.drawerShiftId as string,
+    amountCents,
+    categoryId: state.categoryId as string,
+    note: blankToNull(state.note),
+    supplierId: state.supplierId,
+    paidToName: state.supplierId ? null : blankToNull(state.paidToName),
+    clientRequestId,
+    ...(isStockPurchase ? { isStockPurchase: true } : {}),
+  }
+}
+
+/** Picking a drawer: today, and the drawer's branch; picking a source again leaves the drawer. */
+export function withDrawer(state: ExpenseFormState, drawer: { shiftId: string; outletId: string | null } | null, today: string): ExpenseFormState {
+  if (!drawer) return { ...state, drawerShiftId: null }
+  return { ...state, drawerShiftId: drawer.shiftId, spentOn: today, outletId: drawer.outletId }
 }
 
 export type ExpensePatch = Partial<Omit<ExpenseDraft, 'clientRequestId'>>

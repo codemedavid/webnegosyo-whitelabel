@@ -9,6 +9,8 @@
 
 import {
   archiveCategoryAction,
+  listPayableDrawersAction,
+  recordDrawerExpenseAction,
   recordExpenseAction,
   replaceExpenseAction,
   replaceExpenseInBulkAction,
@@ -18,7 +20,7 @@ import {
   updateExpenseDetailsAction,
   voidExpenseAction,
 } from '@/app/actions/expenses'
-import type { ActionResult, Expense, ExpenseCategory, ExpenseDraft, Supplier } from '@/lib/expenses/types'
+import type { ActionResult, DrawerExpenseDraft, Expense, ExpenseCategory, ExpenseDraft, PayableDrawer, Supplier } from '@/lib/expenses/types'
 import type {
   ArchiveCategoryInput,
   CategorySaveInput,
@@ -43,6 +45,16 @@ export async function runAction<T>(call: () => Promise<ActionResult<T>>): Promis
 
 export function recordExpense(tenantSlug: string, draft: ExpenseDraft): Promise<ActionResult<Expense>> {
   return runAction(() => recordExpenseAction(tenantSlug, draft))
+}
+
+/** Pays from an open drawer ("Take from a cashier's drawer"); answers the expense id. */
+export function recordDrawerExpense(tenantSlug: string, draft: DrawerExpenseDraft): Promise<ActionResult<{ id: string }>> {
+  return runAction(() => recordDrawerExpenseAction(tenantSlug, draft))
+}
+
+/** The open drawers the caller may pay from right now. */
+export function listPayableDrawers(tenantSlug: string): Promise<ActionResult<PayableDrawer[]>> {
+  return runAction(() => listPayableDrawersAction(tenantSlug))
 }
 
 export function voidExpense(tenantSlug: string, expenseId: string, reason: string): Promise<ActionResult<null>> {

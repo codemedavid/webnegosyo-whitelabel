@@ -10,6 +10,8 @@ const voidExpenseAction = jest.fn()
 const toastSuccess = jest.fn()
 const refresh = jest.fn()
 const uploadReceipts = jest.fn()
+const listPayableDrawersAction = jest.fn()
+const recordDrawerExpenseAction = jest.fn()
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh, replace: jest.fn(), push: jest.fn() }) }))
 jest.mock('@/components/admin/expenses/receipt-client', () => ({
@@ -19,6 +21,8 @@ jest.mock('@/components/admin/expenses/receipt-client', () => ({
 
 jest.mock('@/app/actions/expenses', () => ({
   recordExpenseAction: (...args: unknown[]) => recordExpenseAction(...args),
+  listPayableDrawersAction: (...args: unknown[]) => listPayableDrawersAction(...args),
+  recordDrawerExpenseAction: (...args: unknown[]) => recordDrawerExpenseAction(...args),
   voidExpenseAction: (...args: unknown[]) => voidExpenseAction(...args),
   replaceExpenseAction: jest.fn(),
   updateExpenseDetailsAction: jest.fn(),
@@ -69,6 +73,10 @@ beforeEach(() => {
   refresh.mockReset()
   uploadReceipts.mockReset()
   uploadReceipts.mockResolvedValue([])
+  listPayableDrawersAction.mockReset()
+  listPayableDrawersAction.mockResolvedValue({ ok: true, data: [] })
+  recordDrawerExpenseAction.mockReset()
+  recordDrawerExpenseAction.mockResolvedValue({ ok: true, data: { id: 'drawer-1' } })
   recordExpenseAction.mockImplementation(async (_slug: string, draft: { categoryId: string; amountCents: number }) => ({
     ok: true,
     data: { id: 'saved-1', ...draft },
@@ -218,5 +226,62 @@ describe('AddExpenseDialog', () => {
 
     expect(await screen.findByText('You don’t have access to expenses.')).toBeInTheDocument()
     expect(amountInput()).toHaveValue('80')
+  })
+})
+
+describe("Take from a cashier's drawer", () => {
+  const ben = { shiftId: 'shift-ben', drawerName: 'Cashier 1', staffName: 'Ben', isMine: false, outletId: null, openedAt: '2026-10-21T00:00:00Z' }
+  const ana = { shiftId: 'shift-ana', drawerName: 'Cashier 2', staffName: 'Ana', isMine: false, outletId: null, openedAt: '2026-10-21T00:00:00Z' }
+
+  it('offers no Cashier drawer when nobody is on a drawer this person may take from', async () => {
+    await renderDialog()
+    await waitFor(() => expect(listPayableDrawersAction).toHaveBeenCalledWith(TENANT_SLUG))
+    expect(screen.queryByRole('radio', { name: 'Cashier drawer' })).not.toBeInTheDocument()
+  })
+
+  it('pays from the one open drawer: today, and through the drawer, not the book', async () => {
+    // Arrange
+    listPayableDrawersAction.mockResolvedValue({ ok: true, data: [ben] })
+    await renderDialog()
+    const drawerPill = await screen.findByRole('radio', { name: 'Cashier drawer' })
+
+    // Act
+    fireEvent.click(drawerPill)
+    fireEvent.change(amountInput(), { target: { value: '300' } })
+    pickCategory('LPG')
+    fireEvent.keyDown(amountInput(), { key: 'Enter', metaKey: true })
+
+    // Assert
+    expect(screen.getByText('Cashier 1 · Ben')).toBeInTheDocument()
+    expect(screen.getByLabelText('Date paid')).toBeDisabled()
+    await waitFor(() => expect(recordDrawerExpenseAction).toHaveBeenCalled())
+    expect(recordDrawerExpenseAction).toHaveBeenCalledWith(TENANT_SLUG, expect.objectContaining({ shiftId: 'shift-ben', amountCents: 30_000, categoryId: LPG.id }))
+    expect(recordDrawerExpenseAction.mock.calls[0][1]).not.toHaveProperty('spentOn')
+    expect(recordExpenseAction).not.toHaveBeenCalled()
+  })
+
+  it('asks which drawer when several are open, and a source pill goes back to the book', async () => {
+    listPayableDrawersAction.mockResolvedValue({ ok: true, data: [ben, ana] })
+    await renderDialog()
+    fireEvent.click(await screen.findByRole('radio', { name: 'Cashier drawer' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Cashier 2 · Ana' }))
+    expect(screen.getByRole('radio', { name: 'Cashier 2 · Ana' })).toBeChecked()
+
+    fireEvent.click(screen.getByRole('radio', { name: /GCash/ }))
+    expect(screen.queryByRole('radio', { name: 'Cashier 2 · Ana' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Date paid')).not.toBeDisabled()
+  })
+
+  it('shows the drawer\'s refusal and keeps what was typed', async () => {
+    listPayableDrawersAction.mockResolvedValue({ ok: true, data: [ben] })
+    recordDrawerExpenseAction.mockResolvedValue({ ok: false, error: "That drawer's shift is already closed. Pay from an open drawer or pick another source." })
+    await renderDialog()
+    fireEvent.click(await screen.findByRole('radio', { name: 'Cashier drawer' }))
+    fireEvent.change(amountInput(), { target: { value: '300' } })
+    pickCategory('LPG')
+    fireEvent.keyDown(amountInput(), { key: 'Enter', metaKey: true })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("That drawer's shift is already closed")
+    expect(amountInput()).toHaveValue('300')
   })
 })

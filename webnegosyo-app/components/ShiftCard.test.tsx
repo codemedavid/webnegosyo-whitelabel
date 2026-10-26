@@ -396,6 +396,36 @@ describe("owner floor", () => {
     fireEvent.press(screen.getByLabelText("End shift and save the count"));
     await waitFor(() => expect(closeShift).toHaveBeenCalledWith("tenant", "ana-shift", expect.objectContaining({ expectedCash: 2500, closingCount: 2500 })));
   });
+
+  it("pays an expense from a cashier's drawer, checked against what it should hold", async () => {
+    // Arrange: Ana's ₱2,000 float + ₱500 cash sale; this phone already took ₱100 from her drawer, unsynced.
+    mockSession.isOwner = true;
+    mockDrawerExpenses.isReady = true;
+    mockDrawerExpenses.pendingFor.mockImplementation((shiftId: string) =>
+      shiftId === "ana-shift" ? { cents: 10_000, count: 1, waiting: 1 } : { cents: 0, count: 0, waiting: 0 },
+    );
+    const screen = render(<ShiftCard orders={[anaSale]} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByText("All drawers")).toBeTruthy());
+
+    // Act
+    fireEvent.press(screen.getByLabelText("Pay an expense from Ana's drawer"));
+
+    // Assert
+    await waitFor(() =>
+      expect(mockExpenseSheet).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          mode: { kind: "drawer", shiftId: "ana-shift", drawerName: "Cashier 1", availableCents: 240_000, shiftLabel: "Ana's shift" },
+        }),
+      ),
+    );
+  });
+
+  it("offers no Pay expense on a cashier's drawer while expenses aren't set up", async () => {
+    mockSession.isOwner = true;
+    const screen = render(<ShiftCard orders={[anaSale]} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByText("All drawers")).toBeTruthy());
+    expect(screen.queryByLabelText("Pay an expense from Ana's drawer")).toBeNull();
+  });
 });
 
 it("refuses a pickup that another tablet already collected while the sheet was open", async () => {

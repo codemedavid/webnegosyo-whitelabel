@@ -227,3 +227,36 @@ describe('categories and suppliers', () => {
     await expect(saveSupplier(taken.client, TENANT, { name: 'Meralco' })).rejects.toThrow('There is already someone with that name')
   })
 })
+
+describe('recordDrawerExpense', () => {
+  const drawerDraft = { shiftId: 'shift-1', amountCents: 30_000, categoryId: CATEGORY, clientRequestId: 'req-1' }
+
+  it('pays from the drawer through record_drawer_expense, named after the actor', async () => {
+    const { recordDrawerExpense } = await load()
+    const db = scriptedClient({}, { data: 'exp-1', error: null })
+    await expect(recordDrawerExpense(db.client, drawerDraft, { displayName: 'Owner' })).resolves.toBe('exp-1')
+    expect(db.rpc).toHaveBeenCalledWith('record_drawer_expense', {
+      p_shift_id: 'shift-1', p_amount_cents: 30_000, p_category_id: CATEGORY, p_note: null, p_supplier_id: null,
+      p_paid_to_name: null, p_recorded_by_name: 'Owner', p_client_request_id: 'req-1',
+    })
+  })
+
+  it('sends the stock answer only when it is yes', async () => {
+    const { recordDrawerExpense } = await load()
+    const db = scriptedClient({}, { data: 'exp-1', error: null })
+    await recordDrawerExpense(db.client, { ...drawerDraft, isStockPurchase: true }, { displayName: 'Owner' })
+    expect(db.rpc).toHaveBeenCalledWith('record_drawer_expense', expect.objectContaining({ p_is_stock_purchase: true }))
+  })
+
+  it("says whose drawer it is when the drawer refuses, and what happened when the shift closed", async () => {
+    const { recordDrawerExpense } = await load()
+    const notYours = scriptedClient({}, { data: null, error: { code: '42501', message: 'new row violates row-level security policy for table "shift_cash_movements"' } })
+    await expect(recordDrawerExpense(notYours.client, drawerDraft, { displayName: 'Bea' })).rejects.toThrow(
+      'Only the cashier on this drawer, or someone who manages cash, can pay from it.',
+    )
+    const closed = scriptedClient({}, { data: null, error: { code: 'P0001', message: 'This shift is already closed' } })
+    await expect(recordDrawerExpense(closed.client, drawerDraft, { displayName: 'Owner' })).rejects.toThrow("That drawer's shift is already closed")
+    const foreignCategory = scriptedClient({}, { data: null, error: { code: '42501', message: 'Category belongs to a different store' } })
+    await expect(recordDrawerExpense(foreignCategory.client, drawerDraft, { displayName: 'Owner' })).rejects.toThrow("You don't have access to expenses.")
+  })
+})

@@ -26,18 +26,21 @@ interface DrawersOverviewProps {
   nowMs: number;
   onCollect: (row: FloorRow) => void;
   onCount: (row: FloorRow) => void;
+  /** "Pay expense": pay an expense out of this cashier's drawer. Absent = not offered. */
+  onPayExpense?: (row: FloorRow) => void;
   onManage: () => void;
 }
 
 /**
  * The owner's floor: every open drawer in this branch, who holds it, and the
  * cash it should hold right now — with the two things an owner does to a
- * cashier's drawer: collect cash from it, or count it and close the shift.
+ * cashier's drawer: collect cash from it, pay an expense out of it, or count
+ * it and close the shift.
  *
  * Ordered by cash held, most first: the drawer worth a pickup is the one at
  * the top.
  */
-export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, onManage }: DrawersOverviewProps) {
+export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, onPayExpense, onManage }: DrawersOverviewProps) {
   const others = [...rows.filter((row) => !row.isMine)].sort((a, b) => held(b) - held(a));
   const total = rows.reduce((sum, row) => sum + held(row), 0);
   const collected = rows.reduce(
@@ -105,6 +108,17 @@ export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, 
                   style={styles.flex}
                   accessibilityLabel={`Collect cash from ${row.shift.staffName}`}
                 />
+                {onPayExpense ? (
+                  <Button
+                    label="Pay expense"
+                    size="sm"
+                    tone="secondary"
+                    icon="receipt"
+                    onPress={() => onPayExpense(row)}
+                    style={styles.flex}
+                    accessibilityLabel={`Pay an expense from ${row.shift.staffName}'s drawer`}
+                  />
+                ) : null}
                 <Button
                   label="Count & close"
                   size="sm"
@@ -156,8 +170,9 @@ const styles = StyleSheet.create({
   figure: { alignItems: "flex-end" },
   figureValue: { ...typography.heading, color: colors.textPrimary },
   figureLabel: { ...typography.small, color: colors.textTertiary },
-  actions: { flexDirection: "row", gap: spacing.sm },
-  flex: { flex: 1 },
+  // Three actions wrap on a narrow phone instead of squeezing their labels.
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  flex: { flex: 1, minWidth: 120 },
   free: {
     flexDirection: "row",
     alignItems: "center",

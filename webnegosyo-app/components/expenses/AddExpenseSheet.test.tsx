@@ -6,6 +6,7 @@ import { ExpenseUndoHost } from "./ExpenseUndoHost";
 import { expenseUndoStore } from "../../stores/expense-undo-store";
 import { commitQueuedExpense, pendingExpenses, queueExpense, undoExpense } from "../../lib/expenses/live-expense-queue";
 import type { AddExpenseMode } from "../../lib/expenses/add-expense-form";
+import type { BillPayContext } from "../../lib/expenses/bills-screen";
 import type { ExpenseCategory } from "../../lib/expenses/types";
 
 const mockSession = { isDemo: false };
@@ -313,5 +314,84 @@ describe("Android back", () => {
 
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("Note")).toBeNull();
+  });
+});
+
+describe("Take from a cashier's drawer (+ Expense)", () => {
+  const ben = { shiftId: "shift-ben", drawerName: "Cashier 1", staffName: "Ben", isMine: false, availableCents: null };
+  const ana = { shiftId: "shift-ana", drawerName: "Cashier 2", staffName: "Ana", isMine: false, availableCents: null };
+
+  it("offers no Cashier drawer when no open drawer may be taken from", () => {
+    const screen = render(<AddExpenseSheet visible mode={bookMode} drawers={[]} onClose={jest.fn()} />);
+    expect(screen.queryByLabelText("Paid from Cashier drawer")).toBeNull();
+  });
+
+  it("one open drawer is picked at once and the sheet pays from it, today", async () => {
+    // Arrange
+    const onClose = jest.fn();
+    const screen = render(<AddExpenseSheet visible mode={bookMode} drawers={[ben]} onClose={onClose} />);
+
+    // Act
+    fireEvent.press(screen.getByLabelText("Paid from Cashier drawer"));
+    typeAmount(screen, ["3", "0", "0"]);
+    fireEvent.press(screen.getByLabelText("Gas / LPG"));
+
+    // Assert: the drawer's sheet — its chip, its button, no date or Save + next
+    expect(screen.getByText("Pay from the drawer")).toBeTruthy();
+    expect(screen.getByText("Cashier 1 drawer · Ben's shift")).toBeTruthy();
+    expect(screen.queryByLabelText("Change drawer")).toBeNull();
+    expect(screen.queryByTestId("expense-extra-date")).toBeNull();
+    expect(screen.queryByTestId("expense-save-next")).toBeNull();
+    fireEvent.press(screen.getByTestId("expense-save"));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(jest.mocked(queueExpense).mock.calls[0][0].payload).toEqual({
+      kind: "drawer",
+      input: expect.objectContaining({ shiftId: "shift-ben", amountCents: 30_000, categoryId: "lpg" }),
+    });
+  });
+
+  it("several open drawers ask which, and Change picks another", () => {
+    const screen = render(<AddExpenseSheet visible mode={bookMode} drawers={[ben, ana]} onClose={jest.fn()} />);
+
+    fireEvent.press(screen.getByLabelText("Paid from Cashier drawer"));
+    expect(screen.getByText("Pay from which drawer?")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Cashier 2 · Ana"));
+    expect(screen.getByText("Cashier 2 drawer · Ana's shift")).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText("Change drawer"));
+    fireEvent.press(screen.getByLabelText("Cashier 1 · Ben"));
+    expect(screen.getByText("Cashier 1 drawer · Ben's shift")).toBeTruthy();
+  });
+
+  it("picking another source goes back to the book", async () => {
+    const onClose = jest.fn();
+    const screen = render(<AddExpenseSheet visible mode={bookMode} drawers={[ben]} onClose={onClose} />);
+    fireEvent.press(screen.getByLabelText("Paid from Cashier drawer"));
+    fireEvent.press(screen.getByLabelText("Paid from GCash"));
+
+    expect(screen.getByText("New expense")).toBeTruthy();
+    expect(screen.queryByText("Cashier 1 drawer · Ben's shift")).toBeNull();
+    typeAmount(screen, ["5", "0"]);
+    fireEvent.press(screen.getByLabelText("Gas / LPG"));
+    fireEvent.press(screen.getByTestId("expense-save"));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(jest.mocked(queueExpense).mock.calls[0][0].payload).toMatchObject({ kind: "book", draft: { paidFrom: "gcash" } });
+  });
+
+  it("a drawer that closed meanwhile (gone from the list) is no longer picked", () => {
+    const screen = render(<AddExpenseSheet visible mode={bookMode} drawers={[ben]} onClose={jest.fn()} />);
+    fireEvent.press(screen.getByLabelText("Paid from Cashier drawer"));
+    screen.rerender(<AddExpenseSheet visible mode={bookMode} drawers={[]} onClose={jest.fn()} />);
+    expect(screen.getByText("New expense")).toBeTruthy();
+    expect(screen.queryByLabelText("Paid from Cashier drawer")).toBeNull();
+  });
+
+  it("a bill is never paid from a picked drawer", () => {
+    const bill: BillPayContext = {
+      billId: "b1", name: "Rent", dueOn: "2026-10-26", amountCents: 1_500_000, usualCents: null, lastCents: null,
+      categoryId: "lpg", paidFrom: "bank" as const, paidToName: null, supplierId: null, outletId: null,
+    };
+    const screen = render(<AddExpenseSheet visible mode={bookMode} drawers={[ben]} bill={bill} onClose={jest.fn()} />);
+    expect(screen.queryByLabelText("Paid from Cashier drawer")).toBeNull();
   });
 });

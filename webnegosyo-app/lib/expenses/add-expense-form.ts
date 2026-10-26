@@ -264,8 +264,9 @@ export function toBookDraft(
 
 export function toDrawerDraft(
   form: AddExpenseForm,
-  input: { clientRequestId: string; shiftId: string; category: ExpenseCategory },
+  input: { clientRequestId: string; shiftId: string; category: ExpenseCategory; tracksStock: boolean },
 ): DrawerExpenseDraft {
+  const isStockPurchase = asksStockQuestion(input.category, input.tracksStock) && form.isStockPurchase === true;
   return {
     shiftId: input.shiftId,
     amountCents: keypadCents(form.keypad),
@@ -273,6 +274,8 @@ export function toDrawerDraft(
     note: trimmedOrNull(form.note, NOTE_MAX),
     paidToName: trimmedOrNull(form.paidToName, PAID_TO_MAX),
     clientRequestId: input.clientRequestId,
+    // Only a Yes is sent: a "No" is the database's default, and stays readable by a database without the flag.
+    ...(isStockPurchase ? { isStockPurchase: true } : {}),
   };
 }
 

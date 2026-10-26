@@ -25,6 +25,7 @@ import { CountDrawerSheet, type CountTarget } from "./drawer/CountDrawerSheet";
 import { AddExpenseSheet, type ExpenseSheetScope } from "./expenses/AddExpenseSheet";
 import { CloseShiftSheet } from "./drawer/CloseShiftSheet";
 import { useDrawerExpenses } from "../lib/expenses/use-drawer-expenses";
+import { drawerModeFor, floorDrawerSource, type DrawerMode } from "../lib/expenses/drawer-sources";
 import { REFUSED_BLOCKS_CLOSE, payoutLines, summarizeShiftPayouts } from "../lib/expenses/drawer-expenses";
 import { formatPeso as formatCentsPeso } from "../lib/expenses/keypad";
 import { liveExpenseDb } from "../lib/expenses/expense-client";
@@ -193,6 +194,8 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const [pendingClose, setPendingClose] = useState<PendingClose | null>(null);
   // "Pay an expense" / "Take out cash" from my own drawer (plan §4.1).
   const [expenseScope, setExpenseScope] = useState<ExpenseSheetScope | null>(null);
+  // "Pay expense" on a cashier's drawer from the owner's floor ("Take from a cashier's drawer").
+  const [floorExpense, setFloorExpense] = useState<DrawerMode | null>(null);
   // The register asked to pay out with no shift open: say so on the clock-in card.
   const [payOutHint, setPayOutHint] = useState<string | null>(null);
   // What this person did to web orders during the shift. Read separately
@@ -506,6 +509,19 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     setExpenseScope(scope);
   };
 
+  // What that drawer should hold, less what this phone already paid out of it and has not synced.
+  const openFloorExpense = (row: FloorRow) => {
+    if (refuseInDemo()) return;
+    const ready = row.expectation.state === "ready" ? row.expectation.value.reconciliation : null;
+    const source = floorDrawerSource(row.shift, {
+      isMine: row.isMine,
+      expectedInDrawer: ready ? ready.expectedInDrawer : null,
+      pendingCents: drawerExpenses.pendingFor(row.shift.id).cents,
+    });
+    setMoveTarget(null);
+    setFloorExpense(drawerModeFor(source));
+  };
+
   // The register's "Pay out": open "Pay from the drawer" once the drawer is known.
   // The parent may hand a new callback every render: read it from a ref so the
   // request is acted on once, not again on each render before it is cleared.
@@ -602,6 +618,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           nowMs={nowMs}
           onCollect={(row) => openMoveSheet(row.shift, row.expectation, ["collect"])}
           onCount={(row) => openCountSheet(row.shift, row.expectation)}
+          onPayExpense={drawerExpenses.isReady ? openFloorExpense : undefined}
           onManage={() => router.push(CASH_SETUP_ROUTE)}
         />
       ) : null}
@@ -627,6 +644,17 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
             availableCents,
           }}
           onClose={() => setExpenseScope(null)}
+          onCommitted={() => {
+            void floor.reload();
+            void drawerExpenses.reloadPayouts();
+          }}
+        />
+      ) : null}
+      {floorExpense ? (
+        <AddExpenseSheet
+          visible
+          mode={floorExpense}
+          onClose={() => setFloorExpense(null)}
           onCommitted={() => {
             void floor.reload();
             void drawerExpenses.reloadPayouts();

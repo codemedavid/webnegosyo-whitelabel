@@ -224,6 +224,14 @@ describe("recordDrawerExpense", () => {
     ]);
   });
 
+  it("sends the stock answer only when it is yes (older databases take eight arguments)", async () => {
+    const { db, rpcCalls } = fakeDb({}, { record_drawer_expense: { data: "e2", error: null } });
+    await recordDrawerExpense(db, { ...input, isStockPurchase: true });
+    await recordDrawerExpense(db, { ...input, isStockPurchase: false });
+    expect(rpcCalls[0][1]).toMatchObject({ p_is_stock_purchase: true });
+    expect(rpcCalls[1][1]).not.toHaveProperty("p_is_stock_purchase");
+  });
+
   it("turns a closed shift into words", async () => {
     const { db } = fakeDb(
       {},

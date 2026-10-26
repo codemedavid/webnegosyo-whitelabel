@@ -42,7 +42,8 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 import { centeredDialog, useCenteredDialog } from "../pos/dialog-layout";
-import { BackRow, Chip, DrawerLine, ExtrasRow, FoldInput, PaidFromRow, RepeatRow, StockQuestion } from "./AddExpenseParts";
+import { drawerModeFor, type DrawerSource } from "../../lib/expenses/drawer-sources";
+import { BackRow, Chip, DrawerLine, DrawerPickList, ExtrasRow, FoldInput, PaidFromRow, RepeatRow, StockQuestion } from "./AddExpenseParts";
 import { CategoryGrid, CategoryList } from "./CategoryPicker";
 import { ExpenseAmount } from "./ExpenseAmount";
 import { ExpenseDatePicker, IS_DATE_PICKER_INLINE } from "./ExpenseDatePicker";
@@ -61,7 +62,8 @@ const SHEET_RADIUS = 22;
 /** A centred dialog on a tablet stops growing here. */
 const MAX_DIALOG_HEIGHT = 820;
 
-type Panel = "note" | "paidTo" | "date" | "all" | null;
+type Panel = "note" | "paidTo" | "date" | "all" | "drawers" | null;
+const NO_DRAWERS: readonly DrawerSource[] = [];
 
 interface AddExpenseSheetProps {
   visible: boolean;
@@ -83,6 +85,11 @@ interface AddExpenseSheetProps {
    * picked, and the saved expense linked to that due date.
    */
   bill?: BillPayContext | null;
+  /**
+   * "+ Expense" only: the open drawers this person may take from ("Take from
+   * a cashier's drawer"). Picking one runs the sheet in drawer mode on it.
+   */
+  drawers?: readonly DrawerSource[];
 }
 
 /**
@@ -91,7 +98,8 @@ interface AddExpenseSheetProps {
  * three taps for a repeat. "Save" closes it; "Save + next" keeps it open and
  * empty for the next line of a palengke run. Either way the global undo bar
  * (`ExpenseUndoHost`) says "Saved · … · Undo" for 6 s, on whatever screen is
- * left. In drawer mode it is "Pay from the drawer": today, from that drawer.
+ * left. In drawer mode it is "Pay from the drawer": today, from that drawer —
+ * opened so from the register, or picked as "Cashier drawer" in "+ Expense".
  */
 export function AddExpenseSheet({
   visible,
@@ -104,6 +112,7 @@ export function AddExpenseSheet({
   initialNote,
   initialIsStockPurchase,
   bill = null,
+  drawers = NO_DRAWERS,
 }: AddExpenseSheetProps) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -113,13 +122,20 @@ export function AddExpenseSheet({
   const { categories, isLoading: isLoadingCategories, error: categoriesError } = useExpenseCategories();
   const { expenses: recent } = useRecentExpenses(visible);
   const tracksStock = useTracksStock();
-  const { isSaving, save } = useExpenseSave({ mode, tracksStock, onCommitted, bill });
 
   const opening = { initialCategoryId, initialAmountCents, initialNote, initialIsStockPurchase, bill };
   const [form, setForm] = useState<AddExpenseForm>(() => formForOpening({ ...opening, today: manilaToday(), paidFrom: "cash" }));
   const [panel, setPanel] = useState<Panel>(null);
   const [receipt, setReceipt] = useState<CapturedReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [drawerPickId, setDrawerPickId] = useState<string | null>(null);
+
+  // A bill and "Take out cash" never come from a picked drawer (Bills plan: no drawer).
+  const offeredDrawers = mode.kind === "book" && scope === "spend" && bill === null ? drawers : NO_DRAWERS;
+  // Gone from the list (that shift closed on a re-read) = no longer picked.
+  const drawerPick = offeredDrawers.find((drawer) => drawer.shiftId === drawerPickId) ?? null;
+  const activeMode: AddExpenseMode = drawerPick ? drawerModeFor(drawerPick) : mode;
+  const { isSaving, save } = useExpenseSave({ mode: activeMode, tracksStock, onCommitted, bill });
 
   // The caller's values are applied every time the sheet opens, and again if they change while open.
   const openKey = visible
@@ -134,6 +150,7 @@ export function AddExpenseSheet({
     setPanel(null);
     setReceipt(null);
     setError(null);
+    setDrawerPickId(null);
     // `opening` is read only when the key (which is built from it) changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openKey]);
@@ -150,7 +167,7 @@ export function AddExpenseSheet({
   const billBranch = bill ? payBranchLine(bill) : null;
   const category: ExpenseCategory | null = offered.find((c) => c.id === form.categoryId) ?? null;
   const cents = keypadCents(form.keypad);
-  const isDrawer = mode.kind === "drawer";
+  const isDrawer = activeMode.kind === "drawer";
   const hasNextButton = !isDrawer && scope === "spend" && !isBill;
   const today = manilaToday();
 
@@ -183,6 +200,13 @@ export function AddExpenseSheet({
   };
 
   const pickReceipt = () => promptForReceipt(receipt, setReceipt);
+
+  const chooseDrawer = (drawer: DrawerSource | null) => {
+    setDrawerPickId(drawer?.shiftId ?? null);
+    setError(null);
+  };
+  // One open drawer is picked at once; several ask which.
+  const onDrawerChoice = () => (offeredDrawers.length === 1 ? chooseDrawer(offeredDrawers[0]) : setPanel("drawers"));
 
   const submit = async (keepOpen: boolean) => {
     const outcome = await save({ form, category, receipt });
@@ -220,9 +244,9 @@ export function AddExpenseSheet({
     onPaidTo: () => togglePanel("paidTo"),
   });
 
-  const afterCents = drawerAfterCents(mode, cents);
+  const afterCents = drawerAfterCents(activeMode, cents);
   const isTyping = panel === "note" || panel === "paidTo";
-  const label = primaryLabel(cents, mode, scope, form.categoryId !== null, bill);
+  const label = primaryLabel(cents, activeMode, scope, form.categoryId !== null, bill);
   const sheetFrame = isCentered
     ? [centeredDialog.sheet, { height: Math.min(height - spacing.xl * 2, MAX_DIALOG_HEIGHT), paddingBottom: spacing.lg }]
     : { flex: 1, marginTop: insets.top + SCRIM_GAP, paddingBottom: Math.max(insets.bottom, spacing.md) };
@@ -269,7 +293,23 @@ export function AddExpenseSheet({
             ))}
           </View>
         ) : null}
-        {mode.kind === "book" ? <PaidFromRow value={form.paidFrom} onPick={(paidFrom) => update({ ...form, paidFrom })} /> : null}
+        {mode.kind === "book" ? (
+          <PaidFromRow
+            value={form.paidFrom}
+            onPick={(paidFrom) => {
+              chooseDrawer(null);
+              update({ ...form, paidFrom });
+            }}
+            drawerChoice={offeredDrawers.length > 0 ? { isOn: drawerPick !== null, onPress: onDrawerChoice } : null}
+          />
+        ) : null}
+        {drawerPick && activeMode.kind === "drawer" ? (
+          <DrawerLine
+            chipLabel={drawerChipLabel(activeMode)}
+            availableCents={activeMode.availableCents}
+            onChange={offeredDrawers.length > 1 ? () => setPanel("drawers") : undefined}
+          />
+        ) : null}
       </View>
       <View style={styles.middle}>
         <ScrollView contentContainerStyle={styles.middleBody} keyboardShouldPersistTaps="handled">
@@ -356,7 +396,7 @@ export function AddExpenseSheet({
           {isCentered ? null : <View style={styles.grab} />}
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-              {sheetTitle(mode, scope, bill)}
+              {sheetTitle(activeMode, scope, bill)}
             </Text>
             <TouchableOpacity onPress={close} disabled={isSaving} style={styles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={styles.cancelText}>Cancel</Text>
@@ -371,6 +411,20 @@ export function AddExpenseSheet({
                   selectedId={form.categoryId}
                   onPick={(picked) => {
                     update(selectCategory(form, picked.id));
+                    setPanel(null);
+                  }}
+                />
+              </ScrollView>
+            </View>
+          ) : panel === "drawers" ? (
+            <View style={styles.middle}>
+              <BackRow label="Pay from which drawer?" onBack={() => setPanel(null)} />
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.middleBody}>
+                <DrawerPickList
+                  drawers={offeredDrawers}
+                  selectedId={drawerPick?.shiftId ?? null}
+                  onPick={(drawer) => {
+                    chooseDrawer(drawer);
                     setPanel(null);
                   }}
                 />

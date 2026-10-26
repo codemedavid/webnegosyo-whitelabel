@@ -6,7 +6,7 @@ import { CircleCheck, Lock, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { addDays } from '@/lib/expenses/manila-date'
 import { MAX_DAYS_BACK } from '@/lib/expenses/validation'
-import type { Expense, ExpenseCategory, Supplier } from '@/lib/expenses/types'
+import type { Expense, ExpenseCategory, PayableDrawer, Supplier } from '@/lib/expenses/types'
 import { cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { AmountField, BranchField, DateField, NoteField, PaidFromField, YesNoField } from './expense-form-fields'
@@ -14,16 +14,18 @@ import {
   FIELD_ORDER,
   blankForm,
   buildDraft,
+  buildDrawerDraft,
   buildPatch,
   formFromExpense,
   hasErrors,
   validateForm,
+  withDrawer,
   type ExpenseFormState,
   type FormErrors,
   type WebPaidFrom,
 } from './expense-form-model'
 import { formatPeso } from './expense-format'
-import { recordExpense, replaceExpense, saveSupplier, voidExpense } from './expense-mutations'
+import { listPayableDrawers, recordDrawerExpense, recordExpense, replaceExpense, saveSupplier, voidExpense } from './expense-mutations'
 import { InvoiceDetailsFields } from './invoice-details-fields'
 import { CategoryPicker, SupplierPicker } from './pickers'
 import { keepOpenWhileListOpen } from './combobox'
@@ -150,6 +152,9 @@ function ExpenseForm({
   const [isDragging, setIsDragging] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [localSuppliers, setLocalSuppliers] = useState<readonly Supplier[]>(suppliers)
+  const [drawers, setDrawers] = useState<readonly PayableDrawer[]>([])
+  // "Take from a cashier's drawer": a new expense only — never a fix, never a bill (Bills plan: no drawer).
+  const canOfferDrawers = mode === 'add' && billPayment === null
 
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
   const category = form.categoryId ? categoriesById.get(form.categoryId) : undefined
@@ -164,6 +169,21 @@ function ExpenseForm({
   useEffect(() => {
     if (!isDrawerFix) amountRef.current?.focus()
   }, [isDrawerFix])
+
+  // Read once per opening (the form remounts per opening), so a shift closed meanwhile is not offered.
+  useEffect(() => {
+    if (!canOfferDrawers) return
+    let isActive = true
+    void listPayableDrawers(tenantSlug).then((result) => {
+      // Unreadable = no drawer offered; the other sources still work.
+      if (isActive && result.ok) setDrawers(result.data)
+    })
+    return () => {
+      isActive = false
+    }
+  }, [canOfferDrawers, tenantSlug])
+
+  const pickedDrawer = drawers.find((drawer) => drawer.shiftId === form.drawerShiftId) ?? null
 
   function update(patch: Partial<ExpenseFormState>): void {
     setForm((current) => ({ ...current, ...patch }))
@@ -281,9 +301,18 @@ function ExpenseForm({
       return
     }
 
-    const draft = buildDraft(form, savedAmount, requestId, category)
-    const billLink = billPayment ? { billId: billPayment.billId, billDueOn: billPayment.billDueOn } : {}
-    const result = await recordExpense(tenantSlug, { ...draft, ...billLink })
+    if (form.drawerShiftId !== null && !pickedDrawer) {
+      // Never fall back to the book with the drawer's date and branch still locked in.
+      setIsSaving(false)
+      setSubmitError('That drawer is no longer open. Pick another drawer or source.')
+      return
+    }
+    const result = pickedDrawer
+      ? await recordDrawerExpense(tenantSlug, buildDrawerDraft(form, savedAmount, requestId, category))
+      : await recordExpense(tenantSlug, {
+          ...buildDraft(form, savedAmount, requestId, category),
+          ...(billPayment ? { billId: billPayment.billId, billDueOn: billPayment.billDueOn } : {}),
+        })
     setIsSaving(false)
     if (!result.ok) {
       // Same request id on retry: the server returns the first save, never a copy.
@@ -298,9 +327,13 @@ function ExpenseForm({
       onOpenChange(false)
       return
     }
-    // Stay open for the next one (palengke runs come in batches); keep the date, source and branch.
+    // Stay open for the next one (palengke runs come in batches); keep the date, source (or drawer) and branch.
     setLastSaved(label)
-    setForm((current) => ({ ...blankForm({ today, paidFrom: current.paidFrom, outletId: current.outletId }), spentOn: current.spentOn }))
+    setForm((current) => ({
+      ...blankForm({ today, paidFrom: current.paidFrom, outletId: current.outletId }),
+      spentOn: current.spentOn,
+      drawerShiftId: current.drawerShiftId,
+    }))
     setErrors({})
     setFiles([])
     setFileProblems([])
@@ -428,7 +461,7 @@ function ExpenseForm({
               max={today}
               onChange={(spentOn) => update({ spentOn })}
               error={errors.spentOn}
-              isLocked={isDrawerFix}
+              isLocked={isDrawerFix || pickedDrawer !== null}
             />
             {isMultiBranch || billBranchId ? (
               <BranchField
@@ -436,7 +469,7 @@ function ExpenseForm({
                 value={form.outletId}
                 onChange={(outletId) => update({ outletId })}
                 lockedLabel={branchLabel}
-                isLocked={isDrawerFix}
+                isLocked={isDrawerFix || pickedDrawer !== null}
               />
             ) : (
               <div className="hidden sm:block" />
@@ -448,7 +481,17 @@ function ExpenseForm({
               <span className="font-semibold text-wn-ink">Paid from:</span> the cashier’s drawer
             </p>
           ) : (
-            <PaidFromField value={form.paidFrom} onChange={(paidFrom: WebPaidFrom) => update({ paidFrom })} />
+            <PaidFromField
+              value={form.paidFrom}
+              onChange={(paidFrom: WebPaidFrom) => setForm((current) => ({ ...withDrawer(current, null, today), paidFrom }))}
+              drawers={canOfferDrawers ? drawers : []}
+              drawerShiftId={pickedDrawer?.shiftId ?? null}
+              onPickDrawer={(drawer) => {
+                setForm((current) => withDrawer(current, drawer, today))
+                // The drawer pays today, so a date error no longer applies.
+                setErrors((current) => Object.fromEntries(Object.entries(current).filter(([field]) => field !== 'spentOn')))
+              }}
+            />
           )}
 
           <SupplierPicker
@@ -484,14 +527,19 @@ function ExpenseForm({
             problems={fileProblems}
           />
 
-          <InvoiceDetailsFields
-            idPrefix={idPrefix}
-            value={form}
-            onChange={update}
-            amountCents={amountCents}
-            errors={errors}
-            defaultOpen={hasInvoiceDetails}
-          />
+          {pickedDrawer ? (
+            // The drawer path records the cash out; VAT and invoice numbers go on afterwards (Edit details).
+            <p className="text-[12.5px] text-wn-stone">Invoice and VAT details can be added from the expense after you save.</p>
+          ) : (
+            <InvoiceDetailsFields
+              idPrefix={idPrefix}
+              value={form}
+              onChange={update}
+              amountCents={amountCents}
+              errors={errors}
+              defaultOpen={hasInvoiceDetails}
+            />
+          )}
 
           {mode === 'fix' && (
             <div className="flex flex-col gap-1.5">
