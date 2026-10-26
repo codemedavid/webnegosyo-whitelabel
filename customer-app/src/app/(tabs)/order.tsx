@@ -101,36 +101,40 @@ export default function OrderScreen() {
         <>
           {query === '' ? <CategoryChips categories={menu.sections} activeIndex={activeSection} onSelect={jumpToSection} /> : null}
           <View style={{ height: 1, backgroundColor: colors.border }} />
-          <FlashList
-            ref={listRef}
-            data={menu.rows}
-            keyExtractor={(row) => row.key}
-            getItemType={(row) => row.type}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={{ itemVisiblePercentThreshold: 10 }}
-            contentContainerStyle={{ paddingBottom: 140 }}
-            ListEmptyComponent={
-              <AppText variant="body" color="textMuted" align="center" style={{ marginTop: space.xxl }}>
-                Nothing matches “{query}”.
-              </AppText>
-            }
-            renderItem={({ item: row }) =>
-              row.type === 'header' ? (
-                <View style={{ paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.xs }}>
-                  <AppText variant="title" accessibilityRole="header">
-                    {row.category.name}
-                  </AppText>
-                  {row.category.description ? (
-                    <AppText variant="callout" color="textMuted">
-                      {row.category.description}
+          <View style={{ flex: 1 }}>
+            <FlashList
+              ref={listRef}
+              // The screen already pads for the notch; iOS would add the safe area again on top of the list.
+              contentInsetAdjustmentBehavior="never"
+              data={menu.rows}
+              keyExtractor={(row) => row.key}
+              getItemType={(row) => row.type}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={{ itemVisiblePercentThreshold: 10 }}
+              contentContainerStyle={{ paddingBottom: 140 }}
+              ListEmptyComponent={
+                <AppText variant="body" color="textMuted" align="center" style={{ marginTop: space.xxl }}>
+                  Nothing matches “{query}”.
+                </AppText>
+              }
+              renderItem={({ item: row }) =>
+                row.type === 'header' ? (
+                  <View style={{ paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.xs }}>
+                    <AppText variant="title" accessibilityRole="header">
+                      {row.category.name}
                     </AppText>
-                  ) : null}
-                </View>
-              ) : (
-                <MenuItemRow item={row.item} />
-              )
-            }
-          />
+                    {row.category.description ? (
+                      <AppText variant="callout" color="textMuted">
+                        {row.category.description}
+                      </AppText>
+                    ) : null}
+                  </View>
+                ) : (
+                  <MenuItemRow item={row.item} />
+                )
+              }
+            />
+          </View>
         </>
       )}
     </View>
