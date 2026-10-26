@@ -107,6 +107,10 @@ export function AppleAddressAutocomplete({
   // Bumped by every keystroke: a pick still resolving when the diner types on
   // must not overwrite what they typed.
   const editGenerationRef = useRef(0)
+  // The last address this field wrote itself (a search pick, a named pin).
+  // Anything else in the box is the customer's own words, and a pin never
+  // overwrites those.
+  const machineAddressRef = useRef<string | null>(null)
   const listId = useId()
   const isListOpen = isFocused && suggestions.length > 0
   const startPoint = pin ?? biasCenter ?? DEFAULT_CENTER
@@ -135,6 +139,7 @@ export function AppleAddressAutocomplete({
   const handleSuggestionPick = useCallback(
     async (suggestion: AddressSuggestion) => {
       clearSuggestions()
+      machineAddressRef.current = suggestion.label
       onChange(suggestion.label)
       const generation = editGenerationRef.current
       const selection = await resolveSuggestion(suggestion)
@@ -168,9 +173,13 @@ export function AppleAddressAutocomplete({
     async (point: LatLng) => {
       const label = pending?.label ?? null
       const keepsLabel = label !== null && pending !== null && isNear(point, pending.start, KEEP_PICKED_LABEL_KM)
-      // A store's typed address is what its customers read; moving the pin never rewrites it.
-      const keepsTyped = purpose === 'store' && value.trim() !== ''
+      const hasText = value.trim() !== ''
+      // The customer's own words (a house number, "near the chapel") are what
+      // the rider needs; a store's typed address is what its customers read.
+      // Moving the pin never rewrites either — only text this field wrote.
+      const keepsTyped = hasText && (purpose === 'store' || value !== machineAddressRef.current)
       const address = keepsTyped ? value : keepsLabel ? label : await reverseGeocode(point)
+      machineAddressRef.current = keepsTyped ? machineAddressRef.current : address
       setPin(point)
       onChange(address, point, { isConfirmed: true })
     },

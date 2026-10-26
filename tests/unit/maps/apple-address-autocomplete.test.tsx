@@ -324,3 +324,109 @@ describe('pin preview', () => {
     expect(await screen.findByRole('dialog', { name: 'Is this the exact spot?' })).toBeInTheDocument()
   })
 })
+
+describe('what a confirmed pin writes into the address', () => {
+  async function renderControlled(onChange = jest.fn(), initialValue = '') {
+    const React = await import('react')
+    const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
+    function Controlled() {
+      const [value, setValue] = React.useState(initialValue)
+      const [pin, setPin] = React.useState<{ lat: number; lng: number } | null>(null)
+      return (
+        <AppleAddressAutocomplete
+          value={value}
+          coordinates={pin}
+          onChange={(address, coordinates, meta) => {
+            setValue(address)
+            setPin(coordinates ?? null)
+            onChange(address, coordinates, meta)
+          }}
+          fallback={<p>mapbox field</p>}
+        />
+      )
+    }
+    render(<Controlled />)
+    return onChange
+  }
+
+  it('keeps an address the customer typed when they set the pin on the map', async () => {
+    // Arrange
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const onChange = await renderField(jest.fn(), { value: 'Blk 4 Lot 12, Mabuhay Homes' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Set pin on map' }))
+    await waitFor(() => expect(maps.length).toBeGreaterThan(0))
+    const map = maps[maps.length - 1]
+
+    // Act: drag the map somewhere, then Confirm
+    await act(async () => {
+      map.center = { latitude: 14.56, longitude: 121.03 }
+      map.listeners['region-change-end']({})
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    // Assert: their words, not the reverse-geocoded "6764 Ayala Avenue"
+    expect(onChange).toHaveBeenLastCalledWith('Blk 4 Lot 12, Mabuhay Homes', { lat: 14.56, lng: 121.03 }, { isConfirmed: true })
+  })
+
+  it('keeps typed words through a later "Change pin" too', async () => {
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const onChange = await renderControlled(jest.fn(), 'Purok 3, near the chapel')
+    fireEvent.click(await screen.findByRole('button', { name: 'Set pin on map' }))
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm this spot' }))
+    })
+    expect(onChange).toHaveBeenLastCalledWith('Purok 3, near the chapel', expect.any(Object), { isConfirmed: true })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Change pin' }))
+    await waitFor(() => expect(maps.length).toBeGreaterThan(1))
+    const map = maps[maps.length - 1]
+    await act(async () => {
+      map.center = { latitude: 14.56, longitude: 121.03 }
+      map.listeners['region-change-end']({})
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+    expect(onChange).toHaveBeenLastCalledWith('Purok 3, near the chapel', { lat: 14.56, lng: 121.03 }, { isConfirmed: true })
+  })
+
+  it('still names the new spot when the address came from a search, not the customer', async () => {
+    // Arrange: pick a searched place and confirm it
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const onChange = await renderControlled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+    fireEvent.focus(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'greenbelt' } })
+    const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+    await act(async () => {
+      fireEvent.mouseDown(option)
+    })
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm this spot' }))
+    })
+    fireEvent.blur(screen.getByRole('combobox'))
+
+    // Act: Change pin, move ~900 m, Confirm
+    fireEvent.click(await screen.findByRole('button', { name: 'Change pin' }))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Is this the exact spot?' })).toBeInTheDocument())
+    const map = maps[maps.length - 1]
+    await act(async () => {
+      map.center = { latitude: 14.56, longitude: 121.03 }
+      map.listeners['region-change-end']({})
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    // Assert
+    expect(onChange).toHaveBeenLastCalledWith('6764 Ayala Avenue, Makati', { lat: 14.56, lng: 121.03 }, { isConfirmed: true })
+  })
+})
