@@ -24,13 +24,7 @@
  *
  * Pure: nothing here reads the clock or the network.
  */
-import {
-  nextBusinessDayKey,
-  previousBusinessDayKey,
-  resolveBusinessDayWindow,
-  toBusinessDayKey,
-  type BusinessDayWindow,
-} from '@/lib/inventory/business-day'
+import { nextBusinessDayKey, previousBusinessDayKey, resolveBusinessDayWindow, toBusinessDayKey, type BusinessDayWindow } from '@/lib/inventory/business-day'
 
 export interface CutoffChange {
   /** First business day (YYYY-MM-DD) that starts at this cutoff. */
