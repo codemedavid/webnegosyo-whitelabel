@@ -21,6 +21,7 @@ import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { syncStockForStatusChange } from "../../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../../lib/loyverse-confirm";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
+import { useHasPermission } from "../../../lib/use-has-permission";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
 import { CollectPaymentSheet } from "../../../components/order/CollectPaymentSheet";
 import { PaymentDecisionSheet } from "../../../components/order/PaymentDecisionSheet";
@@ -532,6 +533,9 @@ export default function OrderDetailScreen() {
   const [isCancelSheetOpen, setCancelSheetOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const activityTenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  // Booking, syncing and cancelling a rider need "orders" (the web route
+  // refuses everyone else), so other staff do not see buttons that cannot work.
+  const canManageRider = useHasPermission("orders");
 
   const gateRequest = order
     ? {
@@ -1034,7 +1038,7 @@ export default function OrderDetailScreen() {
         </Card>
       )}
 
-      <LalamoveDeliveryCard order={order} />
+      {canManageRider && <LalamoveDeliveryCard order={order} />}
 
       {order.paymentMethod && (() => {
         const paymentRef = order.customerData?.payment_proof_reference;

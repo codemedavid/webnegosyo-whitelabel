@@ -13,8 +13,13 @@ import { getClientIP } from '@/lib/rate-limit'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** A client registers once per connection attempt; Cursor retries a few times. */
-const REGISTER_RATE_LIMIT: RateLimitOptions = { limit: 20, windowSec: 600, onRedisFailure: 'instance' }
+/**
+ * A client registers once per connection attempt; Cursor retries a few times.
+ * Hosted connectors (claude.ai, ChatGPT) register from shared egress IPs, and
+ * the busiest live hour so far saw 36 registrations, so the cap sits well
+ * above that while still bounding a flood from one address.
+ */
+const REGISTER_RATE_LIMIT: RateLimitOptions = { limit: 100, windowSec: 600, onRedisFailure: 'instance' }
 
 export async function POST(req: Request): Promise<Response> {
   const ip = getClientIP(req) ?? 'unknown'
