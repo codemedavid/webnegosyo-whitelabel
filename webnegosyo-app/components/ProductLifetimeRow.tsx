@@ -42,21 +42,25 @@ interface ProductLifetimeRowProps {
   rank: number;
   /** The list leader's revenue, hoisted so a hundred rows do not each re-read it. */
   maxRevenue: number;
-  onPress: (item: ProductLifetimeItem) => void;
+  /** Opens the cost editor. Absent when the account may not set costs: the row is then read-only. */
+  onPress?: (item: ProductLifetimeItem) => void;
 }
 
 function ProductLifetimeRowComponent({ item, rank, maxRevenue, onPress }: ProductLifetimeRowProps) {
   const bcg = BCG_PRESENTATION[item.bcgClassification] ?? BCG_PRESENTATION.unclassified;
   const barPct = revenueBarPercent(item.totalRevenue, maxRevenue);
-  const handlePress = useCallback(() => onPress(item), [onPress, item]);
+  const handlePress = useCallback(() => onPress?.(item), [onPress, item]);
+  const isEditable = onPress !== undefined;
+  const revenueLabel = `${item.menuItemName}, ${formatPeso(item.totalRevenue)} revenue`;
 
   return (
     <TouchableOpacity
       style={styles.row}
-      activeOpacity={0.7}
-      onPress={handlePress}
-      accessibilityRole="button"
-      accessibilityLabel={`${item.menuItemName}, ${formatPeso(item.totalRevenue)} revenue, set cost price`}
+      activeOpacity={isEditable ? 0.7 : 1}
+      onPress={isEditable ? handlePress : undefined}
+      disabled={!isEditable}
+      accessibilityRole={isEditable ? "button" : "summary"}
+      accessibilityLabel={isEditable ? `${revenueLabel}, set cost price` : revenueLabel}
     >
       <View style={styles.rowHeader}>
         <Text style={styles.rank}>#{rank}</Text>
@@ -78,7 +82,9 @@ function ProductLifetimeRowComponent({ item, rank, maxRevenue, onPress }: Produc
           {formatCount(item.totalUnitsSold)} sold
           {item.marginPercent !== undefined
             ? ` · ${item.marginPercent.toFixed(0)}% margin`
-            : " · tap to add cost"}
+            : isEditable
+              ? " · tap to add cost"
+              : ""}
         </Text>
       </View>
     </TouchableOpacity>

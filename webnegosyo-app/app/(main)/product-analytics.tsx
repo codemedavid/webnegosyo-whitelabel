@@ -22,6 +22,7 @@ import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
+import { useHasPermission } from "../../lib/use-has-permission";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { useCategories, useMenuCatalogCache, useProducts } from "../../lib/query/use-products";
@@ -262,6 +263,9 @@ export default function ProductAnalyticsScreen() {
     [scope, accountOrders],
   );
   const setCost = useSafeMutation(setCostRef);
+  // Setting a dish's cost needs "costs" (the database refuses everyone else),
+  // so analytics-only staff see the ranking without the cost editor.
+  const canEditCosts = useHasPermission("costs");
   const refreshAnalytics = useSafeAction(refreshRef);
 
   // The full menu, from the shared catalog cache, so every product shows even
@@ -494,14 +498,14 @@ export default function ProductAnalyticsScreen() {
         item={item}
         rank={index + 1}
         maxRevenue={maxRevenue}
-        onPress={openCostEditor}
+        onPress={canEditCosts ? openCostEditor : undefined}
       />
     ),
-    [maxRevenue, openCostEditor]
+    [maxRevenue, openCostEditor, canEditCosts]
   );
 
   const handleSaveCost = async () => {
-    if (!editing) return;
+    if (!editing || !canEditCosts) return;
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
