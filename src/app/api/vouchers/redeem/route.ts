@@ -120,7 +120,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // The branch the burn is attributed to: a branch-locked cashier's own
   // (naming another is refused), or for a store-wide account one of the
-  // store's branches or none. The body only ever proposes.
+  // store's branches or none. The body only ever proposes. A store-wide sale
+  // naming a branch that isn't the store's is burned under no branch rather
+  // than refused: the customer has already paid, and a refused burn would
+  // leave the code unspent.
   const requestedOutlet =
     typeof body?.outletId === 'string' && body.outletId.trim() !== '' ? body.outletId : null
   let outlet: Awaited<ReturnType<typeof resolveRouteOutlet>>
@@ -130,8 +133,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error('[vouchers/redeem] branch lookup failed:', error instanceof Error ? error.message : error)
     return NextResponse.json({ error: 'Could not check the branch. Try again.' }, { status: 503 })
   }
-  if (!outlet.ok) return outletRefusal(outlet)
-  const outletId = outlet.outletId
+  if (!outlet.ok && outlet.status !== 400) return outletRefusal(outlet)
+  const outletId = outlet.ok ? outlet.outletId : null
 
   const customerKey =
     typeof body?.customerKey === 'string' && body.customerKey.trim() !== ''
