@@ -18,6 +18,8 @@ jest.mock('@/app/checkout/confirmation/confirmation-content', () => ({
 import ConfirmationPage from '@/app/checkout/confirmation/page'
 import LegacyConfirmationPage from '@/app/checkout/confirmation/[ref]/page'
 import { notFound, redirect } from 'next/navigation'
+import { render, screen } from '@testing-library/react'
+import { CHECKOUT_LEAD_LOOKUP_RATE_LIMITED } from '@/lib/checkout-leads/confirmation'
 
 describe('checkout confirmation routing', () => {
   beforeEach(() => {
@@ -48,12 +50,22 @@ describe('checkout confirmation routing', () => {
     expect(notFound).not.toHaveBeenCalled()
   })
 
-  it('calls notFound when the lookup returns nothing (unknown or rate limited)', async () => {
-    fetchCheckoutLeadByRef.mockResolvedValue({ data: null, error: 'Too many lookups. Please try again later.' })
+  it('calls notFound when the reference is unknown', async () => {
+    fetchCheckoutLeadByRef.mockResolvedValue({ data: null, error: 'Not found' })
 
     await ConfirmationPage({ searchParams: Promise.resolve({ confirm: 'WN-20261026-ABCD2345' }) })
 
     expect(notFound).toHaveBeenCalled()
+  })
+
+  it('tells a rate-limited buyer to try again instead of showing page-not-found', async () => {
+    fetchCheckoutLeadByRef.mockResolvedValue({ data: null, error: CHECKOUT_LEAD_LOOKUP_RATE_LIMITED })
+
+    const page = await ConfirmationPage({ searchParams: Promise.resolve({ confirm: 'WN-20261026-ABCD2345' }) })
+    render(page)
+
+    expect(notFound).not.toHaveBeenCalled()
+    expect(screen.getByText(CHECKOUT_LEAD_LOOKUP_RATE_LIMITED)).toBeTruthy()
   })
 
   it('calls notFound when the confirm query param is missing', async () => {

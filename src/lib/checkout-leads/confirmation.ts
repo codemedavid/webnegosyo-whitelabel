@@ -14,6 +14,9 @@ export interface CheckoutLeadConfirmation {
   platform_payment_methods: Pick<PlatformPaymentMethod, 'name' | 'details' | 'qr_code_url'> | null
 }
 
+/** The lookup's answer to a connection over its limit; the page shows it instead of a 404. */
+export const CHECKOUT_LEAD_LOOKUP_RATE_LIMITED = 'Too many lookups. Please try again in a few minutes.'
+
 export const CHECKOUT_LEAD_CONFIRMATION_SELECT =
   'reference_number, amount, payment_term, payment_proof_url, platform_payment_methods(name, details, qr_code_url)'
 

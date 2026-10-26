@@ -36,10 +36,11 @@ const UNPRICED_ERROR = 'Distance-based delivery is not configured for this resta
 const LALAMOVE_ERROR = 'Lalamove delivery is enabled for this restaurant'
 
 /**
- * Anonymous, and every call may spend a paid road-distance lookup. Same caps as
- * the Lalamove quotation (`createQuotationAction`): per client IP so one visitor
- * cannot use up the store's budget, per store to bound the spend. Both fail
- * open — a Redis outage must not take delivery quotes away from customers.
+ * Anonymous, and every call may spend a paid road-distance lookup. Two caps:
+ * per client IP per store, so one visitor cannot use up the store's budget
+ * (phones share carrier IPs, so the store is in the key), and per store to
+ * bound the spend. Both fail open — a Redis outage must not take delivery
+ * quotes away from customers.
  */
 // The store ceiling sits well above a few visitors' worth so a handful of IPs
 // cannot use it up and lock every customer out of a delivery fee.
@@ -75,7 +76,7 @@ export async function calculateDistanceDeliveryFeeAction(
       return { success: false, error: INVALID_BRANCH_MESSAGE }
     }
 
-    const clientRate = await checkActionRateLimit('distance-fee-client', DISTANCE_FEE_CLIENT_RATE_LIMIT)
+    const clientRate = await checkActionRateLimit(`distance-fee-client:${tenantId}`, DISTANCE_FEE_CLIENT_RATE_LIMIT)
     if (!clientRate.allowed) return QUOTE_RATE_LIMITED
 
     const rate = await checkRateLimit(`distance-fee:${tenantId}`, DISTANCE_FEE_RATE_LIMIT)

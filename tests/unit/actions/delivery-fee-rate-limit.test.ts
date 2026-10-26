@@ -53,7 +53,7 @@ beforeEach(() => {
 })
 
 describe('calculateDistanceDeliveryFeeAction rate limits', () => {
-  test('refuses a client over the per-IP limit before any lookup', async () => {
+  test('refuses a client over its per-IP limit for this store before any lookup', async () => {
     // Arrange
     checkActionRateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSec: 30 })
 
@@ -63,7 +63,7 @@ describe('calculateDistanceDeliveryFeeAction rate limits', () => {
     // Assert
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/too many/i)
-    expect(checkActionRateLimit).toHaveBeenCalledWith('distance-fee-client', { limit: 10, windowSec: 60 })
+    expect(checkActionRateLimit).toHaveBeenCalledWith('distance-fee-client:t1', { limit: 10, windowSec: 60 })
     expect(from).not.toHaveBeenCalled()
   })
 

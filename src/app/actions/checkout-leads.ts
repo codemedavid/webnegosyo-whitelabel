@@ -30,7 +30,7 @@ import { findOnboardingByLead } from '@/lib/onboarding/repository'
 import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { isReferenceNumber } from '@/lib/checkout-leads/reference-number'
-import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
+import { CHECKOUT_LEAD_LOOKUP_RATE_LIMITED, type CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 
 /**
@@ -94,7 +94,7 @@ export async function fetchCheckoutLeadByRef(
 ): Promise<{ data: CheckoutLeadConfirmation | null; error: string | null }> {
   if (!isReferenceNumber(ref)) return { data: null, error: 'Not found' }
   const rate = await checkActionRateLimit('checkout-lead-lookup', CHECKOUT_LEAD_LOOKUP_RATE_LIMIT)
-  if (!rate.allowed) return { data: null, error: 'Too many lookups. Please try again later.' }
+  if (!rate.allowed) return { data: null, error: CHECKOUT_LEAD_LOOKUP_RATE_LIMITED }
   return getCheckoutLeadConfirmationByRef(ref)
 }
 
