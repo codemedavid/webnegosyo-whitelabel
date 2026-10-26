@@ -292,3 +292,42 @@ describe('POST /api/loyverse — POS counter sales', () => {
     )
   })
 })
+
+describe('POST /api/loyverse — who may push', () => {
+  function asStaff(permissions: string[]) {
+    authFrom.mockImplementation(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () =>
+            Promise.resolve({
+              data: { role: 'admin', tenant_id: TENANT, is_owner: false, permissions },
+              error: null,
+            }),
+        }),
+      }),
+    }))
+  }
+
+  // pushConfirmedOrderToLoyverse runs when an order is confirmed, so every
+  // account that can move an order on (not only the register) must be able to push.
+  it.each([['orders'], ['pos'], ['kitchen'], ['tables']])('lets %s staff push', async (key) => {
+    asStaff([key])
+    stubAdmin({ platformOrder: { id: PLATFORM_ORDER } })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: PLATFORM_ORDER }))
+
+    expect(response.status).toBe(200)
+    expect(pushOrderToLoyverseBestEffort).toHaveBeenCalled()
+  })
+
+  it.each([['menu'], ['settings'], ['customers']])('refuses staff holding only %s', async (key) => {
+    asStaff([key])
+    stubAdmin({ platformOrder: { id: PLATFORM_ORDER } })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: PLATFORM_ORDER }))
+
+    expect(response.status).toBe(403)
+    expect(adminFrom).not.toHaveBeenCalled()
+    expect(pushOrderToLoyverseBestEffort).not.toHaveBeenCalled()
+  })
+})
