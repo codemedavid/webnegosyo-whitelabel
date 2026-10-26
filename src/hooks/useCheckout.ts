@@ -88,6 +88,7 @@ import { buildQrOrderPayload } from '@/lib/checkout/qr-handoff-payload'
 import { summarizeUpsellConversions } from '@/lib/checkout/upsell-conversion'
 import { rememberActiveOrder } from '@/lib/checkout/active-orders-storage'
 import { useDeliveryQuote } from '@/hooks/checkout/use-delivery-quote'
+import { deliveryQuoteOutlet } from '@/hooks/checkout/delivery-quote-outlet'
 import { useCheckoutSchedule } from '@/hooks/checkout/use-checkout-schedule'
 import { amountToFreeDelivery, resolveFreeDeliveryThreshold, waiveDeliveryFee } from '@/lib/free-delivery'
 import { usePaymentProof } from '@/hooks/checkout/use-payment-proof'
@@ -281,10 +282,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   // checkouts are gated by the hours. A pre-launch store refuses both.
   const openStatus = useStoreOpenStatus(tenant)
 
-  const selectedDeliveryOutlet = useMemo(() => {
-    const chosen = outlet.choices.find((choice) => choice.outlet.id === outlet.selectedOutletId)?.outlet
-    return chosen ? { id: chosen.id, latitude: chosen.latitude, longitude: chosen.longitude } : null
-  }, [outlet.choices, outlet.selectedOutletId])
+  const selectedDeliveryOutlet = useMemo(
+    () => deliveryQuoteOutlet(outlet.choices, outlet.selectedOutletId),
+    [outlet.choices, outlet.selectedOutletId],
+  )
 
   // Delivery fee for the picked address: Lalamove quote OR distance-based fee.
   const {
