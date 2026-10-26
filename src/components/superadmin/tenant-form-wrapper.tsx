@@ -2075,7 +2075,7 @@ export function TenantFormWrapper({
     flash_screen_feature_enabled: featureFlag('flash_screen_feature_enabled'),
     // Bundles
     bundles_enabled: featureFlag('bundles_enabled'),
-    modifier_groups_enabled: featureFlag('modifier_groups_enabled'),
+    modifier_groups_enabled: featureFlag('modifier_groups_enabled', true),
     // Inventory
     inventory_enabled: featureFlag('inventory_enabled'),
     assistant_enabled: featureFlag('assistant_enabled'),

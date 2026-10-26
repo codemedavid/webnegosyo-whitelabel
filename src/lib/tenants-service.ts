@@ -221,8 +221,10 @@ export const tenantSchema = z.object({
   checkout_upsell_enabled: z.boolean().default(false),
   bundles_enabled: z.boolean().default(false),
   pairing_rules_enabled: z.boolean().default(false),
-  // Unified modifier groups: multi-select options with min/max picks
-  modifier_groups_enabled: z.boolean().default(false),
+  // Unified modifier groups: multi-select options with min/max picks. The one
+  // flag that defaults ON here too: every store runs on option groups, so an
+  // edit that omits it must keep them, not drop the store to the legacy editor.
+  modifier_groups_enabled: z.boolean().default(true),
   // Inventory. All three default false: `inventory_enabled` is the master flag
   // the admin route and sidebar hang off, and auto-86 takes items off a live
   // menu — neither may switch itself on for a tenant that never asked.

@@ -10,7 +10,8 @@
  *
  * Applied ONLY at creation. `tenantSchema` also parses every edit and keeps
  * its own defaults off, so an update that omits a flag never switches a live
- * store's feature on.
+ * store's feature on. The one exception is `modifier_groups_enabled`, which is
+ * the platform standard and defaults on everywhere (`modifier-groups-flag.ts`).
  */
 export const NEW_TENANT_FEATURE_DEFAULTS = {
   mapbox_enabled: true,
