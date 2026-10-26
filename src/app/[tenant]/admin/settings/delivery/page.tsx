@@ -3,13 +3,17 @@ import { LalamoveSettingsCard } from '@/components/admin/lalamove-settings-card'
 import { PickupScanCard } from '@/components/admin/pickup-scan-card'
 import { SettingsSection } from '@/components/admin/settings/settings-section'
 import { requireSettingsSection } from '@/lib/settings/load-settings-context'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 
+/**
+ * Read with the service role: tenant_secrets has no client read (a cashier
+ * could otherwise fetch the keys over PostgREST). Called only for the owner,
+ * and only a boolean leaves the server.
+ */
 async function hasStoredLalamoveKeys(tenantId: string): Promise<boolean> {
   try {
-    const supabase = await createClient()
-    const secrets = await getTenantSecrets(supabase, tenantId)
+    const secrets = await getTenantSecrets(createAdminClient(), tenantId)
     return Boolean(secrets?.lalamove_api_key && secrets?.lalamove_secret_key)
   } catch (error) {
     // The card still renders; it just offers to set keys rather than replace them.
@@ -24,8 +28,7 @@ export default async function DeliverySettingsPage({ params }: { params: Promise
 
   // Lalamove is the owner's to configure, and only when the platform switched it on.
   const showLalamove = viewer.isOwner && tenant.lalamove_enabled === true
-  // Only a "has keys" boolean ever reaches the page; the keys themselves stay
-  // in tenant_secrets, which RLS grants this store's own admins.
+  // Only a "has keys" boolean ever reaches the page; the keys stay server-side.
   const hasLalamoveKeys = showLalamove ? await hasStoredLalamoveKeys(tenant.id) : false
 
   return (
