@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 
@@ -17,7 +17,8 @@ import { useManageStaff } from "../../lib/manage-staff-client";
 import { listShifts, type ShiftRecord } from "../../lib/shift-service";
 import { canOpenTeam, createStaff, listStaff, type StaffMember } from "../../lib/staff-service";
 import { isTabAllowed } from "../../lib/staff-permissions";
-import { listOrderActivity } from "../../lib/staff-activity/activity-service";
+import { listOrderActivity, loadLastSeenAt } from "../../lib/staff-activity/activity-service";
+import { staffPeriodWindow } from "../../lib/staff-activity/period";
 import type { OrderActivityEvent } from "../../lib/staff-activity/activity";
 import {
   buildStaffDirectory,
@@ -58,8 +59,6 @@ const VIEWS = [
   { label: "Sales", value: "sales" as const },
 ];
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 export default function TeamScreen() {
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
@@ -95,48 +94,105 @@ export default function TeamScreen() {
   );
 
   const nowMs = Date.now();
+  // Bumped by a pull or a save so "now" — the window's end — moves too.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [isActivityLoading, setIsActivityLoading] = useState(true);
+  const [lastSeen, setLastSeen] = useState<Record<string, string | null>>({});
+  // Only the newest read may land, so a quick Today, 7 days, Today can
+  // never leave one period's figures under another period's chip.
+  const activityRequest = useRef(0);
+
   const window = useMemo(
-    () => ({ startMs: Date.now() - days * DAY_MS, endMs: Date.now() }),
-    [days],
+    () => staffPeriodWindow(days, Date.now()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshTick re-reads the clock
+    [days, refreshTick],
   );
 
-  const reload = useCallback(async () => {
+  /** The roster — read once, and again after a save or a pull. */
+  const loadRoster = useCallback(async () => {
+    let roster: StaffMember[] = [];
     try {
       setLoadError(null);
-      const roster = await listStaff(invokeManageStaff);
+      roster = await listStaff(invokeManageStaff);
       setStaff(roster);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Could not load your team");
+    } finally {
       setIsLoading(false);
+    }
+    if (!tenantId || isDemo || roster.length === 0) return;
+    // One indexed row per person (the roster is small), so a card can say
+    // "Last active 2d ago" instead of "No activity yet" under Today.
+    const pairs = await Promise.all(
+      roster.map(async (member) => {
+        const at = await loadLastSeenAt(tenantId, member.userId).catch(() => null);
+        return [member.userId, at] as const;
+      }),
+    );
+    setLastSeen(Object.fromEntries(pairs));
+  }, [invokeManageStaff, tenantId, isDemo]);
+
+  /** Shifts and activity for the chosen period — never re-asks the roster. */
+  const loadActivity = useCallback(async () => {
+    const request = activityRequest.current + 1;
+    activityRequest.current = request;
+    if (!tenantId || isDemo) {
+      setIsActivityLoading(false);
       return;
     }
-
-    // Shifts and activity are supporting detail: a store whose log cannot be
-    // read still gets a roster it can manage, rather than an error screen.
+    setIsActivityLoading(true);
     const sinceIso = new Date(window.startMs).toISOString();
     const outletId = isOwner ? undefined : myOutletId ?? undefined;
-    if (tenantId && !isDemo) {
-      const [shiftRows, activityRows] = await Promise.all([
-        listShifts(tenantId, { outletId, sinceIso }).catch(() => [] as ShiftRecord[]),
-        listOrderActivity(tenantId, { outletId, sinceIso }).catch(() => [] as OrderActivityEvent[]),
-      ]);
-      setShifts(shiftRows);
-      setEvents(activityRows);
-    }
-    setIsLoading(false);
-  }, [invokeManageStaff, tenantId, isDemo, isOwner, myOutletId, window.startMs]);
+    const [shiftResult, activityResult] = await Promise.allSettled([
+      listShifts(tenantId, { outletId, sinceIso }),
+      listOrderActivity(tenantId, { outletId, sinceIso }),
+    ]);
+    if (activityRequest.current !== request) return;
+
+    setShifts(shiftResult.status === "fulfilled" ? shiftResult.value : []);
+    setEvents(activityResult.status === "fulfilled" ? activityResult.value : []);
+    // A roster still loads when the log can't be read, but the figures must
+    // say so rather than pass for a quiet day.
+    const failure = [shiftResult, activityResult].find((result) => result.status === "rejected");
+    setActivityError(
+      failure && failure.status === "rejected"
+        ? failure.reason instanceof Error
+          ? failure.reason.message
+          : "Shifts and activity could not be read."
+        : null,
+    );
+    setIsActivityLoading(false);
+  }, [tenantId, isDemo, isOwner, myOutletId, window.startMs]);
+
+  const reload = useCallback(async () => {
+    setRefreshTick((tick) => tick + 1);
+    await loadRoster();
+  }, [loadRoster]);
 
   useEffect(() => {
     if (!allowed) {
       setIsLoading(false);
       return;
     }
-    void reload();
-  }, [allowed, reload]);
+    void loadRoster();
+  }, [allowed, loadRoster]);
+
+  useEffect(() => {
+    if (!allowed) return;
+    void loadActivity();
+  }, [allowed, loadActivity]);
 
   const entries = useMemo(
-    () => buildStaffDirectory({ members: staff, events, shifts, window, nowMs: Date.now() }),
-    [staff, events, shifts, window],
+    () =>
+      buildStaffDirectory({ members: staff, events, shifts, window, nowMs: Date.now() }).map((entry) => {
+        const seen = lastSeen[entry.userId] ?? null;
+        if (seen === null) return entry;
+        const current = entry.lastActiveAt;
+        const isLater = current === null || Date.parse(seen) > Date.parse(current);
+        return isLater ? { ...entry, lastActiveAt: seen } : entry;
+      }),
+    [staff, events, shifts, window, lastSeen],
   );
   const stats = useMemo(() => summarizeTeam(entries), [entries]);
   const formerCount = entries.filter((entry) => entry.isFormer).length;
@@ -271,6 +327,18 @@ export default function TeamScreen() {
               ]}
             />
 
+            {activityError ? (
+              <View style={styles.pad}>
+                <ErrorState
+                  title="Figures unavailable"
+                  message={`${activityError} The team list below still works.`}
+                  onRetry={() => void loadActivity()}
+                />
+              </View>
+            ) : isActivityLoading ? (
+              <Text style={styles.updating}>Updating figures…</Text>
+            ) : null}
+
             <View style={styles.pad}>
               <TextInput
                 style={styles.search}
@@ -364,6 +432,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     color: colors.textPrimary,
     backgroundColor: colors.card,
+  },
+  updating: {
+    ...typography.small,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.xl,
   },
   footnote: {
     ...typography.small,

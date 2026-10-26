@@ -79,3 +79,26 @@ it("explains an empty period instead of rendering nothing", () => {
   const screen = render(<DayHistoryList days={[]} nowIso={NOW_ISO} nowMs={NOW} />);
   expect(screen.getByText("Nothing recorded in this period")).toBeTruthy();
 });
+
+describe("DayHistoryList empty period", () => {
+  it("says when they last worked instead of a bare 'nothing recorded'", () => {
+    // Arrange
+    const onEmptyAction = jest.fn();
+
+    // Act
+    const { getByText } = render(
+      <DayHistoryList
+        days={[]}
+        nowIso={NOW_ISO}
+        nowMs={NOW}
+        emptyMessage="Nothing today. Last active 2d ago."
+        emptyActionLabel="Show 30 days"
+        onEmptyAction={onEmptyAction}
+      />,
+    );
+
+    // Assert
+    expect(getByText("Nothing today. Last active 2d ago.")).toBeTruthy();
+    expect(getByText("Show 30 days")).toBeTruthy();
+  });
+});
