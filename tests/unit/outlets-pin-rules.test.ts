@@ -99,8 +99,9 @@ describe('createOutletAction — branch pin', () => {
   })
 
   test('treats a branch saved without supports_delivery as delivering, like the column default', async () => {
-    const { supports_delivery: _omitted, ...withoutDelivery } = BRANCH
-    const result = await createOutletAction('t1', 'cafe', { ...withoutDelivery, latitude: null, longitude: null } as never)
+    const withoutDelivery: Partial<typeof BRANCH> = { ...BRANCH, latitude: null as never, longitude: null as never }
+    delete withoutDelivery.supports_delivery
+    const result = await createOutletAction('t1', 'cafe', withoutDelivery as never)
     expect(result).toEqual({ success: false, error: expect.stringContaining("Pin this branch's location") })
     expect(create).not.toHaveBeenCalled()
   })
