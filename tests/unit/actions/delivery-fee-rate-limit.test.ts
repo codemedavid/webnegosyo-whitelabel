@@ -74,7 +74,7 @@ describe('calculateDistanceDeliveryFeeAction rate limits', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/too many/i)
-    expect(checkRateLimit).toHaveBeenCalledWith('distance-fee:t1', { limit: 30, windowSec: 60 })
+    expect(checkRateLimit).toHaveBeenCalledWith('distance-fee:t1', { limit: 120, windowSec: 60 })
     expect(from).not.toHaveBeenCalled()
   })
 
