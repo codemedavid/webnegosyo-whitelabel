@@ -155,7 +155,7 @@ const cents = z.number().int().min(0).max(MAX_REMITTANCE_CENTS)
 const note = z.string().max(REMITTANCE_NOTE_MAX)
 
 const acceptSchema = z
-  .object({ id: z.string().uuid(), handedOverCents: cents, receivedCents: cents, note: note.nullable() })
+  .object({ id: z.string().uuid(), handedOverCents: cents.nullable(), receivedCents: cents, note: note.nullable() })
   .strict()
 
 /**

@@ -142,6 +142,12 @@ describe('acceptRemittanceByPin', () => {
     expect((await acceptRemittanceByPin(s, ANA, { ...INPUT, receivedCents: 600000, note: '₱345 short' })).ok).toBe(true)
   })
 
+  it('takes any amount without a note for an uncounted hand-over (the receiver’s count is the first one)', async () => {
+    const { store: s } = store({ findRemittance: async () => remittance({ handedOverCents: null }) })
+
+    expect((await acceptRemittanceByPin(s, ANA, { ...INPUT, receivedCents: 512000 })).ok).toBe(true)
+  })
+
   it('is 403 for a receiver without cash_manage, and never checks their PIN', async () => {
     const verifyPin = jest.fn()
     const { store: s } = store({ findReceiver: async () => ({ ...MARIA, permissions: ['pos'] }), verifyPin })

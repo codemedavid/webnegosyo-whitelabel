@@ -122,12 +122,12 @@ describe('buildCashPage', () => {
     expect(junk.kind === 'ready' && junk.context.tab).toBe('shifts')
   })
 
-  it('offers settling a dispute only to the owner', () => {
+  it('marks the owner, who may receive or settle their own hand-over', () => {
     const owner = page(staff({ is_owner: true }))
     const manager = page(staff())
 
-    expect(owner.kind === 'ready' && owner.context.canResolve).toBe(true)
-    expect(manager.kind === 'ready' && manager.context.canResolve).toBe(false)
+    expect(owner.kind === 'ready' && owner.context.isOwner).toBe(true)
+    expect(manager.kind === 'ready' && manager.context.isOwner).toBe(false)
   })
 
   it('refuses before deciding anything when the account may not open it', () => {

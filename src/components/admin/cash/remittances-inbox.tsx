@@ -14,7 +14,7 @@ export interface RemittancesInboxProps {
   day: string
   tenantSlug: string
   viewerUserId: string
-  canResolve: boolean
+  isOwner: boolean
   outletNames: Record<string, string>
 }
 
@@ -45,7 +45,9 @@ function Row({ remittance, onOpen, outletNames }: { remittance: Remittance; onOp
           </span>
         </span>
         <span className="text-right">
-          <span className="block text-[15px] font-extrabold text-wn-ink tabular-nums">{formatMoney(remittance.handedOverCents, { centavos: true })}</span>
+          <span className="block text-[15px] font-extrabold text-wn-ink tabular-nums">
+            {remittance.handedOverCents === null ? 'Not counted' : formatMoney(remittance.handedOverCents, { centavos: true })}
+          </span>
           <span className={`block text-[12.5px] font-semibold ${TONES[status.tone]}`}>{status.text}</span>
         </span>
         <ChevronRight className="size-4 shrink-0 text-wn-stone" aria-hidden />
@@ -76,14 +78,16 @@ function Group({ title, empty, items, onOpen, outletNames }: { title: string; em
 }
 
 /** "To accept": waiting remittances first, then disputes, then what was answered on the day shown. */
-export function RemittancesInbox({ toAccept, disputed, answered, day, tenantSlug, viewerUserId, canResolve, outletNames }: RemittancesInboxProps) {
+export function RemittancesInbox({ toAccept, disputed, answered, day, tenantSlug, viewerUserId, isOwner, outletNames }: RemittancesInboxProps) {
   const [open, setOpen] = useState<Remittance | null>(null)
-  const totalWaiting = toAccept.reduce((sum, remittance) => sum + remittance.handedOverCents, 0)
+  const totalWaiting = toAccept.reduce((sum, remittance) => sum + (remittance.handedOverCents ?? 0), 0)
+  const uncounted = toAccept.filter((remittance) => remittance.handedOverCents === null).length
   return (
     <>
       {toAccept.length > 0 && (
         <p className="text-[14px] text-wn-ink tabular-nums">
           <b>{toAccept.length}</b> to accept · <b>{formatMoney(totalWaiting, { centavos: true })}</b>
+          {uncounted > 0 && ` + ${uncounted} not counted`}
         </p>
       )}
       <Group title="To accept" empty="Nothing to accept. When a cashier remits, it shows here." items={toAccept} onOpen={setOpen} outletNames={outletNames} />
@@ -94,7 +98,7 @@ export function RemittancesInbox({ toAccept, disputed, answered, day, tenantSlug
         onClose={() => setOpen(null)}
         tenantSlug={tenantSlug}
         viewerUserId={viewerUserId}
-        canResolve={canResolve}
+        isOwner={isOwner}
         outletNames={outletNames}
       />
     </>

@@ -11,6 +11,7 @@ import {
   acceptRemittance,
   disputeRemittance,
   listRemittances,
+  needsReceiverNote,
   parseRemittance,
   remittanceDifferenceCents,
   resolveRemittance,
@@ -68,6 +69,25 @@ describe('parseRemittance', () => {
 
     expect(fromRow).toMatchObject({ handedOverCents: 634500, cashierName: 'Ana R.', remittedToName: 'Maria', status: 'pending', toSafe: false })
     expect(fromRpc).toMatchObject({ kind: 'pickup', handedOverCents: 200000, acceptMethod: 'pin', cashierName: 'Staff' })
+  })
+
+  it('keeps an uncounted hand-over (forced close) as null, never ₱0', () => {
+    const uncounted = parseRemittance(row({ handed_over_cents: null }))
+
+    expect(uncounted.handedOverCents).toBeNull()
+    expect(remittanceDifferenceCents({ handedOverCents: null, receivedCents: 500000 })).toBeNull()
+  })
+
+  it('asks for a note only when a counted hand-over and the amount received differ', () => {
+    expect(needsReceiverNote(634500, 600000)).toBe(true)
+    expect(needsReceiverNote(634500, 634500)).toBe(false)
+    expect(needsReceiverNote(null, 600000)).toBe(false)
+  })
+
+  it('reads an RPC answer in the table’s own snake_case (accept_remittance returns the row)', () => {
+    const answered = parseRemittance(row({ status: 'resolved', dispute_reason: 'short', resolved_note: 'found it', resolved_by_name: 'Owner', resolved_at: '2026-10-25T01:00:00.000Z' }))
+
+    expect(answered).toMatchObject({ status: 'resolved', resolvedNote: 'found it', resolvedByName: 'Owner' })
   })
 
   it('refuses a status outside the four', () => {

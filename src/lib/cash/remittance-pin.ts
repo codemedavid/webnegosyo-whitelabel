@@ -14,7 +14,7 @@
 
 import type { PinVerdict } from '@/lib/gov-discount-ledger/approval-service'
 import { hasPermission } from '@/lib/staff-permissions'
-import { REMITTANCE_NOTE_MAX, type Remittance } from './remittances'
+import { REMITTANCE_NOTE_MAX, needsReceiverNote, type Remittance } from './remittances'
 
 export interface PinCaller {
   userId: string
@@ -109,7 +109,7 @@ export async function acceptRemittanceByPin(store: RemittancePinStore, caller: P
   if (remittance.status !== 'pending') return refuse(409, PIN_COPY.notPending)
 
   const note = cleanNote(input.note)
-  if (input.receivedCents !== remittance.handedOverCents && note === null) return refuse(400, PIN_COPY.noteRequired)
+  if (needsReceiverNote(remittance.handedOverCents, input.receivedCents) && note === null) return refuse(400, PIN_COPY.noteRequired)
 
   const receiver = await store.findReceiver(remittance.tenantId, input.receiverUserId)
   if (!receiver || !mayReceive(receiver, remittance)) return refuse(403, PIN_COPY.receiverRefused)

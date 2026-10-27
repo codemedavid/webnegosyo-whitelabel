@@ -40,7 +40,7 @@ export async function CashAcceptSection({ context, viewerUserId }: CashAcceptSec
         day={context.day}
         tenantSlug={context.tenantSlug}
         viewerUserId={viewerUserId}
-        canResolve={context.canResolve}
+        isOwner={context.isOwner}
         outletNames={context.outletNames}
       />
     </div>

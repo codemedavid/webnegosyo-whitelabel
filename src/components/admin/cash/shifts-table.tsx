@@ -168,7 +168,9 @@ function SheetBody({ row }: { row: ShiftTableRow }) {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <RemitPill row={row} />
           {row.remittance && (
-            <span className="text-[13px] text-wn-stone tabular-nums">Handed over {formatMoney(row.remittance.handedOverCents, { centavos: true })}</span>
+            <span className="text-[13px] text-wn-stone tabular-nums">
+              Handed over {row.remittance.handedOverCents === null ? '— not counted' : formatMoney(row.remittance.handedOverCents, { centavos: true })}
+            </span>
           )}
           {shift.varianceReason && (
             <span className="text-[13px] text-wn-stone">· Reason: {reasonLabel(shift.varianceReason) ?? shift.varianceReason}</span>

@@ -4,7 +4,7 @@ import { useId, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { acceptRemittanceAction, disputeRemittanceAction, resolveRemittanceAction } from '@/app/actions/cash'
-import { remittanceDifferenceCents, type Remittance } from '@/lib/cash/remittances'
+import { REMITTANCE_NOTE_MAX, needsReceiverNote, remittanceDifferenceCents, type Remittance } from '@/lib/cash/remittances'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { clockLabel, dayLabel, formatMoney } from './cash-format'
 import { parseFloatPesos } from './cash-rules-form'
@@ -17,8 +17,8 @@ export interface RemittanceSheetProps {
   onClose: () => void
   tenantSlug: string
   viewerUserId: string
-  /** The owner: may settle disputes and receive their own cash. */
-  canResolve: boolean
+  /** The owner: may receive or settle their own hand-over too. */
+  isOwner: boolean
   outletNames: Record<string, string>
 }
 
@@ -45,11 +45,11 @@ function Fact({ label, value }: { label: string; value: string }) {
 const STATUS_WORDS: Readonly<Record<Remittance['status'], string>> = {
   pending: 'Waiting to be accepted',
   accepted: 'Accepted',
-  disputed: 'Disputed — waiting for the owner',
+  disputed: 'Disputed — waiting to be settled',
   resolved: 'Resolved',
 }
 
-function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, outletNames }: RemittanceSheetProps & { remittance: Remittance }) {
+function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, isOwner, outletNames }: RemittanceSheetProps & { remittance: Remittance }) {
   const router = useRouter()
   const amountId = useId()
   const noteId = useId()
@@ -59,8 +59,13 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  const handedOver = formatMoney(remittance.handedOverCents, { centavos: true })
-  const isOwnCash = remittance.cashierUserId === viewerUserId && !canResolve
+  const isCounted = remittance.handedOverCents !== null
+  const handedOver = isCounted ? formatMoney(remittance.handedOverCents, { centavos: true }) : 'Not counted'
+  // cash.receive_check / resolve_remittance: never your own hand-over, unless you own the store.
+  const isOwnCash = remittance.cashierUserId === viewerUserId && !isOwner
+  const typedCents = parseFloatPesos(amountText)
+  const isNoteNeeded =
+    panel === 'dispute' || panel === 'resolve' || (panel === 'different' && typeof typedCents === 'number' && needsReceiverNote(remittance.handedOverCents, typedCents))
   const difference = remittanceDifferenceCents(remittance)
   const receiver = remittance.toSafe ? 'Store safe' : (remittance.remittedToName ?? 'Anyone who handles cash')
 
@@ -86,7 +91,7 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
         const result = await acceptRemittanceAction(tenantSlug, {
           id: remittance.id,
           handedOverCents: remittance.handedOverCents,
-          receivedCents: remittance.handedOverCents,
+          receivedCents: remittance.handedOverCents ?? 0,
           note: null,
         })
         finish(result, `Accepted ${handedOver} from ${remittance.cashierName}.`)
@@ -111,7 +116,7 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
   function open(next: Panel): void {
     setError(null)
     setNote('')
-    setAmountText(next === 'different' ? String(remittance.handedOverCents / 100) : '')
+    setAmountText(next === 'different' && remittance.handedOverCents !== null ? String(remittance.handedOverCents / 100) : '')
     setPanel(next)
   }
 
@@ -132,6 +137,9 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
         <p className="text-[12px] font-bold uppercase tracking-[0.1em] text-white/70">Handed over</p>
         <p className="mt-1 text-[32px] font-extrabold leading-tight tracking-[-0.02em] tabular-nums">{handedOver}</p>
         <p className="mt-1 text-[13px] text-white/75">To {receiver}</p>
+        {!isCounted && (
+          <p className="mt-2 text-[13px] text-white/75">This drawer was closed without a count. Count the cash and type what you received.</p>
+        )}
       </div>
 
       <div className="divide-y divide-wn-line">
@@ -156,15 +164,23 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
 
       {remittance.status === 'pending' && !isOwnCash && panel === 'none' && (
         <div className="flex flex-col gap-2">
-          <p className="text-[15px] font-bold text-wn-ink">
-            Did you receive {handedOver} from {remittance.cashierName}?
-          </p>
-          <button type="button" disabled={isPending} onClick={() => submit('same')} className={PRIMARY_BUTTON}>
-            {isPending ? 'Saving…' : `Yes, I received ${handedOver}`}
-          </button>
-          <button type="button" disabled={isPending} onClick={() => open('different')} className={SECONDARY_BUTTON}>
-            I got a different amount
-          </button>
+          {isCounted ? (
+            <>
+              <p className="text-[15px] font-bold text-wn-ink">
+                Did you receive {handedOver} from {remittance.cashierName}?
+              </p>
+              <button type="button" disabled={isPending} onClick={() => submit('same')} className={PRIMARY_BUTTON}>
+                {isPending ? 'Saving…' : `Yes, I received ${handedOver}`}
+              </button>
+              <button type="button" disabled={isPending} onClick={() => open('different')} className={SECONDARY_BUTTON}>
+                I got a different amount
+              </button>
+            </>
+          ) : (
+            <button type="button" disabled={isPending} onClick={() => open('different')} className={PRIMARY_BUTTON}>
+              Type what you received
+            </button>
+          )}
           <button
             type="button"
             disabled={isPending}
@@ -176,13 +192,13 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
         </div>
       )}
 
-      {remittance.status === 'disputed' && canResolve && panel === 'none' && (
+      {remittance.status === 'disputed' && !isOwnCash && panel === 'none' && (
         <button type="button" onClick={() => open('resolve')} className={PRIMARY_BUTTON}>
           Settle this
         </button>
       )}
-      {remittance.status === 'disputed' && !canResolve && (
-        <p className="text-[13.5px] text-wn-stone">Only the owner can settle a disputed remittance.</p>
+      {remittance.status === 'disputed' && isOwnCash && (
+        <p className="text-[13.5px] text-wn-stone">This is your own hand-over. The owner or someone else who handles cash settles it.</p>
       )}
 
       {panel !== 'none' && (
@@ -211,7 +227,7 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
               id={noteId}
               value={note}
               rows={3}
-              maxLength={500}
+              maxLength={REMITTANCE_NOTE_MAX}
               disabled={isPending}
               onChange={(event) => setNote(event.target.value)}
               className={`${FIELD_CLASS} py-2`}
@@ -219,7 +235,7 @@ function SheetBody({ remittance, onClose, tenantSlug, viewerUserId, canResolve, 
           </label>
           <p className="text-[12.5px] text-wn-stone">The cashier and the owner will see this.</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={isPending || note.trim() === ''} onClick={() => submit(panel)} className={PRIMARY_BUTTON}>
+            <button type="button" disabled={isPending || (isNoteNeeded && note.trim() === '')} onClick={() => submit(panel)} className={PRIMARY_BUTTON}>
               {isPending ? 'Saving…' : panel === 'resolve' ? 'Resolve' : panel === 'dispute' ? 'Mark as disputed' : 'Accept this amount'}
             </button>
             <button type="button" disabled={isPending} onClick={() => setPanel('none')} className={SECONDARY_BUTTON}>

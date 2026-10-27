@@ -30,7 +30,8 @@ export interface Remittance {
   businessDay: string | null
   cashierUserId: string | null
   cashierName: string
-  handedOverCents: number
+  /** null = the drawer was never counted (a forced close): any amount received is the first count. */
+  handedOverCents: number | null
   /** Who the cashier named to receive it; null with `toSafe` = the store safe. */
   remittedTo: string | null
   remittedToName: string | null
@@ -51,7 +52,8 @@ export interface Remittance {
 
 /** Largest single remittance we accept as input: ₱10,000,000. */
 export const MAX_REMITTANCE_CENTS = 1_000_000_000
-export const REMITTANCE_NOTE_MAX = 500
+/** cash_remittances_notes_ck: notes, reasons and settlements are at most 300 characters. */
+export const REMITTANCE_NOTE_MAX = 300
 
 const centsValue = z.union([z.number().int(), z.string().regex(/^-?\d+$/).transform(Number)])
 
@@ -93,7 +95,7 @@ const remittanceSchema = z.object({
   businessDay: text,
   cashierUserId: text,
   cashierName: z.string().nullable().default(null).transform((name) => name?.trim() || 'Staff'),
-  handedOverCents: centsValue,
+  handedOverCents: centsValue.nullable().default(null),
   remittedTo: text,
   remittedToName: text,
   toSafe: z.boolean().nullable().default(false).transform(Boolean),
@@ -126,7 +128,13 @@ export function parseRemittance(data: unknown): Remittance {
 
 /** The difference the receiver found: received − handed over (null until received). */
 export function remittanceDifferenceCents(remittance: Pick<Remittance, 'handedOverCents' | 'receivedCents'>): number | null {
-  return remittance.receivedCents === null ? null : remittance.receivedCents - remittance.handedOverCents
+  if (remittance.receivedCents === null || remittance.handedOverCents === null) return null
+  return remittance.receivedCents - remittance.handedOverCents
+}
+
+/** A note is needed when the amount received differs from a counted hand-over (cash_remittances_discrepancy_note_ck). */
+export function needsReceiverNote(handedOverCents: number | null, receivedCents: number): boolean {
+  return handedOverCents !== null && receivedCents !== handedOverCents
 }
 
 const COLUMNS = FIELDS.map(([, column]) => column).join(', ')
@@ -191,7 +199,7 @@ export function acceptRemittance(
 ): Promise<CashResult<Remittance>> {
   if (!isWholeCents(receivedCents)) return Promise.resolve(cashFailure('invalid', 'Type the amount you received in pesos.'))
   const cleaned = cleanNote(note)
-  if (receivedCents !== remittance.handedOverCents && cleaned === null) return Promise.resolve(cashFailure('invalid', REMITTANCE_NOTE_REQUIRED))
+  if (needsReceiverNote(remittance.handedOverCents, receivedCents) && cleaned === null) return Promise.resolve(cashFailure('invalid', REMITTANCE_NOTE_REQUIRED))
   return transition(client, 'accept_remittance', { p_id: remittance.id, p_received_cents: receivedCents, p_note: cleaned })
 }
 

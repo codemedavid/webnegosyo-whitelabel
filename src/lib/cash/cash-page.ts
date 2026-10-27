@@ -22,12 +22,12 @@ import { hasPermission } from '@/lib/staff-permissions'
 export type CashRefusal = 'no_account' | 'other_store' | 'no_permission'
 
 export type CashAccess =
-  | { ok: true; scope: BranchScope; canChangeCutoff: boolean; canResolve: boolean }
+  | { ok: true; scope: BranchScope; canChangeCutoff: boolean; isOwner: boolean }
   | { ok: false; reason: CashRefusal }
 
 export function cashAccessFor(appUser: AppUserScopeRow | null, tenantId: string): CashAccess {
   if (!appUser) return { ok: false, reason: 'no_account' }
-  if (appUser.role === 'superadmin') return { ok: true, scope: { kind: 'all' }, canChangeCutoff: true, canResolve: true }
+  if (appUser.role === 'superadmin') return { ok: true, scope: { kind: 'all' }, canChangeCutoff: true, isOwner: true }
   // `app_user_has_permission` has no platform-staff branch: every cash read and write would refuse them.
   if (appUser.role !== 'admin') return { ok: false, reason: 'no_permission' }
   if (appUser.tenant_id !== tenantId) return { ok: false, reason: 'other_store' }
@@ -38,8 +38,8 @@ export function cashAccessFor(appUser: AppUserScopeRow | null, tenantId: string)
     ok: true,
     scope,
     canChangeCutoff: isStoreWide && hasPermission(appUser, 'settings'),
-    // Settling a disputed remittance is the owner's (resolve_remittance decides; this decides what is offered).
-    canResolve: appUser.is_owner === true,
+    // The owner may receive or settle even their own hand-over (cash.receive_check / resolve_remittance).
+    isOwner: appUser.is_owner === true,
   }
 }
 
@@ -57,8 +57,8 @@ export interface CashPageContext {
   tenantSlug: string
   scope: BranchScope
   canChangeCutoff: boolean
-  /** May settle a disputed remittance (the owner). */
-  canResolve: boolean
+  /** The store owner (or support): may receive or settle their own hand-over too. */
+  isOwner: boolean
   tab: CashTab
   /** The business day shown, YYYY-MM-DD. */
   day: string
@@ -137,7 +137,7 @@ export function buildCashPage(input: BuildCashPageInput): CashPageState {
       tenantSlug: input.tenant.slug,
       scope: access.scope,
       canChangeCutoff: access.canChangeCutoff,
-      canResolve: access.canResolve,
+      isOwner: access.isOwner,
       tab,
       day,
       today,
