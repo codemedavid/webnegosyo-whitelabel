@@ -6,9 +6,16 @@
  * each page, they drift (a week that starts on Sunday here, a month cut at UTC
  * there) and two screens show different totals for the same label.
  *
- * - Days are Manila days. The fixed +08:00 rule lives in
- *   `inventory/business-day.ts`; this module only does calendar arithmetic on
- *   the `YYYY-MM-DD` keys that module defines.
+ * - Days are the store's BUSINESS days (`business-day/trading-day.ts`): every
+ *   function that names a day takes an optional cutoff `schedule`, and without
+ *   one a day is the Manila calendar day of `inventory/business-day.ts`,
+ *   exactly as before. Days are not assumed to be 24 h (the day a cutoff
+ *   changes is longer or shorter): spans come from day starts. The HOUR grain
+ *   stays wall clock.
+ * - SQL must agree: `report_sales_by_period` buckets on the Manila calendar
+ *   day until its business-day twin ships (`20261027140000`). Until then pass a
+ *   schedule to `bucketKey`/`bucketKeys` ONLY where the buckets are built here
+ *   in TS, never to zero-fill keys for the SQL buckets.
  * - Windows are half-open [start, end): an order at exactly Manila midnight
  *   belongs to the new day, and consecutive periods never overlap.
  * - Weeks start Monday (ISO 8601).
@@ -18,7 +25,7 @@
  * - Pure: `now` is passed in, nothing reads the clock.
  */
 import { z } from 'zod'
-import { resolveBusinessDayWindow, toBusinessDayKey } from '@/lib/inventory/business-day'
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from '@/lib/business-day/trading-day'
 
 export const REPORT_PRESETS = ['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'custom'] as const
 export type ReportPreset = (typeof REPORT_PRESETS)[number]
@@ -83,8 +90,8 @@ export type ReportPeriodResult = { ok: true; period: ReportPeriod } | { ok: fals
 
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
-const WEEK_MS = 7 * DAY_MS
 const MANILA_OFFSET_MS = 8 * HOUR_MS
+const DAYS_PER_WEEK = 7
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -133,12 +140,12 @@ function firstOfPreviousMonth(dayKey: string): string {
   return firstOfMonth(addDays(firstOfMonth(dayKey), -1))
 }
 
-function dayStartMs(dayKey: string): number {
-  return Date.parse(resolveBusinessDayWindow(dayKey).startIso)
+function dayStartMs(dayKey: string, schedule: CutoffSchedule): number {
+  return Date.parse(tradingDayWindow(dayKey, schedule).startIso)
 }
 
-function nowToDayKey(ms: number): string {
-  return toBusinessDayKey(new Date(ms).toISOString())
+function nowToDayKey(ms: number, schedule: CutoffSchedule): string {
+  return tradingDayOf(new Date(ms).toISOString(), schedule)
 }
 
 // ---------------------------------------------------------------------------
@@ -227,9 +234,9 @@ export function grainFor(dayCount: number): ReportGrain {
   return dayCount <= MAX_DAY_GRAIN_DAYS ? 'day' : 'week'
 }
 
-function buildPeriod(preset: ReportPreset, range: DayRange, now: number): ReportPeriod {
-  const start = dayStartMs(range.from)
-  const fullEnd = dayStartMs(range.to) + DAY_MS
+function buildPeriod(preset: ReportPreset, range: DayRange, now: number, schedule: CutoffSchedule): ReportPeriod {
+  const start = dayStartMs(range.from, schedule)
+  const fullEnd = dayStartMs(addDays(range.to, 1), schedule)
   const isPartial = now < fullEnd
   const isCustom = preset === 'custom'
   return {
@@ -246,16 +253,20 @@ function buildPeriod(preset: ReportPreset, range: DayRange, now: number): Report
   }
 }
 
-export function resolveReportPeriod(input: ReportPeriodInput, now: number): ReportPeriodResult {
-  const today = nowToDayKey(now)
+export function resolveReportPeriod(
+  input: ReportPeriodInput,
+  now: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE,
+): ReportPeriodResult {
+  const today = nowToDayKey(now, schedule)
 
   if (input.preset !== 'custom') {
-    return { ok: true, period: buildPeriod(input.preset, presetRange(input.preset, today), now) }
+    return { ok: true, period: buildPeriod(input.preset, presetRange(input.preset, today), now, schedule) }
   }
 
   const checked = validateCustomRange(input, today)
   if (!checked.ok) return checked
-  return { ok: true, period: buildPeriod('custom', checked.range, now) }
+  return { ok: true, period: buildPeriod('custom', checked.range, now, schedule) }
 }
 
 // ---------------------------------------------------------------------------
@@ -266,31 +277,32 @@ function compareWindow(start: number, elapsed: number, naturalLength: number, is
   return { start, end: start + (isPartial ? Math.min(elapsed, naturalLength) : naturalLength) }
 }
 
-function compareSingleDay(period: ReportPeriod): ComparePeriod {
+function compareSingleDay(period: ReportPeriod, schedule: CutoffSchedule): ComparePeriod {
   const label = period.isPartial ? 'the same time last week' : 'the same day last week'
-  return {
-    start: period.start - WEEK_MS,
-    end: period.end - WEEK_MS,
-    label,
-    phrase: `on ${label}`,
-    kind: 'same_weekday_last_week',
-  }
+  // The same business day last week, cut at the same elapsed time: not
+  // `start − 7×24h`, which is wrong by the change when a cutoff moved since.
+  const previousStart = dayStartMs(addDays(period.from, -DAYS_PER_WEEK), schedule)
+  const previousLength = dayStartMs(addDays(period.from, 1 - DAYS_PER_WEEK), schedule) - previousStart
+  const window = compareWindow(previousStart, period.end - period.start, previousLength, period.isPartial)
+  return { ...window, label, phrase: `on ${label}`, kind: 'same_weekday_last_week' }
 }
 
-function compareMonth(period: ReportPeriod): ComparePeriod {
+function compareMonth(period: ReportPeriod, schedule: CutoffSchedule): ComparePeriod {
   const previousFrom = firstOfPreviousMonth(period.from)
-  const previousStart = dayStartMs(previousFrom)
-  const previousLength = dayStartMs(firstOfMonth(period.from)) - previousStart
+  const previousStart = dayStartMs(previousFrom, schedule)
+  const previousLength = dayStartMs(firstOfMonth(period.from), schedule) - previousStart
   const window = compareWindow(previousStart, period.end - period.start, previousLength, period.isPartial)
   const label = period.preset === 'last_month' ? 'the month before' : 'last month'
   return { ...window, label, phrase: `on ${label}`, kind: 'previous_period' }
 }
 
-function comparePreviousPeriod(period: ReportPeriod): ComparePeriod {
-  // A running week is still a seven-day week: Mon-Wed is judged against last week's Mon-Wed.
-  const length = period.preset === 'this_week' ? WEEK_MS : period.fullEnd - period.start
-  const window = compareWindow(period.start - length, period.end - period.start, length, period.isPartial)
+function comparePreviousPeriod(period: ReportPeriod, schedule: CutoffSchedule): ComparePeriod {
   const days = dayCountBetween(period.from, period.to)
+  // A running week is still a seven-day week: Mon-Wed is judged against last week's Mon-Wed.
+  const previousDays = period.preset === 'this_week' ? DAYS_PER_WEEK : days
+  const previousStart = dayStartMs(addDays(period.from, -previousDays), schedule)
+  const length = period.start - previousStart
+  const window = compareWindow(previousStart, period.end - period.start, length, period.isPartial)
   const label =
     period.preset === 'this_week' ? 'last week'
     : period.preset === 'last_week' ? 'the week before'
@@ -298,62 +310,65 @@ function comparePreviousPeriod(period: ReportPeriod): ComparePeriod {
   return { ...window, label, phrase: `on ${label}`, kind: 'previous_period' }
 }
 
-export function resolveComparePeriod(period: ReportPeriod): ComparePeriod {
-  if (period.from === period.to) return compareSingleDay(period)
-  if (period.preset === 'this_month' || period.preset === 'last_month') return compareMonth(period)
-  return comparePreviousPeriod(period)
+/** Pass the same `schedule` the period was resolved with. */
+export function resolveComparePeriod(period: ReportPeriod, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): ComparePeriod {
+  if (period.from === period.to) return compareSingleDay(period, schedule)
+  if (period.preset === 'this_month' || period.preset === 'last_month') return compareMonth(period, schedule)
+  return comparePreviousPeriod(period, schedule)
 }
 
 // ---------------------------------------------------------------------------
-// Chart buckets (all Manila)
+// Chart buckets (Manila; day/week/month follow the business day, hour is wall clock)
 // ---------------------------------------------------------------------------
 
-function shifted(ms: number): Date {
-  return new Date(ms + MANILA_OFFSET_MS)
+function wallClockHourKey(ms: number): string {
+  return new Date(ms + MANILA_OFFSET_MS).toISOString().slice(0, 13)
 }
 
-export function bucketKey(ms: number, grain: ReportGrain): string {
-  const iso = shifted(ms).toISOString()
+export function bucketKey(ms: number, grain: ReportGrain, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): string {
+  if (grain === 'hour') return wallClockHourKey(ms)
+  const day = nowToDayKey(ms, schedule)
   switch (grain) {
-    case 'hour':
-      return iso.slice(0, 13)
     case 'day':
-      return iso.slice(0, 10)
+      return day
     case 'week':
-      return mondayOf(iso.slice(0, 10))
+      return mondayOf(day)
     case 'month':
-      return `${iso.slice(0, 7)}-01`
+      return firstOfMonth(day)
   }
 }
 
-function bucketStartMs(key: string, grain: ReportGrain): number {
+function bucketStartMs(key: string, grain: ReportGrain, schedule: CutoffSchedule): number {
   if (grain === 'hour') return Date.parse(`${key}:00:00.000Z`) - MANILA_OFFSET_MS
-  return dayStartMs(key)
+  return dayStartMs(key, schedule)
 }
 
-function nextBucketStartMs(startMs: number, grain: ReportGrain): number {
+function nextBucketKey(key: string, grain: ReportGrain, schedule: CutoffSchedule): string {
   switch (grain) {
     case 'hour':
-      return startMs + HOUR_MS
+      return wallClockHourKey(bucketStartMs(key, grain, schedule) + HOUR_MS)
     case 'day':
-      return startMs + DAY_MS
+      return addDays(key, 1)
     case 'week':
-      return startMs + WEEK_MS
-    case 'month': {
-      const date = shifted(startMs)
-      return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) - MANILA_OFFSET_MS
-    }
+      return addDays(key, DAYS_PER_WEEK)
+    case 'month':
+      return firstOfMonth(addDays(firstOfMonth(key), 32))
   }
 }
 
 /** Every bucket touching [start, end), in order, for zero-filling a chart. */
-export function bucketKeys(start: number, end: number, grain: ReportGrain): string[] {
+export function bucketKeys(
+  start: number,
+  end: number,
+  grain: ReportGrain,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE,
+): string[] {
   if (end <= start) return []
   const keys: string[] = []
-  let cursor = bucketStartMs(bucketKey(start, grain), grain)
-  while (cursor < end) {
-    keys.push(bucketKey(cursor, grain))
-    cursor = nextBucketStartMs(cursor, grain)
+  let key = bucketKey(start, grain, schedule)
+  while (bucketStartMs(key, grain, schedule) < end) {
+    keys.push(key)
+    key = nextBucketKey(key, grain, schedule)
   }
   return keys
 }
