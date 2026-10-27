@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { deletePaymentProofAsset } from '@/lib/imagekit-server'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
+import { verifyProofDeleteToken } from '@/lib/payment-proof-delete-token'
 
 /**
  * Delete a customer payment-proof screenshot from ImageKit.
@@ -18,6 +19,14 @@ import { getClientIP } from '@/lib/rate-limit'
  * Best-effort: failures return 200 with deleted=false rather than blocking the
  * UI; a refused id is 403.
  *
+ * Only the uploader may delete: the request must carry the `deleteToken` the
+ * upload route returned for that file id (payment-proof-delete-token.ts). A
+ * file id alone is no credential — it sits on every order screen — and a
+ * customer's proof used to be deletable by anyone for two hours, including
+ * one a submitted order still points at. A request without a token (an app
+ * build from before tokens) is answered as a no-op success: cleanup is
+ * best-effort, so an old build just leaves an orphaned upload behind.
+ *
  * Legacy mobile builds may still POST { publicId } (Cloudinary). Those are
  * accepted as a no-op success so old clients don't error.
  */
@@ -27,6 +36,7 @@ const bodySchema = z.object({
   filePath: z.string().min(1).max(512).optional(),
   // Legacy Cloudinary field — accepted but no longer actionable.
   publicId: z.string().min(1).max(512).optional(),
+  deleteToken: z.string().min(1).max(256).optional(),
 })
 
 /** Customers replace a screenshot while still on the checkout page. */
@@ -61,6 +71,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // No ImageKit identifier → legacy/empty request, nothing to delete.
   if (!parsed.fileId) {
     return NextResponse.json({ success: true, deleted: false })
+  }
+
+  // Pre-token clients: nothing is deleted, nothing errors.
+  if (!parsed.deleteToken) {
+    return NextResponse.json({ success: true, deleted: false })
+  }
+  if (!verifyProofDeleteToken(parsed.fileId, parsed.deleteToken)) {
+    return NextResponse.json(
+      { success: false, error: 'This file is not a deletable payment proof' },
+      { status: 403 },
+    )
   }
 
   const outcome = await deletePaymentProofAsset(parsed.fileId, { maxAgeMs: REPLACE_WINDOW_MS })

@@ -36,7 +36,11 @@ import { requireCheckoutOutlet, withOrderOutlet } from '@/lib/outlets/order-outl
 import { parseOrderLines } from '@/lib/checkout/order-line-schema'
 import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
+import { judgeOrderPaymentMethod, readOrderPaymentMethod } from '@/lib/checkout/order-payment-method'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
+import { resolveDeliveryOrigin, type OriginOutletFields } from '@/lib/delivery/delivery-origin'
+import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
+import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
@@ -50,6 +54,8 @@ import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-sta
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
+const OUTSIDE_COUNTRY_PIN_MESSAGE =
+  'Your delivery pin is outside the Philippines. Please search for your address again and pick the right spot on the map.'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -138,9 +144,15 @@ export async function createOrderAction(
   deliveryFee?: number,
   lalamoveQuotationId?: string,
   paymentMethodId?: string,
-  paymentMethodName?: string,
-  paymentMethodDetails?: string,
-  paymentMethodQrCodeUrl?: string,
+  /**
+   * IGNORED, all three. Kept so the positional signature the checkout calls
+   * stays stable: the order records the STORED method's name, account details
+   * and QR, read by `paymentMethodId` (see `judgeOrderPaymentMethod`). A sent
+   * name or account number used to be stored as-is.
+   */
+  _clientPaymentMethodName?: string,
+  _clientPaymentMethodDetails?: string,
+  _clientPaymentMethodQrCodeUrl?: string,
   /**
    * IGNORED. Kept only so the positional signature the checkout calls stays
    * stable: the service charge is recomputed from the tenant's own order type
@@ -209,12 +221,6 @@ export async function createOrderAction(
       return { success: false, refused: true, error: 'Invalid tenant ID' }
     }
 
-    // A Senior/PWD claim is 20% + VAT off for anyone who types an ID, with no
-    // session: orders carrying one are limited per client IP (fail open).
-    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
-    const claimRefusal = await govClaimLimitRefusal(tenantId, governmentClaim)
-    if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
-
     // ── Boundary validation (this is a public server action) ──
     // Shape only: a price that passes is still just a claim, floored below.
     // Nothing the web checkout builds can fail these, so a refusal here never
@@ -250,11 +256,25 @@ export async function createOrderAction(
     // Convex deploy key routes the order and the Loyverse token backs the live
     // stock check below.
     const supabaseAdmin = createAdminClient()
+    // The chosen payment method, read alongside (one primary-key read; never
+    // rejects). Judged once the order type is known, below.
+    const paymentMethodRead = readOrderPaymentMethod(supabaseAdmin, tenantId, paymentMethodId)
     const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
     if (!tenantContext.ok) {
       return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
     }
     const { tenantConfig, tenantSecrets } = tenantContext
+
+    // A Senior/PWD claim is 20% + VAT off for anyone who types an ID, with no
+    // session: orders carrying one the store will price (well-formed, online
+    // claims on) are limited per client IP (fail open).
+    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
+    const claimRefusal = await govClaimLimitRefusal(tenantId, governmentClaim, async () => {
+      const { createSupabaseLedgerStore } = await import('@/lib/gov-discount-ledger/supabase-store')
+      const profile = await createSupabaseLedgerStore(supabaseAdmin).loadTaxProfile(tenantId)
+      return profile?.onlineClaimsEnabled === true
+    })
+    if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
 
     if (tenantConfig.inventory_enabled === true && items.some((item) => item.option_ids?.length || item.addon_ids?.length)) {
       const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
@@ -289,6 +309,25 @@ export async function createOrderAction(
     if (tenantConfig.lalamove_enabled === true && !orderTypeRow) {
       return { success: false, refused: true, error: 'Please select a valid order type before continuing.' }
     }
+
+    // ── Payment method (authoritative; every backend) ──
+    // Only the id is believed. The method must be one the storefront offers
+    // for this order type, and the STORED name / account details / QR are
+    // what the order records — the browser's copies used to be stored as sent.
+    // A proof-required method needs a screenshot or a reference, the same rule
+    // the checkout preflights (`isPaymentProofMissing`) before "Order Placed!".
+    const paymentVerdict = judgeOrderPaymentMethod({
+      requestedId: paymentMethodId,
+      read: await paymentMethodRead,
+      orderTypeId: orderTypeRow ? orderTypeId : null,
+      proof: safePaymentProof,
+    })
+    if (paymentVerdict.kind === 'refuse') return { success: false, refused: true, error: paymentVerdict.error }
+    if (paymentVerdict.kind === 'abort') return { success: false, error: paymentVerdict.error }
+    const trustedPaymentMethodId = paymentVerdict.method?.id
+    const trustedPaymentMethodName = paymentVerdict.method?.name
+    const trustedPaymentMethodDetails = paymentVerdict.method?.details ?? undefined
+    const trustedPaymentMethodQrCodeUrl = paymentVerdict.method?.qrCodeUrl ?? undefined
 
     // ── Live Loyverse stock verification (authoritative; every order backend) ──
     // The synced mirror can always be stale — a webhook may be unregistered or
@@ -366,18 +405,24 @@ export async function createOrderAction(
     // conditions are checked before the query runs, so a tenant without the
     // feature issues exactly the queries they issue today.
     let resolvedOutlet: { id: string; name: string } | null = null
+    // The resolved branch's own pin and radius: a delivery starts THERE when it
+    // is pinned (fee, Lalamove signature check), else at the store.
+    let resolvedOutletOrigin: OriginOutletFields | null = null
     if (isMultiBranchEnabled(tenantConfig)) {
       const { data: outletRows, error: outletError } = await supabaseAdmin
         .from('outlets')
-        .select('id, name, is_active')
+        .select('id, name, is_active, address, latitude, longitude, delivery_radius_km')
         .eq('tenant_id', tenantId)
       if (outletError) return { success: false, error: 'Unable to verify your branch. Please try again.' }
+      const branchRows = (outletRows ?? []) as Array<OriginOutletFields & { name: string; is_active: boolean }>
       try {
         resolvedOutlet = requireCheckoutOutlet({
           isEnabled: true,
           requestedOutletId: outletId,
-          outlets: (outletRows ?? []) as Array<{ id: string; name: string; is_active: boolean }>,
+          outlets: branchRows,
         })
+        const resolvedId = resolvedOutlet?.id
+        resolvedOutletOrigin = branchRows.find((row) => row.id === resolvedId) ?? null
       } catch (error) {
         return { success: false, refused: true, error: error instanceof Error ? error.message : 'Choose a branch before placing your order.' }
       }
@@ -527,8 +572,24 @@ export async function createOrderAction(
     // carries none. A Lalamove fee is the price the quote action SIGNED, never
     // the browser's number: a forged ₱1 fee on a real quotation used to be
     // booked at the merchant's cost.
-    const isLalamoveDelivery = orderTypeRow?.type === 'delivery' && tenantConfig.lalamove_enabled === true
+    const isDeliveryOrder = orderTypeRow?.type === 'delivery'
+    const isLalamoveDelivery = isDeliveryOrder && tenantConfig.lalamove_enabled === true
     const deliveryDestination = (effectiveCustomerData ?? {}) as Record<string, unknown>
+    const deliveryPin = toLatLng(deliveryDestination.delivery_lat, deliveryDestination.delivery_lng)
+    const deliveryOrigin = resolveDeliveryOrigin(tenantConfig, resolvedOutletOrigin)
+
+    // No rider in this market can reach a pin outside the country — the
+    // customer picked a wrong suggestion ("Manila" in another country, a
+    // dropped pin at 0,0). Every other pin oddity is a checkout warning only.
+    if (isDeliveryOrder && assessDeliveryPin({
+      pin: deliveryPin,
+      origin: null,
+      market: (tenantConfig as { lalamove_market?: string | null }).lalamove_market,
+      lalamoveEnabled: tenantConfig.lalamove_enabled === true,
+    }).isBlocked) {
+      return await refuse(OUTSIDE_COUNTRY_PIN_MESSAGE)
+    }
+
     let trustedDeliveryFee = deliveryFee
     if (isLalamoveDelivery) {
       const verification = verifyDeliveryQuote(lalamoveQuoteSignature, {
@@ -539,6 +600,8 @@ export async function createOrderAction(
           lat: deliveryDestination.delivery_lat,
           lng: deliveryDestination.delivery_lng,
         },
+        // A quote is only good for the branch it was priced from.
+        originOutletId: deliveryOrigin?.outletId ?? null,
       })
       if (verification.ok) {
         trustedDeliveryFee = verification.fee
@@ -554,13 +617,14 @@ export async function createOrderAction(
       }
     }
 
+    const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
     const deliveryResolution = await resolveOrderDeliveryFee({
       clientFee: trustedDeliveryFee,
-      isDeliveryOrder: orderTypeRow?.type === 'delivery',
+      isDeliveryOrder,
       lalamoveEnabled: tenantConfig.lalamove_enabled === true,
-      distanceConfig: distanceConfigFromTenant(tenantConfig),
-      store: toLatLng(tenantConfig.restaurant_latitude, tenantConfig.restaurant_longitude),
-      destination: toLatLng(deliveryDestination.delivery_lat, deliveryDestination.delivery_lng),
+      distanceConfig: storeDistanceConfig && withOriginRadius(storeDistanceConfig, deliveryOrigin),
+      store: deliveryOrigin?.point ?? null,
+      destination: deliveryPin,
       measureKm: measureRoadDistanceKm,
     })
     if (deliveryResolution.kind === 'abort') return await abort(deliveryResolution.error)
@@ -685,7 +749,7 @@ export async function createOrderAction(
         orderTypeName: orderTypeRow?.name ?? null,
         deliveryFee: effectiveDeliveryFee,
         serviceCharge,
-        paymentMethodName,
+        paymentMethodName: trustedPaymentMethodName,
         customerData: effectiveCustomerData,
       },
       captureCustomer,
@@ -725,10 +789,10 @@ export async function createOrderAction(
         customerData: effectiveCustomerData,
         deliveryFee: effectiveDeliveryFee,
         lalamoveQuotationId,
-        paymentMethodId,
-        paymentMethodName,
-        paymentMethodDetails,
-        paymentMethodQrCodeUrl,
+        paymentMethodId: trustedPaymentMethodId,
+        paymentMethodName: trustedPaymentMethodName,
+        paymentMethodDetails: trustedPaymentMethodDetails,
+        paymentMethodQrCodeUrl: trustedPaymentMethodQrCodeUrl,
         serviceChargeAmount: serviceCharge,
         scheduledForISO: validatedScheduledISO,
         paymentProof: safePaymentProof,
@@ -780,10 +844,10 @@ export async function createOrderAction(
         convexCustomerData,
         effectiveDeliveryFee,
         lalamoveQuotationId,
-        paymentMethodId,
-        paymentMethodName,
-        paymentMethodDetails,
-        paymentMethodQrCodeUrl,
+        trustedPaymentMethodId,
+        trustedPaymentMethodName,
+        trustedPaymentMethodDetails,
+        trustedPaymentMethodQrCodeUrl,
         serviceCharge,
         validatedScheduledISO,
         pricing.application.discountLines
@@ -804,10 +868,10 @@ export async function createOrderAction(
       effectiveCustomerData,
       effectiveDeliveryFee,
       lalamoveQuotationId,
-      paymentMethodId,
-      paymentMethodName,
-      paymentMethodDetails,
-      paymentMethodQrCodeUrl,
+      trustedPaymentMethodId,
+      trustedPaymentMethodName,
+      trustedPaymentMethodDetails,
+      trustedPaymentMethodQrCodeUrl,
       serviceCharge,
       validatedScheduledISO,
       safePaymentProof,

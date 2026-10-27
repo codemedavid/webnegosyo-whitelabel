@@ -943,7 +943,8 @@ export async function runPlatformQuery(
     }
     default:
       if (isPlatformAnalyticsRef(ref)) {
-        return runPlatformAnalyticsQuery(client, tenant, ref, params, scope);
+        // Unsignalled: shared analytics reads attach their own signal.
+        return runPlatformAnalyticsQuery(unsignalledClient, tenant, ref, params, scope, signal);
       }
       if (isPlatformProductCostRef(ref)) {
         return runPlatformProductCostQuery(client, tenant, ref, params);

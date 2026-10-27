@@ -46,6 +46,7 @@ describe('PaymentProofField — upload path', () => {
       url: 'https://ik.imagekit.io/demo/payment-proofs/proof.jpg',
       fileId: 'f1',
       filePath: 'payment-proofs/proof.jpg',
+      deleteToken: 'tok-f1',
     })
     const onUploaded = jest.fn()
     render(<PaymentProofField {...props} onUploaded={onUploaded} />)
@@ -53,7 +54,7 @@ describe('PaymentProofField — upload path', () => {
     const input = screen.getByText(/upload screenshot/i).closest('label')!.querySelector('input[type="file"]')!
     fireEvent.change(input, { target: { files: [new File(['x'], 'proof.jpg', { type: 'image/jpeg' })] } })
 
-    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith('https://ik.imagekit.io/demo/payment-proofs/proof.jpg', 'f1'))
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith('https://ik.imagekit.io/demo/payment-proofs/proof.jpg', 'f1', 'tok-f1'))
     expect(uploads.uploadPaymentProofImage).toHaveBeenCalled()
     expect(uploads.uploadImageToImageKit).not.toHaveBeenCalled()
   })

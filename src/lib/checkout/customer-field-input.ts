@@ -11,23 +11,62 @@ export interface AddressCoordinates {
   lng: number
 }
 
+/** Hidden keys the address field keeps beside the coordinates. */
+export const DELIVERY_PIN_ADDRESS_KEY = 'delivery_pin_address'
+export const DELIVERY_PIN_CONFIRMED_KEY = 'delivery_pin_confirmed'
+
+export interface AddressChangeMeta {
+  /** The customer confirmed this spot on the map. */
+  isConfirmed?: boolean
+}
+
+function normalizeAddressText(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/** A text edit keeps the pin while the label it was picked with is still there ("Unit 5B, " + label). */
+function isEditOfPickedAddress(previous: Readonly<Record<string, string>>, address: string): boolean {
+  const pickedLabel = previous[DELIVERY_PIN_ADDRESS_KEY]
+  if (!pickedLabel || !previous.delivery_lat || !previous.delivery_lng) return false
+  return normalizeAddressText(address).includes(normalizeAddressText(pickedLabel))
+}
+
 /**
- * The customer data after the address field changes. A geocoded pick stores its
- * coordinates; a free-text edit drops them, so the fee path treats the address
- * as "no coordinates" and forces a re-pick rather than quoting a stale pin.
+ * The customer data after the address field changes.
+ *
+ * A pick stores its coordinates and the label it was picked with. A text edit
+ * that keeps that label (adding a unit or a landmark) keeps the pin; any other
+ * edit drops it, so the fee path treats the address as "no coordinates" and
+ * forces a re-pick rather than quoting a pin for a different place.
  */
 export function applyDeliveryAddressChange(
   previous: Readonly<Record<string, string>>,
   fieldName: string,
   address: string,
-  coordinates: AddressCoordinates | null | undefined
+  coordinates: AddressCoordinates | null | undefined,
+  meta: AddressChangeMeta = {},
 ): Record<string, string> {
-  // Strip stale coordinates without mutating the previous map.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { delivery_lat: _lat, delivery_lng: _lng, ...rest } = previous
+  if (!coordinates && isEditOfPickedAddress(previous, address)) return { ...previous, [fieldName]: address }
+
+  // Strip the old pin without mutating the previous map.
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  const {
+    delivery_lat: _lat,
+    delivery_lng: _lng,
+    [DELIVERY_PIN_ADDRESS_KEY]: _label,
+    [DELIVERY_PIN_CONFIRMED_KEY]: _confirmed,
+    ...rest
+  } = previous
+  /* eslint-enable @typescript-eslint/no-unused-vars */
   const next = { ...rest, [fieldName]: address }
   if (!coordinates) return next
-  return { ...next, delivery_lat: String(coordinates.lat), delivery_lng: String(coordinates.lng) }
+  return {
+    ...next,
+    delivery_lat: String(coordinates.lat),
+    delivery_lng: String(coordinates.lng),
+    [DELIVERY_PIN_ADDRESS_KEY]: address,
+    ...(meta.isConfirmed ? { [DELIVERY_PIN_CONFIRMED_KEY]: 'true' } : {}),
+  }
 }
 
 /** Standard PH mobile number length, without the country code. */

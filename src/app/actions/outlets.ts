@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
-import { assertOutletCapacity } from '@/lib/outlets/outlet-repository'
+import { assertOutletCapacity, OutletNotFoundError } from '@/lib/outlets/outlet-repository'
 import type { OutletPatch, OutletWriteInput } from '@/lib/outlets/outlet-repository'
 import { resolveOutletLimit } from '@/lib/billing/subscription-status'
 import { canManageOutlets } from '@/lib/outlets/branch-scope'
@@ -11,6 +11,8 @@ import {
   asAppUserQueryClient,
   fetchAppUserScope,
 } from '@/lib/queries/fetch-app-user-scope'
+import { isStorePinRequired, validateStorePin } from '@/lib/delivery/store-pin-rules'
+import { isUuid } from '@/lib/uuid'
 
 /**
  * Server actions for the branches admin.
@@ -98,6 +100,88 @@ async function denyUnlessOutletManager(): Promise<string | null> {
   return canManageOutlets(appUser) ? null : NOT_ALLOWED
 }
 
+interface BranchPinFields {
+  latitude?: number | null
+  longitude?: number | null
+  supports_delivery?: boolean
+}
+
+/**
+ * The pickup-pin rules (`store-pin-rules.ts`) for a branch save.
+ *
+ * A branch's pin is its Lalamove pickup and the point its delivery fees are
+ * measured from. Required only for a DELIVERING branch of a store that books
+ * Lalamove or prices by distance: a pickup-only branch has nothing to measure,
+ * and an unpinned delivering branch would fall back to the main store's pin
+ * (`resolveDeliveryOrigin`) and send its riders there.
+ *
+ * The check judges the branch as it will be AFTER the save: a patch's own
+ * fields over the stored row (`stored`, null on a create). So clearing the pin
+ * of a branch that still delivers, or switching delivery on for one that was
+ * never pinned, is refused even though the patch names only one of the two.
+ * A missing `supports_delivery` on a create counts as delivering, like the
+ * column default. A patch that touches neither the pin nor delivery is not
+ * checked (and costs no read).
+ *
+ * The store's market and delivery settings are read here, never trusted from
+ * the client; a failed read refuses the save.
+ */
+async function denyUnlessBranchPinValid(
+  tenantId: string,
+  fields: BranchPinFields,
+  stored: BranchPinFields | null,
+): Promise<string | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('tenants')
+    .select('lalamove_enabled, lalamove_market, distance_delivery_enabled')
+    .eq('id', tenantId)
+    .maybeSingle()
+  if (error || !data) {
+    console.error('[outlets] Branch pin check: store read failed', tenantId, error)
+    return 'Could not check your delivery settings. Please try again.'
+  }
+
+  const store = data as {
+    lalamove_enabled?: boolean | null
+    lalamove_market?: string | null
+    distance_delivery_enabled?: boolean | null
+  }
+  // Half a pin in the patch is judged as sent (and refused), never completed from the stored half.
+  const touchesPin = fields.latitude !== undefined || fields.longitude !== undefined
+  const pin = touchesPin ? fields : (stored ?? {})
+  const isDelivering = (fields.supports_delivery ?? stored?.supports_delivery) !== false
+  return validateStorePin({
+    lat: pin.latitude,
+    lng: pin.longitude,
+    market: store.lalamove_market,
+    lalamoveEnabled: store.lalamove_enabled,
+    isPinRequired: isDelivering && isStorePinRequired(store),
+    subject: 'branch',
+  })
+}
+
+const BRANCH_NOT_FOUND = new OutletNotFoundError().message
+
+/** The stored pin and delivery switch a patch is applied over. A failed read refuses the save. */
+async function readStoredBranchPin(
+  tenantId: string,
+  outletId: string,
+): Promise<{ ok: true; branch: BranchPinFields } | { ok: false; error: string }> {
+  try {
+    const branch = await createSupabaseOutletRepository().findById(tenantId, outletId)
+    if (!branch) return { ok: false, error: BRANCH_NOT_FOUND }
+    return { ok: true, branch }
+  } catch (error) {
+    console.error('[outlets] Branch pin check: branch read failed', { tenantId, outletId, error })
+    return { ok: false, error: 'Could not check this branch. Please try again.' }
+  }
+}
+
+function touchesBranchPin(fields: BranchPinFields): boolean {
+  return fields.latitude !== undefined || fields.longitude !== undefined || fields.supports_delivery !== undefined
+}
+
 export async function listOutletsAction(tenantId: string) {
   try {
     const data = await createSupabaseOutletRepository().listByTenant(tenantId)
@@ -123,6 +207,10 @@ export async function createOutletAction(
     const existing = await repository.listByTenant(tenantId)
     assertOutletCapacity(existing.length, await fetchOutletLimit(tenantId))
 
+    // After the allowance: a store at its limit hears that first.
+    const pinError = await denyUnlessBranchPinValid(tenantId, input, null)
+    if (pinError) return { success: false as const, error: pinError }
+
     const data = await repository.create(tenantId, input)
     revalidatePath(outletsPath(tenantSlug))
     return { success: true as const, data }
@@ -139,6 +227,15 @@ export async function updateOutletAction(
 ) {
   const denied = await denyUnlessOutletManager()
   if (denied) return { success: false as const, error: denied }
+
+  if (!isUuid(outletId)) return { success: false as const, error: BRANCH_NOT_FOUND }
+
+  if (touchesBranchPin(patch)) {
+    const stored = await readStoredBranchPin(tenantId, outletId)
+    if (!stored.ok) return { success: false as const, error: stored.error }
+    const pinError = await denyUnlessBranchPinValid(tenantId, patch, stored.branch)
+    if (pinError) return { success: false as const, error: pinError }
+  }
 
   try {
     const data = await createSupabaseOutletRepository().update(tenantId, outletId, patch)

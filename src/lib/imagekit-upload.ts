@@ -19,6 +19,8 @@ export interface ImageKitUploadResult {
   fileId: string
   /** Path relative to the URL endpoint (used to scope deletion) */
   filePath: string
+  /** Payment proofs only: lets this uploader delete the file again. */
+  deleteToken?: string
 }
 
 interface SignedUpload {
@@ -99,6 +101,7 @@ function sendUpload(
             url?: string
             fileId?: string
             filePath?: string
+            deleteToken?: string
           }
           if (json.url && json.fileId && json.filePath) {
             // ImageKit returns filePath with a leading slash; normalize it.
@@ -106,6 +109,7 @@ function sendUpload(
               url: json.url,
               fileId: json.fileId,
               filePath: json.filePath.replace(/^\//, ''),
+              ...(typeof json.deleteToken === 'string' ? { deleteToken: json.deleteToken } : {}),
             })
             return
           }

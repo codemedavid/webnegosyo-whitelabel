@@ -5,7 +5,7 @@ import {
   createPaidCheckoutLead,
   getCheckoutLeads,
   getCheckoutLeadById,
-  getCheckoutLeadByRef,
+  getCheckoutLeadConfirmationByRef,
   updateCheckoutLeadStatus,
   uploadPaymentProof,
   type CreateCheckoutLeadInput,
@@ -29,12 +29,24 @@ import { applyLeadStatusWithLaunch, readLeadOnboarding } from '@/lib/onboarding/
 import { findOnboardingByLead } from '@/lib/onboarding/repository'
 import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { RateLimitOptions } from '@/lib/distributed-rate-limit'
+import { isReferenceNumber } from '@/lib/checkout-leads/reference-number'
+import { CHECKOUT_LEAD_LOOKUP_RATE_LIMITED, type CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
+import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 
 /**
  * Public funnel submits per client IP. Leads are worked by staff, so an
  * unthrottled form is a flooded console (and Meta conversion noise).
  */
 const CHECKOUT_FORM_RATE_LIMIT: RateLimitOptions = { limit: 5, windowSec: 3600 }
+
+/**
+ * The confirmation page is reached by reference number alone, so lookups and
+ * proof uploads are counted per IP. These guard DISCLOSURE (someone else's
+ * reference), so a Redis outage falls back to the per-instance limiter
+ * instead of to no limit. Generous enough for a buyer reloading the page.
+ */
+const CHECKOUT_LEAD_LOOKUP_RATE_LIMIT: RateLimitOptions = { limit: 30, windowSec: 600, onRedisFailure: 'instance' }
+const CHECKOUT_LEAD_PROOF_RATE_LIMIT: RateLimitOptions = { limit: 10, windowSec: 600, onRedisFailure: 'instance' }
 
 // ---- Checkout Leads ----
 
@@ -77,8 +89,13 @@ export async function fetchCheckoutLeadDetail(id: string) {
   return { lead: lead.data }
 }
 
-export async function fetchCheckoutLeadByRef(ref: string) {
-  return getCheckoutLeadByRef(ref)
+export async function fetchCheckoutLeadByRef(
+  ref: string
+): Promise<{ data: CheckoutLeadConfirmation | null; error: string | null }> {
+  if (!isReferenceNumber(ref)) return { data: null, error: 'Not found' }
+  const rate = await checkActionRateLimit('checkout-lead-lookup', CHECKOUT_LEAD_LOOKUP_RATE_LIMIT)
+  if (!rate.allowed) return { data: null, error: CHECKOUT_LEAD_LOOKUP_RATE_LIMITED }
+  return getCheckoutLeadConfirmationByRef(ref)
 }
 
 export async function changeCheckoutLeadStatus(
@@ -166,16 +183,19 @@ export async function retryLeadOnboardingBuild(leadId: string): Promise<{ error:
   return { error: null }
 }
 
-export async function submitPaymentProof(referenceNumber: string, paymentProofUrl: string) {
-  try {
-    const url = new URL(paymentProofUrl)
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      return { error: 'Invalid payment proof URL' }
-    }
-  } catch {
-    return { error: 'Invalid payment proof URL' }
-  }
-  return uploadPaymentProof(referenceNumber, paymentProofUrl)
+export async function submitPaymentProof(
+  referenceNumber: string,
+  paymentProofUrl: string
+): Promise<{ error: string | null }> {
+  if (!isReferenceNumber(referenceNumber)) return { error: 'Order not found' }
+  // Only a screenshot our own upload route put on ImageKit is stored: the URL
+  // is rendered as an image and a link in the superadmin console.
+  const proofUrl = sanitizePaymentProof({ url: paymentProofUrl })?.url
+  if (!proofUrl) return { error: 'Invalid payment proof URL' }
+
+  const rate = await checkActionRateLimit('checkout-lead-proof', CHECKOUT_LEAD_PROOF_RATE_LIMIT)
+  if (!rate.allowed) return { error: 'Too many uploads. Please try again later.' }
+  return uploadPaymentProof(referenceNumber, proofUrl)
 }
 
 // ---- Platform Payment Methods ----

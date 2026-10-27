@@ -54,6 +54,7 @@ export interface TaxSettingsForm {
   approvalThreshold: string;
   serviceChargeMode: ServiceChargeMode;
   idPhotoMode: IdPhotoMode;
+  onlineClaimsEnabled: boolean;
 }
 
 export type TaxSettingsField = keyof TaxSettingsForm;
@@ -89,6 +90,7 @@ export function formFromProfile(profile: TaxProfile | null): TaxSettingsForm {
     approvalThreshold: String(source.approvalThreshold),
     serviceChargeMode: source.serviceChargeMode,
     idPhotoMode: source.idPhotoMode,
+    onlineClaimsEnabled: source.onlineClaimsEnabled,
   };
 }
 
@@ -185,6 +187,7 @@ export function profileFromForm(form: TaxSettingsForm): TaxProfile | null {
     approvalThreshold: toThreshold(form.approvalThreshold),
     serviceChargeMode: form.serviceChargeMode,
     idPhotoMode: form.idPhotoMode,
+    onlineClaimsEnabled: form.onlineClaimsEnabled,
   };
 }
 
