@@ -1,5 +1,7 @@
 /**
- * Low-stock pushes for the merchant app's bell.
+ * Pushes for the merchant app's bell: low / out of stock, and cash alerts
+ * (a shift still open past its business day, a remittance waiting to be
+ * accepted — CONTRACTS W3.3).
  *
  * `merchant_notifications` rows are written by a statement trigger on
  * `stock_alerts` (migration 20261012120000), which posts their ids to
@@ -25,6 +27,15 @@ const NAMES_PER_GROUP = 2
 
 /** Staff need this permission to open the app's Stock screen. */
 const STOCK_PERMISSION = 'menu'
+
+/** Cash alerts are for the people who handle cash (W3.3). */
+const CASH_PERMISSION = 'cash_manage'
+
+export const CASH_NOTIFICATION_KINDS: readonly CashNotificationKind[] = ['shift_overdue', 'remittance_pending']
+
+export function isCashNotificationKind(kind: unknown): kind is CashNotificationKind {
+  return kind === 'shift_overdue' || kind === 'remittance_pending'
+}
 
 const notifyMerchantPayloadSchema = z.object({
   notification_ids: z.array(z.string().uuid()).min(1).max(MAX_NOTIFICATIONS_PER_REQUEST),
@@ -68,15 +79,38 @@ export interface DeviceAccount extends AccountRow {
   token: string
 }
 
+export type CashNotificationKind = 'shift_overdue' | 'remittance_pending'
+
+/** A cash bell row (W3.3): `item_name` is the person's name at notice time. */
+export interface CashNotification {
+  id: string
+  tenant_id: string
+  outlet_id: string | null
+  kind: CashNotificationKind
+  item_name: string
+  outlet_name: string | null
+  drawer_name: string | null
+  /** remittance_pending only; null = an uncounted hand-over. */
+  cash_cents: number | null
+  shift_id: string | null
+  remittance_id: string | null
+}
+
+export type CashPushData = { type: 'cash_alert'; kind: CashNotificationKind; shiftId?: string; remittanceId?: string }
+
 export interface MerchantPushMessage {
   to: string
   sound: 'default'
-  /** Android channel created by the app (`lib/notifications.ts`). Not the order ringtone. */
-  channelId: 'stock-alerts'
+  /**
+   * Android channel created by the app (`lib/notifications.ts`). Not the
+   * order ringtone. `cash-alerts` must be created by the app too; until it
+   * is, Android shows those pushes on its quiet fallback channel.
+   */
+  channelId: 'stock-alerts' | 'cash-alerts'
   priority: 'high'
   title: string
   body: string
-  data: { type: 'stock_alert'; inventoryItemId?: string }
+  data: { type: 'stock_alert'; inventoryItemId?: string } | CashPushData
 }
 
 /** The trigger payload, or null when the caller sent something else. */
@@ -200,4 +234,86 @@ export function joinDeviceAccounts(
     const match = accounts.find((a) => a.user_id === row.user_id && a.tenant_id === row.tenant_id)
     return match ? [{ ...match, token: row.token }] : []
   })
+}
+
+// ── Cash alerts (W3.3) ─────────────────────────────────────────────────────
+
+function canHandleCash(account: AccountRow): boolean {
+  return (
+    account.is_owner === true ||
+    account.role === 'superadmin' ||
+    account.permissions === null ||
+    account.permissions.includes(CASH_PERMISSION)
+  )
+}
+
+/** Mirrors `app_user_may_read_merchant_notifications` for the cash kinds: `cash_manage` + branch reach. */
+export function canReadCashNotification(
+  account: AccountRow,
+  notification: Pick<CashNotification, 'tenant_id' | 'outlet_id'>,
+): boolean {
+  if (account.tenant_id !== notification.tenant_id) return false
+  if (account.role !== 'admin' && account.role !== 'superadmin') return false
+  return canHandleCash(account) && canReachBranch(account, notification.outlet_id)
+}
+
+/** "₱6,345" for whole pesos, "₱6,345.50" otherwise. */
+export function formatCashAlertAmount(cents: number): string {
+  const isWhole = cents % 100 === 0
+  return `₱${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: isWhole ? 0 : 2,
+    maximumFractionDigits: isWhole ? 0 : 2,
+  })}`
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || 'Someone'
+}
+
+/** W3.3 wording — identical to the app's `describeCashNotification` (parity-tested). */
+export function describeCashNotification(notification: CashNotification): { title: string; body: string } {
+  const first = firstName(notification.item_name)
+  const where = [notification.outlet_id ? notification.outlet_name : null, notification.drawer_name]
+  if (notification.kind === 'shift_overdue') {
+    const parts = [...where, 'End it from the Drawer'].filter((part): part is string => Boolean(part))
+    return { title: `${first}'s shift is still open`, body: parts.join(' · ') }
+  }
+  const title =
+    notification.cash_cents === null
+      ? `${first}'s remittance is waiting to be accepted`
+      : `${first}'s ${formatCashAlertAmount(notification.cash_cents)} is waiting to be accepted`
+  const parts = [...where, 'Accept it in Remittances'].filter((part): part is string => Boolean(part))
+  return { title, body: parts.join(' · ') }
+}
+
+function cashPushData(notification: CashNotification): CashPushData {
+  return {
+    type: 'cash_alert',
+    kind: notification.kind,
+    ...(notification.shift_id ? { shiftId: notification.shift_id } : {}),
+    ...(notification.remittance_id ? { remittanceId: notification.remittance_id } : {}),
+  }
+}
+
+/** One push per alert per device that may read it (cash alerts are about one person each). */
+export function buildCashNotificationMessages(
+  notifications: readonly CashNotification[],
+  devices: readonly DeviceAccount[],
+): MerchantPushMessage[] {
+  return devices.flatMap((device) =>
+    notifications
+      .filter((notification) => canReadCashNotification(device, notification))
+      .map((notification): MerchantPushMessage => {
+        const text = describeCashNotification(notification)
+        return {
+          to: device.token,
+          sound: 'default',
+          channelId: 'cash-alerts',
+          priority: 'high',
+          title: text.title,
+          body: text.body,
+          data: cashPushData(notification),
+        }
+      }),
+  )
 }

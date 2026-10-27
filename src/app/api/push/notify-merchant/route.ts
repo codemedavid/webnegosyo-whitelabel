@@ -1,6 +1,7 @@
 /**
  * POST /api/push/notify-merchant — rings merchant devices for new bell
- * notifications (today: low / out of stock).
+ * notifications: low / out of stock, and cash alerts (W3.3: a shift still
+ * open past its day, a remittance waiting to be accepted).
  *
  * Called by a statement trigger on `public.merchant_notifications` (via
  * pg_net), which is itself fed by `stock_alerts`, so every stock write path
@@ -15,10 +16,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  buildCashNotificationMessages,
   buildMerchantNotificationMessages,
+  isCashNotificationKind,
   joinDeviceAccounts,
   parseNotifyMerchantPayload,
   type AccountRow,
+  type CashNotification,
   type DeviceAccount,
   type DeviceTokenRow,
   type NotifyMerchantPayload,
@@ -38,8 +42,12 @@ const LOG_LABEL = 'notify-merchant'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
-const NOTIFICATION_COLUMNS =
-  'id, tenant_id, outlet_id, kind, inventory_item_id, item_name, unit, outlet_name, quantity, reorder_level'
+/**
+ * Every column: the cash columns (shift_id, remittance_id, drawer_name,
+ * cash_cents) arrive with migration 20261027190000, and naming them before it
+ * is applied would fail the claim and stop stock pushes too.
+ */
+const NOTIFICATION_COLUMNS = '*'
 
 interface NotificationRow {
   id: string
@@ -52,6 +60,17 @@ interface NotificationRow {
   outlet_name: string | null
   quantity: number | string | null
   reorder_level: number | string | null
+  shift_id?: string | null
+  remittance_id?: string | null
+  drawer_name?: string | null
+  cash_cents?: number | string | null
+}
+
+interface ClaimedNotifications {
+  stock: StockNotification[]
+  cash: CashNotification[]
+  ids: string[]
+  tenantIds: string[]
 }
 
 function toNumber(value: number | string | null): number | null {
@@ -63,10 +82,42 @@ function toNumber(value: number | string | null): number | null {
 function toStockNotification(row: NotificationRow): StockNotification {
   const kind: StockNotificationKind = row.kind === 'stock_out' ? 'stock_out' : 'stock_low'
   return {
-    ...row,
+    id: row.id,
+    tenant_id: row.tenant_id,
+    outlet_id: row.outlet_id,
     kind,
+    inventory_item_id: row.inventory_item_id,
+    item_name: row.item_name,
+    unit: row.unit,
+    outlet_name: row.outlet_name,
     quantity: toNumber(row.quantity),
     reorder_level: toNumber(row.reorder_level),
+  }
+}
+
+function toCashNotification(row: NotificationRow & { kind: CashNotification['kind'] }): CashNotification {
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    outlet_id: row.outlet_id,
+    kind: row.kind,
+    item_name: row.item_name,
+    outlet_name: row.outlet_name,
+    drawer_name: row.drawer_name ?? null,
+    cash_cents: toNumber(row.cash_cents ?? null),
+    shift_id: row.shift_id ?? null,
+    remittance_id: row.remittance_id ?? null,
+  }
+}
+
+function splitByKind(rows: readonly NotificationRow[]): ClaimedNotifications {
+  const cash = rows.filter((row): row is NotificationRow & { kind: CashNotification['kind'] } => isCashNotificationKind(row.kind))
+  const stock = rows.filter((row) => !isCashNotificationKind(row.kind))
+  return {
+    stock: stock.map(toStockNotification),
+    cash: cash.map(toCashNotification),
+    ids: rows.map((row) => row.id),
+    tenantIds: [...new Set(rows.map((row) => row.tenant_id))],
   }
 }
 
@@ -92,7 +143,7 @@ type Outcome<T> = { ok: true; value: T } | { ok: false; response: NextResponse }
 async function claimNotifications(
   admin: AdminClient,
   ids: readonly string[],
-): Promise<Outcome<StockNotification[]>> {
+): Promise<Outcome<ClaimedNotifications>> {
   const { data, error } = await admin
     .from('merchant_notifications')
     .update({ push_claimed_at: new Date().toISOString() })
@@ -104,7 +155,7 @@ async function claimNotifications(
     console.error(`[${LOG_LABEL}] claim failed:`, error.message)
     return { ok: false, response: NextResponse.json({ error: 'Claim failed' }, { status: 500 }) }
   }
-  return { ok: true, value: ((data ?? []) as NotificationRow[]).map(toStockNotification) }
+  return { ok: true, value: splitByKind((data ?? []) as NotificationRow[]) }
 }
 
 /** Every signed-in store device of these stores, with the account behind it. */
@@ -173,13 +224,10 @@ export async function POST(request: NextRequest) {
   // Claim first: exactly one send per row, however often the request replays.
   const claim = await claimNotifications(admin, payload.value.notification_ids)
   if (!claim.ok) return claim.response
-  const notifications = claim.value
-  if (notifications.length === 0) {
+  const { stock, cash, ids: notificationIds, tenantIds } = claim.value
+  if (notificationIds.length === 0) {
     return NextResponse.json({ sent: 0, duplicate: true })
   }
-
-  const notificationIds = notifications.map((n) => n.id)
-  const tenantIds = [...new Set(notifications.map((n) => n.tenant_id))]
 
   const devices = await readRecipientDevices(admin, tenantIds)
   if (!devices) {
@@ -187,7 +235,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Recipient read failed' }, { status: 500 })
   }
 
-  const messages = buildMerchantNotificationMessages(notifications, devices)
+  // Stock alerts fold into one push per device; cash alerts are one per person.
+  const messages = [...buildMerchantNotificationMessages(stock, devices), ...buildCashNotificationMessages(cash, devices)]
   if (messages.length === 0) {
     return NextResponse.json({ sent: 0 })
   }
