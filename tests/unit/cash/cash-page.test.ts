@@ -14,7 +14,7 @@ const TENANT_ID = '22222222-2222-4222-8222-222222222222'
 const OUTLET_A = '33333333-3333-4333-8333-333333333333'
 const OUTLET_B = '44444444-4444-4444-8444-444444444444'
 const FOUR_AM: CutoffSchedule = [{ effectiveFrom: '2026-01-01', cutoffMinutes: 240 }]
-// Sat Oct 25, 2:00 AM Manila: still Friday's business day on a 4 AM store.
+// Sun Oct 25, 2:00 AM Manila: still Saturday's business day on a 4 AM store.
 const NOW = Date.parse('2026-10-24T18:00:00.000Z')
 
 function staff(overrides: Partial<AppUserScopeRow> = {}): AppUserScopeRow {
@@ -68,7 +68,7 @@ describe('cashAccessFor', () => {
 })
 
 describe('buildCashPage', () => {
-  it('opens on the business day running now (2 AM Saturday is still Friday on a 4 AM store)', () => {
+  it('opens on the business day running now (2 AM Sunday is still Saturday on a 4 AM store)', () => {
     const state = page(staff())
 
     expect(state.kind === 'ready' && state.context).toMatchObject({
