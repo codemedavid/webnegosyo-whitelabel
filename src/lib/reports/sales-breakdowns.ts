@@ -14,6 +14,7 @@
  */
 
 import { foldMethodName as foldName } from './payment-buckets'
+import { MIDNIGHT_SCHEDULE, tradingDayOf, type CutoffSchedule } from '@/lib/business-day/trading-day'
 import { bucketKey, type ReportGrain } from './period'
 import { orderFigures, orderLineFigures, type LineFigures, type ReportOrder } from './sales-model'
 
@@ -182,13 +183,21 @@ export function rollupCategories(orders: readonly ReportOrder[]): CategoryRow[] 
   }))
 }
 
-/** Live orders per period bucket, oldest first. */
-export function rollupPeriods(orders: readonly ReportOrder[], grain: ReportGrain): PeriodRow[] {
+/**
+ * Live orders per period bucket, oldest first. Day / week / month follow the
+ * business day of `schedule` (no rows = Manila midnight); hour is wall clock.
+ * SQL twin: report_sales_by_period (20261027140000).
+ */
+export function rollupPeriods(
+  orders: readonly ReportOrder[],
+  grain: ReportGrain,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE,
+): PeriodRow[] {
   const rows = new Map<string, PeriodRow>()
   for (const order of orders) {
     const figures = orderFigures(order)
     if (!figures.isLive) continue
-    const key = bucketKey(order.at, grain)
+    const key = bucketKey(order.at, grain, schedule)
     const base = rows.get(key)
     rows.set(key, {
       key,
@@ -209,13 +218,24 @@ export function manilaWeekdayHour(ms: number): { weekday: number; hour: number }
   return { weekday: day === 0 ? 7 : day, hour: local.getUTCHours() }
 }
 
-/** Live orders by Manila weekday × hour, Monday 00:00 first. */
-export function rollupHours(orders: readonly ReportOrder[]): HourCell[] {
+/** ISO weekday (Monday = 1) of a 'YYYY-MM-DD' day key. */
+function isoWeekdayOf(dayKey: string): number {
+  const day = new Date(`${dayKey}T00:00:00.000Z`).getUTCDay()
+  return day === 0 ? 7 : day
+}
+
+/**
+ * Live orders by business-day weekday × wall-clock hour, Monday 00:00 first.
+ * With no cutoff the weekday is the Manila calendar weekday. SQL twin:
+ * report_sales_by_hour (20261027140000).
+ */
+export function rollupHours(orders: readonly ReportOrder[], schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): HourCell[] {
   const cells = new Map<number, HourCell>()
   for (const order of orders) {
     const figures = orderFigures(order)
     if (!figures.isLive) continue
-    const { weekday, hour } = manilaWeekdayHour(order.at)
+    const { hour } = manilaWeekdayHour(order.at)
+    const weekday = isoWeekdayOf(tradingDayOf(new Date(order.at).toISOString(), schedule))
     const index = weekday * 24 + hour
     const base = cells.get(index)
     cells.set(index, {
