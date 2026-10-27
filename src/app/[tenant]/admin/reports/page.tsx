@@ -4,7 +4,7 @@ import { getRequestCaller } from '@/lib/auth/request-caller'
 import { canSeeProfit } from '@/lib/reports/profit-view'
 import { loadReportPage } from '@/lib/reports/read/load-report-context'
 import { reportHref } from '@/lib/reports/report-links'
-import { ChartSkeleton, KpiRowSkeleton } from '@/components/admin/reports'
+import { ChartSkeleton, KpiRowSkeleton, TableSkeleton } from '@/components/admin/reports'
 import {
   ReportFooter,
   ReportHeader,
@@ -15,6 +15,7 @@ import {
 import { ReportRefused, ReportUnsupported } from '@/components/admin/reports/sales/report-states'
 import { ProfitEntryCard } from '@/components/admin/reports/profit/profit-chrome'
 import { SalesOverview } from '@/components/admin/reports/sales/sales-overview'
+import { ByShiftSection } from '@/components/admin/reports/sales/by-shift-section'
 
 interface SalesReportPageProps {
   params: Promise<{ tenant: string }>
@@ -62,6 +63,12 @@ export default async function SalesReportPage({ params, searchParams }: SalesRep
       >
         <SalesOverview context={context} />
       </Suspense>
+      {/* One business day: split it by the store's named shifts (cashier plan §8). */}
+      {context.period.from === context.period.to && (
+        <Suspense key={`by-shift-${reportHref(path, context.filter)}`} fallback={<TableSkeleton rows={3} />}>
+          <ByShiftSection context={context} />
+        </Suspense>
+      )}
       {showsProfit && <ProfitEntryCard tenantSlug={context.tenantSlug} filter={context.filter} />}
       <ReportFooter />
     </ReportPageFrame>
