@@ -112,10 +112,22 @@ describe('buildCashPage', () => {
     expect(state.kind === 'ready' && state.context.branchOptions).toBeNull()
   })
 
-  it('opens the Settings tab from ?tab=settings', () => {
-    const state = page(staff(), { tab: 'settings' })
+  it('opens the Settings and To accept tabs from ?tab=, anything else is Shifts', () => {
+    const settings = page(staff(), { tab: 'settings' })
+    const accept = page(staff(), { tab: 'accept' })
+    const junk = page(staff(), { tab: 'admin' })
 
-    expect(state.kind === 'ready' && state.context.tab).toBe('settings')
+    expect(settings.kind === 'ready' && settings.context.tab).toBe('settings')
+    expect(accept.kind === 'ready' && accept.context.tab).toBe('accept')
+    expect(junk.kind === 'ready' && junk.context.tab).toBe('shifts')
+  })
+
+  it('offers settling a dispute only to the owner', () => {
+    const owner = page(staff({ is_owner: true }))
+    const manager = page(staff())
+
+    expect(owner.kind === 'ready' && owner.context.canResolve).toBe(true)
+    expect(manager.kind === 'ready' && manager.context.canResolve).toBe(false)
   })
 
   it('refuses before deciding anything when the account may not open it', () => {

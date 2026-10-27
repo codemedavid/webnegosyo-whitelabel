@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { asCashRpcClient, type CashResult } from '@/lib/cash/cash-rpc'
+import { reasonLabel } from '@/lib/cash/reasons'
 import { readShiftSales, type ShiftSalesReport } from '@/lib/cash/shift-sales'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { formatMoney, shiftTimesLabel, verdictPill, type VerdictTone } from './cash-format'
 import { ShiftSalesReportView } from './shift-sales-report'
-import { salesCellText, type ShiftSalesFigures, type ShiftTableRow } from './shifts-model'
+import { remitStatus, salesCellText, type ShiftSalesFigures, type ShiftTableRow } from './shifts-model'
 
 const PILL_TONES: Readonly<Record<VerdictTone, string>> = {
   ok: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
@@ -26,13 +27,16 @@ function Pill({ text, tone }: { text: string; tone: VerdictTone }) {
   )
 }
 
+function RemitPill({ row }: { row: ShiftTableRow }) {
+  const status = remitStatus(row.remittance, row.shift.status === 'open')
+  return <Pill text={status.text} tone={status.tone} />
+}
+
 function MoneyCell({ sales, pick }: { sales: ShiftSalesFigures; pick: 'netCents' | 'cashCents' | 'nonCashCents' }) {
   const text = salesCellText(sales)
   if (text !== null) return <span className="text-[12.5px] font-medium text-wn-stone">{text}</span>
   return <span>{sales.kind === 'ready' ? formatMoney(sales[pick]) : null}</span>
 }
-
-const REMIT_PLACEHOLDER = 'Coming next'
 
 export interface ShiftsTableProps {
   rows: ShiftTableRow[]
@@ -96,9 +100,12 @@ export function ShiftsTable({ rows, outletNames, showBranch }: ShiftsTableProps)
                   <td className="px-3 py-3 text-right"><MoneyCell sales={row.sales} pick="nonCashCents" /></td>
                   <td className="px-3 py-3 text-right">
                     {shift.countedCents === null ? <span className="text-wn-stone">—</span> : formatMoney(shift.countedCents, { centavos: true })}
+                    {row.countAttempts !== null && row.countAttempts > 1 && (
+                      <span className="block text-[12px] text-wn-stone">Recounted</span>
+                    )}
                   </td>
                   <td className="px-3 py-3"><Pill text={pill.text} tone={pill.tone} /></td>
-                  <td className="px-3 py-3 text-[12.5px] text-wn-stone">{REMIT_PLACEHOLDER}</td>
+                  <td className="px-3 py-3"><RemitPill row={row} /></td>
                   <td className="px-2 py-3 text-wn-stone"><ChevronRight className="size-4" aria-hidden /></td>
                 </tr>
               )
@@ -155,6 +162,16 @@ function SheetBody({ row }: { row: ShiftTableRow }) {
           )}
           {shift.expectedCents !== null && (
             <span className="text-[13px] text-wn-stone tabular-nums">· Should have {formatMoney(shift.expectedCents, { centavos: true })}</span>
+          )}
+          {row.countAttempts !== null && row.countAttempts > 1 && <span className="text-[13px] text-wn-stone">· Counted twice</span>}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <RemitPill row={row} />
+          {row.remittance && (
+            <span className="text-[13px] text-wn-stone tabular-nums">Handed over {formatMoney(row.remittance.handedOverCents, { centavos: true })}</span>
+          )}
+          {shift.varianceReason && (
+            <span className="text-[13px] text-wn-stone">· Reason: {reasonLabel(shift.varianceReason) ?? shift.varianceReason}</span>
           )}
         </div>
       </div>

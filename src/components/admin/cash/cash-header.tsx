@@ -30,7 +30,7 @@ export function CashHeader({ context }: { context: CashPageContext }) {
           Shifts, remittances and day closes · business day ends {context.cutoffLabel}
         </p>
       </div>
-      {context.tab === 'shifts' && (
+      {context.tab !== 'settings' && (
         <div className="flex flex-wrap items-center gap-2">
           {context.branchOptions ? (
             <CashBranchSelect value={context.outletId} options={context.branchOptions} hrefs={branchHrefs} />
@@ -41,7 +41,7 @@ export function CashHeader({ context }: { context: CashPageContext }) {
               </span>
             )
           )}
-          <nav aria-label="Business day" className="flex items-center gap-1.5">
+          <nav aria-label="Business day" className="flex items-center gap-1.5" hidden={context.tab !== 'shifts'}>
             <Link href={link({ day: context.previousDay })} className={STEP_CLASS} aria-label={`Previous day, ${dayLabel(context.previousDay)}`}>
               <ChevronLeft className="size-4" aria-hidden />
             </Link>
@@ -64,13 +64,13 @@ export function CashHeader({ context }: { context: CashPageContext }) {
   )
 }
 
-const TAB_LABELS: Readonly<Record<CashTab, string>> = { shifts: 'Shifts', settings: 'Settings' }
+const TAB_LABELS: Readonly<Record<CashTab, string>> = { accept: 'To accept', shifts: 'Shifts', settings: 'Settings' }
 
-/** Wave 1: Shifts + Settings. To accept / Day closes / Cashiers arrive with remittances and the day close. */
-export function CashTabs({ context }: { context: CashPageContext }) {
+/** To accept · Shifts · Settings. Day closes and Cashiers arrive with the day close. */
+export function CashTabs({ context, waitingCount }: { context: CashPageContext; waitingCount: number | null }) {
   return (
     <nav aria-label="Cash & remits sections" className="flex gap-1 border-b border-wn-line">
-      {(['shifts', 'settings'] as const).map((tab) => {
+      {(['accept', 'shifts', 'settings'] as const).map((tab) => {
         const isActive = tab === context.tab
         return (
           <Link
@@ -83,6 +83,9 @@ export function CashTabs({ context }: { context: CashPageContext }) {
             )}
           >
             {TAB_LABELS[tab]}
+            {tab === 'accept' && waitingCount !== null && waitingCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-wn-coral px-1.5 text-[12px] font-bold tabular-nums text-white">{waitingCount}</span>
+            )}
           </Link>
         )
       })}

@@ -22,22 +22,28 @@ import { hasPermission } from '@/lib/staff-permissions'
 export type CashRefusal = 'no_account' | 'other_store' | 'no_permission'
 
 export type CashAccess =
-  | { ok: true; scope: BranchScope; canChangeCutoff: boolean }
+  | { ok: true; scope: BranchScope; canChangeCutoff: boolean; canResolve: boolean }
   | { ok: false; reason: CashRefusal }
 
 export function cashAccessFor(appUser: AppUserScopeRow | null, tenantId: string): CashAccess {
   if (!appUser) return { ok: false, reason: 'no_account' }
-  if (appUser.role === 'superadmin') return { ok: true, scope: { kind: 'all' }, canChangeCutoff: true }
+  if (appUser.role === 'superadmin') return { ok: true, scope: { kind: 'all' }, canChangeCutoff: true, canResolve: true }
   // `app_user_has_permission` has no platform-staff branch: every cash read and write would refuse them.
   if (appUser.role !== 'admin') return { ok: false, reason: 'no_permission' }
   if (appUser.tenant_id !== tenantId) return { ok: false, reason: 'other_store' }
   if (!hasPermission(appUser, 'cash_manage')) return { ok: false, reason: 'no_permission' }
   const scope = resolveBranchScope(appUser)
   const isStoreWide = scope.kind === 'all' || appUser.is_owner === true
-  return { ok: true, scope, canChangeCutoff: isStoreWide && hasPermission(appUser, 'settings') }
+  return {
+    ok: true,
+    scope,
+    canChangeCutoff: isStoreWide && hasPermission(appUser, 'settings'),
+    // Settling a disputed remittance is the owner's (resolve_remittance decides; this decides what is offered).
+    canResolve: appUser.is_owner === true,
+  }
 }
 
-export const CASH_TABS = ['shifts', 'settings'] as const
+export const CASH_TABS = ['accept', 'shifts', 'settings'] as const
 export type CashTab = (typeof CASH_TABS)[number]
 
 export interface CashOutlet {
@@ -51,6 +57,8 @@ export interface CashPageContext {
   tenantSlug: string
   scope: BranchScope
   canChangeCutoff: boolean
+  /** May settle a disputed remittance (the owner). */
+  canResolve: boolean
   tab: CashTab
   /** The business day shown, YYYY-MM-DD. */
   day: string
@@ -115,7 +123,7 @@ export function buildCashPage(input: BuildCashPageInput): CashPageState {
   const today = tradingDayOf(new Date(input.now).toISOString(), input.schedule)
   const { day, error } = resolveDay(first(input.searchParams.day), today)
   const tabParam = first(input.searchParams.tab)
-  const tab: CashTab = tabParam === 'settings' ? 'settings' : 'shifts'
+  const tab: CashTab = tabParam === 'settings' || tabParam === 'accept' ? tabParam : 'shifts'
 
   const activeOutlets = input.outlets.filter((outlet) => outlet.isActive)
   const isMultiBranch = input.tenant.multiBranchEnabled && activeOutlets.length >= 2
@@ -129,6 +137,7 @@ export function buildCashPage(input: BuildCashPageInput): CashPageState {
       tenantSlug: input.tenant.slug,
       scope: access.scope,
       canChangeCutoff: access.canChangeCutoff,
+      canResolve: access.canResolve,
       tab,
       day,
       today,

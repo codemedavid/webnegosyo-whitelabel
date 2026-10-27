@@ -11,6 +11,8 @@ import { createClient } from '@/lib/supabase/server'
 import { KpiRowSkeleton, TableSkeleton } from '@/components/admin/reports'
 import { CashHeader, CashTabs } from '@/components/admin/cash/cash-header'
 import { CashLoadFailed, CashLocked, CashNotice } from '@/components/admin/cash/cash-states'
+import { listRemittances } from '@/lib/cash/remittances'
+import { CashAcceptSection } from './cash-accept-section'
 import { CashSettingsSection } from './cash-settings-section'
 import { CashShiftsSection } from './cash-shifts-section'
 
@@ -37,6 +39,17 @@ async function readOutlets(db: SupabaseClient, tenantId: string): Promise<CashOu
   }))
 }
 
+/** Waiting remittances, for the "To accept (N)" badge. Advisory: null hides the badge. */
+async function readWaitingCount(db: SupabaseClient, tenantId: string, outletId: string | null): Promise<number | null> {
+  try {
+    const waiting = await listRemittances(db, { tenantId, statuses: ['pending'], businessDay: null, outletId })
+    return waiting.length
+  } catch (error) {
+    console.error('[cash] waiting count unavailable', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
 /**
  * "Cash & remits" (CONTRACTS §8, UX §4.7). Gated by the `cash` section →
  * `cash_manage` in the middleware AND here (fail closed). Every read goes
@@ -51,7 +64,7 @@ export default async function CashPage({ params, searchParams }: CashPageProps) 
   if (!tenant) notFound()
 
   const db = (await createClient()) as unknown as SupabaseClient
-  const [{ appUser, roleError }, scheduleRead, outletsRead] = await Promise.all([
+  const [{ user, appUser, roleError }, scheduleRead, outletsRead] = await Promise.all([
     getRequestCaller(),
     readCutoffScheduleForDisplay(db, tenant.id),
     readOutlets(db, tenant.id).then(
@@ -89,6 +102,7 @@ export default async function CashPage({ params, searchParams }: CashPageProps) 
   }
 
   const { context } = state
+  const waitingCount = await readWaitingCount(db, context.tenantId, context.outletId)
   const isPlatformBackend = resolveOrderBackend(tenant) === 'platform'
   const isMultiBranch = isMultiBranchEnabled(tenant) && outletsRead.outlets.filter((outlet) => outlet.isActive).length >= 2
   const periodBranches = isMultiBranch
@@ -106,7 +120,7 @@ export default async function CashPage({ params, searchParams }: CashPageProps) 
           )}
         </div>
       )}
-      <CashTabs context={context} />
+      <CashTabs context={context} waitingCount={waitingCount} />
       <Suspense
         key={`${context.tab}-${context.day}-${context.outletId ?? 'all'}`}
         fallback={
@@ -116,7 +130,9 @@ export default async function CashPage({ params, searchParams }: CashPageProps) 
           </>
         }
       >
-        {context.tab === 'settings' ? (
+        {context.tab === 'accept' ? (
+          <CashAcceptSection context={context} viewerUserId={user?.id ?? ''} />
+        ) : context.tab === 'settings' ? (
           <CashSettingsSection
             context={context}
             schedule={scheduleRead.schedule}

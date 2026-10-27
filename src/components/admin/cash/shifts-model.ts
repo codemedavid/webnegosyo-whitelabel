@@ -6,7 +6,9 @@
 
 import type { CashResult } from '@/lib/cash/cash-rpc'
 import { cashAndNonCash, type ShiftSalesReport } from '@/lib/cash/shift-sales'
+import { remittanceDifferenceCents, type Remittance } from '@/lib/cash/remittances'
 import { judgeCashShift, type CashShift, type CashShiftVerdict } from '@/lib/cash/shifts-read'
+import { formatMoney } from '@/lib/reports/format'
 
 export type ShiftSalesFigures =
   | { kind: 'ready'; netCents: number; cashCents: number; nonCashCents: number; receipts: number }
@@ -23,6 +25,10 @@ export interface ShiftTableRow {
   periodName: string | null
   sales: ShiftSalesFigures
   verdict: CashShiftVerdict
+  /** The end-of-shift remittance, when there is one. */
+  remittance: Remittance | null
+  /** Counts submitted (1, or 2 after a recount); null = not known. */
+  countAttempts: number | null
 }
 
 export function salesFigures(result: CashResult<ShiftSalesReport> | null): ShiftSalesFigures {
@@ -41,17 +47,47 @@ export function salesFigures(result: CashResult<ShiftSalesReport> | null): Shift
   }
 }
 
-export function buildShiftRows(
-  shifts: readonly CashShift[],
-  sales: ReadonlyMap<string, CashResult<ShiftSalesReport>>,
-  periodNames: ReadonlyMap<string, string>,
-): ShiftTableRow[] {
+export interface ShiftRowInputs {
+  sales: ReadonlyMap<string, CashResult<ShiftSalesReport>>
+  periodNames: ReadonlyMap<string, string>
+  /** Shift id → its `kind: 'shift'` remittance. */
+  remittances?: ReadonlyMap<string, Remittance>
+  /** Shift id → counts submitted; absent = not known (the read failed or is not there yet). */
+  countAttempts?: ReadonlyMap<string, number> | null
+}
+
+export function buildShiftRows(shifts: readonly CashShift[], inputs: ShiftRowInputs): ShiftTableRow[] {
   return shifts.map((shift) => ({
     shift,
-    periodName: shift.servicePeriodId ? (periodNames.get(shift.servicePeriodId) ?? null) : null,
-    sales: salesFigures(sales.get(shift.id) ?? null),
+    periodName: shift.servicePeriodId ? (inputs.periodNames.get(shift.servicePeriodId) ?? null) : null,
+    sales: salesFigures(inputs.sales.get(shift.id) ?? null),
     verdict: judgeCashShift(shift),
+    remittance: inputs.remittances?.get(shift.id) ?? null,
+    countAttempts: inputs.countAttempts ? (inputs.countAttempts.get(shift.id) ?? 0) : null,
   }))
+}
+
+export type RemitTone = 'ok' | 'bad' | 'warn' | 'muted'
+
+/** The Remit column: who has it and whether it was accepted, in words (never colour alone). */
+export function remitStatus(remittance: Remittance | null, isShiftOpen = false): { text: string; tone: RemitTone } {
+  if (!remittance) return { text: isShiftOpen ? 'On shift' : 'Not remitted', tone: 'muted' }
+  const receiver = remittance.toSafe ? 'Store safe' : (remittance.remittedToName ?? 'Anyone')
+  switch (remittance.status) {
+    case 'pending':
+      return { text: `Waiting · ${receiver}`, tone: 'warn' }
+    case 'disputed':
+      return { text: 'Disputed', tone: 'bad' }
+    case 'resolved':
+      return { text: `Resolved${remittance.resolvedByName ? ` · ${remittance.resolvedByName}` : ''}`, tone: 'ok' }
+    case 'accepted': {
+      const who = remittance.acceptMethod === 'pin' ? 'PIN' : (remittance.receivedByName ?? 'Accepted')
+      const difference = remittanceDifferenceCents(remittance) ?? 0
+      if (difference === 0) return { text: `Accepted · ${who}`, tone: 'ok' }
+      const amount = formatMoney(Math.abs(difference), { centavos: true })
+      return { text: `Got ${amount} ${difference < 0 ? 'less' : 'more'} · ${who}`, tone: 'warn' }
+    }
+  }
 }
 
 /** What a money cell says when the figure is not a number. */

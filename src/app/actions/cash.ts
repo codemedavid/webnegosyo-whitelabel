@@ -21,6 +21,7 @@ import { SubscriptionPausedError } from '@/lib/billing/subscription-gate'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { asCashRpcClient, type CashActionResult } from '@/lib/cash/cash-rpc'
 import { setBusinessDayCutoff } from '@/lib/cash/cutoff'
+import { syncTenantConvexConfig } from '@/lib/convex-config-sync'
 import {
   SERVICE_PERIOD_NAME_TAKEN,
   SERVICE_PERIOD_NOT_SAVED,
@@ -31,6 +32,14 @@ import {
   updateServicePeriod,
   type ServicePeriod,
 } from '@/lib/cash/service-periods'
+import {
+  MAX_REMITTANCE_CENTS,
+  REMITTANCE_NOTE_MAX,
+  acceptRemittance,
+  disputeRemittance,
+  resolveRemittance,
+  type Remittance,
+} from '@/lib/cash/remittances'
 import { cashSettingsPatchSchema, saveCashSettings, type CashSettings } from '@/lib/cash/settings'
 import type { StaffPermissionKey } from '@/lib/staff-permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -108,7 +117,15 @@ export async function setBusinessDayCutoffAction(
 ): Promise<CashActionResult<{ effectiveFrom: string }>> {
   return runCashAction(tenantSlug, input, cutoffSchema, 'set cutoff', 'settings', async (tenantId, db, { cutoffMinutes }) => {
     const result = await setBusinessDayCutoff(asCashRpcClient(db), tenantId, cutoffMinutes)
-    return result.ok ? { ok: true, data: { effectiveFrom: result.data } } : failure(result.error.message)
+    if (!result.ok) return failure(result.error.message)
+    // A Convex store numbers its orders in its own deployment: push the new
+    // schedule there. Never fails the save (the change starts tomorrow at the
+    // earliest, and the next config sync or Deploy Schema carries it too).
+    const synced = await syncTenantConvexConfig(tenantId)
+    if (synced.status === 'failed') {
+      console.error('[Business day] cutoff saved but not synced to Convex:', { tenantId, error: synced.error })
+    }
+    return { ok: true, data: { effectiveFrom: result.data } }
   })
 }
 
@@ -131,5 +148,44 @@ export async function archiveServicePeriodAction(tenantSlug: string, input: unkn
   return runCashAction(tenantSlug, input, archivePeriodSchema, 'archive shift', 'cash_manage', async (tenantId, db, { id }) => {
     await archiveServicePeriod(db, tenantId, id)
     return { ok: true, data: null }
+  })
+}
+
+const cents = z.number().int().min(0).max(MAX_REMITTANCE_CENTS)
+const note = z.string().max(REMITTANCE_NOTE_MAX)
+
+const acceptSchema = z
+  .object({ id: z.string().uuid(), handedOverCents: cents, receivedCents: cents, note: note.nullable() })
+  .strict()
+
+/**
+ * "Yes, I received ₱X" or a different amount (with a note). `handedOverCents`
+ * only decides whether to ask for a note here; accept_remittance re-reads the
+ * row and enforces the same rule.
+ */
+export async function acceptRemittanceAction(tenantSlug: string, input: unknown): Promise<CashActionResult<Remittance>> {
+  return runCashAction(tenantSlug, input, acceptSchema, 'accept remittance', 'cash_manage', async (_tenantId, db, value) => {
+    const result = await acceptRemittance(asCashRpcClient(db), { id: value.id, handedOverCents: value.handedOverCents }, value.receivedCents, value.note)
+    return result.ok ? { ok: true, data: result.data } : failure(result.error.message)
+  })
+}
+
+const disputeSchema = z.object({ id: z.string().uuid(), reason: note.min(1), receivedCents: cents.nullable() }).strict()
+
+/** "Something's wrong": the cash didn't match and needs the owner. */
+export async function disputeRemittanceAction(tenantSlug: string, input: unknown): Promise<CashActionResult<Remittance>> {
+  return runCashAction(tenantSlug, input, disputeSchema, 'dispute remittance', 'cash_manage', async (_tenantId, db, value) => {
+    const result = await disputeRemittance(asCashRpcClient(db), value.id, value.reason, value.receivedCents)
+    return result.ok ? { ok: true, data: result.data } : failure(result.error.message)
+  })
+}
+
+const resolveSchema = z.object({ id: z.string().uuid(), note: note.min(1) }).strict()
+
+/** The owner settles a disputed remittance (resolve_remittance decides who may). */
+export async function resolveRemittanceAction(tenantSlug: string, input: unknown): Promise<CashActionResult<Remittance>> {
+  return runCashAction(tenantSlug, input, resolveSchema, 'resolve remittance', 'cash_manage', async (_tenantId, db, value) => {
+    const result = await resolveRemittance(asCashRpcClient(db), value.id, value.note)
+    return result.ok ? { ok: true, data: result.data } : failure(result.error.message)
   })
 }

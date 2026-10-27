@@ -1,4 +1,5 @@
-import { buildShiftRows, salesCellText, salesFigures, shiftSalesTotal } from '@/components/admin/cash/shifts-model'
+import { buildShiftRows, remitStatus, salesCellText, salesFigures, shiftSalesTotal } from '@/components/admin/cash/shifts-model'
+import { parseRemittance } from '@/lib/cash/remittances'
 import { parseShiftSalesReport, type ShiftSalesReport } from '@/lib/cash/shift-sales'
 import type { CashShift } from '@/lib/cash/shifts-read'
 
@@ -69,19 +70,52 @@ describe('salesFigures', () => {
 
 describe('buildShiftRows + shiftSalesTotal', () => {
   it('names the service period and adds up only the figures that loaded', () => {
-    const rows = buildShiftRows(
-      [shift('a'), shift('b', { servicePeriodId: null })],
-      new Map([['a', { ok: true as const, data: report() }]]),
-      new Map([['p1', 'Day shift']]),
-    )
+    const rows = buildShiftRows([shift('a'), shift('b', { servicePeriodId: null })], {
+      sales: new Map([['a', { ok: true as const, data: report() }]]),
+      periodNames: new Map([['p1', 'Day shift']]),
+    })
 
     expect(rows.map((row) => row.periodName)).toEqual(['Day shift', null])
     expect(shiftSalesTotal(rows)).toEqual({ netCents: 150000, isComplete: false })
   })
 
   it('has no total (null) when nothing loaded', () => {
-    const rows = buildShiftRows([shift('a')], new Map(), new Map())
+    const rows = buildShiftRows([shift('a')], { sales: new Map(), periodNames: new Map() })
 
     expect(shiftSalesTotal(rows)).toEqual({ netCents: null, isComplete: false })
+  })
+})
+
+describe('remit status and count attempts', () => {
+  const base = { id: 'r', tenantId: 't', kind: 'shift', handedOverCents: 634500, createdAt: '2026-10-24T18:50:00.000Z' }
+
+  it('attaches each shift’s remittance and recount, and says "unknown" (null) when attempts could not be read', () => {
+    const remittance = parseRemittance({ ...base, status: 'pending', remittedToName: 'Maria' })
+    const known = buildShiftRows([shift('a'), shift('b')], {
+      sales: new Map(),
+      periodNames: new Map(),
+      remittances: new Map([['a', remittance]]),
+      countAttempts: new Map([['a', 2]]),
+    })
+    const unknown = buildShiftRows([shift('a')], { sales: new Map(), periodNames: new Map(), countAttempts: null })
+
+    expect(known.map((row) => [row.remittance?.id ?? null, row.countAttempts])).toEqual([['r', 2], [null, 0]])
+    expect(unknown[0].countAttempts).toBeNull()
+  })
+
+  it('reads every state in words', () => {
+    const row = (overrides: Record<string, unknown>) => parseRemittance({ ...base, ...overrides })
+
+    expect(remitStatus(null, true)).toEqual({ text: 'On shift', tone: 'muted' })
+    expect(remitStatus(null)).toEqual({ text: 'Not remitted', tone: 'muted' })
+    expect(remitStatus(row({ status: 'pending', remittedToName: 'Maria' }))).toEqual({ text: 'Waiting · Maria', tone: 'warn' })
+    expect(remitStatus(row({ status: 'pending', toSafe: true }))).toEqual({ text: 'Waiting · Store safe', tone: 'warn' })
+    expect(remitStatus(row({ status: 'accepted', receivedCents: 634500, acceptMethod: 'pin' }))).toEqual({ text: 'Accepted · PIN', tone: 'ok' })
+    expect(remitStatus(row({ status: 'accepted', receivedCents: 630000, receivedByName: 'Jun', acceptMethod: 'app' }))).toEqual({
+      text: 'Got ₱45.00 less · Jun',
+      tone: 'warn',
+    })
+    expect(remitStatus(row({ status: 'disputed' })).text).toBe('Disputed')
+    expect(remitStatus(row({ status: 'resolved', resolvedByName: 'Owner' })).text).toBe('Resolved · Owner')
   })
 })

@@ -17,12 +17,14 @@ const mockCreate = jest.fn()
 const mockUpdate = jest.fn()
 const mockArchive = jest.fn()
 const mockList = jest.fn()
+const mockConvexSync = jest.fn()
 const db = { kind: 'session-client', rpc: (...args: unknown[]) => mockRpc(...args) }
 
 jest.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => mockRevalidate(...args) }))
 jest.mock('@/lib/admin-service', () => ({ verifyTenantPermission: (...args: unknown[]) => mockVerify(...args) }))
 jest.mock('@/lib/cache', () => ({ getCachedTenantBySlug: (...args: unknown[]) => mockTenant(...args) }))
 jest.mock('@/lib/supabase/server', () => ({ createClient: async () => db }))
+jest.mock('@/lib/convex-config-sync', () => ({ syncTenantConvexConfig: (...args: unknown[]) => mockConvexSync(...args) }))
 jest.mock('@/lib/cash/service-periods', () => {
   const actual = jest.requireActual('@/lib/cash/service-periods')
   return {
@@ -42,6 +44,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   jest.spyOn(console, 'error').mockImplementation(() => undefined)
   mockTenant.mockResolvedValue({ id: TENANT, slug: 'lolys-cafe' })
+  mockConvexSync.mockResolvedValue({ status: 'skipped', reason: 'No Convex deployment URL' })
   mockVerify.mockResolvedValue({ user: { id: 'owner-1' }, userRole: { role: 'admin', is_owner: true } })
 })
 afterEach(() => {
@@ -89,6 +92,26 @@ describe('setBusinessDayCutoffAction', () => {
     const result = await setBusinessDayCutoffAction('lolys-cafe', { cutoffMinutes: 240 })
 
     expect(mockVerify).toHaveBeenCalledWith(TENANT, 'settings')
+    expect(result).toEqual({ ok: true, data: { effectiveFrom: '2026-10-25' } })
+  })
+
+  it("pushes the new cutoff to a Convex store's deployment, which numbers its orders by it", async () => {
+    const { setBusinessDayCutoffAction } = await load()
+    mockRpc.mockResolvedValue({ data: '2026-10-25', error: null })
+    mockConvexSync.mockResolvedValue({ status: 'synced' })
+
+    await setBusinessDayCutoffAction('lolys-cafe', { cutoffMinutes: 240 })
+
+    expect(mockConvexSync).toHaveBeenCalledWith(TENANT)
+  })
+
+  it('keeps the saved cutoff when the Convex push fails (it starts tomorrow at the earliest)', async () => {
+    const { setBusinessDayCutoffAction } = await load()
+    mockRpc.mockResolvedValue({ data: '2026-10-25', error: null })
+    mockConvexSync.mockResolvedValue({ status: 'failed', error: 'unreachable' })
+
+    const result = await setBusinessDayCutoffAction('lolys-cafe', { cutoffMinutes: 240 })
+
     expect(result).toEqual({ ok: true, data: { effectiveFrom: '2026-10-25' } })
   })
 
@@ -147,5 +170,50 @@ describe('archiveServicePeriodAction', () => {
 
     expect(await archiveServicePeriodAction('lolys-cafe', { id: PERIOD })).toEqual({ ok: true, data: null })
     expect(mockArchive).toHaveBeenCalledWith(db, TENANT, PERIOD)
+  })
+})
+
+describe('remittance actions', () => {
+  const REMITTANCE = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  const saved = {
+    id: REMITTANCE,
+    tenant_id: TENANT,
+    kind: 'shift',
+    handed_over_cents: 634500,
+    status: 'accepted',
+    received_cents: 634500,
+    created_at: '2026-10-24T18:50:00.000Z',
+  }
+
+  it('accepts through the session with cash_manage, and refreshes', async () => {
+    const { acceptRemittanceAction } = await load()
+    mockRpc.mockResolvedValue({ data: saved, error: null })
+
+    const result = await acceptRemittanceAction('lolys-cafe', { id: REMITTANCE, handedOverCents: 634500, receivedCents: 634500, note: null })
+
+    expect(mockVerify).toHaveBeenCalledWith(TENANT, 'cash_manage')
+    expect(mockRpc).toHaveBeenCalledWith('accept_remittance', { p_id: REMITTANCE, p_received_cents: 634500, p_note: null })
+    expect(result.ok && result.data.status).toBe('accepted')
+    expect(mockRevalidate).toHaveBeenCalledWith('/lolys-cafe/admin/cash')
+  })
+
+  it('refuses a different amount without a note, and does not refresh', async () => {
+    const { acceptRemittanceAction } = await load()
+
+    const result = await acceptRemittanceAction('lolys-cafe', { id: REMITTANCE, handedOverCents: 634500, receivedCents: 600000, note: null })
+
+    expect(result.ok).toBe(false)
+    expect(mockRpc).not.toHaveBeenCalled()
+    expect(mockRevalidate).not.toHaveBeenCalled()
+  })
+
+  it('disputes and resolves only with words', async () => {
+    const { disputeRemittanceAction, resolveRemittanceAction } = await load()
+    mockRpc.mockResolvedValue({ data: { ...saved, status: 'disputed' }, error: null })
+
+    expect((await disputeRemittanceAction('lolys-cafe', { id: REMITTANCE, reason: '', receivedCents: null })).ok).toBe(false)
+    expect((await disputeRemittanceAction('lolys-cafe', { id: REMITTANCE, reason: 'Envelope short', receivedCents: 600000 })).ok).toBe(true)
+    expect((await resolveRemittanceAction('lolys-cafe', { id: REMITTANCE, note: 'Found it' })).ok).toBe(true)
+    expect(mockRpc).toHaveBeenCalledWith('resolve_remittance', { p_id: REMITTANCE, p_note: 'Found it' })
   })
 })

@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { asCashRpcClient, type CashResult } from '@/lib/cash/cash-rpc'
 import type { CashPageContext } from '@/lib/cash/cash-page'
+import { listRemittances, REMITTANCE_STATUSES, type Remittance } from '@/lib/cash/remittances'
 import { listServicePeriods, type ServicePeriod } from '@/lib/cash/service-periods'
+import { readCountAttempts } from '@/lib/cash/shift-counts'
 import { readShiftSales, type ShiftSalesReport } from '@/lib/cash/shift-sales'
 import { readShiftsForDay, summarizeCashShifts, type CashShift } from '@/lib/cash/shifts-read'
 import { createClient } from '@/lib/supabase/server'
@@ -42,6 +44,22 @@ async function readPeriodsOrEmpty(db: SupabaseClient, tenantId: string): Promise
   }
 }
 
+/** The day's end-of-shift remittances by shift. Advisory: the table opens without them. */
+async function readShiftRemittances(db: SupabaseClient, context: CashPageContext): Promise<Map<string, Remittance>> {
+  try {
+    const list = await listRemittances(db, {
+      tenantId: context.tenantId,
+      statuses: REMITTANCE_STATUSES,
+      businessDay: context.day,
+      outletId: context.outletId,
+    })
+    return new Map(list.filter((row) => row.kind === 'shift' && row.shiftId).map((row) => [row.shiftId as string, row]))
+  } catch (error) {
+    console.error('[cash] remittances unavailable', error instanceof Error ? error.message : error)
+    return new Map()
+  }
+}
+
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`
 }
@@ -68,8 +86,18 @@ export async function CashShiftsSection({ context, isPlatformBackend }: { contex
     )
   }
 
-  const [periods, sales] = await Promise.all([readPeriodsOrEmpty(db, context.tenantId), readSalesFor(db, shifts)])
-  const rows = buildShiftRows(shifts, sales, new Map(periods.map((period) => [period.id, period.name])))
+  const [periods, sales, remittances, countAttempts] = await Promise.all([
+    readPeriodsOrEmpty(db, context.tenantId),
+    readSalesFor(db, shifts),
+    readShiftRemittances(db, context),
+    readCountAttempts(db, shifts.map((shift) => shift.id)),
+  ])
+  const rows = buildShiftRows(shifts, {
+    sales,
+    periodNames: new Map(periods.map((period) => [period.id, period.name])),
+    remittances,
+    countAttempts,
+  })
   const summary = summarizeCashShifts(shifts)
   const total = shiftSalesTotal(rows)
   const loadedCount = rows.filter((row) => row.sales.kind === 'ready').length
