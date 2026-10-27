@@ -59,19 +59,35 @@ grant all on public.business_day_cutoffs to service_role;
 -- The cutoff in effect for the day that STARTS on calendar date p_day.
 -- SECURITY DEFINER: it reveals a time of day only, and triggers that run as
 -- the cashier must never trip over RLS (or pay for it per row).
+-- Membership check: a signed-in caller must belong to p_tenant (or be a
+-- superadmin), else 42501 — it is the one place business_day_of/_bounds read
+-- the table, so both inherit it. Callers with no JWT subject (service role,
+-- cron, migrations) are not asked: they already read every row. Inside the
+-- staff_shifts BEFORE INSERT trigger auth.uid() is the cashier, whom the
+-- insert policy already requires to be a member of that store.
 create or replace function public.business_day_cutoff_for(p_tenant uuid, p_day date)
 returns interval
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
-  select make_interval(mins => coalesce((
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is not null and not exists (
+    select 1 from public.app_users au
+     where au.user_id = v_uid and (au.role = 'superadmin' or au.tenant_id = p_tenant)
+  ) then
+    raise exception 'Only this store''s staff can read its business day.' using errcode = '42501';
+  end if;
+  return make_interval(mins => coalesce((
     select c.cutoff_minutes::integer
       from public.business_day_cutoffs c
      where c.tenant_id = p_tenant and c.effective_from <= p_day
      order by c.effective_from desc
      limit 1), 0));
+end;
 $$;
 
 -- Which business day an instant belongs to.

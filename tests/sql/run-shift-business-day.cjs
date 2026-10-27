@@ -11,6 +11,8 @@
 const { PGlite } = require('@electric-sql/pglite')
 const assert = require('node:assert/strict')
 const { installPlatformAuth, as, reset, readMigration } = require('./lib/platform-auth.cjs')
+const { readFileSync } = require('node:fs')
+const path = require('node:path')
 const { cases: DENOMINATION_CASES } = require('../fixtures/cash-denominations-cases.json')
 
 const T_A = 'aaaaaaaa-0000-4000-8000-000000000001'
@@ -243,6 +245,17 @@ async function checkCounts(db) {
   eq(Number((await shift(db, zero)).opening_float), 0, 'zero-balance: float forced to 0 and an empty count agrees')
 }
 
+// The web shift list (src/lib/cash/shifts-read.ts) selects these columns by
+// name; run its exact select so a renamed column fails here, not in production.
+async function checkWebSelect(db) {
+  const source = readFileSync(path.join(__dirname, '../../src/lib/cash/shifts-read.ts'), 'utf8')
+  const match = source.match(/const COLUMNS =\s*'([^']+)'/)
+  eq(Boolean(match), true, 'shifts-read.ts still declares its COLUMNS select')
+  await as(db, 'authenticated', U.cashier)
+  const { rows } = await db.query(`select ${match[1]} from staff_shifts limit 1`)
+  eq(rows.length, 1, `every column shifts-read.ts selects exists and is readable by staff (${match[1].split(',').length} columns)`)
+}
+
 async function main() {
   const db = new PGlite()
   try {
@@ -274,6 +287,7 @@ async function main() {
     await checkBlindSnapshot(db)
     await checkServicePeriod(db)
     await checkCounts(db)
+    await checkWebSelect(db)
     console.log(`Shift business day: ${checks} checks passed (denominations fixture, backfill, server-stamped day, old-build writes, blind snapshot, named shift, counts and pins).`)
   } finally {
     await db.close()

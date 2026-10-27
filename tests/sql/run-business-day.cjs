@@ -239,10 +239,23 @@ async function checkRefusals(db) {
   await refused(db.query("insert into business_day_cutoffs (tenant_id, effective_from, cutoff_minutes) values ($1, '2030-01-01', 240)", [T_A]), '42501', 'clients cannot write cutoffs directly')
   // 2025-01-01 + the superadmin's 4 AM + the closed-day 2 AM one day after it.
   eq(Number(await scalar(db, 'select count(*) from business_day_cutoffs')), 3, 'a branch-locked cashier reads their store\'s cutoffs (screens need the day)')
-  eq(await scalar(db, "select public.business_day_of($1, '2026-02-10T03:00:00+08:00')::text", [T_CUT]), '2026-02-09', 'helpers are callable by signed-in staff')
+  eq(await scalar(db, 'select public.business_day_of($1, now()) = public.business_day_of($1, now())', [T_A]), true, "helpers are callable by signed-in staff of the store (a branch-locked cashier included)")
+  await refused(db.query('select public.business_day_of($1, now())', [T_CUT]), '42501', "but not for a store they don't belong to")
 
   await as(db, 'authenticated', U.ownerB)
   eq(Number(await scalar(db, 'select count(*) from business_day_cutoffs')), 0, "another store's owner reads none of A's rows")
+  for (const sql of [
+    'select public.business_day_of($1, now())',
+    'select public.business_day_cutoff_for($1, current_date)',
+    'select * from public.business_day_bounds($1, current_date)',
+  ]) {
+    await refused(db.query(sql, [T_A]), '42501', `another store's owner cannot ask A's business day: ${sql}`)
+  }
+  eq(typeof (await scalar(db, 'select public.business_day_of($1, now())::text', [T_B])), 'string', 'but asks its own')
+  await as(db, 'authenticated', U.superadmin)
+  eq(await scalar(db, "select public.business_day_of($1, '2026-02-10T03:00:00+08:00')::text", [T_CUT]), '2026-02-09', 'a superadmin (support) may ask any store')
+  await as(db, 'service_role', null)
+  eq(await scalar(db, "select public.business_day_of($1, '2026-02-10T03:00:00+08:00')::text", [T_CUT]), '2026-02-09', 'the service role (no JWT subject) is not asked')
 
   await as(db, 'authenticated', U.owner)
   for (const minutes of [710, 7, -15, 720]) {
