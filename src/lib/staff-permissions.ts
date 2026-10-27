@@ -58,6 +58,21 @@ export const STAFF_PERMISSION_KEYS = [
   // Phase 3/5), so screens hide them. Given once to every 'menu' holder
   // alongside 'inventory'.
   'costs',
+  // The expense book: recording, fixing and voiding expenses, the categories
+  // and suppliers they file under. Its own key, implied by nothing: spending
+  // the store's money is not reading its sales ('reports') or pricing its
+  // ingredients ('costs'). The profit page needs this AND 'costs'.
+  'expenses',
+  // Cash & day close: setting up drawers, picking up cash from someone else's
+  // drawer, closing another person's shift, receiving remittances and closing
+  // the business day. Used to ride 'store_setup' (app_user_manages_cash); it
+  // is its own grant so a supervisor can hold the cash without the
+  // storefront. OPT-IN (owner's call, 2026-10-27: legacy full access does
+  // not hold it, like expenses) and NOT in IMPLIED_BY: every 'store_setup' holder was given
+  // it once by migration 20261027120100, so nobody lost the drawer screens,
+  // and the owner can separate the two afterwards. A cashier's OWN shift
+  // (clock in, count, remit) needs only 'pos'.
+  'cash_manage',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -150,6 +165,15 @@ export const STAFF_PERMISSION_LABELS: Record<
     label: 'Costs & Profit',
     description: 'See and change what ingredients cost, dish costs, gross profit and food cost %',
   },
+  expenses: {
+    label: 'Expenses',
+    description: 'Record, fix and void expenses, manage categories and suppliers, see the expense book.',
+  },
+  cash_manage: {
+    label: 'Cash & day close',
+    description:
+      "Set up cash drawers, pick up cash, close others' shifts, receive remittances, close the business day and see that day's sales. Give it to supervisors you trust with cash.",
+  },
 }
 
 export const MAX_STAFF_PER_TENANT = 3
@@ -185,10 +209,14 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
  * `null` predates staff management and means "everything that existed then".
  * Watching every colleague's refunds and approving another person's money
  * moves are new kinds of trust, so a legacy account must not wake up holding
- * them. Mirrored in SQL by `public.app_user_has_permission` and in the three
+ * them. The expense book (salaries, rent, owner draws) and the Profit it
+ * feeds are the same kind of trust (owner's call, 2026-10-22): a person is
+ * given Expenses by name. Receiving cash and closing the day (`cash_manage`)
+ * is handed out the same way (owner's call, 2026-10-27). Mirrored in SQL by
+ * `public.app_user_has_permission` (and its `_of` twin) and in the three
  * other registry copies (staff-permissions-parity.test.ts pins all of them).
  */
-export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses', 'cash_manage'] as const satisfies readonly StaffPermissionKey[]
 
 /** Whether full access (`permissions: null`) grants `key`. */
 export function isGrantedByFullAccess(key: string): boolean {
@@ -311,6 +339,12 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Sales reports (Phase 1 routes register here before they exist, so the
   // first page under /admin/reports can never ship open to every account).
   reports: 'reports',
+  // The expense book. The profit page lives under reports and re-checks
+  // 'expenses' + 'costs' inside the page.
+  expenses: 'expenses',
+  // Cash & remits: shifts by business day, drawers, remittances, day close and
+  // the cash rules. A cashier's own shift lives in the app and needs only 'pos'.
+  cash: 'cash_manage',
   'boost-sales': 'analytics',
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
@@ -394,6 +428,17 @@ const MOBILE_TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // app's TAB_PERMISSIONS (webnegosyo-app/lib/staff-permissions.ts).
   inventory: 'inventory',
   'daily-report': 'costs',
+  // The expense book; the profit screen rides 'reports' and re-checks
+  // 'expenses' + 'costs' itself. Mirrors the app's TAB_PERMISSIONS.
+  expenses: 'expenses',
+  'expense-bills': 'expenses',
+  profit: 'reports',
+  // Cash-manager screens. Mirrors the app's TAB_PERMISSIONS; "cash-rules" is
+  // any-of there (cash_manage or settings, it holds the business-day cutoff),
+  // so it is not named in this single-key map.
+  'cash-drawers': 'cash_manage',
+  remittances: 'cash_manage',
+  'day-close': 'cash_manage',
 }
 
 export function permissionForMobileTab(tab: string): StaffPermissionKey | null {

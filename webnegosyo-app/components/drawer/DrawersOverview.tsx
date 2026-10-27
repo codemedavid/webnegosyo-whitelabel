@@ -15,6 +15,8 @@ export interface FloorRow {
   shift: ShiftRecord;
   expectation: DrawerExpectationRead;
   isMine: boolean;
+  /** "Expenses ₱1,480 · Taken out ₱1,500" (money-glance-drawer); null = nothing left, or not known yet. */
+  payoutSplit?: string | null;
 }
 
 interface DrawersOverviewProps {
@@ -24,18 +26,27 @@ interface DrawersOverviewProps {
   nowMs: number;
   onCollect: (row: FloorRow) => void;
   onCount: (row: FloorRow) => void;
+  /** "Pay expense": pay an expense out of this cashier's drawer. Absent = not offered. */
+  onPayExpense?: (row: FloorRow) => void;
   onManage: () => void;
+  /** "End Ben's shift": close a forgotten shift without inventing a count. Absent = not offered. */
+  onEndForThem?: (row: FloorRow) => void;
+  /** Shifts past their business day + grace, by id, with their line ("Ben's shift on Cashier 2 is still open (11h)"). */
+  overdue?: ReadonlyMap<string, string>;
 }
+
+const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
 
 /**
  * The owner's floor: every open drawer in this branch, who holds it, and the
  * cash it should hold right now — with the two things an owner does to a
- * cashier's drawer: collect cash from it, or count it and close the shift.
+ * cashier's drawer: collect cash from it, pay an expense out of it, or count
+ * it and close the shift.
  *
  * Ordered by cash held, most first: the drawer worth a pickup is the one at
  * the top.
  */
-export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, onManage }: DrawersOverviewProps) {
+export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, onPayExpense, onManage, onEndForThem, overdue }: DrawersOverviewProps) {
   const others = [...rows.filter((row) => !row.isMine)].sort((a, b) => held(b) - held(a));
   const total = rows.reduce((sum, row) => sum + held(row), 0);
   const collected = rows.reduce(
@@ -86,6 +97,8 @@ export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, 
               </View>
               {row.expectation.state === "unavailable" ? (
                 <Text style={styles.warning}>{row.expectation.reason}</Text>
+              ) : row.payoutSplit ? (
+                <Text style={styles.meta}>{row.payoutSplit}</Text>
               ) : ready && ready.moves.collected > 0 ? (
                 <Text style={styles.meta}>
                   {formatPeso(ready.moves.collected)} already collected this shift
@@ -101,6 +114,17 @@ export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, 
                   style={styles.flex}
                   accessibilityLabel={`Collect cash from ${row.shift.staffName}`}
                 />
+                {onPayExpense ? (
+                  <Button
+                    label="Pay expense"
+                    size="sm"
+                    tone="secondary"
+                    icon="receipt"
+                    onPress={() => onPayExpense(row)}
+                    style={styles.flex}
+                    accessibilityLabel={`Pay an expense from ${row.shift.staffName}'s drawer`}
+                  />
+                ) : null}
                 <Button
                   label="Count & close"
                   size="sm"
@@ -110,6 +134,20 @@ export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, 
                   accessibilityLabel={`Count and close ${row.shift.staffName}'s drawer`}
                 />
               </View>
+              {onEndForThem && overdue?.has(row.shift.id) ? (
+                <Text style={styles.warning}>{overdue.get(row.shift.id)}</Text>
+              ) : null}
+              {onEndForThem && overdue?.has(row.shift.id) ? (
+                <Button
+                  label={`End ${firstName(row.shift.staffName)}'s shift`}
+                  size="sm"
+                  tone="ghost"
+                  icon="clock"
+                  onPress={() => onEndForThem(row)}
+                  accessibilityLabel={`End ${row.shift.staffName}'s shift without a count`}
+                  accessibilityHint="For a shift someone forgot to end. The cash goes to Remittances as not counted yet."
+                />
+              ) : null}
             </View>
           );
         })}
@@ -152,8 +190,9 @@ const styles = StyleSheet.create({
   figure: { alignItems: "flex-end" },
   figureValue: { ...typography.heading, color: colors.textPrimary },
   figureLabel: { ...typography.small, color: colors.textTertiary },
-  actions: { flexDirection: "row", gap: spacing.sm },
-  flex: { flex: 1 },
+  // Three actions wrap on a narrow phone instead of squeezing their labels.
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  flex: { flex: 1, minWidth: 120 },
   free: {
     flexDirection: "row",
     alignItems: "center",

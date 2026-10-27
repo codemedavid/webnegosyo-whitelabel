@@ -114,6 +114,8 @@ export function openTarget(event: StoreActivityEvent): OpenTarget | null {
       return { label: "Open item", href: ingredientHref(event.subjectRef) };
     case "menu_item":
       return { label: "Open item", href: productHref(event.subjectRef) };
+    case "expense":
+      return { label: "Open expense", href: `/(main)/expense/${encodeURIComponent(event.subjectRef)}` };
     default:
       return null;
   }

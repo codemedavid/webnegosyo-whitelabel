@@ -23,6 +23,7 @@ import { toAddonColumn } from "./addon-columns";
 import { isUuid, toUuidOrNull } from "../uuid";
 import type { OrderDiscountPayload } from "../order-discount";
 import { discountColumnsForCreate, lineDiscountAmounts } from "./order-discount-columns";
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from "../business-day/trading-day";
 
 /** A full ISO 8601 instant, the only form `created_at` is ever handed. */
 function isIsoTimestamp(value: unknown): value is string {
@@ -327,18 +328,26 @@ export const DEFAULT_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Epoch ms of 00:00 local time for the local day containing `atMs`.
+ * Epoch ms at which the day containing `atMs` starts.
  *
  * Postgres and the app both run in UTC, but merchants trade in their own
  * timezone. Bucketing "today" on the UTC boundary would shift the day by ~8h
  * for PH — the first eight hours of trading would land on the previous date.
  * Mirrors `convex-template/convex/time.ts`.
+ *
+ * With a non-empty business-day `schedule` the day is the store's BUSINESS
+ * day (it opens at the cutoff, e.g. 4:00 AM), always on Manila time, so
+ * `offsetMs` is not used. An empty schedule (the default) is the original
+ * midnight rule, unchanged.
  */
 export function localDayStartMs(
   atMs: number,
-  offsetMs: number = DEFAULT_TZ_OFFSET_MS
+  offsetMs: number = DEFAULT_TZ_OFFSET_MS,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
 ): number {
-  return Math.floor((atMs + offsetMs) / DAY_MS) * DAY_MS - offsetMs;
+  if (schedule.length === 0) return Math.floor((atMs + offsetMs) / DAY_MS) * DAY_MS - offsetMs;
+  const dayKey = tradingDayOf(new Date(atMs).toISOString(), schedule);
+  return Date.parse(tradingDayWindow(dayKey, schedule).startIso);
 }
 
 // --- row -> DTO -----------------------------------------------------------

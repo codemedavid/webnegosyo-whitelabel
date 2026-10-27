@@ -46,3 +46,22 @@ jest.mock("expo-audio", () => ({
   createAudioPlayer: jest.fn(() => ({ play: jest.fn(), seekTo: jest.fn(), remove: jest.fn() })),
   RecordingPresets: { HIGH_QUALITY: {}, LOW_QUALITY: {} },
 }));
+
+// Importing `expo` installs its React Native FormData patch
+// (expo/src/winter/FormData.ts) on `FormData.prototype`. Under Jest that
+// prototype is Node's own, shared by every test file in the worker, so a
+// rendered suite left it rewired for whichever logic suite ran next in the same
+// worker — and a real `new FormData().append()` there threw on `this._parts`
+// (lib/tenant-logo.test.ts, lib/assistant/voice.test.ts; order-dependent, so
+// it failed CI only sometimes). Put the prototype back after each file.
+const formDataProto = typeof FormData === "function" ? FormData.prototype : null;
+const formDataOriginal = formDataProto ? Object.getOwnPropertyDescriptors(formDataProto) : null;
+afterAll(() => {
+  if (!formDataProto || !formDataOriginal) return;
+  for (const key of Reflect.ownKeys(formDataProto)) {
+    if (!(key in formDataOriginal)) delete formDataProto[key];
+  }
+  for (const key of Reflect.ownKeys(formDataOriginal)) {
+    Object.defineProperty(formDataProto, key, formDataOriginal[key]);
+  }
+});

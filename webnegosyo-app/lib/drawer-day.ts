@@ -5,7 +5,26 @@
  * card. On a busy store that page can stop short of midnight, and every sale
  * it drops is money the till holds but the totals never see. These decide
  * when the page is enough and how a day read fills the gap. Pure.
+ *
+ * "Today" is the store's BUSINESS day (`drawerDayWindow`): with a 4 AM cutoff
+ * the 1 AM sales are still tonight's drawer, not tomorrow's. Without a
+ * schedule it is the Manila calendar day, as before.
  */
+
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from "./business-day/trading-day";
+
+export interface DrawerDayWindow {
+  /** Start of today's business day (the Drawer's `sinceMs`). */
+  sinceMs: number;
+  /** Its EXCLUSIVE end, for a bounded day read. Not always start + 24 h. */
+  untilMs: number;
+}
+
+/** Today's business day at `nowMs`, as the Drawer reads it. */
+export function drawerDayWindow(nowMs: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): DrawerDayWindow {
+  const window = tradingDayWindow(tradingDayOf(new Date(nowMs).toISOString(), schedule), schedule);
+  return { sinceMs: Date.parse(window.startIso), untilMs: Date.parse(window.endIso) };
+}
 
 interface DatedOrder {
   _id: string;

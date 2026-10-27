@@ -1,14 +1,19 @@
 import React, { useCallback, useState } from "react";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { BackHeader } from "../../components/BackHeader";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
+import { ListRow } from "../../components/ListRow";
 import { LoadingState } from "../../components/LoadingState";
 import { DrawerEditorSheet } from "../../components/drawer/DrawerEditorSheet";
+import { cutoffMinutesFor, describeCutoff } from "../../lib/business-day/trading-day";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
+import { CASH_RULES_ROUTE } from "../../lib/cash-routes";
+import { cashRulesAccess } from "../../lib/cash/rules-form";
 import { archiveDrawer, createDrawer, listDrawers, updateDrawer } from "../../lib/cash-drawer-service";
 import {
   canManageCash,
@@ -49,6 +54,13 @@ export default function CashDrawersScreen() {
   const permissions = useAuthStore((s) => s.permissions);
   const selectedOutletName = useBranchContextStore((s) => s.selectedOutletName);
   const canManage = canManageCash({ role, isOwner, permissions });
+  const myOutletId = useAuthStore((s) => s.outletId);
+  const isDemo = useAuthStore((s) => s.isDemo);
+  const showRules = cashRulesAccess({ role, isOwner, permissions, outletId: myOutletId, isDemo }).canOpen;
+  const tradingDay = useTradingDay();
+  const rulesHint = tradingDay.isLoading
+    ? "Business day, counting, short & over"
+    : `Business day ends ${describeCutoff(cutoffMinutesFor(tradingDay.schedule, tradingDay.todayKey)).label}`;
 
   const [drawers, setDrawers] = useState<CashDrawer[] | null>(null);
   const [openShifts, setOpenShifts] = useState<ShiftRecord[]>([]);
@@ -151,11 +163,29 @@ export default function CashDrawersScreen() {
     );
   }
 
+  // Store-wide rules, so the row does not wait for a branch to be picked.
+  const rulesRow = showRules ? (
+    <View style={styles.group}>
+      <ListRow
+        icon="settings"
+        title="Shift & remit rules"
+        subtitle={rulesHint}
+        onPress={() => router.push(CASH_RULES_ROUTE)}
+        accessibilityLabel={`Shift & remit rules. ${rulesHint}`}
+      />
+    </View>
+  ) : null;
+
   let body: React.ReactNode;
   if (drawers === null && !error) body = <LoadingState />;
   else if (error && drawers === null) body = <ErrorState message={error} onRetry={() => void load()} />;
   else if (needsBranch) {
-    body = <EmptyState icon="drawer" title="Choose a branch" message="Drawers belong to one branch. Pick it on the branch bar first." />;
+    body = (
+      <View style={styles.body}>
+        {rulesRow}
+        <EmptyState icon="drawer" title="Choose a branch" message="Drawers belong to one branch. Pick it on the branch bar first." />
+      </View>
+    );
   } else {
     const list = drawers ?? [];
     body = (
@@ -163,6 +193,7 @@ export default function CashDrawersScreen() {
         contentContainerStyle={styles.body}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void refresh()} />}
       >
+        {rulesRow}
         <View style={styles.explainer}>
           <Text style={styles.explainerTitle}>How drawers work</Text>
           {HOW_IT_WORKS.map((line) => (

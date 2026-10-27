@@ -1,9 +1,17 @@
 import type { MutationCtx } from './_generated/server';
-import { localDateKey } from './time';
+import { businessDayKey } from './time';
+import { readCutoffSchedule } from './businessDayConfig';
 
-/** The counter read and write share the order transaction; Convex OCC retries conflicts. */
+/**
+ * The counter read and write share the order transaction; Convex OCC retries conflicts.
+ *
+ * #01 restarts at the store's business-day cutoff (decision 2, 2026-10-26), the
+ * same rule as the platform trigger `assign_daily_order_number`: a 1 AM order
+ * on a 4 AM store continues the night's numbers. No cutoff synced = Manila
+ * midnight, as before.
+ */
 export async function allocateDailyOrderNumber(ctx: MutationCtx, occurredAt: number) {
-  const orderDate = localDateKey(occurredAt);
+  const orderDate = businessDayKey(occurredAt, await readCutoffSchedule(ctx));
   const counter = await ctx.db.query('dailyOrderCounters')
     .withIndex('by_date', q => q.eq('orderDate', orderDate)).unique();
   // An imported/backfilled receipt may predate its counter row.

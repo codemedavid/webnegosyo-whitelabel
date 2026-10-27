@@ -1,4 +1,5 @@
 import { OperatingHoursCard } from '@/components/admin/operating-hours-card'
+import { BusinessDayRow } from '@/components/admin/cash/business-day-row'
 import { SettingsSection } from '@/components/admin/settings/settings-section'
 import { requireSettingsSection } from '@/lib/settings/load-settings-context'
 
@@ -15,6 +16,8 @@ export default async function HoursSettingsPage({ params }: { params: Promise<{ 
         initialTimezone={tenant.timezone ?? null}
         initialEnforce={tenant.enforce_operating_hours === true}
       />
+      {/* When a day's sales end (set on Cash & remits → Settings). */}
+      <BusinessDayRow tenantId={tenant.id} tenantSlug={tenantSlug} />
     </SettingsSection>
   )
 }

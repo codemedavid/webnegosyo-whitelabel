@@ -134,3 +134,13 @@ export function describeShiftSales(count: number, counting: DrawerCounting): str
   if (count === 0) return `No sales ${counting === "all" ? "yet today" : "at this counter yet"}`;
   return `${plural(count, "sale")} ${scope} today`;
 }
+
+/**
+ * The day's counter total as ONE row while a shift card is the screen's hero
+ * (06 §1 "one money number per screen"): "₱24,615 cash · ₱9,840 non-cash".
+ */
+export function dayRowLine(summary: CounterSalesSummary): string {
+  const parts = [`${formatPeso(summary.cashTotal)} cash`];
+  if (summary.nonCashTotal > 0) parts.push(`${formatPeso(summary.nonCashTotal)} non-cash`);
+  return `${parts.join(" · ")} · tap for details`;
+}

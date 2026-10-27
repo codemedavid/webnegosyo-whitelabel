@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { parseApproveRequest } from '@/lib/gov-discount-ledger/request-schemas'
 import { outletRefusal, requireGovCaller, resolveRouteOutlet } from '@/lib/gov-discount-ledger/route-guards'
 import { createLogger } from '@/lib/logger'
+import { PIN_TOO_MANY_TRIES, checkPinTryLimits } from '@/lib/staff-pin/pin-limits'
 
 const log = createLogger('[gov-discounts/approve]', 'DEBUG_GOV_DISCOUNTS')
 
-/**
- * Shared across instances (Upstash). A PIN guess is a disclosure risk, so a
- * Redis outage falls back to the per-instance limiter, never to no limit.
- * Per cashier: a burst at one register. Per approver: every register in the
- * store guessing one manager's PIN together.
- */
-const PER_CASHIER: RateLimitOptions = { limit: 20, windowSec: 60, onRedisFailure: 'instance' }
-const PER_APPROVER: RateLimitOptions = { limit: 10, windowSec: 15 * 60, onRedisFailure: 'instance' }
-const TOO_MANY = 'Too many tries. Wait a few minutes and try again.'
+// The PIN rate limits (per cashier, per approver) live in staff-pin/pin-limits.ts,
+// shared with every other manager-PIN route.
 
 /**
  * POST /api/gov-discounts/approve
@@ -38,12 +31,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const caller = await requireGovCaller(request, tenantId, 'create', 'pos')
   if (!caller.ok) return caller.response
 
-  const [byCashier, byApprover] = await Promise.all([
-    checkRateLimit(`gov-approve:cashier:${tenantId}:${caller.user.id}`, PER_CASHIER),
-    checkRateLimit(`gov-approve:approver:${tenantId}:${approverUserId}`, PER_APPROVER),
-  ])
-  if (!byCashier.allowed || !byApprover.allowed) {
-    return NextResponse.json({ error: TOO_MANY }, { status: 429 })
+  if (!(await checkPinTryLimits(`gov-approve:cashier:${tenantId}:${caller.user.id}`, tenantId, approverUserId))) {
+    return NextResponse.json({ error: PIN_TOO_MANY_TRIES }, { status: 429 })
   }
 
   const { createAdminClient, ADMIN_QUERY_TIMEOUT_MS } = await import('@/lib/supabase/admin')

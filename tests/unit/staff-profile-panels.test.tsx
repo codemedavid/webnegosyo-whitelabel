@@ -97,6 +97,39 @@ describe('StaffShiftHistory', () => {
     render(<StaffShiftHistory shifts={[]} nowMs={NOW} nowIso={NOW_ISO} outlets={[]} />)
     expect(screen.getByText(/no shifts in this period/i)).toBeInTheDocument()
   })
+
+  test('names every pay-out and its reason, so a drawer that bought ice is not read as light', () => {
+    render(
+      <StaffShiftHistory
+        shifts={[
+          shift({
+            paidIn: 100,
+            paidOut: 535.5,
+            payOuts: [
+              { amount: 450, reason: 'LPG', recordedByName: 'Ben Reyes', createdAt: '2026-09-19T02:00:00Z', categoryName: null },
+              { amount: 85.5, reason: 'Ice', recordedByName: 'Ana Cruz', createdAt: '2026-09-19T03:00:00Z', categoryName: 'Ice (Yelo)' },
+            ],
+          }),
+        ]}
+        nowMs={NOW}
+        nowIso={NOW_ISO}
+        outlets={[]}
+      />
+    )
+    const payOuts = screen.getByTestId('shift-pay-outs')
+    expect(payOuts).toHaveTextContent('Paid out ₱535.50')
+    expect(payOuts).toHaveTextContent('LPG · by Ben Reyes')
+    expect(payOuts).toHaveTextContent('₱450.00')
+    // Sorted into an expense: its category leads, the cashier's words follow.
+    expect(payOuts).toHaveTextContent('Ice (Yelo) · Ice')
+    expect(payOuts).not.toHaveTextContent('by Ana Cruz') // the drawer's own holder is not repeated
+    expect(screen.getByTestId('staff-shift-history')).toHaveTextContent('₱100.00 added mid-shift')
+  })
+
+  test('a drawer with no pay-outs shows no pay-out block', () => {
+    render(<StaffShiftHistory shifts={[shift({ paidOut: 0, payOuts: [] })]} nowMs={NOW} nowIso={NOW_ISO} outlets={[]} />)
+    expect(screen.queryByTestId('shift-pay-outs')).not.toBeInTheDocument()
+  })
 })
 
 describe('StaffDayHistory', () => {

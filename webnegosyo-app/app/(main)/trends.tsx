@@ -196,7 +196,7 @@ export default function TrendsScreen() {
   // One selection drives every query on this screen. `windowArgs` is spread
   // into each; `useReportWindow` decides whether the backend can take the
   // calendar days the label names, and moves "today" at Manila midnight.
-  const { selection, setSelection, nowMs, windowArgs, periodLabel } = useReportWindow(14);
+  const { selection, setSelection, nowMs, windowArgs, periodLabel, schedule } = useReportWindow(14);
   const { data: trends, isLoading, error, isMissingFunction: trendsMissing, refetch: refetchTrends } = useSafeQuery<DailyStat[]>(getTrendsRef, { ...windowArgs });
   const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { ...windowArgs });
   const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { ...windowArgs });
@@ -243,6 +243,7 @@ export default function TrendsScreen() {
         selection={selection}
         presets={REPORT_PRESETS}
         nowMs={nowMs}
+        schedule={schedule}
         onChange={setSelection}
       />
 

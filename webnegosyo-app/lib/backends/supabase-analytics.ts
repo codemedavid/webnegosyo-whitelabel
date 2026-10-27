@@ -37,6 +37,8 @@ import {
   type ProductPeriod,
 } from "./product-analytics-compute";
 import { DAY_MS, localDayStartMs } from "./analytics-time";
+import { cachedCutoffSchedule } from "../business-day/cached-schedule";
+import type { CutoffSchedule } from "../business-day/trading-day";
 import {
   STORE_WIDE,
   asRecord,
@@ -267,13 +269,20 @@ function previousWindow(window: Window): Window {
   return { startMs: window.startMs - (endMs - window.startMs), endMs: window.startMs };
 }
 
-/** Inclusive N-day window ending on the current LOCAL day, as `getTrends` uses. */
-function localDayWindow(args: Record<string, unknown>, defaultDays: number): Window {
+/**
+ * Inclusive N-day window ending on the current business day, as `getTrends`
+ * uses (Manila calendar days with no cutoff schedule, as before).
+ */
+function localDayWindow(
+  args: Record<string, unknown>,
+  defaultDays: number,
+  schedule: CutoffSchedule
+): Window {
   const explicit = explicitWindow(args);
   if (explicit) return explicit;
 
   const days = boundedInt(args.daysBack, defaultDays, 1, MAX_DAYS_BACK);
-  return { startMs: localDayStartMs(Date.now()) - (days - 1) * DAY_MS };
+  return { startMs: localDayStartMs(Date.now() - (days - 1) * DAY_MS, undefined, schedule) };
 }
 
 /** Where the product analytics window starts for a period (0 = all history). */
@@ -530,7 +539,10 @@ export async function runPlatformAnalyticsQuery(
         boundedInt(params.limit, DEFAULT_TOP_ITEMS, 1, MAX_TOP_ITEMS)
       );
     case "analytics:getTrends":
-      return computeTrends(await fetchOrders(ctx, localDayWindow(params, 30)));
+    {
+      const schedule = cachedCutoffSchedule(ctx.tenantId);
+      return computeTrends(await fetchOrders(ctx, localDayWindow(params, 30, schedule)), schedule);
+    }
     case "analytics:getRevenueBreakdown":
       return computeRevenueBreakdown(await fetchOrdersWithPayments(ctx, rollingWindow(params, 7)));
     case "analytics:getUpsellTrends": {

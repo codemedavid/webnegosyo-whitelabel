@@ -6,7 +6,16 @@
  * window of the same length immediately before it, cut at the same clock time:
  * "today so far" is compared with "yesterday up to now", never with all of
  * yesterday.
+ *
+ * With a business-day `schedule` the windows open at the store's cutoff (a
+ * 4 AM store's "today" is Fri 4:00 AM – now), and hour labels read the wall
+ * clock from there ("4 AM", "5 AM" …). Without one it is Manila midnight,
+ * exactly as before. Buckets stay a fixed `bucketMs` from the window start
+ * (the growth/customer summaries do that arithmetic), so on the one day a
+ * cutoff changes a day bar can be off by the change: this is the dashboard's
+ * glance, the exact figures live in Reports (`reports/period.ts`).
  */
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from '@/lib/business-day/trading-day'
 
 export type DashboardRange = 'today' | '7d' | '30d' | '90d'
 
@@ -76,33 +85,34 @@ export function manilaHour(ms: number): number {
   return Math.floor((ms - manilaDayStart(ms)) / HOUR_MS)
 }
 
-export function resolveDashboardWindow(range: DashboardRange, now: number): DashboardWindow {
-  const todayStart = manilaDayStart(now)
+/** Start of the business day containing `ms` (Manila midnight with no schedule). */
+export function tradingDayStart(ms: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): number {
+  if (schedule.length === 0) return manilaDayStart(ms)
+  return Date.parse(tradingDayWindow(tradingDayOf(new Date(ms).toISOString(), schedule), schedule).startIso)
+}
+
+/** Start of the business day `days` days before the one containing `ms`. */
+function dayStartBefore(ms: number, days: number, schedule: CutoffSchedule): number {
+  if (schedule.length === 0) return manilaDayStart(ms) - days * DAY_MS
+  const todayKey = tradingDayOf(new Date(ms).toISOString(), schedule)
+  const key = new Date(Date.parse(`${todayKey}T00:00:00.000Z`) - days * DAY_MS).toISOString().slice(0, 10)
+  return Date.parse(tradingDayWindow(key, schedule).startIso)
+}
+
+export function resolveDashboardWindow(
+  range: DashboardRange,
+  now: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE,
+): DashboardWindow {
+  const days = range === 'today' ? 1 : RANGE_DAYS[range]
+  const start = dayStartBefore(now, days - 1, schedule)
+  const previousStart = dayStartBefore(now, 2 * days - 1, schedule)
+  // Cut at the same elapsed time: "today so far" against "yesterday up to now".
+  const previousEnd = previousStart + (now - start)
   if (range === 'today') {
-    return {
-      range,
-      start: todayStart,
-      end: now,
-      previousStart: todayStart - DAY_MS,
-      previousEnd: now - DAY_MS,
-      bucket: 'hour',
-      bucketCount: 24,
-      bucketMs: HOUR_MS,
-    }
+    return { range, start, end: now, previousStart, previousEnd, bucket: 'hour', bucketCount: 24, bucketMs: HOUR_MS }
   }
-  const days = RANGE_DAYS[range]
-  const start = todayStart - (days - 1) * DAY_MS
-  const span = days * DAY_MS
-  return {
-    range,
-    start,
-    end: now,
-    previousStart: start - span,
-    previousEnd: now - span,
-    bucket: 'day',
-    bucketCount: days,
-    bucketMs: DAY_MS,
-  }
+  return { range, start, end: now, previousStart, previousEnd, bucket: 'day', bucketCount: days, bucketMs: DAY_MS }
 }
 
 export function isInCurrent(window: DashboardWindow, at: number): boolean {
@@ -135,7 +145,7 @@ const DAY_LABEL = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numer
 export function bucketLabels(window: DashboardWindow): string[] {
   return Array.from({ length: window.bucketCount }, (_, i) =>
     window.bucket === 'hour'
-      ? formatHourLabel(i)
+      ? formatHourLabel(manilaHour(window.start + i * window.bucketMs))
       : DAY_LABEL.format(new Date(window.start + i * window.bucketMs)),
   )
 }

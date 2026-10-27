@@ -12,7 +12,8 @@ import type { StaffMember } from "../../lib/staff-service";
 import { useAuthStore } from "../../stores/auth-store";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { ordersInWindowArgs } from "../../lib/report-window";
-import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
+import { useCanBoundReports } from "../../lib/use-report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { EmptyState } from "../EmptyState";
 import { ErrorState } from "../ErrorState";
@@ -90,9 +91,9 @@ export function StaffSalesLeaderboard({ staff }: { staff: readonly StaffMember[]
   const scope = useBranchScope();
   const outletId = scope.kind === "branch" ? scope.outletId : undefined;
   const [days, setDays] = useState<number>(1);
-  const { anchorMs } = useBusinessDayAnchor();
+  const { anchorMs, schedule } = useTradingDay();
   const canBound = useCanBoundReports();
-  const period = buildKpiPeriod(days, anchorMs);
+  const period = buildKpiPeriod(days, anchorMs, schedule);
   // The period itself, where the backend can bound a read. The most recent
   // 1000 orders refused every period — even Today — once a store's LIFETIME
   // history passed 1000 orders.

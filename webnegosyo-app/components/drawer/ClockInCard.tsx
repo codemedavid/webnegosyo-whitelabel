@@ -6,6 +6,18 @@ import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { CountModeSwitch, type CountMode } from "../cash/CountModeSwitch";
+import { DenominationCounter } from "../cash/DenominationCounter";
+import { countTotalCents, type DenominationCounts } from "../../lib/cash/denominations";
+import { floatNote, type PickablePeriod } from "../../lib/cash/shift-start";
+import { parseCashInput } from "../../lib/shift";
+
+/** What a start carries beside the drawer and the float. */
+export interface ClockInExtras {
+  servicePeriodId: string | null;
+  /** The opening count, bill by bill, when counted that way. */
+  denominations: DenominationCounts | null;
+}
 
 interface ClockInCardProps {
   /** The tills of this branch; empty = this store uses personal drawers. */
@@ -14,8 +26,14 @@ interface ClockInCardProps {
   canManage: boolean;
   /** Why tills cannot be offered right now (branch not chosen, read failed). */
   notice: string | null;
-  onClockIn: (drawerId: string | null, floatText: string) => void;
+  /** A plain pointer, not a problem: "Start a shift to pay from the drawer." */
+  hint?: string | null;
+  onClockIn: (drawerId: string | null, floatText: string, extras: ClockInExtras) => void;
   onSetUpDrawers: () => void;
+  /** Named shifts (service periods) for this branch; empty = none set up (nothing is asked). */
+  periods?: readonly PickablePeriod[];
+  /** The one running now, preselected. */
+  defaultPeriodId?: string | null;
 }
 
 /**
@@ -26,9 +44,23 @@ interface ClockInCardProps {
  * that, not the cashier. A till someone else holds is shown, not hidden, so
  * "where is Cashier 2?" answers itself ("In use · Ana").
  */
-export function ClockInCard({ board, isBusy, canManage, notice, onClockIn, onSetUpDrawers }: ClockInCardProps) {
+export function ClockInCard({
+  board,
+  isBusy,
+  canManage,
+  notice,
+  hint = null,
+  onClockIn,
+  onSetUpDrawers,
+  periods = [],
+  defaultPeriodId = null,
+}: ClockInCardProps) {
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [floatText, setFloatText] = useState<string | null>(null);
+  const [mode, setMode] = useState<CountMode>("total");
+  const [counts, setCounts] = useState<DenominationCounts>({});
+  const [periodId, setPeriodId] = useState<string | null | undefined>(undefined);
+  const pickedPeriodId = periodId === undefined ? defaultPeriodId : periodId;
 
   const hasDrawers = board.length > 0;
   const fallbackId = defaultDrawerChoice(board);
@@ -47,9 +79,17 @@ export function ClockInCard({ board, isBusy, canManage, notice, onClockIn, onSet
     setFloatText(null);
   };
 
+  // Counted bill by bill, the total is the starting cash.
+  const countedText = mode === "bills" ? String((countTotalCents(counts) ?? 0) / 100) : shownFloat;
+  const typedPesos = countedText.trim() ? parseCashInput(countedText) : 0;
+  const usual = drawer && !drawer.isZeroBalance ? floatNote(Number.isFinite(typedPesos) ? Math.round(typedPesos * 100) : null, Math.round(drawer.startingCash * 100)) : null;
+
   const submit = () => {
     if (isBusy || (hasDrawers && !drawer)) return;
-    onClockIn(drawer?.id ?? null, drawer?.isZeroBalance ? "0" : shownFloat);
+    onClockIn(drawer?.id ?? null, drawer?.isZeroBalance ? "0" : countedText, {
+      servicePeriodId: pickedPeriodId ?? null,
+      denominations: mode === "bills" && !drawer?.isZeroBalance ? counts : null,
+    });
   };
 
   return (
@@ -61,6 +101,11 @@ export function ClockInCard({ board, isBusy, canManage, notice, onClockIn, onSet
           : "Count the cash already in the drawer so your takings reconcile at close."}
       </Text>
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+      {hint ? (
+        <Text style={styles.hint} accessibilityLiveRegion="polite">
+          {hint}
+        </Text>
+      ) : null}
 
       {hasDrawers ? (
         <View style={styles.grid} accessibilityRole="radiogroup">
@@ -113,6 +158,10 @@ export function ClockInCard({ board, isBusy, canManage, notice, onClockIn, onSet
       ) : (
         <>
           <Text style={styles.label}>Starting cash</Text>
+          <CountModeSwitch value={mode} onChange={setMode} />
+          {mode === "bills" ? (
+            <DenominationCounter value={counts} onChange={setCounts} isDisabled={isBusy} />
+          ) : (
           <TextInput
             style={styles.input}
             placeholder="₱0.00"
@@ -125,8 +174,40 @@ export function ClockInCard({ board, isBusy, canManage, notice, onClockIn, onSet
             editable={!isBusy}
             accessibilityLabel="Opening float in pesos"
           />
+          )}
+          {usual ? (
+            <View style={[styles.usual, !usual.isUsual && styles.usualOff]} accessibilityLiveRegion="polite">
+              <Icon name={usual.isUsual ? "check" : "info"} size={14} color={usual.isUsual ? colors.success : colors.statusPending.text} />
+              <Text style={[styles.usualText, !usual.isUsual && styles.usualTextOff]}>{usual.text}</Text>
+            </View>
+          ) : null}
         </>
       )}
+
+      {periods.length > 0 ? (
+        <View style={styles.periods} accessibilityRole="radiogroup" accessibilityLabel="Which shift">
+          <Text style={styles.label}>Which shift</Text>
+          <View style={styles.periodChips}>
+            {periods.map((period) => {
+              const isOn = period.id === pickedPeriodId;
+              return (
+                <TouchableOpacity
+                  key={period.id}
+                  style={[styles.periodChip, isOn && styles.periodChipOn]}
+                  onPress={() => setPeriodId(isOn ? null : period.id)}
+                  disabled={isBusy}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isOn }}
+                  testID={`period-${period.id}`}
+                >
+                  {isOn ? <Icon name="check" size={14} color={colors.textOnDark} /> : null}
+                  <Text style={[styles.periodText, isOn && styles.periodTextOn]}>{period.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       <Button
         label={isBusy ? "Starting…" : drawer ? `Clock in to ${drawer.name}` : "Clock in"}
@@ -164,6 +245,14 @@ const styles = StyleSheet.create({
   title: { ...typography.heading, color: colors.textPrimary },
   meta: { ...typography.caption, color: colors.textSecondary },
   notice: { ...typography.caption, color: colors.danger, fontWeight: "600" },
+  hint: {
+    ...typography.caption,
+    fontWeight: "600",
+    color: colors.statusPending.text,
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs },
   tile: {
     flexGrow: 1,
@@ -209,4 +298,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   setupText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600", flex: 1 },
+  usual: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", backgroundColor: colors.successLight, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 6 },
+  usualOff: { backgroundColor: colors.warningLight, borderRadius: radius.md, alignSelf: "stretch" },
+  usualText: { ...typography.caption, fontWeight: "700", color: colors.success },
+  usualTextOff: { color: colors.statusPending.text, flex: 1 },
+  periods: { gap: spacing.xs },
+  periodChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  periodChip: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.full, borderWidth: 1, borderColor: colors.separator, backgroundColor: colors.card },
+  periodChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  periodText: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
+  periodTextOn: { color: colors.textOnDark },
 });

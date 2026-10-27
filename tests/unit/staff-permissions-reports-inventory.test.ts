@@ -38,8 +38,11 @@ const staff = (permissions: string[] | null): PermissionHolder => ({
 })
 
 describe('the three report & inventory keys', () => {
-  it('are registered, after every existing key, with a label and description', () => {
-    expect(STAFF_PERMISSION_KEYS.slice(-3)).toEqual(['reports', 'inventory', 'costs'])
+  it('are registered, after every earlier key, with a label and description', () => {
+    // `expenses` (the expense book) and `cash_manage` were added after them.
+    const start = STAFF_PERMISSION_KEYS.indexOf('reports')
+    expect(STAFF_PERMISSION_KEYS.slice(start, start + 3)).toEqual(['reports', 'inventory', 'costs'])
+    expect(STAFF_PERMISSION_KEYS.slice(start + 3)).toEqual(['expenses', 'cash_manage'])
     for (const key of ['reports', 'inventory', 'costs'] as const) {
       expect(STAFF_PERMISSION_LABELS[key].label).not.toHaveLength(0)
       expect(STAFF_PERMISSION_LABELS[key].description).not.toHaveLength(0)

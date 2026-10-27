@@ -7,9 +7,16 @@
  * order number and the server's own "today" use. This used to read the
  * phone's timezone, so on a phone not set to Manila the takings card compared
  * against a different "yesterday" than the Analytics screen showed.
+ *
+ * With a business-day schedule (`useTradingDay().schedule`), "today" is the
+ * store's business day: a 4 AM store's Friday runs Fri 4:00 AM – Sat 3:59 AM.
+ * Without one it is the Manila calendar day, exactly as before. Both backends'
+ * `getDashboardStatsByPeriod` take any inclusive range, so this works on every
+ * Convex bundle.
  */
 
-import { resolveBusinessDayWindow, previousBusinessDayKey, toBusinessDayKey } from "./daily-report/business-day";
+import { previousBusinessDayKey } from "./daily-report/business-day";
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from "./business-day/trading-day";
 
 export interface DateRange {
   startDate: number;
@@ -17,17 +24,17 @@ export interface DateRange {
   endDate: number;
 }
 
-function dayRange(dayKey: string): DateRange {
-  const window = resolveBusinessDayWindow(dayKey);
+function dayRange(dayKey: string, schedule: CutoffSchedule): DateRange {
+  const window = tradingDayWindow(dayKey, schedule);
   return { startDate: Date.parse(window.startIso), endDate: Date.parse(window.endIso) - 1 };
 }
 
-export function todayRange(nowMs: number): DateRange {
-  return dayRange(toBusinessDayKey(new Date(nowMs).toISOString()));
+export function todayRange(nowMs: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): DateRange {
+  return dayRange(tradingDayOf(new Date(nowMs).toISOString(), schedule), schedule);
 }
 
-export function yesterdayRange(nowMs: number): DateRange {
-  return dayRange(previousBusinessDayKey(toBusinessDayKey(new Date(nowMs).toISOString())));
+export function yesterdayRange(nowMs: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): DateRange {
+  return dayRange(previousBusinessDayKey(tradingDayOf(new Date(nowMs).toISOString(), schedule)), schedule);
 }
 
 /**

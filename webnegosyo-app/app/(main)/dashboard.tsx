@@ -14,7 +14,8 @@ import { canReadOrders } from "../../lib/staff-permissions";
 import { quickActionsFor } from "../../lib/home-quick-actions";
 import { revenueDelta, todayRange, yesterdayRange } from "../../lib/home-period";
 import { ordersInWindowArgs } from "../../lib/report-window";
-import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
+import { useCanBoundReports } from "../../lib/use-report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useAuthStore } from "../../stores/auth-store";
@@ -36,6 +37,10 @@ import { HomeNeedsReview } from "../../components/approvals/NeedsReviewCard";
 import { IconButton } from "../../components/IconButton";
 import { ListRow } from "../../components/ListRow";
 import { ShiftStatusStrip } from "../../components/ShiftStatusStrip";
+import { RemitInboxStrip } from "../../components/remittances/RemitInboxStrip";
+import { REMITTANCES_ROUTE, dayCloseHref } from "../../lib/cash-routes";
+import { HomeMoneyCard } from "../../components/money/HomeMoneyCard";
+import { moneyAccess } from "../../lib/expenses/money-glance";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getDashboardStatsByPeriodRef = "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
@@ -125,6 +130,8 @@ export default function DashboardScreen() {
   // The drawer's own screen is the only place the shift can be opened or
   // closed, so an account that cannot reach it has no shift to report.
   const showShift = isTabReachable("pos-sales", ctx);
+  // Money out beside money in: each row only for an account that may open it.
+  const money = useMemo(() => moneyAccess(ctx, orderBackend), [ctx, orderBackend]);
 
   const [refreshing, setRefreshing] = useState(false);
   // Spread into a fresh literal: the query hook wants an indexable record,
@@ -133,10 +140,11 @@ export default function DashboardScreen() {
   // Keyed to the Manila day, not to mount: Home is a tab that never unmounts,
   // so ranges computed once kept comparing against the day before yesterday
   // after midnight while the server's "today" had already rolled over.
-  const { anchorMs } = useBusinessDayAnchor();
+  // Today / yesterday are the store's business days (Manila midnight with no cutoff).
+  const { anchorMs, schedule } = useTradingDay();
   const canBound = useCanBoundReports();
-  const yesterday = useMemo(() => ({ ...yesterdayRange(anchorMs) }), [anchorMs]);
-  const today = useMemo(() => todayRange(anchorMs), [anchorMs]);
+  const yesterday = useMemo(() => ({ ...yesterdayRange(anchorMs, schedule) }), [anchorMs, schedule]);
+  const today = useMemo(() => todayRange(anchorMs, schedule), [anchorMs, schedule]);
 
   const { data: stats, isLoading, error: statsError, refetch: refetchStats } =
     useSafeQuery<DashboardStats>(getDashboardStatsRef, canSeeOrders ? undefined : "skip");
@@ -278,13 +286,21 @@ export default function DashboardScreen() {
             is open is the cashier's first question of the day, and it must not
             wait on an order query to be answered. */}
         {showShift && <ShiftStatusStrip onPress={() => goTo(tabRouter, "/(main)/pos-sales")} />}
+        {/* The receiver's side: remittances to accept and shifts left open. Draws nothing otherwise. */}
+        <RemitInboxStrip
+          onOpenRemittances={() => router.push(REMITTANCES_ROUTE)}
+          onOpenDayClose={(dayKey, outletId) => router.push(dayCloseHref(dayKey, outletId))}
+        />
 
         {!canSeeOrders ? (
           // Only what this account can open: no takings, no queue, no ₱0.
-          <QuickActions
-            actions={quickActions}
-            onPress={(action) => goTo(tabRouter, action.href as `/(main)/${string}`)}
-          />
+          <>
+            <HomeMoneyCard access={money} />
+            <QuickActions
+              actions={quickActions}
+              onPress={(action) => goTo(tabRouter, action.href as `/(main)/${string}`)}
+            />
+          </>
         ) : isStatsLoading ? (
           <LoadingState message="Loading today..." />
         ) : (
@@ -298,6 +314,8 @@ export default function DashboardScreen() {
               delta={delta}
               comparisonLabel="yesterday"
             />
+
+            <HomeMoneyCard access={money} />
 
             <QuickActions
               actions={quickActions}

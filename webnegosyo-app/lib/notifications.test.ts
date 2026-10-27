@@ -114,3 +114,36 @@ describe("approvals channel and categories", () => {
     expect(actions.map((action) => action.identifier)).toEqual(["approve", "decline"]);
   });
 });
+
+describe("cash alerts channel (CONTRACTS W3.3)", () => {
+  beforeEach(() => {
+    jest.resetModules();
+    mockSetChannel.mockClear();
+  });
+
+  it("creates a HIGH 'Cash alerts' channel that never uses the order ringtone", async () => {
+    const { ensureCashAlertsChannel, CASH_ALERTS_CHANNEL_ID } = (await import("./notifications")) as typeof import("./notifications");
+    await ensureCashAlertsChannel();
+    await ensureCashAlertsChannel();
+    expect(mockSetChannel).toHaveBeenCalledTimes(1);
+    const [channelId, config] = mockSetChannel.mock.calls[0] as [string, Record<string, unknown>];
+    expect(channelId).toBe(CASH_ALERTS_CHANNEL_ID);
+    expect(config).toMatchObject({ name: "Cash alerts", importance: 4 });
+    expect(config.sound).not.toBe("ringtone.mp3");
+  });
+
+  it("uses the same channel id the web push route sends cash alerts on", async () => {
+    const { readFileSync } = jest.requireActual<typeof import("fs")>("fs");
+    const { join } = jest.requireActual<typeof import("path")>("path");
+    const { CASH_ALERTS_CHANNEL_ID } = (await import("./notifications")) as typeof import("./notifications");
+    const web = readFileSync(join(__dirname, "..", "..", "src", "lib", "push", "merchant-notification-push.ts"), "utf8");
+    expect(web).toContain(`channelId: '${CASH_ALERTS_CHANNEL_ID}'`);
+  });
+
+  it("is created at startup next to the stock channel", () => {
+    const { readFileSync } = jest.requireActual<typeof import("fs")>("fs");
+    const { join } = jest.requireActual<typeof import("path")>("path");
+    const layout = readFileSync(join(__dirname, "..", "app", "_layout.tsx"), "utf8");
+    expect(layout).toMatch(/ensureStockAlertsChannel\(\)[\s\S]{0,80}ensureCashAlertsChannel\(\)/);
+  });
+});

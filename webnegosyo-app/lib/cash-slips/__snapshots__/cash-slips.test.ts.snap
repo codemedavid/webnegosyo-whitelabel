@@ -1,0 +1,399 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`a recount is printed under the count at 32 columns 1`] = `
+"          LOLY'S CAFE
+          Main branch
+        REMITTANCE SLIP
+--------------------------------
+Slip                     #R-0241
+Business day   Sat, Oct 24, 2026
+Drawer                 Cashier 1
+Cashier                Ana Reyes
+Shift  6:02 PM Sat - 2:48 AM Sun
+--------------------------------
+Starting cash           2,000.00
+Cash sales              9,215.00
+Paid in                  +200.00
+Paid out                 -450.00
+Pickup (Maria 9:40 PM) -2,500.00
+Should be in drawer     8,465.00
+Counted                 8,345.00
+  Counted twice:
+                0.00 -> 8,345.00
+SHORT                     120.00
+  Wrong sukli (change): "gave
+  P100 extra to T4"
+Float kept              2,000.00
+REMITTED                6,345.00
+--------------------------------
+GCASH & CARDS
+GCash ok         14     4,210.00
+Maya DIFF         3       860.00
+  Cashier says            810.00
+Card --           2       760.00
+--------------------------------
+Bills P1000x4 P500x3 P100x7
+P50x6 P20x9
+Coins P10x12 P5x8 P1x23 25cx4
+--------------------------------
+Remitted by ______________
+
+Received by ______________
+Waiting for Maria Santos
+--------------------------------
+  Printed Oct 25, 2026 2:50 AM
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`a recount is printed under the count at 48 columns 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                REMITTANCE SLIP
+------------------------------------------------
+Slip                                     #R-0241
+Business day                   Sat, Oct 24, 2026
+Drawer                                 Cashier 1
+Cashier                                Ana Reyes
+Shift                  6:02 PM Sat - 2:48 AM Sun
+------------------------------------------------
+Starting cash                           2,000.00
+Cash sales                              9,215.00
+Paid in                                  +200.00
+Paid out                                 -450.00
+Pickup (Maria 9:40 PM)                 -2,500.00
+Should be in drawer                     8,465.00
+Counted                                 8,345.00
+  Counted twice:                0.00 -> 8,345.00
+SHORT                                     120.00
+  Wrong sukli (change): "gave P100 extra to T4"
+Float kept                              2,000.00
+REMITTED                                6,345.00
+------------------------------------------------
+GCASH & CARDS
+GCash ok                      14        4,210.00
+Maya DIFF                      3          860.00
+  Cashier says                            810.00
+Card --                        2          760.00
+------------------------------------------------
+Bills P1000x4 P500x3 P100x7 P50x6 P20x9
+Coins P10x12 P5x8 P1x23 25cx4
+------------------------------------------------
+Remitted by ______________
+
+Received by ______________
+Waiting for Maria Santos
+------------------------------------------------
+          Printed Oct 25, 2026 2:50 AM
+            Not an official receipt.
+                 For store use.
+"
+`;
+
+exports[`slips at 32 columns day close 1`] = `
+"          LOLY'S CAFE
+          Main branch
+           DAY CLOSE
+--------------------------------
+Business day   Sat, Oct 24, 2026
+Window 4:00 AM Sat - 3:59 AM Sun
+--------------------------------
+Orders                       118
+NET SALES              41,220.00
+Discounts                -510.00
+Cash                   24,615.00
+GCash                   9,840.00
+Maya                    2,150.00
+Card                    4,615.00
+Unpaid                      0.00
+--------------------------------
+BY SHIFT
+Ana - Cashier 1         6,345.00
+  short 120.00, accepted
+Ben - Cashier 2         8,380.00
+  exact, waiting
+Carlo                         --
+  -- (closed by manager)
+--------------------------------
+Pay outs               -1,250.00
+Expenses from drawer     -600.00
+Short/over          short 100.00
+Floats kept             4,000.00
+CASH TO DEPOSIT        19,850.00
+Deposited              19,700.00
+To                   BDO savings
+Ref                     DEP-7731
+Less than cash to deposit 150.00
+--------------------------------
+Closed by Maria Santos, Oct 25,
+2026 3:10 AM
+Closed anyway: 1 remittance
+waiting
+Note: Ben's envelope in the safe
+--------------------------------
+  Printed Oct 25, 2026 2:50 AM
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`slips at 32 columns hidden shift report prints no money, but keeps the receipt range and count 1`] = `
+"          LOLY'S CAFE
+          Main branch
+          SHIFT REPORT
+--------------------------------
+Business day   Sat, Oct 24, 2026
+Shift          6:02 PM Sat - now
+Service period       Night shift
+Cashier                Ana Reyes
+Drawer                 Cashier 1
+--------------------------------
+Totals stay hidden until the
+drawer is counted.
+--------------------------------
+Receipts               #01 - #42
+Receipt count                  2
+--------------------------------
+  Printed Oct 25, 2026 2:50 AM
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`slips at 32 columns remittance slip 1`] = `
+"          LOLY'S CAFE
+          Main branch
+        REMITTANCE SLIP
+--------------------------------
+Slip                     #R-0241
+Business day   Sat, Oct 24, 2026
+Drawer                 Cashier 1
+Cashier                Ana Reyes
+Shift  6:02 PM Sat - 2:48 AM Sun
+--------------------------------
+Starting cash           2,000.00
+Cash sales              9,215.00
+Paid in                  +200.00
+Paid out                 -450.00
+Pickup (Maria 9:40 PM) -2,500.00
+Should be in drawer     8,465.00
+Counted                 8,345.00
+SHORT                     120.00
+  Wrong sukli (change): "gave
+  P100 extra to T4"
+Float kept              2,000.00
+REMITTED                6,345.00
+--------------------------------
+GCASH & CARDS
+GCash ok         14     4,210.00
+Maya DIFF         3       860.00
+  Cashier says            810.00
+Card --           2       760.00
+--------------------------------
+Bills P1000x4 P500x3 P100x7
+P50x6 P20x9
+Coins P10x12 P5x8 P1x23 25cx4
+--------------------------------
+Remitted by ______________
+
+Received by ______________
+Waiting for Maria Santos
+--------------------------------
+  Printed Oct 25, 2026 2:50 AM
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`slips at 32 columns shift report 1`] = `
+"          LOLY'S CAFE
+          Main branch
+          SHIFT REPORT
+--------------------------------
+Business day   Sat, Oct 24, 2026
+Shift  6:02 PM Sat - 2:48 AM Sun
+Service period       Night shift
+Cashier                Ana Reyes
+Drawer                 Cashier 1
+--------------------------------
+Orders                        42
+Gross sales            15,345.00
+Discounts                -345.00
+NET SALES              15,000.00
+Delivery                  120.00
+Collected              14,905.00
+Unpaid                    215.00
+--------------------------------
+PAID BY
+Cash             25     9,215.00
+GCash            14     4,210.00
+Card              3     1,480.00
+--------------------------------
+ORDER TYPES
+Dine in          30    11,000.00
+Pickup           12     4,000.00
+--------------------------------
+Voids             2       150.00
+Discounts given           345.00
+Refunds                     0.00
+--------------------------------
+Receipts               #01 - #42
+Receipt count                 42
+--------------------------------
+  Printed Oct 25, 2026 2:50 AM
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`slips at 48 columns day close 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                   DAY CLOSE
+------------------------------------------------
+Business day                   Sat, Oct 24, 2026
+Window                 4:00 AM Sat - 3:59 AM Sun
+------------------------------------------------
+Orders                                       118
+NET SALES                              41,220.00
+Discounts                                -510.00
+Cash                                   24,615.00
+GCash                                   9,840.00
+Maya                                    2,150.00
+Card                                    4,615.00
+Unpaid                                      0.00
+------------------------------------------------
+BY SHIFT
+Ana - Cashier 1                         6,345.00
+  short 120.00, accepted
+Ben - Cashier 2                         8,380.00
+  exact, waiting
+Carlo                                         --
+  -- (closed by manager)
+------------------------------------------------
+Pay outs                               -1,250.00
+Expenses from drawer                     -600.00
+Short/over                          short 100.00
+Floats kept                             4,000.00
+CASH TO DEPOSIT                        19,850.00
+Deposited                              19,700.00
+To                                   BDO savings
+Ref                                     DEP-7731
+Less than cash to deposit                 150.00
+------------------------------------------------
+Closed by Maria Santos, Oct 25, 2026 3:10 AM
+Closed anyway: 1 remittance waiting
+Note: Ben's envelope in the safe
+------------------------------------------------
+          Printed Oct 25, 2026 2:50 AM
+            Not an official receipt.
+                 For store use.
+"
+`;
+
+exports[`slips at 48 columns hidden shift report prints no money, but keeps the receipt range and count 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                  SHIFT REPORT
+------------------------------------------------
+Business day                   Sat, Oct 24, 2026
+Shift                          6:02 PM Sat - now
+Service period                       Night shift
+Cashier                                Ana Reyes
+Drawer                                 Cashier 1
+------------------------------------------------
+Totals stay hidden until the drawer is counted.
+------------------------------------------------
+Receipts                               #01 - #42
+Receipt count                                  2
+------------------------------------------------
+          Printed Oct 25, 2026 2:50 AM
+            Not an official receipt.
+                 For store use.
+"
+`;
+
+exports[`slips at 48 columns remittance slip 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                REMITTANCE SLIP
+------------------------------------------------
+Slip                                     #R-0241
+Business day                   Sat, Oct 24, 2026
+Drawer                                 Cashier 1
+Cashier                                Ana Reyes
+Shift                  6:02 PM Sat - 2:48 AM Sun
+------------------------------------------------
+Starting cash                           2,000.00
+Cash sales                              9,215.00
+Paid in                                  +200.00
+Paid out                                 -450.00
+Pickup (Maria 9:40 PM)                 -2,500.00
+Should be in drawer                     8,465.00
+Counted                                 8,345.00
+SHORT                                     120.00
+  Wrong sukli (change): "gave P100 extra to T4"
+Float kept                              2,000.00
+REMITTED                                6,345.00
+------------------------------------------------
+GCASH & CARDS
+GCash ok                      14        4,210.00
+Maya DIFF                      3          860.00
+  Cashier says                            810.00
+Card --                        2          760.00
+------------------------------------------------
+Bills P1000x4 P500x3 P100x7 P50x6 P20x9
+Coins P10x12 P5x8 P1x23 25cx4
+------------------------------------------------
+Remitted by ______________
+
+Received by ______________
+Waiting for Maria Santos
+------------------------------------------------
+          Printed Oct 25, 2026 2:50 AM
+            Not an official receipt.
+                 For store use.
+"
+`;
+
+exports[`slips at 48 columns shift report 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                  SHIFT REPORT
+------------------------------------------------
+Business day                   Sat, Oct 24, 2026
+Shift                  6:02 PM Sat - 2:48 AM Sun
+Service period                       Night shift
+Cashier                                Ana Reyes
+Drawer                                 Cashier 1
+------------------------------------------------
+Orders                                        42
+Gross sales                            15,345.00
+Discounts                                -345.00
+NET SALES                              15,000.00
+Delivery                                  120.00
+Collected                              14,905.00
+Unpaid                                    215.00
+------------------------------------------------
+PAID BY
+Cash                          25        9,215.00
+GCash                         14        4,210.00
+Card                           3        1,480.00
+------------------------------------------------
+ORDER TYPES
+Dine in                       30       11,000.00
+Pickup                        12        4,000.00
+------------------------------------------------
+Voids                          2          150.00
+Discounts given                           345.00
+Refunds                                     0.00
+------------------------------------------------
+Receipts                               #01 - #42
+Receipt count                                 42
+------------------------------------------------
+          Printed Oct 25, 2026 2:50 AM
+            Not an official receipt.
+                 For store use.
+"
+`;

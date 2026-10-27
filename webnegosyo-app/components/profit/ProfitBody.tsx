@@ -1,0 +1,90 @@
+import React from "react";
+import { StyleSheet, View } from "react-native";
+
+import type { FindingCard } from "../../lib/profit/profit-findings";
+import type { ProfitWindow } from "../../lib/profit/profit-period";
+import type { ReadyProfit } from "../../lib/profit/profit-screen-state";
+import { spacing } from "../../theme/colors";
+import { ReportsColumns } from "../reports/ReportsColumns";
+import { CostTiles } from "./CostTiles";
+import { FindingsCard } from "./FindingsCard";
+import { FoodStaffBar } from "./FoodStaffBar";
+import { MoneyWentCard } from "./MoneyWentCard";
+import { ProfitHero } from "./ProfitHero";
+import { FirstRunCard } from "./ProfitStates";
+import { ProfitTrendCard } from "./ProfitTrendCard";
+
+interface ProfitBodyProps {
+  data: ReadyProfit;
+  period: ProfitWindow;
+  findings: readonly FindingCard[];
+  isWide: boolean;
+  /** "If you pay the 2 bills left: about ₱20,800 kept"; null = say nothing. */
+  forecast?: string | null;
+  onAddExpense: () => void;
+  /** First run's second way in: "Set up monthly bills". */
+  onSetUpBills?: () => void;
+  onFinding: (card: FindingCard) => void;
+  onOpenCategory: (categoryId: string) => void;
+  onOpenAllExpenses: () => void;
+}
+
+/**
+ * The Profit view: the answer, its three guides, then what changes it. On a
+ * phone in reading order; on a tablet the answer and its shape on the left,
+ * where the money went and what to check on the right.
+ */
+export function ProfitBody({
+  data,
+  period,
+  findings,
+  isWide,
+  forecast = null,
+  onAddExpense,
+  onSetUpBills,
+  onFinding,
+  onOpenCategory,
+  onOpenAllExpenses,
+}: ProfitBodyProps) {
+  const { report } = data;
+  const firstRun = data.isFirstRun ? <FirstRunCard onAdd={onAddExpense} onSetUpBills={onSetUpBills} /> : null;
+  const hero = <ProfitHero report={report} period={period} forecast={forecast} />;
+  const tiles = <CostTiles report={report} />;
+  const foodStaff = <FoodStaffBar report={report} />;
+  const went = <MoneyWentCard report={report} onOpenCategory={onOpenCategory} onOpenAll={onOpenAllExpenses} />;
+  const trend = data.trend ? <ProfitTrendCard bars={data.trend} title={data.trendTitle} /> : null;
+  const checks = <FindingsCard cards={findings} onAction={onFinding} />;
+
+  if (isWide) {
+    return (
+      <ReportsColumns
+        isWide
+        main={
+          <View style={styles.stack}>
+            {firstRun}
+            {hero}
+            {tiles}
+            {foodStaff}
+            {trend}
+          </View>
+        }
+        side={<View style={styles.stack}>{went}{checks}</View>}
+      />
+    );
+  }
+  return (
+    <View style={styles.stack}>
+      {firstRun}
+      {hero}
+      {tiles}
+      {foodStaff}
+      {checks}
+      {went}
+      {trend}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  stack: { gap: spacing.md },
+});

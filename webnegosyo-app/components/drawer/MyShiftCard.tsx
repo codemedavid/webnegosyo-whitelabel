@@ -1,14 +1,18 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 
 import { CASH_MOVE_COPY, type CashMove } from "../../lib/cash-drawers";
+import { shiftSalesHref } from "../../lib/cash-routes";
 import type { DrawerExpectationRead } from "../../lib/drawer-expectation";
+import type { RefusedPayout } from "../../lib/expenses/expense-queue";
 import { formatPeso } from "../../lib/format";
 import { formatShiftElapsed } from "../../lib/shift-status";
 import type { ShiftRecord } from "../../lib/shift-service";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { RefusedPayouts } from "./RefusedPayouts";
 
 interface MyShiftCardProps {
   shift: ShiftRecord;
@@ -20,7 +24,33 @@ interface MyShiftCardProps {
   nowMs: number;
   onCashMove: () => void;
   onEndShift: () => void;
+  /**
+   * The shift's pay-outs told apart (expenses / taken out / unsorted / undone),
+   * replacing the single "Paid out" line. Null = not known yet, or no expenses here.
+   */
+  payoutLines?: readonly { label: string; value: string }[] | null;
+  /** "2 expenses waiting to sync · −₱1,370" — already out of the drawer, not yet on the server. */
+  pendingLine?: string | null;
+  /** Opens the expense sheet locked to this drawer. Absent = no expenses in this store yet. */
+  onPayExpense?: () => void;
+  /** Pay-outs from this drawer the store did not take, with Try again / Remove. */
+  refusedPayouts?: readonly RefusedPayout[];
+  onRetryRefused?: (id: string) => Promise<void>;
+  onRemoveRefused?: (id: string) => Promise<void>;
+  /** Opens this shift's sales report. Defaults to the Shift sales screen. */
+  onShiftSales?: () => void;
+  /**
+   * Blind count (owner's rule): the expected figure and the cash-sales line
+   * are hidden until the cashier has counted. The moves they recorded stay.
+   */
+  isBlind?: boolean;
+  /** "This shift counts toward Friday, Oct 24 · business day ends 4:00 AM". */
+  businessDayNote?: string | null;
 }
+
+export const BLIND_AMOUNT = "Hidden · blind count";
+export const BLIND_LINE = "Your owner hides the expected cash until you count.";
+export const BLIND_HANDOVER = "Count everything at close. We'll tell you the result after.";
 
 /** How many moves the card lists before it stops. */
 const MOVES_SHOWN = 3;
@@ -37,14 +67,37 @@ function clock(iso: string): string {
  * is judged against; every line under it is a term of that sum, in the order
  * money moved: float in, sales in, moves in and out.
  */
-export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, onCashMove, onEndShift }: MyShiftCardProps) {
+export function MyShiftCard({
+  shift,
+  expectation,
+  moves,
+  activityLine,
+  nowMs,
+  onCashMove,
+  onEndShift,
+  payoutLines,
+  pendingLine,
+  onPayExpense,
+  refusedPayouts,
+  onRetryRefused,
+  onRemoveRefused,
+  onShiftSales,
+  isBlind = false,
+  businessDayNote = null,
+}: MyShiftCardProps) {
+  const openShiftSales = onShiftSales ?? (() => router.push(shiftSalesHref(shift.id) as never));
   const ready = expectation.state === "ready" ? expectation.value : null;
   const lines: { label: string; value: string }[] = ready
     ? [
         { label: shift.isZeroBalance ? "Starting cash (zero balance)" : "Starting cash", value: formatPeso(shift.openingFloat) },
-        { label: "My cash sales", value: `+${formatPeso(ready.summary.cashTotal)}` },
+        // Blind: cash sales would give the expected figure away; the cashier's own moves stay.
+        ...(isBlind ? [] : [{ label: "My cash sales", value: `+${formatPeso(ready.summary.cashTotal)}` }]),
         ...(ready.moves.payIn > 0 ? [{ label: "Paid in", value: `+${formatPeso(ready.moves.payIn)}` }] : []),
-        ...(ready.moves.payOut > 0 ? [{ label: "Paid out", value: `−${formatPeso(ready.moves.payOut)}` }] : []),
+        ...(payoutLines
+          ? payoutLines
+          : ready.moves.payOut > 0
+            ? [{ label: "Paid out", value: `−${formatPeso(ready.moves.payOut)}` }]
+            : []),
         ...(ready.moves.collected > 0 ? [{ label: "Collected", value: `−${formatPeso(ready.moves.collected)}` }] : []),
       ]
     : [];
@@ -72,7 +125,12 @@ export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, on
       </View>
 
       <Text style={styles.eyebrow}>Should be in your drawer</Text>
-      {ready ? (
+      {isBlind ? (
+        <View testID="my-shift-blind">
+          <Text style={styles.blindAmount}>{BLIND_AMOUNT}</Text>
+          <Text style={styles.handoverMeta}>{BLIND_LINE}</Text>
+        </View>
+      ) : ready ? (
         <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit accessibilityLabel={`Should be in your drawer: ${formatPeso(ready.reconciliation.expectedInDrawer)}`}>
           {formatPeso(ready.reconciliation.expectedInDrawer)}
         </Text>
@@ -93,7 +151,11 @@ export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, on
         </View>
       ) : null}
 
-      {ready ? (
+      {isBlind ? (
+        <View style={styles.handover}>
+          <Text style={styles.handoverText}>{BLIND_HANDOVER}</Text>
+        </View>
+      ) : ready ? (
         <View style={styles.handover}>
           <Text style={styles.handoverText}>
             {shift.isZeroBalance
@@ -110,6 +172,10 @@ export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, on
         </View>
       ) : null}
 
+      {pendingLine ? <Text style={styles.pending}>{pendingLine}</Text> : null}
+      {refusedPayouts && onRetryRefused && onRemoveRefused ? (
+        <RefusedPayouts payouts={refusedPayouts} onRetry={onRetryRefused} onRemove={onRemoveRefused} />
+      ) : null}
       {activityLine ? <Text style={styles.activity}>{activityLine}</Text> : null}
 
       {recent.length > 0 ? (
@@ -132,17 +198,50 @@ export function MyShiftCard({ shift, expectation, moves, activityLine, nowMs, on
         </View>
       ) : null}
 
+      {onPayExpense ? (
+        <Button
+          label="Pay an expense"
+          tone="secondary"
+          icon="receipt"
+          onPress={onPayExpense}
+          fullWidth
+          style={styles.payExpense}
+          accessibilityHint="Pay for ice, LPG or a rider from this drawer and save it as an expense"
+        />
+      ) : null}
       <View style={styles.actions}>
         <Button
           label="Cash in / out"
           tone="secondary"
           icon="payments"
+          size="lg"
+          fullWidth={false}
           onPress={onCashMove}
           style={styles.flex}
-          accessibilityHint="Record a pay in, pay out or a cash drop"
+          accessibilityHint="Add cash, take cash out or record a pickup"
         />
-        <Button label="End shift" onPress={onEndShift} style={styles.endShift} accessibilityHint="Count the drawer and close your shift" />
+        <Button
+          label="Shift sales"
+          tone="secondary"
+          icon="report"
+          size="lg"
+          fullWidth={false}
+          onPress={openShiftSales}
+          style={styles.flex}
+          accessibilityHint="Receipts, net sales and how they were paid in this shift"
+          testID="my-shift-sales"
+        />
       </View>
+      <Button
+        label="End shift & remit"
+        size="lg"
+        fullWidth
+        onPress={onEndShift}
+        style={styles.endShift}
+        accessibilityHint="Count the drawer, then hand the cash over"
+        testID="my-shift-end"
+      />
+      {businessDayNote ? <Text style={styles.businessDay}>{businessDayNote}</Text> : null}
     </View>
   );
 }
@@ -191,6 +290,10 @@ const styles = StyleSheet.create({
   handoverText: { ...typography.caption, fontWeight: "700", color: colors.heroInkText },
   handoverMeta: { ...typography.small, color: colors.heroInkMuted },
   activity: { ...typography.small, color: colors.heroInkMuted },
+  pending: { ...typography.small, fontWeight: "700", color: colors.heroInkText },
+  payExpense: { marginTop: spacing.sm },
+  blindAmount: { ...typography.heading, fontWeight: "800", color: colors.heroInkText },
+  businessDay: { ...typography.small, color: colors.heroInkMuted, textAlign: "center" },
   moves: { gap: 6 },
   move: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   moveText: { ...typography.small, color: colors.heroInkMuted, flex: 1 },
@@ -198,5 +301,5 @@ const styles = StyleSheet.create({
   moveOut: { color: colors.accentLight },
   actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
   // The card is ink; an ink primary button would vanish into it.
-  endShift: { flex: 1, backgroundColor: colors.accent },
+  endShift: { backgroundColor: colors.accent },
 });

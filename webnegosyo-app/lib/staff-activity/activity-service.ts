@@ -90,3 +90,44 @@ export async function listOrderActivity(
   }
   return rows.map(toEvent);
 }
+
+/**
+ * When this person last did anything, whatever period the screen shows.
+ *
+ * The directory only sees the chosen window, so a cashier who worked two
+ * days ago read "No activity yet" under Today. One indexed row from each log
+ * (`idx_order_status_events_actor`, `idx_staff_shifts_staff`) answers it.
+ * Throws like the other reads: "never active" and "could not read" differ.
+ */
+export async function loadLastSeenAt(
+  tenantId: string,
+  actorUserId: string,
+  db: Db = supabase,
+): Promise<string | null> {
+  const [events, shifts] = await Promise.all([
+    db
+      .from("order_status_events")
+      .select("occurred_at")
+      .eq("tenant_id", tenantId)
+      .eq("actor_user_id", actorUserId)
+      .order("occurred_at", { ascending: false })
+      .limit(1),
+    db
+      .from("staff_shifts")
+      .select("opened_at, closed_at")
+      .eq("tenant_id", tenantId)
+      .eq("staff_user_id", actorUserId)
+      .order("opened_at", { ascending: false })
+      .limit(1),
+  ]);
+  if (events.error) throw new Error(`Last activity could not be read. (${events.error.message ?? "unknown"})`);
+  if (shifts.error) throw new Error(`Last shift could not be read. (${shifts.error.message ?? "unknown"})`);
+
+  const eventAt = ((events.data ?? []) as unknown as { occurred_at: string }[])[0]?.occurred_at ?? null;
+  const shift = ((shifts.data ?? []) as unknown as { opened_at: string; closed_at: string | null }[])[0];
+  const candidates = [eventAt, shift?.opened_at ?? null, shift?.closed_at ?? null].filter(
+    (value): value is string => value !== null && !Number.isNaN(Date.parse(value)),
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((latest, value) => (Date.parse(value) > Date.parse(latest) ? value : latest));
+}

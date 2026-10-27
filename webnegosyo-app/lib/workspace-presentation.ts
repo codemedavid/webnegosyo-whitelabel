@@ -51,6 +51,9 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   "daily-report": { label: "Stock report", icon: "report", hint: "Whether today's stock added up" },
   branches: { label: "Compare branches", icon: "compare", hint: "Branch against branch" },
   activity: { label: "Activity", icon: "clock", hint: "Refunds, cancels, stock and drawers — and who did them" },
+  expenses: { label: "Expenses", icon: "receipt", hint: "What the store spent, and on what" },
+  "expense-bills": { label: "Bills to pay", icon: "calendar", hint: "Rent, kuryente, sahod: what is due, and when" },
+  profit: { label: "Profit", icon: "wallet", hint: "Sales minus ingredients minus expenses: what you kept" },
   // Manage
   "product-management": { label: "Products", icon: "manage", hint: "Products, prices, availability" },
   categories: { label: "Categories", icon: "list", hint: "Menu sections, their order and icons" },

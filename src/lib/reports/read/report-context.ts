@@ -6,6 +6,7 @@
  * fail-closed rules are tested without a database.
  */
 
+import { MIDNIGHT_SCHEDULE, type CutoffSchedule } from '@/lib/business-day/trading-day'
 import type { OrderBackend } from '@/lib/order-backend'
 import type { BranchScope } from '@/lib/outlets/branch-scope'
 import type { AppUserScopeRow } from '@/lib/queries/fetch-app-user-scope'
@@ -62,6 +63,10 @@ export interface ReportContext {
   lockedBranchLabel: string | null
   /** A platform store with a Convex deployment left over: older orders may live there. */
   isMixedBackend: boolean
+  /** The business-day cutoffs every window above was built on. */
+  schedule: CutoffSchedule
+  /** The schedule could not be read; days are midnight-to-midnight and the page should say so. */
+  isScheduleFallback: boolean
 }
 
 export type ReportPageState =
@@ -76,14 +81,21 @@ export interface BuildReportContextInput {
   outlets: readonly ReportOutlet[]
   searchParams: Record<string, string | string[] | undefined>
   now: number
+  /** The store's business-day cutoffs; none = Manila midnight. */
+  schedule?: CutoffSchedule
+  isScheduleFallback?: boolean
 }
 
 const PRESET_OPTIONS: ReportOption[] = REPORT_PRESETS.map((preset) => ({ value: preset, label: REPORT_PRESET_LABELS[preset] }))
 
-function resolvePeriodOrDefault(filter: ReportSearchParams, now: number): { period: ReportPeriod; error: string | null; filter: ReportSearchParams } {
-  const resolved = resolveReportPeriod({ preset: filter.preset, from: filter.from, to: filter.to }, now)
+function resolvePeriodOrDefault(
+  filter: ReportSearchParams,
+  now: number,
+  schedule: CutoffSchedule,
+): { period: ReportPeriod; error: string | null; filter: ReportSearchParams } {
+  const resolved = resolveReportPeriod({ preset: filter.preset, from: filter.from, to: filter.to }, now, schedule)
   if (resolved.ok) return { period: resolved.period, error: null, filter }
-  const fallback = resolveReportPeriod({ preset: DEFAULT_REPORT_PRESET }, now)
+  const fallback = resolveReportPeriod({ preset: DEFAULT_REPORT_PRESET }, now, schedule)
   // The default preset always resolves; a failure here is a bug, not input.
   if (!fallback.ok) throw new Error(fallback.error)
   return {
@@ -98,9 +110,10 @@ export function buildReportContext(input: BuildReportContextInput): ReportPageSt
   if (!access.ok) return { kind: 'refused', reason: access.reason }
   if (input.backend !== 'platform') return { kind: 'unsupported', backend: input.backend }
 
+  const schedule = input.schedule ?? MIDNIGHT_SCHEDULE
   const parsed = parseReportSearchParams(input.searchParams)
-  const { period, error, filter: periodFilter } = resolvePeriodOrDefault(parsed, input.now)
-  const compare = parsed.compare ? resolveComparePeriod(period) : null
+  const { period, error, filter: periodFilter } = resolvePeriodOrDefault(parsed, input.now, schedule)
+  const compare = parsed.compare ? resolveComparePeriod(period, schedule) : null
 
   const activeOutlets = input.outlets.filter((outlet) => outlet.isActive)
   const isMultiBranch = input.tenant.multiBranchEnabled && activeOutlets.length >= 2
@@ -113,7 +126,7 @@ export function buildReportContext(input: BuildReportContextInput): ReportPageSt
   const outletNames = new Map(input.outlets.map((outlet) => [outlet.id, outlet.name]))
 
   const window = (start: number, end: number): ReportWindow => ({ tenantId: input.tenant.id, start, end, branch: branch.args })
-  const today = resolveReportPeriod({ preset: 'today' }, input.now)
+  const today = resolveReportPeriod({ preset: 'today' }, input.now, schedule)
   if (!today.ok) throw new Error(today.error)
 
   return {
@@ -147,6 +160,8 @@ export function buildReportContext(input: BuildReportContextInput): ReportPageSt
       lockedBranchLabel:
         access.scope.kind === 'branch' ? (outletNames.get(access.scope.outletId) ?? 'Your branch') : null,
       isMixedBackend: input.tenant.hasConvexDeployment,
+      schedule,
+      isScheduleFallback: input.isScheduleFallback === true,
     },
   }
 }

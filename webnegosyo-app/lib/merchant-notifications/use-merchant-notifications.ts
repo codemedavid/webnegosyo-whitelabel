@@ -10,7 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../stores/auth-store";
 import { resourceKey } from "../backends/query-keys";
 import { invalidateResource, useResource } from "../query/use-resource";
-import { canSeeMerchantNotifications, nextSeenAt, unreadCount } from "./merchant-notifications";
+import { canOpenMerchantBell, nextSeenAt, unreadCount } from "./merchant-notifications";
 import {
   loadMerchantNotificationInbox,
   markMerchantNotificationsSeen,
@@ -36,7 +36,7 @@ export function useMerchantNotifications(): MerchantNotificationsState {
   const tenantId = useAuthStore((s) => s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const isVisible = useAuthStore((s) =>
-    canSeeMerchantNotifications({
+    canOpenMerchantBell({
       isAuthenticated: s.isAuthenticated,
       isDemo: s.isDemo,
       isOwner: s.isOwner,

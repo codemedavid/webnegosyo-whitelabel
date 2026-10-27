@@ -53,12 +53,15 @@ export function suggestDrawerName(existing: readonly { name: string }[]): string
 }
 
 /**
- * Who may set up tills, collect cash from anyone's drawer, and close a shift
- * on a cashier's behalf. Mirrors `app_user_manages_cash()` in SQL: the owner,
- * a full-access account, or staff granted `store_setup`.
+ * Who may set up tills, collect cash from anyone's drawer, close a shift on a
+ * cashier's behalf, receive remittances and close the business day. Mirrors
+ * `app_user_manages_cash()` in SQL (20261027120100): the owner, a superadmin,
+ * a full-access account, or staff granted `cash_manage`. It used to be
+ * `store_setup`; every store_setup holder was given cash_manage once, so the
+ * two only differ where the owner separated them on purpose.
  */
 export function canManageCash(user: StaffPermissionHolder): boolean {
-  return hasPermission(user, "store_setup");
+  return hasPermission(user, "cash_manage");
 }
 
 export interface DrawerInput {

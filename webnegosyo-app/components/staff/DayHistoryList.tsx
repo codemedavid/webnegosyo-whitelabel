@@ -49,15 +49,30 @@ interface DayHistoryListProps {
   nowMs: number;
   /** True when the window hit the row ceiling upstream. */
   isTruncated?: boolean;
+  /** Replaces the empty message, e.g. when they last worked outside the period. */
+  emptyMessage?: string;
+  /** Offered on an empty period, e.g. widening it. */
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
 }
 
-export function DayHistoryList({ days, nowIso, nowMs, isTruncated = false }: DayHistoryListProps) {
+export function DayHistoryList({
+  days,
+  nowIso,
+  nowMs,
+  isTruncated = false,
+  emptyMessage,
+  emptyActionLabel,
+  onEmptyAction,
+}: DayHistoryListProps) {
   if (days.length === 0) {
     return (
       <EmptyState
         icon="list"
         title="Nothing recorded in this period"
-        message="Orders they ring up, confirm or complete will appear here."
+        message={emptyMessage ?? "Orders they ring up, confirm or complete will appear here."}
+        actionLabel={emptyActionLabel}
+        onAction={onEmptyAction}
         inset
       />
     );

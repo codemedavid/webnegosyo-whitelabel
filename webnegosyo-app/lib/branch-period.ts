@@ -8,9 +8,14 @@
  *
  * Pure, and takes `now` as an argument so the boundaries are testable rather
  * than dependent on when the suite happens to run.
+ *
+ * Days are the store's BUSINESS days when a cutoff `schedule` is passed (a
+ * 4 AM store's Friday runs to Sat 3:59 AM); without one they are Manila
+ * calendar days and the period is exactly what it always was.
  */
 
 import type { KpiPeriod } from "./branch-kpis";
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from "./business-day/trading-day";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -48,14 +53,33 @@ function manilaDayStart(timestampMs: number): number {
  * A non-positive day count is clamped to one day rather than producing an
  * inverted window: a screen bug must not become a query for the future.
  */
-export function buildKpiPeriod(days: number, nowMs: number): KpiPeriod {
+export function buildKpiPeriod(
+  days: number,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): KpiPeriod {
   const safeDays = Number.isFinite(days) && days >= 1 ? Math.floor(days) : 1;
-  const todayStart = manilaDayStart(nowMs);
 
+  if (schedule.length === 0) {
+    const todayStart = manilaDayStart(nowMs);
+    return {
+      startMs: todayStart - (safeDays - 1) * DAY_MS,
+      endMs: todayStart + DAY_MS - 1,
+      days: safeDays,
+    };
+  }
+
+  // Built from day starts, not `days × 24 h`: the day a cutoff changes is
+  // longer or shorter than 24 hours.
+  const todayKey = tradingDayOf(new Date(nowMs).toISOString(), schedule);
+  const firstKey = new Date(Date.parse(`${todayKey}T00:00:00.000Z`) - (safeDays - 1) * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
   return {
-    startMs: todayStart - (safeDays - 1) * DAY_MS,
-    endMs: todayStart + DAY_MS - 1,
+    startMs: Date.parse(tradingDayWindow(firstKey, schedule).startIso),
+    endMs: Date.parse(tradingDayWindow(todayKey, schedule).endIso) - 1,
     days: safeDays,
+    schedule,
   };
 }
 

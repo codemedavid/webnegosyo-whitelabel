@@ -10,6 +10,7 @@
  */
 
 import { localDateKey, localDayOfWeek, localHour } from "./analytics-time";
+import { MIDNIGHT_SCHEDULE, tradingDayOf, type CutoffSchedule } from "../business-day/trading-day";
 import { resolveOrderIdentityKey } from "../customer-identity";
 import { orderMethodSlices, type AnalyticsPayment, type MethodSlice } from "./analytics-payment-slices";
 
@@ -135,11 +136,19 @@ export function computeTopItems(items: readonly AnalyticsItem[], limit: number) 
 
 // --- orders -------------------------------------------------------------------
 
-export function computeTrends(orders: readonly AnalyticsOrder[]) {
+/**
+ * Revenue per day. With a business-day `schedule` a day is the store's
+ * business day (a 1 AM sale on a 4 AM store is the night before's); without
+ * one it is the Manila calendar date, as before.
+ */
+export function computeTrends(orders: readonly AnalyticsOrder[], schedule: CutoffSchedule = MIDNIGHT_SCHEDULE) {
   const byDay = new Map<string, { totalOrders: number; totalRevenue: number }>();
   for (const order of orders) {
     if (isCancelled(order)) continue;
-    const date = localDateKey(order.createdAtMs);
+    const date =
+      schedule.length === 0
+        ? localDateKey(order.createdAtMs)
+        : tradingDayOf(new Date(order.createdAtMs).toISOString(), schedule);
     const d = byDay.get(date) ?? { totalOrders: 0, totalRevenue: 0 };
     byDay.set(date, { totalOrders: d.totalOrders + 1, totalRevenue: d.totalRevenue + order.total });
   }

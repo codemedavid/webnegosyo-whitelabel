@@ -61,6 +61,11 @@ describe('staff permission registry', () => {
       'reports',
       'inventory',
       'costs',
+      // The expense book: record, fix and void expenses. Implied by nothing.
+      'expenses',
+      // Cash & day close: drawers, pickups, others' shifts, remittances, day
+      // close. Not opt-in; backfilled from store_setup, not implied by it.
+      'cash_manage',
     ])
   })
 
@@ -122,8 +127,8 @@ describe('hasPermission', () => {
 })
 
 describe('opt-in permissions (activity_view, approve_requests)', () => {
-  it('names exactly the two store-activity keys', () => {
-    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests'])
+  it('names exactly the two store-activity keys and the expense book', () => {
+    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests', 'expenses', 'cash_manage'])
   })
 
   it('labels them for the owner picking them', () => {

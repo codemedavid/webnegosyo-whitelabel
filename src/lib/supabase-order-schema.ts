@@ -142,8 +142,57 @@ create trigger orders_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
--- Per-tenant daily order number: #1, #2, … resetting each Asia/Manila day.
--- Computed BEFORE INSERT so every order gets a stable human-facing number.
+-- Business day (the store's cutoff). Copied by the web app from the platform's
+-- business_day_cutoffs (src/lib/business-day/tenant-db-sync.ts); service role
+-- only. NO ROWS = Manila midnight, exactly the pre-cutoff day. Same rules as
+-- the platform helpers (20261027120000) and src/lib/business-day/trading-day.ts.
+-- ---------------------------------------------------------------------------
+create table if not exists public.business_day_cutoffs (
+  tenant_id uuid not null,
+  effective_from date not null,
+  cutoff_minutes smallint not null,
+  primary key (tenant_id, effective_from),
+  constraint business_day_cutoffs_minutes_ck
+    check (cutoff_minutes between 0 and 705 and cutoff_minutes % 15 = 0)
+);
+alter table public.business_day_cutoffs enable row level security;
+revoke all on public.business_day_cutoffs from public, anon, authenticated;
+
+create or replace function public.business_day_cutoff_for(p_tenant uuid, p_day date)
+returns interval language sql stable set search_path = '' as $fn$
+  select make_interval(mins => coalesce((
+    select c.cutoff_minutes::integer from public.business_day_cutoffs c
+     where c.tenant_id = p_tenant and c.effective_from <= p_day
+     order by c.effective_from desc limit 1), 0));
+$fn$;
+
+-- A cutoff is at most 11:45, so an instant on local date c is in day c or c - 1.
+create or replace function public.business_day_of(p_tenant uuid, p_at timestamptz)
+returns date language sql stable set search_path = '' as $fn$
+  with l as (select p_at at time zone 'Asia/Manila' as local_at)
+  select case
+           when l.local_at >= l.local_at::date + public.business_day_cutoff_for(p_tenant, l.local_at::date)
+           then l.local_at::date
+           else l.local_at::date - 1
+         end
+  from l;
+$fn$;
+
+create or replace function public.business_day_bounds(
+  p_tenant uuid, p_day date, out start_at timestamptz, out end_at timestamptz)
+language sql stable set search_path = '' as $fn$
+  select (p_day + public.business_day_cutoff_for(p_tenant, p_day)) at time zone 'Asia/Manila',
+         ((p_day + 1) + public.business_day_cutoff_for(p_tenant, p_day + 1)) at time zone 'Asia/Manila';
+$fn$;
+revoke all on function public.business_day_cutoff_for(uuid, date) from public, anon, authenticated;
+revoke all on function public.business_day_of(uuid, timestamptz) from public, anon, authenticated;
+revoke all on function public.business_day_bounds(uuid, date) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Per-tenant daily order number: #1, #2, … resetting at the store's business-
+-- day cutoff (Asia/Manila midnight when none is set), like the platform trigger
+-- and Convex (orderNumber.ts). Computed BEFORE INSERT so every order gets a
+-- stable human-facing number.
 -- ---------------------------------------------------------------------------
 create table if not exists public.daily_order_counters (
   tenant_id uuid not null,
@@ -158,15 +207,20 @@ create or replace function public.assign_daily_order_number()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
   local_date date;
+  day_start timestamptz;
+  day_end timestamptz;
   next_number integer;
 begin
-  local_date := (coalesce(new.created_at, now()) at time zone 'Asia/Manila')::date;
+  local_date := public.business_day_of(new.tenant_id, coalesce(new.created_at, now()));
+  select b.start_at, b.end_at into day_start, day_end
+    from public.business_day_bounds(new.tenant_id, local_date) b;
   -- Atomic UPSERT serializes concurrent inserts. Seed from existing numbers
-  -- so upgrading an active register does not restart today's sequence.
+  -- so upgrading an active register does not restart today's sequence. The
+  -- seed reads the day's bounded window (indexable), never a per-row cast.
   insert into daily_order_counters(tenant_id, order_date, last_number)
   select new.tenant_id, local_date, coalesce(max(o.daily_order_number), 0) + 1
     from orders o where o.tenant_id = new.tenant_id
-      and (o.created_at at time zone 'Asia/Manila')::date = local_date
+      and o.created_at >= day_start and o.created_at < day_end
   on conflict (tenant_id, order_date) do update
     set last_number = greatest(daily_order_counters.last_number + 1, excluded.last_number)
   returning last_number into next_number;

@@ -63,6 +63,7 @@ import { OfflineBanner } from "../../components/pos/OfflineBanner";
 import { OfflineReadyStatus } from "../../components/pos/OfflineReadyStatus";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
+import { PayOutButton } from "../../components/money/PayOutButton";
 import { Icon } from "../../components/Icon";
 import { CollapsingHeaderList, DOCKED_SEARCH_CLEARANCE } from "../../components/CollapsingHeaderList";
 import { useScreenTopInset } from "../../lib/use-screen-top-inset";
@@ -398,7 +399,12 @@ export default function PosScreen() {
         subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}
         ignoreTopInset
         style={styles.header}
-        actions={<SubScreenLinks parent="pos" variant="actions" />}
+        actions={
+          <>
+            <PayOutButton />
+            <SubScreenLinks parent="pos" variant="actions" />
+          </>
+        }
       >
         <View style={styles.searchRow}>
           <Icon name="search" size={18} color={colors.textTertiary} />

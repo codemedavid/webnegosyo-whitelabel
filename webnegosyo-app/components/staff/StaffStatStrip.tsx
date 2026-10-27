@@ -27,7 +27,26 @@ const TONE_COLOR: Record<StatTone, string> = {
   warning: colors.statusPending.text,
 };
 
-export function StaffStatStrip({ stats }: { stats: readonly StaffStatProps[] }) {
+interface StaffStatStripProps {
+  stats: readonly StaffStatProps[];
+  /**
+   * `grid` wraps every tile into view. A person's own screen has no roster
+   * below to protect, and a rail there hid Cancelled and Shifts off the edge.
+   */
+  layout?: "rail" | "grid";
+}
+
+export function StaffStatStrip({ stats, layout = "rail" }: StaffStatStripProps) {
+  if (layout === "grid") {
+    return (
+      <View style={styles.grid}>
+        {stats.map((stat) => (
+          <StatTile key={stat.label} stat={stat} style={styles.gridTile} />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       horizontal
@@ -35,25 +54,39 @@ export function StaffStatStrip({ stats }: { stats: readonly StaffStatProps[] }) 
       contentContainerStyle={styles.rail}
     >
       {stats.map((stat) => (
-        <View key={stat.label} style={styles.tile}>
-          <Text style={styles.label} numberOfLines={1}>
-            {stat.label}
-          </Text>
-          <Text style={[styles.value, { color: TONE_COLOR[stat.tone ?? "default"] }]} numberOfLines={1}>
-            {stat.value}
-          </Text>
-          {stat.hint ? (
-            <Text style={styles.hint} numberOfLines={1}>
-              {stat.hint}
-            </Text>
-          ) : null}
-        </View>
+        <StatTile key={stat.label} stat={stat} />
       ))}
     </ScrollView>
   );
 }
 
+function StatTile({ stat, style }: { stat: StaffStatProps; style?: object }) {
+  return (
+    <View style={[styles.tile, style]}>
+      <Text style={styles.label} numberOfLines={1}>
+        {stat.label}
+      </Text>
+      <Text style={[styles.value, { color: TONE_COLOR[stat.tone ?? "default"] }]} numberOfLines={1}>
+        {stat.value}
+      </Text>
+      {stat.hint ? (
+        <Text style={styles.hint} numberOfLines={1}>
+          {stat.hint}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+  },
+  // Two per row on a phone: flexBasis below half leaves room for the gap.
+  gridTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0 },
   rail: { gap: spacing.sm, paddingHorizontal: spacing.xl, paddingVertical: spacing.xs },
   tile: {
     minWidth: 116,

@@ -44,7 +44,12 @@ export const STAFF_PERMISSION_KEYS = [
   // Reports & inventory suite: sales reports, stock, and what things cost.
   'reports',
   'inventory',
-  'costs'
+  'costs',
+  // The expense book: record, fix and void expenses. Implied by nothing.
+  'expenses',
+  // Cash & day close: drawers, pickups, others' shifts, remittances, day
+  // close. Opt-in, implied by nothing (backfilled from store_setup).
+  'cash_manage'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -75,7 +80,7 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
  * Mirror of `OPT_IN_PERMISSION_KEYS` in src/lib/staff-permissions.ts (see the
  * reasoning there); the parity test pins every copy.
  */
-export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses', 'cash_manage'] as const satisfies readonly StaffPermissionKey[]
 
 /** Whether full access (`permissions: null`) grants `key`. */
 export function isGrantedByFullAccess(key: string): boolean {
