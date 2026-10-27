@@ -279,7 +279,7 @@ async function checkBlind(db) {
 
 async function main() {
   const db = await buildCashDb({
-    through: '20261027150000_cash_activity_and_close.sql',
+    through: '20261027150010_cash_activity_validate.sql',
     beforeCashier: (d) => d.exec(PEOPLE),
     afterBase: async (d) => {
       const file = readMigration('20261012151100_store_activity_stock_cash_triggers.sql')
@@ -289,7 +289,6 @@ async function main() {
     },
   })
   try {
-    await db.exec(readMigration('20261027150010_cash_activity_validate.sql'))
     const shift = await checkOpen(db)
     // The stale shift is still countable and closable (the "close it first" path).
     await checkPreviewAndCount(db, shift)

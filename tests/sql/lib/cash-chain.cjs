@@ -30,7 +30,13 @@ const CASHIER_CHAIN = [
   '20261027140000_business_day_reports.sql',
   '20261027140100_business_day_adopters.sql',
   '20261027150000_cash_activity_and_close.sql',
+  '20261027150010_cash_activity_validate.sql',
   '20261027160000_cash_remittances.sql',
+  '20261027170000_business_day_closes.sql',
+  '20261027170010_day_close_activity_validate.sql',
+  '20261027180000_profit_business_day.sql',
+  '20261027190000_cash_alerts.sql',
+  '20261027200000_report_cash_functions.sql',
 ]
 
 const EXTRA_COLUMNS = `

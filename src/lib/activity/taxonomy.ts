@@ -59,6 +59,10 @@ export const KINDS_BY_CATEGORY = {
     'cash.remittance_accepted',
     'cash.remittance_disputed',
     'cash.remittance_resolved',
+    // 20261027170000: the business-day close.
+    'day.closed',
+    'day.reopened',
+    'day.deposit_recorded',
   ],
   stock: [
     'stock.received',
@@ -132,6 +136,7 @@ export const ACTIVITY_FLAGS = [
   'duplicate_deduction',
   'forced_close',
   'remittance_discrepancy',
+  'day_reopened',
 ] as const
 
 export type ActivityFlag = (typeof ACTIVITY_FLAGS)[number]
@@ -150,6 +155,7 @@ export const SUBJECT_TYPES = [
   'transfer',
   'expense',
   'remittance',
+  'day_close',
 ] as const
 
 export type ActivitySubjectType = (typeof SUBJECT_TYPES)[number]
@@ -182,6 +188,7 @@ export const FLAG_COPY: Readonly<Record<ActivityFlag, FlagCopy>> = {
   },
   forced_close: { chip: 'Check', explanation: 'A manager ended this shift without a drawer count.' },
   remittance_discrepancy: { chip: 'Check', explanation: 'The cash received was not the amount handed over.' },
+  day_reopened: { chip: 'Check', explanation: 'A closed business day was opened again.' },
 }
 
 export const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {
