@@ -14,6 +14,14 @@ import { Button } from "../Button";
 import { Icon, type IconName } from "../Icon";
 import { SegmentedControl } from "../SegmentedControl";
 import { AmountChips, CashInput, DrawerSheet, sheetText } from "./DrawerSheet";
+import { PICKUP_COPY, pickupTakerProblem, type PickupTaker } from "../../lib/cash/shift-pickup";
+
+/** Someone who may take a pickup: a cash manager with reach to this branch. */
+export interface PickupReceiver {
+  userId: string;
+  name: string;
+  presence?: string | null;
+}
 
 export interface CashMoveTarget {
   shiftId: string;
@@ -29,7 +37,12 @@ export interface CashMoveTarget {
 interface CashMoveSheetProps {
   target: CashMoveTarget | null;
   isBusy: boolean;
-  onSubmit: (move: { kind: CashMoveKind; amount: number; reason: string }) => void;
+  onSubmit: (move: { kind: CashMoveKind; amount: number; reason: string; takenBy: PickupTaker | null }) => void;
+  /**
+   * Who may take a pickup. Present = the store records "Taken by" and the
+   * pickup becomes a remittance to accept; absent = the plain move as before.
+   */
+  pickupReceivers?: readonly PickupReceiver[];
   onClose: () => void;
   /**
    * Cash taken out that is not an expense (owner, bank deposit, loan), in the
@@ -58,8 +71,9 @@ function pickupChips(expected: number | null, floatToKeep: number): { label: str
  * the count at close still balances — the best-practice alternative to
  * "just take some cash and remember".
  */
-export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onTakeOut }: CashMoveSheetProps) {
+export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onTakeOut, pickupReceivers }: CashMoveSheetProps) {
   const [kind, setKind] = useState<CashMoveKind>(target?.kinds[0] ?? "collect");
+  const [taker, setTaker] = useState<PickupTaker | null>(null);
   const [amountText, setAmountText] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +91,14 @@ export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onTakeOut }: 
       setError(verdict.reason);
       return;
     }
+    const isPickup = kind === "collect";
+    const takerProblem = pickupTakerProblem(taker, isPickup && pickupReceivers !== undefined);
+    if (takerProblem) {
+      setError(takerProblem);
+      return;
+    }
     setError(null);
-    onSubmit({ kind, amount: verdict.value.amount, reason });
+    onSubmit({ kind, amount: verdict.value.amount, reason, takenBy: isPickup ? taker : null });
   };
 
   const submitLabel = Number.isFinite(amount) && amount > 0 ? `${copy.verb} ${formatPeso(amount)}` : copy.verb;
@@ -126,6 +146,18 @@ export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onTakeOut }: 
       />
       <AmountChips chips={chips} onPick={(value) => setAmountText(value.toFixed(2))} />
 
+      {kind === "collect" && pickupReceivers ? (
+        <TakenBy
+          receivers={pickupReceivers}
+          value={taker}
+          onChange={(next) => {
+            setTaker(next);
+            setError(null);
+          }}
+          isDisabled={isBusy}
+        />
+      ) : null}
+
       <Text style={sheetText.label}>{kind === "collect" ? "Note (optional)" : "What for?"}</Text>
       <TextInput
         style={styles.reason}
@@ -153,6 +185,53 @@ export function CashMoveSheet({ target, isBusy, onSubmit, onClose, onTakeOut }: 
         style={styles.submit}
       />
     </DrawerSheet>
+  );
+}
+
+/** "Taken by": chips for each receiver here, then the store safe. Required. */
+function TakenBy({
+  receivers,
+  value,
+  onChange,
+  isDisabled,
+}: {
+  receivers: readonly PickupReceiver[];
+  value: PickupTaker | null;
+  onChange: (taker: PickupTaker) => void;
+  isDisabled: boolean;
+}) {
+  const options: { key: string; label: string; meta: string | null; taker: PickupTaker }[] = [
+    ...receivers.map((r) => ({ key: r.userId, label: r.name, meta: r.presence ?? null, taker: { kind: "person" as const, userId: r.userId, name: r.name } })),
+    { key: "safe", label: PICKUP_COPY.safe, meta: null, taker: { kind: "safe" as const } },
+  ];
+  const isOn = (taker: PickupTaker) =>
+    value !== null && value.kind === taker.kind && (taker.kind === "safe" || (value.kind === "person" && value.userId === taker.userId));
+  return (
+    <View style={styles.takenBy} accessibilityRole="radiogroup" accessibilityLabel={PICKUP_COPY.label}>
+      <Text style={sheetText.label}>{PICKUP_COPY.label}</Text>
+      <View style={styles.takers}>
+        {options.map((option) => {
+          const selected = isOn(option.taker);
+          return (
+            <TouchableOpacity
+              key={option.key}
+              style={[styles.taker, selected && styles.takerOn]}
+              onPress={() => onChange(option.taker)}
+              disabled={isDisabled}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected, disabled: isDisabled }}
+              accessibilityLabel={option.meta ? `${option.label}, ${option.meta}` : option.label}
+              testID={`taken-by-${option.key}`}
+            >
+              {selected ? <Icon name="check" size={14} color={colors.textOnDark} /> : null}
+              <Text style={[styles.takerText, selected && styles.takerTextOn]} numberOfLines={1}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -227,4 +306,20 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   submit: { marginTop: spacing.md },
+  takenBy: { gap: spacing.xs },
+  takers: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  taker: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    backgroundColor: colors.card,
+  },
+  takerOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  takerText: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
+  takerTextOn: { color: colors.textOnDark },
 });

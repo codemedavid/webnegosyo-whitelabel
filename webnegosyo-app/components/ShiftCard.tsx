@@ -20,7 +20,8 @@ import { describeActivity, summarizeActorActivity, type OrderActivityEvent } fro
 import { ClockInCard } from "./drawer/ClockInCard";
 import { MyShiftCard } from "./drawer/MyShiftCard";
 import { DrawersOverview, type FloorRow } from "./drawer/DrawersOverview";
-import { CashMoveSheet, type CashMoveTarget } from "./drawer/CashMoveSheet";
+import { CashMoveSheet, type CashMoveTarget, type PickupReceiver } from "./drawer/CashMoveSheet";
+import type { PickupTaker } from "../lib/cash/shift-pickup";
 import { CountDrawerSheet, type CountTarget } from "./drawer/CountDrawerSheet";
 import { AddExpenseSheet, type ExpenseSheetScope } from "./expenses/AddExpenseSheet";
 import { CloseShiftSheet } from "./drawer/CloseShiftSheet";
@@ -34,6 +35,18 @@ import { closedConfirmation, closeReview, hasDrawerChanged, type CloseReview } f
 import { drawerSplitText } from "../lib/expenses/money-glance-drawer";
 import { usePayoutLinks } from "../lib/expenses/money-glance-hooks";
 import { useCanManageExpenses, useCategoryIndex, useExpenseCategories } from "../lib/expenses/use-expenses";
+import { endShiftHref } from "../lib/cash-routes";
+import { openShiftRpc, previewShiftClose, recordCashPickup } from "../lib/cash/shift-close";
+import { pesosToCents, pickupArgs } from "../lib/cash/shift-pickup";
+import { toRemitReceivers } from "../lib/cash/receivers";
+import { useCashReceivers, useCashSettings } from "../lib/cash/use-cash-rules";
+import { useCutoffSchedule } from "../lib/business-day/use-trading-day";
+import { cutoffMinutesFor, describeCutoff, tradingDayOf, tradingDayWindow } from "../lib/business-day/trading-day";
+import { overdueShifts } from "../lib/cash/remittances";
+import { DEFAULT_CASH_SETTINGS } from "../lib/cash/settings";
+import { formatDayLabel } from "../lib/staff-format";
+import { useConnectivity } from "../lib/offline/use-connectivity";
+import { ForceCloseShiftSheet } from "./remittances/ForceCloseShiftSheet";
 
 /** The session read only names the shift; it must never hold up the clock-in. */
 const SESSION_READ_MS = 5_000;
@@ -71,9 +84,11 @@ interface ShiftCardProps {
   isPayOutRequested?: boolean;
   /** Called once the request was acted on (or cannot be), to clear the param. */
   onPayOutHandled?: () => void;
+  /** Tells the screen whether this person is on shift (the Drawer then folds its day hero into a row). */
+  onShiftState?: (isOnShift: boolean) => void;
 }
 
-export function ShiftCard({ orders, pageLimit, ledger, isPayOutRequested = false, onPayOutHandled }: ShiftCardProps) {
+export function ShiftCard({ orders, pageLimit, ledger, isPayOutRequested = false, onPayOutHandled, onShiftState }: ShiftCardProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   if (ledger) {
@@ -87,6 +102,7 @@ export function ShiftCard({ orders, pageLimit, ledger, isPayOutRequested = false
         ledgerError={ledger.error}
         isPayOutRequested={isPayOutRequested}
         onPayOutHandled={onPayOutHandled}
+        onShiftState={onShiftState}
       />
     );
   }
@@ -101,6 +117,7 @@ export function ShiftCard({ orders, pageLimit, ledger, isPayOutRequested = false
           ledgerError={error}
           isPayOutRequested={isPayOutRequested}
           onPayOutHandled={onPayOutHandled}
+          onShiftState={onShiftState}
         />
       )}
     </OrderSettlementReader>
@@ -137,6 +154,7 @@ interface ContentProps {
   ledgerError: string | null;
   isPayOutRequested: boolean;
   onPayOutHandled?: () => void;
+  onShiftState?: (isOnShift: boolean) => void;
 }
 
 /** The close sheet's review plus what "End shift" writes, frozen together. */
@@ -174,7 +192,14 @@ async function readLinks(tenantId: string, moves: readonly { id: string; kind: s
   return listMovementLinks(liveExpenseDb, tenantId, ids).catch(() => null);
 }
 
-function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerError, isPayOutRequested, onPayOutHandled }: ContentProps) {
+/** "This shift counts toward Fri, 24 Oct 2026 · business day ends 4:00 AM". */
+function businessDayLine(openedAt: string, schedule: Parameters<typeof tradingDayOf>[1]): string {
+  const dayKey = tradingDayOf(openedAt, schedule);
+  const ends = describeCutoff(cutoffMinutesFor(schedule, dayKey)).label;
+  return `This shift counts toward ${formatDayLabel(dayKey, new Date().toISOString())} · business day ends ${ends}`;
+}
+
+function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerError, isPayOutRequested, onPayOutHandled, onShiftState }: ContentProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);
@@ -183,6 +208,12 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const canManage = canManageCash({ role, isOwner, permissions });
 
   const floor = useCashFloor();
+  const cashSettings = useCashSettings(tenantId);
+  const receiversRead = useCashReceivers(tenantId, floor.outletId);
+  const { schedule } = useCutoffSchedule(tenantId);
+  const isOffline = useConnectivity().status === "offline";
+  // "End for him": a manager closes a shift the cashier forgot (no count invented).
+  const [forceTarget, setForceTarget] = useState<ShiftRecord | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   // State lands a render late: two taps inside one frame both saw `busy`
@@ -204,6 +235,10 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const [activity, setActivity] = useState<OrderActivityEvent[] | null>(null);
 
   const myShift = floor.myShift;
+  const isOnShift = floor.isLoaded && myShift !== null;
+  useEffect(() => {
+    onShiftState?.(isOnShift);
+  }, [isOnShift, onShiftState]);
   const drawerExpenses = useDrawerExpenses(myShift?.id ?? null, floor.moves ?? []);
   const categoriesRead = useExpenseCategories();
   const { categories } = categoriesRead;
@@ -314,18 +349,38 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
         Alert.alert("Starting cash", float.reason);
         return;
       }
-      try {
-        // The name is snapshotted onto the shift so deleting the account later
-        // keeps the history named.
-        await openShift(tenantId, {
-          outletId: floor.outletId,
-          staffUserId: userId,
-          staffName: await readStaffName(),
-          openingFloat: float.amount,
-          drawerId,
-        });
-      } catch (error) {
-        Alert.alert("Could not start the shift", errorText(error));
+      const staffName = await readStaffName();
+      // The server opens it (stamps the business day, refuses a stale open
+      // shift, tells us what the last cashier left). Until that function is on
+      // the database, the direct write it always was.
+      const opened = await openShiftRpc({
+        tenantId,
+        outletId: floor.outletId,
+        drawerId,
+        openingFloatCents: Math.round(float.amount * 100),
+        openingDenominations: null,
+        servicePeriodId: null,
+        staffName,
+      });
+      if (!opened.ok && opened.kind !== "not_deployed") {
+        Alert.alert("Could not start the shift", opened.message);
+      } else if (opened.ok && opened.data.state === "stale") {
+        Alert.alert("End your last shift first", "Your last shift is still open from an earlier day. End it before you start a new one.");
+      } else if (opened.ok && opened.data.handover && opened.data.handover.leftCents !== Math.round(float.amount * 100)) {
+        const { handover } = opened.data;
+        const diff = Math.round(float.amount * 100) - handover.leftCents;
+        Alert.alert(
+          "Started — note the difference",
+          `${handover.staffName ?? "The last cashier"} left ${formatPeso(handover.leftCents / 100)} in this drawer. You counted ${formatPeso(float.amount)}, ${formatPeso(Math.abs(diff) / 100)} ${diff < 0 ? "less" : "more"}. It's noted for the owner.`,
+        );
+      } else if (!opened.ok) {
+        try {
+          // The name is snapshotted onto the shift so deleting the account later
+          // keeps the history named.
+          await openShift(tenantId, { outletId: floor.outletId, staffUserId: userId, staffName, openingFloat: float.amount, drawerId });
+        } catch (error) {
+          Alert.alert("Could not start the shift", errorText(error));
+        }
       }
       await floor.reload();
     });
@@ -343,10 +398,29 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     });
   };
 
-  const handleMove = (move: { kind: CashMoveKind; amount: number; reason: string }) =>
+  /** A pickup with "Taken by" becomes a remittance (one server write); false = the plain move it was. */
+  const recordPickup = async (shiftId: string, move: { amount: number; reason: string; takenBy: PickupTaker | null }): Promise<boolean> => {
+    if (!move.takenBy) return false;
+    const recorded = await recordCashPickup({
+      shiftId,
+      amountCents: pesosToCents(move.amount),
+      ...pickupArgs(move.takenBy),
+      note: move.reason.trim() || null,
+    });
+    if (recorded.ok) return true;
+    if (recorded.kind === "not_deployed") return false;
+    throw new Error(recorded.message);
+  };
+
+  const handleMove = (move: { kind: CashMoveKind; amount: number; reason: string; takenBy: PickupTaker | null }) =>
     runExclusive(async () => {
       if (refuseInDemo() || !tenantId || !moveTarget) return;
       try {
+        if (move.kind === "collect" && (await recordPickup(moveTarget.shiftId, move))) {
+          setMoveTarget(null);
+          await floor.reload();
+          return;
+        }
         // Re-read this drawer's moves first, like the close does: a pickup
         // recorded on another tablet since the sheet opened would otherwise
         // let the same cash be collected twice.
@@ -358,7 +432,9 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
         const expectedInDrawer =
           fresh?.state === "ready" ? fresh.value.reconciliation.expectedInDrawer : moveTarget.expectedInDrawer;
         await recordCashMove(tenantId, {
-          ...move,
+          kind: move.kind,
+          amount: move.amount,
+          reason: move.reason,
           shiftId: moveTarget.shiftId,
           recordedByName: await readStaffName(),
           expectedInDrawer,
@@ -388,6 +464,22 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
             : null,
     });
   };
+
+  /**
+   * End shift & remit: the counted flow on its own screen once the store's
+   * database has it; the older count sheet until then (or on a store whose
+   * close functions are not deployed yet).
+   */
+  const startEndShift = (shift: ShiftRecord, expectation: DrawerExpectationRead) =>
+    runExclusive(async () => {
+      if (refuseInDemo()) return;
+      const probe = await previewShiftClose(shift.id);
+      if (!probe.ok && probe.kind === "not_deployed") {
+        openCountSheet(shift, expectation);
+        return;
+      }
+      router.push(endShiftHref(shift.id) as never);
+    });
 
   const finishClose = async (review: CloseReview) => {
     setPendingClose(null);
@@ -569,6 +661,21 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
       : null;
 
   const isOwnMoveTarget = moveTarget !== null && moveTarget.shiftId === myShift?.id;
+  // Forgotten shifts (past their business day + the store's grace) can be ended for the cashier.
+  const overdue = new Map(
+    overdueShifts(
+      floor.openShifts,
+      (iso) => Date.parse(tradingDayWindow(tradingDayOf(iso, schedule), schedule).endIso),
+      cashSettings.data?.overdueGraceMinutes ?? DEFAULT_CASH_SETTINGS.overdueGraceMinutes,
+      nowMs,
+      userId,
+    ).map((o) => [o.shift.id, o.line] as const),
+  );
+  // "Taken by" is asked once the store can receive cash (the receivers read
+  // works only where remittances are deployed); otherwise the plain pickup.
+  const pickupReceivers: PickupReceiver[] | undefined = receiversRead.data
+    ? toRemitReceivers(receiversRead.data, userId, nowMs).map((r) => ({ userId: r.userId, name: r.name, presence: r.presence ?? null }))
+    : undefined;
   const freeDrawers = board.filter((slot) => slot.state === "free").map((slot) => slot.drawer);
   const showFloor = canManage && !floor.needsBranch && (floor.drawers.length > 0 || floorRows.some((row) => !row.isMine));
 
@@ -591,7 +698,9 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
               drawerExpenses.isReady ? ["pay_in", "collect"] : ["pay_out", "pay_in", "collect"],
             )
           }
-          onEndShift={() => openCountSheet(myShift, myExpectation)}
+          onEndShift={() => void startEndShift(myShift, myExpectation)}
+          isBlind={Boolean(cashSettings.data?.blindClose) && !canManage}
+          businessDayNote={businessDayLine(myShift.openedAt, schedule)}
           onPayExpense={drawerExpenses.isReady ? () => openExpenseSheet("spend") : undefined}
           payoutLines={drawerExpenses.payouts ? payoutLines(drawerExpenses.payouts) : null}
           pendingLine={pendingLine}
@@ -620,6 +729,20 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           onCount={(row) => openCountSheet(row.shift, row.expectation)}
           onPayExpense={drawerExpenses.isReady ? openFloorExpense : undefined}
           onManage={() => router.push(CASH_SETUP_ROUTE)}
+          onEndForThem={(row) => setForceTarget(row.shift)}
+          overdue={overdue}
+        />
+      ) : null}
+      {forceTarget ? (
+        <ForceCloseShiftSheet
+          shift={{ id: forceTarget.id, staffName: forceTarget.staffName, drawerName: forceTarget.drawerName, openedAt: forceTarget.openedAt }}
+          isOffline={isOffline}
+          nowMs={nowMs}
+          onDone={() => {
+            setForceTarget(null);
+            void floor.reload();
+          }}
+          onClose={() => setForceTarget(null)}
         />
       ) : null}
 
@@ -631,6 +754,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           onSubmit={(move) => void handleMove(move)}
           onClose={() => setMoveTarget(null)}
           onTakeOut={isOwnMoveTarget && drawerExpenses.isReady ? () => openExpenseSheet("take_out") : undefined}
+          pickupReceivers={pickupReceivers}
         />
       ) : null}
       {expenseScope && myShift ? (

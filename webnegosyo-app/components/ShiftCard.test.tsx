@@ -25,6 +25,21 @@ jest.mock("../lib/shift-service", () => ({
 }));
 jest.mock("../lib/cash-drawer-service", () => ({ listDrawers: jest.fn(), listCashMoves: jest.fn(), recordCashMove: jest.fn() }));
 jest.mock("../lib/staff-activity/activity-service", () => ({ listOrderActivity: jest.fn(async () => []) }));
+// Wave-2 cash: these tests pin the Drawer's OLDER path (a store whose close
+// functions are not deployed), so the server calls answer "not deployed" and
+// the cash rules / receivers / cutoff reads answer nothing.
+const mockCashRpc = { previewShiftClose: jest.fn(), openShiftRpc: jest.fn(), recordCashPickup: jest.fn() };
+jest.mock("../lib/cash/shift-close", () => ({
+  previewShiftClose: (...args: unknown[]) => mockCashRpc.previewShiftClose(...args),
+  openShiftRpc: (...args: unknown[]) => mockCashRpc.openShiftRpc(...args),
+  recordCashPickup: (...args: unknown[]) => mockCashRpc.recordCashPickup(...args),
+}));
+jest.mock("../lib/cash/use-cash-rules", () => ({
+  useCashSettings: () => ({ data: undefined, error: null, isLoading: false }),
+  useCashReceivers: () => ({ data: undefined, error: null, isLoading: false }),
+}));
+jest.mock("../lib/business-day/use-trading-day", () => ({ useCutoffSchedule: () => ({ schedule: [], isFallback: false, isLoading: false }) }));
+jest.mock("./remittances/ForceCloseShiftSheet", () => ({ ForceCloseShiftSheet: () => null }));
 // Expenses: off by default (a store whose database predates them), so the
 // free-text pay out is still offered; the expense tests switch it on.
 const mockDrawerExpenses = {
@@ -87,13 +102,19 @@ beforeEach(() => {
   mockFloorLinks = null;
   mockCanManageExpenses = false;
   mockCategoriesRead = { data: [], error: null };
+  const notDeployed = { ok: false, kind: "not_deployed", message: "not yet" };
+  mockCashRpc.previewShiftClose.mockResolvedValue(notDeployed);
+  mockCashRpc.openShiftRpc.mockResolvedValue(notDeployed);
+  mockCashRpc.recordCashPickup.mockResolvedValue(notDeployed);
 });
 afterEach(() => jest.restoreAllMocks());
 
 /** Opens End shift, types the count and taps Continue — the close sheet is next. */
 async function countOnly(screen: ReturnType<typeof render>, text: string) {
-  await waitFor(() => expect(screen.getByLabelText("End shift")).toBeTruthy());
-  fireEvent.press(screen.getByLabelText("End shift"));
+  await waitFor(() => expect(screen.getByLabelText("End shift & remit")).toBeTruthy());
+  fireEvent.press(screen.getByLabelText("End shift & remit"));
+  // The close functions are probed first; this store has none, so the count sheet opens.
+  await screen.findByLabelText("Counted cash in pesos");
   fireEvent.changeText(screen.getByLabelText("Counted cash in pesos"), text);
   fireEvent.press(screen.getByLabelText("Confirm the count"));
 }
@@ -114,8 +135,10 @@ it("freezes the actual cash ledger plus opening float when the cashier closes", 
 
 it("shows the verdict live while the cashier types the count", async () => {
   const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
-  await waitFor(() => expect(screen.getByLabelText("End shift")).toBeTruthy());
-  fireEvent.press(screen.getByLabelText("End shift"));
+  await waitFor(() => expect(screen.getByLabelText("End shift & remit")).toBeTruthy());
+  fireEvent.press(screen.getByLabelText("End shift & remit"));
+  // The close functions are probed first; this store has none, so the count sheet opens.
+  await screen.findByLabelText("Counted cash in pesos");
   fireEvent.changeText(screen.getByLabelText("Counted cash in pesos"), "105");
   expect(screen.getByText(/Short ₱20/)).toBeTruthy();
   fireEvent.changeText(screen.getByLabelText("Counted cash in pesos"), "125");
@@ -220,8 +243,10 @@ it("confirms the close with what was counted and the difference", async () => {
 
 it("lets the cashier back out of counting the drawer", async () => {
   const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
-  await waitFor(() => expect(screen.getByLabelText("End shift")).toBeTruthy());
-  fireEvent.press(screen.getByLabelText("End shift"));
+  await waitFor(() => expect(screen.getByLabelText("End shift & remit")).toBeTruthy());
+  fireEvent.press(screen.getByLabelText("End shift & remit"));
+  // The close functions are probed first; this store has none, so the count sheet opens.
+  await screen.findByLabelText("Counted cash in pesos");
   fireEvent.press(screen.getByLabelText("Cancel"));
   expect(screen.queryByLabelText("Counted cash in pesos")).toBeNull();
 });
@@ -250,10 +275,12 @@ it("treats a close that already landed as ended when the retry finds the shift c
   jest.mocked(closeShift).mockRejectedValue(new Error("The request timed out."));
   jest.mocked(isShiftStillOpen).mockResolvedValue(false);
   const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
-  await waitFor(() => expect(screen.getByLabelText("End shift")).toBeTruthy());
+  await waitFor(() => expect(screen.getByLabelText("End shift & remit")).toBeTruthy());
   jest.mocked(loadOpenShift).mockResolvedValue(null);
   jest.mocked(listOpenShifts).mockResolvedValue([]);
-  fireEvent.press(screen.getByLabelText("End shift"));
+  fireEvent.press(screen.getByLabelText("End shift & remit"));
+  // The close functions are probed first; this store has none, so the count sheet opens.
+  await screen.findByLabelText("Counted cash in pesos");
   fireEvent.changeText(screen.getByLabelText("Counted cash in pesos"), "125");
   fireEvent.press(screen.getByLabelText("Confirm the count"));
   await waitFor(() => expect(screen.getByLabelText("End shift and save the count")).toBeTruthy());
@@ -687,5 +714,17 @@ describe("the close guard fails closed", () => {
 
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Not ready to close", expect.stringMatching(/could not check/i), expect.anything()));
     expect(closeShift).not.toHaveBeenCalled();
+  });
+});
+
+describe("End shift & remit on a store with the counted close", () => {
+  it("opens the End shift screen instead of the count sheet", async () => {
+    const { router } = jest.requireMock("expo-router") as { router: { push: jest.Mock } };
+    mockCashRpc.previewShiftClose.mockResolvedValue({ ok: true, data: {} });
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByLabelText("End shift & remit")).toBeTruthy());
+    fireEvent.press(screen.getByLabelText("End shift & remit"));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/(main)/end-shift?shift=shift"));
+    expect(screen.queryByLabelText("Counted cash in pesos")).toBeNull();
   });
 });

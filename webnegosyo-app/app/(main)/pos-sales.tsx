@@ -35,6 +35,7 @@ import {
   describeIntake,
   describeShiftSales,
   drawerBreakdown,
+  dayRowLine,
   type DrawerCounting,
   type DrawerSale,
 } from "../../lib/drawer-view";
@@ -278,6 +279,10 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
   const setIncludeOnlineOrders = useRegisterSettingsStore((s) => s.setDrawerIncludesOnlineOrders);
   const scope = useBranchScope();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // One ink hero per screen (06 §1): on shift, the shift card is the hero and
+  // the day's counter total folds into a row under it.
+  const [isOnShift, setIsOnShift] = useState(false);
+  const [isDayOpen, setIsDayOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const counting: DrawerCounting = countingFromPolicy(includeOnlineOrders);
@@ -413,8 +418,19 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
           ledger={ledger}
           isPayOutRequested={pay === "1"}
           onPayOutHandled={() => router.setParams({ pay: undefined })}
+          onShiftState={setIsOnShift}
         />
-        {/* The money first: it is the only reason this screen is open. */}
+        {isOnShift ? (
+          <ListRow
+            icon="drawer"
+            title="Today at this counter"
+            subtitle={dayRowLine(summary)}
+            onPress={() => setIsDayOpen((open) => !open)}
+            style={styles.dayRow}
+          />
+        ) : null}
+        {/* Off shift the day's money is the hero: it is the only reason this screen is open. */}
+        {!isOnShift || isDayOpen ? (
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Today at this counter · Cash</Text>
           <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit>
@@ -432,6 +448,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
             ))}
           </View>
         </View>
+        ) : null}
 
         <Text style={styles.heroNote}>{describeCounting(counting)}</Text>
         {ledgerNote ? <Text style={styles.heroNote}>{ledgerNote}</Text> : null}
@@ -548,6 +565,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
 
 const styles = StyleSheet.create({
   myActivity: { marginTop: spacing.lg, borderRadius: radius.lg, overflow: "hidden" },
+  dayRow: { borderRadius: radius.lg, overflow: "hidden", marginBottom: spacing.sm },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,

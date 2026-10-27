@@ -29,7 +29,13 @@ interface DrawersOverviewProps {
   /** "Pay expense": pay an expense out of this cashier's drawer. Absent = not offered. */
   onPayExpense?: (row: FloorRow) => void;
   onManage: () => void;
+  /** "End for her/him": close a forgotten shift without inventing a count. Absent = not offered. */
+  onEndForThem?: (row: FloorRow) => void;
+  /** Shifts past their business day + grace, by id, with their line ("Ben's shift on Cashier 2 is still open (11h)"). */
+  overdue?: ReadonlyMap<string, string>;
 }
+
+const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
 
 /**
  * The owner's floor: every open drawer in this branch, who holds it, and the
@@ -40,7 +46,7 @@ interface DrawersOverviewProps {
  * Ordered by cash held, most first: the drawer worth a pickup is the one at
  * the top.
  */
-export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, onPayExpense, onManage }: DrawersOverviewProps) {
+export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, onPayExpense, onManage, onEndForThem, overdue }: DrawersOverviewProps) {
   const others = [...rows.filter((row) => !row.isMine)].sort((a, b) => held(b) - held(a));
   const total = rows.reduce((sum, row) => sum + held(row), 0);
   const collected = rows.reduce(
@@ -128,6 +134,20 @@ export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, 
                   accessibilityLabel={`Count and close ${row.shift.staffName}'s drawer`}
                 />
               </View>
+              {onEndForThem && overdue?.has(row.shift.id) ? (
+                <Text style={styles.warning}>{overdue.get(row.shift.id)}</Text>
+              ) : null}
+              {onEndForThem && overdue?.has(row.shift.id) ? (
+                <Button
+                  label={`End for ${firstName(row.shift.staffName)}`}
+                  size="sm"
+                  tone="ghost"
+                  icon="clock"
+                  onPress={() => onEndForThem(row)}
+                  accessibilityLabel={`End ${row.shift.staffName}'s shift without a count`}
+                  accessibilityHint="For a shift someone forgot to end. The cash goes to Remittances as not counted yet."
+                />
+              ) : null}
             </View>
           );
         })}
