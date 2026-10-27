@@ -268,3 +268,29 @@ send to their phone instead".
 - qa: run the FULL suites + both tsc + lint on current HEAD first and report; then review wave 2 as it lands
   (especially: blind leaks via count_shift/preview/activity/slips/RLS on shift_counts & shift_expectations;
   CAS transitions per role; PIN route rate-limit reuse; offline refusals).
+
+---
+
+# Wave 3 contracts (2026-10-27) — P6 day close · P7 alerts · P8 cash reports · wave-2 leftovers
+
+## W3.1 SQL (owner: db)
+| File | Contents |
+|---|---|
+| `20261027170000_business_day_closes.sql` | `business_day_closes` (07 §5.2, versioned, frozen snapshot), `get_day_close_status`, `close_business_day`, `reopen_business_day`, `record_day_deposit`, `get_business_day_close`; closed-day guard in the `staff_shifts` BEFORE INSERT trigger + shared advisory lock with `open_shift`; activity kinds `day.closed/day.reopened/day.deposit_recorded` |
+| `20261027180000_profit_business_day.sql` | profit SQL day buckets via `business_day_of` (bizday left a comment at the site) + parity |
+| `20261027190000_cash_alerts.sql` | `cash.notify_overdue_shifts()` + pg_cron every 15 min; `merchant_notifications` kinds `shift_overdue`, `remittance_pending` (pending > 60 min); visibility by kind (cash kinds need `cash_manage`) in `app_user_may_read_merchant_notifications` |
+| `20261027200000_report_cash_functions.sql` | `report_cash_summary(p_tenant, p_from_day, p_to_day, p_outlet)` (one row per shift incl. first vs final count) + `report_cash_by_staff` (shifts, short count, over/short total, forced closes, recount-changed count); INVOKER + `cash_manage` 42501; ≤ 93 days |
+
+RPCs:
+- `get_day_close_status(p_tenant, p_outlet, p_day date) → {businessDay, window:{start,end}, cutoffMinutes, openShifts:[{shiftId, staffName, drawerName, openedAt, overdue}], pendingRemittances:[{id, cashierName, handedOverCents, status}], nonCashUnchecked:[{shiftId, staffName, method}], existingClose:{id, version, status, closedAt, closedByName}|null, preview: <snapshot>}` — read for the checklist; cash managers only.
+- `close_business_day(p_tenant, p_outlet, p_day, p_note, p_force boolean) → {id, version, snapshot}` — refuses 55000 `open_shifts` (always), 55000 `unsettled_remittances` when remittance_mode='required' and not forced; forced needs a note; 23505 already closed.
+- `reopen_business_day(p_close_id, p_reason)` owner/superadmin, ≤ 31 days; `record_day_deposit(p_close_id, p_cents, p_to, p_ref, p_proof_url)` set-once.
+- Snapshot shape = 07 §5.2 v1 PLUS `byServicePeriod: [{periodId, name, netCents, orders}]` + `otherHoursNetCents` (Day + Night + other = net), and `recountChanged: [{shiftId, staffName, firstCents, finalCents}]`. Sales come only from the reporting helpers (one definition).
+
+## W3.2 Owners
+- **app-owner:** `day-close.tsx` (06 §4.5: checklist with one-tap fixes, ink hero "Cash to deposit", by shift + by named shift, deposit sheet with photo via the app's existing image upload, Close / Close anyway / Reopen, print + share via shared's `printDayCloseSlip`), day-close history list, doors (Remittances footer card "Close Friday →", Home receiver strip "Friday is ready to close"), bell rows + push routing for the two new kinds in the app (`routeFromPushData`, `merchant-notifications.ts` wording), Reports → Remittances history & cashier over/short strip (14 shifts, diverging bars; phrased as a pattern, never a verdict).
+- **web:** "Day closes" tab (list + detail + Close day + deposit + reopen) and "Cashiers" tab (over/short per cashier 30/90 days, recount-changed flags) on `/admin/cash` via `report_cash_*`; push wording side `merchant-notification-push.ts` + `tests/unit/merchant-notification-parity.test.ts`; print-friendly day close page `/admin/cash/day/[id]`.
+- **shared:** `DepositSheet` body, `OverShortStrip` (diverging bars), `DayCloseChecklist`; add "Counted on this tablet" line to shift/remittance slips when `source==='device'`; optional amount on the dispute path of `AcceptRemitBody`.
+- **app-cashier:** recount-changed flag on the slip/result ("Counted twice: ₱0 → ₱8,345"); share as image if an existing module allows, else leave; Drawer shows "Today is closed — reopen or wait until 4:00 AM" when clocking in on a closed day.
+- **bizday:** `branch-period.ts` (Branches, Portfolio, staff leaderboard) on the cutoff; Convex trends + dailyStats cron on the cutoff (code + bundle bump, no deploy); then help qa.
+- **qa:** review wave 2 leftovers + wave 3; final full suites; then write `docs/plans/cashier-remittance/RELEASE.md` (migration apply order with probes per role, deploy order, OTA, Convex/own-DB bulk deploy, rollback per migration, the 130100 drift-probe gate with the exact read-only SQL).
