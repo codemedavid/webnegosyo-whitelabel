@@ -9,6 +9,7 @@ import { resolveOrderBackend } from '@/lib/order-backend'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { createClient } from '@/lib/supabase/server'
 import { KpiRowSkeleton, TableSkeleton } from '@/components/admin/reports'
+import { SCHEDULE_FALLBACK_NOTE } from '@/lib/reports/schedule-fallback-note'
 import { CashHeader, CashTabs } from '@/components/admin/cash/cash-header'
 import { CashLoadFailed, CashLocked, CashNotice } from '@/components/admin/cash/cash-states'
 import { listRemittances } from '@/lib/cash/remittances'
@@ -116,7 +117,7 @@ export default async function CashPage({ params, searchParams }: CashPageProps) 
         <div className="flex flex-col gap-2">
           {context.dayError && <CashNotice tone="warning">{context.dayError}</CashNotice>}
           {scheduleRead.isFallback && (
-            <CashNotice tone="warning">Showing midnight to midnight: we couldn’t load your business day setting.</CashNotice>
+            <CashNotice>{SCHEDULE_FALLBACK_NOTE}</CashNotice>
           )}
         </div>
       )}

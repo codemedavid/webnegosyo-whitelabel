@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { SCHEDULE_FALLBACK_NOTE } from '@/lib/reports/schedule-fallback-note'
 import { longDayLabel } from './cash-format'
 import { CashNotice } from './cash-states'
 import { FIELD_CLASS, PRIMARY_BUTTON, SettingsCard } from './settings-ui'
@@ -72,7 +73,7 @@ export function BusinessDayCard({ tenantSlug, currentMinutes, pending, likelySta
       description="When one day’s sales stop and the next day’s start. Shifts, remittances and the day close follow it."
     >
       {isFallback && (
-        <CashNotice tone="warning">Showing midnight to midnight: we couldn’t load your business day setting. Reload to try again.</CashNotice>
+        <CashNotice>{SCHEDULE_FALLBACK_NOTE} Reload to try again; it can’t be changed until it loads.</CashNotice>
       )}
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Business day ends at">
         {CUTOFF_QUICK_CHOICES.map((minutes) => (

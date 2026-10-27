@@ -68,7 +68,7 @@ export async function ByShiftSection({ context }: { context: ReportContext }) {
   }
 
   const db = (await createClient()) as unknown as SupabaseClient
-  const [{ schedule, isFallback }, allPeriods] = await Promise.all([readCutoffScheduleForDisplay(db, context.tenantId), readPeriods(db, context.tenantId)])
+  const [{ schedule }, allPeriods] = await Promise.all([readCutoffScheduleForDisplay(db, context.tenantId), readPeriods(db, context.tenantId)])
   if (allPeriods === null) return <ReportSection title={TITLE} isError errorMessage="Your named shifts couldn’t load. Refresh the page to try again." />
 
   const outletId = context.branch.args.p_outlet
@@ -112,7 +112,7 @@ export async function ByShiftSection({ context }: { context: ReportContext }) {
   return (
     <ReportSection
       title={TITLE}
-      description={`${clock(day.startIso)} to ${clock(day.endIso)} business day${isFallback ? ' (midnight: your business day setting couldn’t load)' : ''}. Each shift is counted once.`}
+      description={`${clock(day.startIso)} to ${clock(day.endIso)} business day. Each shift is counted once.`}
     >
       <div className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="w-full min-w-[560px] border-collapse text-left text-[14px] tabular-nums">
