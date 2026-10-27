@@ -41,6 +41,15 @@ import {
   type Remittance,
 } from '@/lib/cash/remittances'
 import { cashSettingsPatchSchema, saveCashSettings, type CashSettings } from '@/lib/cash/settings'
+import {
+  DAY_CLOSE_NOTE_MAX,
+  DEPOSIT_TEXT_MAX,
+  REOPEN_REASON_MAX,
+  closeBusinessDay,
+  recordDayDeposit,
+  reopenBusinessDay,
+  type DayCloseCallResult,
+} from '@/lib/cash/day-close'
 import type { StaffPermissionKey } from '@/lib/staff-permissions'
 import { createClient } from '@/lib/supabase/server'
 
@@ -188,4 +197,46 @@ export async function resolveRemittanceAction(tenantSlug: string, input: unknown
     const result = await resolveRemittance(asCashRpcClient(db), value.id, value.note)
     return result.ok ? { ok: true, data: result.data } : failure(result.error.message)
   })
+}
+
+function fromDayClose<T>(result: DayCloseCallResult<T>): CashActionResult<T> {
+  return result.ok ? { ok: true, data: result.data } : failure(result.message)
+}
+
+const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
+const closeDaySchema = z
+  .object({ outletId: z.string().uuid().nullable(), day: dayKey, note: z.string().max(DAY_CLOSE_NOTE_MAX).nullable(), force: z.boolean() })
+  .strict()
+
+/** Closes a business day (open shifts always block; "Close anyway" needs a note). */
+export async function closeDayAction(tenantSlug: string, input: unknown): Promise<CashActionResult<{ id: string; version: number }>> {
+  return runCashAction(tenantSlug, input, closeDaySchema, 'close day', 'cash_manage', async (tenantId, db, value) =>
+    fromDayClose(await closeBusinessDay(asCashRpcClient(db), { tenantId, ...value })),
+  )
+}
+
+const reopenSchema = z.object({ closeId: z.string().uuid(), reason: z.string().min(1).max(REOPEN_REASON_MAX) }).strict()
+
+/** Reopens a closed day (the owner, within 31 days — reopen_business_day decides). */
+export async function reopenDayAction(tenantSlug: string, input: unknown): Promise<CashActionResult<null>> {
+  return runCashAction(tenantSlug, input, reopenSchema, 'reopen day', 'cash_manage', async (_tenantId, db, value) =>
+    fromDayClose(await reopenBusinessDay(asCashRpcClient(db), value.closeId, value.reason)),
+  )
+}
+
+const depositSchema = z
+  .object({
+    closeId: z.string().uuid(),
+    cents: z.number().int().min(0),
+    to: z.string().min(1).max(DEPOSIT_TEXT_MAX),
+    ref: z.string().max(DEPOSIT_TEXT_MAX).nullable(),
+  })
+  .strict()
+
+/** Records where the day's cash went (set once). */
+export async function recordDepositAction(tenantSlug: string, input: unknown): Promise<CashActionResult<null>> {
+  return runCashAction(tenantSlug, input, depositSchema, 'record deposit', 'cash_manage', async (_tenantId, db, value) =>
+    fromDayClose(await recordDayDeposit(asCashRpcClient(db), { ...value, proofUrl: null })),
+  )
 }

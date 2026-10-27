@@ -14,6 +14,8 @@ import { CashHeader, CashTabs } from '@/components/admin/cash/cash-header'
 import { CashLoadFailed, CashLocked, CashNotice } from '@/components/admin/cash/cash-states'
 import { listRemittances } from '@/lib/cash/remittances'
 import { CashAcceptSection } from './cash-accept-section'
+import { CashCashiersSection } from './cash-cashiers-section'
+import { CashDaysSection } from './cash-days-section'
 import { CashSettingsSection } from './cash-settings-section'
 import { CashShiftsSection } from './cash-shifts-section'
 
@@ -123,7 +125,7 @@ export default async function CashPage({ params, searchParams }: CashPageProps) 
       )}
       <CashTabs context={context} waitingCount={waitingCount} />
       <Suspense
-        key={`${context.tab}-${context.day}-${context.outletId ?? 'all'}`}
+        key={`${context.tab}-${context.day}-${context.outletId ?? 'all'}-${context.range}`}
         fallback={
           <>
             <KpiRowSkeleton />
@@ -131,7 +133,11 @@ export default async function CashPage({ params, searchParams }: CashPageProps) 
           </>
         }
       >
-        {context.tab === 'accept' ? (
+        {context.tab === 'days' ? (
+          <CashDaysSection context={context} />
+        ) : context.tab === 'cashiers' ? (
+          <CashCashiersSection context={context} />
+        ) : context.tab === 'accept' ? (
           <CashAcceptSection context={context} viewerUserId={user?.id ?? ''} />
         ) : context.tab === 'settings' ? (
           <CashSettingsSection

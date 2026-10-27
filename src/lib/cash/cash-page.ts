@@ -43,8 +43,11 @@ export function cashAccessFor(appUser: AppUserScopeRow | null, tenantId: string)
   }
 }
 
-export const CASH_TABS = ['accept', 'shifts', 'settings'] as const
+export const CASH_TABS = ['accept', 'shifts', 'days', 'cashiers', 'settings'] as const
 export type CashTab = (typeof CASH_TABS)[number]
+
+/** The Cashiers tab looks back 30 or 90 business days. */
+export type CashierRange = 30 | 90
 
 export interface CashOutlet {
   id: string
@@ -60,6 +63,8 @@ export interface CashPageContext {
   /** The store owner (or support): may receive or settle their own hand-over too. */
   isOwner: boolean
   tab: CashTab
+  /** Cashiers tab look-back. */
+  range: CashierRange
   /** The business day shown, YYYY-MM-DD. */
   day: string
   /** The business day running now. */
@@ -123,7 +128,8 @@ export function buildCashPage(input: BuildCashPageInput): CashPageState {
   const today = tradingDayOf(new Date(input.now).toISOString(), input.schedule)
   const { day, error } = resolveDay(first(input.searchParams.day), today)
   const tabParam = first(input.searchParams.tab)
-  const tab: CashTab = tabParam === 'settings' || tabParam === 'accept' ? tabParam : 'shifts'
+  const tab: CashTab = CASH_TABS.find((known) => known === tabParam) ?? 'shifts'
+  const range: CashierRange = first(input.searchParams.range) === '90' ? 90 : 30
 
   const activeOutlets = input.outlets.filter((outlet) => outlet.isActive)
   const isMultiBranch = input.tenant.multiBranchEnabled && activeOutlets.length >= 2
@@ -139,6 +145,7 @@ export function buildCashPage(input: BuildCashPageInput): CashPageState {
       canChangeCutoff: access.canChangeCutoff,
       isOwner: access.isOwner,
       tab,
+      range,
       day,
       today,
       previousDay: previousBusinessDayKey(day),
@@ -158,12 +165,13 @@ export function buildCashPage(input: BuildCashPageInput): CashPageState {
 /** `/<slug>/admin/cash?…`, keeping only what differs from the defaults. */
 export function cashHref(
   tenantSlug: string,
-  params: { tab?: CashTab; day?: string | null; branch?: string | null; today?: string },
+  params: { tab?: CashTab; day?: string | null; branch?: string | null; today?: string; range?: CashierRange },
 ): string {
   const query = new URLSearchParams()
   if (params.tab && params.tab !== 'shifts') query.set('tab', params.tab)
   if (params.day && params.day !== params.today) query.set('day', params.day)
   if (params.branch) query.set('branch', params.branch)
+  if (params.range === 90) query.set('range', '90')
   const text = query.toString()
   return `/${encodeURIComponent(tenantSlug)}/admin/cash${text ? `?${text}` : ''}`
 }

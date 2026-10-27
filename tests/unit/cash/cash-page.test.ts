@@ -122,6 +122,16 @@ describe('buildCashPage', () => {
     expect(junk.kind === 'ready' && junk.context.tab).toBe('shifts')
   })
 
+  it('opens Day closes and Cashiers (30 days unless ?range=90)', () => {
+    const days = page(staff(), { tab: 'days' })
+    const cashiers = page(staff(), { tab: 'cashiers', range: '90' })
+    const odd = page(staff(), { tab: 'cashiers', range: '365' })
+
+    expect(days.kind === 'ready' && days.context.tab).toBe('days')
+    expect(cashiers.kind === 'ready' && [cashiers.context.tab, cashiers.context.range]).toEqual(['cashiers', 90])
+    expect(odd.kind === 'ready' && odd.context.range).toBe(30)
+  })
+
   it('marks the owner, who may receive or settle their own hand-over', () => {
     const owner = page(staff({ is_owner: true }))
     const manager = page(staff())

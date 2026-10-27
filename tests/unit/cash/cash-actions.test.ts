@@ -217,3 +217,38 @@ describe('remittance actions', () => {
     expect(mockRpc).toHaveBeenCalledWith('resolve_remittance', { p_id: REMITTANCE, p_note: 'Found it' })
   })
 })
+
+describe('day close actions', () => {
+  const CLOSE = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+
+  it('closes the day for the store from the slug, never the body', async () => {
+    const { closeDayAction } = await load()
+    mockRpc.mockResolvedValue({ data: { id: CLOSE, version: 1 }, error: null })
+
+    const result = await closeDayAction('lolys-cafe', { outletId: null, day: '2026-10-24', note: null, force: false })
+
+    expect(mockVerify).toHaveBeenCalledWith(TENANT, 'cash_manage')
+    expect(mockRpc).toHaveBeenCalledWith('close_business_day', { p_tenant: TENANT, p_outlet: null, p_day: '2026-10-24', p_note: null, p_force: false })
+    expect(result).toEqual({ ok: true, data: { id: CLOSE, version: 1 } })
+  })
+
+  it('passes the database refusal on as a sentence and does not refresh', async () => {
+    const { closeDayAction } = await load()
+    mockRpc.mockResolvedValue({ data: null, error: { code: '55000', message: 'open_shifts: Ben' } })
+
+    const result = await closeDayAction('lolys-cafe', { outletId: null, day: '2026-10-24', note: null, force: false })
+
+    expect(result.ok === false && result.error).toMatch(/still on shift/)
+    expect(mockRevalidate).not.toHaveBeenCalled()
+  })
+
+  it('reopens with a reason and records a deposit', async () => {
+    const { recordDepositAction, reopenDayAction } = await load()
+    mockRpc.mockResolvedValue({ data: null, error: null })
+
+    expect((await reopenDayAction('lolys-cafe', { closeId: CLOSE, reason: '' })).ok).toBe(false)
+    expect((await reopenDayAction('lolys-cafe', { closeId: CLOSE, reason: 'Late refund' })).ok).toBe(true)
+    expect((await recordDepositAction('lolys-cafe', { closeId: CLOSE, cents: 1985000, to: 'BDO savings', ref: null })).ok).toBe(true)
+    expect(mockRpc).toHaveBeenCalledWith('record_day_deposit', { p_close_id: CLOSE, p_cents: 1985000, p_to: 'BDO savings', p_ref: null, p_proof_url: null })
+  })
+})

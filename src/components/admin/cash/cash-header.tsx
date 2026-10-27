@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { cashHref, type CashPageContext, type CashTab } from '@/lib/cash/cash-page'
+import { CASH_TABS, cashHref, type CashPageContext, type CashTab } from '@/lib/cash/cash-page'
 import { CashBranchSelect } from './cash-branch-select'
 import { dayLabel } from './cash-format'
 
@@ -41,7 +41,7 @@ export function CashHeader({ context }: { context: CashPageContext }) {
               </span>
             )
           )}
-          <nav aria-label="Business day" className="flex items-center gap-1.5" hidden={context.tab !== 'shifts'}>
+          <nav aria-label="Business day" className="flex items-center gap-1.5" hidden={context.tab !== 'shifts' && context.tab !== 'days'}>
             <Link href={link({ day: context.previousDay })} className={STEP_CLASS} aria-label={`Previous day, ${dayLabel(context.previousDay)}`}>
               <ChevronLeft className="size-4" aria-hidden />
             </Link>
@@ -64,13 +64,19 @@ export function CashHeader({ context }: { context: CashPageContext }) {
   )
 }
 
-const TAB_LABELS: Readonly<Record<CashTab, string>> = { accept: 'To accept', shifts: 'Shifts', settings: 'Settings' }
+const TAB_LABELS: Readonly<Record<CashTab, string>> = {
+  accept: 'To accept',
+  shifts: 'Shifts',
+  days: 'Day closes',
+  cashiers: 'Cashiers',
+  settings: 'Settings',
+}
 
-/** To accept · Shifts · Settings. Day closes and Cashiers arrive with the day close. */
+/** To accept · Shifts · Day closes · Cashiers · Settings (UX §4.7). */
 export function CashTabs({ context, waitingCount }: { context: CashPageContext; waitingCount: number | null }) {
   return (
-    <nav aria-label="Cash & remits sections" className="flex gap-1 border-b border-wn-line">
-      {(['accept', 'shifts', 'settings'] as const).map((tab) => {
+    <nav aria-label="Cash & remits sections" className="-mx-4 flex gap-1 overflow-x-auto border-b border-wn-line px-4 sm:mx-0 sm:px-0">
+      {CASH_TABS.map((tab) => {
         const isActive = tab === context.tab
         return (
           <Link
@@ -78,7 +84,7 @@ export function CashTabs({ context, waitingCount }: { context: CashPageContext; 
             href={cashHref(context.tenantSlug, { tab, day: context.day, branch: context.outletId, today: context.today })}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              '-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-[14.5px] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wn-ink focus-visible:ring-offset-2',
+              '-mb-px inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 text-[14.5px] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wn-ink focus-visible:ring-offset-2',
               isActive ? 'border-wn-ink text-wn-ink' : 'border-transparent text-wn-stone hover:text-wn-ink',
             )}
           >
