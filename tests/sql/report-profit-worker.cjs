@@ -195,9 +195,15 @@ async function build(scenario) {
   await db.exec(readMigration('20261022120000_expenses.sql'))
   await db.exec(readMigration('20261022120300_report_profit.sql'))
   await db.exec(readMigration('20261022130100_report_profit_live_orders.sql'))
+  // Business-day dating (seed.cutoffs = schedule rows): cutoffs table +
+  // helpers, the constant-cutoff helper, then the profit day buckets.
+  await db.exec(readMigration('20261027120000_business_day_cutoffs.sql'))
+  await db.exec(readMigration('20261027140000_business_day_reports.sql'))
+  await db.exec(readMigration('20261027180000_profit_business_day.sql'))
 
   const seed = scenario.seed
   await insertRows(db, 'tenants', seed.tenants)
+  await insertRows(db, 'business_day_cutoffs', seed.cutoffs)
   await insertRows(db, 'outlets', seed.outlets)
   await insertRows(db, 'auth.users', seed.users)
   await insertRows(db, 'app_users', seed.appUsers)

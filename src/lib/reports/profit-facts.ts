@@ -22,6 +22,7 @@
  */
 
 import type { ExpenseGroup } from '@/lib/expenses/types'
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from '@/lib/business-day/trading-day'
 import { toCents } from './money'
 import { lineCostCents, movementCostCents, isUsageReason, type UsageReason } from './cogs'
 import { isLiveOrder, orderFigures, type ReportOrder } from './sales-model'
@@ -101,6 +102,12 @@ export interface ProfitRawInput {
   payouts: readonly DrawerPayout[]
   /** order_item_costs is readable by store-wide cost holders only (its RLS). */
   dishCostsVisible: boolean
+  /**
+   * The store's business-day cutoffs (absent / empty = Manila midnight): every
+   * fact is dated by its BUSINESS day, as reporting.profit_facts does since
+   * 20261027180000.
+   */
+  schedule?: CutoffSchedule
 }
 
 /** What `report_profit_summary` returns. */
@@ -193,6 +200,21 @@ export function manilaDayOnOrAfter(ms: number): string {
   return manilaMidnight(day) >= ms ? day : addDays(day, 1)
 }
 
+/** The business day of an instant (Manila midnight without a cutoff). SQL: business_day_of. */
+export function businessDayOf(ms: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): string {
+  return tradingDayOf(new Date(ms).toISOString(), schedule)
+}
+
+/**
+ * The first business day whose START is at or after `ms` (SQL
+ * reporting.business_day_on_or_after): an expense dated D is in [start, end)
+ * when D's start is. Without a cutoff this is manilaDayOnOrAfter.
+ */
+export function businessDayOnOrAfter(ms: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): string {
+  const day = businessDayOf(ms, schedule)
+  return Date.parse(tradingDayWindow(day, schedule).startIso) >= ms ? day : addDays(day, 1)
+}
+
 /** The bucket a Manila day falls in: itself, its Monday, or the 1st of its month. */
 export function dayBucket(day: string, grain: ProfitGrain): string {
   if (grain === 'day') return day
@@ -233,7 +255,7 @@ function orderFacts(input: ProfitRawInput): ProfitFact[] {
     .flatMap((order): ProfitFact[] => {
       const figures = orderFigures(order)
       if (!figures.isLive) return []
-      const day = manilaDay(order.at)
+      const day = businessDayOf(order.at, input.schedule)
       const usesFallback = !trackedOrders.has(order.id)
       const lines = order.lines.map((line): ProfitFact => {
         const cost = costs.get(line.id)
@@ -273,14 +295,14 @@ function movementFacts(input: ProfitRawInput): ProfitFact[] {
   return input.movements.flatMap((move): ProfitFact[] => {
     if (!isUsageReason(move.reason) || !inWindow(scope, move.at) || !inBranch(scope, move.outletId)) return []
     if (ORDER_REASONS.has(move.reason) && move.orderId !== null && reversed.has(move.orderId)) return []
-    return [{ kind: 'movement', day: manilaDay(move.at), reason: move.reason, cents: movementCostCents(move.quantityDelta, move.unitCost) }]
+    return [{ kind: 'movement', day: businessDayOf(move.at, input.schedule), reason: move.reason, cents: movementCostCents(move.quantityDelta, move.unitCost) }]
   })
 }
 
 function expenseFacts(input: ProfitRawInput): ProfitFact[] {
   const { scope } = input
-  const first = manilaDayOnOrAfter(scope.start)
-  const last = manilaDayOnOrAfter(scope.end)
+  const first = businessDayOnOrAfter(scope.start, input.schedule)
+  const last = businessDayOnOrAfter(scope.end, input.schedule)
   const groups = new Map(input.categories.map((category) => [category.id, category.group]))
   return input.expenses.flatMap((expense): ProfitFact[] => {
     const group = groups.get(expense.categoryId)
@@ -305,7 +327,7 @@ function payoutFacts(input: ProfitRawInput): ProfitFact[] {
   return input.payouts.flatMap((payout): ProfitFact[] => {
     if (payout.kind !== 'pay_out' || sorted.has(payout.id)) return []
     if (!inWindow(scope, payout.at) || !inBranch(scope, payout.outletId)) return []
-    return [{ kind: 'payout', day: manilaDay(payout.at), cents: toCents(payout.amount) }]
+    return [{ kind: 'payout', day: businessDayOf(payout.at, input.schedule), cents: toCents(payout.amount) }]
   })
 }
 
@@ -417,8 +439,8 @@ export function profitFiguresByPeriod(input: ProfitRawInput, grain: ProfitGrain)
 /** `report_expenses_by_category` from raw rows: recorded expenses in the window and branch, per category. */
 export function expensesByCategory(input: ProfitRawInput): ExpenseCategoryTotal[] {
   const { scope } = input
-  const first = manilaDayOnOrAfter(scope.start)
-  const last = manilaDayOnOrAfter(scope.end)
+  const first = businessDayOnOrAfter(scope.start, input.schedule)
+  const last = businessDayOnOrAfter(scope.end, input.schedule)
   const categories = new Map(input.categories.map((category) => [category.id, category]))
   const totals = input.expenses
     .filter((expense) => expense.status === 'recorded' && expense.spentOn >= first && expense.spentOn < last && inBranch(scope, expense.outletId))

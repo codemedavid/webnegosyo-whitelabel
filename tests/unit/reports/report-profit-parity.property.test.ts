@@ -35,6 +35,7 @@ import { isLiveOrder } from '@/lib/reports/sales-model'
 import { toPlatformTables } from '../../fixtures/report-orders'
 import { BRANCHES, PROFIT_CATEGORIES, profitStoreArb, type ProfitStore } from '../../fixtures/profit-stores'
 import { propertyRuns } from '../../utils/property'
+import type { CutoffSchedule } from '@/lib/business-day/trading-day'
 import { line, order } from './report-fixtures'
 
 const MAX_STORES = 400
@@ -69,8 +70,30 @@ interface Materialized {
   raw: Omit<ProfitRawInput, 'scope'>
 }
 
+/**
+ * A random business-day schedule per store (20261027180000), derived from the
+ * run seed: half the stores keep Manila midnight, the rest get one to three
+ * cutoff changes around and inside the window (constant-cutoff fast path,
+ * 20 h / 28 h transition days, expense windows by business-day start).
+ */
+function scheduleFor(index: number, seed: number): CutoffSchedule {
+  let state = (seed * 7919 + index * 104729) >>> 0
+  const next = (n: number) => {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0
+    return state % n
+  }
+  if (index === 0 || next(2) === 0) return []
+  const days = new Set<number>()
+  const count = 1 + next(3)
+  for (let i = 0; i < count; i += 1) days.add(next(22))
+  const base = Date.parse('2026-09-20T00:00:00.000Z')
+  return [...days]
+    .sort((a, b) => a - b)
+    .map((offset) => ({ effectiveFrom: new Date(base + offset * DAY_MS).toISOString().slice(0, 10), cutoffMinutes: next(48) * 15 }))
+}
+
 /** One generated store with real ids, as SQL rows AND as the engine's input. */
-function materialize(store: ProfitStore, index: number, uuid: (key: string) => string): Materialized {
+function materialize(store: ProfitStore, index: number, uuid: (key: string) => string, runSeed: number): Materialized {
   const tenantId = uuid(`tenant:${index}`)
   const ownerId = uuid(`owner:${index}`)
   const local = (id: string) => uuid(`${index}:${id}`)
@@ -162,6 +185,7 @@ function materialize(store: ProfitStore, index: number, uuid: (key: string) => s
     categories: categories.map((row) => ({ id: row.id, name: row.name, icon: row.icon, group: row.grp, systemKey: row.system_key })),
     payouts: payouts.map((row) => ({ id: row.id, kind: row.kind, amount: row.amount, outletId: row.outlet_id, at: Date.parse(row.created_at) })),
     dishCostsVisible: true,
+    schedule: scheduleFor(index, runSeed),
   }
   return {
     tenantId,
@@ -268,6 +292,9 @@ function seedFor(stores: readonly Materialized[]) {
   const all = (table: string) => stores.flatMap((store) => store.seed[table])
   return {
     tenants: stores.map((store) => ({ id: store.tenantId, is_active: true })),
+    cutoffs: stores.flatMap((store) =>
+      (store.raw.schedule ?? []).map((c) => ({ tenant_id: store.tenantId, effective_from: c.effectiveFrom, cutoff_minutes: c.cutoffMinutes })),
+    ),
     users: stores.map((store) => ({ id: store.ownerId })),
     appUsers: stores.map((store) => ({ user_id: store.ownerId, role: 'admin', tenant_id: store.tenantId, is_owner: true, permissions: '{}' })),
     outlets: all('outlets'),
@@ -305,7 +332,7 @@ describe('SQL profit functions = the TypeScript profit engine, to the centavo', 
   const seed = process.env.FC_SEED ? Number(process.env.FC_SEED) : 20261022
   const generated = fc.sample(profitStoreArb(SPREAD), { numRuns: runs, seed })
   const uuid = uuidFactory()
-  const stores = [EDGE_STORE, ...generated].map((store, index) => materialize(store, index, uuid))
+  const stores = [EDGE_STORE, ...generated].map((store, index) => materialize(store, index, uuid, seed))
   let results: Result[] = []
 
   beforeAll(() => {
