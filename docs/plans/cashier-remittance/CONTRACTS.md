@@ -198,3 +198,73 @@ Lives in `webnegosyo-app/lib/cash/reasons.ts` + web twin (owner: shared).
 | **web** | `src/app/[tenant]/admin/cash/**`, `src/components/admin/cash/**`, `src/lib/cash/**` except denominations/reasons, `src/app/actions/cash*.ts`, `src/app/api/cash/**`, reports "By shift" files, sidebar entry |
 | **shared** | `webnegosyo-app/components/{Keypad,BigAmount}.tsx`, `components/cash/**` (DenominationCounter, PinPad, StepBar, VerdictCard, ReasonChips), `lib/cash/{denominations,reasons}.ts` + web twins, `lib/cash-slips/**`, their tests |
 | **registry/qa** | the four staff-permission registries (`src/lib/staff-permissions.ts`, `webnegosyo-app/lib/staff-permissions.ts`, desktop copy, `supabase/functions/manage-staff/staff-core.ts`) + their parity tests, `ADMIN_SECTION_PERMISSIONS` key wiring; afterwards review + QA (read-only unless asked) |
+
+---
+
+# Wave 2 contracts (2026-10-27) — P2 server expected · P3 rest of business day · P4 end shift & remit · P5 remittances
+
+Same ground rules (§0) and ownership (§9). Wave-1 follow-ups are in `WAVE-LOG.md` — each owner clears theirs.
+
+## W2.1 Counting is locked once revealed (blind and non-blind alike)
+Standard blind-count rule (Toast/Simphony): the cashier submits a count, THEN sees the result; a recount is allowed
+once, and every attempt is kept. New append-only table `shift_counts(id, shift_id, tenant_id, attempt smallint 1..2,
+counted_cents bigint, denominations jsonb, counted_by, counted_at)` (unique shift_id+attempt).
+
+## W2.2 SQL (owner: db)
+| File | Contents |
+|---|---|
+| `20261027130000_shift_expectations.sql` | `shift_expectations`, `cash.shift_expected(shift, until)` (07 §3.3), freeze trigger **SHADOW** (stores server + device; `expected_cash` unchanged). Authoritative switch is a separate later file, `130100`, gated on the live drift probe — write it, do not apply. |
+| `20261027140000_business_day_reports.sql` | `report_sales_by_period/_by_hour` buckets by `business_day_of` (07 §2.5) + extend `report-sql-parity.property.test.ts` & `report-sales-worker.cjs` (load 121000 too) to random schedules; TS↔SQL property test for `business_day_of/_bounds` vs `trading-day.ts` |
+| `20261027140100_business_day_adopters.sql` | `assign_daily_order_number` resets at the cutoff (order_date = business_day_of; check unique index + `supabase-order-schema.ts` copy notes for bizday), `inventory_counts.business_day` server default, `expenses` drawer `spent_on` = business_day_of |
+| `20261027150000_cash_activity_and_close.sql` | activity vocabulary (07 §7.4), `count_shift`, `preview_shift_close`, `close_shift`, `force_close_shift`, stale-shift refusal in `open_shift`, blind legacy guard (RPC mark), close_kind rule |
+| `20261027160000_cash_remittances.sql` | `cash_remittances` + pickups + transitions (below) |
+
+RPCs (exact names; jsonb in/out camelCase; all money in cents):
+- `open_shift(p_tenant, p_outlet, p_drawer_id, p_opening_float_cents, p_opening_denominations jsonb, p_service_period_id, p_staff_name) → {state:'opened'|'joined'|'stale', shift, handover:{previousShiftId, leftCents, staffName, closedAt}|null}` (INVOKER). `stale` = caller's open shift is past `end_at(business_day)+overdue_grace`; never joined.
+- `preview_shift_close(p_shift_id) → {source:'server'|'device'|'none', hidden:boolean, expectedCents|null, breakdown|null, nonCashByMethod:[{key,label,cents,count}]|null, floatCents, isZeroBalance, countAttempts:int}` — hidden (expected null) for a non-manager on a blind shift until a count exists.
+- `count_shift(p_shift_id, p_counted_cents, p_denominations jsonb, p_device_expected_cents bigint) → {attempt, countedCents, expectedCents, differenceCents, source, reasonRequired:boolean}` — attempt 1 or 2 only (third → 22023 `recount_limit`). Reveals expected AFTER the count, to the holder too.
+- `close_shift(p_shift_id, p_non_cash jsonb, p_variance_reason text, p_note text, p_float_kept_cents bigint, p_remit_to uuid, p_remit_to_safe boolean, p_closed_by_name text) → {closedAt, countedCents, expectedCents, differenceCents, remittanceId|null, handedOverCents}` — uses the LAST `shift_counts` attempt (none → 22023 `count_required`); reason required when |diff| > `variance_reason_from_cents` (22023 `variance_reason_required`); CAS open→closed; creates the shift remittance (mode ≠ off).
+- `force_close_shift(p_shift_id, p_note) → {closedAt, remittanceId|null}` (cash manager, not the holder; no count invented).
+- Pickups: `record_cash_pickup(p_shift_id, p_amount_cents, p_taken_by uuid|null, p_to_safe boolean, p_note) → {movementId, remittanceId}` (writes `shift_cash_movements` kind `collect` + a `pickup` remittance in one txn; `shift_cash_movements` gains `taken_by`, `taken_by_name`, `to_safe`).
+- `cash_remittances(id, tenant_id, outlet_id, kind 'shift'|'pickup', shift_id, movement_id null, business_day, cashier_user_id, cashier_name, handed_over_cents, remitted_to null, remitted_to_name, to_safe, status 'pending'|'accepted'|'disputed'|'resolved', received_cents, received_by, received_by_name, received_at, accept_method 'app'|'pin', is_self_received, receiver_note, dispute_reason, resolved_*, created_at)` — 07 §5.1 with `kind`/`movement_id`/`to_safe`/`accept_method` added.
+- `accept_remittance(p_id, p_received_cents, p_note) → row`, `dispute_remittance(p_id, p_reason, p_received_cents)`, `resolve_remittance(p_id, p_note)` — definer, CAS, `cash_manage` + reach, not the cashier unless owner; different amount ⇒ note required.
+- `accept_remittance_as(p_id, p_receiver uuid, p_received_cents, p_note) → row` — **service role only**; used by the PIN route after the PIN is verified; `accept_method='pin'`.
+- `list_remittances(p_tenant, p_status text[], p_business_day date|null, p_outlet uuid|null, p_limit int)` — or plain RLS reads; db decides, documents it.
+
+## W2.3 Web route for "PIN here now" (owner: web)
+`POST /api/cash/remittances/[id]/accept-pin` body `{receiverUserId, pin, receivedCents, note?}` — bearer (app) via
+`withRequestBearer` or cookie. Caller must be the remittance's cashier (at the counter) or a member at its branch;
+verifies with `verify_staff_approval_pin` (service role) using the SAME Upstash limits + lockout escalation as the
+Senior/PWD approver PIN routes (`src/app/api/gov-discounts/*`, `route-guards.ts`) — reuse, don't copy; receiver must
+hold `cash_manage` with branch reach; then `accept_remittance_as`. Responses: 200 row · 401/403 · 423 locked
+`{lockedUntil}` · 409 not pending · 422 wrong PIN `{triesLeft}`. Receivers without a PIN set → 412 "No PIN set —
+send to their phone instead".
+
+## W2.4 App (owners: app-cashier / app-owner / shared)
+- app-cashier: `end-shift.tsx` 4 steps (06 §4.3) on the RPCs above; Step 1 count → `count_shift` (Recount uses attempt 2);
+  Step 2 non-cash from `preview_shift_close.nonCashByMethod`; Step 3 verdict (from count_shift), reasons; Step 4
+  Remit to (receivers = cash managers with branch reach — `list_cash_receivers` read, app-owner provides
+  `lib/cash/receivers.ts`), "Send to their phone" | "PIN here now" (route W2.3) | Store safe; then `remittance.tsx`
+  slip (print via shared builder). Start shift upgrades (06 §4.1: count mode, usual float, handover check, named shift
+  picker, stale-shift close-first). MyShiftCard one-hero + blind + business-day note; CashMoveSheet Pickup "Taken by"
+  → `record_cash_pickup`. Offline: steps 1–3 drafted per shift, remit refused with the designed copy; outbox must be
+  empty before close on platform. Fix wave-1 period id/name + duplicate href helper. Wire `drawerDayWindow` in
+  pos-sales.tsx.
+- app-owner: `remittances.tsx` (To accept · Accepted · Pickups), Accept sheet (Yes / different amount / dispute),
+  remittance detail (slip), owner resolve; `lib/cash/remittances.ts`, `lib/cash/receivers.ts`; Home strip variants
+  (cashier + receiver, 06 §3); DrawersOverview remit status + "End for him" (force close) — DrawersOverview is in
+  components/drawer (app-cashier's): app-owner builds the sheet component, app-cashier mounts it. Doors: Reports →
+  Remittances, Home strip.
+- shared: `RemitToPicker`, `NonCashCheck` (Matches/Different/All match/references), `AcceptRemitSheet` body,
+  print wiring helpers for remittance slip; fold ExpenseKeypad onto Keypad if it can be done without touching
+  expenses behaviour (expenses files: you may edit `components/expenses/ExpenseKeypad.tsx` only).
+- bizday: remaining call sites in WAVE-LOG (now yours to edit even where another agent owned the file in wave 1,
+  EXCEPT pos-sales.tsx which app-cashier wires), offline register-pack cutoff part, Convex `time.ts`/`orderNumber.ts`
+  cutoff (code + bundle version bump per memory "convex-tenant-deploy-pipeline"; never deploy), web zero-fill sites
+  once db's 140000 lands, TS copy of order-number day logic in `src/lib/supabase-order-schema.ts`.
+- web: "To accept" tab + remittance sheet (accept/different/dispute/resolve) on `/admin/cash`, Shifts table remit
+  status + count attempts, W2.3 route, payment `type` in parser (db: add `type` to payment buckets in shift sales if
+  cheap, else web derives).
+- qa: run the FULL suites + both tsc + lint on current HEAD first and report; then review wave 2 as it lands
+  (especially: blind leaks via count_shift/preview/activity/slips/RLS on shift_counts & shift_expectations;
+  CAS transitions per role; PIN route rate-limit reuse; offline refusals).
