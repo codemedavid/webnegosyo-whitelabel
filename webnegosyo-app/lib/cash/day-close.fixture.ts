@@ -1,4 +1,4 @@
-/** A sample frozen day (Fri Oct 24, day ends 4 AM) shared by the day-close tests. */
+/** A sample frozen day (Sat Oct 24, day ends 4 AM) shared by the day-close tests. */
 export const SNAPSHOT = {
   window: { start: "2026-10-23T20:00:00.000Z", end: "2026-10-24T20:00:00.000Z", cutoffMinutes: 240 },
   sales: {
