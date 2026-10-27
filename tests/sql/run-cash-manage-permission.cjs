@@ -105,7 +105,7 @@ async function checkBackfill(db) {
   eq(by[U.storeSetup], ['pos', 'store_setup', 'cash_manage'], 'store_setup holders are given cash_manage once')
   eq(by[U.both], ['store_setup', 'cash_manage'], 'an account already holding it is not given a duplicate')
   eq(by[U.owner], [], 'owners are untouched (they hold every key)')
-  eq(by[U.legacy], null, 'NULL (legacy full access) stays NULL: it already holds cash_manage')
+  eq(by[U.legacy], null, 'NULL (legacy full access) stays NULL: cash_manage is opt-in, ticked by name')
   eq(by[U.cashier], ['pos'], 'a pos-only cashier gets nothing')
   eq(by[U.menuOnly], ['menu', 'orders'], 'unrelated accounts are untouched')
   await db.exec(readMigration('20261027120100_cash_manage_permission.sql'))
@@ -116,7 +116,7 @@ async function checkBackfill(db) {
 async function checkFunction(db) {
   const cases = [
     [U.owner, true, 'owner'],
-    [U.legacy, true, 'NULL permissions (cash_manage is not opt-in)'],
+    [U.legacy, false, 'NULL permissions (cash_manage is opt-in, like expenses)'],
     [U.storeSetup, true, 'store_setup holder (backfilled)'],
     [U.cashManage, true, 'cash_manage-only staff'],
     [U.branchCash, true, 'branch-locked cash_manage holder (branch reach is checked by each policy)'],
@@ -135,7 +135,6 @@ async function checkFunction(db) {
 
 const MANAGERS = [
   [U.owner, 'owner'],
-  [U.legacy, 'NULL permissions'],
   [U.storeSetup, 'store_setup holder'],
   [U.cashManage, 'cash_manage-only staff'],
 ]

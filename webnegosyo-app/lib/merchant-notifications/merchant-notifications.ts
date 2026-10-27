@@ -92,14 +92,15 @@ export function canSeeMerchantNotifications(state: NotificationSessionState): bo
 }
 
 /**
- * The cash kinds' half of the table's RLS (W3.3): owner, full access, or
- * `cash_manage`. Branch confinement is the server's.
+ * The cash kinds' half of the table's RLS (W3.3): owner or `cash_manage`,
+ * which is opt-in — full access (`permissions: null`) does not hold it.
+ * Branch confinement is the server's.
  */
 export function canSeeCashNotifications(state: NotificationSessionState): boolean {
   if (!state.isAuthenticated || state.isDemo) return false;
   if (state.isSuperadmin && state.impersonatedTenantId !== null) return false;
-  if (state.isOwner || state.isSuperadmin || state.permissions === null) return true;
-  return state.permissions.includes(CASH_PERMISSION);
+  if (state.isOwner || state.isSuperadmin) return true;
+  return state.permissions !== null && state.permissions.includes(CASH_PERMISSION);
 }
 
 /** The bell exists for anyone who can read at least one kind of notice. */

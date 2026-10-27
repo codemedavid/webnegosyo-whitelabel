@@ -96,7 +96,7 @@ async function main() {
     // Visibility by kind.
     await fixture(db, "insert into merchant_notifications (tenant_id, outlet_id, kind, item_name) values ($1, $2, 'stock_low', 'Rice')", [T, A1])
     eq(await bell(db, U.owner), ['remittance_pending', 'shift_overdue', 'stock_low'], 'the owner sees every kind')
-    eq(await bell(db, U.legacy), ['remittance_pending', 'shift_overdue', 'stock_low'], 'NULL permissions see every kind')
+    eq(await bell(db, U.legacy), ['stock_low'], 'NULL permissions see stock, not cash (cash_manage is opt-in)')
     eq(await bell(db, U.manager), ['remittance_pending', 'shift_overdue'], 'cash_manage sees the cash kinds (not stock without menu)')
     eq(await bell(db, U.menu), ['stock_low'], 'menu sees stock, never cash')
     eq(await bell(db, U.cashier), [], 'a pos-only cashier sees no cash alerts')

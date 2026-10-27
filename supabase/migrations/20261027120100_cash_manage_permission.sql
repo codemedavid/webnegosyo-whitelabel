@@ -8,9 +8,12 @@
 -- inside app_user_manages_cash(). An owner could not hand someone branding
 -- without the cash, or the cash without branding.
 --
---   * cash_manage is NOT opt-in: `permissions IS NULL` (legacy full access)
---     holds it, exactly as it held cash management before. It is NOT implied
---     by store_setup (IMPLIED_BY), so the two can be separated later.
+--   * cash_manage is OPT-IN (owner's call, 2026-10-27, release review D1):
+--     `permissions IS NULL` (legacy full access) does NOT hold it, like
+--     expenses. Live 2026-10-27: 45 such staff in 37 stores, 1 ran a shift in
+--     30 days, 0 ever picked up from someone else's drawer. They keep their own
+--     drawer (holder rules don't need the key); the owner ticks "Cash & day
+--     close" for anyone who receives cash. NOT implied by store_setup.
 --   * One-time backfill: every scoped account holding `store_setup` today
 --     gets `cash_manage` too, so nobody loses access on apply.
 --   * app_user_manages_cash() becomes app_user_has_permission(t, 'cash_manage').
@@ -19,10 +22,9 @@
 --     Side effect, intended: a superadmin (NULL tenant) now passes it (07 §1.5-3);
 --     those policies still require app_user_may_reach_branch, which a
 --     superadmin does not pass, so no table access widens today.
---   * app_user_has_permission has no key list in SQL (any key the account
---     holds by name counts; NULL permissions hold every key outside the
---     opt-in array). Its live body (2026-10-27, 20261022130200) is therefore
---     left untouched.
+--   * app_user_has_permission: the live body (20261022130200) with
+--     'cash_manage' added to the opt-in array, nothing else. Its `_of` twin
+--     (20261027160000) carries the same array (permission-of-parity.test.ts).
 --
 -- APPLY WITH THE DEPLOY, NOT BEFORE: production web and the manage-staff edge
 -- function validate permission lists against their own registry and refuse
@@ -53,6 +55,41 @@ update public.app_users au
 set session_replication_role = origin;
 
 -- ---------------------------------------------------------------------------
+-- cash_manage joins the opt-in keys (rollback: the 20261022130200 body).
+-- ---------------------------------------------------------------------------
+create or replace function public.app_user_has_permission(p_tenant_id uuid, p_permission text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+      from public.app_users au
+     where au.user_id = auth.uid()
+       and (
+         au.role = 'superadmin'
+         or (
+           au.role = 'admin'
+           and au.tenant_id = p_tenant_id
+           and (
+             au.is_owner is true
+             or (au.permissions is null and p_permission <> all (array['activity_view', 'approve_requests', 'expenses', 'cash_manage']))
+             or p_permission = any (au.permissions)
+             -- IMPLIED_BY in src/lib/staff-permissions.ts: strict subsets of a held grant.
+             or (p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))
+             or (p_permission = 'reports' and 'analytics' = any (au.permissions))
+           )
+         )
+       )
+  );
+$$;
+
+revoke all on function public.app_user_has_permission(uuid, text) from public, anon;
+grant execute on function public.app_user_has_permission(uuid, text) to authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
 -- Who may manage the store's cash. SECURITY INVOKER (adds no power of its
 -- own); app_user_has_permission is the definer twin of hasPermission().
 -- Mirrors canManageCash (webnegosyo-app/lib/cash-drawers.ts) →
@@ -69,12 +106,13 @@ as $$
 $$;
 
 comment on function public.app_user_manages_cash(uuid) is
-  'Holder of cash_manage for this tenant (owner, superadmin, NULL permissions, or the key by name): may set up drawers, collect cash from any drawer, close a cashier''s shift, receive remittances, close the business day. 20261027120100.';
+  'Holder of cash_manage for this tenant (owner, superadmin, or the key by name; opt-in, NULL permissions do not hold it): may set up drawers, collect cash from any drawer, close a cashier''s shift, receive remittances, close the business day. 20261027120100.';
 
 -- ===========================================================================
 -- Rollback (manual). The backfill is not undone: an extra key name is inert
 -- once the function below is restored.
 -- ===========================================================================
+-- Re-create app_user_has_permission from 20261022130200 (opt-in array without 'cash_manage'), then:
 -- create or replace function public.app_user_manages_cash(target_tenant_id uuid) returns boolean
 -- language sql stable set search_path = public, pg_temp as $$
 --   select exists (select 1 from app_users au

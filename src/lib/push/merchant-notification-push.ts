@@ -238,12 +238,12 @@ export function joinDeviceAccounts(
 
 // ── Cash alerts (W3.3) ─────────────────────────────────────────────────────
 
+/** `cash_manage` is opt-in: full access (`permissions: null`) does not hold it. */
 function canHandleCash(account: AccountRow): boolean {
   return (
     account.is_owner === true ||
     account.role === 'superadmin' ||
-    account.permissions === null ||
-    account.permissions.includes(CASH_PERMISSION)
+    (account.permissions !== null && account.permissions.includes(CASH_PERMISSION))
   )
 }
 

@@ -236,17 +236,17 @@ async function checkPickups(db) {
 async function checkReceivers(db) {
   const list = async (uid, outlet) => (await call(db, uid, 'select json_agg(r) as rows from public.list_cash_receivers($1, $2) r', [T, outlet])).rows ?? []
   const a1 = await list(U.cashier, A1)
-  eq(a1.map((r) => r.name), ['Olivia', 'Ana', 'Lee', 'manny', 'Mara'], 'A1: the owner first, then everyone who handles cash there (A2-locked manager excluded)')
+  eq(a1.map((r) => r.name), ['Olivia', 'Ana', 'manny', 'Mara'], 'A1: the owner first, then everyone who handles cash there (A2-locked manager and NULL-permission Lee excluded: cash_manage is opt-in)')
   eq(Object.keys(a1[0]).sort(), ['has_pin', 'is_on_shift', 'is_owner', 'last_seen_at', 'name', 'outlet_id', 'user_id'], 'no email, no phone, no PIN hash')
   eq(a1.find((r) => r.name === 'Mara').has_pin, true, 'has_pin when a PIN is set for this store')
   eq(a1.find((r) => r.name === 'Ana').has_pin, false, 'has_pin false otherwise')
   eq(typeof a1.find((r) => r.name === 'Mara').last_seen_at, 'string', 'last seen from their shifts / activity')
-  eq((await list(U.cashier, null)).map((r) => r.name), ['Olivia', 'Lee', 'manny', 'Mara'], 'store-wide: branch-locked managers excluded')
+  eq((await list(U.cashier, null)).map((r) => r.name), ['Olivia', 'manny', 'Mara'], 'store-wide: branch-locked managers excluded')
   eq((await list(U.cashier, A2)).map((r) => r.name).includes('Bea'), true, "A2: its own manager is there")
-  eq((await list(U.cashier, A1)).find((r) => r.name === 'Lee').is_on_shift, false, 'not on shift')
-  const live = await shiftFor(db, U.legacy)
-  eq((await list(U.cashier, A1)).find((r) => r.name === 'Lee').is_on_shift, true, 'is_on_shift for an open shift')
-  await countAndClose(db, U.legacy, live, 50000)
+  eq((await list(U.cashier, A1)).find((r) => r.name === 'Mara').is_on_shift, false, 'not on shift')
+  const live = await shiftFor(db, U.manager)
+  eq((await list(U.cashier, A1)).find((r) => r.name === 'Mara').is_on_shift, true, 'is_on_shift for an open shift')
+  await countAndClose(db, U.manager, live, 50000, { floatKept: 50000 })
   await refused(call(db, 'anon', 'select * from public.list_cash_receivers($1, $2)', [T, A1]), '42501', 'anon cannot list receivers')
   await refused(call(db, U.ownerB, 'select * from public.list_cash_receivers($1, $2)', [T, A1]), '42501', "another store's owner cannot")
 }

@@ -157,9 +157,7 @@ async function checkSettings(db) {
 
   await as(db, 'authenticated', U.cash)
   eq((await save(db, { require_denominations: true })).rows[0].s.updatedByName, 'Mara Manager', 'a store-wide cash_manage holder may save')
-  await as(db, 'authenticated', U.legacy)
-  eq((await save(db, { require_denominations: false })).rows.length, 1, 'NULL permissions may save (cash_manage is not opt-in)')
-  for (const [uid, label] of [[U.cashier, 'a pos-only cashier'], [U.branchCash, 'a branch-locked cash_manage holder (the rules cover every branch)'], [U.ownerB, "another store's owner"]]) {
+  for (const [uid, label] of [[U.legacy, 'NULL permissions (cash_manage is opt-in)'], [U.cashier, 'a pos-only cashier'], [U.branchCash, 'a branch-locked cash_manage holder (the rules cover every branch)'], [U.ownerB, "another store's owner"]]) {
     await as(db, 'authenticated', uid)
     await refused(save(db, { blind_close: false }), '42501', `refused: ${label}`)
   }

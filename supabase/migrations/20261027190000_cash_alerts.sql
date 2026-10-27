@@ -71,7 +71,7 @@ as $$
          and (
            coalesce(au.is_owner, false)
            or au.role = 'superadmin'
-           or au.permissions is null
+           -- cash_manage is opt-in (20261027120100): NULL permissions don't hold it.
            or 'cash_manage' = any (au.permissions)
          )
          and (

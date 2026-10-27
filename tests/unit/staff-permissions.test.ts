@@ -128,7 +128,7 @@ describe('hasPermission', () => {
 
 describe('opt-in permissions (activity_view, approve_requests)', () => {
   it('names exactly the two store-activity keys and the expense book', () => {
-    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests', 'expenses'])
+    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests', 'expenses', 'cash_manage'])
   })
 
   it('labels them for the owner picking them', () => {

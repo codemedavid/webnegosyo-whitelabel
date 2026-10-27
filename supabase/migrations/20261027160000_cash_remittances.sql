@@ -27,7 +27,7 @@ set lock_timeout = '3s';
 
 -- app_user_has_permission answers only for the CALLER (auth.uid()). The
 -- receiver of a hand-over is someone else, so this is the same function for
--- any user: its body is the live app_user_has_permission (20261022130200)
+-- any user: its body is app_user_has_permission as of 20261027120100
 -- with auth.uid() replaced by p_user — nothing else. A test pins the two
 -- bodies equal (tests/unit/cash/permission-of-parity.test.ts): change
 -- app_user_has_permission and this must follow.
@@ -49,7 +49,7 @@ as $$
            and au.tenant_id = p_tenant_id
            and (
              au.is_owner is true
-             or (au.permissions is null and p_permission <> all (array['activity_view', 'approve_requests', 'expenses']))
+             or (au.permissions is null and p_permission <> all (array['activity_view', 'approve_requests', 'expenses', 'cash_manage']))
              or p_permission = any (au.permissions)
              -- IMPLIED_BY in src/lib/staff-permissions.ts: strict subsets of a held grant.
              or (p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))
