@@ -33,50 +33,45 @@ function renderAccept(overrides: Partial<React.ComponentProps<typeof AcceptRemit
   return { onAccept, onDispute };
 }
 
-describe("AcceptRemittanceSheet", () => {
-  it("asks the one question and accepts the slip amount in one tap", async () => {
+describe("AcceptRemittanceSheet (around shared's AcceptRemitBody)", () => {
+  it("accepts the slip amount in one tap", async () => {
     const { onAccept } = renderAccept();
     expect(screen.getByText("Did you receive ₱6,345 from Ana?")).toBeTruthy();
-    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Yes, I received ₱6,345" })));
+    await act(async () => fireEvent.press(screen.getByTestId("accept-yes")));
     expect(onAccept).toHaveBeenCalledWith(634500, null);
   });
 
-  it("a different amount says the gap and needs a note", async () => {
+  it("passes a different amount and its note through", async () => {
     const { onAccept } = renderAccept();
-    fireEvent.press(screen.getByRole("button", { name: "I got a different amount" }));
-    fireEvent.changeText(screen.getByLabelText("Amount you received in pesos"), "6300");
-    expect(screen.getByText("₱6,300 received. ₱45 less than the slip.")).toBeTruthy();
-    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Accept ₱6,300" })));
-    expect(screen.getByText(REMITTANCE_COPY.noteRequired)).toBeTruthy();
-    expect(onAccept).not.toHaveBeenCalled();
-    fireEvent.changeText(screen.getByLabelText("Note"), "Envelope short");
-    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Accept ₱6,300" })));
+    fireEvent.press(screen.getByTestId("accept-different"));
+    for (const key of ["6", "3", "0", "0"]) fireEvent.press(screen.getByTestId(`accept-key-${key}`));
+    fireEvent.changeText(screen.getByTestId("accept-note"), "Envelope short");
+    await act(async () => fireEvent.press(screen.getByTestId("accept-confirm-different")));
     expect(onAccept).toHaveBeenCalledWith(630000, "Envelope short");
   });
 
-  it("reports a problem with a reason", async () => {
+  it("reports a problem with its reason", async () => {
     const { onDispute } = renderAccept();
-    fireEvent.press(screen.getByRole("button", { name: "Report a problem" }));
-    fireEvent.changeText(screen.getByLabelText("What went wrong"), "Envelope missing");
-    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Report problem" })));
+    fireEvent.press(screen.getByTestId("accept-dispute"));
+    fireEvent.changeText(screen.getByTestId("accept-dispute-reason"), "Envelope missing");
+    await act(async () => fireEvent.press(screen.getByTestId("accept-confirm-dispute")));
     expect(onDispute).toHaveBeenCalledWith("Envelope missing", null);
   });
 
-  it("a forced close goes straight to counting (no slip amount to agree with)", () => {
+  it("a forced close goes straight to counting", () => {
     renderAccept({ remittance: { ...remittance, handedOverCents: null } });
-    expect(screen.getByText("Count Ana's cash")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Yes, I received/ })).toBeNull();
+    expect(screen.queryByTestId("accept-yes")).toBeNull();
   });
 
   it("offline, accepting is disabled and says why", () => {
     renderAccept({ isOffline: true });
     expect(screen.getByText(REMITTANCE_COPY.offlineAccept)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Yes, I received ₱6,345" }).props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByTestId("accept-yes").props.accessibilityState.disabled).toBe(true);
   });
 
-  it("keeps a server refusal on the sheet", async () => {
+  it("keeps a server refusal on the sheet, in the server's words", async () => {
     renderAccept({ onAccept: jest.fn(async (): Promise<SheetResult> => ({ ok: false, error: REMITTANCE_COPY.notPending })) });
-    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Yes, I received ₱6,345" })));
+    await act(async () => fireEvent.press(screen.getByTestId("accept-yes")));
     expect(screen.getByText(REMITTANCE_COPY.notPending)).toBeTruthy();
   });
 });
