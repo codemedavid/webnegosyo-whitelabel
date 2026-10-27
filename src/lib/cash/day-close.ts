@@ -229,6 +229,8 @@ export function parseDayCloseStatus(data: unknown): DayCloseStatus {
 export const DAY_CLOSE_NOTE_MAX = 500
 export const REOPEN_REASON_MAX = 300
 export const DEPOSIT_TEXT_MAX = 80
+/** business_day_closes_text_ck. */
+const DEPOSIT_PROOF_URL_MAX = 500
 const MAX_DEPOSIT_CENTS = 10_000_000_000
 
 export const DAY_CLOSE_COPY = {
@@ -238,6 +240,8 @@ export const DAY_CLOSE_COPY = {
   unsettled: 'Some cash hasn’t been accepted yet. Accept it, or close anyway with a note.',
   alreadyClosed: 'This day is already closed. Reopen it to close it again.',
   depositTaken: 'A deposit is already recorded for this close.',
+  alreadyReopened: 'This day was already reopened.',
+  notFound: 'That day close can’t be found. Reload the page.',
   noteRequired: 'Say why. It stays on the close.',
   failed: 'That didn’t save. Nothing changed. Try again in a moment.',
   loadFailed: 'The day close couldn’t load. Try again in a moment.',
@@ -251,6 +255,16 @@ const UUID = z.string().uuid()
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const OBJECT_NOT_IN_STATE = '55000'
 const UNIQUE_VIOLATION = '23505'
+const NO_DATA_FOUND = 'P0002'
+
+/**
+ * The close functions raise staff-ready sentences, some led by a machine key
+ * ("note_required: say why…"). The key decides; the sentence is shown.
+ */
+function sentenceOf(message: string): string {
+  const text = message.replace(/^[a-z_]+:\s*/, '').trim()
+  return text === '' ? DAY_CLOSE_COPY.failed : text.charAt(0).toUpperCase() + text.slice(1)
+}
 
 function refused<T>(reason: DayCloseRefusal, message: string): DayCloseCallResult<T> {
   return { ok: false, reason, message }
@@ -261,8 +275,12 @@ function classify(fn: string, error: CashDbError, forbidden: string): DayCloseCa
   if (error.code === OBJECT_NOT_IN_STATE && /unsettled_remittances/.test(error.message)) return refused('unsettled_remittances', DAY_CLOSE_COPY.unsettled)
   if (error.code === OBJECT_NOT_IN_STATE && /open_shifts/.test(error.message)) return refused('open_shifts', DAY_CLOSE_COPY.openShifts)
   if (error.code === UNIQUE_VIOLATION) return refused('already_closed', DAY_CLOSE_COPY.alreadyClosed)
-  if (error.code === OBJECT_NOT_IN_STATE && /deposit/.test(error.message)) return refused('already_closed', DAY_CLOSE_COPY.depositTaken)
-  if (error.code === INVALID_PARAMETER) return refused('invalid', DAY_CLOSE_COPY.noteRequired)
+  // 20261027170000: a lost set-once / CAS is P0002 with its key.
+  if (error.code === NO_DATA_FOUND && /deposit_already_recorded/.test(error.message)) return refused('already_closed', DAY_CLOSE_COPY.depositTaken)
+  if (error.code === NO_DATA_FOUND && /not_closed/.test(error.message)) return refused('already_closed', DAY_CLOSE_COPY.alreadyReopened)
+  if (error.code === NO_DATA_FOUND) return refused('invalid', DAY_CLOSE_COPY.notFound)
+  if (error.code === INVALID_PARAMETER && /note_required|reason_required/.test(error.message)) return refused('invalid', DAY_CLOSE_COPY.noteRequired)
+  if (error.code === INVALID_PARAMETER) return refused('invalid', sentenceOf(error.message))
   console.error(`[cash] ${fn} failed`, `${error.code ?? 'no code'}: ${error.message}`)
   return refused('failed', DAY_CLOSE_COPY.failed)
 }
@@ -347,12 +365,10 @@ export async function recordDayDeposit(client: CashRpcClient, input: DepositInpu
   const result = await call(
     client,
     'record_day_deposit',
-    { p_close_id: input.closeId, p_cents: input.cents, p_to: to, p_ref: clean(input.ref, DEPOSIT_TEXT_MAX), p_proof_url: clean(input.proofUrl, 2048) },
+    { p_close_id: input.closeId, p_cents: input.cents, p_to: to, p_ref: clean(input.ref, DEPOSIT_TEXT_MAX), p_proof_url: clean(input.proofUrl, DEPOSIT_PROOF_URL_MAX) },
     () => null,
     DAY_CLOSE_COPY.forbidden,
   )
-  // Set once: a second deposit on the same close is a refusal, not a failure.
-  if (!result.ok && result.reason === 'already_closed') return refused('already_closed', DAY_CLOSE_COPY.depositTaken)
   return result
 }
 

@@ -166,7 +166,7 @@ describe('reopen and deposit', () => {
 
   it('records a deposit once, saying so on the second try', async () => {
     const first = rpc({ data: null, error: null })
-    const second = rpc({ data: null, error: { code: '55000', message: 'deposit_already_recorded' } })
+    const second = rpc({ data: null, error: { code: 'P0002', message: "deposit_already_recorded: this day's deposit is already recorded (or the day was reopened)." } })
     const deposit = { closeId: CLOSE, cents: 1985000, to: 'BDO savings', ref: '  ', proofUrl: null }
 
     expect((await recordDayDeposit(first.client, deposit)).ok).toBe(true)
@@ -180,6 +180,56 @@ describe('reopen and deposit', () => {
     expect((await recordDayDeposit(client, { closeId: CLOSE, cents: 100, to: '', ref: null, proofUrl: null })).ok).toBe(false)
     expect((await recordDayDeposit(client, { closeId: CLOSE, cents: -1, to: 'Safe', ref: null, proofUrl: null })).ok).toBe(false)
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('the database’s own refusals (20261027170000)', () => {
+  it('shows a range sentence without its machine key, and keeps note/reason refusals in our words', async () => {
+    const early = rpc({ data: null, error: { code: '22023', message: 'A business day can be closed once it has started, not before.' } })
+    const note = rpc({ data: null, error: { code: '22023', message: 'note_required: say why the day is closed anyway.' } })
+
+    expect(await closeBusinessDay(early.client, { tenantId: TENANT, outletId: null, day: '2026-10-28', note: null, force: false })).toEqual({
+      ok: false,
+      reason: 'invalid',
+      message: 'A business day can be closed once it has started, not before.',
+    })
+    expect(await closeBusinessDay(note.client, { tenantId: TENANT, outletId: null, day: '2026-10-24', note: 'x', force: true })).toEqual({
+      ok: false,
+      reason: 'invalid',
+      message: DAY_CLOSE_COPY.noteRequired,
+    })
+  })
+
+  it('says a day was already reopened, and that a missing close is missing', async () => {
+    const twice = rpc({ data: null, error: { code: 'P0002', message: 'not_closed: this day close was already reopened.' } })
+    const gone = rpc({ data: null, error: { code: 'P0002', message: 'That day close was not found.' } })
+
+    expect(await reopenBusinessDay(twice.client, CLOSE, 'again')).toEqual({ ok: false, reason: 'already_closed', message: DAY_CLOSE_COPY.alreadyReopened })
+    expect(await reopenBusinessDay(gone.client, CLOSE, 'again')).toEqual({ ok: false, reason: 'invalid', message: DAY_CLOSE_COPY.notFound })
+  })
+
+  it('reads the masked close get_business_day_close returns to a caller without reports', () => {
+    const masked = parseDayClose({
+      id: CLOSE,
+      tenantId: TENANT,
+      outletId: null,
+      businessDay: '2026-10-24',
+      version: 2,
+      status: 'closed',
+      windowStart: 'a',
+      windowEnd: 'b',
+      salesSource: 'platform_sql',
+      forcedShiftIds: [],
+      unsettledRemittanceIds: ['r1'],
+      closedBy: 'u1',
+      closedByName: 'Maria',
+      closedAt: '2026-10-24T20:30:00.000Z',
+      snapshot: { ...SNAPSHOT, sales: null, byServicePeriod: null, otherHoursNetCents: null, salesMasked: true },
+    })
+
+    expect(masked.snapshot.sales).toBeNull()
+    expect(masked.snapshot.byServicePeriod).toEqual([])
+    expect(masked.unsettledRemittanceIds).toEqual(['r1'])
   })
 })
 

@@ -82,7 +82,8 @@ export function DayClosePanel({ tenantSlug, outletId, day, status, close, isOwne
           )}
           {hasWaiting ? (
             <Check tone="warn">
-              {status.pendingRemittances.length} {status.pendingRemittances.length === 1 ? 'remittance is' : 'remittances are'} waiting to be accepted.{' '}
+              {status.pendingRemittances.length} {status.pendingRemittances.length === 1 ? 'remittance is' : 'remittances are'} waiting to be accepted or
+              settled.{' '}
               <Link href={`/${encodeURIComponent(tenantSlug)}/admin/cash?tab=accept`} className="font-bold underline underline-offset-2">
                 Review
               </Link>
