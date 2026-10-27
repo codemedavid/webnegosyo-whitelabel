@@ -160,7 +160,7 @@ async function checkClose(db, shift) {
   await cashSale(db, U.cashier2, 1000)
   await count(db, U.cashier2, s2, 140000)
   await refused(close(db, U.cashier2, s2), '22023', '₱100 short with no reason is refused', /variance_reason_required/)
-  await refused(close(db, U.cashier2, s2, { reason: 'bad luck' }), '23514', 'an unknown reason key is refused')
+  await refused(close(db, U.cashier2, s2, { reason: 'bad luck' }), '22023', 'an unknown reason key is refused by close_shift', /variance_reason_invalid/)
   eq((await close(db, U.cashier2, s2, { reason: 'wrong_change' })).differenceCents, -10000, 'with a reason chip it closes')
   eq((await row(db, s2)).variance_reason, 'wrong_change', 'the reason is kept')
 
@@ -203,6 +203,49 @@ async function checkForceClose(db) {
   await reset(db)
   const activity = (await db.query("select flags, summary->>'title' as title from store_activity where source_id = $1 and kind = 'shift.closed'", [s])).rows[0]
   eq([activity.flags, activity.title], [['forced_close'], 'Shift force-closed by Mara · drawer not counted'], 'activity names who force-closed it')
+}
+
+// QA wave 2: a zero-row UPDATE must never read as closed; reason chips by
+// direction; remittance 'required'; opening counts must equal the float.
+async function checkQaFixes(db) {
+  // Simulate the other device closing between close_shift's read and its
+  // UPDATE: a test-only trigger cancels the row (0 rows, as under a race).
+  await reset(db)
+  await db.exec(`create function test_skip_close() returns trigger language plpgsql as $$
+    begin if old.id::text = current_setting('test.skip_close', true) then return null; end if; return new; end $$;
+    create trigger trg_zzzz_test_skip before update on staff_shifts for each row execute function test_skip_close();`)
+  const raced = (await open(db, U.cashier)).shift.id
+  await count(db, U.cashier, raced, 50000)
+  await reset(db)
+  await db.query("select set_config('test.skip_close', $1, false)", [raced])
+  await refused(close(db, U.cashier, raced), 'P0002', 'close_shift: an UPDATE that changed no row is P0002, never a close with closedAt null', /shift_not_open/)
+  const other = (await open(db, U.cashier2)).shift.id
+  await reset(db)
+  await db.query("select set_config('test.skip_close', $1, false)", [other])
+  await refused(rpc(db, U.manager, 'select public.force_close_shift($1, $2)', [other, 'gone']), 'P0002', 'force_close_shift: the same', /shift_not_open/)
+  await reset(db)
+  await db.query("select set_config('test.skip_close', '', false)")
+  await db.exec('drop trigger trg_zzzz_test_skip on staff_shifts; drop function test_skip_close()')
+  eq(await scalar(db, "select count(*)::int from staff_shifts where id in ($1, $2) and status = 'open'", [raced, other]), 2, 'both shifts are still open')
+
+  // Reason chips by direction (CONTRACTS §6). The raced shift is ₱0 off: any chip.
+  await cashSale(db, U.cashier2, 500)
+  await count(db, U.cashier2, other, 40000) // expected 1000 → ₱600 short
+  await refused(close(db, U.cashier2, other, { reason: 'customer_left_extra' }), '22023', 'an "over" reason on a short drawer is refused', /variance_reason_invalid/)
+  eq((await close(db, U.cashier2, other, { reason: 'customer_paid_less' })).differenceCents, -60000, 'a short reason on a short drawer closes')
+
+  // remittance_mode 'required': nowhere to put the cash → refused.
+  await reset(db)
+  await db.query("insert into tenant_cash_settings (tenant_id, remittance_mode) values ($1, 'required') on conflict (tenant_id) do update set remittance_mode = 'required'", [T])
+  await refused(close(db, U.cashier, raced), '22023', "remittance 'required': a receiver or the safe must be chosen", /remit_to_required/)
+  eq(typeof (await rpc(db, U.cashier, CLOSE, [raced, null, null, null, null, null, true, null])).closedAt, 'string', 'to the safe, it closes')
+  await reset(db)
+  await db.query("update tenant_cash_settings set remittance_mode = 'optional' where tenant_id = $1", [T])
+
+  // Opening counts must equal the float asked for.
+  await refused(open(db, U.cashier3, { floatCents: 50000, denoms: { b100: 4 } }), '22023', 'an opening count that is not the float is refused')
+  await refused(open(db, U.cashier3, { floatCents: 50000, denoms: { b100: '5' } }), '22023', 'an invalid opening count is refused')
+  await refused(open(db, U.cashier3, { drawer: ZERO, floatCents: 10000, denoms: { b100: 1 } }), '22023', 'a zero-balance drawer counted at ₱100 is refused (its float is forced to ₱0)')
 }
 
 async function checkBlind(db) {
@@ -254,6 +297,7 @@ async function main() {
     await checkClose(db, shift)
     await checkZeroBalanceAndHandover(db)
     await checkForceClose(db)
+    await checkQaFixes(db)
     await checkBlind(db)
     console.log(`Shift close: ${checks} checks passed (open/join/stale/handover, preview, count attempts + reveal, close on last count + reason + CAS, force close, blind guard + hidden preview + activity, shift_counts RLS).`)
   } finally {

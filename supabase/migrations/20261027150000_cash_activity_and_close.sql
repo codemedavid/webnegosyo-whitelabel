@@ -386,6 +386,14 @@ begin
   if p_tenant is null or p_opening_float_cents is null or p_opening_float_cents not between 0 and 1000000000 then
     raise exception 'Starting cash must be between ₱0 and ₱10,000,000.' using errcode = '22023';
   end if;
+  if p_opening_denominations is not null then
+    if cash.denominations_total_cents(p_opening_denominations) is null then
+      raise exception 'The bill count is not valid.' using errcode = '22023';
+    end if;
+    if cash.denominations_total_cents(p_opening_denominations) <> p_opening_float_cents then
+      raise exception 'The bills counted do not add up to the starting cash.' using errcode = '22023';
+    end if;
+  end if;
   -- One open shift per person per store (idx_staff_shifts_one_open_per_staff).
   select * into s from public.staff_shifts x
    where x.tenant_id = p_tenant and x.staff_user_id = v_uid and x.status = 'open'
@@ -614,6 +622,10 @@ declare
   v_expected bigint;
   v_remittance uuid;
   v_handed bigint;
+  v_rows integer;
+  v_short_keys constant text[] := array['wrong_change', 'unrecorded_pay_out', 'counting_mistake', 'customer_paid_less', 'not_sure'];
+  v_over_keys constant text[] := array['customer_left_extra', 'unrecorded_pay_in', 'counting_mistake', 'not_sure'];
+  v_reason text := nullif(btrim(coalesce(p_variance_reason, '')), '');
 begin
   if v_uid is null then
     raise exception 'Sign in to end a shift.' using errcode = '42501';
@@ -639,9 +651,19 @@ begin
     raise exception 'The card and e-wallet tallies are not valid.' using errcode = '22023';
   end if;
   v_settings := public.get_cash_settings(s.tenant_id);
-  if abs(c.counted_cents - c.expected_cents) > (v_settings ->> 'varianceReasonFromCents')::bigint
-     and nullif(btrim(coalesce(p_variance_reason, '')), '') is null then
+  if abs(c.counted_cents - c.expected_cents) > (v_settings ->> 'varianceReasonFromCents')::bigint and v_reason is null then
     raise exception 'variance_reason_required: say why the drawer is short or over.' using errcode = '22023';
+  end if;
+  -- Reason chips (CONTRACTS §6): the short list when short, the over list when over.
+  if v_reason is not null and not (
+       (c.counted_cents < c.expected_cents and v_reason = any (v_short_keys))
+    or (c.counted_cents > c.expected_cents and v_reason = any (v_over_keys))
+    or (c.counted_cents = c.expected_cents and v_reason = any (v_short_keys || v_over_keys))) then
+    raise exception 'variance_reason_invalid: pick one of the reasons offered.' using errcode = '22023';
+  end if;
+  -- A store that requires remittance needs to know where the cash went.
+  if (v_settings ->> 'remittanceMode') = 'required' and p_remit_to is null and not coalesce(p_remit_to_safe, false) then
+    raise exception 'remit_to_required: hand the cash to someone or put it in the safe.' using errcode = '22023';
   end if;
   v_float_kept := coalesce(p_float_kept_cents,
                            case when s.is_zero_balance then 0 else least(round(s.opening_float * 100)::bigint, c.counted_cents) end);
@@ -660,14 +682,16 @@ begin
          closing_denominations = c.denominations,
          closing_non_cash = p_non_cash,
          device_expected_cash = c.device_expected_cents::numeric / 100,
-         variance_reason = nullif(btrim(coalesce(p_variance_reason, '')), ''),
+         variance_reason = v_reason,
          note = coalesce(nullif(btrim(coalesce(p_note, '')), ''), x.note),
          float_kept_cents = v_float_kept,
          closed_by_name = coalesce(nullif(btrim(coalesce(p_closed_by_name, '')), ''), cash.actor_name())
    where x.id = s.id and x.status = 'open'
   returning * into s;
+  -- Straight after the UPDATE: a later PERFORM would reset FOUND.
+  get diagnostics v_rows = row_count;
   perform set_config('app.shift_rpc', '', true);
-  if not found then
+  if v_rows = 0 then
     -- Closed meanwhile (CAS), or this account may not close it here.
     raise exception 'shift_not_open: this shift was closed or cannot be closed from here.' using errcode = 'P0002';
   end if;
@@ -701,6 +725,7 @@ declare
   v_uid uuid := auth.uid();
   s public.staff_shifts%rowtype;
   v_remittance uuid;
+  v_rows integer;
 begin
   if v_uid is null then
     raise exception 'Sign in to end a shift.' using errcode = '42501';
@@ -725,9 +750,11 @@ begin
          closed_by_name = cash.actor_name(), float_kept_cents = 0
    where x.id = s.id and x.status = 'open'
   returning * into s;
+  -- Straight after the UPDATE: a later PERFORM would reset FOUND.
+  get diagnostics v_rows = row_count;
   perform set_config('app.shift_rpc', '', true);
   perform set_config('app.shift_close_kind', '', true);
-  if not found then
+  if v_rows = 0 then
     raise exception 'shift_not_open: this shift was closed or cannot be closed from here.' using errcode = 'P0002';
   end if;
   if to_regclass('public.cash_remittances') is not null then

@@ -20,11 +20,41 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import fc from 'fast-check'
-import { summarizeShiftDrawer, type StaffPayment } from '../../../webnegosyo-app/lib/shift-drawer'
-import type { CounterSale } from '../../../webnegosyo-app/lib/pos-sales'
-import { summarizeCashMoves, type CashMove } from '../../../webnegosyo-app/lib/cash-drawers'
-import { reconcileShift } from '../../../webnegosyo-app/lib/shift'
 import { propertyRuns } from '../../utils/property'
+
+/*
+ * The app's own modules, loaded at RUN time only: a static import makes the
+ * web `tsc` follow their import graph into react-native's global types
+ * (FormData / fetch), which breaks unrelated web files. Jest resolves them
+ * normally; the shapes below are the slice this test uses (checked by the
+ * assertions, not by tsc).
+ */
+interface CounterSale {
+  _id: string
+  _creationTime: number
+  source?: string
+  status?: string
+  total: number
+  paymentMethod?: string
+  customerData?: unknown
+  amountPaid?: number
+  outlet_id?: string
+}
+interface StaffPayment { orderId: string; kind: 'charge' | 'refund'; amount: number; paymentMethodName?: string; recordedBy?: string; _creationTime?: number }
+interface DrawerSummary { saleCount: number; cashTotal: number; nonCashTotal: number; refundsPaid: number }
+interface MoveTotals { payIn: number; payOut: number; collected: number }
+interface Reconciliation { expectedInDrawer: number; floatToKeep: number }
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { summarizeShiftDrawer } = require('../../../webnegosyo-app/lib/shift-drawer') as {
+  summarizeShiftDrawer: (orders: CounterSale[], payments: StaffPayment[], shift: { outletId: string | null; staffUserId: string; openedAt: string; closedAt: string }, nowMs: number) => DrawerSummary
+}
+const { summarizeCashMoves } = require('../../../webnegosyo-app/lib/cash-drawers') as {
+  summarizeCashMoves: (moves: { kind: string; amount: number }[]) => MoveTotals
+}
+const { reconcileShift } = require('../../../webnegosyo-app/lib/shift') as {
+  reconcileShift: (input: { openingFloat: number; cashCollected: number; moves: MoveTotals; isZeroBalance: boolean }) => Reconciliation
+}
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const WORKER = path.join(process.cwd(), 'tests/sql/cash-shift-expected-worker.cjs')
 const MAX_SCENARIOS = 2000
@@ -132,7 +162,7 @@ function deviceAnswer(built: ReturnType<typeof toRows>) {
     _id: o.id, _creationTime: Date.parse(o.created_at), outlet_id: o.outlet_id ?? undefined, customerData: o.customer_data,
     total: o.total, status: o.status, source: o.source ?? undefined, paymentMethod: o.payment_method_name ?? undefined,
     amountPaid: o.amount_paid ?? 0,
-  }) as CounterSale)
+  }))
   const ledger: StaffPayment[] = payments.map((p) => ({
     orderId: p.order_id, kind: p.kind as 'charge' | 'refund', amount: p.amount, paymentMethodName: p.payment_method_name ?? undefined,
     recordedBy: p.recorded_by ?? undefined, _creationTime: Date.parse(p.created_at),
@@ -140,7 +170,7 @@ function deviceAnswer(built: ReturnType<typeof toRows>) {
   const summary = summarizeShiftDrawer(sales, ledger, {
     outletId: scenario.shift.outletId, staffUserId: scenario.shift.staffUserId ?? '', openedAt, closedAt: until,
   }, Date.parse(until))
-  const moves = summarizeCashMoves(scenario.moves.map((m) => ({ ...m, shiftId: scenario.shift.id }) as unknown as CashMove))
+  const moves = summarizeCashMoves(scenario.moves)
   const rec = reconcileShift({ openingFloat: scenario.shift.openingFloat, cashCollected: summary.cashTotal, moves, isZeroBalance: scenario.shift.isZeroBalance })
   // `+ 0` folds JS -0 (Math.round of a tiny negative float) into 0.
   const c = (n: number) => Math.round(n * 100) + 0
