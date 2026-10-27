@@ -147,3 +147,22 @@ export function businessDayStartMs(
 ): number {
   return dayKeyStartMs(businessDayKey(atMs, schedule, offsetMs), schedule, offsetMs);
 }
+
+export interface BusinessDayWindow {
+  dayKey: string;
+  /** Inclusive. */
+  startMs: number;
+  /** EXCLUSIVE. Not always start + 24 h (the day a cutoff changes). */
+  endMs: number;
+}
+
+/** The business day that ended most recently before `nowMs` (yesterday's). */
+export function previousBusinessDayWindow(
+  nowMs: number,
+  schedule: readonly CutoffChange[],
+  offsetMs: number = DEFAULT_TZ_OFFSET_MS
+): BusinessDayWindow {
+  const todayStart = businessDayStartMs(nowMs, schedule, offsetMs);
+  const dayKey = businessDayKey(todayStart - 1, schedule, offsetMs);
+  return { dayKey, startMs: dayKeyStartMs(dayKey, schedule, offsetMs), endMs: todayStart };
+}

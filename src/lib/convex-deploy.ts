@@ -127,7 +127,12 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // config sync); no row = Manila midnight, as before. Built on a branch that
 // does not have v37 yet: REBUILD the bundle after merging main, or v37's
 // security fixes are missing from what v38 pushes.
-const CURRENT_SCHEMA_VERSION = 38;
+// v39 draws Trends, upsell trends and the payment-method daily breakdown on
+// the business day, and the dailyStats cron (now 04:00 UTC = noon Manila,
+// after any cutoff) snapshots the business day that just ENDED; the old
+// 23:59 UTC run only ever captured midnight to 8 AM Manila. Same rebuild-
+// after-merging-main note as v38.
+const CURRENT_SCHEMA_VERSION = 39;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 
