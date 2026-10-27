@@ -37,6 +37,9 @@ function captionOf(context: ReportContext): string {
 function trendBuckets(context: ReportContext, rows: readonly ProfitPeriodFigures[], report: ProfitReport): ProfitTrendBucket[] {
   const { period } = context
   const grain = profitGrainFor(period.grain)
+  // Calendar buckets on purpose: the profit SQL (report_profit_*, 20261022120300)
+  // still buckets by the Manila date. Pass `context.schedule` here once it
+  // follows the business day, or the bars and these keys stop matching.
   const keys = bucketKeys(period.start, period.end, grain)
   return profitTrend(keys, rows, report.ingredientBasis).map((point, index) => ({
     key: point.bucket,
