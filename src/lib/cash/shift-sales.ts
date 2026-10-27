@@ -13,6 +13,7 @@
  */
 
 import { z } from 'zod'
+import { normalizePayment } from '@/lib/queries/platform-analytics-merge'
 import { callCashRpc, cashFailure, type CashResult, type CashRpcClient } from './cash-rpc'
 
 export type { CashRpcClient, CashResult } from './cash-rpc'
@@ -36,7 +37,8 @@ const summarySchema = z.object({
   refundCents: cents,
 })
 
-const paymentSchema = z.object({ key: z.string(), label: z.string(), cents, count })
+/** `type` is the payment-buckets grouping (GCash, Cash, …); optional until the RPC sends it. */
+const paymentSchema = z.object({ key: z.string(), label: z.string(), cents, count, type: z.string().optional() })
 const groupSchema = z.object({ key: z.string(), label: z.string(), orders: count, netCents: cents })
 const itemSchema = z.object({ label: z.string(), quantity: z.number().nonnegative(), netCents: cents })
 
@@ -128,14 +130,17 @@ export function parseShiftSalesReport(data: unknown): ShiftSalesReport {
 }
 
 /**
- * The register's own cash rule (`webnegosyo-app/lib/pos-payment-methods.ts`
- * CASH_NAME): a method is cash when "cash" or "cod" is a word of its name.
- * "GCash" is not cash; "Cash on delivery" is.
+ * Which money is cash: the payment-buckets `type` (`normalizePayment`, the
+ * grouping every report uses), taken from the bucket when the RPC sends it,
+ * else derived from the bucket's label the same way payment-buckets.ts does.
+ * The bucket `key` alone cannot say it: a method paid through its
+ * `payment_methods` row is keyed `id:<uuid>`. Cash on delivery is cash in
+ * hand, so it counts as cash.
  */
-const CASH_NAME = /(^|\s)(cash|cod)(\s|$)/i
+const CASH_TYPES: ReadonlySet<string> = new Set(['Cash', 'Cash on Delivery'])
 
-export function isCashMethodLabel(label: string): boolean {
-  return CASH_NAME.test(label)
+export function isCashPayment(payment: Pick<ShiftSalesPayment, 'label' | 'type'>): boolean {
+  return CASH_TYPES.has(payment.type ?? normalizePayment(payment.label))
 }
 
 export interface CashSplit {
@@ -148,7 +153,7 @@ export function cashAndNonCash(report: ShiftSalesReport): CashSplit | null {
   if (report.source !== 'server' || report.hidden || report.payments === null) return null
   return report.payments.reduce<CashSplit>(
     (split, payment) =>
-      isCashMethodLabel(payment.label)
+      isCashPayment(payment)
         ? { ...split, cashCents: split.cashCents + payment.cents }
         : { ...split, nonCashCents: split.nonCashCents + payment.cents },
     { cashCents: 0, nonCashCents: 0 },

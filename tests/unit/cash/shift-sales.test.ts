@@ -8,7 +8,7 @@ import {
   CASH_SALES_FAILED_MESSAGE,
   CASH_SALES_FORBIDDEN_MESSAGE,
   cashAndNonCash,
-  isCashMethodLabel,
+  isCashPayment,
   parseShiftSalesReport,
   readPeriodSales,
   readShiftSales,
@@ -153,13 +153,18 @@ describe('parseShiftSalesReport', () => {
   })
 })
 
-describe('isCashMethodLabel', () => {
-  it('matches the register rule: "cash" or "cod" as a word', () => {
-    expect(isCashMethodLabel('Cash')).toBe(true)
-    expect(isCashMethodLabel('Cash on delivery')).toBe(true)
-    expect(isCashMethodLabel('COD')).toBe(true)
-    expect(isCashMethodLabel('GCash')).toBe(false)
-    expect(isCashMethodLabel('Cashless card')).toBe(false)
+describe('isCashPayment', () => {
+  it('uses the payment-buckets type when the report sends it', () => {
+    expect(isCashPayment({ label: 'Drawer', type: 'Cash' })).toBe(true)
+    expect(isCashPayment({ label: 'Cash', type: 'GCash' })).toBe(false)
+  })
+
+  it('else groups the label exactly as payment-buckets does (normalizePayment)', () => {
+    expect(isCashPayment({ label: 'Cash' })).toBe(true)
+    expect(isCashPayment({ label: 'Cash on delivery' })).toBe(true)
+    expect(isCashPayment({ label: 'COD' })).toBe(true)
+    expect(isCashPayment({ label: 'GCash' })).toBe(false)
+    expect(isCashPayment({ label: 'BPI transfer' })).toBe(false)
   })
 })
 
