@@ -52,9 +52,9 @@ describe('cashAccessFor', () => {
     expect(cashAccessFor(staff({ role: 'platform_staff' }), TENANT_ID)).toEqual({ ok: false, reason: 'no_permission' })
   })
 
-  it('lets the owner and legacy full access in, with the cutoff editable', () => {
+  it('lets the owner in with the cutoff editable; legacy full access needs cash_manage ticked (opt-in)', () => {
     expect(cashAccessFor(staff({ is_owner: true, permissions: [] }), TENANT_ID)).toMatchObject({ ok: true, canChangeCutoff: true })
-    expect(cashAccessFor(staff({ permissions: null }), TENANT_ID)).toMatchObject({ ok: true, canChangeCutoff: true })
+    expect(cashAccessFor(staff({ permissions: null }), TENANT_ID)).toEqual({ ok: false, reason: 'no_permission' })
   })
 
   it('keeps the cutoff read-only without settings, or on a branch-locked account', () => {

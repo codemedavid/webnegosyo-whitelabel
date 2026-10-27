@@ -64,9 +64,9 @@ describe('describeCashNotification', () => {
 })
 
 describe('canReadCashNotification', () => {
-  it('needs cash_manage: owners, legacy full access and holders yes; others no', () => {
+  it('needs cash_manage: owners and holders yes; legacy full access (opt-in key) and others no', () => {
     expect(canReadCashNotification(account({ is_owner: true, permissions: [] }), notice())).toBe(true)
-    expect(canReadCashNotification(account({ permissions: null }), notice())).toBe(true)
+    expect(canReadCashNotification(account({ permissions: null }), notice())).toBe(false)
     expect(canReadCashNotification(account(), notice())).toBe(true)
     expect(canReadCashNotification(account({ permissions: ['menu', 'pos', 'store_setup'] }), notice())).toBe(false)
   })

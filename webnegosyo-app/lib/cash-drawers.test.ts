@@ -24,9 +24,9 @@ describe("suggestDrawerName", () => {
 });
 
 describe("canManageCash", () => {
-  it("lets owners, full-access admins and cash_manage holders manage cash, not plain cashiers", () => {
+  it("lets owners and cash_manage holders manage cash; not legacy full access (opt-in) or plain cashiers", () => {
     expect(canManageCash({ role: "admin", isOwner: true, permissions: [] })).toBe(true);
-    expect(canManageCash({ role: "admin", isOwner: false, permissions: null })).toBe(true);
+    expect(canManageCash({ role: "admin", isOwner: false, permissions: null })).toBe(false);
     expect(canManageCash({ role: "admin", isOwner: false, permissions: ["pos", "cash_manage"] })).toBe(true);
     // Cash management moved off store_setup onto its own key (backfilled once).
     expect(canManageCash({ role: "admin", isOwner: false, permissions: ["pos", "store_setup"] })).toBe(false);

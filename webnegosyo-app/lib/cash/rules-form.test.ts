@@ -79,14 +79,14 @@ describe("diffCashRules / rulesPatch", () => {
 });
 
 describe("receiversOf", () => {
-  it("is the owner and everyone who manages cash, owner first", () => {
+  it("is the owner and everyone who holds cash_manage, owner first (legacy full access does not: opt-in)", () => {
     const staff = [
       { userId: "c", isOwner: false, permissions: ["pos"], displayName: "Carlo", outletId: null },
       { userId: "m", isOwner: false, permissions: ["cash_manage", "pos"], displayName: "Maria", outletId: "b1" },
       { userId: "o", isOwner: true, permissions: null, displayName: "Lorna", outletId: null },
       { userId: "f", isOwner: false, permissions: null, displayName: null, outletId: null },
     ];
-    expect(receiversOf(staff).map((s) => s.userId)).toEqual(["o", "m", "f"]);
+    expect(receiversOf(staff).map((s) => s.userId)).toEqual(["o", "m"]);
   });
 });
 

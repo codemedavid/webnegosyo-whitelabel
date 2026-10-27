@@ -71,8 +71,8 @@ describe('20261022130200 expenses is opt-in', () => {
   const OPT_IN = code(migration('20261022130200_expenses_opt_in.sql'))
   const body = functionBody(OPT_IN, 'app_user_has_permission')
 
-  it('keeps every opt-in key of the registry out of legacy full access', () => {
-    expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(OPT_IN_PERMISSION_KEYS)})`)
+  it('keeps the opt-in keys of its day out of legacy full access (cash_manage joined in 20261027120100)', () => {
+    expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(['activity_view', 'approve_requests', 'expenses'])})`)
     expect(OPT_IN_PERMISSION_KEYS).toContain('expenses')
   })
 
@@ -191,9 +191,13 @@ describe('20261027120100 cash_manage carved out of store_setup', () => {
     expect(CASH).toMatch(/security invoker\s+set search_path = ''/)
   })
 
-  it('needs no SQL key list: cash_manage is neither opt-in nor implied, and the live body is left alone', () => {
-    expect(OPT_IN_PERMISSION_KEYS).not.toContain('cash_manage')
+  it('makes cash_manage opt-in (release review D1): the newest app_user_has_permission keeps every registry opt-in key out of legacy full access', () => {
+    expect(OPT_IN_PERMISSION_KEYS).toContain('cash_manage')
     expect(Object.keys(IMPLIED_BY)).not.toContain('cash_manage')
-    expect(CASH).not.toContain('function public.app_user_has_permission(')
+    const body = functionBody(CASH, 'app_user_has_permission')
+    expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(OPT_IN_PERMISSION_KEYS)})`)
+    expect(body).toContain("(p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))")
+    expect(body).toContain("(p_permission = 'reports' and 'analytics' = any (au.permissions))")
+    expect(CASH).toContain('revoke all on function public.app_user_has_permission(uuid, text) from public, anon;')
   })
 })

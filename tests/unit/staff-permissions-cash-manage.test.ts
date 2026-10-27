@@ -69,12 +69,12 @@ describe('the cash_manage key', () => {
     expect(coreValidatePermissionKeys(['pos', 'cash_manage'])).toEqual(['pos', 'cash_manage'])
   })
 
-  test('is not opt-in: legacy full access keeps cash management it already had', () => {
-    expect(OPT_IN_PERMISSION_KEYS).not.toContain('cash_manage')
-    expect(isGrantedByFullAccess('cash_manage')).toBe(true)
-    expect(hasPermission(staff(null), 'cash_manage')).toBe(true)
-    expect(appHasPermission(appStaff(null), 'cash_manage')).toBe(true)
-    expect(desktopHasPermission(appStaff(null), 'cash_manage')).toBe(true)
+  test('is opt-in (release review D1): legacy full access does not hold it, the owner ticks it by name', () => {
+    expect(OPT_IN_PERMISSION_KEYS).toContain('cash_manage')
+    expect(isGrantedByFullAccess('cash_manage')).toBe(false)
+    expect(hasPermission(staff(null), 'cash_manage')).toBe(false)
+    expect(appHasPermission(appStaff(null), 'cash_manage')).toBe(false)
+    expect(desktopHasPermission(appStaff(null), 'cash_manage')).toBe(false)
   })
 
   test('is implied by nothing — store_setup holders get it from the one-time backfill, not containment', () => {
@@ -117,10 +117,10 @@ describe('the cash_manage key', () => {
 })
 
 describe('canManageCash (merchant app)', () => {
-  test('is the cash_manage key, with owner and full-access semantics kept', () => {
+  test('is the cash_manage key: owners and superadmins yes, legacy full access no (opt-in)', () => {
     expect(canManageCash({ role: 'admin', isOwner: true, permissions: [] })).toBe(true)
     expect(canManageCash({ role: 'superadmin', isOwner: false, permissions: [] })).toBe(true)
-    expect(canManageCash(appStaff(null))).toBe(true)
+    expect(canManageCash(appStaff(null))).toBe(false)
     expect(canManageCash(appStaff(['pos', 'cash_manage']))).toBe(true)
   })
 
