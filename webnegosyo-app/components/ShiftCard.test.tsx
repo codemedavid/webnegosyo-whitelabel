@@ -44,7 +44,7 @@ jest.mock("./remittances/ForceCloseShiftSheet", () => ({ ForceCloseShiftSheet: (
 // free-text pay out is still offered; the expense tests switch it on.
 const mockDrawerExpenses = {
   isReady: false,
-  pendingFor: jest.fn(() => ({ cents: 0, count: 0, waiting: 0 })),
+  pendingFor: jest.fn<{ cents: number; count: number; waiting: number }, [string]>(() => ({ cents: 0, count: 0, waiting: 0 })),
   refusedFor: jest.fn((): { id: string; categoryName: string; cents: number; reason: string }[] => []),
   retryRefused: jest.fn<Promise<void>, [string]>(async () => {}),
   removeRefused: jest.fn<Promise<void>, [string]>(async () => {}),

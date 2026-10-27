@@ -24,7 +24,7 @@ import { readStaffName } from "../../lib/shift-service";
 import { remittanceHref } from "../../lib/cash-routes";
 import { toRemitReceivers } from "../../lib/cash/receivers";
 import { useCashReceivers, useCashSettings } from "../../lib/cash/use-cash-rules";
-import { closeShiftRpc, countShift } from "../../lib/cash/shift-close";
+import { closeShiftRpc, countShift, type ShiftClosePreview } from "../../lib/cash/shift-close";
 import { useClosePreview, useEndShiftDraft } from "../../lib/cash/shift-end-hooks";
 import { useShiftDetail } from "../../lib/cash/shift-sales-hooks";
 import {
@@ -76,18 +76,15 @@ export default function EndShiftScreen() {
   if (shift.status !== "open") return <Blocked title="This shift has ended" message="Its slip is in Remittances." />;
   const answer = preview.data;
   if (!answer) return <Failed message={preview.error ?? END_SHIFT_COPY.offlineCount} onRetry={() => void preview.refetch()} />;
-  if (!answer.ok) {
-    return answer.kind === "failed" ? (
-      <Failed message={answer.message} onRetry={() => void preview.refetch()} />
-    ) : (
-      <Blocked title="Can't end this shift here" message={answer.message} />
-    );
-  }
+  // Offline or unreachable: the count can still be typed and saved; the
+  // server is asked again before anything is sent.
+  if (!answer.ok && answer.kind !== "failed") return <Blocked title="Can't end this shift here" message={answer.message} />;
   return (
     <EndShiftFlow
       key={shift.id}
       shift={shift}
-      preview={answer.data}
+      preview={answer.ok ? answer.data : null}
+      previewNotice={answer.ok ? null : answer.message}
       draft={draft}
       update={update}
       clearDraft={clear}
@@ -101,14 +98,16 @@ type DraftApi = ReturnType<typeof useEndShiftDraft>;
 
 interface FlowProps {
   shift: Shift;
-  preview: Extract<NonNullable<ReturnType<typeof useClosePreview>["data"]>, { ok: true }>["data"];
+  /** Null = not reachable right now (offline): counting still works, sending waits. */
+  preview: ShiftClosePreview | null;
+  previewNotice: string | null;
   draft: NonNullable<DraftApi["draft"]>;
   update: DraftApi["update"];
   clearDraft: DraftApi["clear"];
   refetchPreview: () => Promise<void>;
 }
 
-function EndShiftFlow({ shift, preview, draft, update, clearDraft, refetchPreview }: FlowProps) {
+function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft, refetchPreview }: FlowProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const isTablet = isTabletScreen(useWindowDimensions());
@@ -122,14 +121,15 @@ function EndShiftFlow({ shift, preview, draft, update, clearDraft, refetchPrevie
   const [target, setTarget] = useState<RemitTarget | null>(null);
   const [how, setHow] = useState<RemitHow>("phone");
 
-  const steps = useMemo(() => stepsFor(preview.nonCashByMethod), [preview.nonCashByMethod]);
+  const methods = preview?.nonCashByMethod ?? null;
+  const steps = useMemo(() => stepsFor(methods), [methods]);
   const step: EndShiftStep = steps.includes(draft.step) ? draft.step : "count";
-  const nonCash = draft.nonCash ?? initialNonCashAnswers(preview.nonCashByMethod ?? []);
+  const nonCash = draft.nonCash ?? initialNonCashAnswers(methods ?? []);
   const count = draft.count;
   const counted = countedCentsOf(draft);
   const floatKept = floatToKeep({
-    openingFloatCents: preview.floatCents,
-    isZeroBalance: preview.isZeroBalance,
+    openingFloatCents: preview?.floatCents ?? Math.round(shift.openingFloat * 100),
+    isZeroBalance: preview?.isZeroBalance ?? shift.isZeroBalance,
     countedCents: count?.countedCents ?? counted ?? 0,
     chosenCents: draft.floatKeptCents,
   });
@@ -249,6 +249,7 @@ function EndShiftFlow({ shift, preview, draft, update, clearDraft, refetchPrevie
         />
       </View>
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        {previewNotice ? <Text style={styles.notice}>{previewNotice}</Text> : null}
         {step === "count" ? (
           isCountLocked(draft) && count ? (
             <View style={styles.locked} testID="end-shift-locked">
@@ -272,7 +273,7 @@ function EndShiftFlow({ shift, preview, draft, update, clearDraft, refetchPrevie
             onNote={(note) => update((d) => ({ ...d, note }))}
             reasonError={error === END_SHIFT_COPY.pickReason ? error : null}
             thresholdCents={settings.varianceReasonFromCents}
-            isZeroBalance={preview.isZeroBalance}
+            isZeroBalance={preview?.isZeroBalance ?? shift.isZeroBalance}
             floatKeptCents={floatKept}
             handoverCents={handover}
             onFloatKept={(cents) => update((d) => ({ ...d, floatKeptCents: cents }))}
@@ -341,6 +342,7 @@ const styles = StyleSheet.create({
   footer: { padding: spacing.xl, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator, backgroundColor: colors.background },
   error: { ...typography.body, color: colors.danger, fontWeight: "600" },
   hint: { ...typography.caption, color: colors.textMuted },
+  notice: { ...typography.caption, fontWeight: "600", color: colors.statusPending.text, backgroundColor: colors.warningLight, padding: spacing.md, borderRadius: 10 },
   locked: { backgroundColor: colors.card, borderRadius: 16, padding: spacing.lg, gap: spacing.xs, borderWidth: 1, borderColor: colors.separator },
   lockedTitle: { ...typography.title, color: colors.textPrimary, fontVariant: ["tabular-nums"] },
 });
