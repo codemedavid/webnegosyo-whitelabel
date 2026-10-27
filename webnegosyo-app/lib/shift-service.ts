@@ -431,6 +431,10 @@ export interface ShiftDetail extends ShiftRecord {
   isBlind: boolean;
   /** Stamped by the server at clock-in; null until that column exists. */
   businessDay: string | null;
+  /** The close's records (null until closed, or before the columns exist); parsed by their readers. */
+  closingDenominations: unknown;
+  closingNonCash: unknown;
+  varianceReason: string | null;
 }
 
 /**
@@ -447,8 +451,21 @@ export async function fetchShiftById(tenantId: string, shiftId: string, db: Db =
   );
   if (error) throw asError(error, "The shift could not be read.");
   if (!data) return null;
-  const row = data as unknown as ShiftRow & { is_blind?: boolean | null; business_day?: string | null };
-  return { ...toShift(row), isBlind: row.is_blind === true, businessDay: row.business_day ?? null };
+  const row = data as unknown as ShiftRow & {
+    is_blind?: boolean | null;
+    business_day?: string | null;
+    closing_denominations?: unknown;
+    closing_non_cash?: unknown;
+    variance_reason?: string | null;
+  };
+  return {
+    ...toShift(row),
+    isBlind: row.is_blind === true,
+    businessDay: row.business_day ?? null,
+    closingDenominations: row.closing_denominations ?? null,
+    closingNonCash: row.closing_non_cash ?? null,
+    varianceReason: row.variance_reason ?? null,
+  };
 }
 
 /** The session read only names the person; it must never hold up a close or a clock-in. */
