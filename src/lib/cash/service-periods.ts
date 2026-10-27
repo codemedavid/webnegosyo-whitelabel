@@ -90,7 +90,12 @@ interface DbError {
   message: string
 }
 
+export const SERVICE_PERIOD_NAME_TAKEN = 'There is already a shift with that name. Pick another name.'
+const UNIQUE_VIOLATION = '23505'
+
 function fail(label: string, error: DbError): never {
+  // service_periods_live_name: one live name per branch (or store-wide).
+  if (error.code === UNIQUE_VIOLATION) throw new Error(SERVICE_PERIOD_NAME_TAKEN)
   console.error(`[cash] service_periods ${label} failed`, `${error.code ?? 'no code'}: ${error.message}`)
   throw new Error(SERVICE_PERIOD_NOT_SAVED)
 }

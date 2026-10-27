@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  SERVICE_PERIOD_NAME_TAKEN,
   SERVICE_PERIOD_NOT_SAVED,
   archiveServicePeriod,
   createServicePeriod,
@@ -158,6 +159,16 @@ describe('createServicePeriod', () => {
     await expect(
       createServicePeriod(db, TENANT_ID, { name: 'Day shift', startsMinutes: 720, endsMinutes: 1200, outletId: null }, 0),
     ).rejects.toThrow(SERVICE_PERIOD_NOT_SAVED)
+  })
+})
+
+describe('a name already in use', () => {
+  it('says so in plain words (the live-name unique index)', async () => {
+    const { db } = writeDb({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } })
+
+    await expect(
+      createServicePeriod(db, TENANT_ID, { name: 'Day shift', startsMinutes: 720, endsMinutes: 1200, outletId: null }, 0),
+    ).rejects.toThrow(SERVICE_PERIOD_NAME_TAKEN)
   })
 })
 
