@@ -16,7 +16,9 @@ it('allocates per Manila day and recovers the same number for a retried order', 
         let field: string; let value: unknown
         build({ eq: (f, v) => { field = f; value = v } })
         const find = async () => tables.get(table)?.find(row => row[field] === value) ?? null
-        return { first: find, unique: find, collect: async () => tables.get(table)?.filter(row => row[field] === value) ?? [] }
+        const matching = () => tables.get(table)?.filter(row => row[field] === value) ?? []
+        // `take` is how the business-day schedule is read (tenantConfig, convex/businessDayConfig.ts).
+        return { first: find, unique: find, collect: async () => matching(), take: async (n: number) => matching().slice(0, n) }
       } }),
       insert: async (table: string, value: Record<string, unknown>) => {
         const row = { ...value, _id: String(++nextId) }
