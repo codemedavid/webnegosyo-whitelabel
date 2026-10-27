@@ -121,7 +121,13 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // Existing v34 tenants must receive these function updates too.
 // v36 splits payment-method analytics by the settlement ledger, so a bill paid
 // ₱120 by GCash and the rest in cash counts under both methods.
-const CURRENT_SCHEMA_VERSION = 36;
+// (v37 is the 2026-10-26 security release on main.)
+// v38 numbers orders (#01) and the dashboard's "today" by the store's
+// business-day cutoff (`business_day_cutoffs` tenantConfig row, pushed by the
+// config sync); no row = Manila midnight, as before. Built on a branch that
+// does not have v37 yet: REBUILD the bundle after merging main, or v37's
+// security fixes are missing from what v38 pushes.
+const CURRENT_SCHEMA_VERSION = 38;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 
