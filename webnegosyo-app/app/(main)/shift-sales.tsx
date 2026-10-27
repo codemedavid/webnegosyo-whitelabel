@@ -12,6 +12,7 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { useIsWideReports } from "../../components/reports/ReportsColumns";
 import { ShiftSalesBody, ShiftSalesSkeleton, type ShiftSalesLens } from "../../components/shift-sales/ShiftSalesBody";
 import { canManageCash } from "../../lib/cash-drawers";
+import { useServicePeriods } from "../../lib/cash/use-cash-rules";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { summarizeShiftDrawer } from "../../lib/shift-drawer";
@@ -23,6 +24,7 @@ import { sampleShiftSales } from "../../lib/cash/shift-sales-sample";
 import {
   needsDeviceCount,
   parseShiftSalesTarget,
+  resolvePeriodName,
   resolveShiftSalesState,
   type DeviceSalesRead,
   type ShiftSalesScreenState,
@@ -202,6 +204,9 @@ function ShiftSalesContent(props: ContentProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const sample = useMemo(() => (isDemo ? sampleShiftSales(Date.now()) : null), [isDemo]);
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  // Reports → Shifts links a named shift by id; its name is the title.
+  const periods = useServicePeriods(!isDemo && target.kind === "period" && target.periodId ? tenantId : null);
 
   const shift = shiftRead.data ?? null;
   const canManage = canManageCash({ role, isOwner, permissions });
@@ -211,7 +216,7 @@ function ShiftSalesContent(props: ContentProps) {
   const report = state.kind === "ready" ? state.report : null;
   const isOpen = report?.shift ? report.shift.closedAt === null : shift?.status === "open";
   const isMine = shift !== null && shift.staffUserId === userId;
-  const periodName = target.kind === "period" ? target.periodName : null;
+  const periodName = resolvePeriodName(target, periods.data);
   const title = shiftSalesTitle(report?.shift ?? (shift ? headerShift(shift) : null), periodName);
   const subtitle = report ? shiftSalesSubtitle(report, new Date().toISOString(), null) : undefined;
 

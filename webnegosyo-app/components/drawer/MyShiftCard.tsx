@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { CASH_MOVE_COPY, type CashMove } from "../../lib/cash-drawers";
-import { shiftSalesHref } from "../../lib/cash/shift-sales-state";
+import { shiftSalesHref } from "../../lib/cash-routes";
 import type { DrawerExpectationRead } from "../../lib/drawer-expectation";
 import type { RefusedPayout } from "../../lib/expenses/expense-queue";
 import { formatPeso } from "../../lib/format";

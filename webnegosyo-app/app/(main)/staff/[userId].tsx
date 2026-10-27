@@ -11,7 +11,7 @@ import { DayHistoryList } from "../../../components/staff/DayHistoryList";
 import { ListRow } from "../../../components/ListRow";
 import { activityHref } from "../../../lib/activity/activity-links";
 import { ShiftHistoryList } from "../../../components/staff/ShiftHistoryList";
-import { shiftSalesHref } from "../../../lib/cash/shift-sales-state";
+import { shiftSalesHref } from "../../../lib/cash-routes";
 import { StaffAccessPanel } from "../../../components/staff/StaffAccessPanel";
 import { StaffAvatar } from "../../../components/staff/StaffAvatar";
 import { StaffStatStrip } from "../../../components/staff/StaffStatStrip";

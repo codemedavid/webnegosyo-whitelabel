@@ -2,8 +2,8 @@ import {
   DEVICE_AFTER_SERVER_FAILED_NOTICE,
   needsDeviceCount,
   parseShiftSalesTarget,
+  resolvePeriodName,
   resolveShiftSalesState,
-  shiftSalesHref,
   type DeviceSalesRead,
   type ServerSalesRead,
 } from "./shift-sales-state";
@@ -115,17 +115,19 @@ describe("parseShiftSalesTarget", () => {
       fromMs: Date.parse("2026-10-24T04:00:00.000Z"),
       toMs: Date.parse("2026-10-24T12:00:00.000Z"),
       periodName: "Day shift",
+      periodId: null,
       outletId: "b1",
     });
   });
 
-  it("never titles the screen with a service period's id", () => {
-    const target = parseShiftSalesTarget({
-      from: "2026-10-24T04:00:00.000Z",
-      to: "2026-10-24T12:00:00.000Z",
-      period: "6f1c2a8e-2b1d-4c3e-9a7f-0123456789ab",
-    });
-    expect(target).toMatchObject({ kind: "period", periodName: null });
+  it("takes a service period's id from periodSalesHref and looks its name up, never showing the id", () => {
+    const id = "6f1c2a8e-2b1d-4c3e-9a7f-0123456789ab";
+    const target = parseShiftSalesTarget({ from: "2026-10-24T04:00:00.000Z", to: "2026-10-24T12:00:00.000Z", period: id });
+    expect(target).toMatchObject({ kind: "period", periodName: null, periodId: id });
+    if (!target) return;
+    expect(resolvePeriodName(target, [{ id, name: "Night shift" }])).toBe("Night shift");
+    expect(resolvePeriodName(target, [])).toBeNull();
+    expect(resolvePeriodName(target, undefined)).toBeNull();
   });
 
   it("refuses a link without a usable window instead of guessing one", () => {
@@ -135,7 +137,4 @@ describe("parseShiftSalesTarget", () => {
     expect(parseShiftSalesTarget({ from: "2026-01-01T00:00:00.000Z", to: "2026-10-24T00:00:00.000Z" })).toBeNull();
   });
 
-  it("builds the shift link the Drawer and shift history open", () => {
-    expect(shiftSalesHref("a b")).toBe("/(main)/shift-sales?shift=a%20b");
-  });
 });

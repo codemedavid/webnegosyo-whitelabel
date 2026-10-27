@@ -1,7 +1,6 @@
 import { ShiftCard } from "../../components/ShiftCard";
 import { OrderSettlementReader, type OrderLedger } from "../../components/OrderSettlementReader";
 import React, { useCallback, useMemo, useState } from "react";
-import { DAY_MS, localDayStartMs } from "../../lib/backends/analytics-time";
 import {
   Alert,
   RefreshControl,
@@ -25,7 +24,8 @@ import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { useAuthStore } from "../../stores/auth-store";
 import { useRegisterSettingsStore } from "../../stores/register-settings-store";
 import { selectShiftSales, summarizeCounterSales } from "../../lib/pos-sales";
-import { idsBeyondPage, ordersSince, pageReachesBack } from "../../lib/drawer-day";
+import { drawerDayWindow, idsBeyondPage, ordersSince, pageReachesBack } from "../../lib/drawer-day";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import {
   DRAWER_COUNTING_OPTIONS,
   countingFromPolicy,
@@ -86,15 +86,6 @@ const NO_SALES: DrawerSale[] = [];
  */
 const INTAKE_PREVIEW = 3;
 
-/**
- * Start of today in MANILA — the day every report, the daily order number and
- * the server's own "today" use. The phone's timezone made a drawer on a phone
- * set to another zone count a different day than Home.
- */
-function startOfToday(): number {
-  return localDayStartMs(Date.now());
-}
-
 function formatSaleTime(at: number): string {
   return new Date(at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
 }
@@ -153,14 +144,18 @@ export default function PosSalesScreen() {
   });
   const page = (mergedSales as DrawerSale[] | undefined) ?? NO_SALES;
 
-  const dayStart = startOfToday();
+  // Today = the store's BUSINESS day (its cutoff), not the phone's calendar
+  // day: with a 4 AM cutoff the 1 AM sales are still tonight's drawer. Midnight
+  // until the schedule loads, as before.
+  const tradingDay = useTradingDay();
+  const { sinceMs: dayStart, untilMs: dayEnd } = drawerDayWindow(tradingDay.anchorMs, tradingDay.schedule);
   const reachesBack = pageReachesBack(page, SHIFT_ORDER_LIMIT, dayStart);
   // Platform only: older Convex deployments refuse the window arguments.
   const canReadDay = orderBackend === "platform" && !isOffline;
   const needsDayRead = canReadDay && !reachesBack;
   const dayResult = useSafeQuery<DrawerSale[]>(
     getOrdersRef,
-    needsDayRead ? { startMs: dayStart, endMs: dayStart + DAY_MS, limit: DAY_ORDER_LIMIT } : "skip",
+    needsDayRead ? { startMs: dayStart, endMs: dayEnd, limit: DAY_ORDER_LIMIT } : "skip",
   );
   const dayRead = needsDayRead ? dayResult.data : undefined;
 

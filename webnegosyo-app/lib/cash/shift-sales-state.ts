@@ -78,7 +78,16 @@ export function resolveShiftSalesState(input: {
 /** What the screen was opened for: one clocked-in shift, or a past window (a named service period). */
 export type ShiftSalesTarget =
   | { kind: "shift"; shiftId: string }
-  | { kind: "period"; fromMs: number; toMs: number; periodName: string | null; outletId: string | null };
+  | {
+      kind: "period";
+      fromMs: number;
+      toMs: number;
+      /** A name given in the link (`period=Day shift`). */
+      periodName: string | null;
+      /** A service period's id (`period=<uuid>`, lib/cash-routes.ts periodSalesHref): the screen looks its name up. */
+      periodId: string | null;
+      outletId: string | null;
+    };
 
 /** The longest window the report functions read (CONTRACTS §4). */
 const MAX_PERIOD_MS = 93 * 24 * 60 * 60 * 1000;
@@ -93,6 +102,11 @@ function single(value: string | string[] | undefined): string | undefined {
 function periodNameOf(value: string | undefined): string | null {
   const name = value?.trim();
   return name && !UUID.test(name) ? name : null;
+}
+
+function periodIdOf(value: string | undefined): string | null {
+  const id = value?.trim();
+  return id && UUID.test(id) ? id : null;
 }
 
 /**
@@ -111,11 +125,17 @@ export function parseShiftSalesTarget(params: Record<string, string | string[] |
     fromMs,
     toMs,
     periodName: periodNameOf(single(params.period)),
+    periodId: periodIdOf(single(params.period)),
     outletId: single(params.outlet)?.trim() || null,
   };
 }
 
-/** The link that opens one shift's sales (Drawer, shift history). */
-export function shiftSalesHref(shiftId: string): string {
-  return `/(main)/shift-sales?shift=${encodeURIComponent(shiftId)}`;
+/** The name of the service period a link names by id; null when unknown (the title then says "Shift"). */
+export function resolvePeriodName(
+  target: ShiftSalesTarget,
+  periods: readonly { id: string; name: string }[] | undefined,
+): string | null {
+  if (target.kind !== "period") return null;
+  if (target.periodName) return target.periodName;
+  return periods?.find((period) => period.id === target.periodId)?.name ?? null;
 }
