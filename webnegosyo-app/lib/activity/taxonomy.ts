@@ -46,7 +46,20 @@ export const KINDS_BY_CATEGORY = {
     'voucher.released',
     'payment.charged',
   ],
-  cash: ['shift.opened', 'shift.closed', 'cash.pay_in', 'cash.pay_out', 'cash.collected', 'receipt.reprinted'],
+  cash: [
+    'shift.opened',
+    'shift.closed',
+    'cash.pay_in',
+    'cash.pay_out',
+    'cash.collected',
+    'receipt.reprinted',
+    // 20261027150000: blind result row (no actor) and remittances (160000).
+    'shift.reconciled',
+    'cash.remitted',
+    'cash.remittance_accepted',
+    'cash.remittance_disputed',
+    'cash.remittance_resolved',
+  ],
   stock: [
     'stock.received',
     'stock.wasted',
@@ -117,6 +130,8 @@ export const ACTIVITY_FLAGS = [
   'repeat_cancels',
   'count_variance',
   'duplicate_deduction',
+  'forced_close',
+  'remittance_discrepancy',
 ] as const
 
 export type ActivityFlag = (typeof ACTIVITY_FLAGS)[number]
@@ -134,6 +149,7 @@ export const SUBJECT_TYPES = [
   'count',
   'transfer',
   'expense',
+  'remittance',
 ] as const
 
 export type ActivitySubjectType = (typeof SUBJECT_TYPES)[number]
@@ -164,6 +180,8 @@ export const FLAG_COPY: Readonly<Record<ActivityFlag, FlagCopy>> = {
     chip: 'Check',
     explanation: 'A second stock deduction for this order was blocked. Stock is correct, but worth knowing.',
   },
+  forced_close: { chip: 'Check', explanation: 'A manager ended this shift without a drawer count.' },
+  remittance_discrepancy: { chip: 'Check', explanation: 'The cash received was not the amount handed over.' },
 }
 
 export const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {

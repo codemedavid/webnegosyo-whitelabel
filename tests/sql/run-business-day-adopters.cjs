@@ -2,14 +2,12 @@
 // the cutoff, inventory counts take the server's business day, a drawer
 // pay-out's expense lands on the business day it was taken.
 //
-// Real chain via lib/cash-chain.cjs, plus the REAL daily order number
-// (20260916123000), inventory count sessions (20260812120000) and expenses
-// (20261022120000 / 120100) migrations, with the minimal stubs those need
-// (stock_movements, storage.buckets, stamp_client_actor — live bodies as in
-// run-expenses.cjs). Each checkout insert runs AS ANON, like the storefront.
+// Real chain via lib/cash-chain.cjs (which loads the REAL daily order number,
+// inventory count sessions and expenses migrations). Each checkout insert
+// runs AS ANON, like the storefront.
 const assert = require('node:assert/strict')
 const { as, asAnon, reset } = require('./lib/platform-auth.cjs')
-const { buildCashDb, readMigration } = require('./lib/cash-chain.cjs')
+const { buildCashDb } = require('./lib/cash-chain.cjs')
 
 const T_NIGHT = 'aaaaaaaa-0000-4000-8000-000000000001' // 4 AM cutoff
 const T_DAY = 'bbbbbbbb-0000-4000-8000-000000000001' // no cutoff (midnight)
@@ -21,23 +19,6 @@ const U = {
   platform: '00000000-0000-4000-8000-000000000004',
 }
 
-const STUBS = `
-  create table stock_movements (id uuid primary key default gen_random_uuid(), tenant_id uuid, reason text);
-  create schema if not exists storage;
-  create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
-  -- Copied from live (as run-expenses.cjs).
-  CREATE OR REPLACE FUNCTION public.stamp_client_actor()
-   RETURNS trigger LANGUAGE plpgsql SET search_path TO ''
-  AS $function$
-  begin
-    if current_user in ('anon', 'authenticated') then
-      new := jsonb_populate_record(new, jsonb_build_object(tg_argv[0], auth.uid(), 'created_at', now()));
-    end if;
-    return new;
-  end;
-  $function$;
-  revoke all on function public.stamp_client_actor() from public, anon, authenticated;
-`
 const PEOPLE = `
   insert into tenants (id, is_active) values ('${T_NIGHT}', true), ('${T_DAY}', true);
   insert into outlets (id, tenant_id) values ('${A1}', '${T_NIGHT}');
@@ -112,15 +93,7 @@ async function checkDrawerExpense(db) {
 async function main() {
   const db = await buildCashDb({
     through: '20261027140100_business_day_adopters.sql',
-    afterBase: async (d) => {
-      await d.exec(STUBS)
-      await d.exec(readMigration('20260916123000_daily_order_number.sql'))
-      await d.exec(readMigration('20260812120000_inventory_count_sessions.sql'))
-      await d.exec(readMigration('20261022120000_expenses.sql'))
-      await d.exec(readMigration('20261022120100_expenses_rpcs.sql'))
-      await d.exec(readMigration('20261022130200_expenses_opt_in.sql'))
-      await d.exec(PEOPLE.replace(/insert into business_day_cutoffs[^;]+;/, ''))
-    },
+    afterBase: (d) => d.exec(PEOPLE.replace(/insert into business_day_cutoffs[^;]+;/, '')),
   })
   try {
     await reset(db)

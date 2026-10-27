@@ -11,7 +11,8 @@
 //   4. live bodies of app_user_may_reach_branch / app_user_belongs_to_store
 //   5. discount sync, the four report migrations, staff shifts + custody +
 //      server clock + drawers, store activity (check_function_bodies off,
-//      like run-expenses.cjs)
+//      like run-expenses.cjs), daily order number, inventory count sessions,
+//      expenses (+ the stubs those need)
 //   6. CASHIER_CHAIN in order, stopping after `through`.
 // `beforeCashier(db)` runs between 5 and 6 (seed rows that must exist when a
 // backfill runs).
@@ -101,6 +102,32 @@ const EXTRA_COLUMNS = `
   $function$;
 `
 
+// Tables later cashier migrations touch (140100: order number, count
+// sessions, drawer expenses), with the minimal stubs they need — live bodies
+// as in run-expenses.cjs.
+const ADOPTER_STUBS = `
+  create table stock_movements (id uuid primary key default gen_random_uuid(), tenant_id uuid, reason text);
+  create schema if not exists storage;
+  create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
+  CREATE OR REPLACE FUNCTION public.stamp_client_actor()
+   RETURNS trigger LANGUAGE plpgsql SET search_path TO ''
+  AS $function$
+  begin
+    if current_user in ('anon', 'authenticated') then
+      new := jsonb_populate_record(new, jsonb_build_object(tg_argv[0], auth.uid(), 'created_at', now()));
+    end if;
+    return new;
+  end;
+  $function$;
+  revoke all on function public.stamp_client_actor() from public, anon, authenticated;
+`
+const ADOPTER_MIGRATIONS = [
+  '20260916123000_daily_order_number.sql',
+  '20260812120000_inventory_count_sessions.sql',
+  '20261022120000_expenses.sql',
+  '20261022120100_expenses_rpcs.sql',
+]
+
 const BASE_MIGRATIONS = [
   '20261013090000_orders_discount_total_sync.sql',
   '20261013090100_orders_discount_total_hardening.sql',
@@ -128,6 +155,22 @@ async function buildCashDb({ through, beforeCashier, afterBase } = {}) {
   await db.exec('set check_function_bodies = off')
   await db.exec(readMigration('20261012150000_store_activity.sql'))
   await db.exec('set check_function_bodies = on')
+  await db.exec(ADOPTER_STUBS)
+  for (const file of ADOPTER_MIGRATIONS) await db.exec(readMigration(file))
+  // Redefines app_user_has_permission with `expenses` opt-in (its live body).
+  await db.exec(readMigration('20261022130200_expenses_opt_in.sql'))
+  // The live search_path pins (20260829140000): each `alter function` line on
+  // its own, skipping functions this slice does not have. Without them a
+  // trigger such as staff_shift_branch_belongs_to_tenant breaks under any RPC
+  // running with search_path = '' — live it is pinned.
+  for (const line of readMigration('20260829140000_lock_definer_rpc_and_pin_search_paths.sql').split('\n')) {
+    if (!/^alter function /i.test(line.trim())) continue
+    try {
+      await db.exec(line)
+    } catch (error) {
+      if (error.code !== '42883') throw error
+    }
+  }
   if (afterBase) await afterBase(db)
   if (beforeCashier) await beforeCashier(db)
   const files = through ? CASHIER_CHAIN.slice(0, stop + 1) : []
