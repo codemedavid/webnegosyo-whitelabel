@@ -87,3 +87,6 @@ export async function callCashRpc<T>(
     return cashFailure('failed', failedMessage)
   }
 }
+
+/** What a cash server action returns: data, or a sentence safe to show. */
+export type CashActionResult<T> = { ok: true; data: T } | { ok: false; error: string }
