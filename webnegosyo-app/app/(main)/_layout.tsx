@@ -261,7 +261,8 @@ export default function MainLayout() {
             lands, expo-router only warns in development and nothing links to it. */}
         <Tabs.Screen name="cash-rules" options={{ href: null, title: "Shift & remit rules" }} />
         <Tabs.Screen name="shift-sales" options={{ href: null, title: "Shift sales" }} />
-        <Tabs.Screen name="end-shift" options={{ href: null, title: "End shift" }} />
+        {/* The 4-step count and remit needs the whole screen; ExpenseUndoHost lists it too. */}
+        <Tabs.Screen name="end-shift" options={{ href: null, title: "End shift", tabBarStyle: { display: "none" } }} />
         <Tabs.Screen name="remittance" options={{ href: null, title: "Remittance" }} />
         <Tabs.Screen name="remittances" options={{ href: null, title: "Remittances" }} />
         <Tabs.Screen name="day-close" options={{ href: null, title: "Day close" }} />

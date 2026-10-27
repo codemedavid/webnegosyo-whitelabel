@@ -292,7 +292,12 @@ export function validateResolve(note: string): Verdict<string> {
 
 // ── Reads & writes ────────────────────────────────────────────────────────
 
-const COLUMNS = [
+/**
+ * Every column a remittance read takes, pinned to 20261027160000; the shift is
+ * embedded through its named FK. Shared with the slip screen's read
+ * (shift-remit-read.ts) so the two can never select different columns.
+ */
+export const REMITTANCE_COLUMNS = [
   "id, tenant_id, outlet_id, kind, shift_id, movement_id, business_day, cashier_user_id, cashier_name",
   "handed_over_cents, remitted_to, remitted_to_name, to_safe, status, received_cents, received_by_name, received_at",
   "accept_method, is_self_received, receiver_note, dispute_reason, resolved_by_name, resolved_at, resolved_note, created_at",
@@ -321,7 +326,7 @@ export async function listRemittances(db: CashDb, tenantId: string, query: Remit
   if (!ISO.test(query.sinceIso)) throw new Error("The remittances could not be read (bad date).");
   let builder = db
     .from("cash_remittances")
-    .select(COLUMNS)
+    .select(REMITTANCE_COLUMNS)
     .eq("tenant_id", tenantId)
     .or(`status.in.(pending,disputed),created_at.gte.${query.sinceIso}`);
   if (query.cashierUserId) builder = builder.eq("cashier_user_id", query.cashierUserId);

@@ -12,23 +12,15 @@ import { resourceKey } from "../backends/query-keys";
 import { withDeadline } from "../offline/deadline";
 import { useResource } from "../query/use-resource";
 import { describeCashError, type CashDb, type DbError } from "./settings";
-import { parseRemittance, type Remittance } from "./remittances";
+import { REMITTANCE_COLUMNS, parseRemittance, type Remittance } from "./remittances";
 import { liveCashDb } from "./use-cash-rules";
 import type { SlipMove } from "./shift-remit-slip";
 
 const REQUEST_MS = 15_000;
 
-/**
- * The inbox's columns (lib/cash/remittances.ts), pinned to the migration by
- * shift-remit-read.test.ts. The shift is embedded through its named foreign
- * key, so a second link to staff_shifts can never make the embed ambiguous.
- */
-export const REMITTANCE_COLUMNS = [
-  "id, tenant_id, outlet_id, kind, shift_id, movement_id, business_day, cashier_user_id, cashier_name",
-  "handed_over_cents, remitted_to, remitted_to_name, to_safe, status, received_cents, received_by_name, received_at",
-  "accept_method, is_self_received, receiver_note, dispute_reason, resolved_by_name, resolved_at, resolved_note, created_at",
-  "shift:staff_shifts!cash_remittances_shift_id_fkey(drawer_name, opened_at, closed_at, closing_count, expected_cash, variance_reason)",
-].join(", ");
+// The inbox's columns, one definition (lib/cash/remittances.ts); re-exported
+// so shift-remit-read.test.ts keeps pinning them to the migration.
+export { REMITTANCE_COLUMNS };
 
 export const SLIP_NOT_FOUND = "This slip isn't here. It may belong to a branch this account can't see.";
 

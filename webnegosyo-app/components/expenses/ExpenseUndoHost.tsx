@@ -13,7 +13,7 @@ export const TAB_BAR_CONTENT_HEIGHT = 56;
  * app/(main)/_layout.tsx (pinned by ExpenseUndoHost.test.tsx). On them the
  * bar sits on the home indicator, not 56pt above a bar that is not there.
  */
-export const ROUTES_WITHOUT_TAB_BAR: readonly string[] = ["pos-loyalty", "receipt-editor", "tutorial/[chapterId]"];
+export const ROUTES_WITHOUT_TAB_BAR: readonly string[] = ["end-shift", "pos-loyalty", "receipt-editor", "tutorial/[chapterId]"];
 
 /** The route under (main), as the layout names it: ["(main)", "tutorial", "[chapterId]"] → "tutorial/[chapterId]". */
 function routeName(segments: readonly string[]): string {
