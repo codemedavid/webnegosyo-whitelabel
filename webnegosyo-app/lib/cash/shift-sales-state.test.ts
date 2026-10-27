@@ -1,7 +1,9 @@
 import {
   DEVICE_AFTER_SERVER_FAILED_NOTICE,
   needsDeviceCount,
+  parseShiftSalesTarget,
   resolveShiftSalesState,
+  shiftSalesHref,
   type DeviceSalesRead,
   type ServerSalesRead,
 } from "./shift-sales-state";
@@ -97,5 +99,43 @@ describe("resolveShiftSalesState", () => {
     expect(needsDeviceCount(unavailable)).toBe(true);
     expect(needsDeviceCount({ status: "skipped" })).toBe(true);
     expect(needsDeviceCount({ status: "error", message: "x" })).toBe(true);
+  });
+});
+
+describe("parseShiftSalesTarget", () => {
+  it("opens one shift by id", () => {
+    expect(parseShiftSalesTarget({ shift: "s1" })).toEqual({ kind: "shift", shiftId: "s1" });
+  });
+
+  it("opens a past service period by its window", () => {
+    expect(
+      parseShiftSalesTarget({ from: "2026-10-24T04:00:00.000Z", to: "2026-10-24T12:00:00.000Z", period: "Day shift", outlet: "b1" }),
+    ).toEqual({
+      kind: "period",
+      fromMs: Date.parse("2026-10-24T04:00:00.000Z"),
+      toMs: Date.parse("2026-10-24T12:00:00.000Z"),
+      periodName: "Day shift",
+      outletId: "b1",
+    });
+  });
+
+  it("never titles the screen with a service period's id", () => {
+    const target = parseShiftSalesTarget({
+      from: "2026-10-24T04:00:00.000Z",
+      to: "2026-10-24T12:00:00.000Z",
+      period: "6f1c2a8e-2b1d-4c3e-9a7f-0123456789ab",
+    });
+    expect(target).toMatchObject({ kind: "period", periodName: null });
+  });
+
+  it("refuses a link without a usable window instead of guessing one", () => {
+    expect(parseShiftSalesTarget({})).toBeNull();
+    expect(parseShiftSalesTarget({ from: "nope", to: "2026-10-24T12:00:00.000Z" })).toBeNull();
+    expect(parseShiftSalesTarget({ from: "2026-10-24T12:00:00.000Z", to: "2026-10-24T04:00:00.000Z" })).toBeNull();
+    expect(parseShiftSalesTarget({ from: "2026-01-01T00:00:00.000Z", to: "2026-10-24T00:00:00.000Z" })).toBeNull();
+  });
+
+  it("builds the shift link the Drawer and shift history open", () => {
+    expect(shiftSalesHref("a b")).toBe("/(main)/shift-sales?shift=a%20b");
   });
 });

@@ -1,7 +1,9 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 
 import { CASH_MOVE_COPY, type CashMove } from "../../lib/cash-drawers";
+import { shiftSalesHref } from "../../lib/cash/shift-sales-state";
 import type { DrawerExpectationRead } from "../../lib/drawer-expectation";
 import type { RefusedPayout } from "../../lib/expenses/expense-queue";
 import { formatPeso } from "../../lib/format";
@@ -35,6 +37,8 @@ interface MyShiftCardProps {
   refusedPayouts?: readonly RefusedPayout[];
   onRetryRefused?: (id: string) => Promise<void>;
   onRemoveRefused?: (id: string) => Promise<void>;
+  /** Opens this shift's sales report. Defaults to the Shift sales screen. */
+  onShiftSales?: () => void;
 }
 
 /** How many moves the card lists before it stops. */
@@ -66,7 +70,9 @@ export function MyShiftCard({
   refusedPayouts,
   onRetryRefused,
   onRemoveRefused,
+  onShiftSales,
 }: MyShiftCardProps) {
+  const openShiftSales = onShiftSales ?? (() => router.push(shiftSalesHref(shift.id) as never));
   const ready = expectation.state === "ready" ? expectation.value : null;
   const lines: { label: string; value: string }[] = ready
     ? [
@@ -169,6 +175,16 @@ export function MyShiftCard({
         </View>
       ) : null}
 
+      <Button
+        label="Shift sales"
+        tone="secondary"
+        icon="report"
+        onPress={openShiftSales}
+        fullWidth
+        style={styles.shiftSales}
+        accessibilityHint="Receipts, net sales and how they were paid in this shift"
+        testID="my-shift-sales"
+      />
       {onPayExpense ? (
         <Button
           label="Pay an expense"
@@ -241,6 +257,7 @@ const styles = StyleSheet.create({
   activity: { ...typography.small, color: colors.heroInkMuted },
   pending: { ...typography.small, fontWeight: "700", color: colors.heroInkText },
   payExpense: { marginTop: spacing.sm },
+  shiftSales: { marginTop: spacing.sm },
   moves: { gap: 6 },
   move: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   moveText: { ...typography.small, color: colors.heroInkMuted, flex: 1 },

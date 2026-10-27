@@ -74,3 +74,48 @@ export function resolveShiftSalesState(input: {
   if (fetch.kind === "not_set_up") return fromDevice(device, null, null);
   return fromDevice(device, DEVICE_AFTER_SERVER_FAILED_NOTICE, fetch.message);
 }
+
+/** What the screen was opened for: one clocked-in shift, or a past window (a named service period). */
+export type ShiftSalesTarget =
+  | { kind: "shift"; shiftId: string }
+  | { kind: "period"; fromMs: number; toMs: number; periodName: string | null; outletId: string | null };
+
+/** The longest window the report functions read (CONTRACTS §4). */
+const MAX_PERIOD_MS = 93 * 24 * 60 * 60 * 1000;
+
+/** A service period's id is not a name to put in a title. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function single(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function periodNameOf(value: string | undefined): string | null {
+  const name = value?.trim();
+  return name && !UUID.test(name) ? name : null;
+}
+
+/**
+ * `?shift=<id>` or `?from=<iso>&to=<iso>&period=<name>&outlet=<id>` → a
+ * target, or null for a link the screen cannot honour (it then says so
+ * rather than reading a guessed window).
+ */
+export function parseShiftSalesTarget(params: Record<string, string | string[] | undefined>): ShiftSalesTarget | null {
+  const shiftId = single(params.shift)?.trim();
+  if (shiftId) return { kind: "shift", shiftId };
+  const fromMs = Date.parse(single(params.from) ?? "");
+  const toMs = Date.parse(single(params.to) ?? "");
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs || toMs - fromMs > MAX_PERIOD_MS) return null;
+  return {
+    kind: "period",
+    fromMs,
+    toMs,
+    periodName: periodNameOf(single(params.period)),
+    outletId: single(params.outlet)?.trim() || null,
+  };
+}
+
+/** The link that opens one shift's sales (Drawer, shift history). */
+export function shiftSalesHref(shiftId: string): string {
+  return `/(main)/shift-sales?shift=${encodeURIComponent(shiftId)}`;
+}

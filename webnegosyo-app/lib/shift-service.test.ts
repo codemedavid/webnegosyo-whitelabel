@@ -12,7 +12,7 @@
 // module still imports it, and the real one reaches expo-constants.
 jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 
-import { loadOpenShift, openShift, closeShift, listShifts } from "./shift-service";
+import { loadOpenShift, openShift, closeShift, listShifts, fetchShiftById } from "./shift-service";
 
 interface Recorded {
   filters: { table: string; column: string; value: unknown }[];
@@ -349,4 +349,30 @@ describe("listShifts", () => {
 it("refuses a close that did not update an open, authorized shift", async () => {
   const { db } = makeDb({ staff_shifts: { data: null, error: null } });
   await expect(closeShift("t1", "s1", { closingCount: 0, expectedCash: 0, note: null }, db)).rejects.toThrow("could not be closed");
+});
+
+describe("fetchShiftById (Shift sales)", () => {
+  it("reads one shift of this store by id, whatever its status", async () => {
+    const { db, recorded } = makeDb({ staff_shifts: { data: { ...OPEN_SHIFT, status: "closed" }, error: null } });
+    const shift = await fetchShiftById("t1", "s1", db);
+    expect(shift).toMatchObject({ id: "s1", status: "closed", staffName: "Ana", isBlind: false, businessDay: null });
+    expect(recorded.filters).toEqual([
+      { table: "staff_shifts", column: "tenant_id", value: "t1" },
+      { table: "staff_shifts", column: "id", value: "s1" },
+    ]);
+  });
+
+  it("picks up the business-day columns once the database has them", async () => {
+    const { db } = makeDb({
+      staff_shifts: { data: { ...OPEN_SHIFT, is_blind: true, business_day: "2026-08-19" }, error: null },
+    });
+    expect(await fetchShiftById("t1", "s1", db)).toMatchObject({ isBlind: true, businessDay: "2026-08-19" });
+  });
+
+  it("answers null for a shift it cannot see, and throws on a failed read", async () => {
+    expect(await fetchShiftById("t1", "s1", makeDb({ staff_shifts: { data: null, error: null } }).db)).toBeNull();
+    await expect(
+      fetchShiftById("t1", "s1", makeDb({ staff_shifts: { data: null, error: { message: "boom" } } }).db),
+    ).rejects.toThrow(/could not be read\. \(boom\)/);
+  });
 });

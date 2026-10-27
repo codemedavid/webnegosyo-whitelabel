@@ -287,3 +287,26 @@ export function countShiftSalesOnDevice(input: DeviceSalesInput): ShiftSalesRepo
     lastNumber: numbers[numbers.length - 1] ?? null,
   };
 }
+
+/** Orders the tablet reads to count a shift: the Drawer's own live page off the platform, a window on it. */
+export const DEVICE_PAGE_LIMIT = 200;
+export const DEVICE_WINDOW_LIMIT = 1000;
+
+export const DEVICE_TOO_MANY_MESSAGE =
+  "More orders were rung up than this tablet reads at once, so it can't add up this shift. Open it on a connected tablet once the store's report is on.";
+
+/**
+ * Whether the orders read cover the whole window. A newest-first page that
+ * is full and never reaches back past the window's start has dropped sales,
+ * and a total over part of a shift reads as a short drawer.
+ */
+export function deviceOrdersCover(input: {
+  orders: readonly { _creationTime: number }[];
+  /** True for a window read (platform), false for the newest-first page. */
+  isWindowRead: boolean;
+  fromMs: number;
+}): boolean {
+  if (input.isWindowRead) return input.orders.length < DEVICE_WINDOW_LIMIT;
+  if (input.orders.length < DEVICE_PAGE_LIMIT) return true;
+  return input.orders.some((order) => order._creationTime < input.fromMs);
+}

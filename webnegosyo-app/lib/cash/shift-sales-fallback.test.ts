@@ -8,7 +8,7 @@
  * back, never taken off sales twice.
  */
 
-import { countShiftSalesOnDevice, type DeviceSalesOrder } from "./shift-sales-fallback";
+import { countShiftSalesOnDevice, deviceOrdersCover, type DeviceSalesOrder } from "./shift-sales-fallback";
 import type { StaffPayment } from "../shift-drawer";
 
 const FROM = Date.parse("2026-10-24T04:00:00.000Z"); // 12:00 PM Manila
@@ -191,5 +191,21 @@ describe("countShiftSalesOnDevice", () => {
     expect(report.summary).toMatchObject({ orders: 0, netCents: 0 });
     expect(report.receipts).toEqual([]);
     expect(report.firstNumber).toBeNull();
+  });
+});
+
+describe("deviceOrdersCover", () => {
+  const at = (ms: number) => ({ _creationTime: ms });
+
+  it("trusts a window read that came back under its cap", () => {
+    expect(deviceOrdersCover({ orders: [at(FROM)], isWindowRead: true, fromMs: FROM })).toBe(true);
+    expect(deviceOrdersCover({ orders: Array.from({ length: 1000 }, () => at(FROM)), isWindowRead: true, fromMs: FROM })).toBe(false);
+  });
+
+  it("trusts a full newest-first page only when it reaches back past the window's start", () => {
+    const full = Array.from({ length: 200 }, (_, i) => at(FROM + i));
+    expect(deviceOrdersCover({ orders: full, isWindowRead: false, fromMs: FROM })).toBe(false);
+    expect(deviceOrdersCover({ orders: [...full.slice(1), at(FROM - 1)], isWindowRead: false, fromMs: FROM })).toBe(true);
+    expect(deviceOrdersCover({ orders: full.slice(0, 10), isWindowRead: false, fromMs: FROM })).toBe(true);
   });
 });

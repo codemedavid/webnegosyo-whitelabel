@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { formatPeso } from "../../lib/format";
 import { toBusinessDayKey } from "../../lib/daily-report/business-day";
@@ -40,9 +40,11 @@ interface ShiftHistoryListProps {
   nowIso: string;
   /** Branch names by id — omitted on a single-branch store. */
   branchName?: (outletId: string | null) => string;
+  /** Opens a shift's sales report (receipts, net sales, paid by). Absent = rows are not tappable. */
+  onOpenShift?: (shiftId: string) => void;
 }
 
-export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName }: ShiftHistoryListProps) {
+export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName, onOpenShift }: ShiftHistoryListProps) {
   // What each shift paid out, told apart into expenses and cash taken out —
   // one bounded read for the page. Until it lands (or if it cannot), the
   // pay-outs keep their free-text reasons.
@@ -68,7 +70,14 @@ export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName }: ShiftHis
         const turnover = shiftTurnover(shift);
 
         return (
-          <View key={shift.id} style={styles.card}>
+          <TouchableOpacity
+            key={shift.id}
+            style={styles.card}
+            disabled={!onOpenShift}
+            onPress={() => onOpenShift?.(shift.id)}
+            accessibilityRole={onOpenShift ? "button" : undefined}
+            accessibilityHint={onOpenShift ? "Opens this shift's sales: receipts, net sales and how they were paid" : undefined}
+          >
             <View style={styles.head}>
               <View style={styles.headCopy}>
                 <Text style={styles.day}>
@@ -118,7 +127,7 @@ export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName }: ShiftHis
 
             {payoutBlock(shift, history)}
             {shift.note ? <Text style={styles.note}>“{shift.note}”</Text> : null}
-          </View>
+          </TouchableOpacity>
         );
       })}
     </View>

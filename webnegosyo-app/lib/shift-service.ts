@@ -424,3 +424,29 @@ export async function isShiftStillOpen(
   if (error) throw asError(error, "The shift could not be read.");
   return (data as { status?: string } | null)?.status === "open";
 }
+
+/** One shift for its sales report, with the columns the business-day work adds when the database has them. */
+export interface ShiftDetail extends ShiftRecord {
+  /** Blind count: the cashier sees money only after counting. False when the column is not there yet. */
+  isBlind: boolean;
+  /** Stamped by the server at clock-in; null until that column exists. */
+  businessDay: string | null;
+}
+
+/**
+ * One shift by id (any status) — what the Shift sales screen counts on the
+ * tablet when the server report cannot. `select("*")` on purpose: the
+ * business-day columns (`is_blind`, `business_day`) arrive with a migration
+ * this build may run ahead of, and a named list would fail the read outright.
+ * Null when RLS hides it or it does not exist; THROWS on a failed read.
+ */
+export async function fetchShiftById(tenantId: string, shiftId: string, db: Db = supabase): Promise<ShiftDetail | null> {
+  const { data, error } = await withDeadline(
+    Promise.resolve(db.from("staff_shifts").select("*").eq("tenant_id", tenantId).eq("id", shiftId).maybeSingle()),
+    SHIFT_REQUEST_MS,
+  );
+  if (error) throw asError(error, "The shift could not be read.");
+  if (!data) return null;
+  const row = data as unknown as ShiftRow & { is_blind?: boolean | null; business_day?: string | null };
+  return { ...toShift(row), isBlind: row.is_blind === true, businessDay: row.business_day ?? null };
+}

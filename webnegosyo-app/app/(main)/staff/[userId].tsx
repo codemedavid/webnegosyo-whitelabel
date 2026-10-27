@@ -11,6 +11,7 @@ import { DayHistoryList } from "../../../components/staff/DayHistoryList";
 import { ListRow } from "../../../components/ListRow";
 import { activityHref } from "../../../lib/activity/activity-links";
 import { ShiftHistoryList } from "../../../components/staff/ShiftHistoryList";
+import { shiftSalesHref } from "../../../lib/cash/shift-sales-state";
 import { StaffAccessPanel } from "../../../components/staff/StaffAccessPanel";
 import { StaffAvatar } from "../../../components/staff/StaffAvatar";
 import { StaffStatStrip } from "../../../components/staff/StaffStatStrip";
@@ -333,6 +334,7 @@ export default function StaffProfileScreen() {
               nowMs={nowMs}
               nowIso={nowIso}
               branchName={outlets.length > 0 ? outletName : undefined}
+              onOpenShift={(shiftId) => router.push(shiftSalesHref(shiftId) as never)}
             />
           ) : canManage && member ? (
             <StaffAccessPanel
