@@ -63,6 +63,8 @@ describe("parseSnapshot", () => {
       ["Ben", "forced", null],
     ]);
     expect(snap.byServicePeriod).toHaveLength(2);
+    // Pay-outs live on each shift in 20261027170000; unknown on a forced one.
+    expect(snap.payOutCents).toBe(45000);
     expect(snap.otherHoursNetCents).toBe(122000);
     expect(snap.recountChanged).toEqual([{ shiftId: "s1", staffName: "Ana", firstCents: 0, finalCents: 834500 }]);
   });

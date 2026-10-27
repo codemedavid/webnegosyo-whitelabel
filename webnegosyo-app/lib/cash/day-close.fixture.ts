@@ -20,6 +20,7 @@ export const SNAPSHOT = {
         drawer: "Cashier 1",
         closeKind: "counted",
         floatCents: 200000,
+        payOutCents: 45000,
         expectedCents: 846500,
         countedCents: 834500,
         varianceCents: -12000,

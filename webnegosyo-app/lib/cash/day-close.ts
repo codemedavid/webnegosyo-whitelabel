@@ -25,6 +25,7 @@ export interface SnapshotShift {
   drawerName: string | null;
   closeKind: "counted" | "forced";
   floatCents: number | null;
+  payOutCents: number | null;
   expectedCents: number | null;
   countedCents: number | null;
   varianceCents: number | null;
@@ -149,6 +150,7 @@ function parseShift(s: Row): SnapshotShift | null {
     drawerName: str(s.drawer) ?? str(s.drawerName),
     closeKind: s.closeKind === "forced" ? "forced" : "counted",
     floatCents: cents(s.floatCents),
+    payOutCents: cents(s.payOutCents),
     expectedCents: cents(s.expectedCents),
     countedCents: cents(s.countedCents),
     varianceCents: cents(s.varianceCents),
@@ -165,15 +167,18 @@ export function parseSnapshot(raw: unknown): DayCloseSnapshot | null {
   const drawers = obj(s.drawers);
   const totals = obj(drawers.totals);
   const expenses = obj(s.expenses);
+  const shifts = arr(drawers.shifts).flatMap((row) => {
+    const shift = parseShift(row);
+    return shift ? [shift] : [];
+  });
+  // 20261027170000 puts pay-outs on each shift, not in the totals.
+  const payOuts = shifts.map((shift) => shift.payOutCents).filter((value): value is number => value !== null);
   return {
     windowStart: str(window.start),
     windowEnd: str(window.end),
     cutoffMinutes: cents(window.cutoffMinutes),
     sales: parseSales(s.sales),
-    shifts: arr(drawers.shifts).flatMap((row) => {
-      const shift = parseShift(row);
-      return shift ? [shift] : [];
-    }),
+    shifts,
     totals: {
       expectedCents: cents(totals.expectedCents),
       countedCents: cents(totals.countedCents),
@@ -184,7 +189,7 @@ export function parseSnapshot(raw: unknown): DayCloseSnapshot | null {
     },
     cashToAccountForCents: cents(s.cashToAccountForCents),
     expenses: { drawerCents: cents(expenses.drawerCents), otherCents: cents(expenses.otherCents) },
-    payOutCents: cents(totals.payOutCents ?? s.payOutCents),
+    payOutCents: payOuts.length > 0 ? payOuts.reduce((sum, value) => sum + value, 0) : null,
     byServicePeriod: arr(s.byServicePeriod).flatMap((p) => {
       const periodId = str(p.periodId);
       const net = cents(p.netCents);

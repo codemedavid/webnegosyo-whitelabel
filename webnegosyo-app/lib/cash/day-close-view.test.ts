@@ -38,6 +38,7 @@ describe("day close words", () => {
       { label: "Net sales", value: "₱41,220" },
       { label: "Cash", value: "₱24,615" },
       { label: "GCash", value: "₱9,840" },
+      { label: "Pay outs", value: "−₱450" },
       { label: "Expenses from drawer", value: "−₱600" },
       { label: "Short / over", value: "−₱120" },
       { label: "Floats kept for tomorrow", value: "₱2,000" },
