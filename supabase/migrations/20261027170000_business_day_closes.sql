@@ -476,7 +476,12 @@ begin
   if p_day is null or p_day > cash.business_day_of(p_tenant, now()) then
     raise exception 'A business day can be closed once it has started, not before.' using errcode = '22023';
   end if;
-  perform cash.lock_day(p_tenant, p_outlet, p_day);
+  -- Store-wide first, then the branch (the clock-in order): a branch close and
+  -- a store-wide close of the same day serialize against each other.
+  perform cash.lock_day(p_tenant, null, p_day);
+  if p_outlet is not null then
+    perform cash.lock_day(p_tenant, p_outlet, p_day);
+  end if;
 
   -- 1. An open shift always blocks: the day close never closes shifts itself.
   select string_agg(coalesce(s.staff_name, 'Someone'), ', ' order by s.opened_at) into v_open
@@ -508,6 +513,16 @@ begin
   if exists (select 1 from public.business_day_closes x where x.tenant_id = p_tenant and x.business_day = p_day
               and x.outlet_id is not distinct from p_outlet and x.status = 'closed') then
     raise exception 'already_closed: this business day is already closed.' using errcode = '23505';
+  end if;
+  -- A branch close and a whole-store close of one day would count the
+  -- branch's cash twice: one or the other, never both.
+  if p_outlet is null and exists (select 1 from public.business_day_closes x where x.tenant_id = p_tenant and x.business_day = p_day
+                                   and x.outlet_id is not null and x.status = 'closed') then
+    raise exception 'already_closed: a branch already closed this business day. Reopen the branch closes to close the whole store.' using errcode = '23505';
+  end if;
+  if p_outlet is not null and exists (select 1 from public.business_day_closes x where x.tenant_id = p_tenant and x.business_day = p_day
+                                       and x.outlet_id is null and x.status = 'closed') then
+    raise exception 'already_closed: the whole store already closed this business day.' using errcode = '23505';
   end if;
 
   v_snapshot := cash.day_close_snapshot(p_tenant, p_outlet, p_day);

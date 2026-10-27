@@ -180,6 +180,7 @@ async function main() {
     // A day that is over closes without forcing.
     const yesterday = (await fixture(db, "select (cash.business_day_of($1, now()) - 1)::text as d", [T]))[0].d
     eq((await val(db, U.manager, CLOSE, [T, A1, yesterday, null, false])).version, 1, 'a finished day closes without "close anyway"')
+    await refused(val(db, U.manager, CLOSE, [T, null, yesterday, null, false]), '23505', 'a branch closed it: the whole store cannot close it too (cash counted twice)', /a branch already closed/)
 
     // Day rules and stores.
     await refused(val(db, U.manager, CLOSE, [T, A1, '2099-01-01', null, false]), '22023', 'a future day cannot be closed')
@@ -193,7 +194,7 @@ async function main() {
 
     // Both paths take the shared day lock (cash.lock_day).
     const src = readMigration('20261027170000_business_day_closes.sql')
-    eq([/perform cash\.lock_day\(p_tenant, p_outlet, p_day\)/.test(src), /perform cash\.lock_day\(new\.tenant_id, null, new\.business_day\)/.test(src)], [true, true], 'close_business_day and clock-in take the same advisory lock')
+    eq([/perform cash\.lock_day\(p_tenant, null, p_day\);\s*if p_outlet is not null then\s*perform cash\.lock_day\(p_tenant, p_outlet, p_day\)/.test(src), /perform cash\.lock_day\(new\.tenant_id, null, new\.business_day\)/.test(src)], [true, true], 'close_business_day and clock-in take the same advisory lock')
     console.log(`Day close: ${checks} checks passed (checklist, refusals, snapshot = report_period_sales + named-shift split + recount, closed-day clock-in, deposit once, masking, reopen + version 2, branch reach, Convex).`)
   } finally {
     await db.close()
