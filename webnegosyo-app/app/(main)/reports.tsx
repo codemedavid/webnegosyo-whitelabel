@@ -37,6 +37,11 @@ import { InsightsNotice } from "../../components/reports/InsightsNotice";
 import { ReportsColumns, useIsWideReports } from "../../components/reports/ReportsColumns";
 import { ReportsMoneySection } from "../../components/money/ReportsMoneySection";
 import { moneyAccess } from "../../lib/expenses/money-glance";
+import { PastShiftsSheet } from "../../components/cash-rules/PastShiftsSheet";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
+import { periodSalesHref } from "../../lib/cash-routes";
+import { useServicePeriods } from "../../lib/cash/use-cash-rules";
+import { hasPermission } from "../../lib/staff-permissions";
 
 const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
 
@@ -82,6 +87,12 @@ export default function ReportsScreen() {
   const money = useMemo(() => moneyAccess(ctx, orderBackend), [ctx, orderBackend]);
   const sections = hubSections(REPORTS_SECTIONS, ctx).filter((section) => section.title !== MONEY_SECTION);
   const isWide = useIsWideReports();
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  // Past shifts read report_period_sales, which needs the sales-report key.
+  const canSeeShifts = !isDemo && hasPermission(ctx.caller, "reports");
+  const [isShiftsOpen, setShiftsOpen] = useState(false);
+  const tradingDay = useTradingDay();
+  const periodsQuery = useServicePeriods(canSeeShifts && isShiftsOpen ? tenantId : null);
 
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const dashboardQuery = useCustomerDashboard(canSeeCustomers);
@@ -148,11 +159,25 @@ export default function ReportsScreen() {
     </>
   ) : null;
 
+  const cashDoor = canSeeShifts ? (
+    <>
+      <SectionHeader title="Cash" hint="Shifts and what each one sold" />
+      <View style={styles.group}>
+        <ListRow
+          icon="clock"
+          title="Shifts"
+          subtitle="Sales by business day and by shift"
+          onPress={() => setShiftsOpen(true)}
+        />
+      </View>
+    </>
+  ) : null;
+
   const moneySection = <ReportsMoneySection access={money} onOpen={open} />;
   const hasMoney = money.canSeeExpenses || money.canSeeProfitRow;
 
   const digDeeper =
-    sections.length > 0 || complianceDoor || hasMoney ? (
+    sections.length > 0 || complianceDoor || cashDoor || hasMoney ? (
       <>
         {moneySection}
         {sections.length > 0 ? (
@@ -175,6 +200,7 @@ export default function ReportsScreen() {
             </View>
           </>
         ) : null}
+        {cashDoor}
         {complianceDoor}
       </>
     ) : null;
@@ -272,6 +298,19 @@ export default function ReportsScreen() {
       >
         {body}
       </ScrollView>
+      {canSeeShifts ? (
+        <PastShiftsSheet
+          visible={isShiftsOpen}
+          todayKey={tradingDay.todayKey}
+          schedule={tradingDay.schedule}
+          periods={periodsQuery.data ?? []}
+          onOpen={(target) => {
+            setShiftsOpen(false);
+            router.push(periodSalesHref(target));
+          }}
+          onClose={() => setShiftsOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

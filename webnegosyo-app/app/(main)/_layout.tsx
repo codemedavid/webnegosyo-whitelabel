@@ -255,6 +255,16 @@ export default function MainLayout() {
         <Tabs.Screen name="approval-rules" options={{ href: null, title: "Approval rules" }} />
         {/* Tills (Cashier 1, Cashier 2, zero-balance) — pushed from Manage or the Drawer. */}
         <Tabs.Screen name="cash-drawers" options={{ href: null, title: "Cash drawers" }} />
+        {/* Cashier shifts & remittance (docs/plans/cashier-remittance, CONTRACTS §7) — every
+            one a utility screen with its own gate; doors and hrefs live in lib/cash-routes.ts.
+            Registered together, ahead of the screens that later waves add: until a file
+            lands, expo-router only warns in development and nothing links to it. */}
+        <Tabs.Screen name="cash-rules" options={{ href: null, title: "Shift & remit rules" }} />
+        <Tabs.Screen name="shift-sales" options={{ href: null, title: "Shift sales" }} />
+        <Tabs.Screen name="end-shift" options={{ href: null, title: "End shift", tabBarStyle: { display: "none" } }} />
+        <Tabs.Screen name="remittance" options={{ href: null, title: "Remittance" }} />
+        <Tabs.Screen name="remittances" options={{ href: null, title: "Remittances" }} />
+        <Tabs.Screen name="day-close" options={{ href: null, title: "Day close" }} />
         {/* VAT status, BIR details, Senior/PWD rules — pushed from Manage or the register. */}
         <Tabs.Screen name="tax-settings" options={{ href: null, title: "Tax & discounts" }} />
         {/* The Senior/PWD sales book and its reviews — pushed from Reports or Tax & discounts. */}
