@@ -100,7 +100,7 @@ function Dispute({ isLocked, onDispute, onBack }: { isLocked: boolean; onDispute
   const check = validateDispute(reason);
   return (
     <View style={styles.section}>
-      <Text style={styles.body}>What's wrong? The cashier and the owner will see this.</Text>
+      <Text style={styles.body}>{"What's wrong? The cashier and the owner will see this."}</Text>
       <TextInput
         value={reason}
         onChangeText={setReason}

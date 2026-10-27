@@ -15,9 +15,8 @@ import { Icon } from "./Icon";
  *           Feed digits to `pressCountKey` (lib/cash/denominations).
  *   pin     digits and ⌫ only, nothing to echo: the PIN's dots live in PinPad.
  *
- * `ExpenseKeypad` is left as it is (Expenses owns it); this component draws the
- * same tile and sizes so the two pads look the same, and the duplication can
- * fold into this one when Expenses is next touched.
+ * `ExpenseKeypad` is this pad in amount mode (it keeps its own sizing helpers
+ * and never dims disabled keys, as before).
  */
 export type KeypadMode = "amount" | "count" | "pin";
 
@@ -53,6 +52,8 @@ interface KeypadProps {
   nextLabel?: string;
   isNextDisabled?: boolean;
   testIDPrefix?: string;
+  /** Fade disabled keys (default). The Expenses pad never did, and keeps its look. */
+  shouldDimWhenDisabled?: boolean;
 }
 
 function keyLabel(key: KeypadPress, mode: KeypadMode, nextLabel: string): string {
@@ -78,9 +79,10 @@ interface KeyProps {
   isNextDisabled: boolean;
   nextLabel: string;
   testIDPrefix: string;
+  shouldDim: boolean;
 }
 
-function Key({ slot, mode, onKey, height, isDisabled, isNextDisabled, nextLabel, testIDPrefix }: KeyProps) {
+function Key({ slot, mode, onKey, height, isDisabled, isNextDisabled, nextLabel, testIDPrefix, shouldDim }: KeyProps) {
   if (slot === "blank") return <View style={[styles.key, styles.blank, { height }]} />;
   const isNext = slot === "next";
   const disabled = isDisabled || (isNext && isNextDisabled);
@@ -95,7 +97,7 @@ function Key({ slot, mode, onKey, height, isDisabled, isNextDisabled, nextLabel,
         { height },
         isNext && styles.next,
         pressed && (isNext ? styles.nextPressed : styles.pressed),
-        disabled && styles.disabled,
+        disabled && shouldDim && styles.disabled,
       ]}
       accessibilityRole="button"
       accessibilityLabel={keyLabel(slot, mode, nextLabel)}
@@ -126,6 +128,7 @@ export function Keypad({
   nextLabel = "Next",
   isNextDisabled = false,
   testIDPrefix = "keypad",
+  shouldDimWhenDisabled = true,
 }: KeypadProps) {
   const rows = [...DIGIT_ROWS, LAST_ROW[mode]];
   return (
@@ -143,6 +146,7 @@ export function Keypad({
               isNextDisabled={isNextDisabled}
               nextLabel={nextLabel}
               testIDPrefix={testIDPrefix}
+              shouldDim={shouldDimWhenDisabled}
             />
           ))}
         </View>
