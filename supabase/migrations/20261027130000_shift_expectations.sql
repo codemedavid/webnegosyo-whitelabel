@@ -310,7 +310,10 @@ begin
   values (new.id, new.tenant_id, new.outlet_id, v_source, cash.choose_expected(v_server, v_device),
           v_server, v_device, coalesce(v, '{}'::jsonb), 1, cash.expected_mode())
   on conflict (shift_id) do nothing;
-  if cash.expected_mode() = 'server' and v_server is not null then
+  -- An RPC close already wrote the expectation the cashier counted against
+  -- (count_shift picks the server figure first in server mode). Recomputing
+  -- it here would move the target after the count and fake a variance.
+  if cash.expected_mode() = 'server' and v_server is not null and not v_rpc then
     new.expected_cash := v_server::numeric / 100;
   end if;
   return new;

@@ -122,6 +122,11 @@ async function checkPreviewAndCount(db, shift) {
     'count 2 (recount): shadow mode judges against the register\'s figure when it sends one')
   await refused(count(db, U.cashier, shift, 80000), '22023', 'a third count is refused', /recount_limit/)
   eq((await rpc(db, U.cashier, PREVIEW, [shift])).countAttempts, 2, 'preview reports the attempts')
+  // Counted: the drawer's cash is frozen until the shift ends (a later move would fake a variance).
+  await as(db, 'authenticated', U.cashier)
+  await refused(db.query("insert into shift_cash_movements (tenant_id, shift_id, kind, amount, reason, recorded_by_name) values ($1, $2, 'pay_out', 10, 'Ice', 'Cara')", [T, shift]), '55000', 'no pay out after the count', /drawer_counted/)
+  await refused(db.query("insert into shift_cash_movements (tenant_id, shift_id, kind, amount, recorded_by_name) values ($1, $2, 'collect', 100, 'Cara')", [T, shift]), '55000', 'no pickup after the count', /drawer_counted/)
+  await reset(db)
 }
 
 async function checkCountRls(db, shift) {

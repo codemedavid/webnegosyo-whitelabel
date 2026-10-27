@@ -281,6 +281,10 @@ function describeOpenRefusal(error: { code?: string; message?: string }): string
   if (error.code === "23505" && /drawer/.test(error.message ?? "")) {
     return "Someone else just opened this drawer. Pick another one.";
   }
+  // The day close (20261027170000) refuses a shift on a day already closed.
+  if (error.code === "55000" && /day_closed/.test(error.message ?? "")) {
+    return "This business day is already closed. Ask a manager to reopen it.";
+  }
   return "The shift could not be started.";
 }
 

@@ -133,6 +133,29 @@ comment on column public.staff_shifts.float_kept_cents is 'Cash left in the draw
 
 -- Declared non-cash tallies (close_shift.p_non_cash):
 -- [{key, method, expectedCents, slipCount, check, declaredCents, note}], ≤ 20 rows.
+-- Once a drawer is counted, its cash is frozen until the shift ends: a pickup,
+-- pay in/out or drawer expense recorded after the count would move what the
+-- drawer "should" hold away from the count (a fake variance, and a pickup
+-- counted twice in the day close). Every role, the RPCs included.
+create or replace function cash.refuse_move_after_count()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.shift_counts c where c.shift_id = new.shift_id) then
+    raise exception 'drawer_counted: this drawer was already counted. End the shift first.' using errcode = '55000';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function cash.refuse_move_after_count() from public, anon, authenticated;
+
+drop trigger if exists trg_shift_cash_movement_after_count on public.shift_cash_movements;
+create trigger trg_shift_cash_movement_after_count before insert on public.shift_cash_movements
+  for each row execute function cash.refuse_move_after_count();
+
 create or replace function cash.non_cash_tallies_valid(p_tallies jsonb)
 returns boolean
 language sql
@@ -890,4 +913,6 @@ $$;
 --   store_activity_capture_staff_shift from 20261012151100, shift_expectations_read from 20261027130000,
 --   store_activity_category_of / the two CHECKs from 20261022120200;
 -- alter table public.staff_shifts drop constraint if exists staff_shifts_float_kept_ck, drop column if exists float_kept_cents;
+-- drop trigger if exists trg_shift_cash_movement_after_count on public.shift_cash_movements;
+-- drop function if exists cash.refuse_move_after_count();
 -- drop table if exists public.shift_counts;

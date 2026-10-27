@@ -219,6 +219,23 @@ describe("openShift", () => {
       ),
     ).rejects.toThrow(/row-level security/);
   });
+
+  it("says the business day is closed when the day close refuses the shift", async () => {
+    const { db } = makeDb({
+      staff_shifts: [
+        { data: null, error: null },
+        { data: null, error: { code: "55000", message: "day_closed: this business day is closed." } },
+      ],
+    });
+
+    await expect(
+      openShift(
+        "t1",
+        { outletId: null, staffUserId: "u1", staffName: "Ana", openingFloat: 0 },
+        db,
+      ),
+    ).rejects.toThrow(/business day is already closed/);
+  });
 });
 
 describe("closeShift", () => {
