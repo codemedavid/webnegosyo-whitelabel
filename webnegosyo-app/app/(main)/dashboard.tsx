@@ -37,6 +37,8 @@ import { HomeNeedsReview } from "../../components/approvals/NeedsReviewCard";
 import { IconButton } from "../../components/IconButton";
 import { ListRow } from "../../components/ListRow";
 import { ShiftStatusStrip } from "../../components/ShiftStatusStrip";
+import { RemitInboxStrip } from "../../components/remittances/RemitInboxStrip";
+import { REMITTANCES_ROUTE } from "../../lib/cash-routes";
 import { HomeMoneyCard } from "../../components/money/HomeMoneyCard";
 import { moneyAccess } from "../../lib/expenses/money-glance";
 
@@ -284,6 +286,8 @@ export default function DashboardScreen() {
             is open is the cashier's first question of the day, and it must not
             wait on an order query to be answered. */}
         {showShift && <ShiftStatusStrip onPress={() => goTo(tabRouter, "/(main)/pos-sales")} />}
+        {/* The receiver's side: remittances to accept and shifts left open. Draws nothing otherwise. */}
+        <RemitInboxStrip onOpenRemittances={() => router.push(REMITTANCES_ROUTE)} />
 
         {!canSeeOrders ? (
           // Only what this account can open: no takings, no queue, no ₱0.

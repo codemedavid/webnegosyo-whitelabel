@@ -110,6 +110,22 @@ describe("cash doors", () => {
     expect(reports).toMatch(/hasPermission\([^)]*"reports"\)/);
   });
 
+  it("Reports and Home open Remittances for a cash manager", () => {
+    const reports = read("app", "(main)", "reports.tsx");
+    expect(reports).toMatch(/isTabAllowed\(ctx\.caller, "remittances"\)/);
+    expect(reports).toMatch(/REMITTANCES_ROUTE/);
+    const home = read("app", "(main)", "dashboard.tsx");
+    expect(home).toMatch(/<RemitInboxStrip/);
+    expect(read("components", "remittances", "RemitInboxStrip.tsx")).toMatch(/canManageCash\(/);
+  });
+
+  it("the inbox gates itself and writes only through lib/cash", () => {
+    const screen = read("app", "(main)", "remittances.tsx");
+    expect(screen).toMatch(/isTabAllowed\(caller, "remittances"\)/);
+    expect(screen).not.toMatch(/\.from\(["']/);
+    expect(screen).not.toMatch(/supabase|@tanstack/);
+  });
+
   it("the rules screen gates itself and writes only through lib/cash", () => {
     const screen = read("app", "(main)", "cash-rules.tsx");
     expect(screen).toMatch(/cashRulesAccess\(/);

@@ -39,9 +39,9 @@ import { ReportsMoneySection } from "../../components/money/ReportsMoneySection"
 import { moneyAccess } from "../../lib/expenses/money-glance";
 import { PastShiftsSheet } from "../../components/cash-rules/PastShiftsSheet";
 import { useTradingDay } from "../../lib/business-day/use-trading-day";
-import { periodSalesHref } from "../../lib/cash-routes";
+import { REMITTANCES_ROUTE, periodSalesHref } from "../../lib/cash-routes";
 import { useServicePeriods } from "../../lib/cash/use-cash-rules";
-import { hasPermission } from "../../lib/staff-permissions";
+import { hasPermission, isTabAllowed } from "../../lib/staff-permissions";
 
 const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
 
@@ -91,6 +91,8 @@ export default function ReportsScreen() {
   // Past shifts read report_period_sales, which needs the sales-report key.
   const canSeeShifts = !isDemo && hasPermission(ctx.caller, "reports");
   const [isShiftsOpen, setShiftsOpen] = useState(false);
+  // The receiver's inbox rides cash_manage (TAB_PERMISSIONS "remittances").
+  const canSeeRemittances = !isDemo && isTabAllowed(ctx.caller, "remittances");
   const tradingDay = useTradingDay();
   const periodsQuery = useServicePeriods(canSeeShifts && isShiftsOpen ? tenantId : null);
 
@@ -159,19 +161,31 @@ export default function ReportsScreen() {
     </>
   ) : null;
 
-  const cashDoor = canSeeShifts ? (
-    <>
-      <SectionHeader title="Cash" hint="Shifts and what each one sold" />
-      <View style={styles.group}>
-        <ListRow
-          icon="clock"
-          title="Shifts"
-          subtitle="Sales by business day and by shift"
-          onPress={() => setShiftsOpen(true)}
-        />
-      </View>
-    </>
-  ) : null;
+  const cashDoor =
+    canSeeShifts || canSeeRemittances ? (
+      <>
+        <SectionHeader title="Cash" hint="Shifts, and the cash handed over after them" />
+        <View style={styles.group}>
+          {canSeeRemittances ? (
+            <ListRow
+              icon="wallet"
+              title="Remittances"
+              subtitle="Accept cash, see pickups"
+              onPress={() => router.push(REMITTANCES_ROUTE)}
+              grouped={canSeeShifts}
+            />
+          ) : null}
+          {canSeeShifts ? (
+            <ListRow
+              icon="clock"
+              title="Shifts"
+              subtitle="Sales by business day and by shift"
+              onPress={() => setShiftsOpen(true)}
+            />
+          ) : null}
+        </View>
+      </>
+    ) : null;
 
   const moneySection = <ReportsMoneySection access={money} onOpen={open} />;
   const hasMoney = money.canSeeExpenses || money.canSeeProfitRow;
