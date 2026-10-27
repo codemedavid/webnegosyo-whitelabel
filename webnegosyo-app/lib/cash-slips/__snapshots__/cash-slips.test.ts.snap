@@ -1,5 +1,96 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`a recount is printed under the count at 32 columns 1`] = `
+"          LOLY'S CAFE
+          Main branch
+        REMITTANCE SLIP
+--------------------------------
+Slip                     #R-0241
+Business day   Sat, Oct 24, 2026
+Drawer                 Cashier 1
+Cashier                Ana Reyes
+Shift  6:02 PM Sat - 2:48 AM Sun
+--------------------------------
+Starting cash           2,000.00
+Cash sales              9,215.00
+Paid in                  +200.00
+Paid out                 -450.00
+Pickup (Maria 9:40 PM) -2,500.00
+Should be in drawer     8,465.00
+Counted                 8,345.00
+  Counted twice:
+                0.00 -> 8,345.00
+SHORT                     120.00
+  Wrong sukli (change): "gave
+  P100 extra to T4"
+Float kept              2,000.00
+REMITTED                6,345.00
+--------------------------------
+GCASH & CARDS
+GCash ok         14     4,210.00
+Maya DIFF         3       860.00
+  Cashier says            810.00
+Card --           2       760.00
+--------------------------------
+Bills P1000x4 P500x3 P100x7
+P50x6 P20x9
+Coins P10x12 P5x8 P1x23 25cx4
+--------------------------------
+Remitted by ______________
+
+Received by ______________
+Waiting for Maria Santos
+--------------------------------
+  Printed Oct 25, 2026 2:50 AM
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`a recount is printed under the count at 48 columns 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                REMITTANCE SLIP
+------------------------------------------------
+Slip                                     #R-0241
+Business day                   Sat, Oct 24, 2026
+Drawer                                 Cashier 1
+Cashier                                Ana Reyes
+Shift                  6:02 PM Sat - 2:48 AM Sun
+------------------------------------------------
+Starting cash                           2,000.00
+Cash sales                              9,215.00
+Paid in                                  +200.00
+Paid out                                 -450.00
+Pickup (Maria 9:40 PM)                 -2,500.00
+Should be in drawer                     8,465.00
+Counted                                 8,345.00
+  Counted twice:                0.00 -> 8,345.00
+SHORT                                     120.00
+  Wrong sukli (change): "gave P100 extra to T4"
+Float kept                              2,000.00
+REMITTED                                6,345.00
+------------------------------------------------
+GCASH & CARDS
+GCash ok                      14        4,210.00
+Maya DIFF                      3          860.00
+  Cashier says                            810.00
+Card --                        2          760.00
+------------------------------------------------
+Bills P1000x4 P500x3 P100x7 P50x6 P20x9
+Coins P10x12 P5x8 P1x23 25cx4
+------------------------------------------------
+Remitted by ______________
+
+Received by ______________
+Waiting for Maria Santos
+------------------------------------------------
+          Printed Oct 25, 2026 2:50 AM
+            Not an official receipt.
+                 For store use.
+"
+`;
+
 exports[`slips at 32 columns day close 1`] = `
 "          LOLY'S CAFE
           Main branch

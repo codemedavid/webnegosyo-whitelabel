@@ -227,6 +227,20 @@ describe("unknown is never printed as zero", () => {
   });
 });
 
+describe("a recount is printed under the count", () => {
+  it.each(WIDTHS)("at %i columns", (width) => {
+    const text = expectPrintable(buildRemittanceSlip({ ...REMITTANCE, recount: { firstCents: 0, finalCents: 834500 } }, { ...STORE, width }), width);
+    const lines = text.split("\n");
+    const at = lines.findIndex((line) => line.startsWith("Counted "));
+    expect(lines.slice(at + 1).join(" ").replace(/\s+/g, " ")).toMatch(/Counted twice: +0\.00 -> 8,345\.00/);
+    expect(slipPlainText([{ type: "text", text }])).toMatchSnapshot();
+  });
+
+  it("no recount, no line", () => {
+    expect(textOf(buildRemittanceSlip(REMITTANCE, { ...STORE, width: 32 }))).not.toContain("Counted twice");
+  });
+});
+
 describe("figures added up on the tablet say so", () => {
   it("a shift report from the device carries the line; a server one doesn't", () => {
     const device = textOf(buildShiftReportSlip({ ...REPORT, source: "device" }, { ...STORE, width: 32 }));

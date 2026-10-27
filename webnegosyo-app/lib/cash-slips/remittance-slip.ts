@@ -80,6 +80,8 @@ export interface RemittanceSlipInput {
   /** Who added up `expectedCents`: "device" prints "Counted on this tablet" under it. */
   expectedSource?: "server" | "device" | "none" | null;
   countedCents: number | null;
+  /** Counted twice (count_shift attempt 2): both figures print under "Counted". */
+  recount?: { firstCents: number; finalCents: number } | null;
   reasonKey?: VarianceReasonKey | null;
   reasonNote?: string | null;
   floatKeptCents: number;
@@ -126,6 +128,16 @@ function differenceLines(input: RemittanceSlipInput, w: SlipWidth): string[] {
   return [head, ...(reason ? wrap(reason, w, "  ") : [])];
 }
 
+const RECOUNT_LABEL = "  Counted twice:";
+
+/** "Counted twice: 0.00 -> 8,345.00" on one line when it fits, else the figures right-aligned under the label. */
+function recountLines(recount: RemittanceSlipInput["recount"], w: SlipWidth): string[] {
+  if (!recount) return [];
+  const figures = `${slipMoney(recount.firstCents)} -> ${slipMoney(recount.finalCents)}`;
+  if (RECOUNT_LABEL.length + 1 + figures.length <= w) return [leftRight(RECOUNT_LABEL, figures, w)];
+  return [RECOUNT_LABEL, figures.padStart(w)];
+}
+
 function moneyLines(input: RemittanceSlipInput, w: SlipWidth): string[] {
   return [
     leftRight("Starting cash", slipMoney(input.startingCashCents), w),
@@ -136,6 +148,7 @@ function moneyLines(input: RemittanceSlipInput, w: SlipWidth): string[] {
     leftRight("Should be in drawer", slipMoney(input.expectedCents), w),
     ...(input.expectedSource === "device" ? [`  ${DEVICE_SOURCE_LINE}`] : []),
     leftRight("Counted", slipMoney(input.countedCents), w),
+    ...recountLines(input.recount ?? null, w),
     ...differenceLines(input, w),
     leftRight("Float kept", slipMoney(input.floatKeptCents), w),
     `<B>${leftRight("REMITTED", slipMoney(input.handedOverCents), w)}</B>`,
