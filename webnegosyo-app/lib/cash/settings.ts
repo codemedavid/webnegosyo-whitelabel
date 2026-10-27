@@ -16,6 +16,7 @@
 
 import { withDeadline } from "../offline/deadline";
 import { isNetworkFailure } from "../offline/network-error";
+import { isValidCutoffMinutes } from "../business-day/trading-day";
 
 const REQUEST_MS = 15_000;
 
@@ -23,9 +24,6 @@ const REQUEST_MS = 15_000;
 export const VARIANCE_REASON_MAX_CENTS = 100_000;
 /** How far the reason threshold moves per tap of the stepper (₱10). */
 export const VARIANCE_REASON_STEP_CENTS = 1_000;
-/** Latest business-day cutoff: 11:45 AM (CONTRACTS §1.1, 0..705 in 15-minute steps). */
-export const MAX_CUTOFF_MINUTES = 705;
-export const CUTOFF_STEP_MINUTES = 15;
 const OVERDUE_GRACE_RANGE = { min: 30, max: 1440 } as const;
 /** ₱1,000,000 float: a ceiling only a typo reaches. */
 const MAX_FLOAT_CENTS = 100_000_000;
@@ -243,10 +241,6 @@ export async function saveCashSettings(db: CashDb, tenantId: string, patch: Cash
   if (error) throw describeCashError(error, "The cash rules could not be saved.");
   if (data === null || data === undefined) throw new Error(CASH_SETTINGS_COPY.notSaved);
   return parseCashSettings(data);
-}
-
-export function isValidCutoffMinutes(minutes: number): boolean {
-  return isInt(minutes) && minutes >= 0 && minutes <= MAX_CUTOFF_MINUTES && minutes % CUTOFF_STEP_MINUTES === 0;
 }
 
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
