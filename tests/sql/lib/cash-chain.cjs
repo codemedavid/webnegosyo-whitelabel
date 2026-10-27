@@ -77,7 +77,7 @@ const EXTRA_COLUMNS = `
   alter table tenants add column order_backend text, add column convex_deployment_url text,
     add column timezone text not null default 'Asia/Manila', add column operating_hours jsonb,
     add column enforce_operating_hours boolean default false;
-  alter table outlets add column operating_hours jsonb, add column timezone text;
+  alter table outlets add column operating_hours jsonb, add column timezone text, add column name text;
   alter table app_users add column display_name text, add column email text;
   create table order_status_events (id uuid primary key default gen_random_uuid());
   -- Copied from live on 2026-10-27 (pg_get_functiondef).
@@ -165,6 +165,12 @@ async function buildCashDb({ through, beforeCashier, afterBase } = {}) {
   for (const file of ADOPTER_MIGRATIONS) await db.exec(readMigration(file))
   // Redefines app_user_has_permission with `expenses` opt-in (its live body).
   await db.exec(readMigration('20261022130200_expenses_opt_in.sql'))
+  // The bell (20261012120000 sections 1–2: visibility function, table, read
+  // policy — the stock triggers and the pg_net push need tables this slice
+  // does not have).
+  await db.exec('create table if not exists stock_alerts (id uuid primary key); create table if not exists inventory_items (id uuid primary key, tenant_id uuid)')
+  const bell = readMigration('20261012120000_merchant_notifications.sql')
+  await db.exec(bell.slice(bell.indexOf('-- 1. Who may read'), bell.indexOf('-- 3. ')))
   // The live search_path pins (20260829140000): each `alter function` line on
   // its own, skipping functions this slice does not have. Without them a
   // trigger such as staff_shift_branch_belongs_to_tenant breaks under any RPC
