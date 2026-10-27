@@ -77,6 +77,7 @@ export const CASH_SETTINGS_COPY = {
   notReady: "Shift & remit rules need a server update first. Ask WebNegosyo support.",
   notSaved: "Your change was not saved. You may not have access, or it changed elsewhere. Pull down and try again.",
   noAccess: "Only the owner or someone with Cash & day close can change these rules.",
+  cutoffSyncLater: "Saved. Your order numbering picks it up at the next sync.",
   cutoffNoAccess: "Only the owner or someone with Settings can change when the business day ends.",
   offline: "No connection. Connect to save.",
   badRules: "The cash rules on the server could not be read.",
@@ -262,4 +263,27 @@ export async function setBusinessDayCutoff(db: CashDb, tenantId: string, cutoffM
   const day = typeof data === "string" ? data.slice(0, 10) : null;
   if (!day || !DAY_KEY.test(day)) throw new Error(CASH_SETTINGS_COPY.notSaved);
   return day;
+}
+
+export interface CutoffSaveResult {
+  effectiveFrom: string;
+  /** False = the store's own order backend (Convex / its own database) still holds the old cutoff until the next sync. */
+  isBackendSynced: boolean;
+}
+
+/**
+ * Save the cutoff, then tell the store's order backend (bizday's
+ * `pushCutoffToOrderBackend`, injected so this module stays pure). A failed
+ * push never undoes the save: the change starts on a future day and every
+ * later config sync carries it.
+ */
+export async function saveBusinessDayCutoff(
+  db: CashDb,
+  tenantId: string,
+  cutoffMinutes: number,
+  pushToOrderBackend: () => Promise<boolean>,
+): Promise<CutoffSaveResult> {
+  const effectiveFrom = await setBusinessDayCutoff(db, tenantId, cutoffMinutes);
+  const isBackendSynced = await pushToOrderBackend().catch(() => false);
+  return { effectiveFrom, isBackendSynced };
 }

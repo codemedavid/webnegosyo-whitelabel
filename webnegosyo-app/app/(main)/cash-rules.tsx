@@ -24,7 +24,14 @@ import {
   type ServicePeriod,
   type ServicePeriodInput,
 } from "../../lib/cash/service-periods";
-import { DEFAULT_CASH_SETTINGS, saveCashSettings, setBusinessDayCutoff, type CashSettingsPatch } from "../../lib/cash/settings";
+import { pushCutoffToOrderBackend } from "../../lib/business-day/backend-sync";
+import {
+  CASH_SETTINGS_COPY,
+  DEFAULT_CASH_SETTINGS,
+  saveBusinessDayCutoff,
+  saveCashSettings,
+  type CashSettingsPatch,
+} from "../../lib/cash/settings";
 import {
   liveCashDb,
   useCashRulesRefresh,
@@ -110,9 +117,15 @@ export default function CashRulesScreen() {
   const saveCutoff = async (minutes: number): Promise<SaveCutoffResult> => {
     if (!tenantId) return { ok: false, error: "No store is signed in." };
     try {
-      const effectiveFrom = await setBusinessDayCutoff(liveCashDb, tenantId, minutes);
+      const saved = await saveBusinessDayCutoff(liveCashDb, tenantId, minutes, () =>
+        pushCutoffToOrderBackend(tenantId, orderBackend),
+      );
       await refreshCache.cutoffSchedule();
-      return { ok: true, effectiveFrom };
+      return {
+        ok: true,
+        effectiveFrom: saved.effectiveFrom,
+        note: saved.isBackendSynced ? null : CASH_SETTINGS_COPY.cutoffSyncLater,
+      };
     } catch (error) {
       return { ok: false, error: message(error, "The business day could not be changed.") };
     }

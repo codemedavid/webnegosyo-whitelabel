@@ -38,6 +38,16 @@ describe("BusinessDaySection", () => {
     expect(screen.getByText("Starts from Sunday, Oct 25. Past days keep their dates.")).toBeTruthy();
   });
 
+  it("adds a quiet note when the order backend will only get it at the next sync", async () => {
+    renderSection({
+      onSave: jest.fn(async (): Promise<SaveCutoffResult> => ({ ok: true, effectiveFrom: "2026-10-25", note: "Saved. Your order numbering picks it up at the next sync." })),
+    });
+    fireEvent.press(screen.getByRole("radio", { name: "4 AM" }));
+    await act(async () => fireEvent.press(screen.getByRole("button", { name: "End the day at 4:00 AM" })));
+    expect(screen.getByText("Starts from Sunday, Oct 25. Past days keep their dates.")).toBeTruthy();
+    expect(screen.getByText("Saved. Your order numbering picks it up at the next sync.")).toBeTruthy();
+  });
+
   it("'Other' steps by 15 minutes", () => {
     renderSection({ currentCutoff: 240 });
     fireEvent.press(screen.getByRole("radio", { name: "Other" }));

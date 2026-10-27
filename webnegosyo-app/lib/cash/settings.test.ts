@@ -4,6 +4,7 @@ import {
   VARIANCE_REASON_MAX_CENTS,
   fetchCashSettings,
   parseCashSettings,
+  saveBusinessDayCutoff,
   saveCashSettings,
   setBusinessDayCutoff,
   validateCashSettingsPatch,
@@ -213,5 +214,34 @@ describe("setBusinessDayCutoff", () => {
   it("explains a permission refusal (owner or Settings only)", async () => {
     const { db } = fakeDb([], { set_business_day_cutoff: { data: null, error: { code: "42501", message: "no" } } });
     await expect(setBusinessDayCutoff(db, "t1", 240)).rejects.toThrow(CASH_SETTINGS_COPY.cutoffNoAccess);
+  });
+});
+
+describe("saveBusinessDayCutoff", () => {
+  const saved = () => fakeDb([], { set_business_day_cutoff: { data: "2026-10-28", error: null } }).db;
+
+  it("tells the store's order backend after the save", async () => {
+    const push = jest.fn(async () => true);
+    await expect(saveBusinessDayCutoff(saved(), "t1", 240, push)).resolves.toEqual({
+      effectiveFrom: "2026-10-28",
+      isBackendSynced: true,
+    });
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the save when the push fails or throws", async () => {
+    await expect(saveBusinessDayCutoff(saved(), "t1", 240, async () => false)).resolves.toMatchObject({ isBackendSynced: false });
+    await expect(
+      saveBusinessDayCutoff(saved(), "t1", 240, async () => {
+        throw new Error("network");
+      }),
+    ).resolves.toMatchObject({ effectiveFrom: "2026-10-28", isBackendSynced: false });
+  });
+
+  it("never pushes a save the server refused", async () => {
+    const { db } = fakeDb([], { set_business_day_cutoff: { data: null, error: { code: "42501", message: "no" } } });
+    const push = jest.fn(async () => true);
+    await expect(saveBusinessDayCutoff(db, "t1", 240, push)).rejects.toThrow();
+    expect(push).not.toHaveBeenCalled();
   });
 });

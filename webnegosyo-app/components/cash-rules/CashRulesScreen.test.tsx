@@ -62,6 +62,7 @@ jest.mock("../../lib/business-day/use-trading-day", () => ({
     endMs: 0,
   }),
 }));
+jest.mock("../../lib/business-day/backend-sync", () => ({ pushCutoffToOrderBackend: async () => true }));
 jest.mock("../../lib/cash/use-cash-rules", () => ({
   liveCashDb: {},
   useCashSettings: () => ({ ...mockIdle, ...mockSettingsResult }),

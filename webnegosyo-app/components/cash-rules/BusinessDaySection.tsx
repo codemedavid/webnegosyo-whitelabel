@@ -18,7 +18,9 @@ import { CutoffPreview } from "./CutoffPreview";
 import { RuleChip, RuleChipRow } from "./RuleChip";
 import { Stepper } from "./Stepper";
 
-export type SaveCutoffResult = { ok: true; effectiveFrom: string } | { ok: false; error: string };
+export type SaveCutoffResult =
+  | { ok: true; effectiveFrom: string; /** A quiet line under the confirmation, e.g. "applies at the next sync". */ note?: string | null }
+  | { ok: false; error: string };
 
 interface BusinessDaySectionProps {
   /** The cutoff today's business day runs on. */
@@ -55,6 +57,7 @@ export function BusinessDaySection({
   const [isSaving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [startsFrom, setStartsFrom] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const isEditable = canEdit && !isFallback && !isSaving;
   const words = describeCutoff(draft);
 
@@ -73,6 +76,7 @@ export function BusinessDaySection({
     if (result.ok) {
       setDraft(minutes);
       setStartsFrom(result.effectiveFrom);
+      setSavedNote(result.note ?? null);
     } else {
       setError(result.error);
     }
@@ -122,6 +126,7 @@ export function BusinessDaySection({
           <Text style={styles.savedText}>{describeStartsFrom(startsFrom)}</Text>
         </View>
       ) : null}
+      {startsFrom && savedNote ? <Text style={styles.note}>{savedNote}</Text> : null}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}

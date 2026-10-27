@@ -88,6 +88,7 @@ export function PastShiftsSheet({ visible, todayKey, schedule, periods, onOpen, 
         visible={visible && isPicking}
         selection={{ kind: "day", dayKey }}
         nowMs={Date.now()}
+        schedule={schedule}
         onApply={applyPicked}
         onClose={() => setPicking(false)}
       />
