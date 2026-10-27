@@ -22,6 +22,10 @@ jest.mock("../../stores/branch-context-store", () => ({
 jest.mock("../use-branch-scope", () => ({ useBranchScope: () => mockScope, useAccountBranchScope: () => ({ kind: "all" }) }));
 jest.mock("../use-outlets", () => ({ useOutlets: () => ({ outlets: [] }) }));
 jest.mock("../profit/use-profit", () => ({ useProfitGlance: jest.fn(() => null) }));
+jest.mock("../business-day/use-trading-day", () => ({
+  // A store with no cutoff: Manila midnight, as before.
+  useTradingDay: () => ({ schedule: [], isFallback: false, isLoading: false, todayKey: "2026-01-01", anchorMs: 0, startMs: 0, endMs: 0 }),
+}));
 jest.mock("../query/use-resource", () => ({ useResource: () => ({ data: undefined }) }));
 jest.mock("../shift-service", () => ({ loadOpenShift: jest.fn() }));
 jest.mock("../cash-drawer-service", () => ({ listCashMoves: jest.fn(async () => []) }));

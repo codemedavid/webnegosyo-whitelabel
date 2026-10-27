@@ -16,6 +16,7 @@ import type { CashMove } from "../cash-drawers";
 import { listCashMoves } from "../cash-drawer-service";
 import { ALL_BRANCHES, resolveProfitBranch } from "../profit/profit-branch";
 import { resolveProfitWindow } from "../profit/profit-period";
+import { useTradingDay } from "../business-day/use-trading-day";
 import type { ProfitBranch, ProfitGlance } from "../profit/profit-service";
 import { useProfitGlance } from "../profit/use-profit";
 import { useResource } from "../query/use-resource";
@@ -95,11 +96,11 @@ export function useMonthSpent(): { cents: number; monthName: string } | null {
  * Reports re-read on every focus, on a database every store shares.
  */
 export function useKeptThisMonth(isEnabled: boolean): ProfitGlance | null {
-  const today = useManilaDay();
-  // Keyed to the Manila day: the window's identity changes with the clock,
-  // and the read's end comes from `windowAt` when it runs.
+  // Keyed to the BUSINESS day (it moves at the store's cutoff): the window's
+  // identity changes with the clock, and the read's end comes from `windowAt`.
+  const { todayKey, schedule } = useTradingDay();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const period = useMemo(() => resolveProfitWindow({ preset: "this_month" }, Date.now()), [today]);
+  const period = useMemo(() => resolveProfitWindow({ preset: "this_month" }, Date.now(), schedule), [todayKey, schedule]);
   return useProfitGlance(period, useKeptThisMonthBranch(), isEnabled);
 }
 

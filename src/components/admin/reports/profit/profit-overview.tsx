@@ -35,12 +35,11 @@ function captionOf(context: ReportContext): string {
 }
 
 function trendBuckets(context: ReportContext, rows: readonly ProfitPeriodFigures[], report: ProfitReport): ProfitTrendBucket[] {
-  const { period } = context
+  const { period, schedule } = context
   const grain = profitGrainFor(period.grain)
-  // Calendar buckets on purpose: the profit SQL (report_profit_*, 20261022120300)
-  // still buckets by the Manila date. Pass `context.schedule` here once it
-  // follows the business day, or the bars and these keys stop matching.
-  const keys = bucketKeys(period.start, period.end, grain)
+  // Business-day buckets, as report_profit_by_period dates every fact since
+  // 20261027180000; a different schedule here would drop bars.
+  const keys = bucketKeys(period.start, period.end, grain, schedule)
   return profitTrend(keys, rows, report.ingredientBasis).map((point, index) => ({
     key: point.bucket,
     label: bucketLabel(point.bucket, grain),
@@ -77,7 +76,7 @@ function FirstRun({ addHref }: { addHref: string }) {
 export async function ProfitOverview({ context, view }: { context: ReportContext; view: ProfitView }) {
   const client = await reportClient()
   const window = context.windows.current
-  const previous = previousFullWindow(context.period)
+  const previous = previousFullWindow(context.period, context.schedule)
   const isProfitView = view === 'profit'
   const [summary, categories, previousCategories, periods] = await Promise.all([
     readProfitSummary(client, window),

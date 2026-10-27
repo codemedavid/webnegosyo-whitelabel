@@ -148,3 +148,27 @@ describe('startOfTodayISO (dashboard order stats)', () => {
     expect(startOfTodayISO(new Date(LATE_NIGHT))).toBe(new Date(manila('2026-10-25T00:00:00.000')).toISOString())
   })
 })
+
+describe('profit periods on a 4 AM day (report_profit_* since 20261027180000)', () => {
+  const { previousFullWindow } = jest.requireActual<typeof import('@/lib/reports/profit-view')>('@/lib/reports/profit-view')
+
+  it('compares a month with the previous one from its business-day start', () => {
+    const month = period({ preset: 'this_month' }, LATE_NIGHT, FOUR_AM)
+    expect(month.start).toBe(manila('2026-10-01T04:00:00.000'))
+    expect(previousFullWindow(month, FOUR_AM)).toEqual({ start: manila('2026-09-01T04:00:00.000'), end: month.start })
+  })
+
+  it('is unchanged with no schedule', () => {
+    const month = period({ preset: 'this_month' }, LATE_NIGHT, MIDNIGHT_SCHEDULE)
+    expect(previousFullWindow(month)).toEqual({ start: manila('2026-09-01T00:00:00.000'), end: month.start })
+    const fortnight = period({ preset: 'custom', from: '2026-10-01', to: '2026-10-14' }, LATE_NIGHT, MIDNIGHT_SCHEDULE)
+    expect(previousFullWindow(fortnight)).toBeNull()
+    const custom = period({ preset: 'custom', from: '2026-09-01', to: '2026-09-30' }, LATE_NIGHT, MIDNIGHT_SCHEDULE)
+    expect(previousFullWindow(custom)).toEqual({ start: custom.start - 30 * DAY_MS, end: custom.start })
+  })
+
+  it('zero-fills profit week bars on business days', () => {
+    const month = period({ preset: 'this_month' }, LATE_NIGHT, FOUR_AM)
+    expect(bucketKeys(month.start, month.end, 'week', FOUR_AM)[0]).toBe('2026-09-28')
+  })
+})

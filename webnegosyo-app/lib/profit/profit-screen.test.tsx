@@ -31,6 +31,10 @@ jest.mock("../use-branch-scope", () => ({ useAccountBranchScope: () => ({ kind: 
 jest.mock("../use-outlets", () => ({ useOutlets: () => ({ outlets: [] }) }));
 jest.mock("./use-profit", () => ({ useProfit: jest.fn() }));
 jest.mock("./use-profit-bills", () => ({ useProfitBills: jest.fn() }));
+jest.mock("../business-day/use-trading-day", () => ({
+  // A store with no cutoff: Manila midnight, as before.
+  useTradingDay: () => ({ schedule: [], isFallback: false, isLoading: false, todayKey: "2026-01-01", anchorMs: 0, startMs: 0, endMs: 0 }),
+}));
 
 const NO_BILLS: ProfitBills = { findings: null, still: null };
 

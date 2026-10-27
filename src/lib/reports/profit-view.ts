@@ -5,6 +5,7 @@
 
 import type { AppUserScopeRow } from '@/lib/queries/fetch-app-user-scope'
 import { hasPermission } from '@/lib/staff-permissions'
+import { MIDNIGHT_SCHEDULE, tradingDayWindow, type CutoffSchedule } from '@/lib/business-day/trading-day'
 import { formatMoney, formatRatio } from './format'
 import type { ReportGrain, ReportPeriod } from './period'
 import type { ProfitGrain } from './profit-facts'
@@ -45,8 +46,15 @@ export function profitGrainFor(grain: ReportGrain): ProfitGrain {
   return grain === 'hour' ? 'day' : grain
 }
 
-function dayStart(day: string): number {
+/** Start of business day `day` (Manila midnight with no cutoff). */
+function dayStart(day: string, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): number {
+  if (schedule.length > 0) return Date.parse(tradingDayWindow(day, schedule).startIso)
   return Date.parse(`${day}T00:00:00.000Z`) - MANILA_OFFSET_MS
+}
+
+/** Calendar arithmetic on day keys (no day length involved). */
+function shiftDayKey(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T00:00:00.000Z`) + days * DAY_MS).toISOString().slice(0, 10)
 }
 
 function previousMonthFirst(day: string): string {
@@ -61,13 +69,18 @@ function previousMonthFirst(day: string): string {
  * the same natural length just before. Null for periods shorter than a month
  * (then no "missing bill" finding is made at all).
  */
-export function previousFullWindow(period: ReportPeriod): { start: number; end: number } | null {
+/** Pass the schedule the period was resolved with (the report context's). */
+export function previousFullWindow(
+  period: ReportPeriod,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE,
+): { start: number; end: number } | null {
   if (period.preset === 'this_month' || period.preset === 'last_month') {
-    return { start: dayStart(previousMonthFirst(period.from)), end: period.start }
+    return { start: dayStart(previousMonthFirst(period.from), schedule), end: period.start }
   }
-  const length = period.fullEnd - period.start
-  if (length < MONTH_MIN_MS) return null
-  return { start: period.start - length, end: period.start }
+  // Counted in days, not ms: the day a cutoff changes is not 24 hours.
+  const days = Math.round((Date.parse(`${period.to}T00:00:00.000Z`) - Date.parse(`${period.from}T00:00:00.000Z`)) / DAY_MS) + 1
+  if (days * DAY_MS < MONTH_MIN_MS) return null
+  return { start: dayStart(shiftDayKey(period.from, -days), schedule), end: period.start }
 }
 
 /**

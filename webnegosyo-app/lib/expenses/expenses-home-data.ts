@@ -14,6 +14,7 @@ import { useBranchContextStore } from "../../stores/branch-context-store";
 import { resourceKey } from "../backends/query-keys";
 import { resolveProfitBranch, ALL_BRANCHES } from "../profit/profit-branch";
 import { resolveProfitWindow, type ProfitSelection } from "../profit/profit-period";
+import { useTradingDay } from "../business-day/use-trading-day";
 import { canSeeProfit } from "../profit/profit-view";
 import { useProfitGlance } from "../profit/use-profit";
 import { useResource } from "../query/use-resource";
@@ -126,7 +127,9 @@ export function useKeptFigure(month: string, range: DayRange | null): KeptFigure
   // the Profit screen's cached result) is the one Home's "Kept" row shares.
   const isCurrentMonth = range === null && month === monthOf(Date.now());
   const isEnabled = isCurrentMonth && canSeeProfit({ role, isOwner, permissions }) && orderBackend === "platform";
-  const period = resolveProfitWindow(profitSelectionFor(month, range, Date.now()), Date.now());
+  // Business days, as the profit SQL dates its facts (20261027180000).
+  const { schedule } = useTradingDay();
+  const period = resolveProfitWindow(profitSelectionFor(month, range, Date.now()), Date.now(), schedule);
   const { branch } = resolveProfitBranch({ account, accountOutletName, outlets, choice: selectedOutlet ?? ALL_BRANCHES });
   const glance = useProfitGlance(period, branch, isEnabled);
   if (!isEnabled || glance === null) return null;

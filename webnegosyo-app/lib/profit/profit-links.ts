@@ -5,7 +5,7 @@
  */
 
 import { billHref } from "../expenses/bill-links";
-import { manilaDay, type ProfitWindow } from "./profit-period";
+import { businessDayAt, type ProfitWindow } from "./profit-period";
 import type { FindingAction } from "./profit-view";
 
 export const EXPENSES_ROUTE = "/(main)/expenses";
@@ -48,6 +48,6 @@ export function findingHref(action: FindingAction): string {
 }
 
 /** For the range picker: the last day a window covers so far. */
-export function lastReadDay(w: Pick<ProfitWindow, "start" | "end">): string {
-  return manilaDay(Math.max(w.start, w.end - 1));
+export function lastReadDay(w: Pick<ProfitWindow, "start" | "end" | "schedule">): string {
+  return businessDayAt(Math.max(w.start, w.end - 1), w.schedule);
 }

@@ -24,7 +24,7 @@ import { EXPENSES_ROUTE, expensesHref, findingHref, lastReadDay, readRange } fro
 import {
   addDays,
   checkCustomRange,
-  manilaDay,
+  businessDayAt,
   resolveProfitWindow,
   type ProfitPreset,
   type ProfitSelection,
@@ -33,6 +33,8 @@ import { profitScreenState } from "../../lib/profit/profit-screen-state";
 import { canSeeProfit, findingPhrase } from "../../lib/profit/profit-view";
 import { billForecastLine } from "../../lib/profit/profit-bills";
 import { useProfit } from "../../lib/profit/use-profit";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
+import type { CutoffSchedule } from "../../lib/business-day/trading-day";
 import { useProfitBills } from "../../lib/profit/use-profit-bills";
 import { newBillHref } from "../../lib/expenses/bill-links";
 import { colors, spacing } from "../../theme/colors";
@@ -44,10 +46,10 @@ const VIEWS: readonly { label: string; value: ProfitView }[] = [
   { label: "Cash flow", value: "cash" },
 ];
 
-function selectionToKeys(selection: ReportSelection, nowMs: number): { fromKey: string; toKey: string } {
+function selectionToKeys(selection: ReportSelection, nowMs: number, schedule: CutoffSchedule): { fromKey: string; toKey: string } {
   if (selection.kind === "day") return { fromKey: selection.dayKey, toKey: selection.dayKey };
   if (selection.kind === "range") return { fromKey: selection.fromKey, toKey: selection.toKey };
-  const today = manilaDay(nowMs);
+  const today = businessDayAt(nowMs, schedule);
   return { fromKey: addDays(today, -(selection.days - 1)), toKey: today };
 }
 
@@ -91,7 +93,9 @@ export default function ProfitScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const nowMs = Date.now();
-  const period = resolveProfitWindow(selection, nowMs);
+  // Business days, as the profit SQL dates its facts (20261027180000).
+  const { schedule } = useTradingDay();
+  const period = resolveProfitWindow(selection, nowMs, schedule);
   const branchView = resolveProfitBranch({ account, accountOutletName, outlets, choice });
   const profit = useProfit(period, branchView.branch, isAllowed && isPlatform);
   const state = profitScreenState({ isAllowed, isPlatform, data: profit.data, isLoading: profit.isLoading, error: profit.error });
@@ -125,8 +129,8 @@ export default function ProfitScreen() {
   };
 
   const applyRange = (picked: ReportSelection) => {
-    const keys = selectionToKeys(picked, Date.now());
-    const verdict = checkCustomRange(keys.fromKey, keys.toKey, Date.now());
+    const keys = selectionToKeys(picked, Date.now(), schedule);
+    const verdict = checkCustomRange(keys.fromKey, keys.toKey, Date.now(), schedule);
     if (!verdict.ok) {
       Alert.alert(verdict.title, verdict.reason);
       return;
@@ -199,6 +203,7 @@ export default function ProfitScreen() {
               : { kind: "range", fromKey: period.fromKey, toKey: lastReadDay(period) }
           }
           nowMs={nowMs}
+          schedule={schedule}
           onApply={applyRange}
           onClose={() => setIsPickingRange(false)}
         />

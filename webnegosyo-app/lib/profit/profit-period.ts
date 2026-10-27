@@ -5,14 +5,20 @@
  * functions take them, and never longer than their 93-day cap. A window that
  * holds "now" ends at now ("so far"), like the web's report periods. Pure:
  * the caller supplies the clock.
+ *
+ * Days are the store's BUSINESS days when a cutoff `schedule` is passed, as
+ * the profit SQL dates every fact since 20261027180000 (`business_day_of`):
+ * a 4 AM store's October runs from Oct 1 4:00 AM to Nov 1 3:59 AM. The
+ * schedule rides on the window (only when it has rows), so every function
+ * below that takes a window follows it; without one nothing changes.
  */
 
 import type { ProfitGrain } from "./profit-types";
+import { tradingDayOf, tradingDayWindow, type CutoffSchedule } from "../business-day/trading-day";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const MANILA_OFFSET_MS = 8 * HOUR_MS;
-const WEEK_MS = 7 * DAY_MS;
 
 /** The report functions refuse longer windows (reporting.assert_access). */
 export const MAX_PROFIT_DAYS = 93;
@@ -47,9 +53,11 @@ export interface ProfitWindow {
   label: string;
   /** "this month", "last month", "this week", "in these days". */
   phrase: string;
-  /** First and last Manila day, inclusive. */
+  /** First and last business day, inclusive. */
   fromKey: string;
   toKey: string;
+  /** The store's business-day cutoffs; absent = Manila midnight. */
+  schedule?: CutoffSchedule;
 }
 
 export const PRESET_LABELS: Readonly<Record<ProfitPreset, string>> = {
@@ -72,6 +80,18 @@ export function manilaDay(ms: number): string {
 
 export function manilaMidnight(day: string): number {
   return Date.parse(`${day}T00:00:00.000Z`) - MANILA_OFFSET_MS;
+}
+
+/** Start of business day `day` (Manila midnight with no schedule). */
+function dayStart(day: string, schedule: CutoffSchedule | undefined): number {
+  if (!schedule || schedule.length === 0) return manilaMidnight(day);
+  return Date.parse(tradingDayWindow(day, schedule).startIso);
+}
+
+/** The business day an instant belongs to (the Manila date with no schedule). */
+export function businessDayAt(ms: number, schedule: CutoffSchedule | undefined): string {
+  if (!schedule || schedule.length === 0) return manilaDay(ms);
+  return tradingDayOf(new Date(ms).toISOString(), schedule);
 }
 
 export function addDays(day: string, days: number): string {
@@ -103,9 +123,17 @@ export function shortDay(day: string): string {
   return `${MONTHS[Number(day.slice(5, 7)) - 1]} ${Number(day.slice(8, 10))}`;
 }
 
-function window(preset: ProfitPreset, fromKey: string, fullEndKey: string, nowMs: number, label: string, phrase: string): ProfitWindow {
-  const start = manilaMidnight(fromKey);
-  const fullEnd = manilaMidnight(fullEndKey);
+function window(
+  preset: ProfitPreset,
+  fromKey: string,
+  fullEndKey: string,
+  nowMs: number,
+  label: string,
+  phrase: string,
+  schedule: CutoffSchedule | undefined
+): ProfitWindow {
+  const start = dayStart(fromKey, schedule);
+  const fullEnd = dayStart(fullEndKey, schedule);
   const isPartial = nowMs < fullEnd;
   return {
     preset,
@@ -117,6 +145,7 @@ function window(preset: ProfitPreset, fromKey: string, fullEndKey: string, nowMs
     phrase,
     fromKey,
     toKey: addDays(fullEndKey, -1),
+    ...(schedule && schedule.length > 0 ? { schedule } : {}),
   };
 }
 
@@ -129,32 +158,37 @@ export function customDays(fromKey: string, toKey: string): number {
 /** A refused range: `title` names what is wrong (the alert's heading), `reason` what to do. */
 export type SelectionVerdict = { ok: true } | { ok: false; title: string; reason: string };
 
-export function checkCustomRange(fromKey: string, toKey: string, nowMs: number): SelectionVerdict {
+export function checkCustomRange(
+  fromKey: string,
+  toKey: string,
+  nowMs: number,
+  schedule?: CutoffSchedule
+): SelectionVerdict {
   const days = customDays(fromKey, toKey);
   if (days === 0) return { ok: false, title: "Check the days", reason: "The first day must come before the last." };
   if (days > MAX_PROFIT_DAYS) return { ok: false, title: "Pick a shorter range", reason: `Pick ${MAX_PROFIT_DAYS} days or fewer.` };
-  if (fromKey > manilaDay(nowMs)) return { ok: false, title: "Pick an earlier range", reason: "That range hasn't started yet." };
+  if (fromKey > businessDayAt(nowMs, schedule)) return { ok: false, title: "Pick an earlier range", reason: "That range hasn't started yet." };
   return { ok: true };
 }
 
-export function resolveProfitWindow(selection: ProfitSelection, nowMs: number): ProfitWindow {
-  const today = manilaDay(nowMs);
+export function resolveProfitWindow(selection: ProfitSelection, nowMs: number, schedule?: CutoffSchedule): ProfitWindow {
+  const today = businessDayAt(nowMs, schedule);
   switch (selection.preset) {
     case "this_month":
-      return window("this_month", monthStart(today), nextMonthStart(today), nowMs, LONG_MONTHS[Number(today.slice(5, 7)) - 1], "this month");
+      return window("this_month", monthStart(today), nextMonthStart(today), nowMs, LONG_MONTHS[Number(today.slice(5, 7)) - 1], "this month", schedule);
     case "last_month": {
       const from = previousMonthStart(today);
-      return window("last_month", from, monthStart(today), nowMs, LONG_MONTHS[Number(from.slice(5, 7)) - 1], "last month");
+      return window("last_month", from, monthStart(today), nowMs, LONG_MONTHS[Number(from.slice(5, 7)) - 1], "last month", schedule);
     }
     case "this_week": {
       const monday = mondayOf(today);
-      return window("this_week", monday, addDays(monday, 7), nowMs, `${shortDay(monday)} – ${shortDay(addDays(monday, 6))}`, "this week");
+      return window("this_week", monday, addDays(monday, 7), nowMs, `${shortDay(monday)} – ${shortDay(addDays(monday, 6))}`, "this week", schedule);
     }
     case "custom": {
       const days = Math.min(Math.max(customDays(selection.fromKey, selection.toKey), 1), MAX_PROFIT_DAYS);
       const label =
         days === 1 ? shortDay(selection.fromKey) : `${shortDay(selection.fromKey)} – ${shortDay(addDays(selection.fromKey, days - 1))}`;
-      return window("custom", selection.fromKey, addDays(selection.fromKey, days), nowMs, label, days === 1 ? "on that day" : "in these days");
+      return window("custom", selection.fromKey, addDays(selection.fromKey, days), nowMs, label, days === 1 ? "on that day" : "in these days", schedule);
     }
   }
 }
@@ -178,11 +212,12 @@ export function windowAt(w: ProfitWindow, nowMs: number): ProfitWindow {
  */
 export function previousFullWindow(w: ProfitWindow): { start: number; end: number } | null {
   if (w.preset === "this_month" || w.preset === "last_month") {
-    return { start: manilaMidnight(previousMonthStart(w.fromKey)), end: w.start };
+    return { start: dayStart(previousMonthStart(w.fromKey), w.schedule), end: w.start };
   }
-  const length = w.preset === "this_week" ? WEEK_MS : w.fullEnd - w.start;
-  if (length < WEEK_MS) return null;
-  return { start: w.start - length, end: w.start };
+  // Counted in days, not ms: the day a cutoff changes is not 24 hours.
+  const days = w.preset === "this_week" ? 7 : customDays(w.fromKey, w.toKey);
+  if (days < 7) return null;
+  return { start: dayStart(addDays(w.fromKey, -days), w.schedule), end: w.start };
 }
 
 /**
@@ -198,7 +233,7 @@ export function recurringCompareWindow(w: ProfitWindow): { start: number; end: n
 
 /** Days for a short window, weeks otherwise: a phone fits about six bars. */
 export function trendGrainFor(w: ProfitWindow): ProfitGrain {
-  return w.fullEnd - w.start <= 14 * DAY_MS ? "day" : "week";
+  return customDays(w.fromKey, w.toKey) <= 14 ? "day" : "week";
 }
 
 function bucketOf(day: string, grain: ProfitGrain): string {
@@ -210,7 +245,7 @@ function bucketOf(day: string, grain: ProfitGrain): string {
 /** Every bucket from the window's first day to its read end, oldest first. */
 export function bucketKeys(w: ProfitWindow, grain: ProfitGrain): string[] {
   const keys: string[] = [];
-  const lastDay = manilaDay(Math.max(w.start, w.end - 1));
+  const lastDay = businessDayAt(Math.max(w.start, w.end - 1), w.schedule);
   for (let day = w.fromKey; day <= lastDay; day = addDays(day, 1)) {
     const key = bucketOf(day, grain);
     if (keys[keys.length - 1] !== key) keys.push(key);
@@ -239,12 +274,12 @@ export function trendPlan(w: ProfitWindow): TrendPlan {
   if (w.preset === "this_week") {
     const from = addDays(w.fromKey, -7 * (TREND_WEEKS - 1));
     const keys = Array.from({ length: TREND_WEEKS }, (_, index) => addDays(from, 7 * index));
-    return { grain: "week", start: manilaMidnight(from), keys, windowKey: w.fromKey, title: `Last ${TREND_WEEKS} weeks` };
+    return { grain: "week", start: dayStart(from, w.schedule), keys, windowKey: w.fromKey, title: `Last ${TREND_WEEKS} weeks` };
   }
   if (w.preset === "this_month" || w.preset === "last_month") {
     const keys = [monthStart(w.fromKey)];
     while (keys.length < TREND_MONTHS) keys.unshift(previousMonthStart(keys[0]));
-    return { grain: "month", start: manilaMidnight(keys[0]), keys, windowKey: monthStart(w.fromKey), title: `Last ${TREND_MONTHS} months` };
+    return { grain: "month", start: dayStart(keys[0], w.schedule), keys, windowKey: monthStart(w.fromKey), title: `Last ${TREND_MONTHS} months` };
   }
   const grain = trendGrainFor(w);
   const keys = bucketKeys(w, grain).slice(-TREND_BARS);
