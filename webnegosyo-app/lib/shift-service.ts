@@ -435,6 +435,8 @@ export interface ShiftDetail extends ShiftRecord {
   closingDenominations: unknown;
   closingNonCash: unknown;
   varianceReason: string | null;
+  /** Cash left in the drawer for the next shift at close (centavos); null before the column exists or while open. */
+  floatKeptCents: number | null;
 }
 
 /**
@@ -457,6 +459,7 @@ export async function fetchShiftById(tenantId: string, shiftId: string, db: Db =
     closing_denominations?: unknown;
     closing_non_cash?: unknown;
     variance_reason?: string | null;
+    float_kept_cents?: number | string | null;
   };
   return {
     ...toShift(row),
@@ -465,6 +468,7 @@ export async function fetchShiftById(tenantId: string, shiftId: string, db: Db =
     closingDenominations: row.closing_denominations ?? null,
     closingNonCash: row.closing_non_cash ?? null,
     varianceReason: row.variance_reason ?? null,
+    floatKeptCents: row.float_kept_cents === null || row.float_kept_cents === undefined ? null : Number(row.float_kept_cents),
   };
 }
 

@@ -88,7 +88,9 @@ export function remittanceSlipInput({ remittance, shift, moves }: SlipSources): 
     countedCents,
     reasonKey: isVarianceReasonKey(remittance.shift?.varianceReason) ? remittance.shift?.varianceReason : null,
     reasonNote: shift?.note ?? null,
-    floatKeptCents: countedCents !== null && handedOverCents !== null ? Math.max(0, countedCents - handedOverCents) : 0,
+    // The stored float kept wins; older closes derive it from the count and the handover.
+    floatKeptCents:
+      shift?.floatKeptCents ?? (countedCents !== null && handedOverCents !== null ? Math.max(0, countedCents - handedOverCents) : 0),
     handedOverCents,
     nonCash: slipNonCash(shift?.closingNonCash),
     denominations: parseCounts(shift?.closingDenominations),

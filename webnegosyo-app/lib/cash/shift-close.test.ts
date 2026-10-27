@@ -135,6 +135,7 @@ describe("calls", () => {
       countShift({ shiftId: "s1", countedCents: 1, denominations: null, deviceExpectedCents: null }, answering({ data: null, error: { code, message } }).client);
     expect(await answer("22023", "denominations_required: this store counts bills")).toMatchObject({ refusal: "denominations_required", message: CASH_COPY.denominationsRequired });
     expect(await answer("22023", "expected_unavailable: the register's figure is missing")).toMatchObject({ refusal: "expected_unavailable" });
+    expect(await answer("22023", "remit_to_invalid: not a receiver here")).toMatchObject({ refusal: "remit_to_invalid", message: CASH_COPY.remitToInvalid });
     expect(await answer("P0002", "shift_not_open: this shift is already closed.")).toMatchObject({ refusal: "not_open", message: CASH_COPY.notOpen });
     expect(await answer("55000", "This shift is already closed.")).toMatchObject({ kind: "refused", refusal: "other", message: "This shift is already closed." });
   });
@@ -164,7 +165,10 @@ describe("calls", () => {
 
   it("reads a start, a join and a stale refusal, with the handover left in the drawer", async () => {
     const { client, calls } = answering({
-      data: { state: "opened", shift: { id: "s2" }, handover: { previousShiftId: "s1", leftCents: 200000, staffName: "Ana", closedAt: "2026-10-24T06:48:00Z" } },
+      data: {
+        state: "opened",
+        shift: { id: "s2", tenantId: "t1", outletId: null, staffUserId: "u-ben", staffName: "Ben", drawerId: "d1", drawerName: "Cashier 1", status: "open", openedAt: "2026-10-24T07:00:00Z", closedAt: null, businessDay: "2026-10-24", isBlind: false, isZeroBalance: false, openingFloatCents: 195000, servicePeriodId: null, overdueAt: null },
+        handover: { previousShiftId: "s1", leftCents: 200000, staffName: "Ana", closedAt: "2026-10-24T06:48:00Z" } },
       error: null,
     });
     const result = await openShiftRpc(

@@ -18,12 +18,16 @@ import type { SlipMove } from "./shift-remit-slip";
 
 const REQUEST_MS = 15_000;
 
-/** The inbox's columns (lib/cash/remittances.ts); kept in step by hand until it exports them. */
-const REMITTANCE_COLUMNS = [
+/**
+ * The inbox's columns (lib/cash/remittances.ts), pinned to the migration by
+ * shift-remit-read.test.ts. The shift is embedded through its named foreign
+ * key, so a second link to staff_shifts can never make the embed ambiguous.
+ */
+export const REMITTANCE_COLUMNS = [
   "id, tenant_id, outlet_id, kind, shift_id, movement_id, business_day, cashier_user_id, cashier_name",
   "handed_over_cents, remitted_to, remitted_to_name, to_safe, status, received_cents, received_by_name, received_at",
-  "accept_method, is_self_received, receiver_note, dispute_reason, resolved_by_name, resolved_at, resolution_note, created_at",
-  "shift:staff_shifts(drawer_name, opened_at, closed_at, closing_count, expected_cash, variance_reason)",
+  "accept_method, is_self_received, receiver_note, dispute_reason, resolved_by_name, resolved_at, resolved_note, created_at",
+  "shift:staff_shifts!cash_remittances_shift_id_fkey(drawer_name, opened_at, closed_at, closing_count, expected_cash, variance_reason)",
 ].join(", ");
 
 export const SLIP_NOT_FOUND = "This slip isn't here. It may belong to a branch this account can't see.";
@@ -36,6 +40,8 @@ export async function fetchRemittance(db: CashDb, tenantId: string, id: string):
   if (error) throw describeCashError(error as DbError, "The slip could not be read.");
   return data ? parseRemittance(data) : null;
 }
+
+export const SLIP_MOVE_COLUMNS = "kind, amount, created_at, taken_by_name";
 
 const MOVE_KINDS = new Set(["pay_in", "pay_out", "collect"]);
 
@@ -65,7 +71,7 @@ export async function fetchSlipMoves(db: CashDb, tenantId: string, shiftId: stri
       ),
       REQUEST_MS,
     ) as Promise<{ data: unknown; error: DbError | null }>;
-  let answer = await read("kind, amount, created_at, taken_by_name");
+  let answer = await read(SLIP_MOVE_COLUMNS);
   // 42703 = no such column: the pickups migration is not applied yet.
   if (answer.error?.code === "42703") answer = await read("kind, amount, created_at");
   if (answer.error) throw describeCashError(answer.error, "The drawer's cash moves could not be read.");

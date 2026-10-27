@@ -364,9 +364,9 @@ describe("fetchShiftById (Shift sales)", () => {
 
   it("picks up the business-day columns once the database has them", async () => {
     const { db } = makeDb({
-      staff_shifts: { data: { ...OPEN_SHIFT, is_blind: true, business_day: "2026-08-19" }, error: null },
+      staff_shifts: { data: { ...OPEN_SHIFT, is_blind: true, business_day: "2026-08-19", float_kept_cents: "200000" }, error: null },
     });
-    expect(await fetchShiftById("t1", "s1", db)).toMatchObject({ isBlind: true, businessDay: "2026-08-19" });
+    expect(await fetchShiftById("t1", "s1", db)).toMatchObject({ isBlind: true, businessDay: "2026-08-19", floatKeptCents: 200000 });
   });
 
   it("answers null for a shift it cannot see, and throws on a failed read", async () => {

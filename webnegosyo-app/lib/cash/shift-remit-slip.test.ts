@@ -76,6 +76,11 @@ describe("remittanceSlipInput", () => {
     });
   });
 
+  it("prints the float the server stored as kept", () => {
+    const input = remittanceSlipInput({ remittance: REMITTANCE, shift: { ...SHIFT, floatKeptCents: 150000 }, moves: [] });
+    expect(input.floatKeptCents).toBe(150000);
+  });
+
   it("leaves cash sales unknown when nobody knows what was expected", () => {
     const input = remittanceSlipInput({ remittance: { ...REMITTANCE, shift: { ...REMITTANCE.shift!, expectedCents: null } }, shift: SHIFT, moves: [] });
     expect(input.cashSalesCents).toBeNull();
