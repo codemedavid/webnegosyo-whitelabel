@@ -160,6 +160,7 @@ async function checkTransitions(db, ids) {
   await refused(call(db, U.manager, ACCEPT, [ids.legacy, 30000, null]), 'P0002', 'a disputed hand-over cannot be accepted')
   await refused(call(db, U.cashier2, 'select * from public.resolve_remittance($1, $2)', [ids.legacy, 'paid back']), '42501', 'the cashier cannot settle their own dispute')
   await refused(call(db, U.manager2, 'select * from public.resolve_remittance($1, $2)', [ids.legacy, '']), '22023', 'settling needs a note')
+  await refused(call(db, U.manager, 'select * from public.resolve_remittance($1, $2)', [ids.legacy, 'sorted']), '42501', 'the manager who disputed it cannot settle it too')
   const resolved = await call(db, U.manager2, 'select * from public.resolve_remittance($1, $2)', [ids.legacy, 'Found ₱50 in the drawer'])
   eq([resolved.status, resolved.resolved_note, resolved.resolved_by_name], ['resolved', 'Found ₱50 in the drawer', 'manny'], 'another cash manager settles it (name from the email\'s local part, never the email)')
   await refused(call(db, U.owner, 'select * from public.resolve_remittance($1, $2)', [ids.legacy, 'again']), 'P0002', 'settling twice: P0002')
@@ -199,8 +200,35 @@ async function checkPickups(db) {
   await refused(val(db, U.cashier, PICK, [s, 0, U.manager, false, null]), '22023', 'an empty pickup is refused')
   await reset(db)
   eq(Number(await scalar(db, "select (cash.shift_expected(s, now()) ->> 'collectedCents') from staff_shifts s where id = $1", [s])), 315000, 'pickups come out of the expected drawer')
+
+  // A direct insert (old builds; the holder's insert policy): no forged taker,
+  // and the cash becomes a pending hand-over with nobody named.
+  const direct = await call(db, U.cashier,
+    "insert into shift_cash_movements (tenant_id, shift_id, kind, amount, recorded_by_name, taken_by, taken_by_name, to_safe) values ($1, $2, 'collect', 25.50, 'Cara', $3, 'Mara', true) returning id, taken_by, taken_by_name, to_safe",
+    [T, s, U.manager])
+  eq([direct.taken_by, direct.taken_by_name, direct.to_safe], [null, null, false], 'a direct collect cannot name who took it or the safe')
+  await reset(db)
+  const filed = (await db.query('select kind, status, handed_over_cents::text, remitted_to, cashier_user_id from cash_remittances where movement_id = $1', [direct.id])).rows[0]
+  eq(filed, { kind: 'pickup', status: 'pending', handed_over_cents: '2550', remitted_to: null, cashier_user_id: U.cashier }, 'a direct collect is filed as a pending pickup hand-over')
+  eq(Number(await scalar(db, "select count(*) from store_activity where kind = 'cash.remitted' and subject_ref = (select id::text from cash_remittances where movement_id = $1)", [direct.id])), 1, 'and logged like any hand-over')
+  const payIn = await call(db, U.cashier, "insert into shift_cash_movements (tenant_id, shift_id, kind, amount, reason, recorded_by_name) values ($1, $2, 'pay_in', 10, 'Change', 'Cara') returning id", [T, s])
+  await reset(db)
+  eq(Number(await scalar(db, 'select count(*) from cash_remittances where movement_id = $1', [payIn.id])), 0, 'a pay in files no hand-over')
+
   await countAndClose(db, U.cashier, s, 50000, { floatKept: 50000 })
   await refused(val(db, U.manager, PICK, [s, 100, null, false, null]), '55000', 'no pickup from a closed shift')
+
+  // The shift's own cashier never receives their own pickup — unless they are the owner (marked self-received).
+  const mine = await shiftFor(db, U.manager)
+  await refused(val(db, U.manager, PICK, [mine, 1000, null, false, null]), '22023', 'a cash manager cannot pick up from their own drawer into their own hands', /taken_by_invalid/)
+  await refused(val(db, U.manager, PICK, [mine, 1000, U.manager, false, null]), '22023', 'nor by naming themselves', /taken_by_invalid/)
+  eq((await val(db, U.manager, PICK, [mine, 1000, U.manager2, false, null])).status, 'pending', 'handing it to another manager is fine')
+  await countAndClose(db, U.manager, mine, 50000, { floatKept: 50000 })
+  const ownersShift = await shiftFor(db, U.owner)
+  const ownerPick = await val(db, U.owner, PICK, [ownersShift, 1000, null, false, null])
+  await reset(db)
+  eq((await db.query('select status, is_self_received from cash_remittances where id = $1', [ownerPick.remittanceId])).rows[0], { status: 'accepted', is_self_received: true }, "the owner's own pickup is received and marked self-received")
+  await countAndClose(db, U.owner, ownersShift, 50000, { floatKept: 50000 })
 }
 
 async function checkReceivers(db) {

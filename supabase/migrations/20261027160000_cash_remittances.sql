@@ -322,6 +322,12 @@ begin
     if not cash.user_manages_cash(v_taken, s.tenant_id, s.outlet_id) then
       raise exception 'taken_by_invalid: that person cannot receive cash at this branch.' using errcode = '22023';
     end if;
+    -- Cash taken out of your own drawer by yourself has gone nowhere: only the
+    -- owner may receive their own (and it is marked self-received).
+    if v_taken = s.staff_user_id and not exists (select 1 from public.app_users au
+                                                  where au.user_id = v_taken and au.tenant_id = s.tenant_id and au.is_owner is true) then
+      raise exception 'taken_by_invalid: the cashier on this shift cannot receive their own pickup.' using errcode = '22023';
+    end if;
   end if;
 
   insert into public.shift_cash_movements (tenant_id, shift_id, kind, amount, reason, recorded_by, recorded_by_name,
@@ -340,7 +346,7 @@ begin
           case when v_self then 'accepted' else 'pending' end,
           case when v_self then p_amount_cents end, case when v_self then v_uid end,
           case when v_self then v_name end, case when v_self then now() end,
-          case when v_self then 'app' end, false)
+          case when v_self then 'app' end, v_taken is not null and v_taken = s.staff_user_id)
   returning * into r;
   perform cash.record_remittance_activity(r, 'cash.remitted', 'remitted');
   return jsonb_build_object('movementId', v_movement, 'remittanceId', r.id, 'status', r.status);
@@ -348,6 +354,91 @@ end;
 $$;
 revoke all on function public.record_cash_pickup(uuid, bigint, uuid, boolean, text) from public, anon;
 grant execute on function public.record_cash_pickup(uuid, bigint, uuid, boolean, text) to authenticated;
+
+-- A client may still insert a `collect` straight into shift_cash_movements:
+-- builds older than record_cash_pickup do, and the insert policy
+-- (20261001120000) lets the drawer's holder record one. Such a row must not
+-- name a receiver it cannot prove (taken_by / to_safe are the RPC's to set),
+-- and the cash it takes out of the drawer must not vanish: it becomes a
+-- pending pickup hand-over with nobody named, which a cash manager accepts or
+-- disputes like any other. record_cash_pickup runs as the definer, so
+-- current_user is not a client role there and neither trigger touches it.
+create or replace function cash.shift_cash_movement_pickup_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('authenticated', 'anon') then
+    new.taken_by := null;
+    new.taken_by_name := null;
+    new.to_safe := false;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function cash.shift_cash_movement_pickup_guard() from public, anon;
+grant execute on function cash.shift_cash_movement_pickup_guard() to authenticated;
+
+drop trigger if exists trg_shift_cash_movement_pickup_guard on public.shift_cash_movements;
+create trigger trg_shift_cash_movement_pickup_guard before insert on public.shift_cash_movements
+  for each row execute function cash.shift_cash_movement_pickup_guard();
+
+-- Definer half: files the pending hand-over for one direct collect. Idempotent
+-- (one remittance per movement) and only ever creates a PENDING row, so
+-- reaching it is harmless; the cash schema is not exposed over the API.
+create or replace function cash.file_direct_pickup(p_movement_id uuid)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  m public.shift_cash_movements%rowtype;
+  s public.staff_shifts%rowtype;
+  r public.cash_remittances;
+begin
+  select * into m from public.shift_cash_movements where id = p_movement_id;
+  if not found or m.kind <> 'collect' then
+    return;
+  end if;
+  select * into s from public.staff_shifts where id = m.shift_id;
+  if not found or (cash.settings_of(s.tenant_id)).remittance_mode = 'off' then
+    return;
+  end if;
+  insert into public.cash_remittances (tenant_id, outlet_id, kind, shift_id, movement_id, business_day, cashier_user_id, cashier_name,
+                                       handed_over_cents)
+  values (s.tenant_id, s.outlet_id, 'pickup', s.id, m.id, s.business_day, s.staff_user_id, s.staff_name,
+          round(m.amount * 100)::bigint)
+  on conflict do nothing
+  returning * into r;
+  if r.id is not null then
+    perform cash.record_remittance_activity(r, 'cash.remitted', 'remitted');
+  end if;
+end;
+$$;
+revoke all on function cash.file_direct_pickup(uuid) from public, anon;
+grant execute on function cash.file_direct_pickup(uuid) to authenticated;
+
+create or replace function cash.shift_cash_movement_direct_pickup()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.kind = 'collect' and current_user in ('authenticated', 'anon') then
+    perform cash.file_direct_pickup(new.id);
+  end if;
+  return null;
+end;
+$$;
+revoke all on function cash.shift_cash_movement_direct_pickup() from public, anon;
+grant execute on function cash.shift_cash_movement_direct_pickup() to authenticated;
+
+drop trigger if exists trg_shift_cash_movement_direct_pickup on public.shift_cash_movements;
+create trigger trg_shift_cash_movement_direct_pickup after insert on public.shift_cash_movements
+  for each row execute function cash.shift_cash_movement_direct_pickup();
 
 -- ============================================
 -- Transitions (CAS on status; P0002 when it already moved)
@@ -509,8 +600,9 @@ begin
     raise exception 'That hand-over was not found.' using errcode = 'P0002';
   end if;
   v_owner := exists (select 1 from public.app_users au where au.user_id = v_uid and au.tenant_id = r.tenant_id and au.is_owner is true);
-  if not (v_owner or (cash.user_manages_cash(v_uid, r.tenant_id, r.outlet_id) and r.cashier_user_id is distinct from v_uid)) then
-    raise exception 'Only the owner, or someone else who handles cash, can settle this.' using errcode = '42501';
+  if not (v_owner or (cash.user_manages_cash(v_uid, r.tenant_id, r.outlet_id) and r.cashier_user_id is distinct from v_uid
+                      and r.received_by is distinct from v_uid)) then
+    raise exception 'Only the owner, or someone other than the cashier and the person who disputed it, can settle this.' using errcode = '42501';
   end if;
   if nullif(btrim(coalesce(p_note, '')), '') is null then
     raise exception 'note_required: say how it was settled.' using errcode = '22023';
@@ -590,6 +682,9 @@ grant execute on function public.list_cash_receivers(uuid, uuid) to authenticate
 --   public.dispute_remittance(uuid, text, bigint), public.accept_remittance_as(uuid, uuid, bigint, text),
 --   public.accept_remittance(uuid, bigint, text), public.record_cash_pickup(uuid, bigint, uuid, boolean, text);
 -- drop function if exists cash.accept(uuid, uuid, bigint, text, text), cash.receive_check(public.cash_remittances, uuid);
+-- drop trigger if exists trg_shift_cash_movement_direct_pickup on public.shift_cash_movements;
+-- drop trigger if exists trg_shift_cash_movement_pickup_guard on public.shift_cash_movements;
+-- drop function if exists cash.shift_cash_movement_direct_pickup(), cash.file_direct_pickup(uuid), cash.shift_cash_movement_pickup_guard();
 -- drop trigger if exists trg_staff_shift_remittance on public.staff_shifts;
 -- drop function if exists cash.create_shift_remittance(), cash.record_remittance_activity(public.cash_remittances, text, text, text[]);
 -- drop table if exists public.cash_remittances;
