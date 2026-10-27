@@ -112,7 +112,7 @@ describe("calls", () => {
     const result = await closeShiftRpc(
       {
         shiftId: "s1",
-        nonCash: [{ key: "gcash", label: "GCash", expectedCents: 421000, status: "matches", seenCents: null, note: null }],
+        nonCash: [{ key: "gcash", method: "GCash", expectedCents: 421000, slipCount: 14, check: "matches", declaredCents: 421000, note: null }],
         varianceReason: "wrong_change",
         note: "gave ₱100 extra to T4",
         floatKeptCents: 200000,
@@ -123,6 +123,9 @@ describe("calls", () => {
       client,
     );
     expect(calls[0].fn).toBe("close_shift");
+    expect(calls[0].args.p_non_cash).toEqual([
+      { key: "gcash", method: "GCash", expectedCents: 421000, slipCount: 14, check: "matches", declaredCents: 421000, note: null },
+    ]);
     expect(calls[0].args).toMatchObject({ p_variance_reason: "wrong_change", p_float_kept_cents: 200000, p_remit_to: "u-maria", p_remit_to_safe: false });
     expect(result).toMatchObject({ ok: true, data: { remittanceId: "r1", handedOverCents: 634500 } });
   });

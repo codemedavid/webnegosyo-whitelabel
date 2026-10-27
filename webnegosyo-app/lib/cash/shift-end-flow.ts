@@ -13,7 +13,8 @@
 
 import { countTotalCents, isValidCounts, type DenominationCounts } from "./denominations";
 import { isVarianceReasonKey, type VarianceReasonKey } from "./reasons";
-import type { NonCashAnswer, NonCashMethod, ShiftCountResult } from "./shift-close";
+import type { NonCashAnswer } from "../../components/cash/non-cash";
+import type { NonCashMethod, ShiftCountResult } from "./shift-close";
 
 export type EndShiftStep = "count" | "noncash" | "result" | "remit";
 export const END_SHIFT_STEP_ORDER: readonly EndShiftStep[] = ["count", "noncash", "result", "remit"];
@@ -27,12 +28,6 @@ export const END_SHIFT_STEPS = [
 
 export type CountMode = "bills" | "total";
 
-export interface NonCashDraft {
-  status: "matches" | "different" | "unchecked";
-  seenCents: number | null;
-  note: string | null;
-}
-
 export interface EndShiftDraft {
   shiftId: string;
   step: EndShiftStep;
@@ -40,7 +35,8 @@ export interface EndShiftDraft {
   counts: DenominationCounts;
   /** "Type total" amount. */
   typedCents: number | null;
-  nonCash: Readonly<Record<string, NonCashDraft>>;
+  /** Shared NonCashCheck answers; null until the methods are known. */
+  nonCash: readonly NonCashAnswer[] | null;
   reasonKey: VarianceReasonKey | null;
   note: string;
   /** Null = the default (the shift's float, or 0 on a zero-balance drawer). */
@@ -48,7 +44,7 @@ export interface EndShiftDraft {
 }
 
 export function emptyDraft(shiftId: string, mode: CountMode): EndShiftDraft {
-  return { shiftId, step: "count", mode, counts: {}, typedCents: null, nonCash: {}, reasonKey: null, note: "", floatKeptCents: null };
+  return { shiftId, step: "count", mode, counts: {}, typedCents: null, nonCash: null, reasonKey: null, note: "", floatKeptCents: null };
 }
 
 /** What the cashier counted, by the mode they used; null = nothing entered yet. */
@@ -100,38 +96,6 @@ export function checkFloatKept(chosenCents: number, countedCents: number): strin
   return null;
 }
 
-// ── Non-cash ───────────────────────────────────────────────────────────────
-
-export function allNonCashMatch(draft: EndShiftDraft, methods: readonly NonCashMethod[]): EndShiftDraft {
-  const nonCash = Object.fromEntries(methods.map((m) => [m.key, { status: "matches" as const, seenCents: null, note: null }]));
-  return { ...draft, nonCash };
-}
-
-export function setNonCash(draft: EndShiftDraft, key: string, answer: NonCashDraft): EndShiftDraft {
-  return { ...draft, nonCash: { ...draft.nonCash, [key]: answer } };
-}
-
-/** What close_shift receives: every method, unanswered ones as "left to the owner". */
-export function nonCashAnswers(draft: EndShiftDraft, methods: readonly NonCashMethod[] | null): NonCashAnswer[] {
-  return (methods ?? []).map((m) => {
-    const answer = draft.nonCash[m.key];
-    return {
-      key: m.key,
-      label: m.label,
-      expectedCents: m.cents,
-      status: answer?.status ?? "unchecked",
-      seenCents: answer?.status === "different" ? answer.seenCents : null,
-      note: answer?.status === "different" ? answer.note : null,
-    };
-  });
-}
-
-/** A "Different" answer needs the amount seen. */
-export function nonCashProblem(draft: EndShiftDraft, methods: readonly NonCashMethod[] | null): string | null {
-  const missing = (methods ?? []).find((m) => draft.nonCash[m.key]?.status === "different" && draft.nonCash[m.key]?.seenCents === null);
-  return missing ? `Type how much ${missing.label} shows.` : null;
-}
-
 // ── Gates ──────────────────────────────────────────────────────────────────
 
 export const END_SHIFT_COPY = {
@@ -171,32 +135,18 @@ export function canLeaveResult(count: ShiftCountResult | null, reasonKey: Varian
   return { ok: true };
 }
 
-export type RemitTarget =
-  | { kind: "person"; userId: string; name: string }
-  | { kind: "safe"; openerId: string | null; openerName: string | null }
-  /** Remittances optional: hand it over later to anyone who manages cash. */
-  | { kind: "later" };
-
 export interface RemitGateInput {
   isOffline: boolean;
-  target: RemitTarget | null;
-  /** off = no receiver asked; required = a person or the safe. */
+  /** RemitToPicker's own readiness (`isRemitReady`): a person (by PIN only when PIN can work) or the safe. */
+  isTargetReady: boolean;
+  /** off = nobody receives; optional = a receiver may be left out; required = must pick. */
   remittanceMode: "off" | "optional" | "required";
 }
 
 export function canRemit(input: RemitGateInput): Gate {
   if (input.isOffline) return { ok: false, reason: END_SHIFT_COPY.offlineRemit };
-  if (input.remittanceMode === "off") return { ok: true };
-  if (!input.target) return { ok: false, reason: END_SHIFT_COPY.pickReceiver };
-  if (input.target.kind === "later" && input.remittanceMode === "required") return { ok: false, reason: END_SHIFT_COPY.pickReceiver };
-  return { ok: true };
-}
-
-/** close_shift's receiver fields for a target. */
-export function remitFields(target: RemitTarget | null): { remitTo: string | null; remitToSafe: boolean } {
-  if (!target || target.kind === "later") return { remitTo: null, remitToSafe: false };
-  if (target.kind === "safe") return { remitTo: target.openerId, remitToSafe: true };
-  return { remitTo: target.userId, remitToSafe: false };
+  if (input.remittanceMode !== "required" || input.isTargetReady) return { ok: true };
+  return { ok: false, reason: END_SHIFT_COPY.pickReceiver };
 }
 
 // ── Draft (de)serialisation ────────────────────────────────────────────────
@@ -207,13 +157,23 @@ export function serializeDraft(draft: EndShiftDraft): string {
   return JSON.stringify({ v: DRAFT_VERSION, draft });
 }
 
-function isNonCashDraft(value: unknown): value is NonCashDraft {
+const CHECKS = ["pending", "matches", "different", "unchecked"];
+
+function isWholeOrNull(value: unknown): boolean {
+  return value === null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+}
+
+function isNonCashAnswer(value: unknown): value is NonCashAnswer {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
   return (
-    (v.status === "matches" || v.status === "different" || v.status === "unchecked") &&
-    (v.seenCents === null || (typeof v.seenCents === "number" && Number.isSafeInteger(v.seenCents) && v.seenCents >= 0)) &&
-    (v.note === null || typeof v.note === "string")
+    typeof v.key === "string" &&
+    typeof v.label === "string" &&
+    typeof v.expectedCents === "number" &&
+    typeof v.count === "number" &&
+    CHECKS.includes(v.check as string) &&
+    isWholeOrNull(v.declaredCents) &&
+    typeof v.note === "string"
   );
 }
 
@@ -233,8 +193,8 @@ export function parseDraft(raw: string | null, shiftId: string): EndShiftDraft |
   if (!isValidCounts(d.counts)) return null;
   const typed = d.typedCents;
   if (typed !== null && !(typeof typed === "number" && Number.isSafeInteger(typed) && typed >= 0)) return null;
-  const nonCash = d.nonCash && typeof d.nonCash === "object" ? (d.nonCash as Record<string, unknown>) : null;
-  if (!nonCash || !Object.values(nonCash).every(isNonCashDraft)) return null;
+  const nonCash = d.nonCash;
+  if (nonCash !== null && !(Array.isArray(nonCash) && nonCash.every(isNonCashAnswer))) return null;
   const floatKept = d.floatKeptCents;
   if (floatKept !== null && !(typeof floatKept === "number" && Number.isSafeInteger(floatKept) && floatKept >= 0)) return null;
   return {
@@ -243,7 +203,7 @@ export function parseDraft(raw: string | null, shiftId: string): EndShiftDraft |
     mode: d.mode,
     counts: d.counts,
     typedCents: typed as number | null,
-    nonCash: nonCash as Record<string, NonCashDraft>,
+    nonCash: nonCash as NonCashAnswer[] | null,
     reasonKey: isVarianceReasonKey(d.reasonKey) ? d.reasonKey : null,
     note: typeof d.note === "string" ? d.note : "",
     floatKeptCents: floatKept as number | null,

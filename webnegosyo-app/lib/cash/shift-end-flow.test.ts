@@ -1,5 +1,4 @@
 import {
-  allNonCashMatch,
   canLeaveResult,
   canRemit,
   canSubmitCount,
@@ -11,19 +10,14 @@ import {
   floatToKeep,
   handoverCents,
   nextStep,
-  nonCashAnswers,
-  nonCashProblem,
   parseDraft,
   previousStep,
-  remitFields,
   serializeDraft,
-  setNonCash,
   stepsFor,
 } from "./shift-end-flow";
 import type { NonCashMethod, ShiftCountResult } from "./shift-close";
 
 const GCASH: NonCashMethod = { key: "gcash", label: "GCash", cents: 421000, count: 14 };
-const MAYA: NonCashMethod = { key: "maya", label: "Maya", cents: 86000, count: 3 };
 
 describe("counting", () => {
   it("adds bills and coins in centavos, and reads nothing typed as not counted", () => {
@@ -76,26 +70,6 @@ describe("float and handover", () => {
   });
 });
 
-describe("non-cash", () => {
-  it("answers every method, unanswered ones left to the owner", () => {
-    const draft = setNonCash(emptyDraft("s1", "bills"), "gcash", { status: "different", seenCents: 416000, note: "1 refund" });
-    expect(nonCashAnswers(draft, [GCASH, MAYA])).toEqual([
-      { key: "gcash", label: "GCash", expectedCents: 421000, status: "different", seenCents: 416000, note: "1 refund" },
-      { key: "maya", label: "Maya", expectedCents: 86000, status: "unchecked", seenCents: null, note: null },
-    ]);
-  });
-
-  it("marks all as matching in one tap", () => {
-    const draft = allNonCashMatch(emptyDraft("s1", "bills"), [GCASH, MAYA]);
-    expect(nonCashAnswers(draft, [GCASH, MAYA]).map((a) => a.status)).toEqual(["matches", "matches"]);
-  });
-
-  it("asks for the amount seen when a method is different", () => {
-    const draft = setNonCash(emptyDraft("s1", "bills"), "gcash", { status: "different", seenCents: null, note: null });
-    expect(nonCashProblem(draft, [GCASH])).toBe("Type how much GCash shows.");
-  });
-});
-
 describe("gates", () => {
   const ready = { isOffline: false, pendingSales: 0, waitingExpenses: 0, countedCents: 834500 };
 
@@ -115,24 +89,23 @@ describe("gates", () => {
   });
 
   it("remits only online, to someone when the store requires it", () => {
-    const person = { kind: "person" as const, userId: "u1", name: "Maria" };
-    expect(canRemit({ isOffline: true, target: person, remittanceMode: "required" })).toEqual({ ok: false, reason: END_SHIFT_COPY.offlineRemit });
-    expect(canRemit({ isOffline: false, target: null, remittanceMode: "required" })).toMatchObject({ ok: false });
-    expect(canRemit({ isOffline: false, target: { kind: "later" }, remittanceMode: "required" })).toMatchObject({ ok: false });
-    expect(canRemit({ isOffline: false, target: { kind: "later" }, remittanceMode: "optional" })).toEqual({ ok: true });
-    expect(canRemit({ isOffline: false, target: null, remittanceMode: "off" })).toEqual({ ok: true });
-  });
-
-  it("maps the target onto close_shift's receiver fields", () => {
-    expect(remitFields({ kind: "person", userId: "u1", name: "Maria" })).toEqual({ remitTo: "u1", remitToSafe: false });
-    expect(remitFields({ kind: "safe", openerId: "u2", openerName: "Ben" })).toEqual({ remitTo: "u2", remitToSafe: true });
-    expect(remitFields({ kind: "later" })).toEqual({ remitTo: null, remitToSafe: false });
+    expect(canRemit({ isOffline: true, isTargetReady: true, remittanceMode: "required" })).toEqual({ ok: false, reason: END_SHIFT_COPY.offlineRemit });
+    expect(canRemit({ isOffline: false, isTargetReady: false, remittanceMode: "required" })).toEqual({ ok: false, reason: END_SHIFT_COPY.pickReceiver });
+    expect(canRemit({ isOffline: false, isTargetReady: false, remittanceMode: "optional" })).toEqual({ ok: true });
+    expect(canRemit({ isOffline: false, isTargetReady: false, remittanceMode: "off" })).toEqual({ ok: true });
+    expect(canRemit({ isOffline: false, isTargetReady: true, remittanceMode: "required" })).toEqual({ ok: true });
   });
 });
 
 describe("draft", () => {
   it("round-trips a draft for its own shift", () => {
-    const draft = { ...setNonCash(emptyDraft("s1", "bills"), "gcash", { status: "matches" as const, seenCents: null, note: null }), counts: { b100: 7 }, reasonKey: "wrong_change" as const, step: "result" as const };
+    const draft = {
+      ...emptyDraft("s1", "bills"),
+      nonCash: [{ key: "gcash", label: "GCash", expectedCents: 421000, count: 14, check: "matches" as const, declaredCents: null, note: "" }],
+      counts: { b100: 7 },
+      reasonKey: "wrong_change" as const,
+      step: "result" as const,
+    };
     expect(parseDraft(serializeDraft(draft), "s1")).toEqual(draft);
   });
 

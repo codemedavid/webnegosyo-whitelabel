@@ -14,6 +14,7 @@
 
 import { withDeadline } from "../offline/deadline";
 import { supabase } from "../supabase";
+import type { CloseNonCashRow } from "../../components/cash/non-cash";
 import type { DenominationCounts } from "./denominations";
 import type { VarianceReasonKey } from "./reasons";
 
@@ -332,20 +333,10 @@ export function countShift(args: CountArgs, client: CashRpcClient = liveClient):
   );
 }
 
-/** One non-cash method's check (step 2): matched, different by an amount, or left to the owner. */
-export interface NonCashAnswer {
-  key: string;
-  label: string;
-  expectedCents: number;
-  status: "matches" | "different" | "unchecked";
-  /** What the cashier saw, when different. */
-  seenCents: number | null;
-  note: string | null;
-}
-
 export interface CloseArgs {
   shiftId: string;
-  nonCash: readonly NonCashAnswer[];
+  /** From `toCloseNonCash(answers)` (components/cash/non-cash.ts). */
+  nonCash: readonly CloseNonCashRow[];
   varianceReason: VarianceReasonKey | null;
   note: string | null;
   floatKeptCents: number;
@@ -360,14 +351,7 @@ export function closeShiftRpc(args: CloseArgs, client: CashRpcClient = liveClien
     "close_shift",
     {
       p_shift_id: args.shiftId,
-      p_non_cash: args.nonCash.map((a) => ({
-        key: a.key,
-        label: a.label,
-        expectedCents: a.expectedCents,
-        status: a.status,
-        seenCents: a.seenCents,
-        note: a.note,
-      })),
+      p_non_cash: args.nonCash,
       p_variance_reason: args.varianceReason,
       p_note: args.note,
       p_float_kept_cents: args.floatKeptCents,
