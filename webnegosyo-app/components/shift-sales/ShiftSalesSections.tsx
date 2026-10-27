@@ -73,7 +73,7 @@ export function TopItemsCard({ items }: { items: readonly ShiftSalesItem[] }) {
           <Text style={card.label} numberOfLines={1}>
             {item.label}
           </Text>
-          <Text style={card.meta}>{`× ${Number.isInteger(item.quantity) ? item.quantity : item.quantity.toFixed(2)}`}</Text>
+          <Text style={card.meta}>{`${Number.isInteger(item.quantity) ? item.quantity : item.quantity.toFixed(2)} sold`}</Text>
           <Text style={card.money}>{formatPeso(item.netCents)}</Text>
         </View>
       ))}

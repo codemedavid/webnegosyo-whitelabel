@@ -1,5 +1,10 @@
+
 import {
   canLeaveResult,
+  canRecount,
+  isCountLocked,
+  startRecount,
+  withCount,
   canRemit,
   canSubmitCount,
   checkFloatKept,
@@ -15,7 +20,7 @@ import {
   serializeDraft,
   stepsFor,
 } from "./shift-end-flow";
-import type { NonCashMethod, ShiftCountResult } from "./shift-close";
+import type { NonCashMethod, ShiftCountResult } from "./shift-close-parse";
 
 const GCASH: NonCashMethod = { key: "gcash", label: "GCash", cents: 421000, count: 14 };
 
@@ -97,6 +102,25 @@ describe("gates", () => {
   });
 });
 
+describe("count lock", () => {
+  const first: ShiftCountResult = { attempt: 1, countedCents: 834500, expectedCents: 846500, differenceCents: -12000, source: "server", reasonRequired: true };
+
+  it("locks a count once the server has it, and opens it once for a recount", () => {
+    const sent = withCount(emptyDraft("s1", "bills"), first);
+    expect(isCountLocked(sent)).toBe(true);
+    expect(canRecount(sent)).toBe(true);
+    const recounting = startRecount({ ...sent, step: "result", reasonKey: "wrong_change" });
+    expect(recounting).toMatchObject({ isRecounting: true, step: "count", reasonKey: null });
+    expect(isCountLocked(recounting)).toBe(false);
+  });
+
+  it("offers no second recount", () => {
+    const second = withCount(emptyDraft("s1", "bills"), { ...first, attempt: 2 });
+    expect(canRecount(second)).toBe(false);
+    expect(startRecount(second)).toBe(second);
+  });
+});
+
 describe("draft", () => {
   it("round-trips a draft for its own shift", () => {
     const draft = {
@@ -105,6 +129,7 @@ describe("draft", () => {
       counts: { b100: 7 },
       reasonKey: "wrong_change" as const,
       step: "result" as const,
+      count: { attempt: 1 as const, countedCents: 70000, expectedCents: 70000, differenceCents: 0, source: "server" as const, reasonRequired: false },
     };
     expect(parseDraft(serializeDraft(draft), "s1")).toEqual(draft);
   });

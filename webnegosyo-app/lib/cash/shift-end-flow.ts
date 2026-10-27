@@ -14,7 +14,7 @@
 import { countTotalCents, isValidCounts, type DenominationCounts } from "./denominations";
 import { isVarianceReasonKey, type VarianceReasonKey } from "./reasons";
 import type { NonCashAnswer } from "../../components/cash/non-cash";
-import type { NonCashMethod, ShiftCountResult } from "./shift-close";
+import { parseCountResult, type NonCashMethod, type ShiftCountResult } from "./shift-close-parse";
 
 export type EndShiftStep = "count" | "noncash" | "result" | "remit";
 export const END_SHIFT_STEP_ORDER: readonly EndShiftStep[] = ["count", "noncash", "result", "remit"];
@@ -41,10 +41,14 @@ export interface EndShiftDraft {
   note: string;
   /** Null = the default (the shift's float, or 0 on a zero-balance drawer). */
   floatKeptCents: number | null;
+  /** What the server revealed for the last count sent; kept so a reopened tablet does not count again. */
+  count: ShiftCountResult | null;
+  /** The cashier chose Recount: the count is open for its second (last) attempt. */
+  isRecounting: boolean;
 }
 
 export function emptyDraft(shiftId: string, mode: CountMode): EndShiftDraft {
-  return { shiftId, step: "count", mode, counts: {}, typedCents: null, nonCash: null, reasonKey: null, note: "", floatKeptCents: null };
+  return { shiftId, step: "count", mode, counts: {}, typedCents: null, nonCash: null, reasonKey: null, note: "", floatKeptCents: null, count: null, isRecounting: false };
 }
 
 /** What the cashier counted, by the mode they used; null = nothing entered yet. */
@@ -52,6 +56,26 @@ export function countedCentsOf(draft: EndShiftDraft): number | null {
   if (draft.mode === "total") return draft.typedCents;
   const total = countTotalCents(draft.counts);
   return total === null || (total === 0 && Object.keys(draft.counts).length === 0) ? null : total;
+}
+
+/** Once sent, a count is locked: only Recount (once) opens it again. */
+export function isCountLocked(draft: EndShiftDraft): boolean {
+  return draft.count !== null && !draft.isRecounting;
+}
+
+/** Recount: back to the count with what was counted, once. */
+export function canRecount(draft: EndShiftDraft): boolean {
+  return draft.count?.attempt === 1;
+}
+
+export function startRecount(draft: EndShiftDraft): EndShiftDraft {
+  if (!canRecount(draft)) return draft;
+  return { ...draft, isRecounting: true, step: "count", reasonKey: null };
+}
+
+/** The server's answer to a count: locked again, with the new figures. */
+export function withCount(draft: EndShiftDraft, count: ShiftCountResult): EndShiftDraft {
+  return { ...draft, count, isRecounting: false };
 }
 
 /** The steps this shift walks: GCash & cards drops out when nothing non-cash came in. */
@@ -197,6 +221,14 @@ export function parseDraft(raw: string | null, shiftId: string): EndShiftDraft |
   if (nonCash !== null && !(Array.isArray(nonCash) && nonCash.every(isNonCashAnswer))) return null;
   const floatKept = d.floatKeptCents;
   if (floatKept !== null && !(typeof floatKept === "number" && Number.isSafeInteger(floatKept) && floatKept >= 0)) return null;
+  let count: ShiftCountResult | null = null;
+  if (d.count !== null && d.count !== undefined) {
+    try {
+      count = parseCountResult(d.count);
+    } catch {
+      return null;
+    }
+  }
   return {
     shiftId,
     step: d.step as EndShiftStep,
@@ -207,6 +239,8 @@ export function parseDraft(raw: string | null, shiftId: string): EndShiftDraft |
     reasonKey: isVarianceReasonKey(d.reasonKey) ? d.reasonKey : null,
     note: typeof d.note === "string" ? d.note : "",
     floatKeptCents: floatKept as number | null,
+    count,
+    isRecounting: d.isRecounting === true && count !== null,
   };
 }
 

@@ -450,3 +450,18 @@ export async function fetchShiftById(tenantId: string, shiftId: string, db: Db =
   const row = data as unknown as ShiftRow & { is_blind?: boolean | null; business_day?: string | null };
   return { ...toShift(row), isBlind: row.is_blind === true, businessDay: row.business_day ?? null };
 }
+
+/** The session read only names the person; it must never hold up a close or a clock-in. */
+const STAFF_NAME_READ_MS = 5_000;
+
+/** The signed-in person's name, snapshotted onto shifts and closes; falls back rather than blocking. */
+export async function readStaffName(): Promise<string> {
+  try {
+    const { data } = await withDeadline(supabase.auth.getSession(), STAFF_NAME_READ_MS);
+    const user = data.session?.user;
+    return (user?.user_metadata?.display_name as string | undefined) || user?.email || "Staff";
+  } catch (error) {
+    console.warn("[shift] session unavailable for the staff name", error);
+    return "Staff";
+  }
+}

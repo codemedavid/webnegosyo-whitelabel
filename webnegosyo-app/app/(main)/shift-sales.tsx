@@ -205,7 +205,7 @@ function ShiftSalesContent(props: ContentProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const sample = useMemo(() => (isDemo ? sampleShiftSales(Date.now()) : null), [isDemo]);
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
-  // Reports → Shifts links a named shift by id; its name is the title.
+  // Reports, Shifts tab, links a named shift by id; its name is the title.
   const periods = useServicePeriods(!isDemo && target.kind === "period" && target.periodId ? tenantId : null);
 
   const shift = shiftRead.data ?? null;
