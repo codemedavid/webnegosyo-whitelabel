@@ -14,7 +14,8 @@ import {
 import { assignBranchVerdicts } from "../../lib/branch-verdict";
 import { buildKpiPeriod, kpiFetchWindow, PERIOD_CHOICES } from "../../lib/branch-period";
 import { ordersInWindowArgs } from "../../lib/report-window";
-import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
+import { useCanBoundReports } from "../../lib/use-report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { useAccountBranchScope } from "../../lib/use-branch-scope";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useOutlets } from "../../lib/use-outlets";
@@ -72,7 +73,8 @@ export default function BranchesScreen() {
   const scope = useAccountBranchScope();
   const [periodDays, setPeriodDays] = useState(PERIOD_CHOICES[0].days);
   const [refreshing, setRefreshing] = useState(false);
-  const { anchorMs } = useBusinessDayAnchor();
+  // Whole business days (the store's cutoff; Manila midnight with none).
+  const { anchorMs, schedule } = useTradingDay();
   const canBound = useCanBoundReports();
 
   const {
@@ -90,7 +92,7 @@ export default function BranchesScreen() {
     // The period and the one before it — the trend's baseline — read exactly,
     // where the backend can bound a read. The last 2000 orders never covered
     // 90 + 90 days on a busy store, so the oldest weeks read as zero.
-    ordersInWindowArgs(kpiFetchWindow(buildKpiPeriod(periodDays, anchorMs)), canBound, ORDER_WINDOW)
+    ordersInWindowArgs(kpiFetchWindow(buildKpiPeriod(periodDays, anchorMs, schedule)), canBound, ORDER_WINDOW)
   );
 
   const selectBranch = useBranchContextStore((s) => s.selectBranch);
@@ -101,7 +103,7 @@ export default function BranchesScreen() {
   const { rows, totals, hours } = useMemo(() => {
     // Anchored to the Manila day, which moves at midnight without the merchant
     // reopening the screen — and matches the window the orders were read for.
-    const period = buildKpiPeriod(periodDays, anchorMs);
+    const period = buildKpiPeriod(periodDays, anchorMs, schedule);
     const scoped = filterOrdersToScope(scope, orders) as KpiOrderLike[];
     const kpis = buildBranchKpis(scoped, outlets, period);
 
@@ -110,7 +112,7 @@ export default function BranchesScreen() {
       totals: storeKpiTotals(kpis),
       hours: hourOfDayVolume(scoped, period),
     };
-  }, [scope, orders, outlets, periodDays, anchorMs]);
+  }, [scope, orders, outlets, periodDays, anchorMs, schedule]);
 
   const onRefresh = useCallback(
     () => refreshWithMinSpinner([refetchOutlets, refetchOrders], setRefreshing),

@@ -9,7 +9,8 @@ import { buildBranchKpis, storeKpiTotals, type KpiOrderLike } from "../../lib/br
 import { assignBranchVerdicts } from "../../lib/branch-verdict";
 import { buildKpiPeriod, kpiFetchWindow, PERIOD_CHOICES } from "../../lib/branch-period";
 import { ordersInWindowArgs } from "../../lib/report-window";
-import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
+import { useCanBoundReports } from "../../lib/use-report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { useAccountBranchScope } from "../../lib/use-branch-scope";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useOutlets } from "../../lib/use-outlets";
@@ -54,7 +55,8 @@ const LANDING_PERIOD = PERIOD_CHOICES[0];
 export default function PortfolioScreen() {
   const scope = useAccountBranchScope();
   const [refreshing, setRefreshing] = useState(false);
-  const { anchorMs } = useBusinessDayAnchor();
+  // Whole business days (the store's cutoff; Manila midnight with none).
+  const { anchorMs, schedule } = useTradingDay();
   const canBound = useCanBoundReports();
 
   const {
@@ -69,13 +71,13 @@ export default function PortfolioScreen() {
     refetch: refetchOrders,
   } = useSafeQuery<KpiOrderLike[]>(
     getOrdersRef,
-    ordersInWindowArgs(kpiFetchWindow(buildKpiPeriod(LANDING_PERIOD.days, anchorMs)), canBound, ORDER_WINDOW)
+    ordersInWindowArgs(kpiFetchWindow(buildKpiPeriod(LANDING_PERIOD.days, anchorMs, schedule)), canBound, ORDER_WINDOW)
   );
 
   const selectBranch = useBranchContextStore((s) => s.selectBranch);
 
   const { rows, totals } = useMemo(() => {
-    const period = buildKpiPeriod(LANDING_PERIOD.days, anchorMs);
+    const period = buildKpiPeriod(LANDING_PERIOD.days, anchorMs, schedule);
     const scoped = filterOrdersToScope(scope, orders) as KpiOrderLike[];
     const kpis = buildBranchKpis(scoped, outlets, period);
 
@@ -83,7 +85,7 @@ export default function PortfolioScreen() {
       rows: assignBranchVerdicts(kpis, { periodDays: period.days }),
       totals: storeKpiTotals(kpis),
     };
-  }, [scope, orders, outlets, anchorMs]);
+  }, [scope, orders, outlets, anchorMs, schedule]);
 
   const onRefresh = useCallback(
     () => refreshWithMinSpinner([refetchOutlets, refetchOrders], setRefreshing),
