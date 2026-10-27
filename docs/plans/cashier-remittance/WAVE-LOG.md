@@ -14,3 +14,8 @@
 
 ## Wave 2 — shared
 - shared done (f02b67cf, 6890174e, 7ee71954, 2ea264be, 7bf64c8a): RemitToPicker (+ remitCloseArgs → close_shift p_remit_to/p_remit_to_safe), NonCashCheck (+ toCloseNonCash → p_non_cash, toSlipNonCash), AcceptRemitBody, slip-print (print/share remittance + day close), ExpenseKeypad folded onto Keypad (wave-1 duplication cleared). `CashReceiver` {userId,name,roleLabel?,presence?,hasPin?} is defined in components/cash/remit-target.ts — app-owner's lib/cash/receivers.ts should produce it (or map to it). p_non_cash element shape = CloseNonCashRow {key,method,expectedCents,slipCount,check,declaredCents,note} (relay to db). Failing, not shared's: components/expenses/ExpenseUndoHost.test.tsx "screens without a tab bar" (end-shift hidden by app-owner, list not updated).
+
+## Wave 2 notes (lead)
+- shared done (f02b67cf RemitToPicker, 6890174e NonCashCheck, AcceptRemitBody, slip-print, ExpenseKeypad folded onto Keypad).
+- web done (bab01638 PIN route w/ shared src/lib/staff-pin/pin-limits.ts — one guess budget across Senior/PWD + remit; c814df3c To accept tab). Assumed resolved_note/resolved_by_name, conflict codes P0002/40001.
+- app-owner done (inbox, accept/dispute/settle, Home strips, ForceCloseShiftSheet, 659da014 accept sheet wraps shared AcceptRemitBody). end-shift keeps the tab bar (ExpenseUndoHost list). WAVE-3 TODO: dispute sheet lost "amount received" field — add optional amount to shared AcceptRemitBody dispute path.
