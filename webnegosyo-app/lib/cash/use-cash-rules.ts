@@ -18,6 +18,7 @@ import { CUTOFF_SCHEDULE_RESOURCE } from "../business-day/schedule-service";
 import { fetchCashSettings, type CashDb, type CashSettings } from "./settings";
 import { listServicePeriods, type ServicePeriod } from "./service-periods";
 import { fetchOrderHours, suggestionWindow, type HourBucket } from "./cutoff-suggestion";
+import { listCashReceivers, type CashReceiver } from "./receivers";
 
 /** The signed-in user's session as the cash services' client: RLS and the RPCs run as them. */
 export const liveCashDb: CashDb = {
@@ -51,6 +52,19 @@ export function useOrderHours(tenantId: string | null, isEnabled: boolean): Reso
   );
   return useResource(isEnabled && tenantId ? resourceKey(ORDER_HOURS_RESOURCE, tenantId) : null, fetcher, {
     staleTime: ORDER_HOURS_STALE_MS,
+  });
+}
+
+export const CASH_RECEIVERS_RESOURCE = "cash-receivers";
+
+/**
+ * Who can receive cash at `outletId` (null = the unbranched store), for Remit
+ * to and Taken by. Order the list with `receiversForRemit`.
+ */
+export function useCashReceivers(tenantId: string | null, outletId: string | null): ResourceResult<CashReceiver[]> {
+  const fetcher = useCallback(() => listCashReceivers(liveCashDb, tenantId as string, outletId), [tenantId, outletId]);
+  return useResource(tenantId ? resourceKey(CASH_RECEIVERS_RESOURCE, tenantId, outletId) : null, fetcher, {
+    staleTime: STALE_MS,
   });
 }
 

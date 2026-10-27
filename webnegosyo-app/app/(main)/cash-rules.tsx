@@ -84,7 +84,7 @@ export default function CashRulesScreen() {
   const suggestion = hours.data && !pending ? suggestCutoff(hours.data, currentCutoff) : null;
 
   const staffFetcher = useCallback(() => listStaff(invokeManageStaff), [invokeManageStaff]);
-  const staffQuery = useResource(isLive && showTeam && tenantId ? resourceKey("cash-receivers", tenantId) : null, staffFetcher);
+  const staffQuery = useResource(isLive && showTeam && tenantId ? resourceKey("cash-rules-staff", tenantId) : null, staffFetcher);
   const receivers = useMemo<Receiver[] | null>(() => {
     if (!staffQuery.data) return null;
     return receiversOf(staffQuery.data).map((member) => ({
