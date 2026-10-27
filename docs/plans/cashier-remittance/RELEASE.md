@@ -31,6 +31,7 @@ C. Permission backfill                         120100   (only after B1+B2+B3 are
 D. Other order backends                        Convex Bulk Deploy v39, own-DB Bulk Deploy v4
 E. Alerts                                      190000   (after the OTA has reached the stores' tablets)
 F. Server expected cash becomes authoritative  130100   (after ≥ 14 days of shadow + the drift gate, §5)
+G. Shifts end only through the RPCs            210000   (after 7 days with no old-style close, §8 D2)
 ```
 
 Why this order:
@@ -89,7 +90,7 @@ Roles to probe: **anon** (`set local role anon;` no claims), **cashier** (pos on
 | A11 | `180000_profit_business_day` | profit day buckets by business day | function swaps | No cutoff rows → `report_profit*` identical for one week (owner). |
 | A12 | `200000_report_cash_functions` | `report_cash_summary`, `report_cash_by_staff` | new functions | Cashier → 42501. Manager, 7 days → rows. 94-day range → 22023. |
 
-Hold for later phases: `120100` (C), `190000` (E), `130100` (F).
+Hold for later phases: `120100` (C), `190000` (E), `130100` (F), `210000` (G).
 
 ---
 
@@ -114,7 +115,8 @@ select count(*) from app_users where role = 'admin' and is_owner is not true and
 rollback;
 ```
 Apply. Probe: the same count → 0. A store_setup-only staff account: `select public.app_user_manages_cash('<T>')` →
-true. A pos-only account → false. Superadmin → true. Owner edits that account on the web → saves.
+true. A pos-only account → false. A `permissions IS NULL` staff account → **false** (opt-in, D1). Superadmin → true.
+Owner edits that account on the web → saves.
 
 **D — other order backends** (after B1, which carries the bundles):
 - Superadmin → Convex **Bulk Deploy** (bundle v39 = v37 + business-day order numbers, Trends and the daily snapshot).
@@ -263,14 +265,19 @@ Fixed on this branch (unapplied migrations edited in place; PGlite runners exten
   change Info.plist). `version` stays 1.0.14 on the branch because `/download` must not advertise an APK that does
   not exist yet: bump it together with the APK entry at build time, after checking the ASC train.
 
-Open — owner decisions, NOT changed:
-- **D1 `cash_manage` for legacy full-access (`permissions IS NULL`) accounts.** Today it is implied, so those accounts
-  can accept anyone's hand-over and close the day. Expenses was made opt-in for the same population. Option: add
-  `cash_manage` to `OPT_IN_PERMISSION_KEYS` (4 registries + SQL) and rely on the 120100 backfill for store_setup holders.
-- **D2 legacy direct close** on a non-blind store still files no hand-over (R1). Closing it = require the RPC mark for
-  client closes once the new build is on every tablet (gate with 130100).
-- **D3 PIN lockout griefing**: a cashier with a pending hand-over can lock a manager's approver PIN (shared with
-  Senior/PWD) with 5 wrong tries. Fix = count failures per caller+receiver before the shared lock.
+Owner decisions (2026-10-27, all three settled):
+- **D1 `cash_manage` is OPT-IN, like expenses** (owner: "give me what you recommend"; recommended + built). Legacy
+  full-access accounts (`permissions IS NULL`) no longer hold it: 4 registries, `app_user_has_permission` (re-created
+  in **120100**, so it changes at phase C), its `_of` twin (160000), cash alerts (190000), push recipients and the app
+  bell. Live 2026-10-27: 45 such staff in 37 stores; 1 ran a shift in 30 days; 0 ever picked up from another drawer.
+  They keep their own drawer; the owner ticks "Cash & day close" for anyone who receives cash. Phase C probe adds:
+  a `permissions IS NULL` staff account → `app_user_manages_cash` false.
+- **D2 old-style closes end** (owner: "ok do it"): **210000** refuses a client close without the RPC mark (42501
+  `update_required`), on every store. HELD as phase G: apply when the gate probe in the file returns 0 rows for 7
+  days (no closed shift without a `shift_counts` row, i.e. no ≤ 1.0.14 tablet still closing shifts). Runner
+  `run-shift-close-rpc-only.cjs`. Rollback: drop the trigger.
+- **D3 PIN lockout** (owner: "ok lets do fix"): "PIN here now" gives one caller 3 tries at one receiver per 15 min
+  (`PIN_TRIES_PER_CALLER_AND_RECEIVER`, below the 5-try database lock shared with Senior/PWD).
 - Smaller follow-ups: deposit proof URL accepts any https host; push bodies show cashier + amount on lock screens;
   forced shifts' expected cash is not in the day close's headline; Home/Reports briefly fetch a midnight window
   while the cutoff schedule loads (`use-trading-day`); a blind shift's holder with `reports` can read the window's
