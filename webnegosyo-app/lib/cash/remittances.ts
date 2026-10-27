@@ -396,3 +396,45 @@ export async function forceCloseShift(db: CashDb, shiftId: string, note: string)
   if (!closedAt) throw new Error(REMITTANCE_COPY.forceCloseRefused);
   return { closedAt, remittanceId: text(field(row as Row, "remittanceId", "remittance_id")) };
 }
+
+// ── Forgotten shifts (Home strip) ─────────────────────────────────────────
+
+export interface OpenShiftLike {
+  id: string;
+  staffName: string;
+  staffUserId: string | null;
+  drawerName: string | null;
+  openedAt: string;
+}
+
+export interface OverdueShift<T extends OpenShiftLike> {
+  shift: T;
+  hoursOpen: number;
+  line: string;
+}
+
+const HOUR = 60 * 60 * 1000;
+
+/**
+ * Open shifts past their business day's end plus the store's grace (06 §2:
+ * "cutoff + 4 h"), oldest first, with the receiver's line: "Ben's shift on
+ * Cashier 2 is still open (11h)". `dayEndMsOf` is the end of the business day
+ * an instant belongs to (bizday's tradingDayWindow), so no day maths here.
+ */
+export function overdueShifts<T extends OpenShiftLike>(
+  shifts: readonly T[],
+  dayEndMsOf: (iso: string) => number,
+  graceMinutes: number,
+  nowMs: number,
+  viewerUserId: string | null,
+): OverdueShift<T>[] {
+  return shifts
+    .filter((shift) => shift.staffUserId !== viewerUserId || viewerUserId === null)
+    .filter((shift) => nowMs > dayEndMsOf(shift.openedAt) + graceMinutes * 60_000)
+    .sort((a, b) => a.openedAt.localeCompare(b.openedAt))
+    .map((shift) => {
+      const hoursOpen = Math.max(1, Math.floor((nowMs - Date.parse(shift.openedAt)) / HOUR));
+      const where = shift.drawerName ? ` on ${shift.drawerName}` : "";
+      return { shift, hoursOpen, line: `${firstName(shift.staffName)}'s shift${where} is still open (${hoursOpen}h)` };
+    });
+}

@@ -7,6 +7,7 @@ import {
   forceCloseShift,
   inboxTabs,
   listRemittances,
+  overdueShifts,
   parseRemittance,
   receivedDifference,
   receiverSummary,
@@ -290,5 +291,23 @@ describe("transitions", () => {
   it("a force close that answers nothing did not happen", async () => {
     const { db } = fakeDb(undefined, { force_close_shift: { data: null, error: null } });
     await expect(forceCloseShift(db, "s1", "")).rejects.toThrow(REMITTANCE_COPY.forceCloseRefused);
+  });
+});
+
+describe("overdueShifts", () => {
+  const dayEnd = () => Date.parse("2026-10-24T20:00:00.000Z"); // Sat 4 AM Manila
+  const ben = { id: "s2", staffName: "Ben Cruz", staffUserId: "ben", drawerName: "Cashier 2", openedAt: "2026-10-24T10:00:00.000Z" };
+
+  it("names a shift still open past the day's end plus the grace", () => {
+    const now = Date.parse("2026-10-24T21:00:00.000Z"); // an hour after the cutoff
+    expect(overdueShifts([ben], dayEnd, 240, now, "maria")).toEqual([]);
+    const later = Date.parse("2026-10-25T00:30:00.000Z");
+    expect(overdueShifts([ben], dayEnd, 240, later, "maria").map((o) => o.line)).toEqual([
+      "Ben's shift on Cashier 2 is still open (14h)",
+    ]);
+  });
+
+  it("never nags the viewer about their own shift (the cashier strip already says it)", () => {
+    expect(overdueShifts([ben], dayEnd, 0, Date.parse("2026-10-26T00:00:00.000Z"), "ben")).toEqual([]);
   });
 });
