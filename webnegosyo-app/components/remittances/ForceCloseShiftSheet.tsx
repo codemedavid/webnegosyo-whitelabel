@@ -29,7 +29,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const firstName = (name: string): string => name.trim().split(/\s+/)[0] ?? name;
 
 /**
- * "End for him" (06 §2, §4.5): a cash manager closes a shift the cashier
+ * "End their shift" (06 §2, §4.5): a cash manager closes a shift the cashier
  * forgot. No count is invented — the drawer goes to the remittance inbox as
  * "Not counted yet" and whoever receives the cash counts it there. Mounted by
  * the Drawer's floor view (DrawersOverview) and the Home strip.

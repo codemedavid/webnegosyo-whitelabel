@@ -46,7 +46,7 @@ export function AcceptRemittanceSheet({ remittance, isOffline, onAccept, onDispu
         cashierName={firstName(remittance.cashierName)}
         handedOverCents={remittance.handedOverCents}
         onAccept={({ receivedCents, note }) => void run(() => onAccept(receivedCents, note))}
-        onDispute={({ reason }) => void run(() => onDispute(reason, null))}
+        onDispute={({ reason, receivedCents }) => void run(() => onDispute(reason, receivedCents))}
         isOffline={isOffline}
         isBusy={isBusy}
         error={error}

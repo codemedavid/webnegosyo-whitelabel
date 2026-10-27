@@ -389,7 +389,7 @@ export interface ForceCloseResult {
 }
 
 /**
- * "End for him": a cash manager closes someone else's shift. No count is
+ * "End their shift": a cash manager closes someone else's shift. No count is
  * invented — whoever receives the cash counts it on the remittance.
  */
 export async function forceCloseShift(db: CashDb, shiftId: string, note: string): Promise<ForceCloseResult> {
