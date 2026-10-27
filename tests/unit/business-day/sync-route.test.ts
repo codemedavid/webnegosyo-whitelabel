@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
- * POST /api/business-day/convex-sync: the merchant app changes the cutoff with
- * a direct RPC, so it asks the web to push the STORED schedule to a Convex
- * store's deployment (which numbers orders by it). Nothing the caller sends is
+ * POST /api/business-day/sync: the merchant app changes the cutoff with a
+ * direct RPC, so it asks the web to push the STORED schedule to the backend
+ * that numbers the store's orders (Convex deployment or its own database). Nothing the caller sends is
  * pushed; only who may ask is checked.
  */
 import { NextRequest } from 'next/server'
@@ -16,12 +16,12 @@ const mockSync = jest.fn()
 
 jest.mock('@/lib/auth/request-caller', () => ({ getRequestCaller: () => mockCaller() }))
 jest.mock('@/lib/distributed-rate-limit', () => ({ checkRateLimit: (...args: unknown[]) => mockRateLimit(...args) }))
-jest.mock('@/lib/convex-config-sync', () => ({ syncTenantConvexConfig: (...args: unknown[]) => mockSync(...args) }))
+jest.mock('@/lib/business-day/order-backend-sync', () => ({ syncBusinessDayToOrderBackend: (...args: unknown[]) => mockSync(...args) }))
 
 const owner = { role: 'admin', tenant_id: TENANT, is_owner: true, permissions: [], outlet_id: null }
 
 function post(body: unknown) {
-  return new NextRequest('http://localhost/api/business-day/convex-sync', {
+  return new NextRequest('http://localhost/api/business-day/sync', {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
@@ -29,7 +29,7 @@ function post(body: unknown) {
 }
 
 async function route() {
-  return import('@/app/api/business-day/convex-sync/route')
+  return import('@/app/api/business-day/sync/route')
 }
 
 beforeEach(() => {
@@ -43,7 +43,7 @@ afterEach(() => {
   ;(console.error as jest.Mock).mockRestore()
 })
 
-describe('POST /api/business-day/convex-sync', () => {
+describe('POST /api/business-day/sync', () => {
   it("pushes the store's stored schedule for an owner", async () => {
     const { POST } = await route()
     const response = await POST(post({ tenantId: TENANT }))

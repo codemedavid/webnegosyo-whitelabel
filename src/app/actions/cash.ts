@@ -21,7 +21,7 @@ import { SubscriptionPausedError } from '@/lib/billing/subscription-gate'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { asCashRpcClient, type CashActionResult } from '@/lib/cash/cash-rpc'
 import { setBusinessDayCutoff } from '@/lib/cash/cutoff'
-import { syncTenantConvexConfig } from '@/lib/convex-config-sync'
+import { syncBusinessDayToOrderBackend } from '@/lib/business-day/order-backend-sync'
 import {
   SERVICE_PERIOD_NAME_TAKEN,
   SERVICE_PERIOD_NOT_SAVED,
@@ -118,12 +118,12 @@ export async function setBusinessDayCutoffAction(
   return runCashAction(tenantSlug, input, cutoffSchema, 'set cutoff', 'settings', async (tenantId, db, { cutoffMinutes }) => {
     const result = await setBusinessDayCutoff(asCashRpcClient(db), tenantId, cutoffMinutes)
     if (!result.ok) return failure(result.error.message)
-    // A Convex store numbers its orders in its own deployment: push the new
-    // schedule there. Never fails the save (the change starts tomorrow at the
-    // earliest, and the next config sync or Deploy Schema carries it too).
-    const synced = await syncTenantConvexConfig(tenantId)
+    // A Convex or own-database store numbers its orders there: push the new
+    // schedule. Never fails the save (the change starts tomorrow at the
+    // earliest, and every later sync or deploy carries it too).
+    const synced = await syncBusinessDayToOrderBackend(tenantId)
     if (synced.status === 'failed') {
-      console.error('[Business day] cutoff saved but not synced to Convex:', { tenantId, error: synced.error })
+      console.error('[Business day] cutoff saved but not synced to the order backend:', { tenantId, error: synced.error })
     }
     return { ok: true, data: { effectiveFrom: result.data } }
   })

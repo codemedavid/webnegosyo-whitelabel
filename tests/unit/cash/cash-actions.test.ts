@@ -24,7 +24,7 @@ jest.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => mockRev
 jest.mock('@/lib/admin-service', () => ({ verifyTenantPermission: (...args: unknown[]) => mockVerify(...args) }))
 jest.mock('@/lib/cache', () => ({ getCachedTenantBySlug: (...args: unknown[]) => mockTenant(...args) }))
 jest.mock('@/lib/supabase/server', () => ({ createClient: async () => db }))
-jest.mock('@/lib/convex-config-sync', () => ({ syncTenantConvexConfig: (...args: unknown[]) => mockConvexSync(...args) }))
+jest.mock('@/lib/business-day/order-backend-sync', () => ({ syncBusinessDayToOrderBackend: (...args: unknown[]) => mockConvexSync(...args) }))
 jest.mock('@/lib/cash/service-periods', () => {
   const actual = jest.requireActual('@/lib/cash/service-periods')
   return {
@@ -95,7 +95,7 @@ describe('setBusinessDayCutoffAction', () => {
     expect(result).toEqual({ ok: true, data: { effectiveFrom: '2026-10-25' } })
   })
 
-  it("pushes the new cutoff to a Convex store's deployment, which numbers its orders by it", async () => {
+  it("pushes the new cutoff to the backend that numbers the store's orders (Convex / own database)", async () => {
     const { setBusinessDayCutoffAction } = await load()
     mockRpc.mockResolvedValue({ data: '2026-10-25', error: null })
     mockConvexSync.mockResolvedValue({ status: 'synced' })
@@ -105,7 +105,7 @@ describe('setBusinessDayCutoffAction', () => {
     expect(mockConvexSync).toHaveBeenCalledWith(TENANT)
   })
 
-  it('keeps the saved cutoff when the Convex push fails (it starts tomorrow at the earliest)', async () => {
+  it('keeps the saved cutoff when that push fails (it starts tomorrow at the earliest)', async () => {
     const { setBusinessDayCutoffAction } = await load()
     mockRpc.mockResolvedValue({ data: '2026-10-25', error: null })
     mockConvexSync.mockResolvedValue({ status: 'failed', error: 'unreachable' })

@@ -39,7 +39,8 @@ async function main() {
       create table orders(id uuid default gen_random_uuid(),tenant_id uuid,created_at timestamptz,daily_order_number integer);
       insert into orders(tenant_id,created_at,daily_order_number) values('${tenant}','2026-09-15T15:00:00Z',42);`)
     const schema = readFileSync('src/lib/supabase-order-schema.ts','utf8')
-    const start = schema.indexOf('create table if not exists public.daily_order_counters')
+    // From the business-day helpers the trigger calls (bundle v4) to the end of the trigger.
+    const start = schema.indexOf('create table if not exists public.business_day_cutoffs')
     const end = schema.indexOf('\n-- ---------------------------------------------------------------------------\n-- order_items',start)
     await own.exec(schema.slice(start,end))
     const row = (await own.query('insert into orders(tenant_id,created_at,daily_order_number) values($1,$2,999) returning daily_order_number',[tenant,'2026-09-15T15:59:00Z'])).rows[0]
