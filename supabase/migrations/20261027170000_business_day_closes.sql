@@ -15,7 +15,8 @@
 --                            forced with a note.
 --   reopen_business_day      owner / superadmin, within 31 days.
 --   record_day_deposit       set once.
---   get_business_day_close   one close; sales masked without `reports`.
+--   get_business_day_close   one close (cash managers see its sales, as on
+--                            report_shift_sales).
 --   Closed-day guard         no shift opens into a closed day; opening a shift
 --                            and closing the day take the SAME advisory lock.
 --   Activity                 day.closed / day.reopened / day.deposit_recorded,
@@ -266,7 +267,8 @@ begin
         select o.id, o.created_at, cash.pos_cashier(o.customer_data) as cashier, o.payment_method_name, o.total
           from public.orders o
          where o.tenant_id = $1 and o.created_at >= $2 and o.created_at < $3
-           and ($4::uuid is null or o.outlet_id = $4) and o.source = 'pos' and o.status is distinct from 'cancelled'
+           and ($4::uuid is null or cash.order_outlet(o.outlet_id, o.customer_data) = $4::text)
+           and o.source = 'pos' and o.status is distinct from 'cancelled'
       )
       select jsonb_build_object(
                'count', count(*) filter (where o.cashier is not null and not exists (
@@ -495,13 +497,19 @@ begin
   if cardinality(v_unsettled) > 0 and (cash.settings_of(p_tenant)).remittance_mode = 'required' and not coalesce(p_force, false) then
     raise exception 'unsettled_remittances: % hand-over(s) still to accept', cardinality(v_unsettled) using errcode = '55000';
   end if;
+  -- Closing before the business day has ended is an early close: allowed only
+  -- forced with a note (sales after the close show as lateSales).
+  select * into b from cash.day_bounds(p_tenant, p_day);
+  if now() < b.end_at and not coalesce(p_force, false) then
+    raise exception 'day_not_over: this business day has not ended yet; close it early only with a note.' using errcode = '22023';
+  end if;
+
   -- 3. One live close per day (the partial unique index also says 23505).
   if exists (select 1 from public.business_day_closes x where x.tenant_id = p_tenant and x.business_day = p_day
               and x.outlet_id is not distinct from p_outlet and x.status = 'closed') then
     raise exception 'already_closed: this business day is already closed.' using errcode = '23505';
   end if;
 
-  select * into b from cash.day_bounds(p_tenant, p_day);
   v_snapshot := cash.day_close_snapshot(p_tenant, p_outlet, p_day);
   select coalesce(max(x.version), 0) + 1 into v_version from public.business_day_closes x
    where x.tenant_id = p_tenant and x.business_day = p_day and x.outlet_id is not distinct from p_outlet;
@@ -630,7 +638,9 @@ revoke all on function public.record_day_deposit(uuid, bigint, text, text, text)
 grant execute on function public.record_day_deposit(uuid, bigint, text, text, text) to authenticated;
 
 -- ============================================
--- get_business_day_close — one close; sales masked without `reports`
+-- get_business_day_close — one close. Every caller holds cash_manage with
+-- reach (cash.assert_day_access), and cash managers see the day's sales on
+-- the close, as they do on report_shift_sales — so nothing is masked.
 -- ============================================
 create or replace function public.get_business_day_close(p_close_id uuid)
 returns jsonb
@@ -647,9 +657,7 @@ begin
     raise exception 'That day close was not found.' using errcode = 'P0002';
   end if;
   perform cash.assert_day_access(d.tenant_id, d.outlet_id);
-  return cash.day_close_json(d) || jsonb_build_object(
-    'snapshot', case when public.app_user_has_permission(d.tenant_id, 'reports') then d.snapshot
-                     else d.snapshot || jsonb_build_object('sales', null, 'byServicePeriod', null, 'otherHoursNetCents', null, 'salesMasked', true) end);
+  return cash.day_close_json(d) || jsonb_build_object('snapshot', d.snapshot);
 end;
 $$;
 revoke all on function public.get_business_day_close(uuid) from public, anon;

@@ -5,8 +5,9 @@
 --   cash_remittances        one 'shift' row per closed shift (mode ≠ off) and one
 --                           'pickup' row per pickup. Counts stay on the shift;
 --                           only what moved between people lives here.
---   creation                AFTER the shift closes (every close path, legacy
---                           included): handed over = count − float kept
+--   creation                AFTER a shift closes through close_shift /
+--                           force_close_shift (RPC mark; an old build's direct
+--                           close files none): handed over = count − float kept
 --                           (NULL for a forced close). Remit-to / safe come from
 --                           close_shift (app.remit_to / app.remit_to_safe).
 --   record_cash_pickup      a pickup = a `collect` movement + a pickup remittance,
@@ -24,10 +25,13 @@
 
 set lock_timeout = '3s';
 
--- Does p_user hold cash_manage for this store and reach this branch?
--- (app_user_has_permission + app_user_may_reach_branch, for ANY user — not
--- the caller.) NULL permissions = full access (cash_manage is not opt-in).
-create or replace function cash.user_manages_cash(p_user uuid, p_tenant uuid, p_outlet uuid)
+-- app_user_has_permission answers only for the CALLER (auth.uid()). The
+-- receiver of a hand-over is someone else, so this is the same function for
+-- any user: its body is the live app_user_has_permission (20261022130200)
+-- with auth.uid() replaced by p_user — nothing else. A test pins the two
+-- bodies equal (tests/unit/cash/permission-of-parity.test.ts): change
+-- app_user_has_permission and this must follow.
+create or replace function public.app_user_has_permission_of(p_user uuid, p_tenant_id uuid, p_permission text)
 returns boolean
 language sql
 stable
@@ -35,13 +39,46 @@ security definer
 set search_path = ''
 as $$
   select exists (
-    select 1 from public.app_users au
+    select 1
+      from public.app_users au
      where au.user_id = p_user
-       and au.role = 'admin'
-       and au.tenant_id = p_tenant
-       and (au.is_owner is true or au.permissions is null or 'cash_manage' = any (au.permissions))
-       and (au.outlet_id is null or au.is_owner is true or au.outlet_id is not distinct from p_outlet)
-  )
+       and (
+         au.role = 'superadmin'
+         or (
+           au.role = 'admin'
+           and au.tenant_id = p_tenant_id
+           and (
+             au.is_owner is true
+             or (au.permissions is null and p_permission <> all (array['activity_view', 'approve_requests', 'expenses']))
+             or p_permission = any (au.permissions)
+             -- IMPLIED_BY in src/lib/staff-permissions.ts: strict subsets of a held grant.
+             or (p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))
+             or (p_permission = 'reports' and 'analytics' = any (au.permissions))
+           )
+         )
+       )
+  );
+$$;
+revoke all on function public.app_user_has_permission_of(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.app_user_has_permission_of(uuid, uuid, text) to service_role;
+
+-- Does p_user hold cash_manage for this store (app_user_has_permission's
+-- rule) and reach this branch (app_user_may_reach_branch's rule)?
+create or replace function cash.user_manages_cash(p_user uuid, p_tenant uuid, p_outlet uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select public.app_user_has_permission_of(p_user, p_tenant, 'cash_manage')
+     and exists (
+       select 1 from public.app_users au
+        where au.user_id = p_user
+          and au.tenant_id = p_tenant
+          and au.role = any (array['admin', 'superadmin'])
+          and (au.outlet_id is null or coalesce(au.is_owner, false) or au.outlet_id is not distinct from p_outlet)
+     )
 $$;
 revoke all on function cash.user_manages_cash(uuid, uuid, uuid) from public, anon, authenticated;
 
@@ -195,10 +232,11 @@ begin
   if not (old.status = 'open' and new.status = 'closed') or v_mode = 'off' then
     return null;
   end if;
-  -- Only close_shift's own transaction carries a remit-to for THIS shift.
+  -- Only closes made through close_shift / force_close_shift (their RPC mark)
+  -- file a hand-over. An old build's direct close files none, so old tablets
+  -- never leave pending hand-overs or "waiting to be accepted" pushes.
   if cash.shift_rpc_mark(new.id) <> 'close' then
-    v_to_raw := null;
-    v_safe := false;
+    return null;
   end if;
   if v_to_raw is not null then
     begin
@@ -556,4 +594,4 @@ grant execute on function public.list_cash_receivers(uuid, uuid) to authenticate
 -- drop function if exists cash.create_shift_remittance(), cash.record_remittance_activity(public.cash_remittances, text, text, text[]);
 -- drop table if exists public.cash_remittances;
 -- alter table public.shift_cash_movements drop column if exists taken_by, drop column if exists taken_by_name, drop column if exists to_safe;
--- drop function if exists cash.user_name(uuid), cash.user_manages_cash(uuid, uuid, uuid);
+-- drop function if exists cash.user_name(uuid), cash.user_manages_cash(uuid, uuid, uuid), public.app_user_has_permission_of(uuid, uuid, text);

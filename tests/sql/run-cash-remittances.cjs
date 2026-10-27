@@ -98,12 +98,17 @@ async function checkCreation(db) {
   const safe = await remittance(db, bad)
   eq([safe.to_safe, safe.remitted_to, Number(safe.handed_over_cents)], [true, null, 0], 'to the store safe')
 
-  // An old build's direct close still files a remittance (to nobody in particular).
+  // An old build's direct close files NO remittance (QA wave 3: old tablets
+  // never leave pending hand-overs or "waiting" pushes).
   const legacy = await shiftFor(db, U.cashier2)
   await as(db, 'authenticated', U.cashier2)
-  await db.query("update staff_shifts set status = 'closed', closed_at = now(), expected_cash = 800, closing_count = 800 where id = $1", [legacy])
-  const l = await remittance(db, legacy)
-  eq([l.status, Number(l.handed_over_cents), l.remitted_to], ['pending', 30000, null], 'legacy close: a remittance with no receiver')
+  eq((await db.query("update staff_shifts set status = 'closed', closed_at = now(), expected_cash = 800, closing_count = 800 where id = $1", [legacy])).affectedRows, 1, 'an old build still closes directly')
+  eq(await remittance(db, legacy), undefined, 'but its close files no remittance')
+  // A hand-over to nobody in particular, through close_shift (to dispute below).
+  const disputable = await shiftFor(db, U.cashier2)
+  await countAndClose(db, U.cashier2, disputable, 80000, { floatKept: 50000 })
+  const l = await remittance(db, disputable)
+  eq([l.status, Number(l.handed_over_cents), l.remitted_to], ['pending', 30000, null], 'close_shift with no receiver: pending, to any cash manager')
 
   const forced = await shiftFor(db, U.cashier2)
   await val(db, U.manager, 'select public.force_close_shift($1, $2)', [forced, 'Left early'])

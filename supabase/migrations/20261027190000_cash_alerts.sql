@@ -59,12 +59,12 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
   select case
     when target_kind in ('shift_overdue', 'remittance_pending') then exists (
       select 1
-        from app_users au
+        from public.app_users au
        where au.user_id = auth.uid()
          and au.tenant_id = target_tenant_id
          and au.role = any (array['admin', 'superadmin'])

@@ -102,13 +102,21 @@ async function main() {
     await val(db, U.cashier2, 'select public.count_shift($1, 50000, null, null)', [shift2])
     await val(db, U.cashier2, 'select public.close_shift($1, null, null, null, 10000, null, true, null)', [shift2])
 
+    // A counter sale after Cy clocked out, its branch only in customer_data
+    // (older registers): a late sale AT THIS BRANCH (QA MEDIUM 6).
+    await fixture(db, `insert into orders (tenant_id, outlet_id, total, status, payment_status, source, payment_method_name, customer_data)
+      values ($1, null, 75, 'delivered', 'paid', 'pos', 'Cash', $2::jsonb)`, [T, JSON.stringify({ outlet_id: A1, pos: { cashierId: U.cashier2 } })])
     status = await val(db, U.manager, STATUS, [T, A1, today])
+    eq(status.preview.lateSales, { count: 1, cashCents: 7500 }, 'a sale after its cashier clocked out is a late sale, branch read from the column or customer_data')
     eq([status.openShifts.length, status.pendingRemittances.map((r) => r.cashierName).sort()], [0, ['Cara', 'Cy']], 'checklist: no open shift, two hand-overs to accept')
     eq(status.nonCashUnchecked.map((n) => [n.staffName, n.method]), [['Cara', 'GCash']], 'checklist: GCash was never checked against the slips')
 
     // 'required' mode: unsettled hand-overs block unless forced with a note.
     await fixture(db, "insert into tenant_cash_settings (tenant_id, remittance_mode) values ($1, 'required')", [T])
     await refused(val(db, U.manager, CLOSE, [T, A1, today, null, false]), '55000', "'required': unsettled hand-overs block the close", /unsettled_remittances/)
+    await fixture(db, "update tenant_cash_settings set remittance_mode = 'optional' where tenant_id = $1", [T])
+    await refused(val(db, U.manager, CLOSE, [T, A1, today, null, false]), '22023', 'a day that has not ended yet closes only early-with-a-note', /day_not_over/)
+    await fixture(db, "update tenant_cash_settings set remittance_mode = 'required' where tenant_id = $1", [T])
     await refused(val(db, U.manager, CLOSE, [T, A1, today, null, true]), '22023', 'closing anyway needs a note', /note_required/)
     await refused(val(db, U.cashier, CLOSE, [T, A1, today, 'x', true]), '42501', 'a cashier cannot close the day')
     const closed = await val(db, U.manager, CLOSE, [T, A1, today, 'Mara counts tomorrow', true])
@@ -142,9 +150,10 @@ async function main() {
     eq(Number((await db.query('select count(*) from business_day_closes')).rows[0].count), 0, "another branch's manager reads none of A1's closes")
     await as(db, 'authenticated', U.cashier)
     eq(Number((await db.query('select count(*) from business_day_closes')).rows[0].count), 0, 'a cashier reads none')
-    const masked = await val(db, U.manager, 'select public.get_business_day_close($1)', [closed.id])
-    eq([masked.snapshot.sales, masked.snapshot.salesMasked, masked.snapshot.drawers.shifts.length], [null, true, 2], 'without `reports`: drawers shown, sales masked')
-    eq((await val(db, U.reporter, 'select public.get_business_day_close($1)', [closed.id])).snapshot.sales.netCents, snap.sales.netCents, 'with `reports`: sales shown')
+    const shown = await val(db, U.manager, 'select public.get_business_day_close($1)', [closed.id])
+    eq([shown.snapshot.sales.netCents, shown.snapshot.salesMasked, shown.snapshot.drawers.shifts.length], [snap.sales.netCents, undefined, 2],
+      'a cash manager sees the day\'s sales on the close (as on report_shift_sales), without `reports`')
+    eq(shown.snapshot, closed.snapshot, 'the close reply and get_business_day_close show the same snapshot')
 
     // Deposit: set once.
     await refused(val(db, U.cashier, 'select public.record_day_deposit($1, 100, $2, null, null)', [closed.id, 'BDO']), '42501', 'a cashier cannot record the deposit')
@@ -168,13 +177,17 @@ async function main() {
     eq((await val(db, U.manager, CLOSE, [T, A1, today, 'Re-closed', true])).version, 2, 're-close writes version 2 (version 1 kept)')
     eq(Number((await fixture(db, 'select count(*) from business_day_closes where business_day = $1::date and outlet_id = $2', [today, A1]))[0].count), 2, 'both versions are kept')
 
+    // A day that is over closes without forcing.
+    const yesterday = (await fixture(db, "select (cash.business_day_of($1, now()) - 1)::text as d", [T]))[0].d
+    eq((await val(db, U.manager, CLOSE, [T, A1, yesterday, null, false])).version, 1, 'a finished day closes without "close anyway"')
+
     // Day rules and stores.
     await refused(val(db, U.manager, CLOSE, [T, A1, '2099-01-01', null, false]), '22023', 'a future day cannot be closed')
     await refused(val(db, U.a2Mgr, CLOSE, [T, A1, today, null, false]), '42501', "a branch-locked manager cannot close another branch")
     await refused(val(db, U.a2Mgr, CLOSE, [T, null, today, null, false]), '42501', 'nor the whole store')
     await fixture(db, "update tenant_cash_settings set remittance_mode = 'optional' where tenant_id = $1", [T])
     const convexDay = (await fixture(db, 'select cash.business_day_of($1, now())::text as d', [T_C]))[0].d
-    const c = await val(db, U.ownerC, CLOSE, [T_C, null, convexDay, null, false])
+    const c = await val(db, U.ownerC, CLOSE, [T_C, null, convexDay, 'Closing early', true])
     eq(c.snapshot.sales, null, 'a Convex store: no sales section (drawers only)')
     eq((await fixture(db, 'select sales_source from business_day_closes where id = $1', [c.id]))[0].sales_source, 'drawers_only', 'labelled drawers_only')
 
