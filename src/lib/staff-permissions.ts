@@ -67,8 +67,8 @@ export const STAFF_PERMISSION_KEYS = [
   // drawer, closing another person's shift, receiving remittances and closing
   // the business day. Used to ride 'store_setup' (app_user_manages_cash); it
   // is its own grant so a supervisor can hold the cash without the
-  // storefront. NOT opt-in (legacy full access held cash management before,
-  // and keeps it) and NOT in IMPLIED_BY: every 'store_setup' holder was given
+  // storefront. OPT-IN (owner's call, 2026-10-27: legacy full access does
+  // not hold it, like expenses) and NOT in IMPLIED_BY: every 'store_setup' holder was given
   // it once by migration 20261027120100, so nobody lost the drawer screens,
   // and the owner can separate the two afterwards. A cashier's OWN shift
   // (clock in, count, remit) needs only 'pos'.

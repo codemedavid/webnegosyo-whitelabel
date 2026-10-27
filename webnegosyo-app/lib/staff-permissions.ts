@@ -70,7 +70,7 @@ export const STAFF_PERMISSION_KEYS = [
   // Cash & day close: set up drawers, pick up cash, close others' shifts,
   // receive remittances, close the business day. Used to ride "store_setup";
   // backfilled once onto every store_setup holder (20261027120100), not
-  // implied by it, and not opt-in (full access keeps it). A cashier's own
+  // implied by it, and opt-in (full access does not hold it). A cashier's own
   // shift needs only "pos".
   "cash_manage",
 ] as const;

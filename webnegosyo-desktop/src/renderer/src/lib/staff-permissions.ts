@@ -48,7 +48,7 @@ export const STAFF_PERMISSION_KEYS = [
   // The expense book: record, fix and void expenses. Implied by nothing.
   'expenses',
   // Cash & day close: drawers, pickups, others' shifts, remittances, day
-  // close. Not opt-in, implied by nothing (backfilled from store_setup).
+  // close. Opt-in, implied by nothing (backfilled from store_setup).
   'cash_manage'
 ] as const
 
