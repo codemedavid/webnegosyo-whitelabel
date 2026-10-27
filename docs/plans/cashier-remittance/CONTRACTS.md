@@ -294,3 +294,11 @@ RPCs:
 - **app-cashier:** recount-changed flag on the slip/result ("Counted twice: ₱0 → ₱8,345"); share as image if an existing module allows, else leave; Drawer shows "Today is closed — reopen or wait until 4:00 AM" when clocking in on a closed day.
 - **bizday:** `branch-period.ts` (Branches, Portfolio, staff leaderboard) on the cutoff; Convex trends + dailyStats cron on the cutoff (code + bundle bump, no deploy); then help qa.
 - **qa:** review wave 2 leftovers + wave 3; final full suites; then write `docs/plans/cashier-remittance/RELEASE.md` (migration apply order with probes per role, deploy order, OTA, Convex/own-DB bulk deploy, rollback per migration, the 130100 drift-probe gate with the exact read-only SQL).
+
+## W3.3 Cash notification shape (decided; db, web, app-owner build exactly this)
+- `merchant_notifications.kind` adds `'shift_overdue' | 'remittance_pending'`. `item_name` = person's name at notice time (shift holder / remitting cashier). New nullable columns: `shift_id uuid`, `remittance_id uuid`, `drawer_name text`, `cash_cents bigint` (remittance_pending only). `outlet_id/outlet_name` as today; inventory columns stay null.
+- Push data: `{type:'cash_alert', kind, shiftId?, remittanceId?}`. App routes: shift_overdue → `/(main)/pos-sales`; remittance_pending → `/(main)/remittances`.
+- Wording, identical in `merchant-notification-push.ts` and the app's `merchant-notifications.ts` (`describeCashNotification`, parity-tested); First = first word of item_name:
+  - shift_overdue: title `<First>'s shift is still open`; body = [outlet_name if outlet_id, drawer_name, "End it from the Drawer"] joined " · ".
+  - remittance_pending: title `<First>'s ₱6,345 is waiting to be accepted` (whole pesos when cents%100==0, else 2 decimals; null cash → `<First>'s remittance is waiting to be accepted`); body = [outlet_name if outlet_id, drawer_name, "Accept it in Remittances"] joined " · ".
+- Visibility: cash kinds need `cash_manage` (owner / null permissions / list has it); branch-locked only their branch. SQL `app_user_may_read_merchant_notifications`, push recipient rule, app `canSeeCashNotifications()` change together.
