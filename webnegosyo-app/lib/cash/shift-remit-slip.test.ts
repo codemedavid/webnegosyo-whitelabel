@@ -76,6 +76,11 @@ describe("remittanceSlipInput", () => {
     });
   });
 
+  it("passes on who added up the expected figure, for the 'Counted on this tablet' line", () => {
+    expect(remittanceSlipInput({ remittance: REMITTANCE, shift: SHIFT, moves: [], expectedSource: "device" }).expectedSource).toBe("device");
+    expect(remittanceSlipInput({ remittance: REMITTANCE, shift: SHIFT, moves: [] }).expectedSource).toBeNull();
+  });
+
   it("prints the float the server stored as kept", () => {
     const input = remittanceSlipInput({ remittance: REMITTANCE, shift: { ...SHIFT, floatKeptCents: 150000 }, moves: [] });
     expect(input.floatKeptCents).toBe(150000);

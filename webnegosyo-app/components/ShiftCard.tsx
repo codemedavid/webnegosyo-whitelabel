@@ -218,7 +218,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const branchPeriods = useMemo(() => periodsForBranch(periodsRead.data ?? [], floor.outletId), [periodsRead.data, floor.outletId]);
   const { schedule } = useCutoffSchedule(tenantId);
   const isOffline = useConnectivity().status === "offline";
-  // "End for him": a manager closes a shift the cashier forgot (no count invented).
+  // "End Ben's shift": a manager closes a shift the cashier forgot (no count invented).
   const [forceTarget, setForceTarget] = useState<ShiftRecord | null>(null);
   // The business day was closed (day close): no shift starts on it until it is reopened or the cutoff passes.
   const [dayClosedHint, setDayClosedHint] = useState<string | null>(null);

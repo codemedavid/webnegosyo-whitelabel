@@ -103,8 +103,8 @@ describe("fetchRemittance / fetchSlipMoves", () => {
   it("reads the shift's counts for the recount flag", async () => {
     const { db: counts } = db([{ data: [{ attempt: 1, counted_cents: 0 }, { attempt: 2, counted_cents: "834500" }], error: null }]);
     expect(await fetchSlipCounts(counts, "t1", "s1")).toEqual([
-      { attempt: 1, countedCents: 0 },
-      { attempt: 2, countedCents: 834500 },
+      { attempt: 1, countedCents: 0, expectedSource: null },
+      { attempt: 2, countedCents: 834500, expectedSource: null },
     ]);
   });
 

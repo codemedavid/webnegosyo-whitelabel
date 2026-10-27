@@ -29,7 +29,7 @@ interface DrawersOverviewProps {
   /** "Pay expense": pay an expense out of this cashier's drawer. Absent = not offered. */
   onPayExpense?: (row: FloorRow) => void;
   onManage: () => void;
-  /** "End for her/him": close a forgotten shift without inventing a count. Absent = not offered. */
+  /** "End Ben's shift": close a forgotten shift without inventing a count. Absent = not offered. */
   onEndForThem?: (row: FloorRow) => void;
   /** Shifts past their business day + grace, by id, with their line ("Ben's shift on Cashier 2 is still open (11h)"). */
   overdue?: ReadonlyMap<string, string>;
@@ -139,7 +139,7 @@ export function DrawersOverview({ rows, freeDrawers, nowMs, onCollect, onCount, 
               ) : null}
               {onEndForThem && overdue?.has(row.shift.id) ? (
                 <Button
-                  label={`End for ${firstName(row.shift.staffName)}`}
+                  label={`End ${firstName(row.shift.staffName)}'s shift`}
                   size="sm"
                   tone="ghost"
                   icon="clock"

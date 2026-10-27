@@ -87,7 +87,7 @@ export function useSlipMoves(shiftId: string | null) {
   });
 }
 
-export const SLIP_COUNT_COLUMNS = "attempt, counted_cents";
+export const SLIP_COUNT_COLUMNS = "attempt, counted_cents, expected_source";
 
 /** Every count of the shift (one, or two after a recount). RLS: the holder or a cash manager. */
 export async function fetchSlipCounts(db: CashDb, tenantId: string, shiftId: string): Promise<CountAttempt[]> {

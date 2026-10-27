@@ -16,6 +16,14 @@ import { formatPeso } from "../expenses/keypad";
 export interface CountAttempt {
   attempt: number;
   countedCents: number;
+  /** Who added up what it was judged against: the server, this tablet, or nobody. */
+  expectedSource?: "server" | "device" | "none" | null;
+}
+
+/** The last count's source, for the slip's "Counted on this tablet" line. */
+export function lastExpectedSource(attempts: readonly CountAttempt[]): CountAttempt["expectedSource"] {
+  const last = [...attempts].sort((a, b) => b.attempt - a.attempt)[0];
+  return last?.expectedSource ?? null;
 }
 
 export interface Recount {
@@ -44,7 +52,8 @@ export function parseCountAttempts(rows: unknown): CountAttempt[] {
     const attempt = Number(r.attempt);
     const counted = typeof r.counted_cents === "string" ? Number(r.counted_cents) : r.counted_cents;
     if (!Number.isInteger(attempt) || typeof counted !== "number" || !Number.isSafeInteger(counted)) return [];
-    return [{ attempt, countedCents: counted }];
+    const source = r.expected_source === "server" || r.expected_source === "device" || r.expected_source === "none" ? r.expected_source : null;
+    return [{ attempt, countedCents: counted, expectedSource: source }];
   });
 }
 

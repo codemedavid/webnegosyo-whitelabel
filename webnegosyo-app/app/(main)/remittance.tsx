@@ -21,7 +21,7 @@ import { formatDayLabel } from "../../lib/staff-format";
 import { acceptRemittanceByPin } from "../../lib/cash/shift-pin";
 import { farewell, remittanceSlipInput, slipBanner, type SlipBanner } from "../../lib/cash/shift-remit-slip";
 import { SLIP_NOT_FOUND, useRemittance, useSlipCounts, useSlipMoves } from "../../lib/cash/shift-remit-read";
-import { recountLine, recountOf } from "../../lib/cash/shift-recount";
+import { lastExpectedSource, recountLine, recountOf } from "../../lib/cash/shift-recount";
 import { useShiftDetail } from "../../lib/cash/shift-sales-hooks";
 import type { Remittance } from "../../lib/cash/remittances";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -67,6 +67,7 @@ export default function RemittanceScreen() {
       shift={shift.data ?? null}
       moves={moves.data ?? []}
       recountText={recountLine(recountOf(counts.data ?? []))}
+      expectedSource={lastExpectedSource(counts.data ?? [])}
       isPartial={Boolean(shift.error || moves.error)}
       pinFor={pinFor}
       onAccepted={() => void remittance.refetch()}
@@ -89,19 +90,20 @@ interface SlipBodyProps {
   moves: NonNullable<ReturnType<typeof useSlipMoves>["data"]>;
   /** "Counted twice", first count then final, when a recount changed the figure. */
   recountText: string | null;
+  expectedSource: "server" | "device" | "none" | null | undefined;
   isPartial: boolean;
   pinFor: string | null;
   onAccepted: () => void;
 }
 
-function SlipBody({ remittance, shift, moves, recountText, isPartial, pinFor, onAccepted }: SlipBodyProps) {
+function SlipBody({ remittance, shift, moves, recountText, expectedSource, isPartial, pinFor, onAccepted }: SlipBodyProps) {
   const userId = useAuthStore((s) => s.userId);
   const storeName = useAuthStore((s) => s.tenantName) ?? "Store";
   const branchName = useAuthStore((s) => s.outletName) ?? undefined;
   const isTablet = isTabletScreen(useWindowDimensions());
   const [isPrinting, setIsPrinting] = useState(false);
 
-  const input = remittanceSlipInput({ remittance, shift: shift ?? null, moves });
+  const input = remittanceSlipInput({ remittance, shift: shift ?? null, moves, expectedSource });
   const store = { storeName, branchName };
   const paper = slipPlainText(buildRemittanceSlip(input, { ...store, width: isTablet ? 48 : 32, printedAt: new Date() }));
   const banner = slipBanner(remittance);

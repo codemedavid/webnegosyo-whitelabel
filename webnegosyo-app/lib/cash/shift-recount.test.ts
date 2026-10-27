@@ -1,4 +1,4 @@
-import { dayClosedMessage, isDayClosedRefusal, parseCountAttempts, recountLine, recountOf } from "./shift-recount";
+import { dayClosedMessage, isDayClosedRefusal, lastExpectedSource, parseCountAttempts, recountLine, recountOf } from "./shift-recount";
 
 describe("recount flag", () => {
   it("says a drawer was counted twice when the second count changed the figure", () => {
@@ -17,10 +17,22 @@ describe("recount flag", () => {
   });
 
   it("reads shift_counts rows and skips anything it cannot trust", () => {
-    expect(parseCountAttempts([{ attempt: 1, counted_cents: "834500" }, { attempt: 2, counted_cents: 1.5 }, null, "x"])).toEqual([
-      { attempt: 1, countedCents: 834500 },
+    expect(parseCountAttempts([{ attempt: 1, counted_cents: "834500", expected_source: "device" }, { attempt: 2, counted_cents: 1.5 }, null, "x"])).toEqual([
+      { attempt: 1, countedCents: 834500, expectedSource: "device" },
     ]);
     expect(parseCountAttempts(null)).toEqual([]);
+  });
+});
+
+describe("lastExpectedSource", () => {
+  it("takes the source of the count that stands (the recount)", () => {
+    expect(
+      lastExpectedSource([
+        { attempt: 1, countedCents: 1, expectedSource: "server" },
+        { attempt: 2, countedCents: 2, expectedSource: "device" },
+      ]),
+    ).toBe("device");
+    expect(lastExpectedSource([])).toBeNull();
   });
 });
 

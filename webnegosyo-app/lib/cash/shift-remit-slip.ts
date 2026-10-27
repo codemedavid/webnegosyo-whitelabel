@@ -26,6 +26,8 @@ export interface SlipSources {
   remittance: Remittance;
   shift: ShiftDetail | null;
   moves: readonly SlipMove[];
+  /** The standing count's source (shift_counts.expected_source); "device" prints "Counted on this tablet". */
+  expectedSource?: "server" | "device" | "none" | null;
 }
 
 function sum(moves: readonly SlipMove[], kind: SlipMove["kind"]): number {
@@ -62,7 +64,7 @@ function howOf(remittance: Remittance): "phone" | "pin" | "safe" | null {
   return remittance.acceptMethod === "app" ? "phone" : null;
 }
 
-export function remittanceSlipInput({ remittance, shift, moves }: SlipSources): RemittanceSlipInput {
+export function remittanceSlipInput({ remittance, shift, moves, expectedSource = null }: SlipSources): RemittanceSlipInput {
   const startingCents = shift ? Math.round(shift.openingFloat * 100) : 0;
   const payInCents = sum(moves, "pay_in");
   const payOutCents = sum(moves, "pay_out");
@@ -85,6 +87,7 @@ export function remittanceSlipInput({ remittance, shift, moves }: SlipSources): 
     payOutCents,
     pickups,
     expectedCents,
+    expectedSource,
     countedCents,
     reasonKey: isVarianceReasonKey(remittance.shift?.varianceReason) ? remittance.shift?.varianceReason : null,
     reasonNote: shift?.note ?? null,
