@@ -27,6 +27,7 @@ import {
   History,
   Wallet,
   TrendingUp,
+  Banknote,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -367,6 +368,9 @@ export const adminSidebarItems: SidebarEntry[] = [
   // platform store Product Analytics redirects into Sales → Items.
   { label: 'Sales', href: '/admin/reports', icon: BarChart3, section: 'Reports' },
   { label: 'Product Analytics', href: '/admin/product-analytics', icon: LineChart, section: 'Reports' },
+  // Shifts, remittances and day closes (cashier plan §8). Gated by `cash` →
+  // `cash_manage`, so the permission filter hides it from everyone else.
+  { label: 'Cash & remits', href: '/admin/cash', icon: Banknote, section: 'Reports' },
   // Money (expenses plan §4.2): what left the store, and what was left over.
   // Expenses is gated by the `expenses` key; Profit sits under /admin/reports,
   // so it rides `reports` and the platform-backend gate, and the page itself
