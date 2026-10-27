@@ -12,6 +12,7 @@ import type { RemittanceNonCashRow, RemittancePickup, RemittanceSlipInput } from
 import { formatClock } from "../staff-format";
 import { parseCounts } from "./denominations";
 import { isVarianceReasonKey } from "./reasons";
+import { recountOf, type CountAttempt } from "./shift-recount";
 import type { Remittance } from "./remittances";
 import type { ShiftDetail } from "../shift-service";
 
@@ -28,6 +29,8 @@ export interface SlipSources {
   moves: readonly SlipMove[];
   /** The standing count's source (shift_counts.expected_source); "device" prints "Counted on this tablet". */
   expectedSource?: "server" | "device" | "none" | null;
+  /** Every count of the shift (shift_counts); a recount that changed the figure prints both. */
+  counts?: readonly CountAttempt[];
 }
 
 function sum(moves: readonly SlipMove[], kind: SlipMove["kind"]): number {
@@ -64,7 +67,7 @@ function howOf(remittance: Remittance): "phone" | "pin" | "safe" | null {
   return remittance.acceptMethod === "app" ? "phone" : null;
 }
 
-export function remittanceSlipInput({ remittance, shift, moves, expectedSource = null }: SlipSources): RemittanceSlipInput {
+export function remittanceSlipInput({ remittance, shift, moves, expectedSource = null, counts = [] }: SlipSources): RemittanceSlipInput {
   const startingCents = shift ? Math.round(shift.openingFloat * 100) : 0;
   const payInCents = sum(moves, "pay_in");
   const payOutCents = sum(moves, "pay_out");
@@ -88,6 +91,7 @@ export function remittanceSlipInput({ remittance, shift, moves, expectedSource =
     pickups,
     expectedCents,
     expectedSource,
+    recount: recountOf(counts),
     countedCents,
     reasonKey: isVarianceReasonKey(remittance.shift?.varianceReason) ? remittance.shift?.varianceReason : null,
     reasonNote: shift?.note ?? null,

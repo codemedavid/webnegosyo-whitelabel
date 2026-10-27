@@ -81,6 +81,14 @@ describe("remittanceSlipInput", () => {
     expect(remittanceSlipInput({ remittance: REMITTANCE, shift: SHIFT, moves: [] }).expectedSource).toBeNull();
   });
 
+  it("prints both counts when a recount changed the figure, and none otherwise", () => {
+    const twice = remittanceSlipInput({ remittance: REMITTANCE, shift: SHIFT, moves: [], counts: [{ attempt: 1, countedCents: 0 }, { attempt: 2, countedCents: 834500 }] });
+    expect(twice.recount).toEqual({ firstCents: 0, finalCents: 834500 });
+    const same = remittanceSlipInput({ remittance: REMITTANCE, shift: SHIFT, moves: [], counts: [{ attempt: 1, countedCents: 5 }, { attempt: 2, countedCents: 5 }] });
+    expect(same.recount).toBeNull();
+    expect(remittanceSlipInput({ remittance: REMITTANCE, shift: SHIFT, moves: [] }).recount).toBeNull();
+  });
+
   it("prints the float the server stored as kept", () => {
     const input = remittanceSlipInput({ remittance: REMITTANCE, shift: { ...SHIFT, floatKeptCents: 150000 }, moves: [] });
     expect(input.floatKeptCents).toBe(150000);
