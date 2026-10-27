@@ -1,4 +1,4 @@
-import { buildLoyaltyOtpMessage, loyaltyOtpTemplate, OTP_PLACEHOLDER } from '@/lib/loyalty/otp-message'
+import { buildLoyaltyOtpMessage, buildOtpMessage, loyaltyOtpTemplate, otpTemplateFor, OTP_PLACEHOLDER } from '@/lib/loyalty/otp-message'
 
 describe('loyalty OTP message', () => {
   test('leads with the code so no carrier filter sees a "TEST" prefix', () => {
@@ -35,5 +35,26 @@ describe('loyalty OTP message', () => {
   test('refuses anything but a 6-digit code', () => {
     expect(() => buildLoyaltyOtpMessage('Cafe', '12345')).toThrow()
     expect(() => buildLoyaltyOtpMessage('Cafe', 'abcdef')).toThrow()
+  })
+})
+
+describe('OTP wording per purpose', () => {
+  test('a customer-app sign-in code says sign-in, not reward', () => {
+    expect(buildOtpMessage('login', 'Beracah Cafe', '012345')).toBe(
+      '012345 is your Beracah Cafe sign-in code. It expires in 5 minutes. Never share it with anyone.',
+    )
+    expect(buildOtpMessage('login', null, '012345')).toBe(
+      '012345 is your sign-in code. It expires in 5 minutes. Never share it with anyone.',
+    )
+  })
+
+  test('reward and wallet codes keep the reward wording, and the template agrees with the message', () => {
+    expect(buildOtpMessage('claim', 'Cafe', '123456')).toBe(buildLoyaltyOtpMessage('Cafe', '123456'))
+    expect(buildOtpMessage('wallet', 'Cafe', '123456')).toBe(buildLoyaltyOtpMessage('Cafe', '123456'))
+    expect(otpTemplateFor('login', 'Cafe').replace(OTP_PLACEHOLDER, '654321')).toBe(buildOtpMessage('login', 'Cafe', '654321'))
+  })
+
+  test('an unknown purpose falls back to the reward wording', () => {
+    expect(buildOtpMessage(undefined, 'Cafe', '123456')).toBe(buildLoyaltyOtpMessage('Cafe', '123456'))
   })
 })

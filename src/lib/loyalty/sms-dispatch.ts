@@ -27,6 +27,8 @@ type Grant = {
   phone: string;
   code: string;
   expiresAt: string;
+  /** What the code is for; absent from servers older than the customer-app sign-in migration. */
+  purpose?: "claim" | "wallet" | "login";
 };
 const uuid = z
   .string()
@@ -53,6 +55,7 @@ const grantSchema = z.object({
   challengeId: uuid,
   payloadEncrypted: z.string().max(4096),
   expiresAt: z.string().datetime({ offset: true }),
+  purpose: z.enum(["claim", "wallet", "login"]).optional(),
 });
 
 // Internal trusted-server boundary. The HTTP adapter must authenticate actorId,
@@ -97,6 +100,7 @@ export async function authorizeLoyaltySmsDispatch(
       leaseToken: input.leaseToken,
       ...payload,
       expiresAt: grant.expiresAt,
+      ...(grant.purpose ? { purpose: grant.purpose } : {}),
     };
   } catch {
     return { ok: false };

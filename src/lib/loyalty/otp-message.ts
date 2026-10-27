@@ -22,14 +22,29 @@ function cleanStoreName(name: string | null | undefined): string {
     .trim()
 }
 
-/** The message with `{otp}` where the code goes, as Semaphore's OTP route expects. */
-export function loyaltyOtpTemplate(storeName: string | null | undefined): string {
+/** What the code is for: a reward claim / rewards-page check, or a customer-app sign-in. */
+export type OtpPurpose = 'claim' | 'wallet' | 'login'
+
+/**
+ * The message with `{otp}` where the code goes, as Semaphore's OTP route
+ * expects, worded for its purpose. Unknown purposes read as rewards.
+ */
+export function otpTemplateFor(purpose: OtpPurpose | null | undefined, storeName: string | null | undefined): string {
   const store = cleanStoreName(storeName)
-  const subject = store ? `your ${store} reward code` : 'your reward code'
+  const noun = purpose === 'login' ? 'sign-in code' : 'reward code'
+  const subject = store ? `your ${store} ${noun}` : `your ${noun}`
   return `${OTP_PLACEHOLDER} is ${subject}. It expires in 5 minutes. Never share it with anyone.`
 }
 
-export function buildLoyaltyOtpMessage(storeName: string | null | undefined, code: string): string {
+export function buildOtpMessage(purpose: OtpPurpose | null | undefined, storeName: string | null | undefined, code: string): string {
   if (typeof code !== 'string' || !/^[0-9]{6}$/.test(code)) throw new Error('Invalid loyalty code')
-  return loyaltyOtpTemplate(storeName).replace(OTP_PLACEHOLDER, code)
+  return otpTemplateFor(purpose, storeName).replace(OTP_PLACEHOLDER, code)
+}
+
+export function loyaltyOtpTemplate(storeName: string | null | undefined): string {
+  return otpTemplateFor('claim', storeName)
+}
+
+export function buildLoyaltyOtpMessage(storeName: string | null | undefined, code: string): string {
+  return buildOtpMessage('claim', storeName, code)
 }

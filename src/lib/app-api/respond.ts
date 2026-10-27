@@ -13,8 +13,8 @@ const STATUS_FOR_CODE: Record<AppErrorCode, number> = {
   internal: 500,
 }
 
-export function appOk<T>(data: T, init: { headers?: Record<string, string> } = {}): NextResponse {
-  return NextResponse.json({ success: true, data, error: null }, { status: 200, headers: init.headers })
+export function appOk<T>(data: T, init: { headers?: Record<string, string>; status?: 200 | 201 | 202 } = {}): NextResponse {
+  return NextResponse.json({ success: true, data, error: null }, { status: init.status ?? 200, headers: init.headers })
 }
 
 export function appFail(code: AppErrorCode, message: string, options: { retryAfterSec?: number } = {}): NextResponse {

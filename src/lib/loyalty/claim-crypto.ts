@@ -22,6 +22,17 @@ function validatePhone(phone: string) {
   if (typeof phone !== 'string' || phone.length !== 13 || !/^\+639[0-9]{9}$/.test(phone)) throw new Error('Invalid loyalty phone')
 }
 
+/** The caller's network for rate limits: an IPv4 address, or an IPv6 /64 (one subscriber can rotate within it freely). */
+function canonicalNetwork(ip: string): string {
+  const canonical = canonicalIp(ip)
+  if (isIP(canonical) === 4) return canonical
+  const [head, tail = ''] = canonical.split('::')
+  const left = head ? head.split(':') : []
+  const right = tail ? tail.split(':') : []
+  const groups = canonical.includes('::') ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left
+  return `${groups.slice(0, 4).map((group) => parseInt(group, 16).toString(16)).join(':')}::/64`
+}
+
 function canonicalIp(ip: string): string {
   if (typeof ip !== 'string' || ip.length > 45 || ip.includes('%') || !isIP(ip)) throw new Error('Invalid loyalty network identity')
   if (isIP(ip) === 4) return ip
@@ -54,6 +65,10 @@ export function createLoyaltyClaimCrypto(keys: ClaimKeys) {
     hashIp(ip: string): string {
       return digest('request-ip', [canonicalIp(ip)])
     },
+    // Customer-app sign-in limits count per network (IPv6 /64), so address rotation buys nothing.
+    hashNetwork(ip: string): string {
+      return digest('request-network', [canonicalNetwork(ip)])
+    },
     hashCode(context: ChallengeContext, code: string): string {
       validateCode(code)
       return digest('otp', [uuid(context.tenantId), uuid(context.challengeId), code])
@@ -61,6 +76,12 @@ export function createLoyaltyClaimCrypto(keys: ClaimKeys) {
     hashPhone(tenantId: string, phone: string): string {
       validatePhone(phone)
       return digest('phone', [uuid(tenantId), phone])
+    },
+    // A store app's App Review sign-in code (tenant_apps.review_code_hash).
+    // Own label: never comparable with a texted OTP hash.
+    hashAppReviewCode(tenantId: string, code: string): string {
+      validateCode(code)
+      return digest('app-review-code', [uuid(tenantId), code])
     },
     // Build these together on the server; never accept request-supplied hashes
     // or customer keys as proof. Only hashes belong in challenge storage.
