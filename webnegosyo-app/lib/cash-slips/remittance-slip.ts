@@ -14,6 +14,7 @@ import type { PrintSegment } from "../printer";
 import { PH_DENOMINATIONS, type DenominationCounts } from "../cash/denominations";
 import { countVerdict, reasonLabel, type VarianceReasonKey } from "../cash/reasons";
 import {
+  DEVICE_SOURCE_LINE,
   divider,
   labelCountAmount,
   leftRight,
@@ -76,6 +77,8 @@ export interface RemittanceSlipInput {
   pickups: readonly RemittancePickup[];
   /** Null = nobody knows (forced close, sales not loaded). */
   expectedCents: number | null;
+  /** Who added up `expectedCents`: "device" prints "Counted on this tablet" under it. */
+  expectedSource?: "server" | "device" | "none" | null;
   countedCents: number | null;
   reasonKey?: VarianceReasonKey | null;
   reasonNote?: string | null;
@@ -131,6 +134,7 @@ function moneyLines(input: RemittanceSlipInput, w: SlipWidth): string[] {
     ...(input.payOutCents !== 0 ? [leftRight("Paid out", slipMoney(-Math.abs(input.payOutCents)), w)] : []),
     ...input.pickups.map((pickup) => pickupLine(pickup, w)),
     leftRight("Should be in drawer", slipMoney(input.expectedCents), w),
+    ...(input.expectedSource === "device" ? [`  ${DEVICE_SOURCE_LINE}`] : []),
     leftRight("Counted", slipMoney(input.countedCents), w),
     ...differenceLines(input, w),
     leftRight("Float kept", slipMoney(input.floatKeptCents), w),

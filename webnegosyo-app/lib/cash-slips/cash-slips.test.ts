@@ -11,7 +11,7 @@ import type { PrintSegment } from "../printer";
 import { buildDayCloseSlip, type DayCloseSlipInput } from "./day-close";
 import { buildRemittanceSlip, type RemittanceSlipInput } from "./remittance-slip";
 import { HIDDEN_TOTALS_LINE, NO_TOTALS_LINE, buildShiftReportSlip } from "./shift-report";
-import { slipBusinessDay, slipMoney, slipPlainText, slipSafe, slipWindow, visibleLength, wrap } from "./slip-text";
+import { DEVICE_SOURCE_LINE, slipBusinessDay, slipMoney, slipPlainText, slipSafe, slipWindow, visibleLength, wrap } from "./slip-text";
 
 const WIDTHS = [32, 48] as const;
 const PRINTED_AT = new Date("2026-10-24T18:50:00.000Z"); // Sun Oct 25, 2:50 AM Manila
@@ -224,6 +224,21 @@ describe("unknown is never printed as zero", () => {
     );
     expect(text).toMatch(/EXACT +0\.00/);
     expect(text).toContain("Accepted by Maria with PIN 2:51 AM");
+  });
+});
+
+describe("figures added up on the tablet say so", () => {
+  it("a shift report from the device carries the line; a server one doesn't", () => {
+    const device = textOf(buildShiftReportSlip({ ...REPORT, source: "device" }, { ...STORE, width: 32 }));
+    expect(device).toContain(DEVICE_SOURCE_LINE);
+    expect(textOf(buildShiftReportSlip(REPORT, { ...STORE, width: 32 }))).not.toContain(DEVICE_SOURCE_LINE);
+  });
+
+  it("a remittance whose expected cash came from the tablet carries the line under it", () => {
+    const lines = textOf(buildRemittanceSlip({ ...REMITTANCE, expectedSource: "device" }, { ...STORE, width: 32 })).split("\n");
+    const at = lines.findIndex((line) => line.startsWith("Should be in drawer"));
+    expect(lines[at + 1].trim()).toBe(DEVICE_SOURCE_LINE);
+    expect(textOf(buildRemittanceSlip({ ...REMITTANCE, expectedSource: "server" }, { ...STORE, width: 32 }))).not.toContain(DEVICE_SOURCE_LINE);
   });
 });
 

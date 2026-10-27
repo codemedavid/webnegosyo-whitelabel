@@ -12,6 +12,7 @@
 import type { PrintSegment } from "../printer";
 import type { ShiftSalesPayment, ShiftSalesReport, ShiftSalesSummary } from "../cash/shift-sales";
 import {
+  DEVICE_SOURCE_LINE,
   divider,
   labelCountAmount,
   leftRight,
@@ -50,6 +51,7 @@ function whoLines(report: ShiftSalesReport, w: SlipWidth): string[] {
     ...(period ? [leftRight("Service period", period, w)] : []),
     ...(shift ? [leftRight("Cashier", slipSafe(shift.staffName) || "--", w)] : []),
     ...(shift ? [leftRight("Drawer", slipSafe(shift.drawerName) || "--", w)] : []),
+    ...(report.source === "device" ? [DEVICE_SOURCE_LINE] : []),
   ];
 }
 

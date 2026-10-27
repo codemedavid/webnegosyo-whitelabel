@@ -197,6 +197,13 @@ export function slipHeader(storeName: string, branchName: string | undefined, he
   ];
 }
 
+/**
+ * Printed where a figure was added up on this tablet (`source: "device"`:
+ * a store whose sales aren't on the platform, or the server not reachable)
+ * rather than by the server, so nobody mistakes it for the server's number.
+ */
+export const DEVICE_SOURCE_LINE = "Counted on this tablet";
+
 /** Every slip ends this way: these are store papers, never a BIR document. */
 export function slipFooter(width: SlipWidth, printedAt: Date): string[] {
   return [divider(width), center(`Printed ${slipStamp(printedAt)}`, width), center("Not an official receipt.", width), center("For store use.", width)];
