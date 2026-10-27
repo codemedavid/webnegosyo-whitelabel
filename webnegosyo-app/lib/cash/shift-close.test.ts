@@ -130,6 +130,15 @@ describe("calls", () => {
     expect(result).toMatchObject({ ok: true, data: { remittanceId: "r1", handedOverCents: 634500 } });
   });
 
+  it("words the server's other refusals: bills required, figure missing, already closed", async () => {
+    const answer = async (code: string, message: string) =>
+      countShift({ shiftId: "s1", countedCents: 1, denominations: null, deviceExpectedCents: null }, answering({ data: null, error: { code, message } }).client);
+    expect(await answer("22023", "denominations_required: this store counts bills")).toMatchObject({ refusal: "denominations_required", message: CASH_COPY.denominationsRequired });
+    expect(await answer("22023", "expected_unavailable: the register's figure is missing")).toMatchObject({ refusal: "expected_unavailable" });
+    expect(await answer("P0002", "shift_not_open: this shift is already closed.")).toMatchObject({ refusal: "not_open", message: CASH_COPY.notOpen });
+    expect(await answer("55000", "This shift is already closed.")).toMatchObject({ kind: "refused", refusal: "other", message: "This shift is already closed." });
+  });
+
   it("calls a missing function 'not deployed' so the Drawer keeps its older path", async () => {
     const { client } = answering({ data: null, error: { code: "PGRST202", message: "not found" } });
     expect(await previewShiftClose("s1", client)).toMatchObject({ ok: false, kind: "not_deployed" });

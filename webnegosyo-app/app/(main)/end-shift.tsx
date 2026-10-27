@@ -26,6 +26,7 @@ import { toRemitReceivers } from "../../lib/cash/receivers";
 import { useCashReceivers, useCashSettings } from "../../lib/cash/use-cash-rules";
 import { closeShiftRpc, countShift, type ShiftClosePreview } from "../../lib/cash/shift-close";
 import { useClosePreview, useEndShiftDraft } from "../../lib/cash/shift-end-hooks";
+import { deviceExpectedFor, forgetDeviceExpected } from "../../lib/cash/shift-device-expected";
 import { useShiftDetail } from "../../lib/cash/shift-sales-hooks";
 import {
   canLeaveResult,
@@ -126,7 +127,9 @@ function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft
   const step: EndShiftStep = steps.includes(draft.step) ? draft.step : "count";
   const nonCash = draft.nonCash ?? initialNonCashAnswers(methods ?? []);
   const count = draft.count;
-  const counted = countedCentsOf(draft);
+  // A store that requires bills and coins never sends a typed total.
+  const effectiveDraft = settings.requireDenominations && draft.mode === "total" ? { ...draft, mode: "bills" as const } : draft;
+  const counted = countedCentsOf(effectiveDraft);
   const floatKept = floatToKeep({
     openingFloatCents: preview?.floatCents ?? Math.round(shift.openingFloat * 100),
     isZeroBalance: preview?.isZeroBalance ?? shift.isZeroBalance,
@@ -159,8 +162,8 @@ function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft
     const result = await countShift({
       shiftId: shift.id,
       countedCents: counted as number,
-      denominations: draft.mode === "bills" ? draft.counts : null,
-      deviceExpectedCents: null,
+      denominations: effectiveDraft.mode === "bills" ? draft.counts : null,
+      deviceExpectedCents: deviceExpectedFor(shift.id),
     });
     setBusy(false);
     if (!result.ok) return setError(result.message);
@@ -187,6 +190,7 @@ function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft
     setBusy(false);
     if (!result.ok) return setError(result.message);
     await clearDraft();
+    forgetDeviceExpected(shift.id);
     const { remittanceId } = result.data;
     if (!remittanceId) {
       Alert.alert("Shift ended", `Hand over ${formatPeso(result.data.handedOverCents)}.`);
@@ -259,7 +263,14 @@ function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft
               </Text>
             </View>
           ) : (
-            <CountStep draft={draft} preview={preview} onChange={update} isTablet={isTablet} onDone={onNext} />
+            <CountStep
+              draft={draft}
+              preview={preview}
+              onChange={update}
+              isTablet={isTablet}
+              onDone={onNext}
+              isBillsRequired={settings.requireDenominations}
+            />
           )
         ) : null}
         {step === "noncash" ? <NonCashStep answers={nonCash} onChange={(answers) => update((d) => ({ ...d, nonCash: answers }))} /> : null}

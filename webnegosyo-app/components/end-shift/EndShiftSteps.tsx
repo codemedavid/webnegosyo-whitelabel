@@ -36,14 +36,17 @@ interface CountStepProps {
   onChange: (change: (draft: EndShiftDraft) => EndShiftDraft) => void;
   isTablet: boolean;
   onDone: () => void;
+  /** The store requires counting bills and coins: no "Type total". */
+  isBillsRequired?: boolean;
 }
 
-export function CountStep({ draft, preview, onChange, isTablet, onDone }: CountStepProps) {
+export function CountStep({ draft, preview, onChange, isTablet, onDone, isBillsRequired = false }: CountStepProps) {
+  const mode = isBillsRequired ? "bills" : draft.mode;
   return (
     <View style={styles.step}>
-      <CountModeSwitch value={draft.mode} onChange={(mode) => onChange((d) => ({ ...d, mode }))} />
+      {isBillsRequired ? null : <CountModeSwitch value={draft.mode} onChange={(next) => onChange((d) => ({ ...d, mode: next }))} />}
       <Text style={styles.hint}>{COUNT_HINT}</Text>
-      {draft.mode === "bills" ? (
+      {mode === "bills" ? (
         <DenominationCounter
           value={draft.counts}
           onChange={(counts) => onChange((d) => ({ ...d, counts }))}

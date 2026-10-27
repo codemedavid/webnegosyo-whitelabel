@@ -42,6 +42,7 @@ import { toRemitReceivers } from "../lib/cash/receivers";
 import { useCashReceivers, useCashSettings, useServicePeriods } from "../lib/cash/use-cash-rules";
 import { periodsForBranch } from "../lib/cash/service-periods";
 import { handoverNote, periodToPreselect } from "../lib/cash/shift-start";
+import { rememberDeviceExpected } from "../lib/cash/shift-device-expected";
 import { useCutoffSchedule } from "../lib/business-day/use-trading-day";
 import { cutoffMinutesFor, describeCutoff, tradingDayOf, tradingDayWindow } from "../lib/business-day/trading-day";
 import { overdueShifts } from "../lib/cash/remittances";
@@ -296,6 +297,15 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     () => (myShift ? expectDrawer(myShift, sources) : null),
     [myShift, sources],
   );
+
+  // End shift sends this tablet's figure with the count (the server's shadow / non-platform expectation).
+  useEffect(() => {
+    if (!myShift) return;
+    rememberDeviceExpected(
+      myShift.id,
+      myExpectation?.state === "ready" ? Math.round(myExpectation.value.reconciliation.expectedInDrawer * 100) : null,
+    );
+  }, [myShift, myExpectation]);
 
   const floorRows: FloorRow[] = useMemo(
     () =>

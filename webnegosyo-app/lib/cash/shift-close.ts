@@ -31,6 +31,8 @@ export type CashRefusal =
   | "recount_limit"
   | "count_required"
   | "variance_reason_required"
+  | "denominations_required"
+  | "expected_unavailable"
   | "not_open"
   | "stale"
   | "other";
@@ -51,6 +53,8 @@ export const CASH_COPY = {
   countRequired: "Count the drawer first.",
   reasonRequired: "Pick what happened before you remit.",
   notOpen: "This shift has already ended.",
+  denominationsRequired: "This store counts bills and coins at the end of a shift. Switch to Count bills.",
+  expectedUnavailable: "The Drawer's figure for this shift is missing. Go back to the Drawer, let it add up, then count again.",
   stale: "Your last shift is still open from an earlier day. End it before you start a new one.",
 } as const;
 
@@ -58,6 +62,8 @@ const REFUSAL_COPY: Record<Exclude<CashRefusal, "other">, string> = {
   recount_limit: CASH_COPY.recountLimit,
   count_required: CASH_COPY.countRequired,
   variance_reason_required: CASH_COPY.reasonRequired,
+  denominations_required: CASH_COPY.denominationsRequired,
+  expected_unavailable: CASH_COPY.expectedUnavailable,
   not_open: CASH_COPY.notOpen,
   stale: CASH_COPY.stale,
 };
@@ -79,7 +85,8 @@ async function callCash<T>(client: CashRpcClient, fn: string, args: Record<strin
   if (error) {
     if (error.code === "PGRST202" || error.code === "42883") return { ok: false, kind: "not_deployed", message: CASH_COPY.notDeployed };
     if (error.code === "42501") return { ok: false, kind: "forbidden", message: CASH_COPY.forbidden };
-    if (error.code === "22023" || error.code === "P0001" || error.code === "40001") {
+    // 55000 = already closed; P0002 = not found or shift_not_open (the server's own words either way).
+    if (["22023", "P0001", "P0002", "40001", "55000"].includes(error.code ?? "")) {
       const refusal = refusalOf(error.message);
       return { ok: false, kind: "refused", refusal, message: refusal === "other" ? error.message || CASH_COPY.failed : REFUSAL_COPY[refusal] };
     }
