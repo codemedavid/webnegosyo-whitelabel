@@ -6,6 +6,8 @@
 
 import {
   PIN_COPY,
+  PIN_TRIES_BEFORE_LOCK,
+  PIN_TRIES_PER_CALLER_AND_RECEIVER,
   acceptRemittanceByPin,
   mayAskForPin,
   mayReceive,
@@ -162,6 +164,13 @@ describe('acceptRemittanceByPin', () => {
 
     expect(await acceptRemittanceByPin(s, ANA, INPUT)).toMatchObject({ ok: false, status: 429 })
     expect(verifyPin).not.toHaveBeenCalled()
+  })
+
+  it('gives one caller fewer tries at one receiver than it takes to lock their PIN', () => {
+    // The lock is shared with Senior/PWD approvals: a cashier must not be able
+    // to lock a manager out on purpose.
+    expect(PIN_TRIES_PER_CALLER_AND_RECEIVER.limit).toBeLessThan(PIN_TRIES_BEFORE_LOCK)
+    expect(PIN_TRIES_PER_CALLER_AND_RECEIVER.onRedisFailure).toBe('instance')
   })
 
   it('answers 412 "send to their phone" when the receiver has no PIN', async () => {

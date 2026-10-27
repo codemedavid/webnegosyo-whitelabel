@@ -13,6 +13,7 @@
  */
 
 import type { PinVerdict } from '@/lib/gov-discount-ledger/approval-service'
+import type { RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { hasPermission } from '@/lib/staff-permissions'
 import { REMITTANCE_NOTE_MAX, needsReceiverNote, type Remittance } from './remittances'
 
@@ -64,6 +65,15 @@ export type AcceptByPinOutcome =
 
 /** Five tries before the database locks the PIN (verify_staff_approval_pin). */
 export const PIN_TRIES_BEFORE_LOCK = 5
+
+/**
+ * Tries ONE caller gets at ONE receiver's PIN per window, kept below
+ * PIN_TRIES_BEFORE_LOCK. The database lock is shared with Senior/PWD
+ * approvals, so without this a cashier holding a pending hand-over could type
+ * five wrong PINs on purpose and lock a manager out of both (review
+ * 2026-10-27). One typo and a retry still fit.
+ */
+export const PIN_TRIES_PER_CALLER_AND_RECEIVER: RateLimitOptions = { limit: 3, windowSec: 15 * 60, onRedisFailure: 'instance' }
 
 export const PIN_COPY = {
   notFound: 'That remittance isn’t available.',

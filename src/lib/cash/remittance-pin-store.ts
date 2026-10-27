@@ -13,8 +13,9 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { createSupabaseApprovalStore } from '@/lib/gov-discount-ledger/supabase-approval-store'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { checkPinTryLimits } from '@/lib/staff-pin/pin-limits'
-import type { RemittancePinStore } from './remittance-pin'
+import { PIN_TRIES_PER_CALLER_AND_RECEIVER, type RemittancePinStore } from './remittance-pin'
 import { REMITTANCE_CONFLICT_CODES, parseRemittance } from './remittances'
 
 function fail(context: string, message: string): never {
@@ -35,8 +36,12 @@ export function createRemittancePinStore(admin: SupabaseClient<Database>, caller
       return approvals.findAccount(tenantId, userId)
     },
 
-    allowPinTry(tenantId, receiverUserId) {
-      return checkPinTryLimits(`cash-remit-pin:caller:${tenantId}:${callerUserId}`, tenantId, receiverUserId)
+    async allowPinTry(tenantId, receiverUserId) {
+      const [shared, pair] = await Promise.all([
+        checkPinTryLimits(`cash-remit-pin:caller:${tenantId}:${callerUserId}`, tenantId, receiverUserId),
+        checkRateLimit(`cash-remit-pin:pair:${tenantId}:${callerUserId}:${receiverUserId}`, PIN_TRIES_PER_CALLER_AND_RECEIVER),
+      ])
+      return shared && pair.allowed
     },
 
     verifyPin(userId, tenantId, pin) {
