@@ -5,6 +5,7 @@
 import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { readCutoffScheduleForDisplay } from '@/lib/business-day/read-schedule'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
@@ -484,6 +485,8 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
   const { userRole } = await verifyTenantPermission(tenantId, 'orders', 'view')
 
   const supabase = await createClient()
+  // "Today" is the store's business day (a display: midnight if the setting can't be read).
+  const { schedule } = await readCutoffScheduleForDisplay(supabase, tenantId)
 
   // A branch account sees its own branch's day, like every other order read
   // here (ACCOUNT scope, never a client-chosen branch).
@@ -492,7 +495,7 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
       .from('orders')
       .select('status, total, created_at')
       .eq('tenant_id', tenantId)
-      .gte('created_at', startOfTodayISO()),
+      .gte('created_at', startOfTodayISO(new Date(), schedule)),
     resolveBranchScope(userRole)
   )
 

@@ -7,7 +7,8 @@
  * rows, or merchants comparing screens would see two different "today".
  */
 
-import { manilaDayStart } from "@/lib/dashboard/periods";
+import { tradingDayStart } from "@/lib/dashboard/periods";
+import { MIDNIGHT_SCHEDULE, type CutoffSchedule } from "@/lib/business-day/trading-day";
 
 export interface OrderStatsRow {
   status?: string | null;
@@ -51,10 +52,11 @@ export function summarizeOrderStats(
 }
 
 /**
- * Merchant-local (Asia/Manila) midnight for the given moment, as the ISO string
- * postgrest expects. Not the server's local midnight: Vercel runs in UTC, where
+ * Start of the store's business day for the given moment, as the ISO string
+ * postgrest expects: Manila midnight with no cutoff schedule, the cutoff (e.g.
+ * 4:00 AM) with one. Not the server's local midnight: Vercel runs in UTC, where
  * "today" began at 08:00 Manila and dropped every order before then.
  */
-export function startOfTodayISO(now: Date = new Date()): string {
-  return new Date(manilaDayStart(now.getTime())).toISOString();
+export function startOfTodayISO(now: Date = new Date(), schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): string {
+  return new Date(tradingDayStart(now.getTime(), schedule)).toISOString();
 }

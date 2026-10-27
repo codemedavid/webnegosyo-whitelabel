@@ -105,3 +105,46 @@ describe('dashboard/periods on a 4 AM day', () => {
     expect(tradingDayStart(LATE_NIGHT, FOUR_AM)).toBe(manila('2026-10-24T04:00:00.000'))
   })
 })
+
+describe('report context on a 4 AM day', () => {
+  // Imported here so the suite above keeps its own imports short.
+  const { buildReportContext } = jest.requireActual<typeof import('@/lib/reports/read/report-context')>(
+    '@/lib/reports/read/report-context',
+  )
+  const TENANT = 'aaaaaaaa-0000-4000-8000-000000000001'
+  const base = {
+    tenant: { id: TENANT, slug: 'shop', multiBranchEnabled: false, hasConvexDeployment: false },
+    backend: 'platform' as const,
+    appUser: { role: 'admin', tenant_id: TENANT, is_owner: true, permissions: [], outlet_id: null },
+    outlets: [],
+    searchParams: { period: 'today' },
+    now: LATE_NIGHT,
+  }
+
+  it("resolves 'Today' and its windows on the store's business day", () => {
+    const state = buildReportContext({ ...base, schedule: FOUR_AM })
+    if (state.kind !== 'ready') throw new Error(state.kind)
+    expect(state.context.today).toBe('2026-10-24')
+    expect(state.context.windows.current.start).toBe(manila('2026-10-24T04:00:00.000'))
+    expect(state.context.windows.previous?.start).toBe(manila('2026-10-17T04:00:00.000'))
+    expect(state.context.schedule).toBe(FOUR_AM)
+    expect(state.context.isScheduleFallback).toBe(false)
+  })
+
+  it('is the Manila calendar day with no schedule, and says when it is a stand-in', () => {
+    const state = buildReportContext({ ...base, isScheduleFallback: true })
+    if (state.kind !== 'ready') throw new Error(state.kind)
+    expect(state.context.today).toBe('2026-10-25')
+    expect(state.context.windows.current.start).toBe(manila('2026-10-25T00:00:00.000'))
+    expect(state.context.isScheduleFallback).toBe(true)
+  })
+})
+
+describe('startOfTodayISO (dashboard order stats)', () => {
+  const { startOfTodayISO } = jest.requireActual<typeof import('@/lib/order-stats')>('@/lib/order-stats')
+
+  it('starts at the cutoff with a schedule, at Manila midnight without', () => {
+    expect(startOfTodayISO(new Date(LATE_NIGHT), FOUR_AM)).toBe(new Date(manila('2026-10-24T04:00:00.000')).toISOString())
+    expect(startOfTodayISO(new Date(LATE_NIGHT))).toBe(new Date(manila('2026-10-25T00:00:00.000')).toISOString())
+  })
+})
