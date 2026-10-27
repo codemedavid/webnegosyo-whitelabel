@@ -91,3 +91,35 @@ describe("CashMoveSheet pickup Taken by", () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ takenBy: null }));
   });
 });
+
+import { ClockInCard } from "./ClockInCard";
+
+describe("ClockInCard (Start shift upgrades)", () => {
+  const board = [{ drawer: { id: "d1", outletId: null, name: "Cashier 1", startingCash: 2000, isZeroBalance: false, sortOrder: 0 }, state: "free" as const }];
+  const periods = [
+    { id: "day", name: "Day shift", startsMinutes: 720, endsMinutes: 1200 },
+    { id: "night", name: "Night shift", startsMinutes: 1200, endsMinutes: 120 },
+  ];
+
+  it("confirms the usual float, says a difference, and starts on the preselected named shift", () => {
+    const onClockIn = jest.fn();
+    render(
+      <ClockInCard board={board} isBusy={false} canManage={false} notice={null} onClockIn={onClockIn} onSetUpDrawers={jest.fn()} periods={periods} defaultPeriodId="day" />,
+    );
+    expect(screen.getByText("Usual float ₱2,000")).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText("Opening float in pesos"), "1950");
+    expect(screen.getByText("₱50 less than the usual ₱2,000. We'll note it for the owner.")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Start shift"));
+    expect(onClockIn).toHaveBeenCalledWith("d1", "1950", { servicePeriodId: "day", denominations: null });
+  });
+
+  it("lets the cashier pick another named shift", () => {
+    const onClockIn = jest.fn();
+    render(
+      <ClockInCard board={board} isBusy={false} canManage={false} notice={null} onClockIn={onClockIn} onSetUpDrawers={jest.fn()} periods={periods} defaultPeriodId="day" />,
+    );
+    fireEvent.press(screen.getByTestId("period-night"));
+    fireEvent.press(screen.getByLabelText("Start shift"));
+    expect(onClockIn).toHaveBeenCalledWith("d1", "2000", expect.objectContaining({ servicePeriodId: "night" }));
+  });
+});

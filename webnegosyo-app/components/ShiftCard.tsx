@@ -17,7 +17,7 @@ import type { CounterSale } from "../lib/pos-sales";
 import { formatPeso } from "../lib/format";
 import { listOrderActivity } from "../lib/staff-activity/activity-service";
 import { describeActivity, summarizeActorActivity, type OrderActivityEvent } from "../lib/staff-activity/activity";
-import { ClockInCard } from "./drawer/ClockInCard";
+import { ClockInCard, type ClockInExtras } from "./drawer/ClockInCard";
 import { MyShiftCard } from "./drawer/MyShiftCard";
 import { DrawersOverview, type FloorRow } from "./drawer/DrawersOverview";
 import { CashMoveSheet, type CashMoveTarget, type PickupReceiver } from "./drawer/CashMoveSheet";
@@ -39,7 +39,9 @@ import { endShiftHref } from "../lib/cash-routes";
 import { openShiftRpc, previewShiftClose, recordCashPickup } from "../lib/cash/shift-close";
 import { pesosToCents, pickupArgs } from "../lib/cash/shift-pickup";
 import { toRemitReceivers } from "../lib/cash/receivers";
-import { useCashReceivers, useCashSettings } from "../lib/cash/use-cash-rules";
+import { useCashReceivers, useCashSettings, useServicePeriods } from "../lib/cash/use-cash-rules";
+import { periodsForBranch } from "../lib/cash/service-periods";
+import { handoverNote, periodToPreselect } from "../lib/cash/shift-start";
 import { useCutoffSchedule } from "../lib/business-day/use-trading-day";
 import { cutoffMinutesFor, describeCutoff, tradingDayOf, tradingDayWindow } from "../lib/business-day/trading-day";
 import { overdueShifts } from "../lib/cash/remittances";
@@ -210,6 +212,8 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const floor = useCashFloor();
   const cashSettings = useCashSettings(tenantId);
   const receiversRead = useCashReceivers(tenantId, floor.outletId);
+  const periodsRead = useServicePeriods(tenantId);
+  const branchPeriods = useMemo(() => periodsForBranch(periodsRead.data ?? [], floor.outletId), [periodsRead.data, floor.outletId]);
   const { schedule } = useCutoffSchedule(tenantId);
   const isOffline = useConnectivity().status === "offline";
   // "End for him": a manager closes a shift the cashier forgot (no count invented).
@@ -336,7 +340,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     }
   };
 
-  const handleClockIn = (drawerId: string | null, floatText: string) =>
+  const handleClockIn = (drawerId: string | null, floatText: string, extras: ClockInExtras) =>
     runExclusive(async () => {
       if (refuseInDemo() || !tenantId || !userId) return;
       if (floor.needsBranch) {
@@ -358,21 +362,17 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
         outletId: floor.outletId,
         drawerId,
         openingFloatCents: Math.round(float.amount * 100),
-        openingDenominations: null,
-        servicePeriodId: null,
+        openingDenominations: extras.denominations,
+        servicePeriodId: extras.servicePeriodId,
         staffName,
       });
       if (!opened.ok && opened.kind !== "not_deployed") {
         Alert.alert("Could not start the shift", opened.message);
       } else if (opened.ok && opened.data.state === "stale") {
         Alert.alert("End your last shift first", "Your last shift is still open from an earlier day. End it before you start a new one.");
-      } else if (opened.ok && opened.data.handover && opened.data.handover.leftCents !== Math.round(float.amount * 100)) {
-        const { handover } = opened.data;
-        const diff = Math.round(float.amount * 100) - handover.leftCents;
-        Alert.alert(
-          "Started — note the difference",
-          `${handover.staffName ?? "The last cashier"} left ${formatPeso(handover.leftCents / 100)} in this drawer. You counted ${formatPeso(float.amount)}, ${formatPeso(Math.abs(diff) / 100)} ${diff < 0 ? "less" : "more"}. It's noted for the owner.`,
-        );
+      } else if (opened.ok && handoverNote(opened.data.handover, Math.round(float.amount * 100))) {
+        // "It was short when I got it": said at once, and noted on both shifts by the server.
+        Alert.alert("Started — note the difference", handoverNote(opened.data.handover, Math.round(float.amount * 100)) as string);
       } else if (!opened.ok) {
         try {
           // The name is snapshotted onto the shift so deleting the account later
@@ -715,7 +715,9 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           canManage={canManage}
           notice={notice}
           hint={payOutHint}
-          onClockIn={(drawerId, floatText) => void handleClockIn(drawerId, floatText)}
+          onClockIn={(drawerId, floatText, extras) => void handleClockIn(drawerId, floatText, extras)}
+          periods={branchPeriods}
+          defaultPeriodId={periodToPreselect(branchPeriods, new Date(nowMs).toISOString(), schedule)?.id ?? null}
           onSetUpDrawers={() => router.push(CASH_SETUP_ROUTE)}
         />
       )}

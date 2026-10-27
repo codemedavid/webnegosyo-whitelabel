@@ -37,6 +37,7 @@ jest.mock("../lib/cash/shift-close", () => ({
 jest.mock("../lib/cash/use-cash-rules", () => ({
   useCashSettings: () => ({ data: undefined, error: null, isLoading: false }),
   useCashReceivers: () => ({ data: undefined, error: null, isLoading: false }),
+  useServicePeriods: () => ({ data: undefined, error: null, isLoading: false }),
 }));
 jest.mock("../lib/business-day/use-trading-day", () => ({ useCutoffSchedule: () => ({ schedule: [], isFallback: false, isLoading: false }) }));
 jest.mock("./remittances/ForceCloseShiftSheet", () => ({ ForceCloseShiftSheet: () => null }));
