@@ -2,44 +2,68 @@ import { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { AppText } from '@/components/ui/app-text'
 import { PressableScale } from '@/components/ui/pressable-scale'
-import { formatCountdown, isCompleteCode, isPrototypeCodeAccepted } from '@/lib/auth/code-input'
+import { AppApiError } from '@/lib/api/app-client'
+import { auth } from '@/lib/auth/account-actions'
+import { formatCountdown, isCompleteCode } from '@/lib/auth/code-input'
+import type { AppOtpVerifyResult } from '@/lib/contract'
 import { formatPhoneForDisplay } from '@/lib/phone'
 import { useTokens } from '@/theme/theme-context'
 import { CodeBoxes } from './code-boxes'
 import { useResendCountdown } from './use-resend-countdown'
 
-const VERIFY_DELAY_MS = 600
+const WRONG_CODE = 'That code isn’t right. Check the text and try again.'
+const TRY_AGAIN = 'We couldn’t check the code. Check your connection and try again.'
 
 interface CodeStepProps {
   phoneE164: string
-  onVerified: () => void
+  challengeId: string
+  onVerified: (result: AppOtpVerifyResult) => void
   onChangeNumber: () => void
 }
 
-export function CodeStep({ phoneE164, onVerified, onChangeNumber }: CodeStepProps) {
+export function CodeStep({ phoneE164, challengeId: firstChallengeId, onVerified, onChangeNumber }: CodeStepProps) {
   const { space } = useTokens()
   const [code, setCode] = useState('')
-  const [hasError, setHasError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
+  const [challengeId, setChallengeId] = useState(firstChallengeId)
   const [sentAt, setSentAt] = useState(() => Date.now())
   const secondsLeft = useResendCountdown(sentAt)
+  const isMounted = useRef(true)
+  useEffect(
+    () => () => {
+      isMounted.current = false
+    },
+    [],
+  )
 
-  const verifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => {
-    if (verifyTimer.current) clearTimeout(verifyTimer.current)
-  }, [])
-
-  // Prototype: Phase 3 POSTs /auth/otp/verify; any code but 000000 passes here.
-  const verify = (candidate: string) => {
+  const verify = async (candidate: string) => {
     setIsVerifying(true)
-    verifyTimer.current = setTimeout(() => {
-      setIsVerifying(false)
-      if (isPrototypeCodeAccepted(candidate)) onVerified()
-      else {
-        setHasError(true)
-        setCode('')
-      }
-    }, VERIFY_DELAY_MS)
+    try {
+      const result = await auth.verifyCode({ challengeId, phoneE164, code: candidate })
+      if (isMounted.current) onVerified(result)
+    } catch (caught) {
+      if (!isMounted.current) return
+      // Every wrong/expired/used code is `unauthorized`; limits and outages carry the server's own words.
+      const isWrongCode = caught instanceof AppApiError && caught.code === 'unauthorized'
+      setError(isWrongCode ? WRONG_CODE : caught instanceof AppApiError && caught.code !== 'internal' ? caught.message : TRY_AGAIN)
+      setCode('')
+    } finally {
+      if (isMounted.current) setIsVerifying(false)
+    }
+  }
+
+  const resend = async () => {
+    setError(null)
+    setCode('')
+    try {
+      const sent = await auth.requestCode(phoneE164)
+      if (!isMounted.current) return
+      setChallengeId(sent.challengeId)
+      setSentAt(Date.now())
+    } catch (caught) {
+      if (isMounted.current) setError(caught instanceof AppApiError && caught.code !== 'internal' ? caught.message : TRY_AGAIN)
+    }
   }
 
   return (
@@ -59,12 +83,12 @@ export function CodeStep({ phoneE164, onVerified, onChangeNumber }: CodeStepProp
       </View>
       <CodeBoxes
         value={code}
-        hasError={hasError}
+        hasError={error !== null}
         isDisabled={isVerifying}
         onChange={(next) => {
-          setHasError(false)
+          setError(null)
           setCode(next)
-          if (isCompleteCode(next)) verify(next)
+          if (isCompleteCode(next)) void verify(next)
         }}
       />
       <View style={{ minHeight: 24 }} accessibilityLiveRegion="polite">
@@ -72,9 +96,9 @@ export function CodeStep({ phoneE164, onVerified, onChangeNumber }: CodeStepProp
           <AppText variant="callout" color="textMuted" align="center">
             Checking…
           </AppText>
-        ) : hasError ? (
+        ) : error ? (
           <AppText variant="callout" color="danger" align="center">
-            That code isn’t right. Check the text and try again.
+            {error}
           </AppText>
         ) : null}
       </View>
@@ -84,11 +108,7 @@ export function CodeStep({ phoneE164, onVerified, onChangeNumber }: CodeStepProp
         </AppText>
       ) : (
         <PressableScale
-          onPress={() => {
-            setSentAt(Date.now())
-            setHasError(false)
-            setCode('')
-          }}
+          onPress={() => void resend()}
           accessibilityLabel="Resend code"
           style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}
         >

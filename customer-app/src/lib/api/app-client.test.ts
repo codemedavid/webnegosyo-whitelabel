@@ -47,4 +47,22 @@ describe('createAppClient', () => {
     await expect(api.get('/x', schema)).resolves.toEqual({ hello: 'world' })
     expect(fetchImpl.mock.calls[1][1].headers['If-None-Match']).toBe('"v1"')
   })
+  it('sends a JSON body and the session as a bearer token', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(response(202, { success: true, data: { hello: 'sent' }, error: null }))
+    await client(fetchImpl).send('POST', '/api/app/v1/auth/otp/request', schema, { body: { phone: '09171234567' }, token: 'cs1.abc' })
+    const [, init] = fetchImpl.mock.calls[0]
+    expect(init.method).toBe('POST')
+    expect(init.headers.Authorization).toBe('Bearer cs1.abc')
+    expect(init.headers['Content-Type']).toBe('application/json')
+    expect(JSON.parse(init.body)).toEqual({ phone: '09171234567' })
+  })
+
+  it('never caches a send, so a repeated POST is a new request', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(response(200, { success: true, data: { hello: 'x' }, error: null }, { etag: '"v1"' }))
+    const api = client(fetchImpl)
+    await api.send('PATCH', '/me', schema, { body: {} })
+    await api.send('PATCH', '/me', schema, { body: {} })
+    expect(fetchImpl.mock.calls[1][1].headers['If-None-Match']).toBeUndefined()
+  })
 })
+

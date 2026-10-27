@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { BootError } from '@/components/navigation/boot-screen'
+import { restoreSession } from '@/lib/auth/account-actions'
 import type { AppFontKey } from '@/lib/contract'
 import { queryClient, useAppConfig } from '@/lib/data/hooks'
 import { FONT_ASSETS } from '@/theme/font-assets'
@@ -88,8 +89,16 @@ function ThemedStack() {
   )
 }
 
+/** A saved session signs the customer back in; until it answers they browse as a guest (never blocks launch). */
+function useRestoredSession() {
+  useEffect(() => {
+    void restoreSession()
+  }, [])
+}
+
 /** Holds the splash until the tenant's config and font pair are ready, so the first frame is on-brand. */
 function TenantGate() {
+  useRestoredSession()
   const config = useAppConfig()
   const fontsReady = useTenantFonts(config.data?.theme.fontKey)
   const isReady = config.data !== undefined && fontsReady

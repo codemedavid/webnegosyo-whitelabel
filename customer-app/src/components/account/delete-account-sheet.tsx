@@ -12,16 +12,18 @@ interface DeleteAccountSheetProps {
   storeName: string
   onConfirm: () => void
   onClose: () => void
+  isDeleting?: boolean
+  /** Why the store couldn't delete it; the account stays until it can. */
+  error?: string | null
 }
 
 const CONSEQUENCES = [
-  'Your profile, saved addresses and sign-in are erased.',
-  'Stamps and rewards you haven’t used are lost.',
-  'The store keeps records of orders you’ve already placed.',
+  'Your app profile, saved details and sign-in on every phone are erased.',
+  'The store keeps its records of orders you’ve placed and stamps you’ve earned with your number.',
 ]
 
 /** In-app account deletion (App Store 5.1.1(v)): one clear screen, one deliberate tap. */
-export function DeleteAccountSheet({ isVisible, storeName, onConfirm, onClose }: DeleteAccountSheetProps) {
+export function DeleteAccountSheet({ isVisible, storeName, onConfirm, onClose, isDeleting = false, error = null }: DeleteAccountSheetProps) {
   const { colors, space, radius } = useTokens()
   return (
     <SheetModal isVisible={isVisible} onClose={onClose} accessibilityLabel="Delete your account">
@@ -41,14 +43,21 @@ export function DeleteAccountSheet({ isVisible, storeName, onConfirm, onClose }:
           </AppText>
         ))}
       </View>
+      {error ? (
+        <AppText variant="callout" color="danger" accessibilityLiveRegion="polite" style={{ marginBottom: space.md }}>
+          {error}
+        </AppText>
+      ) : null}
       <PressableScale
         haptic="light"
         onPress={onConfirm}
+        disabled={isDeleting}
+        accessibilityState={{ busy: isDeleting, disabled: isDeleting }}
         accessibilityLabel="Delete my account"
         style={{ minHeight: 52, borderRadius: radius.pill, backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center' }}
       >
         <AppText variant="headline" style={{ color: readableOn(colors.danger, colors.surface) }}>
-          Delete my account
+          {isDeleting ? 'Deleting…' : 'Delete my account'}
         </AppText>
       </PressableScale>
       <Button label="Keep my account" variant="ghost" onPress={onClose} style={{ marginTop: space.sm }} />

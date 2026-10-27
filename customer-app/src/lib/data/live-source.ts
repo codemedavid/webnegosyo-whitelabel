@@ -13,9 +13,18 @@ export function createLiveReads(client: AppClient): LiveReads {
   }
 }
 
+let sharedClient: AppClient | null | undefined
+
+/** The one /api/app/v1 client for this build, or null when `EXPO_PUBLIC_APP_API_URL` is unset (fixtures). */
+export function appClientFromEnv(): AppClient | null {
+  if (sharedClient !== undefined) return sharedClient
+  const baseUrl = process.env.EXPO_PUBLIC_APP_API_URL?.trim()
+  sharedClient = baseUrl ? createAppClient({ baseUrl, applicationId: resolveApplicationId(Application.applicationId) }) : null
+  return sharedClient
+}
+
 /** `EXPO_PUBLIC_APP_API_URL` switches the app from fixtures to the real store. */
 export function liveReadsFromEnv(): LiveReads | null {
-  const baseUrl = process.env.EXPO_PUBLIC_APP_API_URL?.trim()
-  if (!baseUrl) return null
-  return createLiveReads(createAppClient({ baseUrl, applicationId: resolveApplicationId(Application.applicationId) }))
+  const client = appClientFromEnv()
+  return client ? createLiveReads(client) : null
 }

@@ -6,22 +6,24 @@ export interface MemberProfile {
 }
 
 interface SessionState {
-  status: 'guest' | 'member'
+  /** `restoring` while a saved session is being checked at launch. */
+  status: 'restoring' | 'guest' | 'member'
   profile: MemberProfile | null
-  /** Prototype stand-in for OTP verify; Phase 3 stores the server session token. */
-  signIn: (profile: MemberProfile) => void
-  /** Prototype: the name step and Account edits. Phase 3 PATCHes /me. */
-  setName: (name: string | null) => void
-  signOut: () => void
+  /** The opaque `cs1.…` session for this store's API; null for guests. */
+  token: string | null
+  setMember: (token: string, profile: MemberProfile) => void
+  setProfile: (profile: MemberProfile) => void
+  setGuest: () => void
 }
 
+/** Plain state only — sign-in, sign-out and account changes go through `lib/auth/account-actions`. */
 export const useSession = create<SessionState>((set) => ({
-  status: 'guest',
+  status: 'restoring',
   profile: null,
-  signIn: (profile) => set({ status: 'member', profile }),
-  setName: (name) =>
-    set((state) => (state.profile ? { profile: { ...state.profile, name: name?.trim() ? name.trim() : null } } : state)),
-  signOut: () => set({ status: 'guest', profile: null }),
+  token: null,
+  setMember: (token, profile) => set({ status: 'member', token, profile }),
+  setProfile: (profile) => set((state) => (state.status === 'member' ? { profile } : state)),
+  setGuest: () => set({ status: 'guest', token: null, profile: null }),
 }))
 
 /** "Angelo" from "Angelo David"; null when the member never gave a name. */

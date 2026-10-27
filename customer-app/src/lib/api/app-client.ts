@@ -28,7 +28,10 @@ interface FetchResponse {
   json(): Promise<unknown>
 }
 
-type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; signal?: AbortSignal }) => Promise<FetchResponse>
+type FetchLike = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
+) => Promise<FetchResponse>
 
 interface AppClientOptions {
   baseUrl: string
@@ -36,8 +39,19 @@ interface AppClientOptions {
   fetch?: FetchLike
 }
 
+export type SendMethod = 'POST' | 'PATCH' | 'DELETE'
+
+interface SendOptions {
+  body?: unknown
+  /** The customer's session (`cs1.…`), sent as a bearer token. */
+  token?: string | null
+}
+
 export interface AppClient {
-  get<S extends z.ZodType>(path: string, schema: S): Promise<z.infer<S>>
+  /** A cacheable read (ETag/304), optionally as the signed-in customer. */
+  get<S extends z.ZodType>(path: string, schema: S, options?: { token?: string | null }): Promise<z.infer<S>>
+  /** A write; never cached. */
+  send<S extends z.ZodType>(method: SendMethod, path: string, schema: S, options?: SendOptions): Promise<z.infer<S>>
 }
 
 interface Envelope {
@@ -61,14 +75,20 @@ export function createAppClient({ baseUrl, applicationId, fetch: fetchImpl = fet
   // Last good body per path, so a 304 costs no download and no re-parse.
   const cache = new Map<string, { etag: string; data: unknown }>()
 
-  async function request(path: string): Promise<FetchResponse> {
+  async function request(method: string, path: string, options: SendOptions & { etag?: string }): Promise<FetchResponse> {
     const headers: Record<string, string> = { Accept: 'application/json', 'X-App-Id': applicationId }
-    const cached = cache.get(path)
-    if (cached) headers['If-None-Match'] = cached.etag
+    if (options.etag) headers['If-None-Match'] = options.etag
+    if (options.token) headers.Authorization = `Bearer ${options.token}`
+    if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     const controller = typeof AbortController === 'function' ? new AbortController() : null
     const timer = controller ? setTimeout(() => controller.abort(), TIMEOUT_MS) : null
     try {
-      return await fetchImpl(`${root}${path}`, { method: 'GET', headers, signal: controller?.signal })
+      return await fetchImpl(`${root}${path}`, {
+        method,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: controller?.signal,
+      })
     } catch {
       throw new AppApiError('unavailable', UNREACHABLE)
     } finally {
@@ -76,19 +96,29 @@ export function createAppClient({ baseUrl, applicationId, fetch: fetchImpl = fet
     }
   }
 
+  async function parse<S extends z.ZodType>(response: FetchResponse, schema: S): Promise<z.infer<S>> {
+    const body = await response.json().catch(() => null)
+    const envelope = body as Envelope | null
+    if (!response.ok || envelope?.success !== true) throw errorFrom(body)
+    const parsed = schema.safeParse(envelope.data)
+    if (!parsed.success) throw new AppApiError('internal', UNEXPECTED)
+    return parsed.data as z.infer<S>
+  }
+
   return {
-    async get<S extends z.ZodType>(path: string, schema: S): Promise<z.infer<S>> {
-      const response = await request(path)
-      const cached = cache.get(path)
+    async get<S extends z.ZodType>(path: string, schema: S, options: { token?: string | null } = {}): Promise<z.infer<S>> {
+      // Signed-in reads are per customer: never share the cached copy across sessions.
+      const cacheKey = options.token ? null : path
+      const cached = cacheKey ? cache.get(cacheKey) : undefined
+      const response = await request('GET', path, { token: options.token, etag: cached?.etag })
       if (response.status === 304 && cached) return cached.data as z.infer<S>
-      const body = await response.json().catch(() => null)
-      const envelope = body as Envelope | null
-      if (!response.ok || envelope?.success !== true) throw errorFrom(body)
-      const parsed = schema.safeParse(envelope.data)
-      if (!parsed.success) throw new AppApiError('internal', UNEXPECTED)
+      const data = await parse(response, schema)
       const etag = response.headers.get('etag')
-      if (etag) cache.set(path, { etag, data: parsed.data })
-      return parsed.data as z.infer<S>
+      if (cacheKey && etag) cache.set(cacheKey, { etag, data })
+      return data
+    },
+    async send<S extends z.ZodType>(method: SendMethod, path: string, schema: S, options: SendOptions = {}): Promise<z.infer<S>> {
+      return parse(await request(method, path, options), schema)
     },
   }
 }

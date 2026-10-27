@@ -9,10 +9,11 @@ import { NameStep } from '@/components/auth/name-step'
 import { PhoneStep } from '@/components/auth/phone-step'
 import { PressableScale } from '@/components/ui/pressable-scale'
 import { useAppConfig } from '@/lib/data/hooks'
-import { useSession } from '@/lib/stores/session'
+import { completeSignIn, saveName } from '@/lib/auth/account-actions'
+import type { AppOtpVerifyResult } from '@/lib/contract'
 import { useTokens } from '@/theme/theme-context'
 
-type Step = { name: 'phone'; phoneE164?: string } | { name: 'code'; phoneE164: string } | { name: 'name' }
+type Step = { name: 'phone'; phoneE164?: string } | { name: 'code'; phoneE164: string; challengeId: string } | { name: 'name' }
 
 const dismiss = () => (router.canGoBack() ? router.back() : router.replace('/'))
 
@@ -43,16 +44,14 @@ export default function SignInScreen() {
   const { colors, space } = useTokens()
   const insets = useSafeAreaInsets()
   const { data: config } = useAppConfig()
-  const signIn = useSession((state) => state.signIn)
-  const setName = useSession((state) => state.setName)
   const [step, setStep] = useState<Step>({ name: 'phone' })
   const phoneE164 = step.name === 'code' ? step.phoneE164 : null
 
-  const onVerified = useCallback(() => {
-    if (!phoneE164) return
-    signIn({ name: null, phoneE164 })
-    setStep({ name: 'name' })
-  }, [phoneE164, signIn])
+  const onVerified = useCallback(async (result: AppOtpVerifyResult) => {
+    // Returning customers who already gave a name go straight back to where they were.
+    if (await completeSignIn(result)) setStep({ name: 'name' })
+    else dismiss()
+  }, [])
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.background }}>
@@ -66,14 +65,19 @@ export default function SignInScreen() {
             <PhoneStep
               storeName={config?.tenant.name ?? 'the store'}
               initialPhoneE164={step.phoneE164}
-              onSent={(phone) => setStep({ name: 'code', phoneE164: phone })}
+              onSent={(phone, challengeId) => setStep({ name: 'code', phoneE164: phone, challengeId })}
             />
           ) : step.name === 'code' ? (
-            <CodeStep phoneE164={step.phoneE164} onVerified={onVerified} onChangeNumber={() => setStep({ name: 'phone', phoneE164: step.phoneE164 })} />
+            <CodeStep
+              phoneE164={step.phoneE164}
+              challengeId={step.challengeId}
+              onVerified={(result) => void onVerified(result)}
+              onChangeNumber={() => setStep({ name: 'phone', phoneE164: step.phoneE164 })}
+            />
           ) : (
             <NameStep
-              onDone={(name) => {
-                if (name) setName(name)
+              onDone={async (name) => {
+                if (name) await saveName(name)
                 dismiss()
               }}
             />

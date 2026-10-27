@@ -11,6 +11,8 @@ import { ProfileCard } from '@/components/account/profile-card'
 import { SavedAddresses } from '@/components/account/saved-addresses'
 import { SignInPrompt } from '@/components/auth/sign-in-prompt'
 import { AppText } from '@/components/ui/app-text'
+import { AppApiError } from '@/lib/api/app-client'
+import { deleteAccount, signOut } from '@/lib/auth/account-actions'
 import { useAppConfig } from '@/lib/data/hooks'
 import { useSession } from '@/lib/stores/session'
 import { useTokens } from '@/theme/theme-context'
@@ -28,8 +30,21 @@ function HelpGroup() {
 function MemberAccount({ storeName }: { storeName: string }) {
   const { colors, space } = useTokens()
   const profile = useSession((state) => state.profile)
-  const signOut = useSession((state) => state.signOut)
+  const [isConfirming, setIsConfirming] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const confirmDelete = async () => {
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteAccount()
+      setIsConfirming(false)
+    } catch (error) {
+      setDeleteError(error instanceof AppApiError && error.code !== 'internal' ? error.message : 'We couldn’t delete your account. Please try again.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
   // Prototype only: Phase 7 stores this per device token.
   const [wantsOrderUpdates, setWantsOrderUpdates] = useState(true)
   if (!profile) return null
@@ -57,18 +72,19 @@ function MemberAccount({ storeName }: { storeName: string }) {
       </ListGroup>
       <HelpGroup />
       <ListGroup>
-        <ListRow Icon={LogOut} label="Sign out" onPress={signOut} />
-        <ListRow Icon={Trash2} label="Delete account" tone="danger" onPress={() => setIsDeleting(true)} />
+        <ListRow Icon={LogOut} label="Sign out" onPress={() => void signOut()} />
+        <ListRow Icon={Trash2} label="Delete account" tone="danger" onPress={() => setIsConfirming(true)} />
       </ListGroup>
       <DeleteAccountSheet
-        isVisible={isDeleting}
+        isVisible={isConfirming}
         storeName={storeName}
-        onClose={() => setIsDeleting(false)}
-        onConfirm={() => {
-          // Prototype: Phase 3 calls DELETE /me first and only signs out once it succeeds.
-          setIsDeleting(false)
-          signOut()
+        isDeleting={isDeleting}
+        error={deleteError}
+        onClose={() => {
+          setIsConfirming(false)
+          setDeleteError(null)
         }}
+        onConfirm={() => void confirmDelete()}
       />
     </View>
   )
