@@ -1073,6 +1073,131 @@ export type Database = {
           },
         ]
       }
+      customer_app_profiles: {
+        Row: {
+          created_at: string
+          customer_id: string
+          display_name: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          display_name?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          display_name?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_profiles_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_review_logins: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          outcome: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          outcome: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          outcome?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_review_logins_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_sessions: {
+        Row: {
+          absolute_expires_at: string
+          created_at: string
+          customer_id: string
+          expires_at: string
+          id: string
+          last_used_at: string
+          phone_hash: string
+          revoked_at: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Insert: {
+          absolute_expires_at: string
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          id?: string
+          last_used_at?: string
+          phone_hash: string
+          revoked_at?: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Update: {
+          absolute_expires_at?: string
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          id?: string
+          last_used_at?: string
+          phone_hash?: string
+          revoked_at?: string | null
+          tenant_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_external_orders: {
         Row: {
           address: string | null
@@ -1214,6 +1339,38 @@ export type Database = {
           },
           {
             foreignKeyName: "customer_form_fields_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_login_issuance_events: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          phone_hash?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_login_issuance_events_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -8690,6 +8847,8 @@ export type Database = {
           min_version_ios: string | null
           play_store_url: string | null
           play_track: string
+          review_code_hash: string | null
+          review_phone_e164: string | null
           splash_background: string | null
           splash_url: string | null
           status: string
@@ -8712,6 +8871,8 @@ export type Database = {
           min_version_ios?: string | null
           play_store_url?: string | null
           play_track?: string
+          review_code_hash?: string | null
+          review_phone_e164?: string | null
           splash_background?: string | null
           splash_url?: string | null
           status?: string
@@ -8734,6 +8895,8 @@ export type Database = {
           min_version_ios?: string | null
           play_store_url?: string | null
           play_track?: string
+          review_code_hash?: string | null
+          review_phone_e164?: string | null
           splash_background?: string | null
           splash_url?: string | null
           status?: string
@@ -10180,6 +10343,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _tmp_import_baristro_convex: { Args: { payload: Json }; Returns: Json }
       abandon_loyalty_sms_dispatch: {
         Args: {
           p_actor_id: string
@@ -10665,6 +10829,34 @@ export type Database = {
         }
         Returns: Json
       }
+      customer_app_open_session: {
+        Args: {
+          p_opened_at: string
+          p_phone_e164: string
+          p_phone_hash: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      customer_login_issuance_retry_at: {
+        Args: {
+          p_ip_hash: string
+          p_now: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      customer_login_rate_limited: {
+        Args: {
+          p_ip_hash: string
+          p_now: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       decide_approval: {
         Args: {
           p_actor: string
@@ -10675,6 +10867,10 @@ export type Database = {
           p_reason_code?: string
           p_tenant_id: string
         }
+        Returns: Json
+      }
+      delete_customer_app_account: {
+        Args: { p_customer_id: string; p_tenant_id: string }
         Returns: Json
       }
       delete_inventory_item: {
@@ -10852,6 +11048,17 @@ export type Database = {
         Args: { p_path?: string[]; p_recipe_id: string; p_tenant_id: string }
         Returns: number
       }
+      issue_customer_login_challenge: {
+        Args: {
+          p_challenge_id: string
+          p_code_hash: string
+          p_ip_hash: string
+          p_payload_encrypted: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       issue_loyalty_challenge: {
         Args: {
           p_challenge_id: string
@@ -10916,6 +11123,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      loyalty_sms_job_delivery_allowed: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_purpose: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
       loyalty_sms_sender_status: {
         Args: { p_tenant_id: string; p_window_seconds: number }
         Returns: Json
@@ -10954,7 +11171,22 @@ export type Database = {
         Args: { p_order_date: string; p_tenant_id: string }
         Returns: number
       }
+      note_customer_login_review_request: {
+        Args: { p_ip_hash: string; p_phone_hash: string; p_tenant_id: string }
+        Returns: Json
+      }
       onboarding_email_taken: { Args: { p_email: string }; Returns: boolean }
+      open_customer_app_review_session: {
+        Args: {
+          p_candidate_code_hash: string
+          p_ip_hash: string
+          p_phone_e164: string
+          p_phone_hash: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       order_accepts_anon_items: {
         Args: { p_order_id: string }
         Returns: boolean
@@ -11328,6 +11560,14 @@ export type Database = {
       retry_loyalty_pos_projection: {
         Args: { p_actor: string; p_job_id: string; p_tenant_id: string }
         Returns: boolean
+      }
+      revoke_customer_app_session: {
+        Args: { p_tenant_id: string; p_token_hash: string }
+        Returns: Json
+      }
+      revoke_customer_app_sessions_for_customer: {
+        Args: { p_customer_id: string; p_tenant_id: string }
+        Returns: Json
       }
       revoke_loyalty_sms_device: {
         Args: { p_actor_id: string; p_device_id: string; p_tenant_id: string }
@@ -11729,6 +11969,10 @@ export type Database = {
       }
       superadmin_mcp_access_token_hook: { Args: { event: Json }; Returns: Json }
       sweep_sms_outbox: { Args: { p_tenant_id: string }; Returns: Json }
+      touch_customer_app_session: {
+        Args: { p_tenant_id: string; p_token_hash: string }
+        Returns: Json
+      }
       transition_approval: {
         Args: {
           p_actor: string
@@ -11738,6 +11982,17 @@ export type Database = {
           p_reason_code?: string
           p_tenant_id: string
           p_to: string
+        }
+        Returns: Json
+      }
+      verify_customer_login_challenge: {
+        Args: {
+          p_candidate_code_hash: string
+          p_challenge_id: string
+          p_expected_phone_hash: string
+          p_phone_e164: string
+          p_session_token_hash: string
+          p_tenant_id: string
         }
         Returns: Json
       }
