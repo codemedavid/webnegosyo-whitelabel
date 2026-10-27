@@ -13,7 +13,8 @@
  * than quietly applying half a range.
  */
 
-import { clampSelection, reportTodayKey, type ReportSelection } from "./report-window";
+import { clampSelection, type ReportSelection } from "./report-window";
+import { MIDNIGHT_SCHEDULE, tradingDayOf, type CutoffSchedule } from "./business-day/trading-day";
 
 export type DraftMode = "day" | "range";
 
@@ -25,13 +26,18 @@ export interface PickerDraft {
   toKey?: string;
 }
 
-function todayKeyOf(nowMs: number): string {
-  return reportTodayKey(new Date(nowMs).toISOString());
+/** Today's business day (the Manila calendar day with no cutoff schedule). */
+function todayKeyOf(nowMs: number, schedule: CutoffSchedule): string {
+  return tradingDayOf(new Date(nowMs).toISOString(), schedule);
 }
 
 /** The draft the sheet opens on, carrying over whatever is on screen. */
-export function beginDraft(selection: ReportSelection, nowMs: number): PickerDraft {
-  const safe = clampSelection(selection, nowMs);
+export function beginDraft(
+  selection: ReportSelection,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): PickerDraft {
+  const safe = clampSelection(selection, nowMs, schedule);
 
   if (safe.kind === "day") return { mode: "day", fromKey: safe.dayKey, toKey: safe.dayKey };
   if (safe.kind === "range") return { mode: "range", fromKey: safe.fromKey, toKey: safe.toKey };
@@ -52,11 +58,16 @@ export function setDraftMode(draft: PickerDraft, mode: DraftMode): PickerDraft {
 }
 
 /** Apply a tap on `dayKey`. Future days are ignored. */
-export function tapDay(draft: PickerDraft, dayKey: string, nowMs: number): PickerDraft {
+export function tapDay(
+  draft: PickerDraft,
+  dayKey: string,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): PickerDraft {
   // The cell is rendered disabled, but a tap must never slip through: a future
   // report is empty, and an empty report is indistinguishable from one whose
   // data went missing.
-  if (dayKey > todayKeyOf(nowMs)) return draft;
+  if (dayKey > todayKeyOf(nowMs, schedule)) return draft;
 
   if (draft.mode === "day") return { mode: "day", fromKey: dayKey, toKey: dayKey };
 

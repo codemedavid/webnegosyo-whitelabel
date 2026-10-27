@@ -16,10 +16,9 @@
  * (`lib/offline/register-pack.ts`) can save the schedule next to the menu.
  */
 import { supabase } from "../supabase";
-import { resourceKey, type ResourceQueryKey } from "../backends/query-keys";
 import { MIDNIGHT_SCHEDULE, parseCutoffSchedule, type CutoffSchedule } from "./trading-day";
 
-export const CUTOFF_SCHEDULE_RESOURCE = "business-day-cutoffs";
+export { CUTOFF_SCHEDULE_RESOURCE, cutoffScheduleKey } from "./schedule-key";
 
 /** A store changes its cutoff a handful of times in its life; this many rows is a bug. */
 export const CUTOFF_ROW_LIMIT = 500;
@@ -30,10 +29,6 @@ const MISSING_TABLE_CODES = new Set(["PGRST205", "42P01"]);
 interface ReadError {
   code?: string;
   message?: string;
-}
-
-export function cutoffScheduleKey(tenantId: string): ResourceQueryKey {
-  return resourceKey(CUTOFF_SCHEDULE_RESOURCE, tenantId);
 }
 
 export async function fetchCutoffSchedule(tenantId: string): Promise<CutoffSchedule> {

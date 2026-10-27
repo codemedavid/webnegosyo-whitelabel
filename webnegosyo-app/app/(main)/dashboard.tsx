@@ -14,7 +14,8 @@ import { canReadOrders } from "../../lib/staff-permissions";
 import { quickActionsFor } from "../../lib/home-quick-actions";
 import { revenueDelta, todayRange, yesterdayRange } from "../../lib/home-period";
 import { ordersInWindowArgs } from "../../lib/report-window";
-import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
+import { useCanBoundReports } from "../../lib/use-report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useAuthStore } from "../../stores/auth-store";
@@ -137,10 +138,11 @@ export default function DashboardScreen() {
   // Keyed to the Manila day, not to mount: Home is a tab that never unmounts,
   // so ranges computed once kept comparing against the day before yesterday
   // after midnight while the server's "today" had already rolled over.
-  const { anchorMs } = useBusinessDayAnchor();
+  // Today / yesterday are the store's business days (Manila midnight with no cutoff).
+  const { anchorMs, schedule } = useTradingDay();
   const canBound = useCanBoundReports();
-  const yesterday = useMemo(() => ({ ...yesterdayRange(anchorMs) }), [anchorMs]);
-  const today = useMemo(() => todayRange(anchorMs), [anchorMs]);
+  const yesterday = useMemo(() => ({ ...yesterdayRange(anchorMs, schedule) }), [anchorMs, schedule]);
+  const today = useMemo(() => todayRange(anchorMs, schedule), [anchorMs, schedule]);
 
   const { data: stats, isLoading, error: statsError, refetch: refetchStats } =
     useSafeQuery<DashboardStats>(getDashboardStatsRef, canSeeOrders ? undefined : "skip");

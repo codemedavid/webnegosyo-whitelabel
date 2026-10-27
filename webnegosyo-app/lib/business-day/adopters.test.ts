@@ -16,6 +16,11 @@ import {
   selectionToQueryArgs,
 } from "../report-window";
 import { localDayStartMs } from "../backends/supabase-orders";
+import { computeTrends, type AnalyticsOrder } from "../backends/analytics-compute";
+import { beginDraft, tapDay } from "../report-range-picker";
+import { resolvePerformancePeriod } from "../product-performance/period";
+import { cachedCutoffSchedule } from "./cached-schedule";
+import { cutoffScheduleKey } from "./schedule-key";
 import { MIDNIGHT_SCHEDULE, type CutoffSchedule } from "./trading-day";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -115,5 +120,62 @@ describe("localDayStartMs with a schedule", () => {
 
   it("is the old midnight formula with an empty schedule", () => {
     expect(localDayStartMs(LATE_NIGHT, undefined, MIDNIGHT_SCHEDULE)).toBe(manila("2026-10-25T00:00:00.000"));
+  });
+});
+
+describe("cachedCutoffSchedule (adapter reads outside React)", () => {
+  const cacheOf = (entries: Record<string, unknown>) => ({
+    getQueryData: (key: readonly unknown[]) => entries[JSON.stringify(key)],
+  });
+
+  it("reads the schedule useTradingDay put in the cache", () => {
+    const cache = cacheOf({ [JSON.stringify(cutoffScheduleKey("t1"))]: FOUR_AM });
+    expect(cachedCutoffSchedule("t1", cache)).toEqual(FOUR_AM);
+  });
+
+  it("answers midnight before the schedule is loaded, for no store, or for a copy it cannot trust", () => {
+    expect(cachedCutoffSchedule("t1", cacheOf({}))).toEqual([]);
+    expect(cachedCutoffSchedule(null, cacheOf({}))).toEqual([]);
+    const bad = cacheOf({ [JSON.stringify(cutoffScheduleKey("t1"))]: [{ effectiveFrom: "x", cutoffMinutes: 1 }] });
+    expect(cachedCutoffSchedule("t1", bad)).toEqual([]);
+  });
+});
+
+describe("computeTrends on a 4 AM day", () => {
+  const order = (createdAtMs: number): AnalyticsOrder => ({
+    id: String(createdAtMs),
+    createdAtMs,
+    status: "delivered",
+    total: 100,
+    customerName: "",
+    customerContact: "",
+    customerData: null,
+  });
+
+  it("puts a 1:30 AM sale on the night before", () => {
+    expect(computeTrends([order(LATE_NIGHT)], FOUR_AM).map((row) => row.date)).toEqual(["2026-10-24"]);
+    expect(computeTrends([order(LATE_NIGHT)]).map((row) => row.date)).toEqual(["2026-10-25"]);
+  });
+});
+
+describe("report range picker on a 4 AM day", () => {
+  it("does not let Saturday be picked before Saturday's business day starts", () => {
+    const draft = beginDraft({ kind: "preset", days: 7 }, LATE_NIGHT, FOUR_AM);
+    expect(tapDay(draft, "2026-10-25", LATE_NIGHT, FOUR_AM)).toBe(draft);
+    expect(tapDay(draft, "2026-10-24", LATE_NIGHT, FOUR_AM)).toEqual({
+      mode: "day",
+      fromKey: "2026-10-24",
+      toKey: "2026-10-24",
+    });
+    expect(tapDay(draft, "2026-10-25", LATE_NIGHT)).not.toBe(draft);
+  });
+});
+
+describe("product performance periods on a 4 AM day", () => {
+  it("reads 'Yesterday' at 1:30 AM Saturday as Thursday 4 AM to Friday 4 AM", () => {
+    expect(resolvePerformancePeriod("yesterday", LATE_NIGHT, FOUR_AM).window).toEqual({
+      startMs: manila("2026-10-23T04:00:00.000"),
+      endMs: manila("2026-10-24T04:00:00.000"),
+    });
   });
 });

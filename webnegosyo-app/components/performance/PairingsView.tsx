@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } 
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useCategories, useProducts } from "../../lib/query/use-products";
-import { useBusinessDayAnchor } from "../../lib/use-report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { resolveReportWindow } from "../../lib/report-window";
 import { useSalesLines } from "../../lib/product-performance/use-sales-lines";
 import { buildPairingInsights } from "../../lib/pairings";
@@ -51,9 +51,12 @@ export function PairingsView({ header }: PairingsViewProps) {
   const [tab, setTab] = useState<PairingTab>("items");
   const [isExpanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const { anchorMs } = useBusinessDayAnchor();
+  const { anchorMs, schedule } = useTradingDay();
 
-  const reportWindow = useMemo(() => resolveReportWindow({ kind: "preset", days: period }, anchorMs), [period, anchorMs]);
+  const reportWindow = useMemo(
+    () => resolveReportWindow({ kind: "preset", days: period }, anchorMs, schedule),
+    [period, anchorMs, schedule]
+  );
   const sales = useSalesLines(reportWindow);
 
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);

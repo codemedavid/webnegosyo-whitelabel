@@ -5,6 +5,7 @@ import { Modal } from "./Modal";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { IconButton } from "./IconButton";
 import { buildMonthGrid, monthCursorOf, monthTitle, shiftMonth } from "../lib/schedule-calendar";
+import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from "../lib/business-day/trading-day";
 import {
   beginDraft,
   draftSelection,
@@ -39,8 +40,19 @@ interface ReportRangePickerProps {
   /** What the report is showing now — the sheet opens on it. */
   selection: ReportSelection;
   nowMs: number;
+  /** The store's business-day cutoffs (`useReportWindow().schedule`); none = Manila midnight. */
+  schedule?: CutoffSchedule;
   onApply: (selection: ReportSelection) => void;
   onClose: () => void;
+}
+
+/**
+ * The instant the calendar treats as "now": the start of today's BUSINESS
+ * day, so at 1 AM on a 4 AM store tomorrow's cell is not offered as today.
+ */
+function calendarNowMs(nowMs: number, schedule: CutoffSchedule): number {
+  if (schedule.length === 0) return nowMs;
+  return Date.parse(tradingDayWindow(tradingDayOf(new Date(nowMs).toISOString(), schedule), schedule).startIso);
 }
 
 const WEEKDAY_HEADERS = ["S", "M", "T", "W", "T", "F", "S"] as const;
@@ -54,29 +66,30 @@ export function ReportRangePicker({
   visible,
   selection,
   nowMs,
+  schedule = MIDNIGHT_SCHEDULE,
   onApply,
   onClose,
 }: ReportRangePickerProps) {
   // Keyed on `visible` so reopening the sheet starts from what the report is
   // actually showing, not from a half-built range abandoned last time.
-  const [draft, setDraft] = useState(() => beginDraft(selection, nowMs));
+  const [draft, setDraft] = useState(() => beginDraft(selection, nowMs, schedule));
   const [cursor, setCursor] = useState(() => monthCursorOf(nowMs));
   const [openedFor, setOpenedFor] = useState(visible);
 
   if (visible !== openedFor) {
     setOpenedFor(visible);
     if (visible) {
-      setDraft(beginDraft(selection, nowMs));
+      setDraft(beginDraft(selection, nowMs, schedule));
       setCursor(monthCursorOf(nowMs));
     }
   }
 
-  const rows = useMemo(() => buildMonthGrid(cursor, nowMs), [cursor, nowMs]);
+  const rows = useMemo(() => buildMonthGrid(cursor, calendarNowMs(nowMs, schedule)), [cursor, nowMs, schedule]);
   const pending = draftSelection(draft);
   const tooWide = pending !== null && rangeDayCount(pending) > MAX_RANGE_DAYS;
 
   const summary = pending
-    ? describeSelection(pending, nowMs)
+    ? describeSelection(pending, nowMs, schedule)
     : draft.mode === "range"
       ? "Tap the last day"
       : "Tap a day";
@@ -150,7 +163,7 @@ export function ReportRangePicker({
                         isFuture && styles.cellDisabled,
                       ]}
                       disabled={isFuture}
-                      onPress={() => setDraft(tapDay(draft, cell.key, nowMs))}
+                      onPress={() => setDraft(tapDay(draft, cell.key, nowMs, schedule))}
                       accessibilityRole="button"
                       accessibilityState={{ selected: chosen, disabled: isFuture }}
                       accessibilityLabel={cell.key}
