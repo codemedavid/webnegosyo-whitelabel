@@ -232,3 +232,45 @@ edge function keeps the union of keys (harmless). Roll the database back only AF
   history; `report_shift_sales`). The key's description says so in the web registry and the app Team picker
   ("…close the business day and see that day's sales"); the desktop and edge copies carry keys only.
   `get_business_day_close` may keep masking for accounts without `reports`. That is harmless, but no screen relies on it.
+
+---
+
+## 8. Release review 2026-10-27 (5 reviewers: expenses, cashier ×2, security, live DB, integration)
+
+Live DB audit (read-only, rolled back): every `20261022*` + `20261026120000` expenses object APPLIED and probed per
+role; customer-app `20261026150000` / `160000` APPLIED (chunked names); **none** of the 17 `20261027*` applied, none
+partial. §0 drift check: all 14 re-created functions match their source bodies (the security release #90 touched
+none of them). `staff_shifts` = 314 rows, so 120300 is milliseconds. Deployed `manage-staff` = v6, missing `expenses`
++ `cash_manage` (and `expenses` opt-in + the two default screens) → B2 deploys the branch's `staff-core.ts` as is.
+
+Fixed on this branch (unapplied migrations edited in place; PGlite runners extended):
+- **160000** a client `collect` straight into `shift_cash_movements` (old builds; the holder's insert policy) can no
+  longer name `taken_by`/`to_safe`, and is filed as a PENDING pickup hand-over with nobody named. Old builds keep
+  working. Consequence for E: those pickups are pending until a cash manager on the new build accepts them, so 190000
+  will push for them, like any other hand-over.
+- **160000** `record_cash_pickup` refuses the shift's own cashier as taker (owner aside, `is_self_received`);
+  `resolve_remittance` refuses whoever disputed it (owner aside); `accept_remittance_as(…, p_entered_by)` names the
+  person who typed the PIN in the activity row.
+- **150000** a counted drawer refuses new cash moves (55000 `drawer_counted`); **130000** in server mode an RPC close
+  keeps the figure the cashier counted against.
+- **170000** a branch close and a whole-store close of one day can't both stand (store-wide lock first).
+- **150000** shift/close names come from the account, the caller's text only as fallback.
+- Code: business-day sync skips platform stores (no write to a leftover Convex URL); the sync route is store-wide
+  only; web Expenses drawers on `cash_manage`; old-style clock-in on a closed day says so.
+- Merge of origin/main (v37): `CURRENT_SCHEMA_VERSION` 39, bundle rebuilt (has `lalamoveRemarks` +
+  `getCutoffScheduleInternal`), `getTrends` on #89's `fetchOrders(ctx, …)`.
+- App **1.0.15** with purpose strings that name receipts/IDs/menus → **B3 is a new EAS binary, not an OTA** (an
+  OTA can't change Info.plist; `runtimeVersion` = appVersion). Check the ASC train before building.
+
+Open — owner decisions, NOT changed:
+- **D1 `cash_manage` for legacy full-access (`permissions IS NULL`) accounts.** Today it is implied, so those accounts
+  can accept anyone's hand-over and close the day. Expenses was made opt-in for the same population. Option: add
+  `cash_manage` to `OPT_IN_PERMISSION_KEYS` (4 registries + SQL) and rely on the 120100 backfill for store_setup holders.
+- **D2 legacy direct close** on a non-blind store still files no hand-over (R1). Closing it = require the RPC mark for
+  client closes once the new build is on every tablet (gate with 130100).
+- **D3 PIN lockout griefing**: a cashier with a pending hand-over can lock a manager's approver PIN (shared with
+  Senior/PWD) with 5 wrong tries. Fix = count failures per caller+receiver before the shared lock.
+- Smaller follow-ups: deposit proof URL accepts any https host; push bodies show cashier + amount on lock screens;
+  forced shifts' expected cash is not in the day close's headline; Home/Reports briefly fetch a midnight window
+  while the cutoff schedule loads (`use-trading-day`); a blind shift's holder with `reports` can read the window's
+  cash in `report_period_sales`.
