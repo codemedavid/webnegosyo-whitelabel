@@ -4,8 +4,22 @@
 // store (stock is always on the platform DB, whatever serves the orders),
 // written by a trigger on `stock_alerts`. The web push route words the same
 // notice in `src/lib/push/merchant-notification-push.ts` — change both.
+//
+// Cash kinds (CONTRACTS W3.3, written by cash.notify_overdue_shifts and the
+// remittance trigger, 20261027190000): `shift_overdue` (a shift still open
+// after its business day plus the grace) and `remittance_pending` (cash
+// waiting over an hour). Their row reuses the table: item_name = the person,
+// plus shift_id / remittance_id / drawer_name / cash_cents.
 
-export type MerchantNotificationKind = "stock_low" | "stock_out";
+export type StockNotificationKind = "stock_low" | "stock_out";
+export type CashNotificationKind = "shift_overdue" | "remittance_pending";
+export type MerchantNotificationKind = StockNotificationKind | CashNotificationKind;
+
+export const CASH_NOTIFICATION_KINDS: readonly CashNotificationKind[] = ["shift_overdue", "remittance_pending"];
+
+export function isCashNotificationKind(kind: string): kind is CashNotificationKind {
+  return (CASH_NOTIFICATION_KINDS as readonly string[]).includes(kind);
+}
 
 export interface MerchantNotification {
   id: string;
@@ -21,6 +35,11 @@ export interface MerchantNotification {
   createdAt: string;
   /** The stock has since recovered (the alert behind it is resolved). */
   isResolved: boolean;
+  /** Cash kinds only. */
+  shiftId?: string | null;
+  remittanceId?: string | null;
+  drawerName?: string | null;
+  cashCents?: number | null;
 }
 
 export interface MerchantNotificationRow {
@@ -35,10 +54,16 @@ export interface MerchantNotificationRow {
   reorder_level: number | string | null;
   created_at: string;
   stock_alerts: { resolved_at: string | null } | null;
+  shift_id?: string | null;
+  remittance_id?: string | null;
+  drawer_name?: string | null;
+  cash_cents?: number | string | null;
 }
 
 /** Staff need this permission to open Stock — the bell follows it. */
 const STOCK_PERMISSION = "menu";
+/** Cash notices go to whoever receives cash (CONTRACTS W3.3). */
+const CASH_PERMISSION = "cash_manage";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -66,16 +91,38 @@ export function canSeeMerchantNotifications(state: NotificationSessionState): bo
   return state.permissions.includes(STOCK_PERMISSION);
 }
 
+/**
+ * The cash kinds' half of the table's RLS (W3.3): owner, full access, or
+ * `cash_manage`. Branch confinement is the server's.
+ */
+export function canSeeCashNotifications(state: NotificationSessionState): boolean {
+  if (!state.isAuthenticated || state.isDemo) return false;
+  if (state.isSuperadmin && state.impersonatedTenantId !== null) return false;
+  if (state.isOwner || state.isSuperadmin || state.permissions === null) return true;
+  return state.permissions.includes(CASH_PERMISSION);
+}
+
+/** The bell exists for anyone who can read at least one kind of notice. */
+export function canOpenMerchantBell(state: NotificationSessionState): boolean {
+  return canSeeMerchantNotifications(state) || canSeeCashNotifications(state);
+}
+
 function toNumber(value: number | string | null): number | null {
   if (value === null) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toKind(kind: string): MerchantNotificationKind {
+  if (kind === "stock_out" || isCashNotificationKind(kind)) return kind;
+  return "stock_low";
+}
+
 export function toMerchantNotification(row: MerchantNotificationRow): MerchantNotification {
+  const isCash = isCashNotificationKind(row.kind);
   return {
     id: row.id,
-    kind: row.kind === "stock_out" ? "stock_out" : "stock_low",
+    kind: toKind(row.kind),
     outletId: row.outlet_id,
     outletName: row.outlet_name,
     inventoryItemId: row.inventory_item_id,
@@ -85,7 +132,45 @@ export function toMerchantNotification(row: MerchantNotificationRow): MerchantNo
     reorderLevel: toNumber(row.reorder_level),
     createdAt: row.created_at,
     isResolved: Boolean(row.stock_alerts?.resolved_at),
+    ...(isCash
+      ? {
+          shiftId: row.shift_id ?? null,
+          remittanceId: row.remittance_id ?? null,
+          drawerName: row.drawer_name ?? null,
+          cashCents: toNumber(row.cash_cents ?? null),
+        }
+      : {}),
   };
+}
+
+const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
+
+/** ₱6,345 (whole pesos) or ₱6,345.50 — the same as the push route. */
+function pesosFromCents(cents: number): string {
+  const whole = cents % 100 === 0;
+  return `₱${(cents / 100).toLocaleString("en-PH", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 })}`;
+}
+
+/** The cash notices' words (CONTRACTS W3.3); the push route words them identically. */
+export function describeCashNotification(n: MerchantNotification): { title: string; body: string } {
+  const who = firstName(n.itemName);
+  const where = [n.outletId ? n.outletName : null, n.drawerName ?? null];
+  if (n.kind === "shift_overdue") {
+    return {
+      title: `${who}'s shift is still open`,
+      body: [...where, "End it from the Drawer"].filter((part): part is string => Boolean(part)).join(" · "),
+    };
+  }
+  const amount = typeof n.cashCents === "number" ? pesosFromCents(n.cashCents) : null;
+  return {
+    title: amount ? `${who}'s ${amount} is waiting to be accepted` : `${who}'s remittance is waiting to be accepted`,
+    body: [...where, "Accept it in Remittances"].filter((part): part is string => Boolean(part)).join(" · "),
+  };
+}
+
+/** Any notice's words. */
+export function describeNotification(n: MerchantNotification): { title: string; body: string } {
+  return isCashNotificationKind(n.kind) ? describeCashNotification(n) : describeStockNotification(n);
 }
 
 /** "2.5 kg", "5 kg", "3" — at most two decimals, no trailing zeros. */
@@ -111,6 +196,8 @@ export function describeStockNotification(n: MerchantNotification): { title: str
 
 /** One shelf of one ingredient: a "low" notice and its later "out" escalation share it. */
 function stockIssueKey(n: MerchantNotification): string {
+  // A cash notice is its own issue: two forgotten shifts are two things to do.
+  if (isCashNotificationKind(n.kind)) return `cash|${n.id}`;
   return `${n.inventoryItemId ?? n.itemName}|${n.outletId ?? "store"}`;
 }
 
@@ -146,7 +233,7 @@ export function nextSeenAt(items: readonly MerchantNotification[], seenAt: strin
  * notice and its later "out" escalation are the same problem.
  */
 export function openStockIssueCount(items: readonly MerchantNotification[]): number {
-  return new Set(items.filter((n) => !n.isResolved).map(stockIssueKey)).size;
+  return new Set(items.filter((n) => !n.isResolved && !isCashNotificationKind(n.kind)).map(stockIssueKey)).size;
 }
 
 export interface NotificationGroup {

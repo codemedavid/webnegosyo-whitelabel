@@ -12,8 +12,12 @@ import {
   type MerchantNotificationRow,
 } from "./merchant-notifications";
 
-const COLUMNS =
+const STOCK_COLUMNS =
   "id, kind, outlet_id, outlet_name, inventory_item_id, item_name, unit, quantity, reorder_level, created_at, stock_alerts(resolved_at)";
+/** The cash kinds' columns (20261027190000); read only once they exist. */
+const COLUMNS = `${STOCK_COLUMNS}, shift_id, remittance_id, drawer_name, cash_cents`;
+/** Postgres "no such column": the cash alerts migration is not applied yet. */
+const UNDEFINED_COLUMN = "42703";
 
 /** The list shows the latest notices; older ones are history nobody scrolls to. */
 const MAX_LIST = 100;
@@ -25,12 +29,16 @@ export interface MerchantNotificationInbox {
 }
 
 async function listMerchantNotifications(tenantId: string): Promise<MerchantNotification[]> {
-  const { data, error } = await supabase
-    .from("merchant_notifications")
-    .select(COLUMNS)
-    .eq("tenant_id", tenantId)
-    .order("created_at", { ascending: false })
-    .limit(MAX_LIST);
+  const read = (columns: string) =>
+    supabase
+      .from("merchant_notifications")
+      .select(columns)
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(MAX_LIST);
+  // The bell must keep working for stock while the cash columns are not there yet.
+  let { data, error } = await read(COLUMNS);
+  if (error?.code === UNDEFINED_COLUMN) ({ data, error } = await read(STOCK_COLUMNS));
   if (error) throw new Error(error.message);
   return ((data ?? []) as unknown as MerchantNotificationRow[]).map(toMerchantNotification);
 }

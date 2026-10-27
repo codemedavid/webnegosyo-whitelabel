@@ -5,6 +5,10 @@
 import {
   canSeeMerchantNotifications,
   describeStockNotification,
+  describeCashNotification,
+  describeNotification,
+  canSeeCashNotifications,
+  canOpenMerchantBell,
   formatNotificationTime,
   groupNotificationsByDay,
   nextSeenAt,
@@ -246,5 +250,64 @@ describe("routeFromPushData", () => {
   it("ignores pushes it does not know, like new orders", () => {
     expect(routeFromPushData({ orderId: "o1" })).toBeNull();
     expect(routeFromPushData(null)).toBeNull();
+  });
+});
+
+describe("cash notices (CONTRACTS W3.3)", () => {
+  const cash = (patch: Record<string, unknown>) =>
+    toMerchantNotification({
+      id: "c1",
+      kind: "shift_overdue",
+      outlet_id: null,
+      outlet_name: null,
+      inventory_item_id: null,
+      item_name: "Ben Cruz",
+      unit: null,
+      quantity: null,
+      reorder_level: null,
+      created_at: "2026-10-25T00:30:00.000Z",
+      stock_alerts: null,
+      shift_id: "s2",
+      remittance_id: null,
+      drawer_name: "Cashier 2",
+      cash_cents: null,
+      ...patch,
+    } as never);
+
+  it("words a shift left open", () => {
+    expect(describeCashNotification(cash({}))).toEqual({ title: "Ben's shift is still open", body: "Cashier 2 · End it from the Drawer" });
+    expect(describeCashNotification(cash({ outlet_id: "o1", outlet_name: "North", drawer_name: null })).body).toBe("North · End it from the Drawer");
+  });
+
+  it("words cash waiting to be accepted, amount or not", () => {
+    const waiting = cash({ kind: "remittance_pending", item_name: "Ana Reyes", remittance_id: "r1", cash_cents: "634500" });
+    expect(describeCashNotification(waiting)).toEqual({ title: "Ana's ₱6,345 is waiting to be accepted", body: "Cashier 2 · Accept it in Remittances" });
+    expect(describeCashNotification({ ...waiting, cashCents: 634550 }).title).toBe("Ana's ₱6,345.50 is waiting to be accepted");
+    expect(describeCashNotification({ ...waiting, cashCents: null }).title).toBe("Ana's remittance is waiting to be accepted");
+    expect(describeNotification(waiting)).toEqual(describeCashNotification(waiting));
+  });
+
+  it("keeps the kind and the links, and never counts as a stock issue", () => {
+    const n = cash({});
+    expect(n).toMatchObject({ kind: "shift_overdue", shiftId: "s2", drawerName: "Cashier 2" });
+    expect(openStockIssueCount([n])).toBe(0);
+    expect(unreadCount([n, { ...n, id: "c2" }], null)).toBe(2);
+  });
+
+  it("shows cash notices to whoever receives cash; the bell opens for either kind", () => {
+    const base = { isAuthenticated: true, isDemo: false, isOwner: false, isSuperadmin: false, impersonatedTenantId: null };
+    expect(canSeeCashNotifications({ ...base, permissions: ["cash_manage"] })).toBe(true);
+    expect(canSeeCashNotifications({ ...base, permissions: ["menu"] })).toBe(false);
+    expect(canOpenMerchantBell({ ...base, permissions: ["cash_manage"] })).toBe(true);
+    expect(canOpenMerchantBell({ ...base, permissions: ["pos"] })).toBe(false);
+    expect(canSeeCashNotifications({ ...base, isDemo: true, isOwner: true, permissions: null })).toBe(false);
+  });
+});
+
+describe("routeFromPushData — cash alerts", () => {
+  it("opens where each cash notice is acted on", () => {
+    expect(routeFromPushData({ type: "cash_alert", kind: "shift_overdue", shiftId: "s2" })).toBe("/(main)/pos-sales");
+    expect(routeFromPushData({ type: "cash_alert", kind: "remittance_pending", remittanceId: "r1" })).toBe("/(main)/remittances");
+    expect(routeFromPushData({ type: "cash_alert", kind: "something_new" })).toBe(NOTIFICATIONS_ROUTE);
   });
 });

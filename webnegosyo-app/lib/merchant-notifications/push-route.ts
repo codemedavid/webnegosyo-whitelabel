@@ -21,6 +21,26 @@ function stockAlertRouteFromPushData(data: unknown): string | null {
   return NOTIFICATIONS_ROUTE;
 }
 
+/** Where each cash notice is acted on (CONTRACTS W3.3). */
+export const CASH_ALERT_ROUTES = {
+  // The Drawer's floor view, where a manager ends someone else's shift.
+  shift_overdue: "/(main)/pos-sales",
+  remittance_pending: "/(main)/remittances",
+} as const;
+
+/** A cash push: `{type:'cash_alert', kind}`; an unknown kind opens the bell. */
+function cashAlertRouteFromPushData(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const { type, kind } = data as { type?: unknown; kind?: unknown };
+  if (type !== "cash_alert") return null;
+  return kind === "shift_overdue" || kind === "remittance_pending" ? CASH_ALERT_ROUTES[kind] : NOTIFICATIONS_ROUTE;
+}
+
 export function routeFromPushData(data: unknown): string | null {
-  return announcementRouteFromPushData(data) ?? stockAlertRouteFromPushData(data) ?? billReminderRouteFromPushData(data);
+  return (
+    announcementRouteFromPushData(data) ??
+    stockAlertRouteFromPushData(data) ??
+    cashAlertRouteFromPushData(data) ??
+    billReminderRouteFromPushData(data)
+  );
 }

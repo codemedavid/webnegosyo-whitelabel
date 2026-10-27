@@ -7,8 +7,10 @@ import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { Icon } from "../../components/Icon";
 import { ingredientHref } from "../../lib/navigation";
+import { CASH_ALERT_ROUTES } from "../../lib/merchant-notifications/push-route";
 import {
-  describeStockNotification,
+  describeNotification,
+  isCashNotificationKind,
   formatNotificationTime,
   groupNotificationsByDay,
   openStockIssueCount,
@@ -30,23 +32,31 @@ function isNewSince(item: MerchantNotification, highlightSince: string | null): 
   return !item.isResolved && Date.parse(item.createdAt) > Date.parse(highlightSince);
 }
 
+/** Where a row opens: an ingredient's page, or where a cash notice is acted on. */
+function rowTarget(item: MerchantNotification): string | null {
+  if (isCashNotificationKind(item.kind)) return CASH_ALERT_ROUTES[item.kind];
+  return item.inventoryItemId ? ingredientHref(item.inventoryItemId) : null;
+}
+
 function NotificationRow({ item, isNew, now }: { item: MerchantNotification; isNew: boolean; now: Date }) {
-  const { title, body } = describeStockNotification(item);
+  const { title, body } = describeNotification(item);
+  const isCash = isCashNotificationKind(item.kind);
   const isOut = item.kind === "stock_out";
-  const tint = item.isResolved ? colors.textTertiary : isOut ? colors.danger : colors.warning;
-  const tintBg = item.isResolved ? colors.surfaceSubtle : isOut ? colors.dangerLight : colors.warningLight;
-  const itemId = item.inventoryItemId;
+  const tint = item.isResolved ? colors.textTertiary : isCash ? colors.accent : isOut ? colors.danger : colors.warning;
+  const tintBg = item.isResolved ? colors.surfaceSubtle : isCash ? colors.accentLight : isOut ? colors.dangerLight : colors.warningLight;
+  const target = rowTarget(item);
+  const icon = item.kind === "shift_overdue" ? "clock" : item.kind === "remittance_pending" ? "wallet" : isOut ? "warning" : "stock";
 
   return (
     <TouchableOpacity
       style={[styles.row, isNew && styles.rowNew]}
-      activeOpacity={itemId ? 0.8 : 1}
-      onPress={itemId ? () => router.push(ingredientHref(itemId)) : undefined}
-      accessibilityRole={itemId ? "button" : undefined}
+      activeOpacity={target ? 0.8 : 1}
+      onPress={target ? () => router.push(target as `/(main)/${string}`) : undefined}
+      accessibilityRole={target ? "button" : undefined}
       accessibilityLabel={`${isNew ? "New: " : ""}${title}. ${body}${item.isResolved ? ". Restocked" : ""}`}
     >
       <View style={[styles.iconWrap, { backgroundColor: tintBg }]}>
-        <Icon name={isOut ? "warning" : "stock"} size={20} color={tint} />
+        <Icon name={icon} size={20} color={tint} />
       </View>
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
@@ -109,7 +119,7 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Notifications" subtitle="Low stock and running out" />
+      <BackHeader title="Notifications" subtitle="Stock running out, shifts left open, cash waiting" />
       {error && !inbox ? (
         <ErrorState message={error} onRetry={() => void refetch()} />
       ) : isLoading && !inbox ? (
