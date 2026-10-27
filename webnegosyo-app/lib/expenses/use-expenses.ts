@@ -107,7 +107,10 @@ export function useTracksStock(): boolean {
     fetcher,
     { staleTime: 30 * 60_000, offlineSnapshot: true },
   );
-  return result.data === true;
+  // No answer (the read failed and nothing is cached): ask the question
+  // rather than skip it — a skipped answer double-counts an ingredient buy.
+  if (result.data === undefined) return result.error !== null;
+  return result.data;
 }
 
 /** One month's book; `enabled: false` reads nothing (the detail screen before its row is known). */

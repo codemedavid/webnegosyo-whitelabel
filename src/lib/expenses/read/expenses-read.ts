@@ -82,9 +82,9 @@ export function manilaWindowInstants(from: string, to: string): { start: string;
   return { start: instant(from), end: instant(addDays(to, 1)) }
 }
 
-/** Characters that would break a PostgREST `or=(…)` filter or widen an ILIKE. */
+/** Characters that would break a PostgREST `or=(…)` filter or widen an ILIKE (`%`, `_`). */
 function searchTerm(raw: string | undefined): string | null {
-  const term = (raw ?? '').replace(/[,()%*\\:"']/g, ' ').replace(/\s+/g, ' ').trim()
+  const term = (raw ?? '').replace(/[,()%*_\\:"']/g, ' ').replace(/\s+/g, ' ').trim()
   return term.length === 0 ? null : term
 }
 
