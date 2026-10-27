@@ -27,3 +27,10 @@
 
 ## Wave 3 — shared
 - shared done (276a1fbb DayCloseChecklist, c189d0aa DepositBody, 92564430 OverShortStrip, 381e17f6 "Counted on this tablet", dispute amount). For app-owner: DayCloseChecklist reads get_day_close_status ({openShifts, pendingRemittances, nonCashUnchecked}); `dayCloseReadiness(status, remittanceMode)` → {canClose, needsConfirm, needsForce (p_force), skipped[] (for p_note + DayCloseSlipInput.skipped)}. DepositBody onSubmit({cents,to,ref}) → record_day_deposit (Split = bank part, to "BDO; ₱X kept in safe"). AcceptRemittanceSheet should forward `({reason, receivedCents}) => onDispute(reason, receivedCents)` (now passes null). For app-cashier: RemittanceSlipInput.expectedSource ("device" prints "Counted on this tablet") — set it in shift-remit-slip.ts. Copy: checklist says "End their shift" (06's "End for him" is gendered).
+
+## Wave 3 notes (lead)
+- db done: c5464f82 QA fixes (race-safe close, RN-free parity test, reason keys by direction, remit_to_required, opening denominations); 170000(+170010) day close, 180000 profit by business day, 190000 cash alerts (pg_cron job `cash-alerts`, 15 min), 200000 report_cash_* (web's guessed fields match). 39/39 SQL runners. Clock-in on closed day → 55000 `day_closed:` (matches app-cashier mapping). Concurrency of clock-in vs close only checked for lock use (PGlite single connection).
+- web done (b48f9d17..b8c1765e): Day closes + Cashiers tabs, /admin/cash/day/[id] print, cash-alert push wording + parity; push channel `cash-alerts`.
+- app-owner done (0c554b03 + wave-3): day-close.tsx + history, deposit w/ photo, doors, bell/push for cash kinds, Android `cash-alerts` channel, Cashiers tab on Remittances.
+- app-cashier done (e58934f9, e3a7cab2, 416a3e00): recount flag on result + printed slip, closed-day message, "Counted on this tablet".
+- shared done (DayCloseChecklist, DepositBody, OverShortStrip, slip recount line 23a90942).
