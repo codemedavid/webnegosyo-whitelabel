@@ -1,0 +1,150 @@
+import {
+  allNonCashMatch,
+  canLeaveResult,
+  canRemit,
+  canSubmitCount,
+  checkFloatKept,
+  countedCentsOf,
+  draftStorageKey,
+  emptyDraft,
+  END_SHIFT_COPY,
+  floatToKeep,
+  handoverCents,
+  nextStep,
+  nonCashAnswers,
+  nonCashProblem,
+  parseDraft,
+  previousStep,
+  remitFields,
+  serializeDraft,
+  setNonCash,
+  stepsFor,
+} from "./shift-end-flow";
+import type { NonCashMethod, ShiftCountResult } from "./shift-close";
+
+const GCASH: NonCashMethod = { key: "gcash", label: "GCash", cents: 421000, count: 14 };
+const MAYA: NonCashMethod = { key: "maya", label: "Maya", cents: 86000, count: 3 };
+
+describe("counting", () => {
+  it("adds bills and coins in centavos, and reads nothing typed as not counted", () => {
+    const draft = emptyDraft("s1", "bills");
+    expect(countedCentsOf(draft)).toBeNull();
+    expect(countedCentsOf({ ...draft, counts: { b1000: 4, b500: 3, c025: 4 } })).toBe(550100);
+    expect(countedCentsOf({ ...draft, mode: "total", typedCents: 834500 })).toBe(834500);
+  });
+
+  it("counts a deliberately empty drawer once a row was touched", () => {
+    expect(countedCentsOf({ ...emptyDraft("s1", "bills"), counts: { b1000: 0 } })).toBe(0);
+  });
+});
+
+describe("steps", () => {
+  it("drops GCash & cards when no non-cash came in", () => {
+    expect(stepsFor(null)).toEqual(["count", "result", "remit"]);
+    expect(stepsFor([{ ...GCASH, cents: 0, count: 0 }])).toEqual(["count", "result", "remit"]);
+    expect(stepsFor([GCASH])).toEqual(["count", "noncash", "result", "remit"]);
+  });
+
+  it("walks forward and back within the steps it has", () => {
+    const steps = stepsFor(null);
+    expect(nextStep(steps, "count")).toBe("result");
+    expect(previousStep(steps, "result")).toBe("count");
+    expect(nextStep(steps, "remit")).toBeNull();
+    expect(previousStep(steps, "count")).toBeNull();
+  });
+});
+
+describe("float and handover", () => {
+  it("keeps the shift's float for the next one, never more than is there", () => {
+    expect(floatToKeep({ openingFloatCents: 200000, isZeroBalance: false, countedCents: 834500, chosenCents: null })).toBe(200000);
+    expect(floatToKeep({ openingFloatCents: 200000, isZeroBalance: false, countedCents: 150000, chosenCents: null })).toBe(150000);
+    expect(floatToKeep({ openingFloatCents: 200000, isZeroBalance: false, countedCents: 834500, chosenCents: 300000 })).toBe(300000);
+  });
+
+  it("empties a zero-balance drawer", () => {
+    expect(floatToKeep({ openingFloatCents: 0, isZeroBalance: true, countedCents: 834500, chosenCents: 100000 })).toBe(0);
+  });
+
+  it("remits what is counted less the float kept", () => {
+    expect(handoverCents(834500, 200000)).toBe(634500);
+    expect(handoverCents(100000, 200000)).toBe(0);
+  });
+
+  it("refuses keeping more than was counted", () => {
+    expect(checkFloatKept(900000, 834500)).toMatch(/more than you counted/);
+    expect(checkFloatKept(200000, 834500)).toBeNull();
+  });
+});
+
+describe("non-cash", () => {
+  it("answers every method, unanswered ones left to the owner", () => {
+    const draft = setNonCash(emptyDraft("s1", "bills"), "gcash", { status: "different", seenCents: 416000, note: "1 refund" });
+    expect(nonCashAnswers(draft, [GCASH, MAYA])).toEqual([
+      { key: "gcash", label: "GCash", expectedCents: 421000, status: "different", seenCents: 416000, note: "1 refund" },
+      { key: "maya", label: "Maya", expectedCents: 86000, status: "unchecked", seenCents: null, note: null },
+    ]);
+  });
+
+  it("marks all as matching in one tap", () => {
+    const draft = allNonCashMatch(emptyDraft("s1", "bills"), [GCASH, MAYA]);
+    expect(nonCashAnswers(draft, [GCASH, MAYA]).map((a) => a.status)).toEqual(["matches", "matches"]);
+  });
+
+  it("asks for the amount seen when a method is different", () => {
+    const draft = setNonCash(emptyDraft("s1", "bills"), "gcash", { status: "different", seenCents: null, note: null });
+    expect(nonCashProblem(draft, [GCASH])).toBe("Type how much GCash shows.");
+  });
+});
+
+describe("gates", () => {
+  const ready = { isOffline: false, pendingSales: 0, waitingExpenses: 0, countedCents: 834500 };
+
+  it("sends a count only online, with nothing waiting to sync", () => {
+    expect(canSubmitCount(ready)).toEqual({ ok: true });
+    expect(canSubmitCount({ ...ready, countedCents: null })).toEqual({ ok: false, reason: END_SHIFT_COPY.nothingCounted });
+    expect(canSubmitCount({ ...ready, isOffline: true })).toEqual({ ok: false, reason: END_SHIFT_COPY.offlineCount });
+    expect(canSubmitCount({ ...ready, pendingSales: 2 })).toEqual({ ok: false, reason: "2 sales are still waiting to sync. Connect to the internet, then count." });
+    expect(canSubmitCount({ ...ready, waitingExpenses: 1 })).toMatchObject({ ok: false });
+  });
+
+  it("needs a reason when the server asks for one", () => {
+    const count: ShiftCountResult = { attempt: 1, countedCents: 834500, expectedCents: 846500, differenceCents: -12000, source: "server", reasonRequired: true };
+    expect(canLeaveResult(count, null)).toEqual({ ok: false, reason: END_SHIFT_COPY.pickReason });
+    expect(canLeaveResult(count, "wrong_change")).toEqual({ ok: true });
+    expect(canLeaveResult({ ...count, reasonRequired: false }, null)).toEqual({ ok: true });
+  });
+
+  it("remits only online, to someone when the store requires it", () => {
+    const person = { kind: "person" as const, userId: "u1", name: "Maria" };
+    expect(canRemit({ isOffline: true, target: person, remittanceMode: "required" })).toEqual({ ok: false, reason: END_SHIFT_COPY.offlineRemit });
+    expect(canRemit({ isOffline: false, target: null, remittanceMode: "required" })).toMatchObject({ ok: false });
+    expect(canRemit({ isOffline: false, target: { kind: "later" }, remittanceMode: "required" })).toMatchObject({ ok: false });
+    expect(canRemit({ isOffline: false, target: { kind: "later" }, remittanceMode: "optional" })).toEqual({ ok: true });
+    expect(canRemit({ isOffline: false, target: null, remittanceMode: "off" })).toEqual({ ok: true });
+  });
+
+  it("maps the target onto close_shift's receiver fields", () => {
+    expect(remitFields({ kind: "person", userId: "u1", name: "Maria" })).toEqual({ remitTo: "u1", remitToSafe: false });
+    expect(remitFields({ kind: "safe", openerId: "u2", openerName: "Ben" })).toEqual({ remitTo: "u2", remitToSafe: true });
+    expect(remitFields({ kind: "later" })).toEqual({ remitTo: null, remitToSafe: false });
+  });
+});
+
+describe("draft", () => {
+  it("round-trips a draft for its own shift", () => {
+    const draft = { ...setNonCash(emptyDraft("s1", "bills"), "gcash", { status: "matches" as const, seenCents: null, note: null }), counts: { b100: 7 }, reasonKey: "wrong_change" as const, step: "result" as const };
+    expect(parseDraft(serializeDraft(draft), "s1")).toEqual(draft);
+  });
+
+  it("ignores a draft for another shift, garbage, or bad counts", () => {
+    const raw = serializeDraft(emptyDraft("s1", "bills"));
+    expect(parseDraft(raw, "s2")).toBeNull();
+    expect(parseDraft("{nope", "s1")).toBeNull();
+    expect(parseDraft(null, "s1")).toBeNull();
+    expect(parseDraft(raw.replace('"counts":{}', '"counts":{"b100":-1}'), "s1")).toBeNull();
+  });
+
+  it("keys drafts by store and shift", () => {
+    expect(draftStorageKey("t1", "s1")).not.toBe(draftStorageKey("t2", "s1"));
+  });
+});
