@@ -26,7 +26,7 @@ export function asCashRpcClient(client: unknown): CashRpcClient {
   return client as CashRpcClient
 }
 
-export type CashFailureKind = 'forbidden' | 'invalid' | 'failed'
+export type CashFailureKind = 'forbidden' | 'invalid' | 'conflict' | 'failed'
 
 export interface CashFailure {
   kind: CashFailureKind
@@ -52,6 +52,8 @@ interface CallOptions {
   failedMessage?: string
   /** Shown on 22023 (a value the function refused); defaults to the failed message. */
   invalidMessage?: string
+  /** A lost compare-and-set (the row was no longer in the expected state). */
+  conflict?: { codes: ReadonlySet<string>; message: string }
 }
 
 function errorText(error: unknown): string {
@@ -64,7 +66,7 @@ export async function callCashRpc<T>(
   fn: string,
   args: Record<string, unknown>,
   parse: (data: unknown) => T,
-  { forbiddenMessage, failedMessage = CASH_FAILED_MESSAGE, invalidMessage }: CallOptions,
+  { forbiddenMessage, failedMessage = CASH_FAILED_MESSAGE, invalidMessage, conflict }: CallOptions,
 ): Promise<CashResult<T>> {
   let reply: { data: unknown; error: CashDbError | null }
   try {
@@ -77,6 +79,7 @@ export async function callCashRpc<T>(
     const { code, message } = reply.error
     if (code === INSUFFICIENT_PRIVILEGE) return cashFailure('forbidden', forbiddenMessage)
     if (code === INVALID_PARAMETER) return cashFailure('invalid', invalidMessage ?? failedMessage)
+    if (conflict && code !== undefined && conflict.codes.has(code)) return cashFailure('conflict', conflict.message)
     console.error(`[cash] ${fn} failed`, `${code ?? 'no code'}: ${message}`)
     return cashFailure('failed', failedMessage)
   }
