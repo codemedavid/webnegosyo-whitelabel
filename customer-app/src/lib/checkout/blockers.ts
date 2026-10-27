@@ -15,6 +15,15 @@ export function outletSupportsMode(outlet: AppOutlet, mode: OrderMode): boolean 
   return outlet.supportsPickup
 }
 
+/** Where the delivery fee for the typed address stands; only delivery orders read it. */
+export type DeliveryFeeStatus = 'ready' | 'unconfirmed' | 'quoting' | 'failed'
+
+const FEE_BLOCKERS: Record<Exclude<DeliveryFeeStatus, 'ready'>, string> = {
+  unconfirmed: 'Confirm your address to see the delivery fee',
+  quoting: 'Getting the delivery fee…',
+  failed: 'We couldn’t price delivery to this address',
+}
+
 export interface CheckoutState {
   itemCount: number
   isMember: boolean
@@ -25,6 +34,7 @@ export interface CheckoutState {
   needsOutlet: boolean
   paymentMethodId: string | null
   deliveryAddress: string
+  deliveryFee: DeliveryFeeStatus
   shortfallCentavos: number
 }
 
@@ -44,6 +54,10 @@ export function checkoutBlockers(state: CheckoutState): string[] {
       `${state.outlet?.name ?? 'This branch'} does not ${isDelivery ? 'deliver' : `offer ${MODE_WORDS[state.mode]}`}`,
     ],
     [isDelivery && state.deliveryAddress.trim() === '', 'Add a delivery address'],
+    // A fee that is still loading or failed must never be charged as ₱0.
+    ...(isDelivery && state.deliveryAddress.trim() !== '' && state.deliveryFee !== 'ready'
+      ? [[true, FEE_BLOCKERS[state.deliveryFee]] as [boolean, string]]
+      : []),
     [state.shortfallCentavos > 0, `Add ${formatPeso(state.shortfallCentavos)} more for ${MODE_WORDS[state.mode]}`],
     [state.paymentMethodId === null, 'Choose how to pay'],
   ]

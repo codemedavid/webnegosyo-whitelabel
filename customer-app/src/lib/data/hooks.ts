@@ -1,5 +1,6 @@
 import { QueryClient, useMutation, useQuery } from '@tanstack/react-query'
-import type { AppOrderDraft } from '@/lib/contract'
+import type { AppOrderDraft, AppOrderSummary } from '@/lib/contract'
+import { withTrackedOrder } from '@/lib/orders/list-sync'
 import { isTerminalStatus } from '@/lib/orders/status'
 import { useSession } from '@/lib/stores/session'
 import { useCart } from '@/lib/stores/cart'
@@ -31,10 +32,14 @@ const LIVE_ORDER_REFRESH_MS = 5000
 
 export const useAppConfig = () => useQuery({ queryKey: queryKeys.config, queryFn: source.getConfig })
 
-/** The menu for the branch in the bag (prices and dishes can differ per branch). */
+/**
+ * The menu for the branch in the bag (prices and dishes can differ per branch).
+ * No placeholder across branches: while a new branch loads, screens show
+ * skeletons instead of the previous branch's prices (which could be added to the bag).
+ */
 export function useCatalog() {
   const outletId = useCart((state) => state.outletId)
-  return useQuery({ queryKey: queryKeys.catalog(outletId), queryFn: () => source.getCatalog(outletId), placeholderData: (previous) => previous })
+  return useQuery({ queryKey: queryKeys.catalog(outletId), queryFn: () => source.getCatalog(outletId) })
 }
 
 export function useLoyalty() {
@@ -50,7 +55,12 @@ export function useOrders() {
 export const useOrder = (orderId: string) =>
   useQuery({
     queryKey: queryKeys.order(orderId),
-    queryFn: () => source.getOrder(orderId),
+    queryFn: async () => {
+      const order = await source.getOrder(orderId)
+      // Keep the history list in step with what the tracker sees.
+      queryClient.setQueryData<AppOrderSummary[]>(queryKeys.orders, (list) => withTrackedOrder(list, order))
+      return order
+    },
     refetchInterval: (query) => {
       const status = query.state.data?.status
       return status && isTerminalStatus(status) ? false : LIVE_ORDER_REFRESH_MS

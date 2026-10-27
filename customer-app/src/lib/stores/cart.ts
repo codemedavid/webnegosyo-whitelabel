@@ -9,11 +9,14 @@ interface CartState {
   outletId: string | null
   /** What the last add put in the bag (its own quantity, not the merged line's) — the Added sheet shows it. */
   lastAdded: CartLine | null
+  /** A one-off note for the bag (e.g. dishes "Order again" had to leave out); cleared when read away. */
+  bagNotice: string | null
   add: (line: CartLine) => void
   setQuantity: (lineId: string, quantity: number) => void
   clear: () => void
   setMode: (mode: OrderMode) => void
   setOutlet: (outletId: string) => void
+  setBagNotice: (notice: string | null) => void
 }
 
 export const useCart = create<CartState>((set) => ({
@@ -21,11 +24,13 @@ export const useCart = create<CartState>((set) => ({
   mode: 'pickup',
   outletId: null,
   lastAdded: null,
+  bagNotice: null,
   add: (line) => set((state) => ({ lines: addLine(state.lines, line), lastAdded: line })),
   setQuantity: (lineId, quantity) => set((state) => ({ lines: updateQuantity(state.lines, lineId, quantity) })),
-  clear: () => set({ lines: [] }),
+  clear: () => set({ lines: [], lastAdded: null, bagNotice: null }),
   setMode: (mode) => set({ mode }),
   setOutlet: (outletId) => set({ outletId }),
+  setBagNotice: (bagNotice) => set({ bagNotice }),
 }))
 
 export const useCartSummary = (): CartSummary => cartSummary(useCart((state) => state.lines))

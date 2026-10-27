@@ -1,6 +1,6 @@
 import { VALID_CATALOG, VALID_ORDER_DETAIL } from '@/fixtures/contract-fixtures'
 import { appCatalogSchema, appOrderDetailSchema } from '@/lib/contract'
-import { reorderLines } from './reorder'
+import { reorderContext, reorderLines, skippedNotice } from './reorder'
 
 const catalog = appCatalogSchema.parse(VALID_CATALOG)
 const order = appOrderDetailSchema.parse(VALID_ORDER_DETAIL)
@@ -44,5 +44,29 @@ describe('reorderLines', () => {
   it('skips a line placed before picks were recorded', () => {
     const old = { ...order, lines: [{ ...order.lines[0], itemId: null, selections: undefined }] }
     expect(reorderLines(old, catalog.items, makeId).skipped).toEqual(['Caffè Latte'])
+  })
+})
+
+describe('reorderContext', () => {
+  const outlets = [
+    { id: 'o-bgc', name: 'BGC High Street' },
+    { id: 'o-mkt', name: 'Salcedo Village' },
+  ]
+
+  it('brings back the order’s own mode and branch', () => {
+    expect(reorderContext({ orderKind: 'delivery', outletName: 'Salcedo Village' }, outlets)).toEqual({ mode: 'delivery', outletId: 'o-mkt' })
+    expect(reorderContext({ orderKind: 'dine_in', outletName: null }, outlets)).toEqual({ mode: 'dineIn', outletId: null })
+  })
+
+  it('leaves the mode alone for kinds the app cannot order, and the branch when it is gone', () => {
+    expect(reorderContext({ orderKind: 'grab', outletName: 'Closed Branch' }, outlets)).toEqual({ mode: null, outletId: null })
+  })
+})
+
+describe('skippedNotice', () => {
+  it('names what was left out, in plain words', () => {
+    expect(skippedNotice([])).toBeNull()
+    expect(skippedNotice(['Nitro Cold Brew'])).toBe('Nitro Cold Brew isn’t available, so we left it out.')
+    expect(skippedNotice(['Nitro', 'Croissant'])).toBe('Nitro, Croissant aren’t available, so we left them out.')
   })
 })

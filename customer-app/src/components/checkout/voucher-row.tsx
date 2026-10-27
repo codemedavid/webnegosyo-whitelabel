@@ -25,11 +25,15 @@ function AppliedVoucher({ voucher, result, onRemove }: { voucher: VoucherTerms; 
         <AppText variant="bodyStrong">
           {voucher.code} · {voucher.label}
         </AppText>
-        <AppText variant="caption" color={isApplied ? 'success' : 'text'}>
+        <AppText variant="caption" color={isApplied ? 'success' : 'text'} accessibilityLiveRegion="polite">
           {result?.isApplied ? `You save ${formatPeso(result.discountCentavos)}` : (result?.reason ?? '')}
         </AppText>
       </View>
-      <PressableScale onPress={onRemove} accessibilityLabel={`Remove voucher ${voucher.code}`} style={{ padding: space.xs }}>
+      <PressableScale
+        onPress={onRemove}
+        accessibilityLabel={`Remove voucher ${voucher.code}`}
+        style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+      >
         <X size={18} color={colors.textMuted} />
       </PressableScale>
     </View>

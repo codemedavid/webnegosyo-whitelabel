@@ -1,6 +1,6 @@
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { checkoutBlockers, orderTypeForMode } from '@/lib/checkout/blockers'
+import { checkoutBlockers, orderTypeForMode, type DeliveryFeeStatus } from '@/lib/checkout/blockers'
 import { availablePaymentMethods } from '@/lib/checkout/payments'
 import { rewardEstimateCentavos } from '@/lib/checkout/reward'
 import { checkoutTotals, minimumOrderShortfall } from '@/lib/checkout/totals'
@@ -40,13 +40,19 @@ export function useCheckout() {
   const reward = isMember ? loyalty?.rewards[0] : undefined
   const quote = useDeliveryQuote(outlet?.id ?? null, quotedAddress, isDelivery)
 
-  const rewardCentavos = reward && isUsingReward ? rewardEstimateCentavos(lines) : 0
+  // The reward can only cover something in the bag; with nothing to cover it is off, whatever the switch said.
+  const rewardEstimate = reward ? rewardEstimateCentavos(lines) : 0
+  const canUseReward = rewardEstimate > 0
+  const isRewardOn = isUsingReward && canUseReward
+  const rewardCentavos = isRewardOn ? rewardEstimate : 0
   const voucherResult = voucher ? voucherDiscount(voucher, subtotalCentavos - rewardCentavos) : null
   const totals = checkoutTotals({
     subtotalCentavos,
     discountCentavos: rewardCentavos + (voucherResult?.discountCentavos ?? 0),
     deliveryFeeCentavos: isDelivery && quote.data ? toCentavos(quote.data.fee) : 0,
   })
+  const deliveryFee: DeliveryFeeStatus =
+    quotedAddress === '' ? 'unconfirmed' : quote.isFetching ? 'quoting' : quote.isError || !quote.data ? 'failed' : 'ready'
   const shortfallCentavos = minimumOrderShortfall(subtotalCentavos, orderType?.minimumOrder)
   const blockers = checkoutBlockers({
     itemCount,
@@ -57,6 +63,7 @@ export function useCheckout() {
     needsOutlet: features?.multiBranch ?? false,
     paymentMethodId: paymentMethod?.id ?? null,
     deliveryAddress: isDelivery ? addressDraft : '',
+    deliveryFee,
     shortfallCentavos,
   })
 
@@ -92,8 +99,17 @@ export function useCheckout() {
     isMember,
     address: {
       draft: addressDraft,
-      setDraft: setAddressDraft,
-      commit: () => setQuotedAddress(addressDraft.trim()),
+      // Any edit voids the quote: the fee shown must be for the address that is sent.
+      setDraft: (next: string) => {
+        setAddressDraft(next)
+        setQuotedAddress('')
+      },
+      commit: () => {
+        const next = addressDraft.trim()
+        // Re-confirming the same address after a failed quote asks again.
+        if (next === quotedAddress && quote.isError) void quote.refetch()
+        else setQuotedAddress(next)
+      },
       quote: quote.data,
       isQuoting: quote.isFetching,
       hasQuoteFailed: quote.isError,
@@ -109,7 +125,8 @@ export function useCheckout() {
     setVoucher,
     reward,
     rewardCentavos,
-    isUsingReward,
+    canUseReward,
+    isUsingReward: isRewardOn,
     setIsUsingReward,
     totals,
     blockers,

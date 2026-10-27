@@ -1,6 +1,7 @@
 import { describeSelections, unitPriceCentavos, validateSelections } from '@/lib/cart/pricing'
 import type { CartLine } from '@/lib/cart/cart'
 import type { AppMenuItem, AppOrderDetail, AppOrderLine } from '@/lib/contract'
+import type { OrderMode } from '@/lib/stores/cart'
 
 export interface ReorderResult {
   lines: CartLine[]
@@ -50,4 +51,30 @@ export function reorderLines(order: AppOrderDetail, items: readonly AppMenuItem[
     },
     { lines: [], skipped: [] },
   )
+}
+
+const MODE_FOR_KIND: Partial<Record<AppOrderDetail['orderKind'], OrderMode>> = {
+  pickup: 'pickup',
+  delivery: 'delivery',
+  dine_in: 'dineIn',
+}
+
+/**
+ * How the past order was had, to put the bag back the same way. A kind the app
+ * can't order (Grab, foodpanda…) or a branch that is gone leaves today's choice.
+ * Orders carry the branch's name, not its id, so the match is by name.
+ */
+export function reorderContext(
+  order: Pick<AppOrderDetail, 'orderKind' | 'outletName'>,
+  outlets: readonly { id: string; name: string }[],
+): { mode: OrderMode | null; outletId: string | null } {
+  const outlet = order.outletName ? outlets.find((candidate) => candidate.name === order.outletName) : undefined
+  return { mode: MODE_FOR_KIND[order.orderKind] ?? null, outletId: outlet?.id ?? null }
+}
+
+/** The line the bag shows when "Order again" had to leave dishes out; null when nothing was. */
+export function skippedNotice(skipped: readonly string[]): string | null {
+  if (skipped.length === 0) return null
+  const isOne = skipped.length === 1
+  return `${skipped.join(', ')} ${isOne ? 'isn’t' : 'aren’t'} available, so we left ${isOne ? 'it' : 'them'} out.`
 }

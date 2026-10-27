@@ -6,7 +6,7 @@ import { AppText } from '@/components/ui/app-text'
 import { Button } from '@/components/ui/button'
 import type { AppOrderDetail } from '@/lib/contract'
 import { useCatalog } from '@/lib/data/hooks'
-import { reorderLines } from '@/lib/orders/reorder'
+import { reorderContext, reorderLines, skippedNotice } from '@/lib/orders/reorder'
 import { nextLineId, useCart } from '@/lib/stores/cart'
 import { useTokens } from '@/theme/theme-context'
 
@@ -14,15 +14,20 @@ import { useTokens } from '@/theme/theme-context'
 export function OrderAgainButton({ order }: { order: AppOrderDetail }) {
   const { colors, space } = useTokens()
   const { data: catalog } = useCatalog()
-  const add = useCart((state) => state.add)
+  const { add, setMode, setOutlet, setBagNotice } = useCart()
   const [notice, setNotice] = useState<string | null>(null)
   if (!catalog) return null
 
   const reorder = () => {
     const { lines, skipped } = reorderLines(order, catalog.items, nextLineId)
-    lines.forEach(add)
     if (lines.length === 0) return setNotice('None of these are on the menu right now.')
-    if (skipped.length > 0) setNotice(`${skipped.join(', ')} ${skipped.length === 1 ? 'isn’t' : 'aren’t'} available, so we left ${skipped.length === 1 ? 'it' : 'them'} out.`)
+    // Same way as last time: the order's own mode and branch, when they still exist.
+    const context = reorderContext(order, catalog.outlets)
+    if (context.mode) setMode(context.mode)
+    if (context.outletId) setOutlet(context.outletId)
+    lines.forEach(add)
+    // Shown in the bag, where the customer is going — not here, where they are leaving.
+    setBagNotice(skippedNotice(skipped))
     router.push('/checkout')
   }
 

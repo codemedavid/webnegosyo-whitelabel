@@ -46,7 +46,8 @@ export function QuantityStepper({ value, onChange, min = 0, max = Number.POSITIV
         variant={size === 'sm' ? 'bodyStrong' : 'headline'}
         accessibilityLabel={`${label}: ${value}`}
         accessibilityLiveRegion="polite"
-        style={{ minWidth: 20, textAlign: 'center' }}
+        // Grows with dynamic type instead of clipping a two-digit count beside the fixed buttons.
+        style={{ minWidth: button * 0.7, flexShrink: 0, textAlign: 'center' }}
       >
         {value}
       </AppText>

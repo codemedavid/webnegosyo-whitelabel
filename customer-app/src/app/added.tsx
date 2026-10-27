@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics'
-import { router } from 'expo-router'
+import { Redirect, router } from 'expo-router'
 import { Check } from 'lucide-react-native'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { PairingCard } from '@/components/item/pairing-card'
@@ -62,6 +62,8 @@ export default function AddedSheet() {
   const [line] = useState(() => useCart.getState().lastAdded)
   const [bagItemIds] = useState(() => useCart.getState().lines.map((bagLine) => bagLine.itemId))
   const [addedIds, setAddedIds] = useState<readonly string[]>([])
+  // Synchronous guard: two fast taps land before the state update re-renders the tick.
+  const quickAdded = useRef(new Set<string>())
   const { subtotalCentavos } = useCartSummary()
 
   const pairings = useMemo(
@@ -71,11 +73,15 @@ export default function AddedSheet() {
 
   const quickAdd = (itemId: string) => {
     const item = catalog?.items.find((candidate) => candidate.id === itemId)
-    if (!item) return
+    if (!item || quickAdded.current.has(itemId)) return
+    quickAdded.current.add(itemId)
     add(buildCartLine(item, defaultSelections(item), 1, nextLineId()))
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     setAddedIds((ids) => [...ids, itemId])
   }
+
+  // Opened without an add (a deep link, a restored route): nothing to confirm.
+  if (!line) return <Redirect href="/" />
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -91,7 +97,7 @@ export default function AddedSheet() {
               Added to your bag
             </AppText>
           </View>
-          {line ? <AddedLine line={line} /> : null}
+          <AddedLine line={line} />
         </View>
 
         {pairings.length > 0 ? (

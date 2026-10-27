@@ -15,6 +15,11 @@ import { sectionForIndex } from '@/lib/menu/scroll-spy'
 import { useCart } from '@/lib/stores/cart'
 import { useTokens } from '@/theme/theme-context'
 
+/** How long a chip tap owns the active chip while the list scrolls there. */
+const JUMP_GUARD_MS = 600
+/** Lets the list lay out before a deep link scrolls it. */
+const DEEP_LINK_DELAY_MS = 250
+
 function MenuSkeleton() {
   const { space } = useTokens()
   return (
@@ -56,6 +61,18 @@ export default function OrderScreen() {
     if (!outletId && startingOutlet) setOutlet(startingOutlet.id)
   }, [startingOutlet, outletId, setOutlet])
 
+  const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const deepLinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The category a deep link already jumped to, so a menu refetch doesn't jump again.
+  const jumpedCategory = useRef<string | null>(null)
+  useEffect(
+    () => () => {
+      if (jumpTimer.current) clearTimeout(jumpTimer.current)
+      if (deepLinkTimer.current) clearTimeout(deepLinkTimer.current)
+    },
+    [],
+  )
+
   const jumpToSection = useCallback(
     (index: number) => {
       const rowIndex = menu.headerIndices[index]
@@ -63,15 +80,20 @@ export default function OrderScreen() {
       isJumping.current = true
       setActiveSection(index)
       listRef.current?.scrollToIndex({ index: rowIndex, animated: true })
-      setTimeout(() => (isJumping.current = false), 600)
+      // A new tap restarts the guard, so an earlier jump can't release it mid-scroll.
+      if (jumpTimer.current) clearTimeout(jumpTimer.current)
+      jumpTimer.current = setTimeout(() => (isJumping.current = false), JUMP_GUARD_MS)
     },
     [menu.headerIndices],
   )
 
   useEffect(() => {
-    if (!requestedCategory) return
+    if (!requestedCategory || jumpedCategory.current === requestedCategory) return
     const index = menu.sections.findIndex((section) => section.id === requestedCategory)
-    if (index >= 0) setTimeout(() => jumpToSection(index), 250)
+    if (index < 0) return
+    jumpedCategory.current = requestedCategory
+    if (deepLinkTimer.current) clearTimeout(deepLinkTimer.current)
+    deepLinkTimer.current = setTimeout(() => jumpToSection(index), DEEP_LINK_DELAY_MS)
   }, [requestedCategory, menu.sections, jumpToSection])
 
   const headerIndicesRef = useRef(menu.headerIndices)

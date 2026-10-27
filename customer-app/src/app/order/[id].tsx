@@ -31,12 +31,13 @@ const PAYMENT_TONE = { success: 'success', muted: 'textMuted', danger: 'danger' 
 
 /** Live tracker: refreshes itself until the order is completed or cancelled. */
 export default function OrderTrackingScreen() {
-  const { colors, space } = useTokens()
+  const { colors, space, radius } = useTokens()
   const { id } = useLocalSearchParams<{ id: string }>()
   const { data: order, isPending, isError, refetch, isRefetching } = useOrder(id)
 
   if (isPending) return <TrackingSkeleton />
-  if (isError || !order)
+  // A failed background refresh keeps the tracker on screen; only a first load with no order is an error.
+  if (!order)
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xxl, gap: space.lg }}>
         <AppText variant="title" align="center">
@@ -54,6 +55,16 @@ export default function OrderTrackingScreen() {
       contentContainerStyle={{ paddingVertical: space.lg, gap: space.lg, paddingBottom: space.xxxl }}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={colors.primary} />}
     >
+      {isError ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={{ marginHorizontal: space.lg, paddingVertical: space.sm, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted }}
+        >
+          <AppText variant="callout" color="textMuted" align="center">
+            Reconnecting… showing the latest status we have.
+          </AppText>
+        </View>
+      ) : null}
       <OrderHero order={order} />
       <CheckoutSection title="Progress">
         <StepTracker steps={trackingSteps(order.status, order.orderKind)} />

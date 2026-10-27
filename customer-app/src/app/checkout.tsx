@@ -1,4 +1,5 @@
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native'
+import { BagNotice } from '@/components/checkout/bag-notice'
 import { BagSection } from '@/components/checkout/bag-section'
 import { CheckoutSection } from '@/components/checkout/checkout-section'
 import { ContactSection } from '@/components/checkout/contact-section'
@@ -37,6 +38,7 @@ export default function CheckoutScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
       <ScrollView contentContainerStyle={{ paddingVertical: space.lg, gap: space.lg }} keyboardShouldPersistTaps="handled">
+        <BagNotice />
         <BagSection lines={model.lines} itemCount={model.itemCount} />
         <FulfillmentSection model={model} />
         <ContactSection />
