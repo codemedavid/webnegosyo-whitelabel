@@ -29,7 +29,9 @@ describe("accept-remit rules", () => {
 
   it("validateDispute needs a reason", () => {
     expect(validateDispute(" ")).toEqual({ ok: false, message: "Say what's wrong, for example \"envelope short\"." });
-    expect(validateDispute("envelope missing")).toEqual({ ok: true, reason: "envelope missing" });
+    expect(validateDispute("envelope missing")).toEqual({ ok: true, reason: "envelope missing", receivedCents: null });
+    expect(validateDispute("envelope short", "6,000")).toEqual({ ok: true, reason: "envelope short", receivedCents: 600000 });
+    expect(validateDispute("envelope short", "abc")).toEqual({ ok: false, message: "Type an amount like 4,150" });
   });
 });
 
@@ -84,7 +86,21 @@ describe("AcceptRemitBody", () => {
     expect(getByText("Say what's wrong, for example \"envelope short\".")).toBeTruthy();
     fireEvent.changeText(getByTestId("accept-dispute-reason"), "envelope missing");
     fireEvent.press(getByTestId("accept-confirm-dispute"));
-    expect(onDispute).toHaveBeenCalledWith({ reason: "envelope missing" });
+    expect(onDispute).toHaveBeenCalledWith({ reason: "envelope missing", receivedCents: null });
+  });
+
+  it("dispute: an optional amount received goes along (p_received_cents); a bad one is refused", () => {
+    const onDispute = jest.fn();
+    const { getByTestId, getByText } = render(<AcceptRemitBody cashierName="Ana" handedOverCents={634500} onAccept={jest.fn()} onDispute={onDispute} />);
+    fireEvent.press(getByTestId("accept-dispute"));
+    fireEvent.changeText(getByTestId("accept-dispute-reason"), "envelope short");
+    fireEvent.changeText(getByTestId("accept-dispute-amount"), "6,0o0");
+    fireEvent.press(getByTestId("accept-confirm-dispute"));
+    expect(onDispute).not.toHaveBeenCalled();
+    expect(getByText("Type an amount like 4,150")).toBeTruthy();
+    fireEvent.changeText(getByTestId("accept-dispute-amount"), "6,000");
+    fireEvent.press(getByTestId("accept-confirm-dispute"));
+    expect(onDispute).toHaveBeenCalledWith({ reason: "envelope short", receivedCents: 600000 });
   });
 
   it("shows the caller's write error and blocks taps while busy", () => {

@@ -16,6 +16,8 @@ export interface AcceptResult {
 
 export interface DisputeResult {
   reason: string;
+  /** What actually arrived, if the receiver typed it → dispute_remittance's p_received_cents. */
+  receivedCents: number | null;
 }
 
 interface AcceptRemitBodyProps {
@@ -96,8 +98,9 @@ function DifferentAmount({ handedOverCents, isLocked, onAccept, onBack }: Differ
 
 function Dispute({ isLocked, onDispute, onBack }: { isLocked: boolean; onDispute: (result: DisputeResult) => void; onBack: () => void }) {
   const [reason, setReason] = useState("");
+  const [received, setReceived] = useState("");
   const [hasTried, setTried] = useState(false);
-  const check = validateDispute(reason);
+  const check = validateDispute(reason, received);
   return (
     <View style={styles.section}>
       <Text style={styles.body}>{"What's wrong? The cashier and the owner will see this."}</Text>
@@ -112,6 +115,17 @@ function Dispute({ isLocked, onDispute, onBack }: { isLocked: boolean; onDispute
         editable={!isLocked}
         testID="accept-dispute-reason"
       />
+      <TextInput
+        value={received}
+        onChangeText={setReceived}
+        keyboardType="decimal-pad"
+        placeholder="Amount you got (optional)"
+        placeholderTextColor={colors.textSecondary}
+        style={styles.input}
+        accessibilityLabel="Amount you got, optional"
+        editable={!isLocked}
+        testID="accept-dispute-amount"
+      />
       <Message text={hasTried && !check.ok ? check.message : null} tone="error" />
       <Button
         label="Report a problem"
@@ -119,7 +133,7 @@ function Dispute({ isLocked, onDispute, onBack }: { isLocked: boolean; onDispute
         size="lg"
         onPress={() => {
           setTried(true);
-          if (check.ok) onDispute({ reason: check.reason });
+          if (check.ok) onDispute({ reason: check.reason, receivedCents: check.receivedCents });
         }}
         disabled={isLocked}
         testID="accept-confirm-dispute"
