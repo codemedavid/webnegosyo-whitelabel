@@ -94,6 +94,13 @@ describe("toRemitReceivers", () => {
     ]);
   });
 
+  it("reads list_cash_receivers' real row (20261027160000)", () => {
+    const [row] = parseReceivers([
+      { user_id: "m", name: "Maria", is_owner: false, outlet_id: "b1", is_on_shift: true, last_seen_at: "2026-10-27T08:00:00+00:00", has_pin: true },
+    ]);
+    expect(row).toEqual({ userId: "m", name: "Maria", isOwner: false, outletId: "b1", isOnShift: true, lastSeenAt: "2026-10-27T08:00:00+00:00", hasPin: true });
+  });
+
   it("reads has_pin when the server sends it", () => {
     expect(parseReceivers([{ user_id: "m", name: "Maria", has_pin: true }])[0].hasPin).toBe(true);
     expect("hasPin" in parseReceivers([{ user_id: "m", name: "Maria" }])[0]).toBe(false);

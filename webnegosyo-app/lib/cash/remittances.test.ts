@@ -75,7 +75,7 @@ const ROW = {
   dispute_reason: null,
   resolved_by_name: null,
   resolved_at: null,
-  resolution_note: null,
+  resolved_note: null,
   created_at: "2026-10-24T18:51:00.000Z",
   shift: { drawer_name: "Cashier 1", opened_at: "2026-10-24T10:02:00.000Z", closed_at: "2026-10-24T18:48:00.000Z", closing_count: "8345.00", expected_cash: 8465, variance_reason: "wrong_change" },
 };
@@ -94,6 +94,19 @@ describe("parseRemittance", () => {
       remittedToName: "Maria Santos",
       shift: { drawerName: "Cashier 1", countedCents: 834500, expectedCents: 846500, varianceReason: "wrong_change" },
     });
+  });
+
+  it("reads the settled note from resolved_note, as the RPCs return the row", () => {
+    expect(parseRemittance({ ...ROW, status: "resolved", resolved_at: "x", resolved_note: "Found it", shift: undefined }).resolutionNote).toBe("Found it");
+  });
+
+  it("selects the real columns and embeds the shift through its named FK", async () => {
+    const { db, ops } = fakeDb({ data: [], error: null });
+    await listRemittances(db, "t1", { sinceIso: "2026-10-13T00:00:00.000Z" });
+    const columns = String(ops.find(([name]) => name === "select")?.[1][0]);
+    expect(columns).toContain("resolved_note");
+    expect(columns).not.toContain("resolution_note");
+    expect(columns).toContain("shift:staff_shifts!cash_remittances_shift_id_fkey(");
   });
 
   it("reads an RPC answer in camelCase the same way", () => {

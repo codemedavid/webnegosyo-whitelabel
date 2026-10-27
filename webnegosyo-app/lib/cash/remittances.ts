@@ -150,7 +150,8 @@ export function parseRemittance(raw: unknown): Remittance {
     disputeReason: text(field(row, "disputeReason", "dispute_reason")),
     resolvedByName: text(field(row, "resolvedByName", "resolved_by_name")),
     resolvedAt: text(field(row, "resolvedAt", "resolved_at")),
-    resolutionNote: text(field(row, "resolutionNote", "resolution_note")),
+    // The column is resolved_note (20261027160000); camelCase kept for RPC answers.
+    resolutionNote: text(field(row, "resolutionNote", "resolved_note")),
     createdAt: text(field(row, "createdAt", "created_at")) ?? "",
     shift: parseShift(row.shift),
   };
@@ -294,8 +295,9 @@ export function validateResolve(note: string): Verdict<string> {
 const COLUMNS = [
   "id, tenant_id, outlet_id, kind, shift_id, movement_id, business_day, cashier_user_id, cashier_name",
   "handed_over_cents, remitted_to, remitted_to_name, to_safe, status, received_cents, received_by_name, received_at",
-  "accept_method, is_self_received, receiver_note, dispute_reason, resolved_by_name, resolved_at, resolution_note, created_at",
-  "shift:staff_shifts(drawer_name, opened_at, closed_at, closing_count, expected_cash, variance_reason)",
+  "accept_method, is_self_received, receiver_note, dispute_reason, resolved_by_name, resolved_at, resolved_note, created_at",
+  // Named FK: the embed must not become ambiguous if another link to staff_shifts appears.
+  "shift:staff_shifts!cash_remittances_shift_id_fkey(drawer_name, opened_at, closed_at, closing_count, expected_cash, variance_reason)",
 ].join(", ");
 
 function readError(error: DbError, fallback: string): Error {
