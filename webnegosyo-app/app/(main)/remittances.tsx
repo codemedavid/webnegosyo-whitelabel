@@ -11,8 +11,15 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { AcceptRemittanceSheet, type SheetResult } from "../../components/remittances/AcceptRemittanceSheet";
 import { RemittanceDetailSheet } from "../../components/remittances/RemittanceDetailSheet";
 import { RemittanceRow } from "../../components/remittances/RemittanceRow";
+import { ListRow } from "../../components/ListRow";
+import { OverShortStrip } from "../../components/cash/OverShortStrip";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
+import { closeTitle, readyToClose } from "../../lib/cash/day-close-view";
+import { overShortByCashier } from "../../lib/cash/remittance-view";
+import { useDayToClose } from "../../lib/cash/use-day-close";
+import { useBranchContextStore } from "../../stores/branch-context-store";
 import { canManageCash } from "../../lib/cash-drawers";
-import { remittanceHref } from "../../lib/cash-routes";
+import { DAY_CLOSE_HISTORY_ROUTE, dayCloseHref, remittanceHref } from "../../lib/cash-routes";
 import {
   REMITTANCE_COPY,
   acceptRemittance,
@@ -30,13 +37,14 @@ import { isTabAllowed } from "../../lib/staff-permissions";
 import { useAuthStore } from "../../stores/auth-store";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 
-type Tab = "toAccept" | "accepted" | "pickups";
+type Tab = "toAccept" | "accepted" | "pickups" | "cashiers";
 type Sheet = { kind: "detail" | "accept"; id: string } | null;
 
 const EMPTY: Record<Tab, { title: string; message: string }> = {
   toAccept: { title: "All remittances are in", message: "Nothing to accept." },
   accepted: { title: "Nothing accepted yet", message: "Accepted remittances from the last two weeks show here." },
   pickups: { title: "No pickups", message: "Cash taken out of a drawer during a shift shows here." },
+  cashiers: { title: "No counted shifts yet", message: "Each cashier's last 14 shifts show here once they remit." },
 };
 
 const failed = (error: unknown, fallback: string): SheetResult => ({
@@ -59,6 +67,9 @@ export default function RemittancesScreen() {
   const permissions = useAuthStore((s) => s.permissions);
   const isDemo = useAuthStore((s) => s.isDemo);
   const outletName = useAuthStore((s) => s.outletName);
+  const accountOutletId = useAuthStore((s) => s.outletId);
+  const selectedOutletId = useBranchContextStore((s) => s.selectedOutletId);
+  const outletId = accountOutletId ?? selectedOutletId ?? null;
   const caller = { role, isOwner, permissions };
   const isAllowed = isTabAllowed(caller, "remittances");
   const viewer = { userId, isOwner, canManageCash: canManageCash(caller) && !isDemo };
@@ -73,6 +84,9 @@ export default function RemittancesScreen() {
 
   const list = useMemo(() => (isDemo ? [] : query.data ?? []), [isDemo, query.data]);
   const tabs = useMemo(() => inboxTabs(list), [list]);
+  const cashiers = useMemo(() => overShortByCashier(list), [list]);
+  const { todayKey } = useTradingDay();
+  const dayToClose = useDayToClose(tenantId, outletId, todayKey, isAllowed && !isDemo && viewer.canManageCash);
   const open = sheet ? list.find((r) => r.id === sheet.id) ?? null : null;
 
   const settle = async (work: () => Promise<Remittance>, fallback: string): Promise<SheetResult> => {
@@ -99,7 +113,15 @@ export default function RemittancesScreen() {
     );
   }
 
-  const rows = tabs[tab];
+  const rows = tab === "cashiers" ? [] : tabs[tab];
+  const dayStatus = dayToClose.status;
+  const dayLine = (() => {
+    if (!dayStatus) return "Every shift has to end before the day closes";
+    if (dayStatus.existingClose?.status === "closed") return "Closed. See the deposit and print it";
+    const open = dayStatus.openShifts[0];
+    if (open) return open.drawerName ? `${open.staffName} is still on ${open.drawerName}` : `${open.staffName}'s shift is still open`;
+    return readyToClose(dayStatus)?.detail ?? "Nothing to close yet";
+  })();
   let body: React.ReactNode;
   if (!isDemo && query.isLoading) body = <LoadingState message="Loading remittances..." />;
   else if (!isDemo && query.error && query.data === undefined) {
@@ -127,12 +149,23 @@ export default function RemittancesScreen() {
             { label: tabs.toAccept.length > 0 ? `To accept (${tabs.toAccept.length})` : "To accept", value: "toAccept" as Tab },
             { label: "Accepted", value: "accepted" as Tab },
             { label: "Pickups", value: "pickups" as Tab },
+            { label: "Cashiers", value: "cashiers" as Tab },
           ]}
           value={tab}
           onChange={setTab}
           accessibilityPrefix="Show"
         />
-        {rows.length === 0 ? (
+        {tab === "cashiers" ? (
+          cashiers.length === 0 ? (
+            <EmptyState icon="wallet" title={EMPTY.cashiers.title} message={EMPTY.cashiers.message} inset />
+          ) : (
+            cashiers.map((cashier) => (
+              <View key={cashier.key} style={styles.card}>
+                <OverShortStrip staffName={cashier.staffName} shifts={cashier.shifts} />
+              </View>
+            ))
+          )
+        ) : rows.length === 0 ? (
           <EmptyState icon="wallet" title={EMPTY[tab].title} message={EMPTY[tab].message} inset />
         ) : (
           rows.map((remittance, index) => {
@@ -149,6 +182,18 @@ export default function RemittancesScreen() {
             );
           })
         )}
+        {viewer.canManageCash ? (
+          <View style={styles.group}>
+            <ListRow
+              icon="calendar"
+              title={closeTitle(dayToClose.dayKey)}
+              subtitle={dayLine}
+              onPress={() => router.push(dayCloseHref(dayToClose.dayKey, outletId))}
+              grouped
+            />
+            <ListRow icon="report" title="Day closes" subtitle="Every closed day, its deposit and its slip" onPress={() => router.push(DAY_CLOSE_HISTORY_ROUTE)} />
+          </View>
+        ) : null}
       </ScrollView>
     );
   }
@@ -200,6 +245,8 @@ function Notice({ icon, text }: { icon: "info" | "wifi" | "warning"; text: strin
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl * 2, gap: spacing.md },
+  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.lg },
+  group: { backgroundColor: colors.card, borderRadius: radius.lg, overflow: "hidden", marginTop: spacing.sm },
   notice: { flexDirection: "row", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.infoLight },
   noticeText: { ...typography.caption, color: colors.textPrimary, flex: 1 },
 });

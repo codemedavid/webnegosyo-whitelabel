@@ -1,4 +1,4 @@
-import { amountLabel, pesoTextToCents, resultPill, statusLine, whoLine } from "./remittance-view";
+import { amountLabel, overShortByCashier, pesoTextToCents, resultPill, statusLine, whoLine } from "./remittance-view";
 import { parseRemittance, type Remittance } from "./remittances";
 
 const base = parseRemittance({
@@ -51,5 +51,24 @@ describe("pesoTextToCents", () => {
     expect(pesoTextToCents("")).toBeNull();
     expect(pesoTextToCents("12.345")).toBeNull();
     expect(pesoTextToCents("-5")).toBeNull();
+  });
+});
+
+describe("overShortByCashier", () => {
+  it("lines up each cashier's recent shifts, oldest first, capped", () => {
+    const list = [
+      make({ id: "a2", createdAt: "2026-10-25T18:00:00.000Z", businessDay: "2026-10-25" }),
+      make({ id: "a1", createdAt: "2026-10-24T18:00:00.000Z", businessDay: "2026-10-24", shift: { ...base.shift!, countedCents: 846500 } }),
+      make({ id: "b1", cashierUserId: "ben", cashierName: "Ben", handedOverCents: null, shift: null }),
+      make({ id: "p1", kind: "pickup" }),
+    ];
+    const rows = overShortByCashier(list);
+    expect(rows.map((r) => r.staffName)).toEqual(["Ana Reyes", "Ben"]);
+    expect(rows[0].shifts).toEqual([
+      { id: "a1", label: "Oct 24", differenceCents: 0 },
+      { id: "a2", label: "Oct 25", differenceCents: -12000 },
+    ]);
+    expect(rows[1].shifts[0].differenceCents).toBeNull();
+    expect(overShortByCashier(list, 1)[0].shifts.map((s) => s.id)).toEqual(["a2"]);
   });
 });

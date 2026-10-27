@@ -38,7 +38,7 @@ import { IconButton } from "../../components/IconButton";
 import { ListRow } from "../../components/ListRow";
 import { ShiftStatusStrip } from "../../components/ShiftStatusStrip";
 import { RemitInboxStrip } from "../../components/remittances/RemitInboxStrip";
-import { REMITTANCES_ROUTE } from "../../lib/cash-routes";
+import { REMITTANCES_ROUTE, dayCloseHref } from "../../lib/cash-routes";
 import { HomeMoneyCard } from "../../components/money/HomeMoneyCard";
 import { moneyAccess } from "../../lib/expenses/money-glance";
 
@@ -287,7 +287,10 @@ export default function DashboardScreen() {
             wait on an order query to be answered. */}
         {showShift && <ShiftStatusStrip onPress={() => goTo(tabRouter, "/(main)/pos-sales")} />}
         {/* The receiver's side: remittances to accept and shifts left open. Draws nothing otherwise. */}
-        <RemitInboxStrip onOpenRemittances={() => router.push(REMITTANCES_ROUTE)} />
+        <RemitInboxStrip
+          onOpenRemittances={() => router.push(REMITTANCES_ROUTE)}
+          onOpenDayClose={(dayKey, outletId) => router.push(dayCloseHref(dayKey, outletId))}
+        />
 
         {!canSeeOrders ? (
           // Only what this account can open: no takings, no queue, no ₱0.

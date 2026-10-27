@@ -68,3 +68,46 @@ export function pesoTextToCents(text: string): number | null {
   const [whole, fraction = ""] = clean.split(".");
   return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
 }
+
+export interface CashierOverShort {
+  key: string;
+  staffName: string;
+  /** Oldest first, the last `limit` shifts — the shape shared's OverShortStrip draws. */
+  shifts: { id: string; label: string; differenceCents: number | null }[];
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+const shortDay = (dayKey: string | null, createdAt: string): string => {
+  const key = dayKey ?? createdAt.slice(0, 10);
+  const [, month, day] = key.split("-").map(Number);
+  return month ? `${MONTHS[month - 1]} ${day}` : key;
+};
+
+/**
+ * Each cashier's recent shifts as counted − expected, for the over/short
+ * strip (06 §4.5 history). A pattern to read, never a verdict: the strip
+ * words it. Forced closes stay in as "not counted".
+ */
+export function overShortByCashier(list: readonly Remittance[], limit = 14): CashierOverShort[] {
+  const byCashier = new Map<string, CashierOverShort>();
+  const shifts = list.filter((r) => r.kind === "shift").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const remittance of shifts) {
+    const key = remittance.cashierUserId ?? remittance.cashierName;
+    const entry = byCashier.get(key) ?? { key, staffName: remittance.cashierName, shifts: [] };
+    const counted = remittance.shift?.countedCents ?? null;
+    const expected = remittance.shift?.expectedCents ?? null;
+    const next = {
+      ...entry,
+      shifts: [
+        ...entry.shifts,
+        {
+          id: remittance.id,
+          label: shortDay(remittance.businessDay, remittance.createdAt),
+          differenceCents: counted === null || expected === null ? null : counted - expected,
+        },
+      ].slice(-limit),
+    };
+    byCashier.set(key, next);
+  }
+  return [...byCashier.values()].sort((a, b) => a.staffName.localeCompare(b.staffName));
+}

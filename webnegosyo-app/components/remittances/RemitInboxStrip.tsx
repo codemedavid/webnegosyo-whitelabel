@@ -5,6 +5,9 @@ import { tradingDayOf, tradingDayWindow } from "../../lib/business-day/trading-d
 import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { canManageCash } from "../../lib/cash-drawers";
 import { overdueShifts, receiverSummary } from "../../lib/cash/remittances";
+import { readyToClose } from "../../lib/cash/day-close-view";
+import { useDayToClose } from "../../lib/cash/use-day-close";
+import { useBranchContextStore } from "../../stores/branch-context-store";
 import { DEFAULT_CASH_SETTINGS } from "../../lib/cash/settings";
 import { useCashSettings } from "../../lib/cash/use-cash-rules";
 import { useOpenShifts, useRemittanceRefresh, useRemittances } from "../../lib/cash/use-remittances";
@@ -18,6 +21,8 @@ import { ForceCloseShiftSheet } from "./ForceCloseShiftSheet";
 
 interface RemitInboxStripProps {
   onOpenRemittances: () => void;
+  /** "Friday is ready to close" → the day close for that business day. */
+  onOpenDayClose: (dayKey: string, outletId: string | null) => void;
 }
 
 /**
@@ -26,7 +31,7 @@ interface RemitInboxStripProps {
  * nothing when there is nothing to do, and nothing for anyone who cannot
  * receive cash — a cashier's own line is ShiftStatusStrip's.
  */
-export function RemitInboxStrip({ onOpenRemittances }: RemitInboxStripProps) {
+export function RemitInboxStrip({ onOpenRemittances, onOpenDayClose }: RemitInboxStripProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);
@@ -34,11 +39,16 @@ export function RemitInboxStrip({ onOpenRemittances }: RemitInboxStripProps) {
   const permissions = useAuthStore((s) => s.permissions);
   const isDemo = useAuthStore((s) => s.isDemo);
   const isReceiver = !isDemo && canManageCash({ role, isOwner, permissions });
+  const accountOutletId = useAuthStore((s) => s.outletId);
+  const selectedOutletId = useBranchContextStore((s) => s.selectedOutletId);
+  const outletId = accountOutletId ?? selectedOutletId ?? null;
 
   const remittances = useRemittances(tenantId, isReceiver);
   const openShifts = useOpenShifts(tenantId, isReceiver);
   const settings = useCashSettings(isReceiver ? tenantId : null);
-  const { schedule } = useTradingDay();
+  const { schedule, todayKey } = useTradingDay();
+  const dayToClose = useDayToClose(tenantId, outletId, todayKey, isReceiver);
+  const ready = dayToClose.status ? readyToClose(dayToClose.status) : null;
   const refresh = useRemittanceRefresh(tenantId);
   const { status } = useConnectivity();
   const [ending, setEnding] = useState<ShiftRecord | null>(null);
@@ -51,7 +61,7 @@ export function RemitInboxStrip({ onOpenRemittances }: RemitInboxStripProps) {
     return overdueShifts(openShifts.data ?? [], dayEndMsOf, grace, nowMs, userId);
   }, [openShifts.data, settings.data, schedule, nowMs, userId]);
 
-  if (!isReceiver || (!summary && overdue.length === 0)) return null;
+  if (!isReceiver || (!summary && overdue.length === 0 && !ready)) return null;
 
   return (
     <View style={styles.wrap}>
@@ -71,11 +81,21 @@ export function RemitInboxStrip({ onOpenRemittances }: RemitInboxStripProps) {
           icon="clock"
           tone="warn"
           title={item.line}
-          detail="End it for them? Whoever takes the cash counts it."
+          detail="End their shift? Whoever takes the cash counts it."
           actionLabel="End it"
           onPress={() => setEnding(item.shift)}
         />
       ))}
+      {ready ? (
+        <StripRow
+          icon="calendar"
+          tone="warn"
+          title={ready.title}
+          detail={ready.detail}
+          actionLabel="Close"
+          onPress={() => onOpenDayClose(dayToClose.dayKey, outletId)}
+        />
+      ) : null}
       {ending ? (
         <ForceCloseShiftSheet
           shift={ending}

@@ -54,6 +54,9 @@ jest.mock("expo-router", () => ({ router: { push: jest.fn(), back: jest.fn() } }
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock("../../lib/offline/use-connectivity", () => ({ useConnectivity: () => ({ status: mockConnectivity, changedAt: 0 }) }));
 jest.mock("../../lib/cash/use-cash-rules", () => ({ liveCashDb: {} }));
+jest.mock("../../lib/business-day/use-trading-day", () => ({ useTradingDay: () => ({ schedule: [], todayKey: "2026-10-24" }) }));
+jest.mock("../../lib/cash/use-day-close", () => ({ useDayToClose: () => ({ dayKey: "2026-10-23", status: null }) }));
+jest.mock("../../stores/branch-context-store", () => ({ useBranchContextStore: (select: (s: unknown) => unknown) => select({ selectedOutletId: null }) }));
 jest.mock("../../lib/cash/use-remittances", () => ({
   useRemittances: () => ({ ...mockQuery, refetch: async () => undefined, isRefetching: false, dataUpdatedAt: 0 }),
   useRemittanceRefresh: () => async () => undefined,
@@ -101,6 +104,15 @@ describe("Remittances screen", () => {
     expect(screen.getByText("Pickup")).toBeTruthy();
     fireEvent.press(screen.getByText("Accepted"));
     expect(screen.getByText(/Accepted by Maria/)).toBeTruthy();
+  });
+
+  it("offers the day close for the day to close, and each cashier's over/short", () => {
+    mockQuery = { data: [mockRow("r1")], isLoading: false, error: null };
+    render(<RemittancesScreen />);
+    expect(screen.getByText("Close Friday")).toBeTruthy();
+    expect(screen.getByText("Day closes")).toBeTruthy();
+    fireEvent.press(screen.getByText("Cashiers"));
+    expect(screen.getAllByText(/Ana Reyes/).length).toBeGreaterThan(0);
   });
 
   it("never offers the cashier their own cash", () => {

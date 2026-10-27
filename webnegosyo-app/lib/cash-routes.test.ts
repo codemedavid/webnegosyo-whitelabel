@@ -126,6 +126,15 @@ describe("cash doors", () => {
     expect(screen).not.toMatch(/supabase|@tanstack/);
   });
 
+  it("the day close gates itself, writes only through lib/cash, and has its doors", () => {
+    const screen = read("app", "(main)", "day-close.tsx");
+    expect(screen).toMatch(/isTabAllowed\([^)]*"day-close"\)/);
+    expect(screen).not.toMatch(/\.from\(["']/);
+    expect(screen).not.toMatch(/supabase|@tanstack/);
+    expect(read("app", "(main)", "remittances.tsx")).toMatch(/dayCloseHref\(/);
+    expect(read("components", "remittances", "RemitInboxStrip.tsx")).toMatch(/readyToClose\(/);
+  });
+
   it("the rules screen gates itself and writes only through lib/cash", () => {
     const screen = read("app", "(main)", "cash-rules.tsx");
     expect(screen).toMatch(/cashRulesAccess\(/);

@@ -1,7 +1,9 @@
 import { parseDayCloseRecord, parseDayCloseStatus, parseSnapshot } from "./day-close";
 import { SNAPSHOT } from "./day-close.fixture";
 import {
+  closeNoteOf,
   closeTitle,
+  skippedOf,
   heroOf,
   historyRowOf,
   overShortWord,
@@ -101,5 +103,18 @@ describe("history and slip", () => {
     expect(slip.shifts[1]).toMatchObject({ closeKind: "forced", handedOverCents: null });
     expect(slip.deposit).toEqual({ cents: 884500, to: "BDO", ref: null });
     expect(slip.skipped).toEqual(["1 remittance not settled"]);
+  });
+});
+
+describe("skipped and the close note", () => {
+  it("says what a saved close skipped", () => {
+    const rec = parseDayCloseRecord({ id: "c", business_day: "2026-10-23", unsettled_remittance_ids: ["a", "b"], forced_shift_ids: ["s"] });
+    expect(skippedOf(rec)).toEqual(["2 remittances not settled", "1 shift ended without a count"]);
+  });
+
+  it("puts what was skipped into the note sent with Close anyway", () => {
+    expect(closeNoteOf("  Maria off today ", ["1 remittance not settled"])).toBe("Maria off today · Closed with: 1 remittance not settled");
+    expect(closeNoteOf("", [])).toBeNull();
+    expect(closeNoteOf("", ["GCash not checked on Ana's shift"])).toBe("Closed with: GCash not checked on Ana's shift");
   });
 });

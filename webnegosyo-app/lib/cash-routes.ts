@@ -25,12 +25,14 @@ export const CASH_SCREEN_DOORS: Readonly<Record<CashScreen, readonly string[]>> 
   "remittance": ["end-shift", "remittances"],
   // The receiver's inbox: Reports (Cash section) and the Home strip.
   "remittances": ["reports", "dashboard"],
-  "day-close": ["remittances"],
+  "day-close": ["remittances", "dashboard"],
   "cash-rules": ["cash-drawers", "menu"],
 };
 
 export const CASH_RULES_ROUTE = "/(main)/cash-rules" as const;
 export const REMITTANCES_ROUTE = "/(main)/remittances" as const;
+/** day-close without a day: the history of closes. */
+export const DAY_CLOSE_HISTORY_ROUTE = "/(main)/day-close" as const;
 
 const enc = encodeURIComponent;
 

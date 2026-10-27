@@ -170,3 +170,19 @@ export function slipInputOf(record: DayCloseRecord, skipped: readonly string[] =
     note: record.note,
   };
 }
+
+/** What a saved close skipped, from what it recorded (the live checklist words it at close time). */
+export function skippedOf(record: DayCloseRecord): string[] {
+  const n = record.unsettledRemittanceCount;
+  const forced = record.forcedShiftCount;
+  return [
+    ...(n > 0 ? [`${n} ${n === 1 ? "remittance" : "remittances"} not settled`] : []),
+    ...(forced > 0 ? [`${forced} ${forced === 1 ? "shift" : "shifts"} ended without a count`] : []),
+  ];
+}
+
+/** The note sent with "Close anyway": what the person typed, then what was skipped. */
+export function closeNoteOf(typed: string, skipped: readonly string[]): string | null {
+  const parts = [typed.trim(), skipped.length > 0 ? `Closed with: ${skipped.join("; ")}` : ""].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ").slice(0, 500) : null;
+}
