@@ -1,5 +1,6 @@
 import {
   CUTOFF_CHIPS,
+  cashRulesAccess,
   changeSentence,
   cutoffChipLabel,
   describeStartsFrom,
@@ -86,5 +87,42 @@ describe("receiversOf", () => {
       { userId: "f", isOwner: false, permissions: null, displayName: null, outletId: null },
     ];
     expect(receiversOf(staff).map((s) => s.userId)).toEqual(["o", "m", "f"]);
+  });
+});
+
+describe("cashRulesAccess", () => {
+  const base = { role: "admin", isOwner: false, permissions: [] as string[] | null, outletId: null, isDemo: false };
+
+  it("gives the owner everything", () => {
+    expect(cashRulesAccess({ ...base, isOwner: true })).toEqual({ canOpen: true, canEditRules: true, canEditCutoff: true });
+  });
+
+  it("lets a cash manager change the cash rules but not the business day", () => {
+    expect(cashRulesAccess({ ...base, permissions: ["cash_manage"] })).toEqual({
+      canOpen: true,
+      canEditRules: true,
+      canEditCutoff: false,
+    });
+  });
+
+  it("lets a Settings holder change only the business day", () => {
+    expect(cashRulesAccess({ ...base, permissions: ["settings"] })).toEqual({
+      canOpen: true,
+      canEditRules: false,
+      canEditCutoff: true,
+    });
+  });
+
+  it("keeps the screen from a cashier and from any branch-locked account", () => {
+    expect(cashRulesAccess({ ...base, permissions: ["pos"] }).canOpen).toBe(false);
+    expect(cashRulesAccess({ ...base, permissions: ["cash_manage"], outletId: "b1" }).canOpen).toBe(false);
+  });
+
+  it("is read-only in demo", () => {
+    expect(cashRulesAccess({ ...base, isOwner: true, isDemo: true })).toEqual({
+      canOpen: true,
+      canEditRules: false,
+      canEditCutoff: false,
+    });
   });
 });

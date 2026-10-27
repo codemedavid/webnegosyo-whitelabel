@@ -130,6 +130,8 @@ export function periodsForBranch(periods: readonly ServicePeriod[], outletId: st
 // ── Reads & writes ────────────────────────────────────────────────────────
 
 function readError(error: DbError, fallback: string): Error {
+  // service_periods_live_name: one live name per store and branch, case-insensitive.
+  if (error.code === "23505") return new Error("There is already a shift with that name.");
   return describeCashError(error, fallback, SERVICE_PERIOD_COPY.noAccess);
 }
 

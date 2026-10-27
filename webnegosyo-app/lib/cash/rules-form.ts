@@ -6,6 +6,7 @@
  */
 
 import { canManageCash } from "../cash-drawers";
+import { hasPermission, isTabAllowed } from "../staff-permissions";
 import { CUTOFF_STEP_MINUTES, MAX_CUTOFF_MINUTES, type CutoffChange, type CutoffSchedule } from "../business-day/trading-day";
 import {
   VARIANCE_REASON_MAX_CENTS,
@@ -121,4 +122,37 @@ export function receiversOf<T extends StaffLike>(staff: readonly T[]): T[] {
     canManageCash({ role: "admin", isOwner: member.isOwner, permissions: member.permissions }),
   );
   return [...receivers].sort((a, b) => Number(b.isOwner) - Number(a.isOwner));
+}
+
+export interface CashRulesViewer {
+  role: string | null;
+  isOwner: boolean;
+  permissions: string[] | null;
+  /** Set = a branch-locked account. */
+  outletId: string | null;
+  isDemo: boolean;
+}
+
+export interface CashRulesAccess {
+  canOpen: boolean;
+  /** Counting, short & over, remittances, selling, named shifts: `cash_manage`. */
+  canEditRules: boolean;
+  /** When the business day ends: owner or `settings` — it moves every report (07 §5.4). */
+  canEditCutoff: boolean;
+}
+
+/**
+ * Who sees Shift & remit rules and what they may change. The rules are
+ * store-wide, so a branch-locked account never gets the screen; demo reads it
+ * but changes nothing. The screen opens for either key (TAB_ANY_OF
+ * "cash-rules"); each section re-checks its own and the RPCs refuse the other.
+ */
+export function cashRulesAccess(viewer: CashRulesViewer): CashRulesAccess {
+  const canOpen = viewer.outletId === null && isTabAllowed(viewer, "cash-rules");
+  const canWrite = canOpen && !viewer.isDemo;
+  return {
+    canOpen,
+    canEditRules: canWrite && canManageCash(viewer),
+    canEditCutoff: canWrite && hasPermission(viewer, "settings"),
+  };
 }

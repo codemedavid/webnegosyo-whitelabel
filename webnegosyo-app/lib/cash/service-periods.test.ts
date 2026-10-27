@@ -177,6 +177,11 @@ describe("writes", () => {
     await expect(updateServicePeriod(db, "t1", "p1", input, [])).rejects.toThrow(/Cash & day close/);
   });
 
+  it("explains the database's one-name-per-place rule", async () => {
+    const { db } = fakeDb([{ data: null, error: { code: "23505", message: "duplicate key" } }]);
+    await expect(createServicePeriod(db, "t1", input, [])).rejects.toThrow("There is already a shift with that name.");
+  });
+
   it("archives (never deletes) and scopes the write to the store", async () => {
     const { db, ops } = fakeDb([{ data: [{ id: "p1" }], error: null }]);
     await archiveServicePeriod(db, "t1", "p1");
