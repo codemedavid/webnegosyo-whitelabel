@@ -78,7 +78,13 @@ bindSessionLossToAuth({
 });
 import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
-import { registerForPushNotifications, ensureOrdersChannel, ensureStockAlertsChannel, deviceChannels } from "../lib/notifications";
+import {
+  registerForPushNotifications,
+  ensureOrdersChannel,
+  ensureStockAlertsChannel,
+  ensureCashAlertsChannel,
+  deviceChannels,
+} from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
 import { forgetPlatformDeviceToken, upsertPlatformDeviceToken } from "../lib/announcements/service";
 import { withBillAlertsCleared } from "../lib/expenses/bill-alerts";
@@ -326,6 +332,7 @@ function usePushNotifications() {
   useEffect(() => {
     ensureOrdersChannel().catch(() => {});
     ensureStockAlertsChannel().catch(() => {});
+    ensureCashAlertsChannel().catch(() => {});
   }, []);
 
   useEffect(() => {

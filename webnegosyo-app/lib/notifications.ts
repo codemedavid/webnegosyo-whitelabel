@@ -69,6 +69,28 @@ export async function ensureStockAlertsChannel(): Promise<void> {
   stockAlertsChannelReady = true;
 }
 
+/** The channel web sends cash pushes on (`channelId` in `src/lib/push/merchant-notification-push.ts`). */
+export const CASH_ALERTS_CHANNEL_ID = "cash-alerts";
+
+let cashAlertsChannelReady = false;
+
+/**
+ * The "cash-alerts" Android channel for `shift_overdue` and
+ * `remittance_pending` pushes (CONTRACTS W3.3): the stock channel's settings —
+ * HIGH, default sound, never the order ringtone, so a shift left open never
+ * sounds like an order. Created at startup, never deleted. No-op on iOS.
+ */
+export async function ensureCashAlertsChannel(): Promise<void> {
+  if (Platform.OS !== "android" || cashAlertsChannelReady) return;
+  await Notifications.setNotificationChannelAsync(CASH_ALERTS_CHANNEL_ID, {
+    name: "Cash alerts",
+    description: "Shifts left open and cash waiting to be accepted",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 200],
+  });
+  cashAlertsChannelReady = true;
+}
+
 let approvalsChannelReady = false;
 
 /**
