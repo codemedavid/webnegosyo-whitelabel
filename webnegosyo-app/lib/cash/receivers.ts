@@ -27,6 +27,20 @@ export interface CashReceiver {
   /** Clocked in on a shift right now. */
   isOnShift: boolean;
   lastSeenAt: string | null;
+  /** Has an approver PIN ("PIN here now" can work); undefined = the server did not say. */
+  hasPin?: boolean;
+}
+
+/**
+ * The shape shared's RemitToPicker draws (`components/cash/remit-target.ts`
+ * CashReceiver): words already chosen, so the picker invents none.
+ */
+export interface RemitReceiverView {
+  userId: string;
+  name: string;
+  roleLabel: string;
+  presence: string | null;
+  hasPin?: boolean;
 }
 
 export const RECEIVERS_COPY = {
@@ -54,6 +68,7 @@ export function parseReceivers(raw: unknown): CashReceiver[] {
         outletId: text(pick(row, "outletId", "outlet_id")),
         isOnShift: pick(row, "isOnShift", "is_on_shift") === true,
         lastSeenAt: text(pick(row, "lastSeenAt", "last_seen_at")),
+        ...(typeof pick(row, "hasPin", "has_pin") === "boolean" ? { hasPin: pick(row, "hasPin", "has_pin") as boolean } : {}),
       },
     ];
   });
@@ -84,6 +99,21 @@ export function describePresence(receiver: CashReceiver, nowMs: number): string 
   if (ago < HOUR_MS) return `Last seen ${Math.max(1, Math.round(ago / MINUTE_MS))}m ago`;
   if (ago < DAY_MS) return `Last seen ${Math.round(ago / HOUR_MS)}h ago`;
   return `Last seen ${Math.round(ago / DAY_MS)}d ago`;
+}
+
+/** Remit-to order, worded for the picker: "Owner"/"Manager", "On shift now". */
+export function toRemitReceivers(
+  receivers: readonly CashReceiver[],
+  cashierUserId: string | null,
+  nowMs: number,
+): RemitReceiverView[] {
+  return receiversForRemit(receivers, cashierUserId).map((receiver) => ({
+    userId: receiver.userId,
+    name: receiver.name,
+    roleLabel: receiver.isOwner ? "Owner" : "Manager",
+    presence: describePresence(receiver, nowMs) || null,
+    ...(receiver.hasPin === undefined ? {} : { hasPin: receiver.hasPin }),
+  }));
 }
 
 /** THROWS: an empty answer means "nobody can receive", so a failed read must not look like one. */

@@ -1,4 +1,4 @@
-import { amountLabel, resultPill, statusLine, whoLine } from "./remittance-view";
+import { amountLabel, pesoTextToCents, resultPill, statusLine, whoLine } from "./remittance-view";
 import { parseRemittance, type Remittance } from "./remittances";
 
 const base = parseRemittance({
@@ -40,5 +40,16 @@ describe("remittance words", () => {
     expect(amountLabel(base)).toBe("₱6,345");
     expect(amountLabel(make({ handedOverCents: null }))).toBe("Not counted yet");
     expect(whoLine(base)).toBe("Ana Reyes · Cashier 1");
+  });
+});
+
+describe("pesoTextToCents", () => {
+  it("reads what a person types, in whole centavos", () => {
+    expect(pesoTextToCents("6,300.50")).toBe(630050);
+    expect(pesoTextToCents("₱ 6300")).toBe(630000);
+    expect(pesoTextToCents("0.05")).toBe(5);
+    expect(pesoTextToCents("")).toBeNull();
+    expect(pesoTextToCents("12.345")).toBeNull();
+    expect(pesoTextToCents("-5")).toBeNull();
   });
 });

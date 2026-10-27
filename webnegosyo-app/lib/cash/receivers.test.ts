@@ -4,6 +4,7 @@ import {
   listCashReceivers,
   parseReceivers,
   receiversForRemit,
+  toRemitReceivers,
   type CashReceiver,
 } from "./receivers";
 import type { CashDb } from "./settings";
@@ -82,5 +83,19 @@ describe("listCashReceivers", () => {
   it("throws on any other failure: an empty list would read as 'nobody can receive'", async () => {
     const { db } = rpcDb({ data: null, error: { code: "500", message: "boom" } });
     await expect(listCashReceivers(db, "t1", null)).rejects.toThrow(/boom/);
+  });
+});
+
+describe("toRemitReceivers", () => {
+  it("words each receiver for the Remit to picker, PIN status carried through", () => {
+    expect(toRemitReceivers([lorna, { ...maria, hasPin: false }], "b", NOW)).toEqual([
+      { userId: "m", name: "Maria Santos", roleLabel: "Manager", presence: "On shift now", hasPin: false },
+      { userId: "o", name: "Lorna Cruz", roleLabel: "Owner", presence: "Last seen 2h ago" },
+    ]);
+  });
+
+  it("reads has_pin when the server sends it", () => {
+    expect(parseReceivers([{ user_id: "m", name: "Maria", has_pin: true }])[0].hasPin).toBe(true);
+    expect("hasPin" in parseReceivers([{ user_id: "m", name: "Maria" }])[0]).toBe(false);
   });
 });

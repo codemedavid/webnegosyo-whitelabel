@@ -60,3 +60,11 @@ export function whoLine(remittance: Remittance): string {
   const drawer = remittance.shift?.drawerName;
   return drawer ? `${remittance.cashierName} · ${drawer}` : remittance.cashierName;
 }
+
+/** "6,300.50" / "6300" → 630050 centavos; null for anything that is not an amount. */
+export function pesoTextToCents(text: string): number | null {
+  const clean = text.replace(/[₱,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
+  const [whole, fraction = ""] = clean.split(".");
+  return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+}
