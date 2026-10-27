@@ -68,6 +68,12 @@ describe("ResultStep", () => {
     expect(onRecount).toHaveBeenCalled();
   });
 
+  it("flags a recount that changed the figure", () => {
+    render(<ResultStep {...resultProps({ count: { ...SHORT, attempt: 2 }, recountText: "Counted twice: ₱0 → ₱8,345" })} />);
+    expect(screen.getByText("Counted twice: ₱0 → ₱8,345")).toBeTruthy();
+    expect(screen.queryByText("Recount")).toBeNull();
+  });
+
   it("asks nothing when the drawer is exact", () => {
     render(<ResultStep {...resultProps({ count: { ...SHORT, countedCents: 846500, differenceCents: 0, reasonRequired: false } })} />);
     expect(screen.queryByText("Wrong sukli (change)")).toBeNull();

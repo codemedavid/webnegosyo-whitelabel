@@ -45,10 +45,12 @@ export interface EndShiftDraft {
   count: ShiftCountResult | null;
   /** The cashier chose Recount: the count is open for its second (last) attempt. */
   isRecounting: boolean;
+  /** The first count, kept once a recount replaced it (the result says "Counted twice"). */
+  firstCountedCents: number | null;
 }
 
 export function emptyDraft(shiftId: string, mode: CountMode): EndShiftDraft {
-  return { shiftId, step: "count", mode, counts: {}, typedCents: null, nonCash: null, reasonKey: null, note: "", floatKeptCents: null, count: null, isRecounting: false };
+  return { shiftId, step: "count", mode, counts: {}, typedCents: null, nonCash: null, reasonKey: null, note: "", floatKeptCents: null, count: null, isRecounting: false, firstCountedCents: null };
 }
 
 /** What the cashier counted, by the mode they used; null = nothing entered yet. */
@@ -75,7 +77,8 @@ export function startRecount(draft: EndShiftDraft): EndShiftDraft {
 
 /** The server's answer to a count: locked again, with the new figures. */
 export function withCount(draft: EndShiftDraft, count: ShiftCountResult): EndShiftDraft {
-  return { ...draft, count, isRecounting: false };
+  const firstCountedCents = count.attempt === 2 ? (draft.firstCountedCents ?? draft.count?.countedCents ?? null) : null;
+  return { ...draft, count, isRecounting: false, firstCountedCents };
 }
 
 /** The steps this shift walks: GCash & cards drops out when nothing non-cash came in. */
@@ -241,6 +244,8 @@ export function parseDraft(raw: string | null, shiftId: string): EndShiftDraft |
     floatKeptCents: floatKept as number | null,
     count,
     isRecounting: d.isRecounting === true && count !== null,
+    firstCountedCents:
+      typeof d.firstCountedCents === "number" && Number.isSafeInteger(d.firstCountedCents) && d.firstCountedCents >= 0 ? d.firstCountedCents : null,
   };
 }
 

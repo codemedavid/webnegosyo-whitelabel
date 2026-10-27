@@ -34,6 +34,7 @@ export type CashRefusal =
   | "denominations_required"
   | "expected_unavailable"
   | "remit_to_invalid"
+  | "day_closed"
   | "not_open"
   | "stale"
   | "other";
@@ -55,6 +56,7 @@ export const CASH_COPY = {
   reasonRequired: "Pick what happened before you remit.",
   notOpen: "This shift has already ended.",
   denominationsRequired: "This store counts bills and coins at the end of a shift. Switch to Count bills.",
+  dayClosed: "Today is closed. Reopen it from Day close, or wait for the next business day to start a shift.",
   remitToInvalid: "That person can't receive cash at this branch. Pick someone else, or the store safe.",
   expectedUnavailable: "The Drawer's figure for this shift is missing. Go back to the Drawer, let it add up, then count again.",
   stale: "Your last shift is still open from an earlier day. End it before you start a new one.",
@@ -67,6 +69,7 @@ const REFUSAL_COPY: Record<Exclude<CashRefusal, "other">, string> = {
   denominations_required: CASH_COPY.denominationsRequired,
   expected_unavailable: CASH_COPY.expectedUnavailable,
   remit_to_invalid: CASH_COPY.remitToInvalid,
+  day_closed: CASH_COPY.dayClosed,
   not_open: CASH_COPY.notOpen,
   stale: CASH_COPY.stale,
 };

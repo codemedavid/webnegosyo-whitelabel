@@ -43,6 +43,7 @@ import { useCashReceivers, useCashSettings, useServicePeriods } from "../lib/cas
 import { periodsForBranch } from "../lib/cash/service-periods";
 import { handoverNote, periodToPreselect } from "../lib/cash/shift-start";
 import { rememberDeviceExpected } from "../lib/cash/shift-device-expected";
+import { dayClosedMessage, isDayClosedRefusal } from "../lib/cash/shift-recount";
 import { useCutoffSchedule } from "../lib/business-day/use-trading-day";
 import { cutoffMinutesFor, describeCutoff, tradingDayOf, tradingDayWindow } from "../lib/business-day/trading-day";
 import { overdueShifts } from "../lib/cash/remittances";
@@ -219,6 +220,8 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   const isOffline = useConnectivity().status === "offline";
   // "End for him": a manager closes a shift the cashier forgot (no count invented).
   const [forceTarget, setForceTarget] = useState<ShiftRecord | null>(null);
+  // The business day was closed (day close): no shift starts on it until it is reopened or the cutoff passes.
+  const [dayClosedHint, setDayClosedHint] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   // State lands a render late: two taps inside one frame both saw `busy`
@@ -376,7 +379,11 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
         servicePeriodId: extras.servicePeriodId,
         staffName,
       });
-      if (!opened.ok && opened.kind !== "not_deployed") {
+      const closedDay = () =>
+        dayClosedMessage(describeCutoff(cutoffMinutesFor(schedule, tradingDayOf(new Date().toISOString(), schedule))).label);
+      if (!opened.ok && ((opened.kind === "refused" && opened.refusal === "day_closed") || isDayClosedRefusal(opened.message))) {
+        setDayClosedHint(closedDay());
+      } else if (!opened.ok && opened.kind !== "not_deployed") {
         Alert.alert("Could not start the shift", opened.message);
       } else if (opened.ok && opened.data.state === "stale") {
         Alert.alert("End your last shift first", "Your last shift is still open from an earlier day. End it before you start a new one.");
@@ -389,7 +396,8 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           // keeps the history named.
           await openShift(tenantId, { outletId: floor.outletId, staffUserId: userId, staffName, openingFloat: float.amount, drawerId });
         } catch (error) {
-          Alert.alert("Could not start the shift", errorText(error));
+          if (isDayClosedRefusal(errorText(error))) setDayClosedHint(closedDay());
+          else Alert.alert("Could not start the shift", errorText(error));
         }
       }
       await floor.reload();
@@ -724,7 +732,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
           isBusy={busy}
           canManage={canManage}
           notice={notice}
-          hint={payOutHint}
+          hint={dayClosedHint ?? payOutHint}
           onClockIn={(drawerId, floatText, extras) => void handleClockIn(drawerId, floatText, extras)}
           periods={branchPeriods}
           defaultPeriodId={periodToPreselect(branchPeriods, new Date(nowMs).toISOString(), schedule)?.id ?? null}

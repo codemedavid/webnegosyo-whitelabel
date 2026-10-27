@@ -109,6 +109,8 @@ export function NonCashStep({ answers, onChange }: NonCashStepProps) {
 
 interface ResultStepProps {
   count: ShiftCountResult;
+  /** "Counted twice: ₱0 → ₱8,345" once a recount changed the figure. */
+  recountText?: string | null;
   /** Recount is offered once (attempt 1) and first on a Short. */
   onRecount?: () => void;
   reasonKey: VarianceReasonKey | null;
@@ -129,7 +131,12 @@ export function ResultStep(props: ResultStepProps) {
   return (
     <View style={styles.step}>
       <VerdictCard expectedCents={count.expectedCents} countedCents={count.countedCents} onRecount={props.onRecount} />
-      {count.attempt === 2 ? <Text style={styles.hint}>This is your recount. The owner sees both counts.</Text> : null}
+      {count.attempt === 2 ? (
+        <View style={styles.recount} testID="end-shift-recount">
+          {props.recountText ? <Text style={styles.recountText}>{props.recountText}</Text> : null}
+          <Text style={styles.hint}>This is your recount. The owner sees both counts.</Text>
+        </View>
+      ) : null}
       {hasDifference ? (
         <ReasonChips
           differenceCents={count.differenceCents as number}
@@ -236,6 +243,8 @@ const styles = StyleSheet.create({
   step: { gap: spacing.md },
   title: { ...typography.heading, color: colors.textPrimary },
   hint: { ...typography.caption, color: colors.textMuted },
+  recount: { gap: 2 },
+  recountText: { ...typography.body, fontWeight: "700", color: colors.textPrimary, fontVariant: ["tabular-nums"] },
   typed: { gap: spacing.md },
   typedHero: { backgroundColor: colors.heroInk, borderRadius: radius.lg, padding: spacing.lg, gap: 4 },
   eyebrowInk: { ...typography.eyebrow, color: colors.heroInkMuted },

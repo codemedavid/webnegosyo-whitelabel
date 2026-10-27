@@ -729,3 +729,16 @@ describe("End shift & remit on a store with the counted close", () => {
     expect(screen.queryByLabelText("Counted cash in pesos")).toBeNull();
   });
 });
+
+describe("clocking in on a closed business day", () => {
+  it("says the day is closed and what to do, instead of an error", async () => {
+    jest.mocked(loadOpenShift).mockResolvedValue(null);
+    jest.mocked(listOpenShifts).mockResolvedValue([]);
+    mockCashRpc.openShiftRpc.mockResolvedValue({ ok: false, kind: "refused", refusal: "day_closed", message: "Today is closed." });
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByLabelText("Start shift")).toBeTruthy());
+    fireEvent.press(screen.getByLabelText("Start shift"));
+    await waitFor(() => expect(screen.getByText(/^Today is closed — reopen it from Day close, or wait until 12:00 AM/)).toBeTruthy());
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+});

@@ -15,6 +15,7 @@ import { describeCashError, type CashDb, type DbError } from "./settings";
 import { REMITTANCE_COLUMNS, parseRemittance, type Remittance } from "./remittances";
 import { liveCashDb } from "./use-cash-rules";
 import type { SlipMove } from "./shift-remit-slip";
+import { parseCountAttempts, type CountAttempt } from "./shift-recount";
 
 const REQUEST_MS = 15_000;
 
@@ -82,6 +83,26 @@ export function useSlipMoves(shiftId: string | null) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const fetcher = useCallback(() => fetchSlipMoves(liveCashDb, tenantId as string, shiftId as string), [tenantId, shiftId]);
   return useResource<SlipMove[]>(tenantId && shiftId ? resourceKey(REMITTANCE_SLIP_RESOURCE, tenantId, "moves", shiftId) : null, fetcher, {
+    staleTime: 60_000,
+  });
+}
+
+export const SLIP_COUNT_COLUMNS = "attempt, counted_cents";
+
+/** Every count of the shift (one, or two after a recount). RLS: the holder or a cash manager. */
+export async function fetchSlipCounts(db: CashDb, tenantId: string, shiftId: string): Promise<CountAttempt[]> {
+  const { data, error } = (await withDeadline(
+    Promise.resolve(db.from("shift_counts").select(SLIP_COUNT_COLUMNS).eq("tenant_id", tenantId).eq("shift_id", shiftId).order("attempt", { ascending: true })),
+    REQUEST_MS,
+  )) as { data: unknown; error: DbError | null };
+  if (error) throw describeCashError(error, "The drawer's counts could not be read.");
+  return parseCountAttempts(data);
+}
+
+export function useSlipCounts(shiftId: string | null) {
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const fetcher = useCallback(() => fetchSlipCounts(liveCashDb, tenantId as string, shiftId as string), [tenantId, shiftId]);
+  return useResource<CountAttempt[]>(tenantId && shiftId ? resourceKey(REMITTANCE_SLIP_RESOURCE, tenantId, "counts", shiftId) : null, fetcher, {
     staleTime: 60_000,
   });
 }

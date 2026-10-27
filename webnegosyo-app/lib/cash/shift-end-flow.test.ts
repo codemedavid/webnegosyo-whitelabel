@@ -114,6 +114,13 @@ describe("count lock", () => {
     expect(isCountLocked(recounting)).toBe(false);
   });
 
+  it("keeps the first count once a recount replaces it", () => {
+    const sent = withCount(emptyDraft("s1", "bills"), { ...first, countedCents: 0 });
+    const recounted = withCount(startRecount(sent), { ...first, attempt: 2, countedCents: 834500 });
+    expect(recounted).toMatchObject({ firstCountedCents: 0, count: { attempt: 2, countedCents: 834500 } });
+    expect(withCount(emptyDraft("s1", "bills"), first).firstCountedCents).toBeNull();
+  });
+
   it("offers no second recount", () => {
     const second = withCount(emptyDraft("s1", "bills"), { ...first, attempt: 2 });
     expect(canRecount(second)).toBe(false);

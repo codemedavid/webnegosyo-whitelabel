@@ -11,7 +11,7 @@ jest.mock("./use-cash-rules", () => ({ liveCashDb: {} }));
 import { readFileSync } from "fs";
 import { join } from "path";
 
-import { fetchRemittance, fetchSlipMoves, REMITTANCE_COLUMNS, SLIP_MOVE_COLUMNS } from "./shift-remit-read";
+import { fetchRemittance, fetchSlipCounts, fetchSlipMoves, REMITTANCE_COLUMNS, SLIP_COUNT_COLUMNS, SLIP_MOVE_COLUMNS } from "./shift-remit-read";
 import type { CashDb } from "./settings";
 
 const MIGRATIONS = join(__dirname, "..", "..", "..", "supabase", "migrations");
@@ -44,6 +44,11 @@ describe("remittance slip reads match the migration", () => {
   it("embeds the shift through its named foreign key", () => {
     expect(sql).toContain("constraint cash_remittances_shift_id_fkey foreign key (shift_id) references public.staff_shifts(id)");
     expect(REMITTANCE_COLUMNS).toContain("shift:staff_shifts!cash_remittances_shift_id_fkey(");
+  });
+
+  it("reads only shift_counts columns that exist", () => {
+    const counts = tableColumns(migration("20261027150000_cash_activity_and_close.sql"), "shift_counts");
+    for (const column of SLIP_COUNT_COLUMNS.split(",").map((c) => c.trim())) expect(counts).toContain(column);
   });
 
   it("reads taken_by_name, which the pickups migration adds to shift_cash_movements", () => {
@@ -93,6 +98,14 @@ describe("fetchRemittance / fetchSlipMoves", () => {
     ]);
     expect(await fetchSlipMoves(old, "t1", "s1")).toEqual([{ kind: "collect", cents: 250000, at: "t", takenByName: null }]);
     expect(selects).toEqual([SLIP_MOVE_COLUMNS, "kind, amount, created_at"]);
+  });
+
+  it("reads the shift's counts for the recount flag", async () => {
+    const { db: counts } = db([{ data: [{ attempt: 1, counted_cents: 0 }, { attempt: 2, counted_cents: "834500" }], error: null }]);
+    expect(await fetchSlipCounts(counts, "t1", "s1")).toEqual([
+      { attempt: 1, countedCents: 0 },
+      { attempt: 2, countedCents: 834500 },
+    ]);
   });
 
   it("throws on a failed read rather than drawing an empty slip", async () => {

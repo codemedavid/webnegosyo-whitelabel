@@ -27,6 +27,7 @@ import { useCashReceivers, useCashSettings } from "../../lib/cash/use-cash-rules
 import { closeShiftRpc, countShift, type ShiftClosePreview } from "../../lib/cash/shift-close";
 import { useClosePreview, useEndShiftDraft } from "../../lib/cash/shift-end-hooks";
 import { deviceExpectedFor, forgetDeviceExpected } from "../../lib/cash/shift-device-expected";
+import { recountLine, recountOf } from "../../lib/cash/shift-recount";
 import { useShiftDetail } from "../../lib/cash/shift-sales-hooks";
 import {
   canLeaveResult,
@@ -277,6 +278,10 @@ function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft
         {step === "result" && count ? (
           <ResultStep
             count={count}
+            recountText={recountLine(draft.firstCountedCents !== null ? recountOf([
+              { attempt: 1, countedCents: draft.firstCountedCents },
+              { attempt: count.attempt, countedCents: count.countedCents },
+            ]) : null)}
             onRecount={canRecount(draft) ? () => update(startRecount) : undefined}
             reasonKey={draft.reasonKey}
             note={draft.note}

@@ -20,7 +20,8 @@ import { isTabletScreen } from "../../lib/screen-size";
 import { formatDayLabel } from "../../lib/staff-format";
 import { acceptRemittanceByPin } from "../../lib/cash/shift-pin";
 import { farewell, remittanceSlipInput, slipBanner, type SlipBanner } from "../../lib/cash/shift-remit-slip";
-import { SLIP_NOT_FOUND, useRemittance, useSlipMoves } from "../../lib/cash/shift-remit-read";
+import { SLIP_NOT_FOUND, useRemittance, useSlipCounts, useSlipMoves } from "../../lib/cash/shift-remit-read";
+import { recountLine, recountOf } from "../../lib/cash/shift-recount";
 import { useShiftDetail } from "../../lib/cash/shift-sales-hooks";
 import type { Remittance } from "../../lib/cash/remittances";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -48,6 +49,7 @@ export default function RemittanceScreen() {
   const shiftId = remittance.data?.shiftId ?? null;
   const shift = useShiftDetail(shiftId);
   const moves = useSlipMoves(shiftId);
+  const counts = useSlipCounts(shiftId);
 
   if (!id) return <Frame><EmptyState icon="info" title="No slip chosen" message="Open a slip from Remittances or after ending a shift." inset /></Frame>;
   if (remittance.isLoading) return <Frame><LoadingState message="Getting the slip…" /></Frame>;
@@ -64,6 +66,7 @@ export default function RemittanceScreen() {
       remittance={remittance.data}
       shift={shift.data ?? null}
       moves={moves.data ?? []}
+      recountText={recountLine(recountOf(counts.data ?? []))}
       isPartial={Boolean(shift.error || moves.error)}
       pinFor={pinFor}
       onAccepted={() => void remittance.refetch()}
@@ -84,12 +87,14 @@ interface SlipBodyProps {
   remittance: Remittance;
   shift: ReturnType<typeof useShiftDetail>["data"] | null;
   moves: NonNullable<ReturnType<typeof useSlipMoves>["data"]>;
+  /** "Counted twice", first count then final, when a recount changed the figure. */
+  recountText: string | null;
   isPartial: boolean;
   pinFor: string | null;
   onAccepted: () => void;
 }
 
-function SlipBody({ remittance, shift, moves, isPartial, pinFor, onAccepted }: SlipBodyProps) {
+function SlipBody({ remittance, shift, moves, recountText, isPartial, pinFor, onAccepted }: SlipBodyProps) {
   const userId = useAuthStore((s) => s.userId);
   const storeName = useAuthStore((s) => s.tenantName) ?? "Store";
   const branchName = useAuthStore((s) => s.outletName) ?? undefined;
@@ -130,6 +135,12 @@ function SlipBody({ remittance, shift, moves, isPartial, pinFor, onAccepted }: S
           <PinAccept remittance={remittance} receiverUserId={pinFor} onAccepted={onAccepted} />
         ) : null}
 
+        {recountText ? (
+          <View style={styles.recount} testID="remittance-recount">
+            <Icon name="repeat" size={16} color={colors.statusPending.text} />
+            <Text style={styles.recountText}>{recountText}</Text>
+          </View>
+        ) : null}
         {isPartial ? <Text style={styles.note}>{"Some lines couldn’t be read, so they print as “--”."}</Text> : null}
         <View style={styles.paper} testID="remittance-paper">
           <Text style={styles.paperText} selectable>
@@ -206,5 +217,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", gap: spacing.sm },
   action: { flex: 1 },
   note: { ...typography.caption, color: colors.textMuted },
+  recount: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: radius.md, padding: spacing.md },
+  recountText: { ...typography.body, fontWeight: "700", color: colors.statusPending.text, fontVariant: ["tabular-nums"] },
   thanks: { ...typography.body, fontWeight: "700", color: colors.textPrimary, textAlign: "center" },
 });
