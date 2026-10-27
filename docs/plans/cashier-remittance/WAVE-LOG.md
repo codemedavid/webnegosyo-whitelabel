@@ -19,3 +19,5 @@
 - shared done (f02b67cf RemitToPicker, 6890174e NonCashCheck, AcceptRemitBody, slip-print, ExpenseKeypad folded onto Keypad).
 - web done (bab01638 PIN route w/ shared src/lib/staff-pin/pin-limits.ts — one guess budget across Senior/PWD + remit; c814df3c To accept tab). Assumed resolved_note/resolved_by_name, conflict codes P0002/40001.
 - app-owner done (inbox, accept/dispute/settle, Home strips, ForceCloseShiftSheet, 659da014 accept sheet wraps shared AcceptRemitBody). end-shift keeps the tab bar (ExpenseUndoHost list). WAVE-3 TODO: dispute sheet lost "amount received" field — add optional amount to shared AcceptRemitBody dispute path.
+- bizday done (81d3a746..1b4c3f6f). Order number resets at cutoff on platform, Convex (bundle v38) and own-Supabase (order bundle v4). New POST /api/business-day/sync. On midnight still: branch-period.ts (Branches/Portfolio/leaderboard), Convex trends + dailyStats, profit SQL buckets (db). Calendar on purpose: Store Activity, order deletion.
+- DEPLOY: origin/main is at Convex v37 (security release) — merge main into this branch, `npm run convex:prebundle` so v38 contains v37, then Convex Bulk Deploy + own-DB Bulk Deploy (v4).
