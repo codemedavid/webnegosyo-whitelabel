@@ -39,6 +39,7 @@
 /image-backup/failures.json
 /image-backup/restore-result.json
 /image-backup/relink.sql
+/image-backup/run.log
 
 # testing
 /coverage
@@ -93,3 +94,7 @@ public/downloads/
 
 # Design-tooling scratch (screenshots + critiques), regenerated on demand
 /.impeccable/
+
+# Python bytecode (scripts/mascot tooling)
+__pycache__/
+*.pyc

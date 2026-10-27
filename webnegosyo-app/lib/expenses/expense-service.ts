@@ -367,19 +367,18 @@ export async function listRecentExpenses(db: ExpenseDb, tenantId: string, sinceD
 /**
  * Whether this store counts stock: it has at least one recipe, so sales
  * deduct ingredients (plan §2.2). Only then is "Did this go into your stock
- * count?" asked. A failed read answers false — the question is skipped, never
- * forced on a store that may not track anything.
+ * count?" asked. A failed read THROWS: answering false would be cached as
+ * "doesn't track stock" for 30 minutes and hide the question, and an
+ * ingredient buy saved without it is counted twice in Profit (as an expense
+ * and again as recipe cost). `useTracksStock` asks when it cannot tell.
  */
 export async function storeTracksStock(db: ExpenseDb, tenantId: string): Promise<boolean> {
-  try {
-    const { data, error } = await withDeadline(
-      Promise.resolve(db.from("recipes").select("id").eq("tenant_id", tenantId).limit(1)) as Promise<DbAnswer>,
-      REQUEST_MS,
-    );
-    return !error && Array.isArray(data) && data.length > 0;
-  } catch {
-    return false;
-  }
+  const { data, error } = await withDeadline(
+    Promise.resolve(db.from("recipes").select("id").eq("tenant_id", tenantId).limit(1)) as Promise<DbAnswer>,
+    REQUEST_MS,
+  );
+  if (error) throw readError(error, "Could not check whether this store counts stock.");
+  return Array.isArray(data) && data.length > 0;
 }
 
 export interface ExpenseReceiptRef {

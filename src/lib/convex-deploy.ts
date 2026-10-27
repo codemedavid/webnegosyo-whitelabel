@@ -121,17 +121,18 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // Existing v34 tenants must receive these function updates too.
 // v36 splits payment-method analytics by the settlement ledger, so a bill paid
 // ₱120 by GCash and the rest in cash counts under both methods.
-// (v37 is the 2026-10-26 security release on main.)
+// v37 sends the rider remarks (unit, landmark, note, address, pin link) with
+// every Lalamove booking instead of the bare address (2026-10-26 security
+// release).
 // v38 numbers orders (#01) and the dashboard's "today" by the store's
 // business-day cutoff (`business_day_cutoffs` tenantConfig row, pushed by the
-// config sync); no row = Manila midnight, as before. Built on a branch that
-// does not have v37 yet: REBUILD the bundle after merging main, or v37's
-// security fixes are missing from what v38 pushes.
+// config sync); no row = Manila midnight, as before.
 // v39 draws Trends, upsell trends and the payment-method daily breakdown on
 // the business day, and the dailyStats cron (now 04:00 UTC = noon Manila,
 // after any cutoff) snapshots the business day that just ENDED; the old
-// 23:59 UTC run only ever captured midnight to 8 AM Manila. Same rebuild-
-// after-merging-main note as v38.
+// 23:59 UTC run only ever captured midnight to 8 AM Manila.
+// The bundle is rebuilt from the merged template (v37 + v38 + v39); no tenant
+// was ever deployed at 37-39 (all on <=36 at merge time).
 const CURRENT_SCHEMA_VERSION = 39;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;

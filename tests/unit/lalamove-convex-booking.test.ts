@@ -149,3 +149,25 @@ test('a delayed status response cannot overwrite a replacement booking claim', a
   expect(await run(syncLalamoveStatus, ctx, { orderId: 'o1' })).toMatchObject({ success: false })
   expect(order.lalamoveStatus).toBe('BOOKING')
 })
+
+test('sends the rider the unit, landmark, note, address and a pin link', async () => {
+  order = { ...order, customerData: { delivery_landmark: 'Blue gate', 'Note to rider': 'Call first' } }
+  let posted: Row | null = null
+  postResponse = async () => new Response(JSON.stringify({ data: { orderId: 'lala-1', status: 'ASSIGNING_DRIVER' } }))
+  const fetchMock = global.fetch as jest.Mock
+  const original = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST' && String(url).endsWith('/orders')) posted = JSON.parse(String(init.body)).data
+    return original(url, init)
+  })
+
+  await run(bookLalamove, ctx, { orderId: 'o1' })
+
+  const recipients = (posted as unknown as { recipients: Array<{ remarks: string }> }).recipients
+  expect(recipients[0].remarks).toBe([
+    'Landmark: Blue gate',
+    'Note: Call first',
+    'Address: Mabini St',
+    'Pin: https://www.google.com/maps/search/?api=1&query=14.7,121.05',
+  ].join('\n'))
+})

@@ -51,6 +51,7 @@ describe('POST /api/vouchers/redeem', () => {
   let getUserMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let appUserSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let redeemMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let storeOutletIds: string[]
 
   beforeEach(async () => {
     jest.resetModules()
@@ -81,7 +82,24 @@ describe('POST /api/vouchers/redeem', () => {
     })
 
     const { createAdminClient } = await import('@/lib/supabase/admin')
-    ;(createAdminClient as unknown as jest.Mock).mockReturnValue({ rpc: jest.fn() })
+    storeOutletIds = ['outlet-2', 'outlet-9']
+    ;(createAdminClient as unknown as jest.Mock).mockReturnValue({
+      rpc: jest.fn(),
+      from: jest.fn(() => {
+        let wanted: unknown = null
+        const builder: Record<string, unknown> = {}
+        builder.select = jest.fn(() => builder)
+        builder.eq = jest.fn((column: string, value: unknown) => {
+          if (column === 'id') wanted = value
+          return builder
+        })
+        builder.maybeSingle = jest.fn(async () => ({
+          data: storeOutletIds.includes(String(wanted)) ? { id: wanted } : null,
+          error: null,
+        }))
+        return builder
+      }),
+    })
 
     const repo = await import('@/lib/vouchers/repository')
     redeemMock = repo.redeemVoucher as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>
@@ -196,10 +214,68 @@ describe('POST /api/vouchers/redeem', () => {
     expect(redeemMock).not.toHaveBeenCalled()
   })
 
-  test('passes the branch through so a burn is attributed to the shop', async () => {
+  test('attributes a branch-locked cashier\'s burn to their own branch', async () => {
+    const { POST } = await import('@/app/api/vouchers/redeem/route')
+    await POST(makeRequest({ ...VALID_BODY, outletId: 'outlet-9' }, 'Bearer t'))
+
+    expect(redeemMock.mock.calls[0][1]).toMatchObject({ outletId: 'outlet-9' })
+  })
+
+  test('uses the cashier\'s own branch when the body names none', async () => {
+    const { POST } = await import('@/app/api/vouchers/redeem/route')
+    await POST(makeRequest({ ...VALID_BODY, outletId: null }, 'Bearer t'))
+
+    expect(redeemMock.mock.calls[0][1]).toMatchObject({ outletId: 'outlet-9' })
+  })
+
+  test('refuses a branch-locked cashier naming another branch', async () => {
+    const { POST } = await import('@/app/api/vouchers/redeem/route')
+    const res = await POST(makeRequest({ ...VALID_BODY, outletId: 'outlet-2' }, 'Bearer t'))
+
+    expect(res.status).toBe(403)
+    expect(redeemMock).not.toHaveBeenCalled()
+  })
+
+  test('lets a store-wide account attribute the burn to one of the store\'s branches', async () => {
+    appUserSingleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1', is_owner: true, outlet_id: null }, error: null })
     const { POST } = await import('@/app/api/vouchers/redeem/route')
     await POST(makeRequest({ ...VALID_BODY, outletId: 'outlet-2' }, 'Bearer t'))
 
     expect(redeemMock.mock.calls[0][1]).toMatchObject({ outletId: 'outlet-2' })
+  })
+
+  test('burns a store-wide sale naming a branch outside the store under no branch', async () => {
+    // The burn runs after the customer paid; refusing it would leave the code
+    // unspent. The branch is attribution only, so a stale one is dropped.
+    appUserSingleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1', is_owner: true, outlet_id: null }, error: null })
+    const { POST } = await import('@/app/api/vouchers/redeem/route')
+    const res = await POST(makeRequest({ ...VALID_BODY, outletId: 'other-store-branch' }, 'Bearer t'))
+
+    expect(res.status).toBe(200)
+    expect(redeemMock.mock.calls[0][1]).toMatchObject({ outletId: null })
+  })
+
+  test.each([['menu'], ['orders'], ['customers']])('refuses staff without pos (holding %s)', async (key) => {
+    appUserSingleMock.mockResolvedValue({
+      data: { role: 'admin', tenant_id: 't1', is_owner: false, permissions: [key], outlet_id: null },
+      error: null,
+    })
+    const { POST } = await import('@/app/api/vouchers/redeem/route')
+    const res = await POST(makeRequest(VALID_BODY, 'Bearer t'))
+
+    expect(res.status).toBe(403)
+    expect(redeemMock).not.toHaveBeenCalled()
+  })
+
+  test('lets pos staff burn', async () => {
+    appUserSingleMock.mockResolvedValue({
+      data: { role: 'admin', tenant_id: 't1', is_owner: false, permissions: ['pos'], outlet_id: null },
+      error: null,
+    })
+    const { POST } = await import('@/app/api/vouchers/redeem/route')
+    const res = await POST(makeRequest(VALID_BODY, 'Bearer t'))
+
+    expect(res.status).toBe(200)
+    expect(redeemMock).toHaveBeenCalledTimes(1)
   })
 })

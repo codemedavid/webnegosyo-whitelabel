@@ -5,6 +5,7 @@ import type { CheckoutGovClaimState } from '@/hooks/checkout/use-checkout-gov-cl
 
 const SETUP = {
   vatStatus: 'vat' as const,
+  onlineClaims: true,
   kinds: [
     { kind: 'senior' as const, label: 'Senior Citizen', code: 'SC', idLabel: 'OSCA / Senior Citizen ID no.', idPlaceholder: 'e.g. 12345' },
     { kind: 'pwd' as const, label: 'PWD', code: 'PWD', idLabel: 'PWD ID no.', idPlaceholder: 'e.g. 13-7404-000-0001234' },
@@ -32,8 +33,17 @@ describe('GovClaimField', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('sends the customer to the counter when the store takes claims only in person', () => {
+    render(<GovClaimField state={state({ govSetup: { ...SETUP, onlineClaims: false } })} formatPrice={peso} accent="#000" />)
+
+    expect(screen.getByText(/Senior Citizen or PWD\? Show your ID/)).toBeTruthy()
+    expect(screen.queryByText('Senior Citizen or PWD? Get your discount')).toBeNull()
+    expect(screen.queryByLabelText('Name on the ID')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
   it('sends who is claiming — kind, name and ID — never an amount', () => {
-    const applyGovClaim = jest.fn(async (_claim: unknown) => undefined)
+    const applyGovClaim = jest.fn<(claim: unknown) => Promise<void>>(async () => undefined)
     render(<GovClaimField state={state({ applyGovClaim })} formatPrice={peso} accent="#000" />)
 
     fireEvent.click(screen.getByText('Senior Citizen or PWD? Get your discount'))

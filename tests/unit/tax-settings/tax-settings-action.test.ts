@@ -44,6 +44,7 @@ const values = {
   approvalThreshold: '500',
   serviceChargeMode: 'full',
   idPhotoMode: 'off',
+  onlineClaimsEnabled: false,
 }
 
 const loadActions = () => import('@/app/actions/tax-settings')

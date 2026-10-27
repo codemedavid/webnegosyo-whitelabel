@@ -60,9 +60,14 @@ describe('verifyPkce', () => {
     expect(verifyPkce('b'.repeat(64), s256(verifier), 'S256')).toBe(false)
   })
 
-  it('supports the plain method', () => {
-    expect(verifyPkce('xyz', 'xyz', 'plain')).toBe(true)
+  it('rejects the plain method: OAuth 2.1 and the MCP profile require S256', () => {
+    expect(verifyPkce('xyz', 'xyz', 'plain')).toBe(false)
     expect(verifyPkce('xyz', 'abc', 'plain')).toBe(false)
+  })
+
+  it('rejects an unknown method even when the verifier hashes to the challenge', () => {
+    const verifier = 'a'.repeat(64)
+    expect(verifyPkce(verifier, s256(verifier), 's256')).toBe(false)
   })
 })
 

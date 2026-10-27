@@ -212,7 +212,11 @@ export async function retrieveLalamoveQuotation(
 }
 
 /**
- * Create a Lalamove order from a quotation
+ * Create a Lalamove order from a quotation.
+ *
+ * `remarks` is what the rider reads at the drop-off — unit, landmark, note and
+ * a pin link (`buildRiderRemarks`). Lalamove sends the rider to the stop's
+ * coordinates; in a Philippine subdivision the remarks are what find the house.
  */
 export async function createLalamoveOrder(
   tenant: Tenant,
@@ -221,7 +225,8 @@ export async function createLalamoveOrder(
   senderPhone: string,
   recipientName: string,
   recipientPhone: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  remarks: string = ''
 ): Promise<{
   orderId: string
   status: string
@@ -261,7 +266,7 @@ export async function createLalamoveOrder(
           stopId: quotation.stops[1].id || '',
           name: recipientName,
           phone: recipientPhone,
-          remarks: '',
+          remarks,
         },
       ])
       .withMetadata(metadata || {})

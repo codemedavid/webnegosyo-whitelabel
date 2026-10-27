@@ -30,13 +30,23 @@ import {
   type PlatformOrderItemFactRow,
 } from '@/lib/customer-order-facts'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { readPagesConcurrently } from '@/lib/dashboard/paged-read'
+import { mapWithConcurrency } from '@/lib/async/map-with-concurrency'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const PAGE_SIZE = 500
+/** PostgREST's `max-rows` on the platform project; a larger page would end the read early. */
+const PAGE_SIZE = 1000
 /** Bound a request's memory; disclose partial history for larger stores. */
 const ROW_LIMIT = 100_000
-const ITEM_ORDER_CHUNK_SIZE = 100
-const ITEM_READ_CONCURRENCY = 4
+/**
+ * The Reports tab reads a store's whole history, and the merchant app gives up
+ * after 15 s. Read one page after another, a 10,000-order store took ~22 s
+ * (2026-10-22), so pages and item chunks are read side by side.
+ */
+const ORDER_PAGE_CONCURRENCY = 6
+/** 150 uuids keep the request URL well under the gateway's limit. */
+const ITEM_ORDER_CHUNK_SIZE = 150
+const ITEM_READ_CONCURRENCY = 8
 
 const ORDERS_SELECT =
   'id, customer_id, customer_contact, status, payment_status, outlet_id, total, created_at, updated_at, source'
@@ -99,87 +109,117 @@ async function readPages<T>(
   return { data, error: null }
 }
 
+type ItemRow = PlatformOrderItemFactRow & { order_id: string }
+
+interface PlatformOrdersRead {
+  orders: PlatformOrderFactRow[]
+  error: string | null
+  truncated: boolean
+}
+
+/**
+ * Oldest first, so an order placed while the pages are being read lands AFTER
+ * every page instead of shifting the rows under them: newest-first offsets let
+ * one new order push a row into a page that was already read (counted twice)
+ * or out of one that was not yet (lost). An order synced late with an old
+ * timestamp can still shift a row, so ids are de-duplicated as a backstop.
+ */
+async function readPlatformOrders(
+  client: SupabaseClient,
+  tenantId: string,
+  options: Required<Pick<FetchCustomerOrderFactsOptions, 'days' | 'now'>> & { outletId?: string | null; includeLifetime?: boolean },
+): Promise<PlatformOrdersRead> {
+  // A fresh builder per page: a builder's range is mutable, so pages read side
+  // by side must not share one.
+  const page = (from: number, to: number) => {
+    let query = client.from('orders').select(ORDERS_SELECT).eq('tenant_id', tenantId)
+    if (!options.includeLifetime) query = query.gte('created_at', windowStartISO(options.days, options.now))
+    if (options.outletId) query = query.eq('outlet_id', options.outletId)
+    return query.order('created_at', { ascending: true }).order('id').range(from, to)
+  }
+  const { rows, error, truncated } = await readPagesConcurrently<PlatformOrderFactRow>(
+    page as never,
+    { pageSize: PAGE_SIZE, maxRows: ROW_LIMIT, concurrency: ORDER_PAGE_CONCURRENCY },
+  )
+  const seen = new Set<string>()
+  const unique = rows.filter((order) => !seen.has(order.id) && Boolean(seen.add(order.id)))
+  return { orders: unique.reverse(), error, truncated }
+}
+
+/**
+ * Line items by order id (`order_items` carries no tenant_id; the ids are
+ * already tenant-scoped). Chunks share a few read lanes; once one fails, no
+ * further chunk is started.
+ */
+async function readPlatformItems(
+  client: SupabaseClient,
+  orderIds: string[],
+): Promise<{ rows: ItemRow[]; error: { message: string } | null; truncated: boolean }> {
+  const chunks = Array.from(
+    { length: Math.ceil(orderIds.length / ITEM_ORDER_CHUNK_SIZE) },
+    (_, index) => orderIds.slice(index * ITEM_ORDER_CHUNK_SIZE, (index + 1) * ITEM_ORDER_CHUNK_SIZE),
+  )
+  let error: { message: string } | null = null
+  const results = await mapWithConcurrency(chunks, ITEM_READ_CONCURRENCY, async (ids) => {
+    if (error) return null
+    const result = await readPages((from, to) => client
+      .from('order_items')
+      .select(ORDER_ITEMS_SELECT)
+      .in('order_id', ids)
+      .order('id').range(from, to))
+    error ??= result.error
+    return result
+  })
+  if (error) return { rows: [], error, truncated: false }
+  const pages = results.flatMap((result) => (result ? [result.data as unknown as ItemRow[]] : []))
+  return {
+    rows: pages.flat(),
+    error: null,
+    truncated: pages.some((rows) => rows.length >= ROW_LIMIT),
+  }
+}
+
 /** Orders and their line items from the platform database. */
 async function fetchPlatformFacts(
   client: SupabaseClient,
   tenantId: string,
   options: Required<Pick<FetchCustomerOrderFactsOptions, 'days' | 'now'>> & { outletId?: string | null; includeLifetime?: boolean },
 ): Promise<CustomerFactsResult> {
-  let query = client
-    .from('orders')
-    .select(ORDERS_SELECT)
-    .eq('tenant_id', tenantId)
-
-  if (!options.includeLifetime) query = query.gte('created_at', windowStartISO(options.days, options.now))
-
-  if (options.outletId) query = query.eq('outlet_id', options.outletId)
-
-  query = query.order('created_at', { ascending: false }).order('id')
-  const { data, error } = await readPages((from, to) => query.range(from, to))
+  const { orders, error, truncated } = await readPlatformOrders(client, tenantId, options)
 
   if (error) {
-    return unavailable(`Order database could not be reached: ${error.message}`)
+    return unavailable(`Order database could not be reached: ${error}`)
   }
-
-  const orders = (data ?? []) as unknown as PlatformOrderFactRow[]
   if (orders.length === 0) {
     return { facts: [], coverage: { complete: true } }
   }
 
-  // `order_items` carries no tenant_id, so it is fetched by order id rather than
-  // through a join — the ids above are already tenant-scoped.
-  const itemRows: Array<PlatformOrderItemFactRow & { order_id: string }> = []
-  let itemsError: { message: string } | null = null
-  let itemsTruncated = false
-  // Keep URLs bounded and paginate each chunk. Independent chunks share four
-  // read lanes so a large history does not pay one round trip per 100 orders
-  // in sequence. Stop starting batches if any item read fails.
-  const batchSize = ITEM_ORDER_CHUNK_SIZE * ITEM_READ_CONCURRENCY
-  for (let offset = 0; offset < orders.length; offset += batchSize) {
-    const chunks = Array.from({
-      length: Math.min(ITEM_READ_CONCURRENCY, Math.ceil((orders.length - offset) / ITEM_ORDER_CHUNK_SIZE)),
-    }, (_, index) => {
-      const start = offset + index * ITEM_ORDER_CHUNK_SIZE
-      const ids = orders.slice(start, start + ITEM_ORDER_CHUNK_SIZE).map(order => order.id)
-      return readPages((from, to) => client
-        .from('order_items')
-        .select(ORDER_ITEMS_SELECT)
-        .in('order_id', ids)
-        .order('id').range(from, to))
-    })
-    const results = await Promise.all(chunks)
-    for (const result of results) {
-      if (result.error) { itemsError = result.error; break }
-      itemsTruncated ||= result.data.length >= ROW_LIMIT
-      itemRows.push(...result.data as unknown as typeof itemRows)
-    }
-    if (itemsError) break
-  }
+  const items = await readPlatformItems(client, orders.map((order) => order.id))
 
-  if (itemsError) {
+  if (items.error) {
     // Totals and visit dates are still true without line items; only the
     // favourite-item ranking degrades, so say so rather than losing the window.
     return {
       facts: orders.map((order) => platformOrderToFact(order, [])),
       coverage: {
         complete: false,
-        note: `Order items could not be read, so favourite items are unavailable: ${itemsError.message}`,
+        note: `Order items could not be read, so favourite items are unavailable: ${items.error.message}`,
       },
     }
   }
 
   const itemsByOrder = new Map<string, PlatformOrderItemFactRow[]>()
-  for (const row of (itemRows ?? []) as Array<PlatformOrderItemFactRow & { order_id: string }>) {
-    const bucket = itemsByOrder.get(row.order_id) ?? []
-    bucket.push(row)
-    itemsByOrder.set(row.order_id, bucket)
+  for (const row of items.rows) {
+    itemsByOrder.set(row.order_id, [...(itemsByOrder.get(row.order_id) ?? []), row])
   }
 
   return {
     facts: orders.map((order) => platformOrderToFact(order, itemsByOrder.get(order.id) ?? [])),
-    coverage: itemsTruncated
+    coverage: items.truncated
       ? { complete: false, note: 'Some order items exceeded the reading limit; favourite items may be incomplete.' }
-      : truncationNote(orders.length),
+      : truncated
+        ? { complete: false, note: `Only the first ${ROW_LIMIT} orders were read, so the newest orders are not counted.` }
+        : { complete: true },
   }
 }
 

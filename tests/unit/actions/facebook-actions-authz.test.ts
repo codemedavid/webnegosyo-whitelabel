@@ -53,47 +53,28 @@ describe('Facebook server actions authorization', () => {
     subscribePageToWebhook.mockResolvedValue({ success: true })
   })
 
-  it('refuses to hand the Facebook user token to staff without Settings permission', async () => {
-    // Arrange
-    const { getTempUserTokenAction } = await load()
-
-    // Act
-    const result = await getTempUserTokenAction('store-1', 'temp-1')
-
-    // Assert
-    expect(result).toEqual({ success: false, error: 'Unauthorized: Missing permission for this feature' })
-    expect(getTenantUserAccessToken).not.toHaveBeenCalled()
-  })
-
-  it('returns the token to staff with Settings permission, read scoped to the tenant', async () => {
-    // Arrange
-    mockPermissions = ['settings']
-    const { getTempUserTokenAction } = await load()
-
-    // Act
-    const result = await getTempUserTokenAction('store-1', 'temp-1')
-
-    // Assert
-    expect(result).toEqual({ success: true, data: { user_access_token: 'owner-user-token' } })
-    expect(getTenantUserAccessToken).toHaveBeenCalledWith('store-1', 'temp-1')
+  it('no longer exposes server actions that hand out or accept Facebook tokens', async () => {
+    // Connecting goes through POST /api/auth/facebook/connect, which reads tokens server-side.
+    const actions = (await load()) as Record<string, unknown>
+    expect(actions.getTempUserTokenAction).toBeUndefined()
+    expect(actions.connectFacebookPageAction).toBeUndefined()
   })
 
   it('keeps owners and legacy full-access admins working', async () => {
     // Arrange — `permissions: null` is a pre-staff-management admin.
     mockPermissions = null
-    const { getTempUserTokenAction } = await load()
+    const { subscribePageToWebhookAction } = await load()
 
     // Act / Assert
-    expect((await getTempUserTokenAction('store-1', 'temp-1')).success).toBe(true)
+    expect(await subscribePageToWebhookAction('store-1', 'row-1')).toEqual({ success: true })
   })
 
-  it('refuses connect, disconnect and subscribe without Settings permission', async () => {
+  it('refuses disconnect and subscribe without Settings permission', async () => {
     // Arrange
-    const { connectFacebookPageAction, disconnectFacebookPageAction, subscribePageToWebhookAction } = await load()
+    const { disconnectFacebookPageAction, subscribePageToWebhookAction } = await load()
 
     // Act
     const results = await Promise.all([
-      connectFacebookPageAction('store-1', 'p1', 'Page', 'page-token', 'user-token', 'temp-1'),
       disconnectFacebookPageAction('store-1', 'p1'),
       subscribePageToWebhookAction('store-1', 'row-1'),
     ])

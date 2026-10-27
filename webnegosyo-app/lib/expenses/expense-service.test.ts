@@ -8,6 +8,7 @@ import {
   recordDrawerExpense,
   recordExpense,
   replaceExpense,
+  storeTracksStock,
   toExpense,
   voidExpense,
   type ExpenseDb,
@@ -290,6 +291,23 @@ describe("listCategories", () => {
 
     expect(rpcCalls).toEqual([["ensure_expense_categories", { p_tenant_id: "t1" }]]);
     expect(categories.map((c) => [c.name, c.group, c.needsNote])).toEqual([["Ice (Yelo)", "ingredients", false]]);
+  });
+});
+
+describe("storeTracksStock", () => {
+  it("tracks stock once the store has a recipe", async () => {
+    const { db } = fakeDb({ recipes: [{ data: [{ id: "r1" }], error: null }] });
+    await expect(storeTracksStock(db, "t1")).resolves.toBe(true);
+  });
+
+  it("does not without one", async () => {
+    const { db } = fakeDb({ recipes: [{ data: [], error: null }] });
+    await expect(storeTracksStock(db, "t1")).resolves.toBe(false);
+  });
+
+  it("throws on a failed read instead of caching 'does not track stock'", async () => {
+    const { db } = fakeDb({ recipes: [{ data: null, error: { code: "57014", message: "canceling statement due to statement timeout" } }] });
+    await expect(storeTracksStock(db, "t1")).rejects.toThrow();
   });
 });
 

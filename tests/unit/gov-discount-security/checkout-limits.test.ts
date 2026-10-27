@@ -31,11 +31,48 @@ beforeEach(() => {
 describe('gov claim limits', () => {
   it('refuses a claim on an order once the IP is over its limit, and ignores orders without one', async () => {
     const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
-    expect(await govClaimLimitRefusal(TENANT, claim)).toMatch(/Too many/)
-    expect(await govClaimLimitRefusal(TENANT, null)).toBeNull()
-    expect(await govClaimLimitRefusal(TENANT, undefined)).toBeNull()
+    const onlineClaimsOn = jest.fn(async () => true)
+    expect(await govClaimLimitRefusal(TENANT, claim, onlineClaimsOn)).toMatch(/Too many/)
+    expect(await govClaimLimitRefusal(TENANT, null, onlineClaimsOn)).toBeNull()
+    expect(await govClaimLimitRefusal(TENANT, undefined, onlineClaimsOn)).toBeNull()
     expect(mockLimit).toHaveBeenCalledTimes(1)
     expect(mockLimit.mock.calls[0][0]).toBe(`gov-claim-order:${TENANT}`)
+  })
+
+  it('does not count a malformed claim (the order ignores it) nor read the store for it', async () => {
+    // Arrange
+    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
+    const onlineClaimsOn = jest.fn(async () => true)
+
+    // Act
+    const outcomes = await Promise.all([
+      govClaimLimitRefusal(TENANT, {}, onlineClaimsOn),
+      govClaimLimitRefusal(TENANT, 'senior', onlineClaimsOn),
+      govClaimLimitRefusal(TENANT, { kind: 'senior', name: 'J', idNumber: '1' }, onlineClaimsOn),
+    ])
+
+    // Assert
+    expect(outcomes).toEqual([null, null, null])
+    expect(mockLimit).not.toHaveBeenCalled()
+    expect(onlineClaimsOn).not.toHaveBeenCalled()
+  })
+
+  it('does not count a claim at a store with online claims off (the order ignores it)', async () => {
+    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
+
+    expect(await govClaimLimitRefusal(TENANT, claim, async () => false)).toBeNull()
+    expect(mockLimit).not.toHaveBeenCalled()
+  })
+
+  it('fails open when the store setting cannot be read', async () => {
+    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
+
+    const outcome = await govClaimLimitRefusal(TENANT, claim, async () => {
+      throw new Error('timeout')
+    })
+
+    expect(outcome).toBeNull()
+    expect(mockLimit).not.toHaveBeenCalled()
   })
 
   it('stops the preview before any database read', async () => {
@@ -55,8 +92,12 @@ describe('gov claim limits', () => {
     expect(mockAdmin).not.toHaveBeenCalled()
   })
 
-  it('createOrderAction checks the claim limit', () => {
+  it('createOrderAction checks the claim limit only after the store is known', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/actions/orders.ts'), 'utf8')
-    expect(source).toMatch(/govClaimLimitRefusal\(tenantId, governmentClaim\)/)
+    const check = source.search(/govClaimLimitRefusal\(tenantId, governmentClaim,/)
+    const context = source.indexOf('await loadOrderTenantContext(')
+    expect(check).toBeGreaterThan(-1)
+    expect(context).toBeGreaterThan(-1)
+    expect(check).toBeGreaterThan(context)
   })
 })
