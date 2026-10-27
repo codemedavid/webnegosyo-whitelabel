@@ -68,6 +68,12 @@ const REFUSAL_COPY: Record<Exclude<CashRefusal, "other">, string> = {
   stale: CASH_COPY.stale,
 };
 
+/** "taken_by_required: say who took the cash…" → "Say who took the cash…": the server's words without its key. */
+export function serverWords(message: string | undefined): string | null {
+  const text = (message ?? "").replace(/^[a-z_]+:\s*/, "").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : null;
+}
+
 function refusalOf(message: string | undefined): CashRefusal {
   const text = message ?? "";
   const known = (Object.keys(REFUSAL_COPY) as Exclude<CashRefusal, "other">[]).find((key) => text.includes(key));
@@ -88,7 +94,7 @@ async function callCash<T>(client: CashRpcClient, fn: string, args: Record<strin
     // 55000 = already closed; P0002 = not found or shift_not_open (the server's own words either way).
     if (["22023", "P0001", "P0002", "40001", "55000"].includes(error.code ?? "")) {
       const refusal = refusalOf(error.message);
-      return { ok: false, kind: "refused", refusal, message: refusal === "other" ? error.message || CASH_COPY.failed : REFUSAL_COPY[refusal] };
+      return { ok: false, kind: "refused", refusal, message: refusal === "other" ? serverWords(error.message) ?? CASH_COPY.failed : REFUSAL_COPY[refusal] };
     }
     console.warn(`[cash] ${fn} failed`, error.code, error.message);
     return { ok: false, kind: "failed", message: CASH_COPY.failed };

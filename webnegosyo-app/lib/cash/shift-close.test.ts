@@ -139,6 +139,14 @@ describe("calls", () => {
     expect(await answer("55000", "This shift is already closed.")).toMatchObject({ kind: "refused", refusal: "other", message: "This shift is already closed." });
   });
 
+  it("shows the server's own words for a refusal it has no sentence for, without the key", async () => {
+    const { client } = answering({ data: null, error: { code: "22023", message: "taken_by_required: say who took the cash, or that it went to the safe." } });
+    expect(await recordCashPickup({ shiftId: "s1", amountCents: 100, takenBy: null, toSafe: false, note: null }, client)).toMatchObject({
+      refusal: "other",
+      message: "Say who took the cash, or that it went to the safe.",
+    });
+  });
+
   it("calls a missing function 'not deployed' so the Drawer keeps its older path", async () => {
     const { client } = answering({ data: null, error: { code: "PGRST202", message: "not found" } });
     expect(await previewShiftClose("s1", client)).toMatchObject({ ok: false, kind: "not_deployed" });
