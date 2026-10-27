@@ -52,9 +52,12 @@ export async function syncBusinessDayToOrderBackend(tenantId: string): Promise<B
     if (routing.error || !routing.data) return { status: 'failed', error: routing.error?.message ?? 'Tenant not found' }
     const tenant = mergeTenantSecrets(routing.data as unknown as OrderBackendTenantFields & { id: string }, secrets)
 
-    if (resolveOrderBackend(tenant) === 'supabase') return syncTenantDbCutoffs(tenant)
-    // Convex, or a platform store with a deployment left over (harmless, and
-    // right if it is ever switched back): the config sync skips stores without one.
+    const backend = resolveOrderBackend(tenant)
+    if (backend === 'supabase') return syncTenantDbCutoffs(tenant)
+    // A platform store reads business_day_cutoffs itself. A Convex deployment
+    // left over on it must not be written to (CLAUDE.md: route through
+    // resolveOrderBackend); an old one would also fail and report a 502.
+    if (backend === 'platform') return { status: 'skipped', reason: 'Platform store: the database reads the cutoff itself' }
     return syncTenantConvexConfig(tenantId)
   } catch (error) {
     return failed(error)

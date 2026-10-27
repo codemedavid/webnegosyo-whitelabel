@@ -77,6 +77,13 @@ describe('POST /api/business-day/sync', () => {
     expect((await POST(post({ tenantId: TENANT }))).status).toBe(403)
   })
 
+  it('refuses a branch-locked account (the cutoff is store-wide)', async () => {
+    mockCaller.mockResolvedValue({ user: { id: 'u3' }, appUser: { ...owner, is_owner: false, permissions: ['settings'], outlet_id: 'o1' } })
+    const { POST } = await route()
+    expect((await POST(post({ tenantId: TENANT }))).status).toBe(403)
+    expect(mockSync).not.toHaveBeenCalled()
+  })
+
   it('refuses a malformed body', async () => {
     const { POST } = await route()
     expect((await POST(post({ tenantId: 'nope' }))).status).toBe(400)

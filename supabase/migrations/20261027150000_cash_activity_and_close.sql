@@ -434,7 +434,9 @@ begin
   insert into public.staff_shifts (tenant_id, outlet_id, staff_user_id, staff_name, opening_float,
                                    opening_denominations, drawer_id, service_period_id)
   values (p_tenant, p_outlet, v_uid,
-          coalesce(nullif(btrim(p_staff_name), ''), cash.actor_name(), 'Staff'),
+          -- The account's own name first: the caller's text is only a fallback
+          -- for an account without one (it labels the shift and its activity).
+          coalesce(cash.actor_name(), left(nullif(btrim(p_staff_name), ''), 80), 'Staff'),
           p_opening_float_cents::numeric / 100, p_opening_denominations, p_drawer_id, p_service_period_id)
   returning * into s;
   perform set_config('app.shift_rpc', '', true);
@@ -708,7 +710,7 @@ begin
          variance_reason = v_reason,
          note = coalesce(nullif(btrim(coalesce(p_note, '')), ''), x.note),
          float_kept_cents = v_float_kept,
-         closed_by_name = coalesce(nullif(btrim(coalesce(p_closed_by_name, '')), ''), cash.actor_name())
+         closed_by_name = coalesce(cash.actor_name(), left(nullif(btrim(coalesce(p_closed_by_name, '')), ''), 80))
    where x.id = s.id and x.status = 'open'
   returning * into s;
   -- Straight after the UPDATE: a later PERFORM would reset FOUND.

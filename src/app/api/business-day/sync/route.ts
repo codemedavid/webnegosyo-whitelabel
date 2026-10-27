@@ -40,7 +40,10 @@ async function handle(request: NextRequest): Promise<NextResponse> {
 
   const { user, appUser } = await getRequestCaller()
   if (!user) return reply({ error: 'Unauthorized' }, 401)
-  if (!appUser || !canAccessStoreAdmin(appUser, tenantId, 'edit') || !hasPermission(appUser, 'settings')) {
+  // Store-wide only, like set_business_day_cutoff itself: a branch-locked
+  // account cannot change the store's day, so it has nothing to push.
+  const isStoreWide = appUser?.is_owner === true || !appUser?.outlet_id
+  if (!appUser || !isStoreWide || !canAccessStoreAdmin(appUser, tenantId, 'edit') || !hasPermission(appUser, 'settings')) {
     return reply({ error: "You can't change this store's business day." }, 403)
   }
   if (!(await checkRateLimit(`business-day-sync:${user.id}`, BURST)).allowed) {

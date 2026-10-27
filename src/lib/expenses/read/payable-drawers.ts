@@ -5,7 +5,7 @@
  *
  * Mirrors the drawer's own rule so the form never offers a drawer the save
  * would be refused from: your own open shift, and — for someone who manages
- * cash (owner, full access, store_setup) — every other open drawer you reach.
+ * cash (owner, full access, cash_manage) — every other open drawer you reach.
  * `record_drawer_expense` still decides.
  *
  * Bounded: open shifts of one store only (`idx_staff_shifts_tenant_opened`),

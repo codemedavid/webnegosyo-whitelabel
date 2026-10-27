@@ -3,8 +3,8 @@
  * expense from, and the drawer mode the Add-expense sheet runs in for one.
  *
  * The database decides (`record_drawer_expense` keeps the drawer's own rule):
- * your own open shift, or — for a cash manager (owner, full access,
- * store_setup) — any open drawer of a branch you reach. This only mirrors that
+ * your own open shift, or — for a cash manager (`cash_manage`: owner, full
+ * access or the key) — any open drawer of a branch you reach. This only mirrors that
  * rule so the sheet never offers a drawer the save would be refused from.
  */
 

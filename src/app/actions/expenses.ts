@@ -54,7 +54,7 @@ interface ExpenseActionContext {
   tenantId: string
   db: SupabaseClient
   user: User
-  /** Owner, full access or store_setup: may take from a drawer someone else holds. */
+  /** Holds cash_manage (owner, full access, or the key): may take from a drawer someone else holds. */
   managesCash: boolean
 }
 
@@ -76,7 +76,7 @@ async function authorize(tenantSlug: string): Promise<{ tenantId: string; user: 
   if (!tenant) return { error: 'This store could not be found.' }
   try {
     const { user, userRole } = await verifyTenantPermission(tenant.id, 'expenses')
-    return { tenantId: tenant.id, user: user as User, managesCash: hasPermission(userRole, 'store_setup') }
+    return { tenantId: tenant.id, user: user as User, managesCash: hasPermission(userRole, 'cash_manage') }
   } catch (error) {
     if (error instanceof SubscriptionPausedError) return { error: error.message }
     return { error: EXPENSE_MESSAGES.noAccess }

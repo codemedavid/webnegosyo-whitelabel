@@ -62,11 +62,14 @@ describe('syncBusinessDayToOrderBackend', () => {
     expect(mockWrite).not.toHaveBeenCalled()
   })
 
-  it('leaves a platform store to the config sync, which skips stores without a deployment', async () => {
-    mockRouting.mockResolvedValue({ data: { id: TENANT, order_backend: 'platform' }, error: null })
-    mockConvexSync.mockResolvedValue({ status: 'skipped', reason: 'No Convex deployment URL' })
+  it('skips a platform store, never writing to a Convex deployment left over on it', async () => {
+    mockRouting.mockResolvedValue({
+      data: { id: TENANT, order_backend: 'platform', convex_deployment_url: 'https://old-store.convex.cloud' },
+      error: null,
+    })
     const { syncBusinessDayToOrderBackend } = await load()
-    await expect(syncBusinessDayToOrderBackend(TENANT)).resolves.toEqual({ status: 'skipped', reason: 'No Convex deployment URL' })
+    await expect(syncBusinessDayToOrderBackend(TENANT)).resolves.toMatchObject({ status: 'skipped' })
+    expect(mockConvexSync).not.toHaveBeenCalled()
     expect(mockWrite).not.toHaveBeenCalled()
   })
 

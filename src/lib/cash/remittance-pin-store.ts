@@ -62,6 +62,8 @@ export function createRemittancePinStore(admin: SupabaseClient<Database>, caller
         p_receiver: receiverUserId,
         p_received_cents: receivedCents,
         p_note: note,
+        // Who typed the PIN at the counter: the activity row names them.
+        p_entered_by: callerUserId,
       })
       if (error) {
         if (error.code && REMITTANCE_CONFLICT_CODES.has(error.code)) return { ok: false, reason: 'not_pending' }

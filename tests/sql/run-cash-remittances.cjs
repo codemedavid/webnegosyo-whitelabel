@@ -168,8 +168,10 @@ async function checkTransitions(db, ids) {
   // The PIN route: service role only.
   await refused(call(db, U.manager, 'select * from public.accept_remittance_as($1, $2, $3, null)', [ids.safe, U.manager, 0]), '42501', 'accept_remittance_as is not callable by clients')
   await refused(call(db, 'service', 'select * from public.accept_remittance_as($1, $2, $3, null)', [ids.safe, U.cashier, 0]), '42501', 'the PIN receiver must handle cash')
-  const pin = await call(db, 'service', 'select * from public.accept_remittance_as($1, $2, $3, null)', [ids.safe, U.a1Mgr, 0])
+  const pin = await call(db, 'service', 'select * from public.accept_remittance_as($1, $2, $3, null, $4)', [ids.safe, U.a1Mgr, 0, U.cashier])
   eq([pin.status, pin.accept_method, pin.received_by, pin.received_by_name], ['accepted', 'pin', U.a1Mgr, 'Ana'], 'PIN here now: accepted by the receiver the PIN proved')
+  await reset(db)
+  eq((await db.query("select actor_user_id from store_activity where kind = 'cash.remittance_accepted' and subject_ref = $1", [ids.safe])).rows[0].actor_user_id, U.cashier, 'the activity names who typed the PIN at the counter')
   // The forced close: nothing was claimed, so any amount the receiver counts is accepted without a note.
   eq((await call(db, U.manager, ACCEPT, [ids.forced, 41000, null])).status, 'accepted', 'a forced close is accepted at what the receiver counted')
 

@@ -179,7 +179,9 @@ grant select on public.cash_remittances to authenticated;
 grant all on public.cash_remittances to service_role;
 
 -- One activity row per remittance event.
-create or replace function cash.record_remittance_activity(r public.cash_remittances, p_kind text, p_event text, p_flags text[] default '{}')
+-- p_actor: who did it when that is not the signed-in caller (the PIN route
+-- runs as the service role; the person at the counter typed the PIN).
+create or replace function cash.record_remittance_activity(r public.cash_remittances, p_kind text, p_event text, p_flags text[] default '{}', p_actor uuid default null)
 returns void
 language plpgsql
 security definer
@@ -190,7 +192,7 @@ begin
     p_tenant_id => r.tenant_id, p_kind => p_kind,
     p_event_key => 'cash_remittances:' || r.id || ':' || p_event,
     p_source_table => 'cash_remittances', p_source_id => r.id::text, p_occurred_at => now(),
-    p_outlet_id => r.outlet_id, p_actor_user_id => auth.uid(),
+    p_outlet_id => r.outlet_id, p_actor_user_id => coalesce(p_actor, auth.uid()),
     p_amount => coalesce(r.received_cents, r.handed_over_cents)::numeric / 100,
     p_note => coalesce(r.resolved_note, r.dispute_reason, r.receiver_note),
     p_subject_type => 'remittance', p_subject_ref => r.id::text,
@@ -209,7 +211,7 @@ begin
     p_flags => p_flags);
 end;
 $$;
-revoke all on function cash.record_remittance_activity(public.cash_remittances, text, text, text[]) from public, anon, authenticated;
+revoke all on function cash.record_remittance_activity(public.cash_remittances, text, text, text[], uuid) from public, anon, authenticated;
 
 -- ============================================
 -- Creation on close
@@ -468,7 +470,7 @@ end;
 $$;
 revoke all on function cash.receive_check(public.cash_remittances, uuid) from public, anon, authenticated;
 
-create or replace function cash.accept(p_id uuid, p_receiver uuid, p_received_cents bigint, p_note text, p_method text)
+create or replace function cash.accept(p_id uuid, p_receiver uuid, p_received_cents bigint, p_note text, p_method text, p_actor uuid default null)
 returns public.cash_remittances
 language plpgsql
 volatile
@@ -501,11 +503,12 @@ begin
     raise exception 'remittance_not_pending: this hand-over was already handled.' using errcode = 'P0002';
   end if;
   perform cash.record_remittance_activity(r, 'cash.remittance_accepted', 'accepted',
-    case when r.handed_over_cents is not null and r.received_cents <> r.handed_over_cents then array['remittance_discrepancy'] else '{}'::text[] end);
+    case when r.handed_over_cents is not null and r.received_cents <> r.handed_over_cents then array['remittance_discrepancy'] else '{}'::text[] end,
+    p_actor);
   return r;
 end;
 $$;
-revoke all on function cash.accept(uuid, uuid, bigint, text, text) from public, anon, authenticated;
+revoke all on function cash.accept(uuid, uuid, bigint, text, text, uuid) from public, anon, authenticated;
 
 create or replace function public.accept_remittance(p_id uuid, p_received_cents bigint, p_note text default null)
 returns public.cash_remittances
@@ -529,7 +532,11 @@ grant execute on function public.accept_remittance(uuid, bigint, text) to authen
 
 -- The PIN route (POST /api/cash/remittances/[id]/accept-pin) calls this with
 -- the service role AFTER verify_staff_approval_pin succeeded for p_receiver.
-create or replace function public.accept_remittance_as(p_id uuid, p_receiver uuid, p_received_cents bigint, p_note text default null)
+-- p_entered_by = the signed-in person who typed the PIN at the counter: the
+-- activity row names them as the actor, so a PIN used by someone else is
+-- traceable to who used it.
+create or replace function public.accept_remittance_as(p_id uuid, p_receiver uuid, p_received_cents bigint, p_note text default null,
+                                                       p_entered_by uuid default null)
 returns public.cash_remittances
 language plpgsql
 volatile
@@ -540,11 +547,11 @@ begin
   if p_receiver is null then
     raise exception 'A receiver is required.' using errcode = '22023';
   end if;
-  return cash.accept(p_id, p_receiver, p_received_cents, p_note, 'pin');
+  return cash.accept(p_id, p_receiver, p_received_cents, p_note, 'pin', p_entered_by);
 end;
 $$;
-revoke all on function public.accept_remittance_as(uuid, uuid, bigint, text) from public, anon, authenticated;
-grant execute on function public.accept_remittance_as(uuid, uuid, bigint, text) to service_role;
+revoke all on function public.accept_remittance_as(uuid, uuid, bigint, text, uuid) from public, anon, authenticated;
+grant execute on function public.accept_remittance_as(uuid, uuid, bigint, text, uuid) to service_role;
 
 create or replace function public.dispute_remittance(p_id uuid, p_reason text, p_received_cents bigint default null)
 returns public.cash_remittances
@@ -679,14 +686,14 @@ grant execute on function public.list_cash_receivers(uuid, uuid) to authenticate
 -- Rollback (manual)
 -- ===========================================================================
 -- drop function if exists public.list_cash_receivers(uuid, uuid), public.resolve_remittance(uuid, text),
---   public.dispute_remittance(uuid, text, bigint), public.accept_remittance_as(uuid, uuid, bigint, text),
+--   public.dispute_remittance(uuid, text, bigint), public.accept_remittance_as(uuid, uuid, bigint, text, uuid),
 --   public.accept_remittance(uuid, bigint, text), public.record_cash_pickup(uuid, bigint, uuid, boolean, text);
--- drop function if exists cash.accept(uuid, uuid, bigint, text, text), cash.receive_check(public.cash_remittances, uuid);
+-- drop function if exists cash.accept(uuid, uuid, bigint, text, text, uuid), cash.receive_check(public.cash_remittances, uuid);
 -- drop trigger if exists trg_shift_cash_movement_direct_pickup on public.shift_cash_movements;
 -- drop trigger if exists trg_shift_cash_movement_pickup_guard on public.shift_cash_movements;
 -- drop function if exists cash.shift_cash_movement_direct_pickup(), cash.file_direct_pickup(uuid), cash.shift_cash_movement_pickup_guard();
 -- drop trigger if exists trg_staff_shift_remittance on public.staff_shifts;
--- drop function if exists cash.create_shift_remittance(), cash.record_remittance_activity(public.cash_remittances, text, text, text[]);
+-- drop function if exists cash.create_shift_remittance(), cash.record_remittance_activity(public.cash_remittances, text, text, text[], uuid);
 -- drop table if exists public.cash_remittances;
 -- alter table public.shift_cash_movements drop column if exists taken_by, drop column if exists taken_by_name, drop column if exists to_safe;
 -- drop function if exists cash.user_name(uuid), cash.user_manages_cash(uuid, uuid, uuid), public.app_user_has_permission_of(uuid, uuid, text);
