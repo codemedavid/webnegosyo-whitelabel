@@ -172,7 +172,7 @@ export const STAFF_PERMISSION_LABELS: Record<
   cash_manage: {
     label: 'Cash & day close',
     description:
-      "Set up cash drawers, pick up cash, close others' shifts, receive remittances and close the business day. Give it to supervisors you trust with cash.",
+      "Set up cash drawers, pick up cash, close others' shifts, receive remittances, close the business day and see that day's sales. Give it to supervisors you trust with cash.",
   },
 }
 

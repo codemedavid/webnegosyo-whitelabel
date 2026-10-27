@@ -55,7 +55,7 @@ describe('the cash_manage key', () => {
     expect(STAFF_PERMISSION_LABELS.cash_manage).toEqual({
       label: 'Cash & day close',
       description:
-        "Set up cash drawers, pick up cash, close others' shifts, receive remittances and close the business day. Give it to supervisors you trust with cash.",
+        "Set up cash drawers, pick up cash, close others' shifts, receive remittances, close the business day and see that day's sales. Give it to supervisors you trust with cash.",
     })
     expect(validatePermissionKeys(['cash_manage'])).toEqual(['cash_manage'])
   })
@@ -109,6 +109,10 @@ describe('the cash_manage key', () => {
   test('labels the key on the app Team picker', () => {
     const option = PERMISSION_OPTIONS.find((o) => o.key === 'cash_manage')
     expect(option?.label).toBe('Cash & day close')
+    // Same words on the web and the app picker: the key includes the day's sales
+    // (report_shift_sales and the day close show them to cash managers).
+    expect(option?.description).toBe(STAFF_PERMISSION_LABELS.cash_manage.description)
+    expect(option?.description).toContain("see that day's sales")
   })
 })
 

@@ -222,14 +222,13 @@ edge function keeps the union of keys (harmless). Roll the database back only AF
 
 ---
 
-## 7. Open items from the qa review (decide before release)
+## 7. Decisions on the qa review items
 
-- **R1 (HIGH, behaviour on apply)**: in `optional` mode (the default) every close, including legacy closes from builds
-  older than B3, creates a pending hand-over, and 190000 pushes each one after 60 min. Decide one: create the
-  shift remittance only when the close came through `close_shift` (`cash.shift_rpc_mark = 'close'`), or alert only
-  on remittances with a receiver, or ship `remittance_mode` default `off` until the store's tablets have the OTA.
-- **R2 (HIGH, sales visibility)**: `get_business_day_close` masks sales for accounts without `reports`, but
-  `get_day_close_status.preview`, the `close_business_day` reply and a direct `select snapshot from
-  business_day_closes` (cash-manager RLS) return the sales unmasked. Either mask on every path (and revoke
-  `select (snapshot)` from `authenticated`) or decide that `cash_manage` includes the day's sales, as
-  `report_shift_sales` already does, and say so in the key's description.
+- **R1 (decided 2026-10-27, db fixing)**: shift hand-overs are created only by `close_shift` / `force_close_shift`,
+  never by a legacy direct close from an older build, so 190000 cannot push for closes nobody can clear. Probe after
+  A9 and the fix: a legacy direct `update staff_shifts set status = 'closed' …` (rollback) creates **0**
+  `cash_remittances`; `close_shift` creates exactly 1. Closing a business day before it ends needs `p_force` + a note.
+- **R2 (decided 2026-10-27)**: `cash_manage` INCLUDES that day's sales (day close preview, reply, snapshot and
+  history; `report_shift_sales`). The key's description says so in the web registry and the app Team picker
+  ("…close the business day and see that day's sales"); the desktop and edge copies carry keys only.
+  `get_business_day_close` may keep masking for accounts without `reports`. That is harmless, but no screen relies on it.
