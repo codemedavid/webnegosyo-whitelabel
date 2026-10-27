@@ -73,11 +73,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // the new screenshots). Hence 1.0.14 — signed-out welcome, split tender,
   // store activity and approvals, the stock bell and SMS automations.
   //
-  // 1.0.15 (2026-10-27): Expenses + Profit + Bills to pay, cashier shifts,
+  // NEXT BUILD = 1.0.15 (Expenses + Profit + Bills to pay, cashier shifts,
   // remittance and business day, and the camera/photo purpose strings that
-  // now name receipts and IDs (a native change, so a new binary either way).
-  // 1.0.14 was in review on 10-15; check the train before building.
-  version: "1.0.15",
+  // now name receipts and IDs — a native change, so a new binary). Bump this
+  // in the same commit as the /download APK entry (src/lib/download config,
+  // pinned to this value by tests/unit/downloads.test.ts) once the APK exists,
+  // and check the ASC train first.
+  version: "1.0.14",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the

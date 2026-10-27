@@ -259,8 +259,9 @@ Fixed on this branch (unapplied migrations edited in place; PGlite runners exten
   only; web Expenses drawers on `cash_manage`; old-style clock-in on a closed day says so.
 - Merge of origin/main (v37): `CURRENT_SCHEMA_VERSION` 39, bundle rebuilt (has `lalamoveRemarks` +
   `getCutoffScheduleInternal`), `getTrends` on #89's `fetchOrders(ctx, …)`.
-- App **1.0.15** with purpose strings that name receipts/IDs/menus → **B3 is a new EAS binary, not an OTA** (an
-  OTA can't change Info.plist; `runtimeVersion` = appVersion). Check the ASC train before building.
+- Purpose strings now name receipts/IDs/menus → **B3 is a new EAS binary (1.0.15), not an OTA** (an OTA can't
+  change Info.plist). `version` stays 1.0.14 on the branch because `/download` must not advertise an APK that does
+  not exist yet: bump it together with the APK entry at build time, after checking the ASC train.
 
 Open — owner decisions, NOT changed:
 - **D1 `cash_manage` for legacy full-access (`permissions IS NULL`) accounts.** Today it is implied, so those accounts
