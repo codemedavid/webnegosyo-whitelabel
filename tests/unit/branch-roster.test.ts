@@ -3,7 +3,7 @@ import {
   type RosterOutlet,
   type RosterStaff,
 } from '@/lib/outlets/branch-roster'
-import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
+import { DEFAULT_MAX_STAFF_PER_BRANCH } from '@/lib/billing/plan'
 import { compareBranches, type AnalyticsOrderLike } from '@/lib/outlets/branch-analytics'
 
 /**
@@ -153,11 +153,11 @@ describe('buildBranchRoster', () => {
       })
 
       expect(roster.branches[0].staffCount).toBe(2)
-      expect(roster.branches[0].seatsRemaining).toBe(MAX_STAFF_PER_TENANT - 2)
+      expect(roster.branches[0].seatsRemaining).toBe(DEFAULT_MAX_STAFF_PER_BRANCH - 2)
     })
 
     it('never reports negative seats when a branch is over its allowance', () => {
-      const over = Array.from({ length: MAX_STAFF_PER_TENANT + 2 }, (_, i) =>
+      const over = Array.from({ length: DEFAULT_MAX_STAFF_PER_BRANCH + 2 }, (_, i) =>
         staff({ user_id: `u${i}`, outlet_id: 'makati' })
       )
       const roster = buildBranchRoster({
@@ -167,6 +167,17 @@ describe('buildBranchRoster', () => {
       })
 
       expect(roster.branches[0].seatsRemaining).toBe(0)
+    })
+
+    it("counts seats against the tenant's own allowance, not the default", () => {
+      const roster = buildBranchRoster({
+        outlets: [outlet({ id: 'makati' })],
+        staff: Array.from({ length: 3 }, (_, i) => staff({ user_id: `u${i}`, outlet_id: 'makati' })),
+        orders: [],
+        maxStaffPerBranch: 5,
+      })
+
+      expect(roster.branches[0].seatsRemaining).toBe(2)
     })
   })
 

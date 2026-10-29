@@ -1,6 +1,7 @@
 import { StaffManagementCard } from '@/components/admin/staff-management-card'
 import { SettingsSection } from '@/components/admin/settings/settings-section'
 import { listStaffAction } from '@/app/actions/staff'
+import { loadStaffSeatLimit } from '@/lib/billing/staff-seat-limit'
 import { requireSettingsSection } from '@/lib/settings/load-settings-context'
 import { createClient } from '@/lib/supabase/server'
 import type { StaffRecord } from '@/lib/staff-service'
@@ -24,14 +25,24 @@ export default async function TeamSettingsPage({ params }: { params: Promise<{ t
   const { tenant: tenantSlug } = await params
   const { tenant } = await requireSettingsSection(tenantSlug, 'team')
 
-  const [staffResult, outlets] = await Promise.all([listStaffAction(tenant.id), loadOutlets(tenant.id)])
+  const [staffResult, outlets, seatLimit] = await Promise.all([
+    listStaffAction(tenant.id),
+    loadOutlets(tenant.id),
+    loadStaffSeatLimit(tenant.id),
+  ])
   const staff: StaffRecord[] = staffResult.success ? staffResult.data : []
 
   return (
     <SettingsSection tenantSlug={tenantSlug} section="team">
       {/* The owner, or a branch admin for its own branch. Outlets are empty for
           every single-location store, which renders the card without branches. */}
-      <StaffManagementCard tenantId={tenant.id} tenantSlug={tenantSlug} staff={staff} outlets={outlets} />
+      <StaffManagementCard
+        tenantId={tenant.id}
+        tenantSlug={tenantSlug}
+        staff={staff}
+        outlets={outlets}
+        maxStaffPerBranch={seatLimit}
+      />
     </SettingsSection>
   )
 }

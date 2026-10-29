@@ -176,8 +176,6 @@ export const STAFF_PERMISSION_LABELS: Record<
   },
 }
 
-export const MAX_STAFF_PER_TENANT = 3
-
 /**
  * Grants a broader grant already contains: key -> the grant that includes it.
  *
@@ -292,11 +290,6 @@ export function hasAnyPermission(user: PermissionHolder, keys: readonly StaffPer
 /** Only the tenant owner (or a superadmin) may manage staff accounts. */
 export function canManageStaff(user: PermissionHolder): boolean {
   return user.role === 'superadmin' || user.is_owner === true
-}
-
-/** Whether another staff member can be added given the current staff count. */
-export function canAddStaff(currentStaffCount: number): boolean {
-  return currentStaffCount < MAX_STAFF_PER_TENANT
 }
 
 /**

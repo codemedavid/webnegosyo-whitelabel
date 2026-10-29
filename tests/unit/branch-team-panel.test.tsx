@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { BranchTeamPanel } from '@/components/admin/branch-team-panel'
 import { createStaffAction, updateStaffBranchAction } from '@/app/actions/staff'
-import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
+import { DEFAULT_MAX_STAFF_PER_BRANCH } from '@/lib/billing/plan'
 import type { StaffRecord } from '@/lib/staff-service'
 
 /**
@@ -97,7 +97,7 @@ describe('BranchTeamPanel', () => {
       renderPanel({ members: [makeStaff()] })
 
       expect(screen.getByTestId('branch-team-seats')).toHaveTextContent(
-        `1 of ${MAX_STAFF_PER_TENANT}`
+        `1 of ${DEFAULT_MAX_STAFF_PER_BRANCH}`
       )
     })
 
@@ -108,12 +108,12 @@ describe('BranchTeamPanel', () => {
       })
 
       expect(screen.getByTestId('branch-team-seats')).toHaveTextContent(
-        `1 of ${MAX_STAFF_PER_TENANT}`
+        `1 of ${DEFAULT_MAX_STAFF_PER_BRANCH}`
       )
     })
 
     it('stops the owner adding past the cap', () => {
-      const full = Array.from({ length: MAX_STAFF_PER_TENANT }, (_, i) =>
+      const full = Array.from({ length: DEFAULT_MAX_STAFF_PER_BRANCH }, (_, i) =>
         makeStaff({ user_id: `u${i}`, email: `u${i}@example.com` })
       )
       renderPanel({ members: full })

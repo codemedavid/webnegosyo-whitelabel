@@ -6,6 +6,7 @@ import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { buildBranchRoster } from '@/lib/outlets/branch-roster'
 import { loadBranchMenuItems, loadBranchMetrics, loadBranchStaff } from '@/lib/outlets/branch-page-data'
+import { loadStaffSeatLimit } from '@/lib/billing/staff-seat-limit'
 import { BranchDetail } from '@/components/admin/branch-detail'
 import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
 
@@ -34,16 +35,17 @@ export default async function AdminBranchPage({
     notFound()
   }
 
-  const [outlets, staff, metricRows, menuItems, categories, menuOverrides] = await Promise.all([
+  const [outlets, staff, metricRows, menuItems, categories, menuOverrides, seatLimit] = await Promise.all([
     createSupabaseOutletRepository().listByTenant(tenant.id),
     loadBranchStaff(tenant.id),
     loadBranchMetrics(tenant),
     loadBranchMenuItems(tenant.id),
     getCachedCategoriesByTenant(tenant.id),
     createSupabaseOutletMenuRepository().listByOutlet(tenant.id, outletId),
+    loadStaffSeatLimit(tenant.id),
   ])
 
-  const roster = buildBranchRoster({ outlets, staff, metricRows })
+  const roster = buildBranchRoster({ outlets, staff, metricRows, maxStaffPerBranch: seatLimit })
   // Found through the roster rather than by a second query: the branch on
   // screen is then the same object the index counted staff and takings for.
   const entry = roster.branches.find((branch) => branch.outlet.id === outletId)
@@ -69,6 +71,7 @@ export default async function AdminBranchPage({
         outlets={outlets.map((outlet) => ({ id: outlet.id, name: outlet.name }))}
         members={entry.staff}
         storeWideMembers={roster.storeWideStaff}
+        maxStaffPerBranch={seatLimit}
         metrics={entry.metrics}
         hasMetrics={roster.hasMetrics}
         menuItems={menuItems}
