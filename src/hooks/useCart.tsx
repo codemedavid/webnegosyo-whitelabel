@@ -14,6 +14,7 @@ import {
   MAX_CART_ITEM_QUANTITY,
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
+import { repriceCartSelections } from '@/lib/cart-selection-reprice'
 import { fetchFreshCartItemData } from '@/lib/cart-refresh'
 import { shouldRefreshCartOnPath } from '@/lib/cart-refresh-scope'
 import { readOutletSelection } from '@/lib/outlets/outlet-selection'
@@ -390,14 +391,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
             image_url: fresh.image_url,
           }
 
+          // Options and add-ons too: the server bills today's prices for them.
+          const repriced = repriceCartSelections(item, fresh.modifiers)
           const newSubtotal = calculateCartItemSubtotal(
             getEffectiveItemPrice(updatedMenuItem),
-            item.selected_variations || item.selected_variation,
-            item.selected_addons,
+            repriced.selected_variations || repriced.selected_variation,
+            repriced.selected_addons,
             item.quantity
           )
 
           if (
+            repriced !== item ||
             updatedMenuItem.name !== item.menu_item.name ||
             updatedMenuItem.price !== item.menu_item.price ||
             updatedMenuItem.discounted_price !== item.menu_item.discounted_price ||
@@ -405,7 +409,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             newSubtotal !== item.subtotal
           ) {
             hasChanges = true
-            return { ...item, menu_item: updatedMenuItem, subtotal: newSubtotal }
+            return { ...repriced, menu_item: updatedMenuItem, subtotal: newSubtotal }
           }
 
           return item

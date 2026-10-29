@@ -9,7 +9,7 @@
  */
 
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
-import { addonLabel } from '@/lib/addon-quantity'
+import { addonLabel, addonPriceList } from '@/lib/addon-quantity'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -149,7 +149,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
                         {item.selected_addons.length > 0 && (
                           <p className="text-sm mb-1" style={{ color: palette.muted }}>
-                            <span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}
+                            <span className="font-medium">Add-ons:</span> {addonPriceList(item.selected_addons, formatPrice)}
                           </p>
                         )}
 

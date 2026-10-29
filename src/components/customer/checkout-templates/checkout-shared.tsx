@@ -13,7 +13,7 @@
  */
 
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
-import { addonLabel } from '@/lib/addon-quantity'
+import { addonPriceList } from '@/lib/addon-quantity'
 import { ArrowLeft, QrCode, Copy, CheckCircle2, ExternalLink, Package, CalendarClock, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -213,7 +213,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                       <span className="text-xs text-[color:var(--co-muted)]"> x{item.quantity}</span>
                       {item.selected_addons.length > 0 && (
                         <p className="text-xs text-[color:var(--co-muted)] mt-0.5">
-                          Add-ons: {item.selected_addons.map(addonLabel).join(', ')}
+                          Add-ons: {addonPriceList(item.selected_addons, formatPrice)}
                         </p>
                       )}
                       {item.special_instructions && (

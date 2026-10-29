@@ -9,6 +9,8 @@ import {
 } from '@/lib/receipt-layout'
 import { receiptSegmentsToHtml } from '@/lib/receipt-markup'
 import type { OrderWithItems } from '@/lib/orders-service'
+import { addonPriceLabel } from '@/lib/addon-quantity'
+import { describeOrderItem } from '@/lib/order-item-display'
 
 /**
  * Web-admin receipt rendering: maps the admin's order shape into the shared
@@ -32,21 +34,42 @@ export function mapSupabaseOrderToReceipt(order: OrderWithItems): ReceiptOrder {
     serviceCharge: order.service_charge_amount ?? undefined,
     paymentMethod: order.payment_method_name ?? undefined,
     customerData: order.customer_data,
-    items: (order.order_items ?? []).map((item) => ({
-      menuItemName: item.menu_item_name,
-      quantity: item.quantity,
-      subtotal: item.subtotal,
-      ...(item.variation ? { variation: item.variation } : {}),
-      // Admin rows store addon names only; the engine prints names, so a zero
-      // price placeholder is enough.
-      ...(item.addons && item.addons.length > 0
-        ? { addons: item.addons.map((name) => ({ name, price: 0 })) }
-        : {}),
-      ...(item.special_instructions
-        ? { specialInstructions: item.special_instructions }
-        : {}),
-    })),
+    items: (order.order_items ?? []).map((item) => {
+      // POS lines keep sizes and add-ons in variation_selections; web lines keep
+      // labels plus (since 20261029121000) priced add-ons. See describeOrderItem.
+      const view = describeOrderItem(item)
+      const selections = receiptSelections(item.variation_selections)
+      return {
+        menuItemName: item.menu_item_name,
+        quantity: item.quantity,
+        subtotal: Number(item.subtotal),
+        ...(item.variation ? { variation: item.variation } : {}),
+        ...(!item.variation && selections.length > 0 ? { variationSelections: selections } : {}),
+        // The engine prints an add-on's name only (it is shared with the app),
+        // so the price rides in the name: "+ Fried Rice x2 (+P30.00)".
+        ...(view.addons.length > 0
+          ? { addons: view.addons.map((addon) => ({ name: addonPriceLabel(addon, receiptMoney), price: addon.price ?? 0 })) }
+          : {}),
+        ...(item.special_instructions
+          ? { specialInstructions: item.special_instructions }
+          : {}),
+      }
+    }),
   }
+}
+
+/** Receipts spell the peso as "P": thermal code pages have no ₱. */
+function receiptMoney(amount: number): string {
+  return `P${amount.toFixed(2)}`
+}
+
+function receiptSelections(raw: unknown): { typeName: string; optionName: string }[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry) => {
+    const record = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : null
+    if (!record || typeof record.optionName !== 'string' || record.optionName.trim() === '') return []
+    return [{ typeName: typeof record.typeName === 'string' ? record.typeName : '', optionName: record.optionName }]
+  })
 }
 
 /**
