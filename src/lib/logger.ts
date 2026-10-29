@@ -72,6 +72,8 @@ export function isDebugEnabled(key: DebugFlagKey, flags: DebugFlags = readDebugF
 export interface Logger {
   /** Gated tracing. Silent unless the namespace is switched on. */
   debug(message: string, data?: Record<string, unknown>): void
+  /** Never gated: one outcome line for a RARE event (never per-request tracing). */
+  info(message: string, data?: Record<string, unknown>): void
   /** Never gated — always reaches the platform log. */
   error(message: string, data?: unknown): void
 }
@@ -97,6 +99,14 @@ export function createLogger(
         return
       }
       console.log(`${label} ${message}`, data)
+    },
+
+    info(message, data) {
+      if (data === undefined) {
+        console.info(`${label} ${message}`)
+        return
+      }
+      console.info(`${label} ${message}`, data)
     },
 
     error(message, data) {

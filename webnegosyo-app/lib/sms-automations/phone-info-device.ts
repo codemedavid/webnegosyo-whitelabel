@@ -52,6 +52,15 @@ async function batteryUnrestricted(): Promise<boolean | undefined> {
   return gateway ? gateway.isIgnoringBatteryOptimizations() : undefined;
 }
 
+/** This phone's maker and model, best effort (null when expo-device is missing or throws). */
+export function readDeviceMaker(): { manufacturer: string | null; model: string | null } {
+  try {
+    return { manufacturer: device().manufacturer ?? null, model: device().modelName ?? null };
+  } catch {
+    return { manufacturer: null, model: null };
+  }
+}
+
 export async function collectPhoneInfo(): Promise<Record<string, unknown>> {
   const [manufacturer, model, os, sms, bat] = await Promise.all([
     field(() => device().manufacturer),
