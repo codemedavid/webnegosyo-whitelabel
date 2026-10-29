@@ -90,12 +90,30 @@ describe("kitchen screen", () => {
     expect(screen()).toMatch(/printForRole\(\s*\n?\s*"kitchen"/);
   });
 
-  it("asks the server before a bump or recall, and refuses a cancelled order", () => {
+  it("asks the server before a bump, recall or confirm, and refuses a cancelled order", () => {
     // A stale board once wrote a cancelled order back to `ready`: resurrected,
     // its stock restored by the cancel and never spent again.
     const source = screen();
-    expect(source.match(/guardKitchenStatusWrite\(/g)?.length).toBe(2);
-    expect(source.match(/await readFreshStatus\(/g)?.length).toBe(2);
+    expect(source.match(/guardKitchenStatusWrite\(/g)?.length).toBe(3);
+    expect(source.match(/await readFreshStatus\(/g)?.length).toBe(3);
+  });
+
+  it("rings new tickets until confirmed, only while the board is on screen", () => {
+    // The tab never unmounts: without the focus gate a cashier who once opened
+    // Kitchen would hear the kitchen ring on the register.
+    const source = screen();
+    expect(source).toMatch(/trackRinging\(/);
+    expect(source).toMatch(/useKitchenRing\(\{[^}]*enabled: isFocused && !isDemo/);
+    expect(source).toMatch(/<RingStatusBar/);
+  });
+
+  it("confirms through the shared rule and remembers its own taps", () => {
+    // confirmWritePlan keeps Confirm from pulling a ready plate back to
+    // preparing; the local registry keeps this device's banner quiet.
+    const source = screen();
+    expect(source).toMatch(/confirmWritePlan\(previousStatus\)/);
+    expect(source).toMatch(/rememberConfirmedHere\(/);
+    expect(source).toMatch(/onConfirm=\{handleConfirm\}/);
   });
 
   it("blocks the demo session from bumping a real store's orders", () => {
