@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { resolveStaffLimit } from '@/lib/billing/subscription-status'
+import { staffSeatSummary } from '@/lib/billing/staff-seats'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import { StaffRoster } from '@/components/admin/staff/staff-roster'
 import type { StaffOutlet } from '@/components/admin/staff/staff-fields'
@@ -42,7 +43,11 @@ export function StaffManagementCard({
 }: StaffManagementCardProps) {
   const members = staff.filter((member) => !member.is_owner)
   const seatLimit = resolveStaffLimit({ max_staff_per_branch: maxStaffPerBranch })
-  const seatsRemaining = Math.max(0, seatLimit - members.length)
+  const { seatsRemaining, label: seatsLabel } = staffSeatSummary({
+    members,
+    outletIds: outlets.map((outlet) => outlet.id),
+    seatLimit,
+  })
 
   return (
     <Card>
@@ -64,7 +69,7 @@ export function StaffManagementCard({
           addLabel="Add staff member"
           emptyText={`No staff accounts yet. Add up to ${seatLimit} team members.`}
           seatsRemaining={seatsRemaining}
-          seatsLabel={`${members.length} of ${seatLimit} staff`}
+          seatsLabel={seatsLabel}
           seatsTestId="settings-staff-seats"
         />
       </CardContent>

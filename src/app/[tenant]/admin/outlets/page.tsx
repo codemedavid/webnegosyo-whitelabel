@@ -8,6 +8,7 @@ import { BranchDirectory } from '@/components/admin/branch-directory'
 import { StorePeopleCard } from '@/components/admin/store-people-card'
 import { buildBranchRoster } from '@/lib/outlets/branch-roster'
 import { loadBranchMetrics, loadBranchStaff } from '@/lib/outlets/branch-page-data'
+import { loadStaffSeatLimit } from '@/lib/billing/staff-seat-limit'
 
 export default async function AdminOutletsPage({
   params,
@@ -37,17 +38,18 @@ export default async function AdminOutletsPage({
     notFound()
   }
 
-  const [outlets, staff, metricRows] = await Promise.all([
+  const [outlets, staff, metricRows, seatLimit] = await Promise.all([
     createSupabaseOutletRepository().listByTenant(tenant.id),
     loadBranchStaff(tenant.id),
     loadBranchMetrics(tenant),
+    loadStaffSeatLimit(tenant.id),
   ])
 
   // Built twice — here for the People card, and again inside the directory,
   // which owns the outlet list once the merchant starts reordering it. Both
   // read the takings as computed rows: the directory is sent one row per
   // branch, never the order history behind them.
-  const roster = buildBranchRoster({ outlets, staff, metricRows })
+  const roster = buildBranchRoster({ outlets, staff, metricRows, maxStaffPerBranch: seatLimit })
 
   return (
     <div className="space-y-6">
@@ -78,6 +80,7 @@ export default async function AdminOutletsPage({
         outlets={outlets.map((outlet) => ({ id: outlet.id, name: outlet.name }))}
         storeWideMembers={roster.storeWideStaff}
         orphanedMembers={roster.orphanedStaff}
+        maxStaffPerBranch={seatLimit}
       />
     </div>
   )

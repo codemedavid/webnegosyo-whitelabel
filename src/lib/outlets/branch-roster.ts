@@ -17,7 +17,7 @@
  * Nothing here queries or throws.
  */
 
-import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
+import { resolveStaffLimit } from '@/lib/billing/subscription-status'
 import {
   compareBranches,
   type AnalyticsOrderLike,
@@ -98,6 +98,8 @@ interface BuildBranchRosterBase<O extends RosterOutlet> {
   /** In the order the merchant arranged them. */
   outlets: readonly O[]
   staff: readonly RosterStaff[]
+  /** Seats per branch this tenant's plan includes. Absent = the platform default. */
+  maxStaffPerBranch?: number | null
 }
 
 /**
@@ -127,6 +129,7 @@ export function buildBranchRoster<O extends RosterOutlet>(
   input: BuildBranchRosterInput<O>
 ): BranchRoster<O> {
   const { outlets, staff } = input
+  const seatLimit = resolveStaffLimit({ max_staff_per_branch: input.maxStaffPerBranch })
   const comparison = comparisonRowsOf(input)
   const hasMetrics = comparison !== null
 
@@ -164,7 +167,7 @@ export function buildBranchRoster<O extends RosterOutlet>(
       outlet,
       staff: branchStaff,
       staffCount: branchStaff.length,
-      seatsRemaining: Math.max(0, MAX_STAFF_PER_TENANT - branchStaff.length),
+      seatsRemaining: Math.max(0, seatLimit - branchStaff.length),
       metrics: rowByOutlet.get(outlet.id) ?? null,
     }
   })
