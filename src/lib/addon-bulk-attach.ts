@@ -2,8 +2,9 @@
  * Attach reusable library add-ons to many menu items in one call.
  *
  * Attaching is SNAPSHOT-ON-ATTACH (see `addon-library-service`): a
- * `{id, name, price}` copy of the entry is written into `menu_items.addons`, so
- * the cart, checkout and order runtime keep working against plain data with no
+ * `{id, name, price}` copy of the entry is written into the dish (its add-ons
+ * option group when it has groups, else `menu_items.addons`), so the cart,
+ * checkout and order runtime keep working against plain data with no
  * reference to resolve.
  *
  * The dangerous part is that `menu_items.addons` is REPLACED on write, not
@@ -17,12 +18,38 @@
  */
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
-import type { Addon, AddonLibraryEntry } from '@/types/database'
+import type { Addon, AddonLibraryEntry, ModifierGroup } from '@/types/database'
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
+import { addSingleAddons } from '@/lib/addon-groups/place-group'
+import {
+  omitUnchangedOptionStock,
+  serializeGroups,
+  splitGroupsToLegacyColumns,
+} from '@/lib/modifier-groups-form'
 
 interface MenuItemAddonsRow {
   id: string
   addons: Addon[] | null
+  modifier_groups?: ModifierGroup[] | null
+}
+
+const newId = (): string => crypto.randomUUID()
+
+/**
+ * The patch for one item. A dish with option groups is read from
+ * `modifier_groups` first by every storefront, so its add-ons go into its
+ * add-ons group and the legacy columns are mirrored from the result (as the
+ * dish editor saves). A dish without groups keeps the legacy-only merge.
+ */
+function attachPatch(item: MenuItemAddonsRow, entries: readonly AddonLibraryEntry[]): Record<string, unknown> {
+  const groups = Array.isArray(item.modifier_groups) ? item.modifier_groups : []
+  if (groups.length === 0) return { addons: attachEntriesToAddons(item.addons ?? [], entries) }
+
+  const merged = serializeGroups(addSingleAddons(groups, entries, newId).groups)
+  return {
+    ...splitGroupsToLegacyColumns(merged),
+    modifier_groups: omitUnchangedOptionStock(merged, groups),
+  }
 }
 
 export interface AttachAddonsResult {
@@ -72,7 +99,7 @@ export async function attachAddonEntriesToItems(
 
   const { data: itemData, error: itemError } = await ctx.client
     .from('menu_items')
-    .select('id, addons')
+    .select('id, addons, modifier_groups')
     .eq('tenant_id', tenantId)
     .in('id', itemIds as string[])
 
@@ -85,24 +112,27 @@ export async function attachAddonEntriesToItems(
 
   // Merge first, write second: every item's new array is computed before any of
   // them is persisted, so a validation failure cannot leave a half-applied batch.
-  const merged = items.map((item) => ({
-    id: item.id,
-    addons: attachEntriesToAddons(item.addons ?? [], entries),
-  }))
+  const merged = items.map((item) => ({ id: item.id, patch: attachPatch(item, entries) }))
 
   const results = await Promise.all(
     merged.map((m) =>
       ctx.client
         .from('menu_items')
-        .update({ addons: m.addons } as never)
+        .update(m.patch as never)
         .eq('id', m.id)
-        .eq('tenant_id', tenantId),
+        .eq('tenant_id', tenantId)
+        .select('id'),
     ),
   )
 
   const failure = results.find((r) => r?.error)
   if (failure?.error) {
     throw new Error(`Failed to attach add-ons: ${failure.error.message}`)
+  }
+  // RLS refuses an UPDATE with zero rows and no error: count what was written.
+  const written = results.filter((r) => Array.isArray(r?.data) && r.data.length > 0).length
+  if (written < merged.length) {
+    throw new Error(`Add-ons reached ${written} of ${merged.length} dishes; the rest were refused. Check your menu permission.`)
   }
 
   return { itemsUpdated: merged.length, addonsAttached: entries.length }

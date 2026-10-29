@@ -30,6 +30,8 @@ import {
 } from '@/lib/texts/server/campaign-writes'
 import { forgetTextsLive } from '@/lib/texts/server/live'
 import { disconnectPhone, renamePhone, MAX_PHONE_LABEL } from '@/lib/texts/server/phones'
+import { queueTestText } from '@/lib/texts/server/test-text'
+import { testTextInputSchema } from '@/lib/texts/test-text'
 import {
   AUDIENCE_PRESETS, type ActionResult, type AudiencePreview, type CampaignDisplayState, type CampaignReport,
 } from '@/lib/texts/types'
@@ -194,6 +196,15 @@ export async function renamePhoneAction(tenantId: string, deviceId: string, labe
 export async function disconnectPhoneAction(tenantId: string, deviceId: string): Promise<ActionResult<null>> {
   return guarded(tenantId, { schema: idSchema, input: deviceId, ownerOnly: true }, async (db, id, caller, device) =>
     fromOutcome(await disconnectPhone(db, id, caller.userId, device.toLowerCase())))
+}
+
+/**
+ * One test text through the store's own phone. Its progress is polled from
+ * GET /api/admin/texts/test-text (a route: a polling action would hold up Save).
+ */
+export async function sendTestTextAction(tenantId: string, phone: string): Promise<ActionResult<{ id: string }>> {
+  return guarded(tenantId, { schema: testTextInputSchema, input: { phone }, meter: 'write' }, async (db, id, _caller, input) =>
+    fromOutcome(await queueTestText(db, id, input.phone)))
 }
 
 // ─── Automatic texts (the app's POST /api/sms/automations, cookie session) ───

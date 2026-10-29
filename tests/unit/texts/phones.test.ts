@@ -34,7 +34,7 @@ describe('readSenderDevices + toSendingPhone', () => {
     const rows = await readSenderDevices({ rpc } as never, TENANT, NOW)
     expect(rpc).toHaveBeenCalledWith('list_sms_sender_devices', { p_tenant_id: TENANT, p_day_start: '2026-10-13T16:00:00.000Z' })
     expect(toSendingPhone(rows[0], { now: NOW, isQuietNow: false, isLimitReached: false })).toEqual({
-      deviceId: 'dev-1', name: 'Samsung SM-A155F', hasCustomName: false, model: 'SM-A155F', appVersion: '1.0.12',
+      deviceId: 'dev-1', name: 'Samsung SM-A155F', hasCustomName: false, manufacturer: 'samsung', model: 'SM-A155F', appVersion: '1.0.12',
       isAppOld: true, state: 'ready', lastSeenAt: '2026-10-14T01:59:00Z', ageSeconds: 60, isInactive: false,
       connectedAt: '2026-10-03T02:00:00Z', connectedBy: 'Ana', sentToday: 37, failedToday: 1, sendingNow: 2,
       smsPermission: true, isBatteryUnrestricted: false,

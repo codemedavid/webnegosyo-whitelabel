@@ -23,6 +23,7 @@ import {
   type StoreMenuItemRow,
 } from '@/lib/checkout/price-order-lines'
 import type { CheckoutBundle } from './price-bundle-lines'
+import { withCategoryAddons } from '@/lib/category-default-addons'
 
 interface QueryResult {
   data: unknown
@@ -59,6 +60,35 @@ async function readLinkedItems(
   if (error) return { ok: false }
   const rows = (data ?? []) as LinkedModifierItem[]
   return { ok: true, items: new Map(rows.map((row) => [row.id, row])) }
+}
+
+/**
+ * Category default add-ons, by category id. Best-effort: without them the
+ * floor is only lower (the customer's own price still stands), so a failed
+ * read is logged rather than turned into a lost order.
+ */
+async function readCategoryAddons(
+  client: LinePricingClient,
+  tenantId: string,
+  storeItems: readonly StoreMenuItemRow[]
+): Promise<Map<string, unknown[]> | null> {
+  const ids = [...new Set(storeItems.map((item) => item.category_id).filter((id): id is string => Boolean(id)))]
+  if (ids.length === 0) return new Map()
+
+  const { data, error }: QueryResult = await client
+    .from('categories')
+    .select('id, default_addons')
+    .eq('tenant_id', tenantId)
+    .in('id', ids)
+  // Unreadable = unverifiable: a category add-on would otherwise keep the client's price.
+  if (error) {
+    console.warn('[createOrderAction] Category add-ons unreadable', { tenantId })
+    return null
+  }
+  const rows = (data ?? []) as Array<{ id: string; default_addons: unknown }>
+  return new Map(
+    rows.filter((row) => Array.isArray(row.default_addons)).map((row) => [row.id, row.default_addons as unknown[]])
+  )
 }
 
 async function readBranchOverrides(
@@ -133,10 +163,17 @@ export async function loadAndPriceOrderLines<T extends PriceableOrderLine>(
 
   const menu = await readMenuItems(client, tenantId, ids)
   if (menu.error) return { ok: false, refused: false, error: 'Failed to verify item prices' }
-  const rows = (menu.data ?? []) as StoreMenuItemRow[]
+  const dishRows = (menu.data ?? []) as StoreMenuItemRow[]
 
-  const linked = await readLinkedItems(client, tenantId, rows)
-  if (!linked.ok) return { ok: false, refused: false, error: 'Failed to verify add-on prices' }
+  const [linked, categoryAddons] = await Promise.all([
+    readLinkedItems(client, tenantId, dishRows),
+    readCategoryAddons(client, tenantId, dishRows).catch(() => null),
+  ])
+  if (!linked.ok || !categoryAddons) return { ok: false, refused: false, error: 'Failed to verify add-on prices' }
+  // The storefront offers a category's default add-ons on every dish in it.
+  const rows = dishRows.map((row) =>
+    row.category_id ? withCategoryAddons(row, categoryAddons.get(row.category_id)) : row
+  )
 
   const overrides = await overridesRead
   if (!overrides.ok) return { ok: false, refused: false, error: 'Failed to verify branch prices' }

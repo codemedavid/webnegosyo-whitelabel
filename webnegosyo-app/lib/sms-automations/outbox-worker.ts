@@ -48,6 +48,17 @@ interface Deps {
   now(): number;
 }
 
+/** Native SIM codes worth reporting (SmsSenderModule.errorCodeFor + TIMEOUT); anything else is `send_failed`. */
+const NATIVE_SEND_CODES: ReadonlySet<string> = new Set([
+  "NO_SERVICE", "RADIO_OFF", "NULL_PDU", "LIMIT_EXCEEDED", "GENERIC_FAILURE", "TIMEOUT", "NO_SMS_MANAGER", "SEND_FAILED",
+]);
+
+/** The server's error column takes `^[a-z0-9_]{1,40}$`: say WHY the SIM refused, so the owner can fix it. */
+export function sendErrorCode(error: unknown): string {
+  const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
+  return typeof code === "string" && NATIVE_SEND_CODES.has(code) ? code.toLowerCase() : "send_failed";
+}
+
 function isSendable(message: OutboxMessage): boolean {
   return UUID.test(message.messageId) && UUID.test(message.leaseToken)
     && typeof message.phone === "string" && E164.test(message.phone)
@@ -106,8 +117,8 @@ export function createOutboxWorker({ api, transport, journal, canSend }: Deps) {
         await journal.write({ jobId: ref.messageId, leaseToken: ref.leaseToken, outcome: "pending" });
         try {
           await transport.send(claim.message.phone, claim.message.body, canSend);
-        } catch {
-          await report(ref, "failed", "send_failed");
+        } catch (error) {
+          await report(ref, "failed", sendErrorCode(error));
           return { result: "uncertain" };
         }
         await report(ref, "sent");

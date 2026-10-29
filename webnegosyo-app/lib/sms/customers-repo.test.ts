@@ -19,7 +19,7 @@ function nextResult(): { data: unknown; error: unknown } {
 jest.mock("../supabase", () => {
   const makeChain = () => {
     const chain: Record<string, unknown> = {};
-    for (const method of ["select", "update", "eq", "order", "limit", "gte", "in", "maybeSingle"]) {
+    for (const method of ["select", "update", "eq", "neq", "order", "limit", "gte", "in", "maybeSingle"]) {
       chain[method] = (...args: unknown[]) => {
         calls.push({ method, args });
         return chain;
@@ -277,6 +277,8 @@ describe("listRecentlyTextedPhones", () => {
     expect(tables).toEqual(["sms_settings", "sms_sends", "sms_outbox"]);
     const since = calls.filter((c) => c.method === "gte").map((c) => c.args[1]);
     expect(since).toEqual(["2026-10-09T04:00:00.000Z", "2026-10-09T04:00:00.000Z"]);
+    // An owner's test text (web Texts) to a guest's number never counts against that guest.
+    expect(calls.filter((c) => c.method === "neq").map((c) => c.args)).toEqual([["source", "test"]]);
   });
 
   it("uses the 3-day default when the store never saved its rules, and fails loudly", async () => {

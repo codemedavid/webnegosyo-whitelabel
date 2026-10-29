@@ -16,7 +16,7 @@
  */
 
 import { nextSendableAt } from './quiet-hours'
-import { getRecipe } from './recipes'
+import { getRecipe, isRecipeId } from './recipes'
 import { AutomationTemplateError, renderAutomationText } from './template'
 import type {
   AutomationRow, AutomationSettings, Candidate, HistoryRow, OutboxDraft, SkipReason, StoreContext,
@@ -85,6 +85,8 @@ function indexHistory(history: readonly HistoryRow[], now: Date, capDays: number
   const cappedPhones = new Set<string>()
   const capStart = now.getTime() - capDays * DAY_MS
   for (const row of history) {
+    // A row no recipe owns (e.g. an owner's test text) can never cap a guest; never let it crash a plan.
+    if (row.recipe !== 'campaign' && !isRecipeId(row.recipe)) continue
     const family = familyOf(row.recipe)
     if (row.customer_id) occurrences.add(`${family}|${row.customer_id}|${row.occurrence_key}`)
     if (row.customer_id && DELIVERED_OR_PENDING.has(row.status)) {

@@ -3,7 +3,9 @@ import { getCachedTenantBySlug } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
 import { listMenuItemPriceRefs, type AdminMenuListClient } from '@/lib/queries/admin-menu-list'
 import { getAddonLibrary } from '@/lib/addon-library-service'
-import { AddonLibraryManager } from '@/components/admin/addon-library-manager'
+import { getModifierGroupLibrary } from '@/lib/modifier-library-service'
+import { readDishDirectory } from '@/lib/addon-groups/read-dish-directory'
+import { AddonGroupsWorkspace } from '@/components/admin/addon-groups/addon-groups-workspace'
 import type { Tenant } from '@/types/database'
 
 export default async function AdminAddonsPage({
@@ -19,12 +21,14 @@ export default async function AdminAddonsPage({
   }
   const tenant: Tenant = tenantData
 
-  // Names and prices only: the library offers dishes as price sources, so the
-  // menu's variation/add-on JSON is not read for it.
   const supabase = await createClient()
-  const [entries, sourceItems] = await Promise.all([
+  const [groups, singleAddons, sourceItems, dishes] = await Promise.all([
+    getModifierGroupLibrary(tenant.id),
     getAddonLibrary(tenant.id),
+    // Names and prices only: dishes as price sources for an add-on.
     listMenuItemPriceRefs(supabase as unknown as AdminMenuListClient, tenant.id),
+    // Every dish with the groups it already has, for "Insert into dishes".
+    readDishDirectory(supabase, tenant.id),
   ])
 
   return (
@@ -37,17 +41,19 @@ export default async function AdminAddonsPage({
       />
 
       <div>
-        <h1 className="text-3xl font-bold">Add-on Library</h1>
+        <h1 className="text-3xl font-bold">Add-ons</h1>
         <p className="text-muted-foreground">
-          Define add-ons once and attach them to any menu item — no more retyping. An add-on can be
-          a manual entry or sourced from an existing menu item, each with its own cost.
+          Save add-on groups once and insert them into many dishes at a time. Each dish gets its own copy, so you
+          can still change one dish without touching the rest.
         </p>
       </div>
 
-      <AddonLibraryManager
+      <AddonGroupsWorkspace
         tenantId={tenant.id}
         tenantSlug={tenantSlug}
-        initialEntries={entries}
+        initialGroups={groups}
+        singleAddons={singleAddons}
+        dishes={dishes}
         menuItems={sourceItems}
       />
     </div>

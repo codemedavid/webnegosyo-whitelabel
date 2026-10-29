@@ -49,6 +49,9 @@ jest.mock("../lib/loyalty/sms-delivery-api", () => ({
 jest.mock("../lib/sms/android-permissions", () => ({ get androidSmsPermissions() { return mockSmsPermission; } }));
 jest.mock("../lib/loyalty/notification-permission", () => ({ requestGatewayNotificationPermission: async () => true }));
 jest.mock("./loyalty/SmsFallbackCard", () => ({ SmsFallbackCard: () => null }));
+jest.mock("../lib/sms-automations/phone-info-device", () => ({
+  readDeviceMaker: () => ({ manufacturer: "INFINIX MOBILITY LIMITED", model: "Infinix X6840" }),
+}));
 
 // The composite Switch: its host (AndroidSwitch) carries `on`, not `value`.
 const gatewaySwitch = () => screen.UNSAFE_getByType(Switch);
@@ -121,6 +124,17 @@ test("battery restrictions are flagged with a one-tap fix while the gateway is o
   fireEvent.press(screen.getByText("Allow background activity"));
   await flush();
   expect(mockNative.requestIgnoreBatteryOptimizations).toHaveBeenCalled();
+});
+
+test("while the gateway is on, this brand's keep-awake steps are one tap away", async () => {
+  await store().write(mockEnrollment);
+  mockGatewayEnabled = true;
+  render(<LoyaltySmsDeviceCard />);
+  await flush();
+  expect(screen.queryByText(/Auto-start/)).toBeNull();
+  fireEvent.press(screen.getByText("Keep it sending in the background"));
+  expect(screen.getByText(/Infinix, Tecno and itel phones/)).toBeTruthy();
+  expect(screen.getByText(/Auto-start/)).toBeTruthy();
 });
 
 test("removing the phone stops the gateway before revoking it", async () => {

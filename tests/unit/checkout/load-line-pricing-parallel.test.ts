@@ -108,4 +108,21 @@ describe('loadAndPriceOrderLines — independent reads run together', () => {
     // Assert
     await expect(result).resolves.toEqual({ ok: false, refused: false, error: 'Failed to verify branch prices' })
   })
+
+  test('an unreadable category fails closed instead of pricing its default add-ons at the client price', async () => {
+    // Arrange
+    const { client, pending } = deferredClient()
+
+    // Act
+    const result = loadAndPriceOrderLines(client, 'tenant-1', [{ ...plainLine, addon_ids: ['cat-extra'] }], null)
+    await flush()
+    pending.find((read) => read.table === 'menu_items')!.resolve({
+      data: [{ id: 'burger', name: 'Burger', price: 100, is_available: true, category_id: 'mains' }], error: null,
+    })
+    await flush()
+    pending.find((read) => read.table === 'categories')!.resolve({ data: null, error: { message: 'down' } })
+
+    // Assert
+    await expect(result).resolves.toEqual({ ok: false, refused: false, error: 'Failed to verify add-on prices' })
+  })
 })

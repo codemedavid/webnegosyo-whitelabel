@@ -13,6 +13,7 @@ import { useModifierGroups } from '@/hooks/useModifierGroups'
 import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { ProductVariations, ProductAddons } from '@/components/customer/product-detail/product-options'
 import { addonLabel } from '@/lib/addon-quantity'
+import { withCategoryAddons } from '@/lib/category-default-addons'
 import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
 import { useProductDetailModals } from '@/hooks/useProductDetailModals'
 import { formatPrice } from '@/lib/cart-utils'
@@ -267,7 +268,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // every other store gets no ceilings and nothing changes).
     const optionCeilings = useOptionStockCeilings(tenant.id, branchPricing.selectedOutletId).get(item.id)
     const soldOutOptions = useMemo(() => soldOutOptionIds(optionCeilings), [optionCeilings])
-    const mg = useModifierGroups({ item, linkedItems: linkedModifierItems, soldOutOptionIds: soldOutOptions })
+    // The category's default add-ons join the dish's groups, as checkout prices them.
+    const groupedItem = useMemo(() => withCategoryAddons(item, category?.default_addons), [item, category?.default_addons])
+    const mg = useModifierGroups({ item: groupedItem, linkedItems: linkedModifierItems, soldOutOptionIds: soldOutOptions })
     const useGroups = modifierGroupsEnabled && mg.active
     const effectiveQuantity = useGroups ? mg.quantity : quantity
     const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice

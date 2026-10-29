@@ -1,7 +1,7 @@
 'use client'
 
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
-import { addonLabel } from '@/lib/addon-quantity'
+import { addonPriceList } from '@/lib/addon-quantity'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import { useCartCommands } from '@/storefront/cart/use-cart-commands'
 import { useCartCheckout } from '@/storefront/cart/use-cart-checkout'
@@ -215,7 +215,7 @@ export function CartDrawer({
                           <div className="text-xs mb-2 space-y-0.5" style={{ color: palette.muted }}>
                             {item.selected_addons.length > 0 && (
                               <p className="line-clamp-2">
-                                <span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}
+                                <span className="font-medium">Add-ons:</span> {addonPriceList(item.selected_addons, formatPrice)}
                               </p>
                             )}
                             {item.special_instructions && (

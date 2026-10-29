@@ -5,6 +5,7 @@ import 'server-only'
 import { randomInt, randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
 import { normalizePhoneE164 } from '@/lib/phone'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLoyaltySmsFallback } from '@/lib/tenant-secrets'
@@ -24,11 +25,21 @@ const phone = z.string().min(1).max(64).regex(/^[+0-9 ()-]+$/)
 const issueSchema = z.object({ tenantId: uuid, entitlementId: uuid, phone }).strict()
 const verifySchema = z.object({ tenantId: uuid, challengeId: uuid, phone, code: z.string().regex(/^[0-9]{6}$/) }).strict()
 
+// One line per code request (tenant, route, outcome): never a phone, code or IP.
+const log = createLogger('[Loyalty SMS]', 'DEBUG_SMS_AUTOMATIONS')
+
 function preparation(request: NextRequest) {
-  if (process.env.LOYALTY_PUBLIC_CLAIMS_ENABLED !== 'true' || process.env.LOYALTY_SMS_DELIVERY_ENABLED !== 'true') return null
+  if (process.env.LOYALTY_PUBLIC_CLAIMS_ENABLED !== 'true' || process.env.LOYALTY_SMS_DELIVERY_ENABLED !== 'true') {
+    log.error('reward codes are off: LOYALTY_PUBLIC_CLAIMS_ENABLED / LOYALTY_SMS_DELIVERY_ENABLED is not "true"')
+    return null
+  }
   const trustedIp = getLoyaltyTrustedIp(request.headers)
   const crypto = loadLoyaltyClaimCrypto()
-  return trustedIp && crypto ? { trustedIp, crypto } : null
+  if (!trustedIp || !crypto) {
+    log.error('reward codes unavailable', { hasTrustedIp: Boolean(trustedIp), hasClaimKeys: Boolean(crypto) })
+    return null
+  }
+  return { trustedIp, crypto }
 }
 
 // Tenant-level and safe to say plainly: it reveals nothing about the phone or
@@ -69,27 +80,36 @@ export async function handlePublicClaimRequest(request: NextRequest): Promise<Ne
     database,
     readFallback: id => getLoyaltySmsFallback(database, id),
   })
+  const outcome = (result: string) => log.info('reward code', { tenantId, sender: routing.sender, outcome: result })
   // Paced like every other well-formed outcome, so it is no cheaper to probe.
-  if (routing.sender === 'none') return paced(start, { error: NO_SENDER, reason: 'no_sender' }, 503)
+  if (routing.sender === 'none') {
+    outcome('no_sender')
+    return paced(start, { error: NO_SENDER, reason: 'no_sender' }, 503)
+  }
   let challengeId: string = randomUUID()
   try {
     const result = await issueLoyaltyChallenge({ ...parsed.data, trustedIp: prepared.trustedIp }, {
       crypto: prepared.crypto, database,
     })
+    if (!result.ok) outcome(result.error)
     if (result.ok) {
       challengeId = result.challengeId
       if (routing.sender === 'semaphore' && routing.semaphore) {
         // Outcome is recorded in SQL; the customer's answer stays the same
         // either way and a failed send is retried by requesting a new code.
-        await dispatchOtpViaSemaphore(
+        const sent = await dispatchOtpViaSemaphore(
           { tenantId, challengeId, storeName: await readLoyaltyStoreName(database, tenantId) },
           { database, crypto: prepared.crypto, semaphore: routing.semaphore, send: sendSemaphoreOtp },
         )
+        outcome(`semaphore_${sent}`)
+      } else {
+        outcome('queued_for_phone')
       }
     }
-  } catch {
+  } catch (error) {
     // Denials, quotas, missing rewards and storage failures share one response.
     // A decoy reference never creates a challenge, profile, or delivery job.
+    log.error('reward code failed', { tenantId, error: error instanceof Error ? error.message : String(error) })
   }
   return paced(start, { accepted: true, challengeId, expiresInSeconds: 300 }, 202)
 }

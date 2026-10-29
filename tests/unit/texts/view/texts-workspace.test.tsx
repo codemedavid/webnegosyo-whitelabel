@@ -30,6 +30,7 @@ const actions = {
   writeCampaignMessagesAction: jest.fn(async () => ({ ok: true, value: { messages: ['Hi'] } })),
   renamePhoneAction: jest.fn(async () => ({ ok: true, value: null })),
   disconnectPhoneAction: jest.fn(async () => ({ ok: true, value: null })),
+  sendTestTextAction: jest.fn(async () => ({ ok: true, value: { id: 't-1' } })),
   automationsAction: jest.fn(async () => ({ ok: true, value: { items: [], nextCursor: null } })),
 }
 
@@ -49,7 +50,7 @@ function sender(): SenderSummary {
     deviceId: '3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d', name: "Juan's Galaxy A15", hasCustomName: true, model: null, appVersion: '1.0.14',
     isAppOld: false, state: 'ready' as const, lastSeenAt: '2026-10-14T06:09:00.000Z', ageSeconds: 60, isInactive: false,
     connectedAt: '2026-10-03T02:00:00.000Z', connectedBy: 'Ana', sentToday: 37, failedToday: 0, sendingNow: 2,
-    smsPermission: null, isBatteryUnrestricted: null,
+    smsPermission: null, isBatteryUnrestricted: null, manufacturer: null,
   }
   return {
     heroState: 'ready', primary: phone, phones: [phone], maxPhones: 5, waiting: 0, sentToday: 37, dailyLimit: 100,

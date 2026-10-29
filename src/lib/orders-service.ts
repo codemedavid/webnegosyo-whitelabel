@@ -36,6 +36,7 @@ import {
   isDuplicateClientOrderId,
 } from '@/lib/order-parity'
 import type { OrderDiscountPayload } from '@/lib/order-discount'
+import type { OrderLineAddonDetail } from '@/lib/order-line-modifier-pricing'
 
 export interface OrderWithItems extends Order {
   order_items: Array<{
@@ -47,6 +48,10 @@ export interface OrderWithItems extends Order {
     price: number
     subtotal: number
     special_instructions: string | null
+    /** Per add-on {name, price, quantity}; NULL before 20261029121000. Read via `describeOrderItem`. */
+    addon_details?: unknown
+    /** POS register lines keep their sizes and add-ons here instead. */
+    variation_selections?: unknown
   }>
 }
 
@@ -533,6 +538,8 @@ export async function createOrder(
     bundleId?: string
     bundleName?: string
     slotName?: string
+    /** Server-priced breakdown from `priceOrderLines`; absent on lines without add-ons. */
+    addon_details?: OrderLineAddonDetail[]
   }>,
   customerInfo?: {
     name?: string
@@ -793,6 +800,8 @@ export async function createOrder(
     menu_item_name: item.menu_item_name,
     variation: item.variation,
     addons: item.addons,
+    // Lets every order view print what each add-on cost (20261029121000).
+    ...(item.addon_details ? { addon_details: item.addon_details } : {}),
     quantity: item.quantity,
     price: item.price,
     subtotal: item.subtotal,

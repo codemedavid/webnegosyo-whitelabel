@@ -53,6 +53,10 @@ export function KitchenScene({ phase, tried, onTried }: SceneProps) {
               <TicketCard
                 ticket={ticket}
                 isNew={false}
+                // The tour teaches the bump; its ticket is already confirmed.
+                kitchenStatus="confirmed"
+                rangAtMs={null}
+                onConfirm={() => {}}
                 onBump={bump}
                 onPrint={() => {}}
                 canPrint

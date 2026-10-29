@@ -16,6 +16,7 @@ import {
   type LinkedModifierItem,
   type ModifierCatalogSource,
   type ModifierSelectionLine,
+  type OrderLineAddonDetail,
 } from '@/lib/order-line-modifier-pricing'
 import {
   findOutletMenuOverride,
@@ -42,6 +43,8 @@ export interface PriceableOrderLine extends ModifierSelectionLine {
   bundleCartId?: string
   bundleSlotId?: string
   bundleQuantity?: number
+  /** Set by the server from the dish's JSON; any value the browser sent is replaced. */
+  addon_details?: OrderLineAddonDetail[]
 }
 
 export interface PriceOrderLinesContext {
@@ -80,7 +83,7 @@ export function priceOrderLines<T extends PriceableOrderLine>(
     const storeItem = context.storeItems.get(line.menu_item_id)
     const modifiers = storeItem
       ? priceLineModifiers(line, storeItem, context.linkedItems)
-      : { delta: 0, unknownIds: [], unpricedLabels: [] }
+      : { delta: 0, addons: [], unknownIds: [], unpricedLabels: [] }
 
     const result = resolveOrderLinePrice(
       line,
@@ -93,7 +96,16 @@ export function priceOrderLines<T extends PriceableOrderLine>(
     reportSelectionGaps(line, modifiers.unknownIds, modifiers.unpricedLabels)
 
     const menuName = typeof storeItem?.name === 'string' && storeItem.name.trim() !== '' ? storeItem.name : line.menu_item_name
-    priced.push({ ...line, menu_item_name: menuName, price: result.price, subtotal: result.subtotal })
+    // The browser never supplies the breakdown: it is rebuilt here or dropped.
+    const { addon_details: _untrusted, ...rest } = line
+    void _untrusted
+    priced.push({
+      ...rest,
+      menu_item_name: menuName,
+      price: result.price,
+      subtotal: result.subtotal,
+      ...(modifiers.addons.length > 0 ? { addon_details: modifiers.addons } : {}),
+    } as T)
   }
 
   const bundleResult = priceBundleOrderLines(lines.filter(line => line.isBundleItem), context)

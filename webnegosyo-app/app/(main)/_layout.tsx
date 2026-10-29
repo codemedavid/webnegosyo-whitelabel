@@ -11,6 +11,7 @@ import { supabase } from "../../lib/supabase";
 import { signOutThisDevice } from "../../lib/sign-out";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
+import { GlobalKitchenConfirmAlerts } from "../../components/GlobalKitchenConfirmAlerts";
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
 import { PrinterWarmUp } from "../../components/PrinterWarmUp";
 import { OfflineSalesSync } from "../../components/OfflineSalesSync";
@@ -296,6 +297,8 @@ export default function MainLayout() {
       </Tabs>
       {/* The floating Owl assistant — only for stores with it switched on. */}
       <OwlLauncher bottomOffset={tabBarHeight} />
+      {/* "Kitchen confirmed #07" for the counter — after the tabs so it sits on top. */}
+      {canSeeOrders && <GlobalKitchenConfirmAlerts />}
     </>
   );
 }

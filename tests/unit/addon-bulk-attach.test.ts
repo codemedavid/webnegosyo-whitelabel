@@ -17,11 +17,12 @@ import { attachAddonEntriesToItems } from '@/lib/addon-bulk-attach'
 interface FakeItem {
   id: string
   addons: Array<{ id: string; name: string; price: number }>
+  modifier_groups?: unknown[]
 }
 
 /** Client answering item reads and recording the addon arrays written back. */
-function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string; price: number }>) {
-  const writes: Array<{ id: string; addons: Array<{ name: string; price: number }> }> = []
+function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string; price: number }>, refusedIds: string[] = []) {
+  const writes: Array<{ id: string; addons: Array<{ name: string; price: number }>; patch: Record<string, unknown> }> = []
 
   // `.in()` is honoured: the writer only merges the entries it asked for, and a
   // double that returned everything would hide a request-vs-response mismatch.
@@ -45,7 +46,7 @@ function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string
     client: {
       from: (table: string) => ({
         select: () => resolving(table === 'menu_items' ? items : entries),
-        update: (patch: { addons: Array<{ name: string; price: number }> }) => {
+        update: (patch: { addons: Array<{ name: string; price: number }> } & Record<string, unknown>) => {
           const b: Record<string, unknown> = {}
           let id = ''
           Object.assign(b, {
@@ -53,9 +54,12 @@ function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string
               if (col === 'id') id = val
               return b
             },
+            select: () => b,
             then: (resolve: (v: unknown) => unknown) => {
-              writes.push({ id, addons: patch.addons })
-              return resolve({ data: null, error: null })
+              // RLS refuses silently: no error, zero rows back.
+              if (refusedIds.includes(id)) return resolve({ data: [], error: null })
+              writes.push({ id, addons: patch.addons, patch })
+              return resolve({ data: [{ id }], error: null })
             },
           })
           return b
@@ -71,6 +75,15 @@ const ENTRIES = [
 ]
 
 describe('attachAddonEntriesToItems', () => {
+  it('fails instead of reporting success when a dish write is refused with zero rows', async () => {
+    const { client } = fakeClient(
+      [{ id: 'i1', addons: [] }, { id: 'i2', addons: [] }], ENTRIES, ['i2'],
+    )
+    await expect(
+      attachAddonEntriesToItems('t1', ['i1', 'i2'], ['e1'], { client: client as never }),
+    ).rejects.toThrow(/1 of 2/)
+  })
+
   it('adds the library add-ons to every listed item', async () => {
     // Arrange
     const { client, writes } = fakeClient(
@@ -141,5 +154,27 @@ describe('attachAddonEntriesToItems', () => {
 
     await expect(attachAddonEntriesToItems('t1', [], ['e1'], { client: client as never })).rejects.toThrow()
     await expect(attachAddonEntriesToItems('t1', ['i1'], [], { client: client as never })).rejects.toThrow()
+  })
+
+  it('adds to the option groups of a dish that has them, not only the legacy column', async () => {
+    // Storefronts read modifier_groups first: an add-on written only to
+    // menu_items.addons on such a dish never appeared to customers.
+    const { client, writes } = fakeClient(
+      [{
+        id: 'i1',
+        addons: [],
+        modifier_groups: [{
+          id: 'g', name: 'Add-ons', selection_mode: 'quantity', display_order: 0, min_select: 0, max_select: null,
+          options: [{ id: 'o', name: 'Whipped Cream', price_modifier: 20, display_order: 0 }],
+        }],
+      }],
+      ENTRIES,
+    )
+
+    await attachAddonEntriesToItems('t1', ['i1'], ['e1'], { client: client as never })
+
+    const groups = writes[0].patch.modifier_groups as Array<{ options: Array<{ name: string; price_modifier: number }> }>
+    expect(groups[0].options.map((o) => [o.name, o.price_modifier])).toEqual([['Whipped Cream', 20], ['Extra Shot', 30]])
+    expect(writes[0].addons.map((a) => a.name)).toEqual(['Whipped Cream', 'Extra Shot'])
   })
 })

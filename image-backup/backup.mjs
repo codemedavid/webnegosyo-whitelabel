@@ -3,6 +3,9 @@
  * Download every canonical image URL from urls.json into image-backup/files/.
  *
  * Resumable: entries already "ok" in manifest.json with a file on disk are skipped.
+ * ImageKit files are fetched with `?tr=orig-true`. A plain delivery URL returns
+ * ImageKit's optimized copy (a 3.3 MB PNG came back as a 367 KB JPEG), so files
+ * saved that way before 2026-10-26 are fetched again as originals.
  * Reuses matching files from cloudinary-backup/files via hardlink when possible.
  * Stops if free disk space drops below 1.5 GB.
  *
@@ -97,7 +100,8 @@ async function download(url, destAbs) {
       if (result.status === 'http_error' && result.httpStatus === 400) {
         // ImageKit refuses originals over 25 MP on the delivery URL. Keep a
         // 4096px-capped copy so the asset is still restorable.
-        const resized = url.includes('?') ? `${url}&tr=w-4096,h-4096,c-at_max` : `${url}?tr=w-4096,h-4096,c-at_max`
+        const base = url.replace(/[?&]tr=orig-true$/, '')
+        const resized = base.includes('?') ? `${base}&tr=w-4096,h-4096,c-at_max` : `${base}?tr=w-4096,h-4096,c-at_max`
         return fetchToFile(resized, destAbs, 'download_resized_under_25mp')
       }
       return result
@@ -109,7 +113,30 @@ async function download(url, destAbs) {
   return { status: 'network_error', error: String(lastErr) }
 }
 
+const ORIGINAL_ORIGINS = new Set(['download_original', 'cloudinary_backup', 'download_resized_under_25mp'])
+
+/** An ImageKit file counts as backed up only once we hold its original bytes. */
+function needsOriginal(entry, m) {
+  return entry.provider === 'imagekit' && !ORIGINAL_ORIGINS.has(m?.origin)
+}
+
+function downloadUrlFor(entry) {
+  return entry.provider === 'imagekit' ? `${entry.canonical}?tr=orig-true` : entry.canonical
+}
+
 async function reuseOrDownload(entry, destAbs, cloudinaryIndex) {
+  if (entry.provider === 'imagekit') {
+    const reuseAbs = cloudinaryIndex.get(entry.filePath)
+    if (!reuseAbs || !(await exists(reuseAbs))) {
+      const result = await download(downloadUrlFor(entry), destAbs)
+      return result.origin === 'download' ? { ...result, origin: 'download_original' } : result
+    }
+    if (await exists(destAbs)) {
+      // Linked from the Cloudinary snapshot by an earlier run: already the original.
+      return { status: 'ok', ...(await sha256File(destAbs)), origin: 'cloudinary_backup', httpStatus: 200, contentType: null }
+    }
+  }
+
   if (await exists(destAbs)) {
     const hash = await sha256File(destAbs)
     return { status: 'ok', ...hash, origin: 'already_on_disk', httpStatus: 200, contentType: null }
@@ -144,7 +171,7 @@ async function main() {
   const pending = urls.filter((entry) => {
     const m = manifest[entry.canonical]
     if (!m) return true
-    if (m.status === 'ok') return false
+    if (m.status === 'ok') return needsOriginal(entry, m)
     return RETRY_FAILED
   })
 

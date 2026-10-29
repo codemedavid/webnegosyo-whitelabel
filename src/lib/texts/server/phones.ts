@@ -64,6 +64,7 @@ export function toSendingPhone(row: SenderDeviceRow, ctx: PhoneContext): Sending
     deviceId: row.device_id,
     name: phoneDisplayName(row),
     hasCustomName: Boolean(row.label?.trim()),
+    manufacturer: row.manufacturer,
     model: row.model,
     appVersion: row.app_version,
     isAppOld: isAppOld(row.app_version),

@@ -14,6 +14,31 @@ export function addonLabel(addon: Pick<Addon, 'name' | 'quantity'>): string {
   return quantity > 1 ? `${addon.name} ×${quantity}` : addon.name
 }
 
+/** An add-on as any view holds it: a cart selection or a stored order line. */
+export interface PricedAddon {
+  name: string
+  price?: number | null
+  quantity?: number
+}
+
+type FormatMoney = (amount: number) => string
+
+/**
+ * "Fried Rice ×2 (+₱30.00)": what the add-on adds to ONE dish, every portion
+ * included. Free, unknown or unreadable prices show the name alone, so a
+ * missing price never reads as "+₱0".
+ */
+export function addonPriceLabel(addon: PricedAddon, formatMoney: FormatMoney): string {
+  const label = addonLabel(addon)
+  const price = addon.price
+  if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return label
+  return `${label} (+${formatMoney(price * addonQuantity(addon))})`
+}
+
+export function addonPriceList(addons: readonly PricedAddon[], formatMoney: FormatMoney): string {
+  return addons.map((addon) => addonPriceLabel(addon, formatMoney)).join(', ')
+}
+
 export function addonCartKey(addon: Pick<Addon, 'id' | 'quantity'>): string {
   const quantity = addonQuantity(addon)
   return quantity === 1 ? addon.id : `${addon.id}:qty=${quantity}`

@@ -1,6 +1,6 @@
 import type { CartItem, MenuItem, Variation, Addon, VariationOption, CartBundleItem } from '@/types/database'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
-import { addonQuantity, addonCartKey, addonLabel } from '@/lib/addon-quantity'
+import { addonQuantity, addonCartKey, addonPriceList } from '@/lib/addon-quantity'
 
 /** Maximum quantity allowed for a single cart line item. */
 export const MAX_CART_ITEM_QUANTITY = 99
@@ -381,7 +381,7 @@ export function generateMessengerMessage(
     lines.push(`${index + 1}. ${item.menu_item.name}${variationText} x${item.quantity}`)
 
     if (item.selected_addons.length > 0) {
-      const addonsText = item.selected_addons.map(addonLabel).join(', ')
+      const addonsText = addonPriceList(item.selected_addons, formatPrice)
       lines.push(`   Add-ons: ${addonsText}`)
     }
 
