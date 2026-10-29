@@ -97,6 +97,13 @@ describe('tenant resolution', () => {
       expect(extractSubdomain('app.example.com', 'example.com')).toBeNull()
     })
 
+    test.each(['media', 'cdn', 'img', 'mail', 'cf-bounce'])(
+      'returns null for the platform service subdomain %s (media host, email bounce)',
+      (label) => {
+        expect(extractSubdomain(`${label}.webnegosyo.com`, 'webnegosyo.com')).toBeNull()
+      }
+    )
+
     test('returns null for root domain without subdomain', () => {
       expect(extractSubdomain('example.com', 'example.com')).toBeNull()
     })

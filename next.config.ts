@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
   images: {
     // Cache optimized images longer to reduce repeated requests
     
-    domains: ['images.unsplash.com', 'res.cloudinary.com', 'ik.imagekit.io', 'via.placeholder.com'],
+    domains: ['images.unsplash.com', 'res.cloudinary.com', 'ik.imagekit.io', 'media.webnegosyo.com', 'via.placeholder.com'],
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
     formats: ['image/webp', 'image/avif'], // Modern image formats
     deviceSizes: [640, 750, 828, 1080, 1200], // Optimize for common device sizes
@@ -43,6 +43,13 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'ik.imagekit.io',
+        port: '',
+        pathname: '/**',
+      },
+      // Cloudflare R2 (our image storage since 2026-10-30).
+      {
+        protocol: 'https',
+        hostname: 'media.webnegosyo.com',
         port: '',
         pathname: '/**',
       },

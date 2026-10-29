@@ -5,6 +5,11 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
+// The picked file is read so R2 can sign its exact size.
+jest.mock("./local-file", () => ({
+  readLocalFile: jest.fn(async () => ({ size: 2048 })),
+}));
+
 // The signed-upload request carries the staff member's own session token.
 jest.mock("./authorized-post", () => ({
   getAccessTokenBounded: jest.fn(async () => "access-token"),
@@ -200,10 +205,15 @@ describe("signed upload request", () => {
     await uploadProductImage(image);
 
     const [authUrl, authInit] = fetchMock.mock.calls[0];
-    expect(authUrl).toBe("https://webnegosyo.com/api/imagekit/auth");
+    expect(authUrl).toBe("https://webnegosyo.com/api/uploads/sign");
     expect(authInit.method).toBe("POST");
     expect(authInit.headers.Authorization).toBe("Bearer access-token");
-    expect(JSON.parse(authInit.body)).toEqual({ folder: "menu-items", fileName: "latte.jpg" });
+    expect(JSON.parse(authInit.body)).toEqual({
+      folder: "menu-items",
+      fileName: "latte.jpg",
+      contentType: "image/jpeg",
+      size: 2048,
+    });
   });
 
   it("uploads to the v2 endpoint with exactly the signed fields plus the token", async () => {
@@ -235,5 +245,71 @@ describe("signed upload request", () => {
 
     await expect(uploadProductImage(image)).rejects.toThrow(/sign in/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("uploads to Cloudflare R2 when the web app signs one", () => {
+  const originalFetch = global.fetch;
+  const image = { uri: "file:///tmp/latte.jpg", fileName: "latte.jpg", mimeType: "image/jpeg" };
+  const R2_SIGNED = {
+    provider: "r2",
+    uploadUrl: "https://acc.r2.cloudflarestorage.com/webnegosyo-media/menu-items/latte-1.jpg?X-Amz-Signature=s",
+    method: "PUT",
+    headers: { "content-type": "image/jpeg", "if-none-match": "*" },
+    url: "https://media.webnegosyo.com/menu-items/latte-1.jpg",
+    fileId: "r2:menu-items/latte-1.jpg",
+    filePath: "menu-items/latte-1.jpg",
+  };
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("PUTs the file bytes with exactly the signed headers and returns the media url", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => R2_SIGNED })
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await uploadProductImage(image);
+
+    const [putUrl, putInit] = fetchMock.mock.calls[1];
+    expect(putUrl).toBe(R2_SIGNED.uploadUrl);
+    expect(putInit.method).toBe("PUT");
+    expect(putInit.headers).toEqual(R2_SIGNED.headers);
+    expect(putInit.body).toEqual({ size: 2048 });
+    expect(result).toEqual({
+      url: "https://media.webnegosyo.com/menu-items/latte-1.jpg",
+      fileId: "r2:menu-items/latte-1.jpg",
+      filePath: "menu-items/latte-1.jpg",
+    });
+  });
+
+  it("throws a friendly error when R2 refuses the upload", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => R2_SIGNED })
+      .mockResolvedValueOnce({ ok: false, status: 403 }) as unknown as typeof fetch;
+
+    await expect(uploadProductImage(image)).rejects.toThrow("Upload failed");
+  });
+
+  it("falls back to the ImageKit-only route on a web deploy that predates the sign route", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => signedAuth("menu-items", "latte.jpg") })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ url: "https://ik.imagekit.io/d/menu-items/latte.jpg", fileId: "f", filePath: "/menu-items/latte.jpg" }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await uploadProductImage(image);
+
+    expect(fetchMock.mock.calls[1][0]).toBe("https://webnegosyo.com/api/imagekit/auth");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ folder: "menu-items", fileName: "latte.jpg" });
+    expect(result.fileId).toBe("f");
   });
 });

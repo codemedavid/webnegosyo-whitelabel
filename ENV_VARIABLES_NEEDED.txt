@@ -182,3 +182,13 @@ ASSISTANT_DAILY_COST_USD=0.5                         # per store per Manila day 
 # Voice input (mic button in the Owl composer, web + merchant app) — Whisper via
 # OpenRouter /audio/transcriptions, on OPENROUTER_API_KEY (already required). Optional:
 ASSISTANT_TRANSCRIBE_MODEL=openai/whisper-large-v3   # or openai/whisper-large-v3-turbo (cheaper, weaker on Tagalog)
+
+# ---- Cloudflare R2 image storage (replacing ImageKit) -------------------------
+# docs/plans/2026-10-30-cloudflare-r2-storage-and-email.md. Images are served from
+# https://media.webnegosyo.com (R2 custom domain) and resized by Cloudflare Image
+# Transformations. Server-only — never NEXT_PUBLIC_.
+R2_ACCOUNT_ID=                                       # Cloudflare account id (S3 endpoint host prefix)
+R2_ACCESS_KEY_ID=                                    # R2 API token (Object Read & Write, bucket webnegosyo-media)
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=webnegosyo-media                           # optional, this is the default
+STORAGE_UPLOAD_PROVIDER=imagekit                     # "r2" sends NEW uploads to R2 (build then requires R2_*); flip back any time

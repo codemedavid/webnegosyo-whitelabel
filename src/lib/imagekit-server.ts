@@ -3,8 +3,20 @@ import { randomUUID } from 'crypto'
 import {
   buildUploadJwt,
   computeUploadSignature,
+  detectImageMime,
   isDeletablePaymentProofPath,
+  sanitizeUploadFolder,
 } from '@/lib/imagekit-signature'
+import { getUploadProvider } from '@/lib/storage/r2-config'
+import {
+  contentTypeForBytes,
+  maxUploadBytesFor,
+  normalizeUploadContentType,
+  r2KeyFromFileId,
+} from '@/lib/storage/object-key'
+
+/** Loaded only on the R2 path, so ImageKit-only callers never load the S3 signer. */
+const loadR2 = () => import('@/lib/storage/r2-server')
 
 /**
  * Server-side ImageKit operations: client-upload auth params and asset deletion.
@@ -68,6 +80,32 @@ interface ServerUploadOptions {
 }
 
 /**
+ * The R2 half of every server upload (`STORAGE_UPLOAD_PROVIDER=r2`). Same
+ * result shape as ImageKit's, with `fileId` = `r2:<key>`, so callers and the
+ * rows they write are unchanged.
+ */
+async function uploadBytesToR2(
+  bytes: Uint8Array,
+  { folder, fileName, mimeType }: ServerUploadOptions & { mimeType?: string },
+): Promise<ImageKitServerUploadResult> {
+  const safeFolder = sanitizeUploadFolder(folder)
+  if (!safeFolder) throw new Error('Invalid upload folder.')
+  if (bytes.byteLength === 0) throw new Error('The image is empty.')
+
+  // The bytes win over a declared image type: a caller can't label other
+  // content as an image.
+  const sniffed = detectImageMime(bytes)
+  const declared = mimeType ? normalizeUploadContentType(mimeType) : null
+  if (declared?.startsWith('image/') && sniffed && declared !== sniffed) {
+    throw new Error('The image type does not match its contents.')
+  }
+  const contentType = sniffed ?? declared ?? contentTypeForBytes(bytes, fileName)
+  if (bytes.byteLength > maxUploadBytesFor(contentType)) throw new Error('The image is too large.')
+  const { newObjectKey, putR2Object } = await loadR2()
+  return putR2Object(newObjectKey(safeFolder, fileName, contentType), bytes, contentType)
+}
+
+/**
  * Server-side upload of a base64 image to ImageKit. Used by flows that already
  * hold the image bytes (e.g. the MCP, whose clients generate image files but have
  * no hosting of their own) rather than a browser that can sign a client upload.
@@ -83,6 +121,12 @@ export async function uploadBase64ToImageKit(
   base64: string,
   { folder, fileName }: ServerUploadOptions,
 ): Promise<ImageKitServerUploadResult> {
+  if (getUploadProvider() === 'r2') {
+    const commaAt = base64.indexOf(',')
+    const raw = base64.startsWith('data:') && commaAt !== -1 ? base64.slice(commaAt + 1) : base64
+    return uploadBytesToR2(new Uint8Array(Buffer.from(raw, 'base64')), { folder, fileName })
+  }
+
   const creds = getCredentials()
   if (!creds) {
     throw new Error('Image upload is not configured.')
@@ -148,6 +192,17 @@ export function getUploadAuthParams(): UploadAuthParams | null {
  * failure (cleanup is best-effort and must never block the user-facing flow).
  */
 export async function deleteImageKitAsset(fileId: string): Promise<boolean> {
+  const r2Key = r2KeyFromFileId(fileId)
+  if (r2Key !== null) {
+    // The only caller purges payment proofs; never delete anything else on R2.
+    if (!isDeletablePaymentProofPath(r2Key)) {
+      console.warn('[r2] refused to delete outside the payment-proof folder', { fileId })
+      return false
+    }
+    const { deleteR2Object } = await loadR2()
+    return deleteR2Object(r2Key)
+  }
+
   const creds = getCredentials()
   if (!creds) {
     console.error('[imagekit] missing credentials; cannot delete', { fileId })
@@ -237,6 +292,8 @@ export async function uploadBufferToImageKit(
   bytes: Uint8Array,
   { folder, fileName, mimeType }: BufferUploadOptions,
 ): Promise<ImageKitServerUploadResult> {
+  if (getUploadProvider() === 'r2') return uploadBytesToR2(bytes, { folder, fileName, mimeType })
+
   const creds = getCredentials()
   if (!creds) {
     throw new Error('Image upload is not configured.')
@@ -296,6 +353,8 @@ export async function deletePaymentProofAsset(
   fileId: string,
   { maxAgeMs }: PaymentProofDeleteOptions = {},
 ): Promise<PaymentProofDeleteOutcome> {
+  const r2Key = typeof fileId === 'string' ? r2KeyFromFileId(fileId) : null
+  if (r2Key !== null) return deletePaymentProofR2(r2Key, maxAgeMs)
   if (typeof fileId !== 'string' || !FILE_ID_PATTERN.test(fileId)) return 'forbidden'
 
   const creds = getCredentials()
@@ -336,4 +395,28 @@ export async function deletePaymentProofAsset(
   }
 
   return (await deleteImageKitAsset(fileId)) ? 'deleted' : 'failed'
+}
+
+/**
+ * R2 twin of `deletePaymentProofAsset`: the key IS where the object lives, so
+ * the folder check is on the key itself; the age check reads its Last-Modified.
+ */
+async function deletePaymentProofR2(key: string, maxAgeMs: number | undefined): Promise<PaymentProofDeleteOutcome> {
+  if (!isDeletablePaymentProofPath(key)) return 'forbidden'
+
+  const { deleteR2Object, headR2Object } = await loadR2()
+  let info: Awaited<ReturnType<typeof headR2Object>>
+  try {
+    info = await headR2Object(key)
+  } catch (error) {
+    console.error('[r2] payment proof lookup failed', { key, error: error instanceof Error ? error.message : String(error) })
+    return 'failed'
+  }
+  if (!info) return 'not_found'
+
+  if (maxAgeMs !== undefined) {
+    if (info.lastModified === null || Date.now() - info.lastModified > maxAgeMs) return 'forbidden'
+  }
+
+  return (await deleteR2Object(key)) ? 'deleted' : 'failed'
 }

@@ -37,6 +37,31 @@ describe("thumbUrl", () => {
     expect(thumbUrl(fetched, 200)).toBe(fetched);
   });
 
+  it("asks Cloudflare for a width-bounded copy of an R2 media image", () => {
+    const media = "https://media.webnegosyo.com/menu-items/latte.jpg";
+    expect(thumbUrl(media, 200)).toBe(
+      "https://media.webnegosyo.com/cdn-cgi/image/width=200,quality=70,format=auto,onerror=redirect/menu-items/latte.jpg",
+    );
+  });
+
+  it("replaces an existing Cloudflare transformation rather than nesting one", () => {
+    const resized =
+      "https://media.webnegosyo.com/cdn-cgi/image/width=1600,format=auto/menu-items/latte.jpg?v=2";
+    expect(thumbUrl(resized, 200)).toBe(
+      "https://media.webnegosyo.com/cdn-cgi/image/width=200,quality=70,format=auto,onerror=redirect/menu-items/latte.jpg?v=2",
+    );
+  });
+
+  it("leaves a media transformation of a remote origin untouched", () => {
+    const remote = "https://media.webnegosyo.com/cdn-cgi/image/width=100/https://evil.example/x.png";
+    expect(thumbUrl(remote, 200)).toBe(remote);
+  });
+
+  it("leaves a media lookalike host untouched", () => {
+    const lookalike = "https://media.webnegosyo.com.evil.example/latte.jpg";
+    expect(thumbUrl(lookalike, 200)).toBe(lookalike);
+  });
+
   it("leaves a URL on an unrecognised host untouched", () => {
     const external = "https://example.com/photos/latte.jpg";
     expect(thumbUrl(external, 200)).toBe(external);
