@@ -77,7 +77,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // remittance and business day, and the camera/photo purpose strings that
   // now name receipts and IDs (a native change, so a new binary). 1.0.14 was
   // in review on 10-15; a bump is safe whether or not it was approved.
-  version: "1.0.15",
+  //
+  // 1.0.16 (2026-10-29): kitchen display rings until a cook taps Confirm and
+  // the cashier is told; SMS phone keep-awake steps and SIM failure reasons.
+  // 1.0.15 went READY_FOR_SALE, closing that train.
+  version: "1.0.16",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the
