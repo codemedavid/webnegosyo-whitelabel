@@ -40,6 +40,8 @@
 /image-backup/restore-result.json
 /image-backup/relink.sql
 /image-backup/run.log
+/image-backup/r2-result.json
+/image-backup/r2-verify-failures.json
 
 # testing
 /coverage

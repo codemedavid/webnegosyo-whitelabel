@@ -993,8 +993,14 @@ export async function updatePaymentStatusAction(
         try {
           const { deleteImageKitAsset, isDeletablePaymentProofPath } = await import('@/lib/imagekit-server')
           const { extractImageKitFilePath } = await import('@/lib/imagekit-utils')
-          const filePath = extractImageKitFilePath(proofUrl)
-          if (filePath && isDeletablePaymentProofPath(filePath) && (await deleteImageKitAsset(fileId))) {
+          const { extractMediaKey } = await import('@/lib/storage/media-url')
+          const { r2KeyFromFileId } = await import('@/lib/storage/object-key')
+          const filePath = extractImageKitFilePath(proofUrl) ?? extractMediaKey(proofUrl)
+          // An R2 id names its own key; it must be THIS proof's key, or a
+          // checkout could point the purge at someone else's screenshot.
+          const r2Key = r2KeyFromFileId(fileId)
+          const idMatchesUrl = r2Key === null || r2Key === filePath
+          if (filePath && idMatchesUrl && isDeletablePaymentProofPath(filePath) && (await deleteImageKitAsset(fileId))) {
             await supabase
               .from('orders')
               // eslint-disable-next-line @typescript-eslint/no-explicit-any

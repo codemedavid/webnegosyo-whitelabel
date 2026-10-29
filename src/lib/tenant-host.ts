@@ -5,8 +5,12 @@
  * then a `<slug>.<PLATFORM_ROOT_DOMAIN>` subdomain, then nothing.
  */
 
-/** Subdomains that are platform surfaces, never tenant slugs. */
-const RESERVED_SUBDOMAINS = new Set(['www', 'superadmin', 'app', 'admin'])
+/**
+ * Subdomains that are platform surfaces, never tenant slugs. `media` is the R2
+ * image host and `cf-bounce` Cloudflare Email Sending's bounce domain; `cdn`,
+ * `img` and `mail` are held for the same services.
+ */
+const RESERVED_SUBDOMAINS = new Set(['www', 'superadmin', 'app', 'admin', 'media', 'cdn', 'img', 'mail', 'cf-bounce'])
 
 const LOCAL_SUFFIX = '.localhost'
 const VERCEL_SUFFIX = '.vercel.app'

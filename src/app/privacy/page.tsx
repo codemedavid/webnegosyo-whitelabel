@@ -116,6 +116,9 @@ export default function PrivacyPolicyPage() {
                 <strong>Expo</strong> &mdash; Push notification delivery
               </li>
               <li>
+                <strong>Cloudflare</strong> &mdash; Image storage and processing, DNS, and email delivery
+              </li>
+              <li>
                 <strong>ImageKit</strong> &mdash; Image storage and processing
               </li>
               <li>

@@ -23,11 +23,26 @@ export interface ImageKitUploadResult {
   deleteToken?: string
 }
 
-interface SignedUpload {
+/** `/api/uploads/sign` answers one of these (no `provider` = ImageKit). */
+interface ImageKitSignedUpload {
+  provider?: 'imagekit'
   token: string
   fields: Record<string, string>
   uploadUrl: string
 }
+
+interface R2SignedUpload {
+  provider: 'r2'
+  uploadUrl: string
+  method: 'PUT'
+  /** Part of the signature: sent verbatim, nothing added. */
+  headers: Record<string, string>
+  url: string
+  fileId: string
+  filePath: string
+}
+
+type SignedUpload = ImageKitSignedUpload | R2SignedUpload
 
 export function isImageKitConfigured(): boolean {
   return Boolean(
@@ -51,12 +66,12 @@ export function readUploadErrorMessage(body: string): string | null {
   }
 }
 
-async function fetchSignedUpload(folder: string, fileName: string): Promise<SignedUpload> {
-  const res = await fetch('/api/imagekit/auth', {
+async function fetchSignedUpload(folder: string, fileName: string, file: File): Promise<SignedUpload> {
+  const res = await fetch('/api/uploads/sign', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folder, fileName }),
+    body: JSON.stringify({ folder, fileName, contentType: file.type, size: file.size }),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -140,7 +155,47 @@ function sendUpload(
 }
 
 /**
- * Upload a single image file to ImageKit (staff only) and return its
+ * PUT the file to a presigned R2 URL with progress. R2 answers with no body,
+ * so the result comes from the signing response.
+ */
+function sendR2Upload(
+  signed: R2SignedUpload,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<ImageKitUploadResult> {
+  return new Promise<ImageKitUploadResult>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+      })
+    }
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ url: signed.url, fileId: signed.fileId, filePath: signed.filePath })
+        return
+      }
+      console.error('[r2] upload rejected', { status: xhr.status, body: xhr.responseText })
+      reject(new Error(`Upload failed (${xhr.status}). Please try again.`))
+    })
+
+    xhr.addEventListener('error', () => {
+      reject(new Error('Upload failed. Please check your connection.'))
+    })
+
+    xhr.open(signed.method, signed.uploadUrl)
+    for (const [name, value] of Object.entries(signed.headers)) {
+      xhr.setRequestHeader(name, value)
+    }
+    xhr.send(file)
+  })
+}
+
+/**
+ * Upload a single image file (staff only) to wherever new uploads go — R2 or
+ * ImageKit, decided by the server — and return its
  * url + fileId + filePath. Throws on auth failure, network error, or a
  * non-2xx upload response.
  */
@@ -152,7 +207,8 @@ export async function uploadImageToImageKit(
     throw new Error('Image upload is not configured.')
   }
 
-  const signed = await fetchSignedUpload(folder, fileName || file.name || 'upload')
+  const signed = await fetchSignedUpload(folder, fileName || file.name || 'upload', file)
+  if (signed.provider === 'r2') return sendR2Upload(signed, file, onProgress)
 
   // v2 refuses any request whose fields differ from the signed payload, so
   // send the server's (sanitised) fields verbatim — nothing added, nothing left out.
