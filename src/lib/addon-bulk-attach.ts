@@ -120,13 +120,19 @@ export async function attachAddonEntriesToItems(
         .from('menu_items')
         .update(m.patch as never)
         .eq('id', m.id)
-        .eq('tenant_id', tenantId),
+        .eq('tenant_id', tenantId)
+        .select('id'),
     ),
   )
 
   const failure = results.find((r) => r?.error)
   if (failure?.error) {
     throw new Error(`Failed to attach add-ons: ${failure.error.message}`)
+  }
+  // RLS refuses an UPDATE with zero rows and no error: count what was written.
+  const written = results.filter((r) => Array.isArray(r?.data) && r.data.length > 0).length
+  if (written < merged.length) {
+    throw new Error(`Add-ons reached ${written} of ${merged.length} dishes; the rest were refused. Check your menu permission.`)
   }
 
   return { itemsUpdated: merged.length, addonsAttached: entries.length }

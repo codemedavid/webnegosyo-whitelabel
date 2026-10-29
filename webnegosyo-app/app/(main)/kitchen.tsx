@@ -44,9 +44,11 @@ import {
   kitchenTicketStatus,
   ringingIdsKey,
   trackRinging,
+  withRinging,
+  withoutRinging,
   type RingTracker,
 } from "../../lib/kitchen-confirm";
-import { rememberConfirmedHere } from "../../lib/kitchen-confirm-local";
+import { forgetConfirmedOnThisDevice, rememberConfirmedHere } from "../../lib/kitchen-confirm-local";
 import {
   isPrepTimeSupported,
   normalizePrepMinutes,
@@ -84,12 +86,6 @@ const keyExtractor = (ticket: KitchenTicket) => ticket.order._id;
 
 /** Shown when Confirm finds the order already moved on elsewhere. */
 const ALREADY_CONFIRMED_MESSAGE = "Already confirmed on another display.";
-
-/** A ticket stops ringing the moment it is confirmed, before the next poll. */
-function withoutRinging(tracker: RingTracker, orderId: string): RingTracker {
-  if (!tracker.ringing.has(orderId)) return tracker;
-  return { ...tracker, ringing: new Map([...tracker.ringing].filter(([id]) => id !== orderId)) };
-}
 
 /** How long a refusal notice stays on the board before it clears itself. */
 const NOTICE_DISMISS_MS = 5_000;
@@ -229,14 +225,29 @@ export default function KitchenScreen() {
     [tickets, statusOf],
   );
 
-  /** Marks the order as this device's confirmation: banner skip + ring stop. */
-  const noteConfirmedHere = useCallback((orderId: string) => {
+  // When each ticket first rang, readable from the tap handlers without
+  // re-creating them on every poll.
+  const ringingRef = useRef(ringTracker.ringing);
+  useEffect(() => {
+    ringingRef.current = ringTracker.ringing;
+  }, [ringTracker]);
+
+  /**
+   * Marks the order as this device's confirmation: banner skip + ring stop.
+   * Returns when it first rang, so a failed write can put the ring back.
+   */
+  const noteConfirmedHere = useCallback((orderId: string): number | undefined => {
+    const rangAtMs = ringingRef.current.get(orderId);
     rememberConfirmedHere(orderId);
     setRingTracker((prev) => withoutRinging(prev, orderId));
     setConfirmedHere((prev) => new Set([...prev, orderId]));
+    return rangAtMs;
   }, []);
-  const forgetConfirmedHere = useCallback((orderId: string) => {
+  /** Undoes `noteConfirmedHere`; `rangAtMs` set = the write failed, ring again. */
+  const forgetConfirmedHere = useCallback((orderId: string, rangAtMs?: number) => {
+    forgetConfirmedOnThisDevice(orderId);
     setConfirmedHere((prev) => new Set([...prev].filter((id) => id !== orderId)));
+    if (rangAtMs !== undefined) setRingTracker((prev) => withRinging(prev, orderId, rangAtMs));
   }, []);
 
   const handleBump = useCallback(
@@ -260,9 +271,9 @@ export default function KitchenScreen() {
       const newStatus = bumpTargetStatus(previousStatus ?? "");
       // Bumping an unconfirmed ticket confirms it too; the cashier hears about
       // it from the other devices, not this one.
-      if (previousStatus === AWAITING_KITCHEN_STATUS) rememberConfirmedHere(orderId);
       try {
         const written = await updateStatus({ orderId, status: newStatus }, { previousStatus });
+        if (previousStatus === AWAITING_KITCHEN_STATUS) rememberConfirmedHere(orderId);
         // The one stock rule every status path shares. A change kept on the
         // device runs it on replay instead. Background, never throws.
         if (!isQueuedOrderWrite(written)) {
@@ -284,7 +295,7 @@ export default function KitchenScreen() {
       }
       // The tap answers at once (ring stops, card flips) — the server check
       // below can take seconds, and a cook who hears it still ringing taps again.
-      noteConfirmedHere(orderId);
+      const rangAtMs = noteConfirmedHere(orderId);
       // Same server check as a bump: a cancelled order is never revived, and
       // one already confirmed or bumped elsewhere is left where it is.
       const guard = guardKitchenStatusWrite({
@@ -308,7 +319,7 @@ export default function KitchenScreen() {
           void syncStockForStatusChange({ orderId, newStatus: plan.status, previousStatus });
         }
       } catch {
-        forgetConfirmedHere(orderId);
+        forgetConfirmedHere(orderId, rangAtMs);
         Alert.alert("Error", "Failed to confirm the order. Check your connection and try again.");
       }
     },
@@ -329,7 +340,7 @@ export default function KitchenScreen() {
       const ticket = ticketsByIdRef.current.get(orderId);
       // Committing to a time confirms the ticket (it moves to preparing).
       const isConfirming = ticket?.order.status === AWAITING_KITCHEN_STATUS;
-      if (isConfirming) noteConfirmedHere(orderId);
+      const rangAtMs = isConfirming ? noteConfirmedHere(orderId) : undefined;
       try {
         await setPrepTime({
           orderId,
@@ -340,7 +351,7 @@ export default function KitchenScreen() {
           status: prepTimeTargetStatus(ticket?.order.status ?? ""),
         });
       } catch {
-        if (isConfirming) forgetConfirmedHere(orderId);
+        if (isConfirming) forgetConfirmedHere(orderId, rangAtMs);
         Alert.alert("Error", "Could not save the prep time. Check your connection and try again.");
       }
     },

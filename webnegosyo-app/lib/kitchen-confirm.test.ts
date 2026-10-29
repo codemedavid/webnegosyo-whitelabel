@@ -7,11 +7,14 @@ import {
   kitchenTicketStatus,
   ringingIdsKey,
   shouldShowKitchenConfirmations,
+  withRinging,
+  withoutRinging,
   trackRinging,
   type RingTracker,
 } from "./kitchen-confirm";
 import {
   confirmedOnThisDevice,
+  forgetConfirmedOnThisDevice,
   rememberConfirmedHere,
   resetConfirmedHereForTests,
 } from "./kitchen-confirm-local";
@@ -254,5 +257,38 @@ describe("confirmed-on-this-device registry", () => {
     const before = confirmedOnThisDevice();
     rememberConfirmedHere("b");
     expect(before.has("b")).toBe(false);
+  });
+});
+
+describe("withoutRinging / withRinging — a failed Confirm rings again", () => {
+  const ringing = { seen: new Set(["a", "b"]), ringing: new Map([["a", T0]]) };
+
+  it("stops one ticket and keeps the rest of the tracker", () => {
+    const stopped = withoutRinging(ringing, "a");
+    expect(stopped.ringing.has("a")).toBe(false);
+    expect(stopped.seen).toBe(ringing.seen);
+  });
+
+  it("puts a ticket back with the time it first rang", () => {
+    const restored = withRinging(withoutRinging(ringing, "a"), "a", T0);
+    expect(restored.ringing.get("a")).toBe(T0);
+  });
+
+  it("leaves a ticket that is still ringing alone", () => {
+    expect(withRinging(ringing, "a", T0 + 5)).toBe(ringing);
+  });
+
+  it("never rings a ticket the board no longer shows", () => {
+    expect(withRinging(ringing, "gone", T0).ringing.has("gone")).toBe(false);
+  });
+});
+
+describe("forgetConfirmedOnThisDevice", () => {
+  afterEach(() => resetConfirmedHereForTests());
+
+  it("drops a tap whose write failed, so another display's Confirm is still announced", () => {
+    rememberConfirmedHere("a");
+    forgetConfirmedOnThisDevice("a");
+    expect(confirmedOnThisDevice().has("a")).toBe(false);
   });
 });

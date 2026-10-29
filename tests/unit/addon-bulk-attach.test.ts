@@ -21,7 +21,7 @@ interface FakeItem {
 }
 
 /** Client answering item reads and recording the addon arrays written back. */
-function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string; price: number }>) {
+function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string; price: number }>, refusedIds: string[] = []) {
   const writes: Array<{ id: string; addons: Array<{ name: string; price: number }>; patch: Record<string, unknown> }> = []
 
   // `.in()` is honoured: the writer only merges the entries it asked for, and a
@@ -54,9 +54,12 @@ function fakeClient(items: FakeItem[], entries: Array<{ id: string; name: string
               if (col === 'id') id = val
               return b
             },
+            select: () => b,
             then: (resolve: (v: unknown) => unknown) => {
+              // RLS refuses silently: no error, zero rows back.
+              if (refusedIds.includes(id)) return resolve({ data: [], error: null })
               writes.push({ id, addons: patch.addons, patch })
-              return resolve({ data: null, error: null })
+              return resolve({ data: [{ id }], error: null })
             },
           })
           return b
@@ -72,6 +75,15 @@ const ENTRIES = [
 ]
 
 describe('attachAddonEntriesToItems', () => {
+  it('fails instead of reporting success when a dish write is refused with zero rows', async () => {
+    const { client } = fakeClient(
+      [{ id: 'i1', addons: [] }, { id: 'i2', addons: [] }], ENTRIES, ['i2'],
+    )
+    await expect(
+      attachAddonEntriesToItems('t1', ['i1', 'i2'], ['e1'], { client: client as never }),
+    ).rejects.toThrow(/1 of 2/)
+  })
+
   it('adds the library add-ons to every listed item', async () => {
     // Arrange
     const { client, writes } = fakeClient(

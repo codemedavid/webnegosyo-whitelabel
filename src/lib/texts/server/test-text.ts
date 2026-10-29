@@ -27,6 +27,14 @@ async function hasEnabledPhone(db: SupabaseClient, tenantId: string): Promise<bo
   return (count ?? 0) > 0
 }
 
+/** A number that asked this store to stop gets no text, test or not. */
+async function isSuppressed(db: SupabaseClient, tenantId: string, phone: string): Promise<boolean> {
+  const { count, error } = await db.from('sms_suppressions').select('phone_e164', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId).eq('phone_e164', phone)
+  if (error) throw new Error(`stopped numbers: ${error.message}`)
+  return (count ?? 0) > 0
+}
+
 async function testsToday(db: SupabaseClient, tenantId: string, now: Date): Promise<number> {
   const { count, error } = await db.from('sms_outbox').select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenantId).eq('source', 'test').gte('created_at', manilaDayStart(now).toISOString())
@@ -46,6 +54,9 @@ export async function queueTestText(
 ): Promise<Outcome<{ id: string }>> {
   if (!(await hasEnabledPhone(db, tenantId))) {
     return refuse(409, 'Connect a sending phone first.', 'no_phone')
+  }
+  if (await isSuppressed(db, tenantId, phone)) {
+    return refuse(409, 'That number asked this store to stop texting it.', 'suppressed')
   }
   if ((await testsToday(db, tenantId, now)) >= TEST_TEXT_DAILY_LIMIT) {
     return refuse(429, `That's ${TEST_TEXT_DAILY_LIMIT} test texts today. Try again tomorrow.`, 'test_limit')

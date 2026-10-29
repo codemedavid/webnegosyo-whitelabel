@@ -58,6 +58,21 @@ export interface RingTracker {
 
 export const EMPTY_RING_TRACKER: RingTracker = { seen: null, ringing: new Map() };
 
+/** A ticket stops ringing the moment it is confirmed, before the next poll. */
+export function withoutRinging(tracker: RingTracker, orderId: string): RingTracker {
+  if (!tracker.ringing.has(orderId)) return tracker;
+  return { ...tracker, ringing: new Map([...tracker.ringing].filter(([id]) => id !== orderId)) };
+}
+
+/**
+ * Undoes `withoutRinging` when the Confirm write failed: the ticket rings again
+ * from when it first rang. Only a ticket still on the board can ring.
+ */
+export function withRinging(tracker: RingTracker, orderId: string, rangAtMs: number): RingTracker {
+  if (tracker.ringing.has(orderId) || !tracker.seen?.has(orderId)) return tracker;
+  return { ...tracker, ringing: new Map([...tracker.ringing, [orderId, rangAtMs]]) };
+}
+
 export interface RingTicketLike {
   id: string;
   status: string;

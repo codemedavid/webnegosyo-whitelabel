@@ -203,7 +203,7 @@ export async function disconnectPhoneAction(tenantId: string, deviceId: string):
  * GET /api/admin/texts/test-text (a route: a polling action would hold up Save).
  */
 export async function sendTestTextAction(tenantId: string, phone: string): Promise<ActionResult<{ id: string }>> {
-  return guarded(tenantId, { schema: testTextInputSchema, input: { phone } }, async (db, id, _caller, input) =>
+  return guarded(tenantId, { schema: testTextInputSchema, input: { phone }, meter: 'write' }, async (db, id, _caller, input) =>
     fromOutcome(await queueTestText(db, id, input.phone)))
 }
 

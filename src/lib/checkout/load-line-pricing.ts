@@ -71,7 +71,7 @@ async function readCategoryAddons(
   client: LinePricingClient,
   tenantId: string,
   storeItems: readonly StoreMenuItemRow[]
-): Promise<Map<string, unknown[]>> {
+): Promise<Map<string, unknown[]> | null> {
   const ids = [...new Set(storeItems.map((item) => item.category_id).filter((id): id is string => Boolean(id)))]
   if (ids.length === 0) return new Map()
 
@@ -80,9 +80,10 @@ async function readCategoryAddons(
     .select('id, default_addons')
     .eq('tenant_id', tenantId)
     .in('id', ids)
+  // Unreadable = unverifiable: a category add-on would otherwise keep the client's price.
   if (error) {
-    console.warn('[createOrderAction] Category add-ons unreadable; pricing without them', { tenantId })
-    return new Map()
+    console.warn('[createOrderAction] Category add-ons unreadable', { tenantId })
+    return null
   }
   const rows = (data ?? []) as Array<{ id: string; default_addons: unknown }>
   return new Map(
@@ -166,9 +167,9 @@ export async function loadAndPriceOrderLines<T extends PriceableOrderLine>(
 
   const [linked, categoryAddons] = await Promise.all([
     readLinkedItems(client, tenantId, dishRows),
-    readCategoryAddons(client, tenantId, dishRows).catch(() => new Map<string, unknown[]>()),
+    readCategoryAddons(client, tenantId, dishRows).catch(() => null),
   ])
-  if (!linked.ok) return { ok: false, refused: false, error: 'Failed to verify add-on prices' }
+  if (!linked.ok || !categoryAddons) return { ok: false, refused: false, error: 'Failed to verify add-on prices' }
   // The storefront offers a category's default add-ons on every dish in it.
   const rows = dishRows.map((row) =>
     row.category_id ? withCategoryAddons(row, categoryAddons.get(row.category_id)) : row

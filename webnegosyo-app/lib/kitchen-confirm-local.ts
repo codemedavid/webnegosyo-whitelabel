@@ -12,6 +12,11 @@ export function rememberConfirmedHere(orderId: string): void {
   confirmedHere = [...confirmedHere.filter((id) => id !== orderId), orderId].slice(-CAP);
 }
 
+/** A tap whose write failed or was refused is not this device's confirmation. */
+export function forgetConfirmedOnThisDevice(orderId: string): void {
+  confirmedHere = confirmedHere.filter((id) => id !== orderId);
+}
+
 /** A snapshot — later taps do not change a set already handed out. */
 export function confirmedOnThisDevice(): ReadonlySet<string> {
   return new Set(confirmedHere);
