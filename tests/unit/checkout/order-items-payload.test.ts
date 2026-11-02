@@ -114,6 +114,17 @@ describe('preflight lines', () => {
     ])
   })
 
+  it('asks about every combo dish too, so a combo the kitchen cannot make is caught before "Order placed"', () => {
+    // The combo's dishes are order lines like any other: the guard inside
+    // createOrderAction judges them, so the preflight must as well.
+    const twoCombos = { ...BUNDLE, quantity: 2 } as unknown as CartBundleItem
+
+    expect(toStockPreflightLines([GROUPED_LINE], [twoCombos])).toEqual([
+      { menuItemId: 'm2', quantity: 1, optionIds: ['o1', 'o2'], addonIds: [], modifierOptionIds: ['o1', 'o2'] },
+      { menuItemId: 'm9', quantity: 2, optionIds: [], addonIds: [], modifierOptionIds: [] },
+    ])
+  })
+
   it('asks the presell check with each line’s pickup date', () => {
     expect(toPresellPreflightLines([LEGACY_LINE, GROUPED_LINE])).toEqual([
       { menuItemId: 'm1', quantity: 2, presellDate: '2026-10-10' },

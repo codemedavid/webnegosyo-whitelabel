@@ -51,9 +51,13 @@ import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
 import { computeServiceCharge } from '@/lib/order-service-charge'
 import { applyCheckoutGovernment } from '@/lib/gov-discount-checkout/apply-checkout-government'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
+import { checkOrderRateLimit } from '@/lib/action-rate-limit'
+import { holdSimpleOptionStock } from '@/lib/checkout/simple-option-hold'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
+const ORDER_RATE_LIMIT_MESSAGE =
+  'You’re placing orders very quickly. Please wait a minute, then try again.'
 const OUTSIDE_COUNTRY_PIN_MESSAGE =
   'Your delivery pin is outside the Philippines. Please search for your address again and pick the right spot on the map.'
 
@@ -208,17 +212,25 @@ export async function createOrderAction(
   voucherUnitPicks?: unknown
 ) {
   // Declared OUTSIDE the try so the catch below can reach them. Presell stock
-  // is claimed mid-flight, and a throw after that point used to walk past every
-  // release: the customer was told the order was lost while their allocation
-  // stayed consumed for good. Set once the claim exists, and once an order row
-  // exists to own it.
-  let releasePresellClaim: (() => Promise<void>) | null = null
+  // and simple-option counters are claimed mid-flight, and a throw after that
+  // point used to walk past every release: the customer was told the order was
+  // lost while their allocation stayed consumed for good. Set once a claim
+  // exists, and once an order row exists to own it.
+  let releaseReservedStock: (() => Promise<void>) | null = null
   let orderPersisted = false
 
   try {
     // Basic input sanity checks before hitting the database
     if (!tenantId || typeof tenantId !== 'string') {
       return { success: false, refused: true, error: 'Invalid tenant ID' }
+    }
+
+    // ── Rate limit: orders per store per client address (fails open) ──
+    // Never per store alone — a busy store must not be throttled as a whole —
+    // and generous, since a dine-in floor can share one Wi-Fi address.
+    const rate = await checkOrderRateLimit(tenantId)
+    if (!rate.allowed) {
+      return { success: false, refused: true, error: ORDER_RATE_LIMIT_MESSAGE }
     }
 
     // ── Boundary validation (this is a public server action) ──
@@ -275,18 +287,6 @@ export async function createOrderAction(
       return profile?.onlineClaimsEnabled === true
     })
     if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
-
-    if (tenantConfig.inventory_enabled === true && items.some((item) => item.option_ids?.length || item.addon_ids?.length)) {
-      const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
-      try {
-        await assertSimpleOptionStockAvailable(tenantId, items.map((item) => ({
-          menuItemId: item.menu_item_id, quantity: item.quantity,
-          optionIds: item.option_ids, addonIds: item.addon_ids, addonQuantities: item.addon_quantities,
-        })))
-      } catch (error) {
-        return { success: false, refused: true, error: error instanceof Error ? error.message : 'Could not check add-on stock' }
-      }
-    }
 
     // ── The order type: ONE tenant-scoped read serves every consumer below ──
     // (web availability, advance schedule, minimum, delivery kind, service
@@ -518,6 +518,8 @@ export async function createOrderAction(
     }
     /** Release is idempotent: the paths that already gave the stock back must not do it twice. */
     let claimReleased = false
+    // The simple-option counters, once held below (idempotent too).
+    let releaseOptionHold: () => Promise<void> = async () => {}
 
     // Hand the reserved pre-order stock back before answering. Both helpers do
     // it; they differ only in what the checkout is told afterwards.
@@ -527,6 +529,7 @@ export async function createOrderAction(
     // propagate would replace a refusal they can act on ("outside our delivery
     // area") with a generic lost-order message, and bury the real exception.
     const releaseClaim = async () => {
+      await releaseOptionHold()
       if (!presellClaim || claimReleased) return
       try {
         const { releasePresellForOrder } = await import('@/lib/presell/order-claim')
@@ -540,7 +543,7 @@ export async function createOrderAction(
         })
       }
     }
-    releasePresellClaim = releaseClaim
+    releaseReservedStock = releaseClaim
 
     /**
      * The store saying no on purpose. `error` is written for a diner and names
@@ -564,6 +567,23 @@ export async function createOrderAction(
     ): Promise<{ success: false; error: string }> => {
       await releaseClaim()
       return { success: false, error }
+    }
+
+    // ── Simple-option counters (platform: claimed before the order exists) ──
+    // Under the id the order is then inserted with, so the post-order
+    // depletion finds the claim taken and a cancel finds its movements. Lines
+    // carry the ids their text was charged for (see priceOrderLines).
+    const platformOrderId = resolveOrderBackend(tenantConfig) === 'platform' ? crypto.randomUUID() : null
+    if (tenantConfig.inventory_enabled === true) {
+      const hold = await holdSimpleOptionStock({
+        db: supabaseAdmin,
+        tenantId,
+        orderId: platformOrderId,
+        items,
+        outletId: resolvedOutlet?.id ?? null,
+      })
+      if (!hold.ok) return await refuse(hold.error)
+      releaseOptionHold = hold.release
     }
 
     // ── Delivery fee (authoritative) ──
@@ -882,6 +902,8 @@ export async function createOrderAction(
       {
         clientOrderId: typeof clientOrderId === 'string' ? clientOrderId : null,
         discountPayload: pricing.discountPayload,
+        // The id the simple-option counters were claimed under.
+        orderId: platformOrderId,
       }
     )
     if (result.deduped) {
@@ -892,7 +914,8 @@ export async function createOrderAction(
       // Its presell claim is the one the saved order carries, so the claim THIS
       // retry just took reserved the allocation a second time for an order that
       // already exists. Hand that duplicate back or the shelf shrinks on every
-      // double tap.
+      // double tap. The same goes for the option counters claimed under this
+      // retry's own (never written) order id.
       await releaseClaim()
       return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
@@ -910,8 +933,8 @@ export async function createOrderAction(
     //
     // `releaseClaim` swallows nothing but never throws either, so the real
     // exception below stays the one the customer and the log hear about.
-    if (!orderPersisted && releasePresellClaim) {
-      await releasePresellClaim()
+    if (!orderPersisted && releaseReservedStock) {
+      await releaseReservedStock()
     }
 
     // A throw here means the customer has already been shown "Order Placed!"

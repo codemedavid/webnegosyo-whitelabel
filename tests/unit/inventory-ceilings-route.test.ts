@@ -25,6 +25,11 @@ jest.mock('@/lib/distributed-rate-limit', () => ({
   checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
 }))
 
+const requireBearerStoreCaller = jest.fn()
+jest.mock('@/lib/auth/bearer-caller', () => ({
+  requireBearerStoreCaller: (...a: unknown[]) => requireBearerStoreCaller(...a),
+}))
+
 const TENANT = '0dd96b60-5232-4c79-922b-0bd9022d12ba'
 const BRANCH = '66ea076d-2aa1-45d4-b575-743fcdf3d73a'
 
@@ -119,5 +124,42 @@ describe('GET /api/inventory/ceilings', () => {
     const [key, options] = checkRateLimit.mock.calls[0] as [string, { onRedisFailure?: string }]
     expect(key).toContain(TENANT)
     expect(options.onRedisFailure).toBe('instance')
+  })
+
+  describe('a signed-in register is counted per person, not per address', () => {
+    // A busy shop's diners and its register share one Wi-Fi address; the
+    // register must not run out of allowance because the dining room is busy.
+    const withBearer = (query: string, ip = '203.0.113.7') =>
+      new NextRequest(`http://localhost/api/inventory/ceilings${query}`, {
+        headers: { authorization: 'Bearer token-abc', 'x-real-ip': ip },
+      })
+
+    it('keys the limit on the store member’s user id', async () => {
+      requireBearerStoreCaller.mockResolvedValue({ ok: true, user: { id: 'user-42' } })
+
+      await GET(withBearer(`?tenantId=${TENANT}`))
+
+      expect(requireBearerStoreCaller).toHaveBeenCalledWith(expect.anything(), TENANT, 'view')
+      const [key] = checkRateLimit.mock.calls[0] as [string]
+      expect(key).toContain('user-42')
+      expect(key).toContain(TENANT)
+      expect(key).not.toContain('203.0.113.7')
+    })
+
+    it('falls back to the address when the token is not a member of this store', async () => {
+      requireBearerStoreCaller.mockResolvedValue({ ok: false, response: new Response(null, { status: 403 }) })
+
+      const response = await GET(withBearer(`?tenantId=${TENANT}`))
+
+      expect(response.status).toBe(200)
+      const [key] = checkRateLimit.mock.calls[0] as [string]
+      expect(key).toContain('203.0.113.7')
+    })
+
+    it('never verifies anything for an anonymous diner', async () => {
+      await GET(request(`?tenantId=${TENANT}`))
+
+      expect(requireBearerStoreCaller).not.toHaveBeenCalled()
+    })
   })
 })

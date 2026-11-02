@@ -18,7 +18,10 @@
  * merchant edited the menu, or a forgery) is priced at nothing and reported;
  * its text, if any, is still priced by name. A refusal here would be invisible
  * behind the optimistic checkout screen and cost a real sale, and an unknown id
- * buys nothing that the text pricing does not already charge for.
+ * buys nothing that the text pricing does not already charge for. Picks the
+ * store switched off are REPORTED (`unavailableNames`) for the caller to
+ * refuse, and the ids the text was charged for are reported too
+ * (`textOptionIds`/`textAddonIds`), so inventory spends what the bill says.
  *
  * Pure: no queries, no mutation of its inputs.
  */
@@ -39,6 +42,8 @@ export interface LinkedModifierItem {
   name: string
   price: number
   discounted_price?: number | null
+  /** An unavailable linked dish makes the option unorderable (see modifier-linked-options.ts). */
+  is_available?: boolean | null
 }
 
 /** The selection half of an order line. */
@@ -70,17 +75,32 @@ export interface ModifierPricing {
   unknownIds: string[]
   /** Display text that matched no option on the dish. Priced at nothing. */
   unpricedLabels: string[]
+  /**
+   * Option ids the variation TEXT named and no claimed id accounted for —
+   * charged by name above, so inventory must spend them too.
+   */
+  textOptionIds: string[]
+  /** Add-on ids the add-on TEXT named and no claimed id accounted for. */
+  textAddonIds: string[]
+  /** Portions of those text add-ons, per id; absent means one. */
+  textAddonQuantities: Record<string, number>
+  /** Picks on the line (by id or by text) the store has switched off right now. */
+  unavailableNames: string[]
 }
 
 interface CatalogEntry {
   id: string
   name: string
   price: number
+  /** False when the merchant switched the option off, or its linked dish is unavailable. */
+  isAvailable: boolean
 }
 
 interface TextToken {
   name: string
   quantity: number
+  /** Which half of the line the text came from. */
+  source: 'option' | 'addon'
 }
 
 /** Variation text joins option names with this separator (see useCheckout). */
@@ -122,7 +142,12 @@ function entryFrom(raw: unknown, priceKey: 'price_modifier' | 'price'): CatalogE
   if (!record || typeof record.id !== 'string' || record.id === '') return null
   const price = toPrice(record[priceKey])
   if (price === null) return null
-  return { id: record.id, name: typeof record.name === 'string' ? record.name : '', price }
+  return {
+    id: record.id,
+    name: typeof record.name === 'string' ? record.name : '',
+    price,
+    isAvailable: record.is_available !== false,
+  }
 }
 
 function modifierOptionEntry(
@@ -138,7 +163,12 @@ function modifierOptionEntry(
   const linked = linkedItems.get(linkedId)
   const price = linked ? linkedPrice(linked) : null
   if (!linked || price === null || typeof record.id !== 'string' || record.id === '') return null
-  return { id: record.id, name: linked.name, price }
+  return {
+    id: record.id,
+    name: linked.name,
+    price,
+    isAvailable: record.is_available !== false && linked.is_available !== false,
+  }
 }
 
 /** Every option and add-on the dish carries, in every shape it may be stored in. */
@@ -192,7 +222,7 @@ function variationTokens(variation: string, catalog: readonly CatalogEntry[]): T
     .map((part) => part.trim())
     .filter((part) => part !== '')
 
-  return [...whole, ...split].map((name) => ({ name, quantity: 1 }))
+  return [...whole, ...split].map((name) => ({ name, quantity: 1, source: 'option' as const }))
 }
 
 function addonTokens(labels: readonly string[]): TextToken[] {
@@ -201,8 +231,8 @@ function addonTokens(labels: readonly string[]): TextToken[] {
     .map((label) => {
       const portions = ADDON_PORTION_LABEL.exec(label.trim())
       return portions
-        ? { name: portions[1], quantity: Number(portions[2]) }
-        : { name: label.trim(), quantity: 1 }
+        ? { name: portions[1], quantity: Number(portions[2]), source: 'addon' as const }
+        : { name: label.trim(), quantity: 1, source: 'addon' as const }
     })
 }
 
@@ -285,6 +315,102 @@ function describeAddons(
   ]
 }
 
+interface TextSelection {
+  textOptionIds: string[]
+  textAddonIds: string[]
+  textAddonQuantities: Record<string, number>
+}
+
+/**
+ * The catalog ids behind the text no claimed id accounted for: the very
+ * entries `priceLineModifiers` charged by name, so depletion spends what the
+ * bill says. Variation text yields option ids, add-on text add-on ids (with
+ * portions summed per id).
+ */
+function textSelection(
+  uncovered: readonly TextToken[],
+  byName: ReadonlyMap<string, CatalogEntry>
+): TextSelection {
+  const matched = uncovered.flatMap((token) => {
+    const entry = byName.get(normalizeName(token.name))
+    return entry ? [{ id: entry.id, token }] : []
+  })
+  const addonPortions = matched
+    .filter(({ token }) => token.source === 'addon')
+    .reduce(
+      (portions, { id, token }) => ({ ...portions, [id]: (portions[id] ?? 0) + token.quantity }),
+      {} as Record<string, number>
+    )
+  return {
+    textOptionIds: [...new Set(matched.filter(({ token }) => token.source === 'option').map(({ id }) => id))],
+    textAddonIds: Object.keys(addonPortions),
+    textAddonQuantities: Object.fromEntries(Object.entries(addonPortions).filter(([, portions]) => portions !== 1)),
+  }
+}
+
+/**
+ * Picks on the line that cannot be ordered right now. An id is off when ANY
+ * stored copy of it says so — the unified editor mirrors every option into the
+ * legacy columns under the same id, without the flag, and that mirror must not
+ * switch it back on. Text is off only when every option carrying that name is.
+ */
+function findUnavailableNames(
+  catalog: readonly CatalogEntry[],
+  claims: readonly Claim[],
+  uncovered: readonly TextToken[]
+): string[] {
+  const offIds = new Set(catalog.filter((entry) => !entry.isAvailable).map((entry) => entry.id))
+  if (offIds.size === 0) return []
+  const isNameOrderable = (key: string) =>
+    catalog.some((entry) => normalizeName(entry.name) === key && !offIds.has(entry.id))
+  const isNameOnDish = (key: string) => catalog.some((entry) => normalizeName(entry.name) === key)
+
+  const claimed = claims.filter(({ entry }) => offIds.has(entry.id)).map(({ entry }) => entry.name || entry.id)
+  const named = uncovered
+    .filter((token) => {
+      const key = normalizeName(token.name)
+      return isNameOnDish(key) && !isNameOrderable(key)
+    })
+    .map((token) => token.name)
+  return [...new Set([...claimed, ...named])]
+}
+
+/**
+ * The line with the ids its text was charged for added to its own, so the
+ * stored order (and every stock guard and depletion that reads ids) agrees
+ * with the bill. Pricing the returned line again gives the same delta: the
+ * added ids now cover the text that used to be priced by name. Returns a new
+ * line; the input is never mutated.
+ */
+export function withTextSelectionIds<T extends ModifierSelectionLine>(line: T, pricing: TextSelection): T {
+  if (pricing.textOptionIds.length === 0 && pricing.textAddonIds.length === 0) return line
+  const optionIds = [...new Set([...(line.option_ids ?? []), ...pricing.textOptionIds])]
+  const addonIds = [...new Set([...(line.addon_ids ?? []), ...pricing.textAddonIds])]
+  const quantities = pricing.textAddonIds.reduce(
+    (portions, id) => {
+      const fromText = pricing.textAddonQuantities[id] ?? 1
+      const total = (line.addon_ids ?? []).includes(id)
+        ? addonQuantity({ quantity: line.addon_quantities?.[id] }) + fromText
+        : fromText
+      return total === 1 ? portions : { ...portions, [id]: total }
+    },
+    { ...(line.addon_quantities ?? {}) } as Record<string, number>
+  )
+  return {
+    ...line,
+    option_ids: optionIds,
+    addon_ids: addonIds,
+    ...(Object.keys(quantities).length > 0 ? { addon_quantities: quantities } : {}),
+  }
+}
+
+/** The diner's sentence when a pick on a line is switched off right now. */
+export function unavailablePickMessage(dishName: string, pickNames: readonly string[]): string {
+  const picks = pickNames.join(', ')
+  const verb = pickNames.length === 1 ? 'is' : 'are'
+  return `Sorry — ${picks} for ${dishName} ${verb} not available right now. Please remove ${pickNames.length === 1 ? 'it' : 'them'} from your cart and try again.`
+}
+
 /** Ids of the menu items this dish's linked modifier options point at, so the caller can fetch them. */
 export function collectLinkedModifierItemIds(source: ModifierCatalogSource): string[] {
   const ids = asArray(source.modifier_groups).flatMap((group) =>
@@ -335,5 +461,7 @@ export function priceLineModifiers(
     addons: describeAddons(line, byId, byName),
     unknownIds,
     unpricedLabels,
+    ...textSelection(uncovered, byName),
+    unavailableNames: findUnavailableNames(catalog, claims, uncovered),
   }
 }

@@ -124,6 +124,24 @@ describe('createOrder — keeps the price the action verified', () => {
     await expect(createOrder('tenant-1', [line({ menu_item_id: 'other-tenant-dish' })])).rejects.toThrow(/not found/i)
   })
 
+  test('writes the row under the id the checkout claimed stock with', async () => {
+    const createOrder = await loadCreateOrder()
+    const args = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, null, undefined] as const
+
+    await createOrder('tenant-1', [line()], ...args, { orderId: '11111111-2222-4333-8444-555555555555' })
+
+    expect(insertedOrder().id).toBe('11111111-2222-4333-8444-555555555555')
+  })
+
+  test('leaves the id to the database when none was chosen', async () => {
+    const createOrder = await loadCreateOrder()
+
+    await createOrder('tenant-1', [line()])
+
+    expect(insertedOrder()).not.toHaveProperty('id')
+  })
+
   test('never mutates the caller’s items or customer data', async () => {
     const createOrder = await loadCreateOrder()
     const items = [line({ subtotal: 1, special_instructions: 'x'.repeat(1500) })]

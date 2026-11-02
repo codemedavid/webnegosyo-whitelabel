@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getMenuStockAvailability, type OptionStockCeilings } from '@/lib/inventory/menu-ceilings'
 import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
+import { readBearerToken } from '@/lib/supabase/bearer-session'
 
 /**
  * GET /api/inventory/ceilings?tenantId=…&outletId=…
@@ -28,7 +29,10 @@ import { getClientIP } from '@/lib/rate-limit'
  * a per-store allowance counted in Redis (a cold lambda must not reset it; a
  * Redis outage falls back to the per-instance count, never to no limit). The
  * allowance is far above what a diner's menu (30-second refresh) or a register
- * (one read per change of dishes in the sale) ever needs.
+ * (one read per change of dishes in the sale) ever needs. A busy shop's diners
+ * and its register share one Wi-Fi address, so a register that sends its
+ * signed-in member's Bearer token is counted per PERSON instead; a token that
+ * is not a member of this store is counted by address, like any diner.
  *
  * A failed read is never an error response. A stepper that cannot load its cap
  * falls back to uncapped — exactly how it behaved before this existed — and
@@ -54,8 +58,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   const { tenantId, outletId } = parsed.data
 
-  const ip = getClientIP(request) ?? 'unknown'
-  const rate = await checkRateLimit(`stock-ceilings:${ip}:${tenantId}`, RATE_LIMIT)
+  const rate = await checkRateLimit(await rateLimitKey(request, tenantId), RATE_LIMIT)
   if (!rate.allowed) {
     return NextResponse.json(
       { error: 'Too many requests' },
@@ -78,6 +81,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     console.error('[inventory] Ceilings read failed', tenantId, error)
     return NextResponse.json({ ceilings: {}, optionCeilings: {} }, { headers })
   }
+}
+
+/** Per signed-in store member when the request proves one; per address otherwise. */
+async function rateLimitKey(request: NextRequest, tenantId: string): Promise<string> {
+  if (readBearerToken(request.headers.get('authorization'))) {
+    try {
+      const { requireBearerStoreCaller } = await import('@/lib/auth/bearer-caller')
+      const caller = await requireBearerStoreCaller(request, tenantId, 'view')
+      if (caller.ok) return `stock-ceilings:user:${caller.user.id}:${tenantId}`
+    } catch (error) {
+      // Unverifiable = anonymous: counted by address, never refused for it.
+      console.warn('[inventory] Ceilings bearer check failed', tenantId, error instanceof Error ? error.message : error)
+    }
+  }
+  const ip = getClientIP(request) ?? 'unknown'
+  return `stock-ceilings:${ip}:${tenantId}`
 }
 
 function toJsonOptionCeilings(options: OptionStockCeilings): Record<string, Record<string, number>> {
