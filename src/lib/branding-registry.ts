@@ -543,8 +543,8 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           text('footer_business_name', 'Business name'),
           text('footer_tagline', 'Tagline'),
           text('footer_copyright_text', 'Copyright'),
-          toggle('footer_show_powered_by', 'Show "Powered by WebNegosyo"', true),
-          text('footer_powered_by_text', 'Powered-by text', 'Powered by WebNegosyo'),
+          toggle('footer_show_powered_by', 'Show credit line', true),
+          text('footer_powered_by_text', 'Credit line text', 'e.g. Made with love in Cebu'),
         ],
       },
       {

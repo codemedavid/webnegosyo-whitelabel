@@ -287,28 +287,12 @@ export function FooterView({ config, interactive = true }: FooterViewProps) {
           <span style={mutedStyle}>{config.copyrightText}</span>
           {config.showPoweredBy ? (
             <span style={mutedStyle}>
-              {renderPoweredBy(config.poweredByText, colors.link)}
+              {config.poweredByText}
             </span>
           ) : null}
         </div>
       </div>
     </footer>
-  )
-}
-
-/** Render the powered-by text, emphasizing the word "WebNegosyo" in link color. */
-function renderPoweredBy(text: string, linkColor: string): ReactNode {
-  const brand = 'WebNegosyo'
-  const index = text.indexOf(brand)
-  if (index === -1) return text
-  return (
-    <>
-      {text.slice(0, index)}
-      <span className="font-semibold" style={{ color: linkColor }}>
-        {brand}
-      </span>
-      {text.slice(index + brand.length)}
-    </>
   )
 }
 
