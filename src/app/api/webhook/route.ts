@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyWebhookSignature, sendMessage, sendMenuCard } from '@/lib/facebook-api'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getActivePageByPageId,
@@ -226,7 +225,9 @@ export async function POST(request: NextRequest) {
             console.log(`[Webhook] 🍽️ Admin triggered menu card via echo (keyword: ${hasMenuKeyword}, command: ${hasMenuCommand})`)
 
             try {
-              const supabase = await createClient()
+              // Service role: Facebook calls this webhook with no session, so an
+              // anon read is refused by RLS. Scoped to the ids in the event.
+              const supabase = createAdminClient()
               // entry.id and event.sender.id should both be the page ID in echo events
               const pageId = entry.id
               // In echo messages, recipient.id is the customer's PSID
@@ -323,7 +324,8 @@ export async function POST(request: NextRequest) {
 
             try {
               // Load order from database
-              const supabase = await createClient()
+              // Service role (see above): an anon read of the order is refused by RLS.
+              const supabase = createAdminClient()
 
               // First get the order
               const { data: orderData, error: orderError } = await supabase
@@ -403,6 +405,14 @@ export async function POST(request: NextRequest) {
 
               if (!facebookPage || !facebookPage.page_access_token) {
                 console.error(`[Webhook] No Facebook page connected for tenant: ${tenant.id}`)
+                continue
+              }
+
+              // The order is read with the service role, so only the order's OWN
+              // page may answer it: a ref typed into another store's thread
+              // must not reveal this order.
+              if (facebookPage.page_id !== entry.id) {
+                console.error(`[Webhook] Referral for order ${orderId} arrived on a page that is not the store's`)
                 continue
               }
 
@@ -521,7 +531,8 @@ export async function POST(request: NextRequest) {
               console.log(`[Webhook] 🍽️ Menu keyword detected in message (length: ${messageText.length})`)
 
               try {
-                const supabase = await createClient()
+                // Service role (see above): the webhook has no session.
+                const supabase = createAdminClient()
                 const pageId = entry.id
 
                 // Find tenant by page ID
