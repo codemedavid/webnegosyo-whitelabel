@@ -311,6 +311,25 @@ export async function sendMessage(
   pageAccessToken: string,
   message: string
 ): Promise<boolean> {
+  const first = await postTextMessage(psid, pageAccessToken, message)
+  if (first.ok) return true
+  if (first.errorSubcode !== THREAD_CONTROLLED_BY_ANOTHER_APP) return false
+
+  // Handover protocol: another app (a chatbot, or the Page inbox after a
+  // human reply) holds this conversation. The customer just opened it from
+  // our checkout, so take it back once and resend; never loop.
+  if (!(await takeThreadControl(psid, pageAccessToken))) return false
+  return (await postTextMessage(psid, pageAccessToken, message)).ok
+}
+
+/** Graph error_subcode: "another app is controlling this thread now". */
+const THREAD_CONTROLLED_BY_ANOTHER_APP = 2018300
+
+async function postTextMessage(
+  psid: string,
+  pageAccessToken: string,
+  message: string
+): Promise<{ ok: boolean; errorSubcode?: number }> {
   const response = await fetch(
     `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
     {
@@ -328,11 +347,36 @@ export async function sendMessage(
   if (!response.ok) {
     const error = await response.text()
     console.error(`Failed to send message: ${error}`)
-    return false
+    return { ok: false, errorSubcode: readErrorSubcode(error) }
   }
 
   const data = (await response.json()) as { recipient_id?: string; message_id?: string }
-  return !!data.message_id
+  return { ok: !!data.message_id }
+}
+
+function readErrorSubcode(body: string): number | undefined {
+  try {
+    return (JSON.parse(body) as { error?: { error_subcode?: number } }).error?.error_subcode
+  } catch {
+    return undefined
+  }
+}
+
+async function takeThreadControl(psid: string, pageAccessToken: string): Promise<boolean> {
+  const response = await fetch(
+    `${FACEBOOK_GRAPH_API}/me/take_thread_control?access_token=${pageAccessToken}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient: { id: psid }, metadata: 'webnegosyo_order_summary' }),
+    }
+  )
+
+  if (!response.ok) {
+    console.error(`[Facebook API] take_thread_control refused: ${await response.text()}`)
+    return false
+  }
+  return true
 }
 
 /**
