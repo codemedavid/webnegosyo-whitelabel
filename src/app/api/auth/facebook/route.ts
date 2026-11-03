@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { canManageFacebook } from '@/lib/facebook/management-access'
+import { buildFacebookDialogUrl } from '@/lib/facebook/oauth-dialog'
 import crypto from 'crypto'
 
 /**
@@ -95,20 +96,12 @@ export async function GET(request: NextRequest) {
   // Combine payload and signature: payload.signature
   const state = `${payloadBase64}.${signature}`
 
-  // Required scopes for page management and messaging
-  const scopes = [
-    'pages_show_list', // List user's pages
-    'pages_messaging', // Send/receive messages
-    'pages_manage_metadata', // Manage webhooks
-  ].join(',')
-
-  // Redirect to Facebook OAuth
-  const authUrl = `https://www.facebook.com/v20.0/dialog/oauth?` +
-    `client_id=${appId}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${scopes}` +
-    `&state=${encodeURIComponent(state)}` +
-    `&response_type=code`
+  const authUrl = buildFacebookDialogUrl({
+    appId,
+    redirectUri,
+    state,
+    configId: process.env.FACEBOOK_LOGIN_CONFIG_ID,
+  })
 
   return NextResponse.redirect(authUrl)
 }
