@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Privacy Policy - WebNegosyo",
@@ -13,7 +14,7 @@ export default function PrivacyPolicyPage() {
           Privacy Policy
         </h1>
         <p className="mb-8 text-sm text-gray-500">
-          Last updated: April 4, 2026
+          Last updated: November 4, 2026
         </p>
 
         <div className="space-y-8 text-gray-700 leading-relaxed">
@@ -73,7 +74,106 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              3. How We Use Your Information
+              3. Facebook and Messenger Data
+            </h2>
+            <p>
+              Merchants can connect their Facebook Page to WebNegosyo through
+              Facebook Login so that orders and menu replies are delivered in
+              Messenger. We request only the <code>pages_show_list</code>,{" "}
+              <code>pages_messaging</code> and <code>pages_manage_metadata</code>{" "}
+              permissions. This section explains what we receive through that
+              integration and what we do with it.
+            </p>
+
+            <h3 className="mb-2 mt-4 text-lg font-medium text-gray-800">
+              What We Receive
+            </h3>
+            <ul className="list-disc space-y-2 pl-6">
+              <li>
+                <strong>From merchants:</strong> the name and ID of each Facebook
+                Page you choose to connect, a Page access token for each of
+                those Pages, and your Facebook user access token, which we use
+                only to list the Pages you manage so you can choose one. We do
+                not receive your Facebook password.
+              </li>
+              <li>
+                <strong>From customers who message a connected Page:</strong>{" "}
+                the Page-scoped ID (PSID) that Messenger assigns to you for that
+                Page, the messages and button taps you send to that Page, and the
+                order reference included when you open Messenger from a store&apos;s
+                checkout. We do not receive your Facebook profile, friends list
+                or contact details through Messenger.
+              </li>
+              <li>
+                <strong>Messages a Page sends:</strong> Messenger also tells us
+                when a connected Page sends a message (an &quot;echo&quot;), so
+                that a merchant can send their menu to a customer from their own
+                inbox.
+              </li>
+            </ul>
+
+            <h3 className="mb-2 mt-4 text-lg font-medium text-gray-800">
+              How We Use It
+            </h3>
+            <p>
+              We use this data only to run the Messenger features the merchant
+              turned on: sending the customer&apos;s order summary and status
+              updates, and menu replies, to the merchant&apos;s Messenger
+              conversation with that customer. We store the customer&apos;s PSID
+              with their order and in a Messenger session record for that store
+              so that replies reach the right conversation. We do not use
+              Facebook data for advertising, profiling or any other purpose.
+            </p>
+
+            <h3 className="mb-2 mt-4 text-lg font-medium text-gray-800">
+              How We Store and Protect It
+            </h3>
+            <p>
+              Data travels over encrypted connections (HTTPS/TLS) and is stored
+              in our database, which uses row-level security so each store can
+              reach only its own records. Page and user access tokens are read
+              only by our servers; they are never sent to browsers or shown in
+              the merchant dashboard. We do not keep a history of the messages
+              customers send; message events may appear briefly in our hosting
+              provider&apos;s server logs, which are kept for a limited time for
+              troubleshooting.
+            </p>
+
+            <h3 className="mb-2 mt-4 text-lg font-medium text-gray-800">
+              Sharing
+            </h3>
+            <p>
+              We do not sell or rent Facebook data, and we do not share it with
+              advertisers or data brokers. It is processed only by the service
+              providers that host our platform: Supabase (database hosting) and
+              Vercel (website and server hosting). Messages are
+              delivered through Meta&apos;s Messenger platform, under Meta&apos;s
+              own terms and policies.
+            </p>
+
+            <h3 className="mb-2 mt-4 text-lg font-medium text-gray-800">
+              Retention and Deletion
+            </h3>
+            <p>
+              We keep a Page&apos;s connection, including its access tokens,
+              until the merchant disconnects it. Disconnecting the Page in{" "}
+              <strong>Admin &rarr; Settings &rarr; Messenger</strong> deletes the
+              stored Page and user access tokens and unsubscribes our app from
+              the Page, so we stop receiving its messages. Orders, including the
+              PSID stored with them, are kept as part of the merchant&apos;s
+              business records until the merchant deletes them or we receive a
+              deletion request. To ask us to delete your data, follow the steps
+              on our{" "}
+              <Link href="/data-deletion" className="text-gray-900 underline">
+                data deletion instructions
+              </Link>{" "}
+              page.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-xl font-semibold text-gray-900">
+              4. How We Use Your Information
             </h2>
             <ul className="list-disc space-y-2 pl-6">
               <li>
@@ -94,7 +194,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              4. Third-Party Services
+              5. Third-Party Services
             </h2>
             <p className="mb-3">
               We use the following third-party services that may process your
@@ -104,6 +204,13 @@ export default function PrivacyPolicyPage() {
               <li>
                 <strong>Supabase</strong> &mdash; Authentication and database
                 hosting
+              </li>
+              <li>
+                <strong>Vercel</strong> &mdash; Website and server hosting
+              </li>
+              <li>
+                <strong>Meta (Facebook Messenger)</strong> &mdash; Delivery of
+                order and menu messages for stores that connect a Facebook Page
               </li>
               <li>
                 <strong>PostHog</strong> &mdash; Product analytics
@@ -133,7 +240,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              5. Data Sharing
+              6. Data Sharing
             </h2>
             <p>
               We do not sell, trade, or rent your personal information to third
@@ -145,20 +252,25 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              6. Data Retention
+              7. Data Retention
             </h2>
             <p>
               We retain your account information for as long as your account is
               active. Diagnostic and analytics data is retained according to the
               default retention policies of our third-party service providers.
-              You may request deletion of your account and associated data at any
-              time by contacting us.
+              Facebook and Messenger data is kept as described in Section 3. You
+              may request deletion of your account and associated data at any
+              time by following our{" "}
+              <Link href="/data-deletion" className="text-gray-900 underline">
+                data deletion instructions
+              </Link>{" "}
+              or by contacting us.
             </p>
           </section>
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              7. Data Security
+              8. Data Security
             </h2>
             <p>
               We implement appropriate technical and organizational measures to
@@ -170,7 +282,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              8. Your Rights
+              9. Your Rights
             </h2>
             <p>You have the right to:</p>
             <ul className="list-disc space-y-2 pl-6">
@@ -187,7 +299,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              9. Children&apos;s Privacy
+              10. Children&apos;s Privacy
             </h2>
             <p>
               Our services are not directed to individuals under the age of 13.
@@ -199,7 +311,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              10. Changes to This Policy
+              11. Changes to This Policy
             </h2>
             <p>
               We may update this Privacy Policy from time to time. We will notify
@@ -210,7 +322,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-xl font-semibold text-gray-900">
-              11. Contact Us
+              12. Contact Us
             </h2>
             <p>
               If you have questions about this Privacy Policy or wish to exercise

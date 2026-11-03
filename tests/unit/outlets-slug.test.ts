@@ -106,6 +106,7 @@ describe('validateOutletSlug — reserved words', () => {
     'api',
     'b',
     'download',
+    'data-deletion',
     'support',
     'superadmin',
     'www',

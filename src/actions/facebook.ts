@@ -48,7 +48,28 @@ export async function getFacebookPagesAction(tenantId: string) {
 // takes page or user tokens from the browser.
 
 /**
- * Disconnect a Facebook page from a tenant
+ * Stop Meta delivering this Page's Messenger events to us. Best effort: a
+ * token Facebook already revoked (the owner removed the app in Business
+ * Integrations) cannot unsubscribe, and must not stop us forgetting it.
+ */
+async function unsubscribeBeforeDisconnect(pageId: string, pageAccessToken: string): Promise<void> {
+  try {
+    const { unsubscribePageFromWebhook } = await import('@/lib/facebook-api')
+    const isUnsubscribed = await unsubscribePageFromWebhook(pageId, pageAccessToken)
+    if (!isUnsubscribed) console.error('[Facebook Disconnect] Facebook did not confirm the unsubscribe', { pageId })
+  } catch (error) {
+    console.error('[Facebook Disconnect] Unsubscribe failed; forgetting the token anyway', {
+      pageId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
+ * Disconnect a Facebook page from a tenant: unsubscribe our app from the Page,
+ * then delete the stored page token, the owner's user token, and any
+ * half-finished connection (`temp_*` rows) that still holds one. The privacy
+ * policy and /data-deletion promise exactly this.
  */
 export async function disconnectFacebookPageAction(tenantId: string, pageId: string) {
   try {
@@ -64,6 +85,8 @@ export async function disconnectFacebookPageAction(tenantId: string, pageId: str
       return { success: false, error: 'Page connection not found' }
     }
 
+    await unsubscribeBeforeDisconnect(pageId, page.page_access_token)
+
     // Remove connection
     const { error: deleteError } = await supabase
       .from('facebook_pages')
@@ -73,6 +96,19 @@ export async function disconnectFacebookPageAction(tenantId: string, pageId: str
 
     if (deleteError) {
       return { success: false, error: deleteError.message }
+    }
+
+    // A sign-in that never finished choosing a Page leaves a `temp_*` row
+    // holding the owner's user token. Real Page ids are numeric.
+    const { error: tempDeleteError } = await supabase
+      .from('facebook_pages')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('is_active', false)
+      .like('page_id', 'temp_%')
+
+    if (tempDeleteError) {
+      console.error('[Facebook Disconnect] Could not clear unfinished connections', { tenantId, error: tempDeleteError.message })
     }
 
     // Clear tenant's facebook_page_id if it was this page
