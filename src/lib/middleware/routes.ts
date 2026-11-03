@@ -57,6 +57,8 @@ export function isPublicRoute(rawPathname: string): boolean {
     pathname === '/' ||
     TENANT_PUBLIC_PATH.test(pathname) ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/terms') ||
+    pathname.startsWith('/data-deletion') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/download') ||
     pathname.startsWith('/university') ||

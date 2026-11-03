@@ -107,10 +107,12 @@ describe('J7 — the visitor can always buy or reach policy pages', () => {
     expect(checkoutLinks.length).toBeGreaterThan(0)
   })
 
-  it('links the footer to the privacy and support pages', () => {
+  it('links the footer to the legal and support pages', () => {
     render(<LandingFooter />)
 
     expect(screen.getByRole('link', { name: /privacy/i })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: /terms of service/i })).toHaveAttribute('href', '/terms')
+    expect(screen.getByRole('link', { name: /data deletion/i })).toHaveAttribute('href', '/data-deletion')
     expect(screen.getByRole('link', { name: /support/i })).toHaveAttribute('href', '/support')
   })
 

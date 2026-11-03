@@ -86,6 +86,8 @@ export function SponsorStrip() {
 
 const FOOTER_LINKS = [
   { href: '/privacy', label: 'Privacy Policy' },
+  { href: '/terms', label: 'Terms of Service' },
+  { href: '/data-deletion', label: 'Data Deletion' },
   { href: '/support', label: 'Support' },
   { href: '/university', label: 'University' },
 ] as const
