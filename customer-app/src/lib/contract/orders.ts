@@ -109,3 +109,11 @@ export const appOrderDraftSchema = z.object({
 })
 
 export type AppOrderDraft = z.infer<typeof appOrderDraftSchema>
+
+/** `GET /me/orders?cursor=` — newest first, 20 a page; nextCursor null = no more. */
+export const appOrderPageSchema = z.object({
+  orders: z.array(appOrderSummarySchema).max(20),
+  nextCursor: z.string().min(1).max(200).nullable(),
+})
+
+export type AppOrderPage = z.infer<typeof appOrderPageSchema>
