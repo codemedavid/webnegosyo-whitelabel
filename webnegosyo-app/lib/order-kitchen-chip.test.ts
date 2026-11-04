@@ -5,9 +5,12 @@ describe("kitchenChipLabel", () => {
     expect(kitchenChipLabel("preparing")).toBe("✓ Kitchen confirmed");
   });
 
-  it("keeps a shorter chip once the kitchen is done with it", () => {
+  it("keeps a shorter chip while a ready order waits to go out", () => {
     expect(kitchenChipLabel("ready")).toBe("✓ Kitchen");
-    expect(kitchenChipLabel("delivered")).toBe("✓ Kitchen");
+  });
+
+  it("drops the chip once delivered: a counter sale delivered at once never saw a kitchen", () => {
+    expect(kitchenChipLabel("delivered")).toBeNull();
   });
 
   it("claims nothing before the kitchen, or on a cancelled order", () => {
