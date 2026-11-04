@@ -8,6 +8,7 @@ const STATUS_FOR_CODE: Record<AppErrorCode, number> = {
   forbidden: 403,
   not_found: 404,
   conflict: 409,
+  refused: 422,
   rate_limited: 429,
   unavailable: 503,
   internal: 500,

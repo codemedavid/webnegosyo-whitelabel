@@ -220,15 +220,15 @@ describe('POST /api/app/v1/delivery/quote', () => {
     measureRoadDistanceKm.mockResolvedValue(25)
     const { quote } = await routes()
     const response = await quote(quoteRequest({ outletId: null, ...DESTINATION }))
-    expect(response.status).toBe(409)
-    expect((await response.json()).error).toEqual({ code: 'conflict', message: 'Sorry, this address is outside our delivery area (10 km by road).' })
+    expect(response.status).toBe(422)
+    expect((await response.json()).error).toEqual({ code: 'refused', message: 'Sorry, this address is outside our delivery area (10 km by road).' })
   })
 
   it('refuses a branch that is not the tenant’s', async () => {
     tables = { tenants: [{ ...PRICING, multi_branch_enabled: true }], outlets: [{ id: 'b1', name: 'Cubao', is_active: true, supports_delivery: true }] }
     const { quote } = await routes()
     const response = await quote(quoteRequest({ outletId: 'other-store-branch', ...DESTINATION }))
-    expect(response.status).toBe(409)
+    expect(response.status).toBe(422)
     expect(measureRoadDistanceKm).not.toHaveBeenCalled()
   })
 
@@ -261,7 +261,7 @@ describe('POST /api/app/v1/delivery/quote', () => {
     readAppOrderTypes.mockResolvedValue([{ type: 'pickup' }])
     const { quote } = await routes()
     const response = await quote(quoteRequest({ outletId: null, ...DESTINATION }))
-    expect(response.status).toBe(409)
+    expect(response.status).toBe(422)
     expect(createLalamoveQuotation).not.toHaveBeenCalled()
   })
 })

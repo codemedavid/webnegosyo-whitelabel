@@ -19,7 +19,7 @@ describe('customer app contract copy', () => {
   })
 
   it('pins every contract module the app imports', () => {
-    expect(tsFiles(SOURCE)).toEqual(expect.arrayContaining(['delivery.ts', 'orders.ts', 'auth.ts', 'index.ts']))
+    expect(tsFiles(SOURCE)).toEqual(expect.arrayContaining(['delivery.ts', 'vouchers.ts', 'orders.ts', 'auth.ts', 'index.ts']))
     expect(readFileSync(join(SOURCE, 'index.ts'), 'utf8')).toContain("export * from './delivery'")
   })
 

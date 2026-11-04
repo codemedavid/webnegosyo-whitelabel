@@ -36,7 +36,7 @@ import { encodeAppQuoteToken } from './quote-token'
  * A store-side "no" the customer can act on (another address, branch or order
  * type). The envelope has no dedicated code; 409 is the closest.
  */
-export const QUOTE_REFUSED_CODE: AppErrorCode = 'conflict'
+export const QUOTE_REFUSED_CODE: AppErrorCode = 'refused'
 
 export const NO_DELIVERY_MESSAGE = 'This store is not taking delivery orders right now. Try pickup instead.'
 export const BRANCH_NO_DELIVERY_MESSAGE = 'This branch does not deliver. Choose another branch or pick up instead.'

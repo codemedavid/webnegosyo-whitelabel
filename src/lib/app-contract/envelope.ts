@@ -10,6 +10,8 @@ export const APP_ERROR_CODES = [
   'forbidden',
   'not_found',
   'conflict',
+  /** The store said no on purpose (closed, out of area, below minimum…); the message says what to change. */
+  'refused',
   'rate_limited',
   'unavailable',
   'internal',
