@@ -703,10 +703,10 @@ export default function PosTenderScreen() {
       // receipt under every trigger except "never". A pay-later order prints
       // no receipt yet — its bill prints when it is collected from the order
       // screen, with the cash and change on it.
+      const receipt = tender ? posReceiptOrder(String(orderId), args, tender, createdAt) : undefined;
+      const isReceiptPrinted = receipt !== undefined && shouldPrint("counterSale");
       const receiptPrinted =
-        tender && shouldPrint("counterSale")
-          ? printOrder(posReceiptOrder(String(orderId), args, tender, createdAt))
-          : Promise.resolve(false);
+        receipt && isReceiptPrinted ? printOrder(receipt) : Promise.resolve(false);
       // The kitchen chit too, from the lines this register already holds,
       // instead of waiting for the auto-print watcher to hear about the sale
       // from the server.
@@ -729,6 +729,9 @@ export default function PosTenderScreen() {
           isSavedOffline,
         }),
         canOpenOrder: !isSavedOffline,
+        // The banner's "Reprint" prints this same paper again, marked REPRINT.
+        receipt,
+        isReceiptPrinted,
       });
       reset();
       // The sale (and its upload queue) owns its ID photos now.

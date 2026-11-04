@@ -48,6 +48,8 @@ export function useReceiptReprint() {
 
   return {
     reprint,
+    /** A FIRST print, unmarked (a sale whose receipt never came out). */
+    print: printOrder,
     /** The last tap's outcome, keyed by order id. */
     feedback,
     /** Receipt printers on this device, for the picker. */
