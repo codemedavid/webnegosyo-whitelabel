@@ -224,7 +224,7 @@ export function CartDrawer({
                               </p>
                             )}
                             {item.special_instructions && (
-                              <p className="italic line-clamp-1">
+                              <p className="min-w-0 wrap-anywhere italic line-clamp-1">
                                 <span className="font-medium">Note:</span> {item.special_instructions}
                               </p>
                             )}

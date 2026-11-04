@@ -24,7 +24,7 @@ function OrderItemRow({ item }: { item: StoredOrderItem }) {
 
   return (
     <div className="flex justify-between items-start gap-4 p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
-      <div className="flex-1 space-y-2">
+      <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <h4 className="font-semibold text-base">{item.menu_item_name}</h4>
           <Badge variant="secondary" className="ml-2">
@@ -55,7 +55,7 @@ function OrderItemRow({ item }: { item: StoredOrderItem }) {
         {item.special_instructions && (
           <div className="flex items-start gap-2 text-sm bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded">
             <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-            <div>
+            <div className="min-w-0 wrap-anywhere">
               <span className="font-medium text-yellow-800 dark:text-yellow-400">Note:</span>{' '}
               <span className="text-yellow-700 dark:text-yellow-300 italic">
                 {item.special_instructions}

@@ -70,7 +70,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
           </div>
         ) : (
           <div className="grid gap-8 lg:grid-cols-3">
-            <div className="space-y-6 lg:col-span-2">
+            <div className="min-w-0 space-y-6 lg:col-span-2">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl md:text-2xl font-bold" style={{ color: palette.text }}>Cart Items</h2>
                 <span className="text-sm" style={{ color: palette.muted }}>{items.length} item{items.length !== 1 ? 's' : ''}</span>
@@ -91,10 +91,10 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                       />
                     </div>
 
-                    <div className="flex flex-1 flex-col justify-between">
+                    <div className="flex min-w-0 flex-1 flex-col justify-between">
                       <div>
                         <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex-1">
+                          <div className="min-w-0 flex-1">
                             <h3 className={`text-lg font-bold ${isSeniorMode ? 'line-clamp-2' : 'line-clamp-1'}`} style={{ color: palette.text }}>
                               {item.menu_item.name}
                             </h3>
@@ -153,7 +153,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                         )}
 
                         {item.special_instructions && (
-                          <p className="text-sm italic" style={{ color: palette.muted }}>
+                          <p className="min-w-0 wrap-anywhere text-sm italic" style={{ color: palette.muted }}>
                             <span className="font-medium">Note:</span> {item.special_instructions}
                           </p>
                         )}

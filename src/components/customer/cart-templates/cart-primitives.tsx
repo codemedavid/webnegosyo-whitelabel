@@ -217,7 +217,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
               <p className="text-sm mt-1" style={{ color: p.muted }}><span className="font-medium">Add-ons:</span> {addonPriceList(item.selected_addons, formatPrice)}</p>
             )}
             {item.special_instructions && (
-              <p className="text-sm italic mt-0.5" style={{ color: p.muted }}><span className="font-medium">Note:</span> {item.special_instructions}</p>
+              <p className="min-w-0 wrap-anywhere text-sm italic mt-0.5" style={{ color: p.muted }}><span className="font-medium">Note:</span> {item.special_instructions}</p>
             )}
             {item.presell_date && (
               <p className="text-sm mt-0.5" style={{ color: p.accent }}>

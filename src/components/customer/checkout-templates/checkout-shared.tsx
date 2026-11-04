@@ -200,7 +200,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 <div key={item.id}>
                   {index > 0 && <Separator className={`my-3 ${RULE_COLOR}`} />}
                   <div className="flex justify-between">
-                    <div className="flex-1 mr-4">
+                    <div className="flex-1 min-w-0 mr-4">
                       <span className="font-medium text-sm">{item.menu_item.name}</span>
                       {item.selected_variation && (
                         <span className="text-xs text-[color:var(--co-muted)]"> ({item.selected_variation.name})</span>
@@ -217,7 +217,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                         </p>
                       )}
                       {item.special_instructions && (
-                        <p className="text-xs italic text-[color:var(--co-muted)] mt-0.5">
+                        <p className="min-w-0 wrap-anywhere text-xs italic text-[color:var(--co-muted)] mt-0.5">
                           Note: {item.special_instructions}
                         </p>
                       )}
