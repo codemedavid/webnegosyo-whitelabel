@@ -576,6 +576,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             toast.error(`Your cart is already for ${formatPresellDateLabel(result.committedDate)}. Pre-orders are placed one date at a time.`)
             return false
         }
+        // The note went with this dish; the next add from this page starts blank.
+        setNoteDraft({ itemId: storeWideItem.id, text: '' })
         if (!announce) return true
         if (isSeniorMode) {
             // Senior mode: a larger worded confirmation (styled by .senior-toast
@@ -587,7 +589,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
         addedToastRef.current = toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
         return true
-    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate, isSeniorMode, noteText])
+    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate, isSeniorMode, noteText, storeWideItem.id])
 
     // Only combos that contain this dish — never the store's first combo.
     const itemCombos = useMemo(
