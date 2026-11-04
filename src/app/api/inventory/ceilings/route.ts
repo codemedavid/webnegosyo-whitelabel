@@ -34,6 +34,10 @@ import { readBearerToken } from '@/lib/supabase/bearer-session'
  * and its register share one Wi-Fi address, so a register that sends its
  * signed-in member's Bearer token is counted per PERSON instead; a token that
  * is not a member of this store is counted by address, like any diner.
+ * Verifying a token costs a GoTrue round trip and an app_users read, so a
+ * request carrying one is first counted by ADDRESS in its own, store-agnostic
+ * bucket (`stock-ceilings:verify:<ip>` — apart from the diners' allowance, so
+ * a busy dining room never starves the register) and only then verified.
  *
  * A failed read is never an error response. A stepper that cannot load its cap
  * falls back to uncapped — exactly how it behaved before this existed — and
@@ -53,6 +57,12 @@ const querySchema = z.object({
 })
 
 const RATE_LIMIT: RateLimitOptions = { limit: 120, windowSec: 60, onRedisFailure: 'instance' }
+/** Token verifications per address per minute: several registers on one Wi-Fi, each one read per change. */
+const VERIFY_RATE_LIMIT: RateLimitOptions = { limit: 600, windowSec: 60, onRedisFailure: 'instance' }
+
+function tooMany(retryAfterSec: number): NextResponse {
+  return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(retryAfterSec) } })
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const parsed = querySchema.safeParse({
@@ -64,13 +74,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   const { tenantId, outletId } = parsed.data
 
-  const rate = await checkRateLimit(await rateLimitKey(request, tenantId), RATE_LIMIT)
-  if (!rate.allowed) {
-    return NextResponse.json(
-      { error: 'Too many requests' },
-      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
-    )
+  const ip = getClientIP(request) ?? 'unknown'
+  const hasToken = readBearerToken(request.headers.get('authorization')) !== null
+  if (hasToken) {
+    const verify = await checkRateLimit(`stock-ceilings:verify:${ip}`, VERIFY_RATE_LIMIT)
+    if (!verify.allowed) return tooMany(verify.retryAfterSec)
   }
+
+  const key = (hasToken ? await memberKey(request, tenantId) : null) ?? `stock-ceilings:${ip}:${tenantId}`
+  const rate = await checkRateLimit(key, RATE_LIMIT)
+  if (!rate.allowed) return tooMany(rate.retryAfterSec)
 
   // A ceiling is stale the moment the next order lands, so nothing may hold
   // onto one. A cached "3 left" outliving its stock is the exact failure this
@@ -95,20 +108,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-/** Per signed-in store member when the request proves one; per address otherwise. */
-async function rateLimitKey(request: NextRequest, tenantId: string): Promise<string> {
-  if (readBearerToken(request.headers.get('authorization'))) {
-    try {
-      const { requireBearerStoreCaller } = await import('@/lib/auth/bearer-caller')
-      const caller = await requireBearerStoreCaller(request, tenantId, 'view')
-      if (caller.ok) return `stock-ceilings:user:${caller.user.id}:${tenantId}`
-    } catch (error) {
-      // Unverifiable = anonymous: counted by address, never refused for it.
-      console.warn('[inventory] Ceilings bearer check failed', tenantId, error instanceof Error ? error.message : error)
-    }
+/** The per-person key when the token proves a member of this store; null = count by address. */
+async function memberKey(request: NextRequest, tenantId: string): Promise<string | null> {
+  try {
+    const { requireBearerStoreCaller } = await import('@/lib/auth/bearer-caller')
+    const caller = await requireBearerStoreCaller(request, tenantId, 'view')
+    return caller.ok ? `stock-ceilings:user:${caller.user.id}:${tenantId}` : null
+  } catch (error) {
+    // Unverifiable = anonymous: counted by address, never refused for it.
+    console.warn('[inventory] Ceilings bearer check failed', tenantId, error instanceof Error ? error.message : error)
+    return null
   }
-  const ip = getClientIP(request) ?? 'unknown'
-  return `stock-ceilings:${ip}:${tenantId}`
 }
 
 function toJsonOptionCeilings(options: OptionStockCeilings): Record<string, Record<string, number>> {

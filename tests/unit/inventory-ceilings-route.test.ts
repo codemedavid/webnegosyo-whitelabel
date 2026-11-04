@@ -174,13 +174,15 @@ describe('GET /api/inventory/ceilings', () => {
         headers: { authorization: 'Bearer token-abc', 'x-real-ip': ip },
       })
 
+    const keys = () => checkRateLimit.mock.calls.map(([key]) => key as string)
+
     it('keys the limit on the store member’s user id', async () => {
       requireBearerStoreCaller.mockResolvedValue({ ok: true, user: { id: 'user-42' } })
 
       await GET(withBearer(`?tenantId=${TENANT}`))
 
       expect(requireBearerStoreCaller).toHaveBeenCalledWith(expect.anything(), TENANT, 'view')
-      const [key] = checkRateLimit.mock.calls[0] as [string]
+      const key = keys()[keys().length - 1]
       expect(key).toContain('user-42')
       expect(key).toContain(TENANT)
       expect(key).not.toContain('203.0.113.7')
@@ -192,14 +194,61 @@ describe('GET /api/inventory/ceilings', () => {
       const response = await GET(withBearer(`?tenantId=${TENANT}`))
 
       expect(response.status).toBe(200)
-      const [key] = checkRateLimit.mock.calls[0] as [string]
+      const key = keys()[keys().length - 1]
       expect(key).toContain('203.0.113.7')
+      expect(key).toContain(TENANT)
     })
 
     it('never verifies anything for an anonymous diner', async () => {
       await GET(request(`?tenantId=${TENANT}`))
 
       expect(requireBearerStoreCaller).not.toHaveBeenCalled()
+      expect(checkRateLimit).toHaveBeenCalledTimes(1)
+    })
+
+    describe('a token is never verified without first being counted by address', () => {
+      // Verifying a token is a GoTrue round trip plus an app_users read; a
+      // stream of junk tokens must not buy unlimited verification.
+      it('counts the address BEFORE verifying the token, then the person after', async () => {
+        const order: string[] = []
+        checkRateLimit.mockImplementation(async (key: string) => {
+          order.push(`rate:${key}`)
+          return { allowed: true, remaining: 100, retryAfterSec: 30 }
+        })
+        requireBearerStoreCaller.mockImplementation(async () => {
+          order.push('verify')
+          return { ok: true, user: { id: 'user-42' } }
+        })
+
+        await GET(withBearer(`?tenantId=${TENANT}`))
+
+        expect(order).toHaveLength(3)
+        expect(order[0]).toMatch(/^rate:.*203\.0\.113\.7/)
+        expect(order[1]).toBe('verify')
+        expect(order[2]).toMatch(/^rate:.*user-42/)
+      })
+
+      it('answers 429 without verifying once the address is over its allowance', async () => {
+        checkRateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 7 })
+
+        const response = await GET(withBearer(`?tenantId=${TENANT}`))
+
+        expect(response.status).toBe(429)
+        expect(response.headers.get('retry-after')).toBe('7')
+        expect(requireBearerStoreCaller).not.toHaveBeenCalled()
+        expect(getMenuStockAvailability).not.toHaveBeenCalled()
+      })
+
+      it('keeps the address count for tokens apart from the diners’ allowance, and not per store', async () => {
+        requireBearerStoreCaller.mockResolvedValue({ ok: true, user: { id: 'user-42' } })
+
+        await GET(withBearer(`?tenantId=${TENANT}`))
+
+        const [first, options] = checkRateLimit.mock.calls[0] as [string, { onRedisFailure?: string }]
+        expect(first).not.toBe(`stock-ceilings:203.0.113.7:${TENANT}`)
+        expect(first).not.toContain(TENANT) // rotating store ids buys no extra verifications
+        expect(options.onRedisFailure).toBe('instance')
+      })
     })
   })
 })
