@@ -199,7 +199,9 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
       return (
         <span className="hb-badge">
           {c.icon && <HeroIcon name={c.icon} />}
-          <span>{text(c.text)}</span>
+          <span>
+            <Markup value={text(c.text)} />
+          </span>
         </span>
       )
     case 'countdown':

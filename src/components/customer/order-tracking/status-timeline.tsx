@@ -6,10 +6,12 @@ import { STATUS_STEPS } from './status-steps'
 
 interface StatusTimelineProps {
   currentIndex: number
+  /** Page Designer wording for the title; unset = the store's label. */
+  title?: string
 }
 
 /** The five stages as a vertical checklist, painted in the owner's timeline colours. */
-export function StatusTimeline({ currentIndex }: StatusTimelineProps) {
+export function StatusTimeline({ currentIndex, title }: StatusTimelineProps) {
   return (
     <section
       aria-label="Order progress"
@@ -18,7 +20,7 @@ export function StatusTimeline({ currentIndex }: StatusTimelineProps) {
       style={{ borderRadius: 'var(--trk-radius)', backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-card-border)' }}
     >
       <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--trk-text-muted)' }}>
-        <StoreLabel name="tracking.progress_title" fallback="Progress" />
+        {title ?? <StoreLabel name="tracking.progress_title" fallback="Progress" />}
       </h2>
       <ol className="relative">
         {STATUS_STEPS.map((step, index) => {

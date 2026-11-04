@@ -415,7 +415,7 @@ export function HeroBuilderEditor({
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-4 pb-6">
             <div
-              className="mx-auto overflow-hidden rounded-xl bg-[var(--brand-background,#fff)] shadow-2xl transition-[width] duration-300"
+              className="mx-auto overflow-hidden rounded-xl bg-[var(--hb-canvas-bg,var(--brand-background,#fff))] shadow-2xl transition-[width] duration-300"
               style={{ width: previewDevice === 'desktop' ? '100%' : CANVAS_WIDTH[previewDevice], maxWidth: '100%' }}
             >
               <HeroBuilderRenderer design={api.design} />

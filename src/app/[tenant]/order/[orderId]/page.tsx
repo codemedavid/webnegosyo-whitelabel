@@ -9,6 +9,7 @@ import { describeLoyaltyOffer, type LoyaltyOffer } from '@/lib/loyalty/offer'
 import { readLoyaltyTenantFlags } from '@/lib/loyalty/tenant-flags'
 import { readWalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 import { readTrackingStyle } from '@/lib/tracking-style/keys'
+import { resolvePageDesign } from '@/lib/page-designer/page-mode'
 import type { Tenant } from '@/types/database'
 import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { OrderTrackingFallback } from './order-tracking-fallback'
@@ -74,6 +75,8 @@ async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
     options: trackingStyle.options,
     storefrontLabels: row.storefront_labels ?? null,
     loyaltyOffer: await resolveLoyaltyOffer(tenant),
+    // Null (the standard page) until a design is published — also while the columns don't exist yet.
+    design: resolvePageDesign(row, 'tracking'),
   }
 }
 

@@ -181,7 +181,7 @@ export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
         <div ref={stageRef} className="relative" style={{ width: frameWidth * scale, height: frameHeight * scale || undefined }}>
           <div
             ref={frameRef}
-            className="origin-top-left overflow-hidden rounded-xl bg-[var(--brand-background,#fff)] shadow-[0_1px_2px_rgba(0,0,0,.06),0_12px_40px_rgba(15,23,42,.12)] ring-1 ring-black/5 transition-[width] duration-300"
+            className="origin-top-left overflow-hidden rounded-xl bg-[var(--hb-canvas-bg,var(--brand-background,#fff))] shadow-[0_1px_2px_rgba(0,0,0,.06),0_12px_40px_rgba(15,23,42,.12)] ring-1 ring-black/5 transition-[width] duration-300"
             style={{ width: frameWidth, transform: scale < 1 ? `scale(${scale})` : undefined }}
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
