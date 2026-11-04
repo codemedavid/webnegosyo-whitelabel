@@ -6,19 +6,19 @@
  * that. Debounced, so a cashier adding three dishes in quick succession costs
  * one round trip rather than three.
  *
- * Not on the query cache: the read never throws, an empty map is its answer to
+ * Not on the query cache: the read never throws, empty ceilings are its answer to
  * every failure, and the warning it feeds is advisory — see
  * `fetchPosStockCeilings`.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { fetchPosStockCeilings, lineIdSetKey, type StockCeilingLineLike } from "../pos-stock-ceilings";
-import type { PosStockCeilings } from "../pos-stock-warning";
+import { NO_STOCK_CEILINGS, type PosStockCeilings } from "../pos-stock-warning";
 
 export const STOCK_CEILING_DEBOUNCE_MS = 300;
 
 /** No stock read yet, or none possible. Read as "no opinion", never as empty shelves. */
-const EMPTY_CEILINGS: PosStockCeilings = new Map();
+const EMPTY_CEILINGS: PosStockCeilings = NO_STOCK_CEILINGS;
 
 export function usePosStockCeilings(
   tenantId: string | null | undefined,

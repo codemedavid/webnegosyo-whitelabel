@@ -43,7 +43,13 @@ import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-meth
 import { SaleCompleteBanner } from "../../components/pos/SaleCompleteBanner";
 import { useOutbox } from "../../lib/offline/use-outbox-sync";
 import { usePosStockCeilings } from "../../lib/query/use-pos-stock-ceilings";
-import { resolvePosStockWarning } from "../../lib/pos-stock-warning";
+import {
+  resolveAddStockWarning,
+  resolvePosStockWarning,
+  saleStockDemand,
+  type StockDemandLine,
+} from "../../lib/pos-stock-warning";
+import { describeStockHint, unitsByDish } from "../../lib/pos-stock-hint";
 import { formatPeso } from "../../lib/format";
 import { resolvePosLayout } from "../../lib/pos-layout";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -228,15 +234,37 @@ export default function PosScreen() {
 
   // ── What the kitchen can actually make ──
   // A WARNING, never a refusal: the cashier is facing a paying customer and can
-  // see the shelf, so the software says its piece and the human decides. The
-  // web checkout refuses instead, because nobody is standing over that customer.
+  // see the shelf, so the software says its piece and the human decides — when
+  // a dish is added, and again at Charge. The web checkout refuses instead,
+  // because nobody is standing over that customer. Only the merchant's own
+  // "sold out" switch refuses here (greyed tiles and options).
   // Debounce dish changes; changing a quantity does not change kitchen stock.
   const stockCeilings = usePosStockCeilings(tenantId, registerOutletId, lines);
 
-  const stockWarning = useMemo(
-    () => resolvePosStockWarning(lines, stockCeilings),
-    [lines, stockCeilings],
+  // What THIS sale asks of the shelf. Under an edit that is only what the edit
+  // adds: the ceilings already have the placed order taken out.
+  const stockDemand = useMemo(
+    () =>
+      saleStockDemand(
+        lines,
+        editContext
+          ? { mode: editContext.mode, originalStockItems: editContext.originalStockItems }
+          : null,
+      ),
+    [lines, editContext],
   );
+  const stockWarning = useMemo(
+    () => resolvePosStockWarning(stockDemand, stockCeilings),
+    [stockDemand, stockCeilings],
+  );
+  const demandByDish = useMemo(() => unitsByDish(stockDemand), [stockDemand]);
+
+  // Dishes the cashier already chose to "Sell anyway" in this sale, so a second
+  // tap on the same dish does not ask again (the banner and Charge still do).
+  const acknowledgedShortRef = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (lines.length === 0) acknowledgedShortRef.current = new Set();
+  }, [lines.length]);
 
   // Default to the first order type so the cashier can ring up immediately;
   // they can switch before tendering. Priced from the index that came with the
@@ -325,7 +353,7 @@ export default function PosScreen() {
     [visibleItems, layout.columns],
   );
 
-  const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+  const commitAdd = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
     // Both at the store price: the store derives `basePrice` from
     // `listBasePrice` through the sale's channel pricing.
     const listBasePrice = item.product.discounted_price ?? item.product.price;
@@ -344,7 +372,54 @@ export default function PosScreen() {
     }
   };
 
+  // Loyverse-style: an estimate that says the shelf is short asks once, at the
+  // tap, and "Sell anyway" goes ahead. No ceilings (offline, a failed read,
+  // inventory off) means no question — the till never waits on a guess.
+  const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+    const added: StockDemandLine = {
+      menuItemId: item.product.id,
+      name: item.product.name,
+      quantity,
+      options: selections.map((s) => ({ id: s.optionId, name: s.optionName })),
+    };
+    const warning = acknowledgedShortRef.current.has(item.product.id)
+      ? null
+      : resolveAddStockWarning(stockDemand, added, stockCeilings);
+    if (!warning) {
+      commitAdd(item, selections, quantity);
+      return;
+    }
+
+    Alert.alert("Low stock", warning, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sell anyway",
+        onPress: () => {
+          acknowledgedShortRef.current = new Set([...acknowledgedShortRef.current, item.product.id]);
+          commitAdd(item, selections, quantity);
+        },
+      },
+    ]);
+  };
+
+  // Charge asks once more if anything in the sale is past its estimate.
+  const handleCharge = () => {
+    if (!stockWarning) {
+      router.push("/(main)/pos-tender");
+      return;
+    }
+    Alert.alert("Low stock", stockWarning, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sell anyway", onPress: () => router.push("/(main)/pos-tender") },
+    ]);
+  };
+
   const handleTap = (item: RegisterItem) => {
+    // The merchant's switch: the tile explains itself and adds nothing.
+    if (item.soldOutReason) {
+      Alert.alert(`${item.product.name?.trim() || "This item"} is sold out`, item.soldOutReason);
+      return;
+    }
     // Nothing to configure — straight into the cart, one tap.
     if (item.groups.length === 0) {
       addToCart(item, [], 1);
@@ -523,6 +598,11 @@ export default function PosScreen() {
                 imageUrl={item.product.image_url}
                 quantity={inSale[item.product.id] ?? 0}
                 hasOptions={item.groups.length > 0}
+                isSoldOut={Boolean(item.soldOutReason)}
+                stockHint={describeStockHint(
+                  stockCeilings.dishes.get(item.product.id),
+                  demandByDish[item.product.id] ?? 0,
+                )}
                 onPress={() => handleTap(item)}
               />
             ))}
@@ -576,9 +656,9 @@ export default function PosScreen() {
 
   /*
     Sits above the cart, where the cashier is already looking before they
-    charge. Deliberately not a modal and not a blocker — it informs the
-    person who can see the shelf, and they ring the sale anyway if they
-    have the stock.
+    charge. Never a blocker — it informs the person who can see the shelf,
+    and they sell anyway if they have the stock. The same words are asked
+    once as a question at the tap and again at Charge ("Sell anyway").
   */
   const stockBanner = stockWarning ? (
     <View style={styles.stockWarning}>
@@ -625,7 +705,7 @@ export default function PosScreen() {
         reset();
         setIsCartExpanded(false);
       }}
-      onCharge={() => router.push("/(main)/pos-tender")}
+      onCharge={handleCharge}
       discountLines={discountLines}
       // Offered on an edit too. The order's own discount is re-priced by
       // `repriceEditDiscount` and a code added here is a second line on top
@@ -745,6 +825,7 @@ export default function PosScreen() {
           basePrice={displayPriceForOrderType(sheetFor.product, activePricing)}
           groups={sheetFor.groups}
           pricing={activePricing}
+          optionCeilings={stockCeilings.options.get(sheetFor.product.id)}
           onCancel={() => setSheetFor(null)}
           onConfirm={(selections, quantity) => addToCart(sheetFor, selections, quantity)}
         />

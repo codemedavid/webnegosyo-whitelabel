@@ -12,6 +12,7 @@ jest.mock("expo-constants", () => ({
   __esModule: true,
   default: { expoConfig: { extra: { webAppUrl: "https://shop.test" } } },
 }));
+jest.mock("../authorized-post", () => ({ getAccessTokenBounded: async () => null }));
 const mockFetchCeilings = jest.fn();
 jest.mock("../pos-stock-ceilings", () => ({
   ...jest.requireActual("../pos-stock-ceilings"),
@@ -26,7 +27,9 @@ const line = (menuItemId: string, quantity: number) =>
 
 beforeEach(() => {
   jest.useFakeTimers();
-  mockFetchCeilings.mockReset().mockResolvedValue(new Map([["m-1", 4]]));
+  mockFetchCeilings
+    .mockReset()
+    .mockResolvedValue({ dishes: new Map([["m-1", 4]]), options: new Map() });
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -52,7 +55,7 @@ describe("usePosStockCeilings", () => {
     expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
     expect(mockFetchCeilings).toHaveBeenCalledWith("t1", "o1");
     await act(async () => {});
-    expect(result.current.get("m-1")).toBe(4);
+    expect(result.current.dishes.get("m-1")).toBe(4);
   });
 
   it("does not re-read when only a quantity changes", async () => {
@@ -89,6 +92,6 @@ describe("usePosStockCeilings", () => {
   it("answers with no opinion until a tenant is known", async () => {
     const { result } = renderHook(() => usePosStockCeilings(null, null, [line("m-1", 1)]));
     await flush(STOCK_CEILING_DEBOUNCE_MS);
-    expect(result.current.size).toBe(0);
+    expect(result.current.dishes.size).toBe(0);
   });
 });

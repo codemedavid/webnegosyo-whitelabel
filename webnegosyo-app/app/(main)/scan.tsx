@@ -55,6 +55,14 @@ import {
   evaluateCartHandoff,
   type HandoffBlockReason,
 } from "../../lib/scan-handoff-validate";
+import {
+  buildHandoffAvailability,
+  describeSoldOutHandoff,
+  findSoldOutHandoffLine,
+  type HandoffItemAvailability,
+  type HandoffMenuRow,
+} from "../../lib/scan-handoff-availability";
+import type { OutletMenuOverrideRow } from "../../lib/outlet-menu-overrides";
 import { markPaidAfterHandover, planOrderStatusChange } from "../../lib/order-status-change";
 import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 
@@ -174,20 +182,53 @@ type ScreenState =
 
 const SCAN_DEBOUNCE_MS = 1500;
 
-/** Base price per menu item id from this store's catalog. Throws on a failed read. */
-async function loadCatalogPrices(
+interface HandoffCatalog {
+  /** Base price per menu item id (store-wide, as before). */
+  prices: Map<string, number>;
+  /** What this register may sell of each dish right now. */
+  availability: Map<string, HandoffItemAvailability>;
+}
+
+const HANDOFF_MENU_COLUMNS = "id, name, price, is_available, modifier_groups, variation_types, variations, addons";
+
+/**
+ * The scanned dishes as this store (and the register's branch) sells them.
+ * Throws on a failed read: an unreadable menu must block the scan, never wave
+ * a sold-out dish through as "available".
+ */
+async function loadHandoffCatalog(
   tenantId: string,
+  outletId: string | null,
   menuItemIds: readonly string[]
-): Promise<Map<string, number>> {
-  if (menuItemIds.length === 0) return new Map();
-  const { data, error } = await supabase
-    .from("menu_items")
-    .select("id, price")
-    .eq("tenant_id", tenantId)
-    .in("id", menuItemIds);
-  if (error) throw error;
-  const rows = (data ?? []) as { id: string; price: number }[];
-  return new Map(rows.map((row) => [String(row.id), row.price]));
+): Promise<HandoffCatalog> {
+  if (menuItemIds.length === 0) return { prices: new Map(), availability: new Map() };
+  const [menu, overrides] = await Promise.all([
+    supabase
+      .from("menu_items")
+      .select(HANDOFF_MENU_COLUMNS)
+      .eq("tenant_id", tenantId)
+      .in("id", menuItemIds),
+    outletId
+      ? supabase
+          .from("outlet_menu_items")
+          .select("outlet_id, menu_item_id, is_listed, is_available, price, discounted_price, discount_cleared")
+          .eq("tenant_id", tenantId)
+          .eq("outlet_id", outletId)
+          .in("menu_item_id", menuItemIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (menu.error) throw menu.error;
+  if (overrides.error) throw overrides.error;
+
+  const rows = (menu.data ?? []) as unknown as HandoffMenuRow[];
+  return {
+    prices: new Map(rows.map((row) => [String(row.id), row.price])),
+    availability: buildHandoffAvailability(
+      rows,
+      (overrides.data ?? []) as unknown as OutletMenuOverrideRow[],
+      outletId
+    ),
+  };
 }
 
 export default function ScanScreen() {
@@ -221,25 +262,13 @@ export default function ScanScreen() {
     async (payload: QrOrderPayloadV1) => {
       setState({ mode: "validating", payload });
 
-      // Standalone catalog prices cannot validate a combo: they erase its
-      // discount. Verify its slots and exact total with the checkout pricer.
-      if (tenantId === payload.tenantId && payload.items.some(item => item.isBundleItem)) {
-        try {
-          const verdict = await priceComboHandoff(tenantId, payload.items, outletId);
-          setState({ mode: "preview", payload, items: verdict.items, total: verdict.total, pricesUpdated: verdict.pricesUpdated });
-        } catch (error) {
-          setState({ mode: "handoff-blocked", message: error instanceof Error ? error.message : HANDOFF_BLOCK_MESSAGE.catalog_unavailable });
-        }
-        return;
-      }
-
       // Store check first, before this store's catalog is even consulted —
       // the same order as the pickup path.
+      const isSameStore = Boolean(tenantId) && tenantId === payload.tenantId;
       const ids = [...new Set(payload.items.map((i) => i.menuItemId))];
-      let catalogPrices: Map<string, number>;
+      let catalog: HandoffCatalog = { prices: new Map(), availability: new Map() };
       try {
-        catalogPrices =
-          tenantId === payload.tenantId ? await loadCatalogPrices(tenantId, ids) : new Map();
+        if (isSameStore && tenantId) catalog = await loadHandoffCatalog(tenantId, outletId ?? null, ids);
       } catch (e) {
         console.warn("[scan] catalog lookup failed:", e);
         setState({
@@ -249,10 +278,30 @@ export default function ScanScreen() {
         return;
       }
 
+      // The ONE "sold out" switch, before any order exists: a dish or option
+      // 86'd since the customer built the cart is refused, combos included.
+      const soldOut = findSoldOutHandoffLine(payload.items, catalog.availability);
+      if (soldOut) {
+        setState({ mode: "handoff-blocked", message: describeSoldOutHandoff(soldOut) });
+        return;
+      }
+
+      // Standalone catalog prices cannot validate a combo: they erase its
+      // discount. Verify its slots and exact total with the checkout pricer.
+      if (isSameStore && tenantId && payload.items.some(item => item.isBundleItem)) {
+        try {
+          const verdict = await priceComboHandoff(tenantId, payload.items, outletId);
+          setState({ mode: "preview", payload, items: verdict.items, total: verdict.total, pricesUpdated: verdict.pricesUpdated });
+        } catch (error) {
+          setState({ mode: "handoff-blocked", message: error instanceof Error ? error.message : HANDOFF_BLOCK_MESSAGE.catalog_unavailable });
+        }
+        return;
+      }
+
       const verdict = evaluateCartHandoff({
         payload,
         sessionTenantId: tenantId,
-        catalogPrices,
+        catalogPrices: catalog.prices,
       });
       if (!verdict.ok) {
         setState({ mode: "handoff-blocked", message: HANDOFF_BLOCK_MESSAGE[verdict.reason] });
