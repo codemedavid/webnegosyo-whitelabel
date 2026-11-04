@@ -15,6 +15,8 @@ export interface ShiftReportPrinter {
   noPrinterMessage: string;
   print: (report: ShiftSalesReport) => Promise<void>;
   share: (report: ShiftSalesReport) => Promise<void>;
+  /** Back to idle (a screen that stays mounted, on its next visit). */
+  reset: () => void;
 }
 
 /** Print / share one shift report with a visible printing → printed / failed state. */
@@ -44,5 +46,7 @@ export function useShiftReportPrint(): ShiftReportPrinter {
 
   const share = useCallback((report: ShiftSalesReport) => shareShiftReport(report, storeName, branchName), [storeName, branchName]);
 
-  return { state, hasPrinter, noPrinterMessage: NO_PRINTER_MESSAGE, print, share };
+  const reset = useCallback(() => setState({ status: "idle" }), []);
+
+  return { state, hasPrinter, noPrinterMessage: NO_PRINTER_MESSAGE, print, share, reset };
 }

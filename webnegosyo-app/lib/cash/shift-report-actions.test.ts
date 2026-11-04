@@ -1,4 +1,4 @@
-import { myShiftRow, printableReport, printStateText, PRINTED_TEXT, reportSummaryLine } from "./shift-report-actions";
+import { myShiftRow, printableReport, printStateText, PRINTED_TEXT, REPRINTED_TEXT, reportSummaryLine } from "./shift-report-actions";
 import type { ShiftSalesReport } from "./shift-sales";
 
 const REPORT = {
@@ -19,6 +19,12 @@ const REPORT = {
 } as unknown as ShiftSalesReport;
 
 describe("printStateText", () => {
+  it("a reprint of an old shift just says Printed. (no hand-over instruction)", () => {
+    expect(REPRINTED_TEXT).toBe("Printed.");
+    expect(printStateText({ status: "printed" }, REPRINTED_TEXT)).toBe("Printed.");
+    expect(printStateText({ status: "printing" }, REPRINTED_TEXT)).toBe("Printing…");
+  });
+
   it("says printing, printed, or the printer's own words", () => {
     expect(printStateText({ status: "idle" })).toBeNull();
     expect(printStateText({ status: "printing" })).toBe("Printing…");

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { useAuthStore } from "../../stores/auth-store";
 import { BackHeader } from "../../components/BackHeader";
@@ -11,7 +11,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { useShiftReportPrint } from "../../components/shift-sales/use-shift-report-print";
 import { resourceKey } from "../../lib/backends/query-keys";
 import { myShiftSalesHref } from "../../lib/cash-routes";
-import { myShiftRow, printableReport, printStateText, type MyShiftRow } from "../../lib/cash/shift-report-actions";
+import { myShiftRow, printableReport, printStateText, REPRINTED_TEXT, type MyShiftRow } from "../../lib/cash/shift-report-actions";
 import { fetchShiftNets, type ShiftNet } from "../../lib/cash/shift-nets";
 import { fetchShiftSales } from "../../lib/cash/shift-sales";
 import { toBusinessDayKey } from "../../lib/daily-report/business-day";
@@ -91,8 +91,17 @@ export default function MyShiftsScreen() {
     }
   };
 
+  // The screen stays mounted: a "Printed." from the last visit must not greet the next one.
+  const { reset: resetPrint } = printer;
+  useFocusEffect(
+    useCallback(() => {
+      resetPrint();
+    }, [resetPrint]),
+  );
+
   const refresh = () => refreshWithMinSpinner([list.refetch, nets.refetch], setIsRefreshing);
-  const status = printStateText(printer.state);
+  // A reprint of an old shift: no "hand it over with the cash".
+  const status = printStateText(printer.state, REPRINTED_TEXT);
 
   if (isDemo) {
     return (
@@ -166,17 +175,20 @@ interface ShiftRowCardProps {
 
 function ShiftRowCard({ row, isPrinting, isBusy, onView, onReprint }: ShiftRowCardProps) {
   return (
-    <View style={styles.card} testID={`my-shift-${row.id}`} accessible accessibilityLabel={`${row.day}, ${row.times}, ${row.net}`}>
-      <View style={styles.head}>
-        <Text style={styles.day}>{row.day}</Text>
-        {row.isOpen ? (
-          <View style={styles.live}>
-            <Text style={styles.liveText}>Open now</Text>
-          </View>
-        ) : null}
+    <View style={styles.card} testID={`my-shift-${row.id}`}>
+      {/* The words are one element for VoiceOver; the buttons stay their own. */}
+      <View style={styles.summary} accessible accessibilityLabel={`${row.day}, ${row.times}, ${row.net}${row.isOpen ? ", open now" : ""}`}>
+        <View style={styles.head}>
+          <Text style={styles.day}>{row.day}</Text>
+          {row.isOpen ? (
+            <View style={styles.live}>
+              <Text style={styles.liveText}>Open now</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.times}>{row.times}</Text>
+        <Text style={styles.net}>{row.net}</Text>
       </View>
-      <Text style={styles.times}>{row.times}</Text>
-      <Text style={styles.net}>{row.net}</Text>
       <View style={styles.actions}>
         <Button label="View" icon="report" tone="secondary" fullWidth={false} style={styles.action} onPress={onView} />
         <Button
@@ -199,6 +211,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   body: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl * 2, gap: spacing.md, maxWidth: 720, width: "100%", alignSelf: "center" },
   card: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.separator, padding: spacing.lg, gap: spacing.xs },
+  summary: { gap: spacing.xs },
   head: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   day: { ...typography.heading, color: colors.textPrimary },
   live: { backgroundColor: colors.successLight, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 2 },

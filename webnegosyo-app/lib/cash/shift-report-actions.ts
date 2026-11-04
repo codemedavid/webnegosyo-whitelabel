@@ -16,12 +16,14 @@ export type PrintState =
   | { status: "failed"; message: string };
 
 export const PRINTED_TEXT = "Printed. Sign it and hand it over with the cash.";
+/** After reprinting an OLD shift there is no cash to hand over. */
+export const REPRINTED_TEXT = "Printed.";
 export const PRINTING_TEXT = "Printing…";
 
 /** The line under the button; null when there is nothing to say. */
-export function printStateText(state: PrintState): string | null {
+export function printStateText(state: PrintState, printedText: string = PRINTED_TEXT): string | null {
   if (state.status === "printing") return PRINTING_TEXT;
-  if (state.status === "printed") return PRINTED_TEXT;
+  if (state.status === "printed") return printedText;
   if (state.status === "failed") return state.message;
   return null;
 }
