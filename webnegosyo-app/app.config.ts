@@ -81,7 +81,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 1.0.16 (2026-10-29): kitchen display rings until a cook taps Confirm and
   // the cashier is told; SMS phone keep-awake steps and SIM failure reasons.
   // 1.0.15 went READY_FOR_SALE, closing that train.
-  version: "1.0.16",
+  //
+  // 1.0.17 (2026-11-05): kitchen notes per item, Order History date ranges +
+  // item summary, per-cashier shift report, register stock warnings, reprint
+  // from finished orders. 1.0.16 went READY_FOR_SALE, closing that train.
+  version: "1.0.17",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the
