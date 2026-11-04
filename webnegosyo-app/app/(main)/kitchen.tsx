@@ -37,6 +37,7 @@ import {
   type KitchenTicket,
 } from "../../lib/kitchen-tickets";
 import { buildKitchenChitSegments } from "../../lib/kitchen-chit";
+import { manualChitOptions } from "../../lib/kitchen-chit-reprint";
 import {
   AWAITING_KITCHEN_STATUS,
   EMPTY_RING_TRACKER,
@@ -390,9 +391,12 @@ export default function KitchenScreen() {
   }, [lastBumped, updateStatus, readFreshStatus]);
 
   const handlePrint = useCallback(async (ticket: KitchenTicket) => {
+    // A chit this device already printed comes out marked REPRINT, so the
+    // cooks do not make the order twice; the first one prints plain.
+    const chitOptions = await manualChitOptions(ticket.order._id, Date.now());
     const outcome = await printForRole(
       "kitchen",
-      buildKitchenChitSegments({ ...ticket.order, items: ticket.items }),
+      buildKitchenChitSegments({ ...ticket.order, items: ticket.items }, chitOptions),
     );
     if (!outcome.anySuccess) {
       const firstError = outcome.results[0]?.result.error;

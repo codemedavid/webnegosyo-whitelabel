@@ -43,11 +43,26 @@ function chitItemLines(item: KitchenChitOrder["items"][number]): string[] {
   return lines;
 }
 
-export function buildKitchenChitText(order: KitchenChitOrder): string {
+/** Set only on a chit printed again by hand: the cooks must not cook it twice. */
+export interface KitchenChitOptions {
+  /** When the copy was printed (epoch ms). */
+  reprintAt?: number;
+}
+
+/** "*** REPRINT ***" and its time, under the KITCHEN header; nothing on a first print. */
+function chitReprintLines(options: KitchenChitOptions): string[] {
+  const at = options.reprintAt;
+  if (typeof at !== "number" || !Number.isFinite(at)) return [];
+  const timeStr = new Date(at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
+  return [center("*** REPRINT ***"), center(`Reprinted ${timeStr}`)];
+}
+
+export function buildKitchenChitText(order: KitchenChitOrder, options: KitchenChitOptions = {}): string {
   const typeLabel = order.orderType ? getOrderTypeMeta(order.orderType).label : null;
 
   const lines = [
     center("*** KITCHEN ***"),
+    ...chitReprintLines(options),
     DIVIDER,
     `Order #: ${order._id.slice(-8).toUpperCase()}`,
     chitTimeLine(order._creationTime),
@@ -62,6 +77,9 @@ export function buildKitchenChitText(order: KitchenChitOrder): string {
 }
 
 /** The chit as a single text segment for printReceiptSegments. */
-export function buildKitchenChitSegments(order: KitchenChitOrder): PrintSegment[] {
-  return [{ type: "text", text: buildKitchenChitText(order) }];
+export function buildKitchenChitSegments(
+  order: KitchenChitOrder,
+  options: KitchenChitOptions = {},
+): PrintSegment[] {
+  return [{ type: "text", text: buildKitchenChitText(order, options) }];
 }
