@@ -65,7 +65,8 @@ export function OrderHistorySummary({ header, selection, nowMs, schedule, outlet
 
   const context: ItemSummarySlipContext = { storeName, branchName, ...pickedDays(selection, nowMs, schedule) };
 
-  const print = useCallback(async () => {
+  // Not memoised: it is only ever called from an inline handler below.
+  const print = async () => {
     if (!summary) return;
     if (isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
@@ -80,7 +81,7 @@ export function OrderHistorySummary({ header, selection, nowMs, schedule, outlet
     } finally {
       setIsPrinting(false);
     }
-  }, [summary, isDemo, context]);
+  };
 
   const refresh = useCallback(() => refreshWithMinSpinner([refetch], setIsRefreshing), [refetch]);
 

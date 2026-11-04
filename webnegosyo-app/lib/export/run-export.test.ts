@@ -26,9 +26,15 @@ function order(overrides: Partial<ExportOrderInput> = {}): ExportOrderInput {
   };
 }
 
+/** What the export hands the share sheet. */
+interface ShareInput {
+  fileName: string;
+  csv: string;
+}
+
 describe("runOrdersExport", () => {
   it("shares a CSV named for the window and returns complete coverage", async () => {
-    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "file:///cache/x.csv");
+    const share = jest.fn<Promise<string>, [ShareInput]>(async () => "file:///cache/x.csv");
     const items: ExportOrderItemInput[] = [
       { orderId: "o1", menuItemName: "Burger", quantity: 1, subtotal: 100 },
     ];
@@ -51,7 +57,7 @@ describe("runOrdersExport", () => {
 
   it("exports the days picked on the Orders tab instead of the sheet's preset", async () => {
     // Arrange: yesterday is picked; an order from today must stay out.
-    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
+    const share = jest.fn<Promise<string>, [ShareInput]>(async () => "uri");
     const yesterday = { startMs: TODAY_START - DAY_MS, endMs: TODAY_START };
 
     // Act
@@ -75,7 +81,7 @@ describe("runOrdersExport", () => {
   });
 
   it("narrows to one status when asked", async () => {
-    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
+    const share = jest.fn<Promise<string>, [ShareInput]>(async () => "uri");
 
     await runOrdersExport({
       orders: [order({ _id: "keep" }), order({ _id: "drop", status: "pending" })],
@@ -93,7 +99,7 @@ describe("runOrdersExport", () => {
   });
 
   it("reports truncated coverage when the fetch cap cut the window", async () => {
-    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
+    const share = jest.fn<Promise<string>, [ShareInput]>(async () => "uri");
     // Two "fetched" orders standing in for a full page whose oldest row is
     // inside the 7d window.
     const oldest = TODAY_START - 2 * DAY_MS;
@@ -113,7 +119,7 @@ describe("runOrdersExport", () => {
 
 describe("runSalesExport", () => {
   it("shares the daily sales CSV for the window", async () => {
-    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
+    const share = jest.fn<Promise<string>, [ShareInput]>(async () => "uri");
 
     await runSalesExport({
       orders: [order({ total: 350, itemCount: 2 })],
@@ -132,7 +138,7 @@ describe("runSalesExport", () => {
 
 describe("runCustomersExport", () => {
   it("shares the guest list dated today", async () => {
-    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
+    const share = jest.fn<Promise<string>, [ShareInput]>(async () => "uri");
 
     await runCustomersExport({
       customers: [

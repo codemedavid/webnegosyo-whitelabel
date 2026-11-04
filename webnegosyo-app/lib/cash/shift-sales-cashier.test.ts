@@ -69,8 +69,10 @@ describe("parseShiftSalesReply — cashier scope", () => {
   });
 
   it("treats a store-window answer (no scope key) as the window, with nothing new", () => {
-    const { scope: _scope, voids: _voids, cash: _cash, otherCollections: _other, itemsTruncated: _t, voidsTruncated: _v, ...windowShaped } =
-      fixture.cashier as Record<string, unknown>;
+    const cashierOnly = new Set(["scope", "voids", "cash", "otherCollections", "itemsTruncated", "voidsTruncated"]);
+    const windowShaped = Object.fromEntries(
+      Object.entries(fixture.cashier as Record<string, unknown>).filter(([key]) => !cashierOnly.has(key)),
+    );
     const r = report(windowShaped);
     expect(r.scope).toBe("window");
     expect([r.voids, r.cash, r.otherCollections, r.itemsTruncated]).toEqual([null, null, null, false]);
