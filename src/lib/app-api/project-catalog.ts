@@ -10,11 +10,12 @@ import type {
 } from '@/lib/app-contract'
 import { getEffectiveItemPrice } from '@/lib/cart-utils'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
-import { isOptionAvailable, normalizeModifierGroups } from '@/lib/modifier-groups'
-import { collectLinkedItemIds, resolveLinkedOptions, type LinkedItemSnapshot } from '@/lib/modifier-linked-options'
+import { isOptionAvailable } from '@/lib/modifier-groups'
+import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { isOrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { buildOutletMenuIndex, resolveMenuForOutlet, type OutletMenuOverrideRow } from '@/lib/outlets/outlet-menu-overrides'
-import type { Addon, Category, MenuItem, ModifierGroup, OrderType, Outlet, PaymentMethod } from '@/types/database'
+import type { Category, MenuItem, ModifierGroup, OrderType, Outlet, PaymentMethod } from '@/types/database'
+import { appModifierGroups, groupSelectLimits, linkedItemsAtBranch, modifierGroupsFor } from './item-modifier-groups'
 
 /**
  * `/api/app/v1/catalog`: the menu as the customer app shows it, projected from
@@ -58,32 +59,12 @@ const PAIRINGS_PER_ITEM = 6
 const httpsOrNull = (value: string | null | undefined): string | null =>
   typeof value === 'string' && value.startsWith('https://') ? value : null
 
-/** Item add-ons win over the category's defaults on a (case-insensitive) name clash, as on the web. */
-function mergeCategoryAddons(item: MenuItem, category: Category | undefined): Addon[] {
-  const defaults = category?.default_addons ?? []
-  if (defaults.length === 0) return item.addons
-  const names = new Set(item.addons.map((addon) => addon.name.toLowerCase()))
-  return [...item.addons, ...defaults.filter((addon) => !names.has(addon.name.toLowerCase()))]
-}
-
-/** The web only reads `modifier_groups` when the store has the feature on; otherwise the legacy columns. */
-function modifierGroupsFor(item: MenuItem, category: Category | undefined, tenant: Record<string, unknown>): ModifierGroup[] {
-  const useUnified = tenant.modifier_groups_enabled === true && (item.modifier_groups?.length ?? 0) > 0
-  return normalizeModifierGroups(
-    useUnified
-      ? { modifier_groups: item.modifier_groups }
-      : { variation_types: item.variation_types, variations: item.variations, addons: mergeCategoryAddons(item, category) },
-  )
-}
-
 function projectGroup(group: ModifierGroup): AppModifierGroup {
-  const maxSelect = group.max_select ?? null
   return {
     id: group.id,
     name: group.name,
     selectionMode: group.selection_mode ?? 'choice',
-    minSelect: Math.max(0, group.min_select ?? 0),
-    maxSelect: maxSelect !== null && maxSelect > 0 ? Math.max(maxSelect, group.min_select ?? 0) : null,
+    ...groupSelectLimits(group),
     options: group.options.map((option) => ({
       id: option.id,
       name: option.name,
@@ -102,7 +83,7 @@ function projectItem(
   linked: ReadonlyMap<string, LinkedItemSnapshot>,
 ): AppMenuItem {
   const price = getEffectiveItemPrice(item)
-  const groups = resolveLinkedOptions(modifierGroupsFor(item, category, input.tenant), linked)
+  const groups = appModifierGroups(item, category, input.tenant, linked)
   const badge = input.tenant.menu_engineering_enabled === true && item.badge_text ? item.badge_text.slice(0, BADGE_MAX) : null
   return {
     id: item.id,
@@ -183,10 +164,13 @@ export function projectAppCatalog(input: AppCatalogInput): AppCatalog {
   const branchIndex = buildOutletMenuIndex(input.outletOverrides)
   const branchMenu = resolveMenuForOutlet(sellable, branchIndex, input.outletId)
 
-  const linkedIds = new Set(branchMenu.flatMap((item) => collectLinkedItemIds(modifierGroupsFor(item, categoriesById.get(item.category_id), input.tenant))))
   // Linked options take the branch's price and availability too (an unlisted dish resolves as unavailable).
-  const linkedAtBranch = resolveMenuForOutlet(input.menuItems.filter((item) => linkedIds.has(item.id)), branchIndex, input.outletId)
-  const linked = new Map(linkedAtBranch.map((item) => [item.id, item]))
+  const linked = linkedItemsAtBranch(
+    branchMenu.map((item) => modifierGroupsFor(item, categoriesById.get(item.category_id), input.tenant)),
+    input.menuItems,
+    branchIndex,
+    input.outletId,
+  )
 
   const items = branchMenu.map((item) => projectItem(item, categoriesById.get(item.category_id), input, linked))
   const used = new Set(items.map((item) => item.categoryId))

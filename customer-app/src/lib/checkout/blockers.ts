@@ -34,6 +34,8 @@ export interface CheckoutState {
   needsOutlet: boolean
   paymentMethodId: string | null
   deliveryAddress: string
+  /** The address was picked from the search (it has a pin); typed text alone cannot be delivered to. */
+  hasDeliveryPlace: boolean
   deliveryFee: DeliveryFeeStatus
   shortfallCentavos: number
 }
@@ -54,8 +56,9 @@ export function checkoutBlockers(state: CheckoutState): string[] {
       `${state.outlet?.name ?? 'This branch'} does not ${isDelivery ? 'deliver' : `offer ${MODE_WORDS[state.mode]}`}`,
     ],
     [isDelivery && state.deliveryAddress.trim() === '', 'Add a delivery address'],
+    [isDelivery && state.deliveryAddress.trim() !== '' && !state.hasDeliveryPlace, 'Pick your address from the search results'],
     // A fee that is still loading or failed must never be charged as ₱0.
-    ...(isDelivery && state.deliveryAddress.trim() !== '' && state.deliveryFee !== 'ready'
+    ...(isDelivery && state.hasDeliveryPlace && state.deliveryFee !== 'ready'
       ? [[true, FEE_BLOCKERS[state.deliveryFee]] as [boolean, string]]
       : []),
     [state.shortfallCentavos > 0, `Add ${formatPeso(state.shortfallCentavos)} more for ${MODE_WORDS[state.mode]}`],

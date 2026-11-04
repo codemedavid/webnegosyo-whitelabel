@@ -317,8 +317,9 @@ export const VALID_ORDER_DRAFT = {
   outletId: 'outlet-bgc',
   lines: [{ itemId: 'item-latte', quantity: 2, selections: { size: { grande: 1 }, milk: { oat: 1 } } }],
   paymentMethodId: 'pm-gcash',
+  paymentReference: null,
   voucherCode: null,
   rewardId: null,
-  deliveryAddress: null,
+  delivery: null,
   notes: '',
 }

@@ -5,11 +5,14 @@ import { availablePaymentMethods } from '@/lib/checkout/payments'
 import { rewardEstimateCentavos } from '@/lib/checkout/reward'
 import { checkoutTotals, minimumOrderShortfall } from '@/lib/checkout/totals'
 import { voucherDiscount, type VoucherTerms } from '@/lib/checkout/voucher'
-import type { AppOrderDraft } from '@/lib/contract'
+import type { AppOrderDelivery, AppOrderDraft } from '@/lib/contract'
 import { useAppConfig, useCatalog, useDeliveryQuote, useLoyalty, usePlaceOrder } from '@/lib/data/hooks'
 import { toCentavos } from '@/lib/money'
 import { useCart, useCartSummary } from '@/lib/stores/cart'
 import { useSession } from '@/lib/stores/session'
+
+/** A place picked from the address search; typed text alone never makes a delivery. */
+export type PickedPlace = Pick<AppOrderDelivery, 'address' | 'lat' | 'lng'>
 
 /** Everything the review screen decides, kept out of the screen so it stays layout. */
 export function useCheckout() {
@@ -23,6 +26,7 @@ export function useCheckout() {
 
   const [addressDraft, setAddressDraft] = useState('')
   const [quotedAddress, setQuotedAddress] = useState('')
+  const [pickedPlace, setPickedPlace] = useState<PickedPlace | null>(null)
   const [notes, setNotes] = useState('')
   const [pickedPaymentId, setPickedPaymentId] = useState<string | null>(null)
   const [voucher, setVoucher] = useState<VoucherTerms | null>(null)
@@ -63,6 +67,7 @@ export function useCheckout() {
     needsOutlet: features?.multiBranch ?? false,
     paymentMethodId: paymentMethod?.id ?? null,
     deliveryAddress: isDelivery ? addressDraft : '',
+    hasDeliveryPlace: pickedPlace !== null,
     deliveryFee,
     shortfallCentavos,
   })
@@ -74,9 +79,10 @@ export function useCheckout() {
       outletId: outlet?.id ?? null,
       lines: lines.map((line) => ({ itemId: line.itemId, quantity: line.quantity, selections: line.selections })),
       paymentMethodId: paymentMethod.id,
+      paymentReference: null,
       voucherCode: voucherResult?.isApplied && voucher ? voucher.code : null,
       rewardId: rewardCentavos > 0 && reward ? reward.id : null,
-      deliveryAddress: isDelivery ? addressDraft.trim() : null,
+      delivery: isDelivery && pickedPlace ? { ...pickedPlace, quoteToken: null } : null,
       notes: notes.trim(),
     }
     placeOrder.mutate(draft, {
@@ -103,6 +109,13 @@ export function useCheckout() {
       setDraft: (next: string) => {
         setAddressDraft(next)
         setQuotedAddress('')
+        setPickedPlace(null)
+      },
+      picked: pickedPlace,
+      pick: (place: PickedPlace) => {
+        setPickedPlace(place)
+        setAddressDraft(place.address)
+        setQuotedAddress(place.address)
       },
       commit: () => {
         const next = addressDraft.trim()

@@ -28,6 +28,7 @@ const ready = {
   needsOutlet: true,
   paymentMethodId: 'pm-cash',
   deliveryAddress: '',
+  hasDeliveryPlace: false,
   deliveryFee: 'ready' as const,
   shortfallCentavos: 0,
 }
@@ -82,11 +83,17 @@ describe('checkoutBlockers', () => {
   })
 
   it('never lets a delivery order go out on an unconfirmed fee', () => {
-    const delivery = { ...ready, mode: 'delivery' as const, orderType: orderTypes[1], outlet: undefined, needsOutlet: false, deliveryAddress: '12 Rizal St' }
+    const delivery = { ...ready, mode: 'delivery' as const, orderType: orderTypes[1], outlet: undefined, needsOutlet: false, deliveryAddress: '12 Rizal St', hasDeliveryPlace: true }
     expect(checkoutBlockers({ ...delivery, deliveryFee: 'ready' })).toEqual([])
     expect(checkoutBlockers({ ...delivery, deliveryFee: 'unconfirmed' })).toEqual(['Confirm your address to see the delivery fee'])
     expect(checkoutBlockers({ ...delivery, deliveryFee: 'quoting' })).toEqual(['Getting the delivery fee…'])
     expect(checkoutBlockers({ ...delivery, deliveryFee: 'failed' })).toEqual(['We couldn’t price delivery to this address'])
+  })
+
+  it('never delivers to typed text: the address must be picked from the search', () => {
+    const typed = { ...ready, mode: 'delivery' as const, orderType: orderTypes[1], outlet: undefined, needsOutlet: false, deliveryAddress: '12 Rizal St' }
+    expect(checkoutBlockers(typed)).toEqual(['Pick your address from the search results'])
+    expect(checkoutBlockers({ ...typed, deliveryFee: 'failed' })).toEqual(['Pick your address from the search results'])
   })
 
   it('ignores the fee for pick up and dine in', () => {

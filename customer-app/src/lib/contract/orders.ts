@@ -68,6 +68,19 @@ export const appOrderDetailSchema = z.object({
 export type AppOrderDetail = z.infer<typeof appOrderDetailSchema>
 
 /**
+ * Where a delivery goes: the place the customer picked from the address
+ * search, plus the quote the fee came from (Lalamove stores; null otherwise).
+ */
+export const appOrderDeliverySchema = z.object({
+  address: z.string().trim().min(1).max(300),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  quoteToken: z.string().min(1).max(2000).nullable(),
+})
+
+export type AppOrderDelivery = z.infer<typeof appOrderDeliverySchema>
+
+/**
  * What the app sends to place an order. Prices are never sent: the server
  * reprices every line, and the contact is the signed-in session's phone.
  */
@@ -85,9 +98,13 @@ export const appOrderDraftSchema = z.object({
     .min(1)
     .max(50),
   paymentMethodId: z.string().min(1),
+  /** Typed proof (reference number) for a method that requires proof; null when none was typed. */
+  paymentReference: z.string().trim().min(1).max(80).nullable(),
   voucherCode: z.string().trim().min(1).max(40).nullable(),
+  /** Rewards at checkout arrive in Phase 5: until then the server refuses anything but null. */
   rewardId: z.string().min(1).nullable(),
-  deliveryAddress: z.string().trim().min(1).max(300).nullable(),
+  /** A picked place (not typed text) for delivery orders; null for every other order type. */
+  delivery: appOrderDeliverySchema.nullable(),
   notes: z.string().max(300),
 })
 

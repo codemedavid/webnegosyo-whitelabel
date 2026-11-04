@@ -148,6 +148,24 @@ describe('app contract — order draft', () => {
     const zero = { ...VALID_ORDER_DRAFT, lines: [{ ...VALID_ORDER_DRAFT.lines[0], quantity: 0 }] }
     expect(appOrderDraftSchema.safeParse(zero).success).toBe(false)
   })
+
+  it('takes a delivery as a picked place, never bare text', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    const delivery = { address: ' 12 Rizal St, Makati ', lat: 14.55, lng: 121.02, quoteToken: null }
+    const parsed = appOrderDraftSchema.parse({ ...VALID_ORDER_DRAFT, delivery })
+    expect(parsed.delivery).toEqual({ ...delivery, address: '12 Rizal St, Makati' })
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: '12 Rizal St' }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: { ...delivery, lat: 91 } }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: { ...delivery, lng: -181 } }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: { ...delivery, address: '  ' } }).success).toBe(false)
+  })
+
+  it('takes a typed payment reference, trimmed and bounded', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    expect(appOrderDraftSchema.parse({ ...VALID_ORDER_DRAFT, paymentReference: ' 1234 5678 ' }).paymentReference).toBe('1234 5678')
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentReference: ' ' }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentReference: 'x'.repeat(81) }).success).toBe(false)
+  })
 })
 
 describe('app contract — envelope', () => {
