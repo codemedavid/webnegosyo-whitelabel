@@ -29,6 +29,7 @@ import { CollapsingHeaderList, DOCKED_SEARCH_CLEARANCE } from "../../components/
 import { useScreenTopInset } from "../../lib/use-screen-top-inset";
 import { ReportPeriodBar } from "../../components/ReportPeriodBar";
 import { defaultSelection, selectionToQueryArgs, type ReportQueryArgs, type ReportSelection } from "../../lib/report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 
 /**
  * A day's orders are a report, not a queue: the window has to be fetched, and
@@ -143,6 +144,8 @@ export default function OrdersScreen() {
   // queue is a most-recent-N page and would have nothing from a past day in it.
   const [dateSelection, setDateSelection] = useState<ReportSelection | null>(null);
   const [nowMs] = useState(() => Date.now());
+  // Picked days are the store's business days (a 4 AM store's Friday runs to Sat 3:59 AM).
+  const { schedule } = useTradingDay();
   const [refreshing, setRefreshing] = useState(false);
 
   // Deep link from the dashboard pipeline (`/orders?status=preparing`). The tab
@@ -164,7 +167,7 @@ export default function OrdersScreen() {
 
   // Fetch the recent queue once, then filter/search/sort on the client so
   // every status pill can show a live count without extra round-trips.
-  const dateArgs = dateSelection ? selectionToQueryArgs(dateSelection, nowMs) : null;
+  const dateArgs = dateSelection ? selectionToQueryArgs(dateSelection, nowMs, false, schedule) : null;
   const viewArgs = viewOutletId ? { viewOutletId } : {};
   const ordersResult = useSafeQuery<ConvexOrder[]>(
     getOrdersRef,
@@ -173,8 +176,8 @@ export default function OrdersScreen() {
   // Sales rung up and changes made while offline are part of the queue too;
   // the live queue is also kept on the device for a launch with no signal.
   const offlineWindow = useMemo(
-    () => (dateSelection ? queryWindow(selectionToQueryArgs(dateSelection, nowMs), nowMs) : null),
-    [dateSelection, nowMs],
+    () => (dateSelection ? queryWindow(selectionToQueryArgs(dateSelection, nowMs, false, schedule), nowMs) : null),
+    [dateSelection, nowMs, schedule],
   );
   const {
     data: mergedOrders,
@@ -543,6 +546,7 @@ export default function OrdersScreen() {
           selection={dateSelection ?? LIVE_QUEUE_SELECTION}
           presets={[]}
           nowMs={nowMs}
+          schedule={schedule}
           onChange={setDateSelection}
           onClear={() => setDateSelection(null)}
           clearLabel="Live queue"

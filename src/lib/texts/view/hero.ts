@@ -40,7 +40,8 @@ function phoneName(summary: SenderSummary): string {
 function readySentence(summary: SenderSummary, now: number): string {
   const seen = timeAgoText(summary.primary?.lastSeenAt ?? null, now)
   const lead = seen ? `${phoneName(summary)} checked in ${seen}` : `${phoneName(summary)} is ready`
-  if (summary.waiting <= 0) return lead
+  // "Ready" alone read as "texts are going out"; say plainly when there is nothing to send.
+  if (summary.waiting <= 0) return `${lead} · Nothing waiting to send`
   const allOut = toMs(summary.allOutBy)
   const parts = [lead, `${summary.waiting} waiting`]
   if (allOut !== null) parts.push(`all out by ${clockText(allOut)}`)
@@ -67,7 +68,7 @@ function offlineSentence(summary: SenderSummary, now: number): string {
 function restingSentence(summary: SenderSummary): string {
   const until = toMs(summary.quietUntil)
   const lead = until === null ? 'Quiet hours now, Philippine time.' : `Quiet hours until ${clockText(until)}, Philippine time.`
-  if (summary.waiting <= 0) return lead
+  if (summary.waiting <= 0) return `${lead} Nothing waiting to send.`
   return `${lead} ${plural(summary.waiting, 'text goes', 'texts go')} out then.`
 }
 

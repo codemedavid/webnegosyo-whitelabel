@@ -17,6 +17,7 @@ jest.mock('@/lib/supabase/admin', () => ({
 
 const TENANT_ID = '9a1b2c3d-4e5f-4a51-9d15-0f4d8c9a1b2c'
 const NOTIFICATION_ID = '4c4b9e0a-8f2d-4a51-9d15-0f4d8c9a1b2c'
+const CASH_ID = '5d5c0f1b-9a3e-4b62-8e26-1a5e9d0b2c3d'
 
 const NOTIFICATION = {
   id: NOTIFICATION_ID,
@@ -170,6 +171,46 @@ describe('POST /api/push/notify-merchant', () => {
         data: { type: 'stock_alert', inventoryItemId: 'item-flour' },
       }),
     ])
+  })
+
+  test('pushes a cash alert (W3.3) only to devices that handle cash, alongside stock alerts', async () => {
+    claimedRows = [
+      { ...NOTIFICATION },
+      {
+        id: CASH_ID,
+        tenant_id: TENANT_ID,
+        outlet_id: null,
+        kind: 'remittance_pending',
+        inventory_item_id: null,
+        item_name: 'Ana Reyes',
+        unit: null,
+        outlet_name: null,
+        quantity: null,
+        reorder_level: null,
+        shift_id: null,
+        remittance_id: 'rem-1',
+        drawer_name: 'Cashier 1',
+        cash_cents: '634500',
+      },
+    ]
+    accountRows = [
+      ...accountRows,
+      { user_id: 'manager', tenant_id: TENANT_ID, role: 'admin', is_owner: false, permissions: ['cash_manage'], outlet_id: null },
+    ]
+    tokenRows = [...tokenRows, { token: 'ExponentPushToken[manager]', user_id: 'manager', tenant_id: TENANT_ID }]
+
+    await post({ notification_ids: [NOTIFICATION_ID, CASH_ID] })
+
+    const cash = sentMessages().filter((message) => (message.data as { type: string }).type === 'cash_alert')
+    expect(cash.map((message) => message.to).sort()).toEqual(['ExponentPushToken[manager]', 'ExponentPushToken[owner]'])
+    expect(cash[0]).toEqual(
+      expect.objectContaining({
+        channelId: 'cash-alerts',
+        title: "Ana's ₱6,345 is waiting to be accepted",
+        body: 'Cashier 1 · Accept it in Remittances',
+        data: { type: 'cash_alert', kind: 'remittance_pending', remittanceId: 'rem-1' },
+      }),
+    )
   })
 
   test('a replay that claims nothing sends nothing', async () => {

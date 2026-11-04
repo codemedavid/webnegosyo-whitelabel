@@ -3,6 +3,8 @@ import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redeemVoucher } from '@/lib/vouchers/repository'
 import type { VoucherChannel } from '@/lib/vouchers/types'
+import { callerHasFeature } from '@/lib/gov-discount-ledger/caller-scope'
+import { outletRefusal, resolveRouteOutlet } from '@/lib/gov-discount-ledger/route-guards'
 
 /**
  * POST /api/vouchers/redeem
@@ -103,6 +105,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const caller = await requireBearerStoreCaller(request, tenantId, 'create')
   if (!caller.ok) return caller.response
   const { user, appUser } = caller
+  // Only the register burns redemptions (pos-tender); a voucher is money.
+  if (!appUser || !callerHasFeature(appUser, 'pos')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   // Taken from the verified token, never the body. The audit trail is the
   // whole defence against a forced discount at the counter — the register
@@ -110,23 +116,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // to name someone else could take money off and pin it on a colleague.
   const redeemedBy = user.id
 
-  // The caller's branch is trusted here, unlike stock depletion, because a
-  // redemption is attributed rather than deducted from a per-branch pool: a
-  // mis-stated branch mislabels a report, it does not spend another shop's
-  // goods. The account's own branch is the fallback for a store-wide login.
-  const outletId =
-    typeof body?.outletId === 'string' && body.outletId.trim() !== ''
-      ? body.outletId
-      : typeof appUser?.outlet_id === 'string' && appUser.outlet_id.trim() !== ''
-        ? appUser.outlet_id
-        : null
+  const admin = createAdminClient()
+
+  // The branch the burn is attributed to: a branch-locked cashier's own
+  // (naming another is refused), or for a store-wide account one of the
+  // store's branches or none. The body only ever proposes. A store-wide sale
+  // naming a branch that isn't the store's is burned under no branch rather
+  // than refused: the customer has already paid, and a refused burn would
+  // leave the code unspent.
+  const requestedOutlet =
+    typeof body?.outletId === 'string' && body.outletId.trim() !== '' ? body.outletId : null
+  let outlet: Awaited<ReturnType<typeof resolveRouteOutlet>>
+  try {
+    outlet = await resolveRouteOutlet(admin, appUser, tenantId, requestedOutlet)
+  } catch (error) {
+    console.error('[vouchers/redeem] branch lookup failed:', error instanceof Error ? error.message : error)
+    return NextResponse.json({ error: 'Could not check the branch. Try again.' }, { status: 503 })
+  }
+  if (!outlet.ok && outlet.status !== 400) return outletRefusal(outlet)
+  const outletId = outlet.ok ? outlet.outletId : null
 
   const customerKey =
     typeof body?.customerKey === 'string' && body.customerKey.trim() !== ''
       ? body.customerKey
       : null
-
-  const admin = createAdminClient()
 
   // Sequential rather than concurrent: each burn is a conditional UPDATE on a
   // voucher row, and two of this order's codes could be the same voucher.

@@ -12,6 +12,7 @@
  */
 
 import { transformCloudinaryUrl, isCloudinaryUrl } from '@/lib/cloudinary-utils'
+import { isR2MediaUrl, transformR2Url } from '@/lib/storage/media-url'
 
 export interface ImageTransformOptions {
   /** Width in pixels */
@@ -192,26 +193,27 @@ export const imagekitPresets = {
     transformImageKitUrl(url, { width }),
 }
 
-/** True when the URL can be transformed (ImageKit or legacy Cloudinary). */
+/** True when the URL can be transformed (R2 media, ImageKit or legacy Cloudinary). */
 export function isOptimizableImageUrl(url: string | null | undefined): boolean {
-  return isImageKitUrl(url) || isCloudinaryUrl(url)
+  return isR2MediaUrl(url) || isImageKitUrl(url) || isCloudinaryUrl(url)
 }
 
 /**
  * Unified transform that dispatches by host:
- * ImageKit → `tr=` query; legacy Cloudinary → `/upload/` params; else unchanged.
+ * R2 media → Cloudflare `/cdn-cgi/image/`; ImageKit → `tr=` query; legacy Cloudinary → `/upload/` params; else unchanged.
  */
 export function transformImageUrl(
   url: string | null | undefined,
   options: ImageTransformOptions = {},
 ): string | null {
   if (!url) return null
+  if (isR2MediaUrl(url)) return transformR2Url(url, options)
   if (isImageKitUrl(url)) return transformImageKitUrl(url, options)
   if (isCloudinaryUrl(url)) return transformCloudinaryUrl(url, options)
   return url
 }
 
-/** Generate a responsive srcset for an ImageKit or Cloudinary URL. */
+/** Generate a responsive srcset for an R2 media, ImageKit or Cloudinary URL. */
 export function generateImageSrcSet(
   url: string | null | undefined,
   widths: number[] = [320, 640, 960, 1280, 1920],

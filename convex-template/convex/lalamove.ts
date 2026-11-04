@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { isE164Phone, normalizeLalamovePhone, resolveLalamoveRecipient } from "./lalamoveContact";
 import { resolveRequoteGate } from "./lalamoveStatus";
+import { buildRiderRemarks } from "./lalamoveRemarks";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireActionAccess } from "./auth";
@@ -197,6 +198,29 @@ function isUsableCoordinate(value: string): boolean {
  * Retrieves the quotation to get the real stop IDs, then places the order with
  * the store as sender and the customer as recipient.
  */
+/**
+ * What the rider reads at the drop-off: unit, landmark, note, the address and a
+ * pin link (`lalamoveRemarks.ts`, the web's rule). The Convex order keeps the
+ * address and pin in top-level fields; the checkout answers in customerData.
+ */
+function riderRemarksFor(order: {
+  customerData?: unknown;
+  deliveryAddress?: string;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
+}): string {
+  const answers =
+    order.customerData && typeof order.customerData === "object"
+      ? (order.customerData as Record<string, unknown>)
+      : {};
+  return buildRiderRemarks({
+    ...answers,
+    delivery_address: order.deliveryAddress ?? answers.delivery_address,
+    delivery_lat: order.deliveryLatitude ?? answers.delivery_lat,
+    delivery_lng: order.deliveryLongitude ?? answers.delivery_lng,
+  });
+}
+
 export const bookLalamove = action({
   args: { orderId: v.id("orders") },
   handler: async (
@@ -314,7 +338,7 @@ export const bookLalamove = action({
           stopId: stops[stops.length - 1].stopId,
           name: order.customerName,
           phone: recipient.phone,
-          remarks: order.deliveryAddress,
+          remarks: riderRemarksFor(order),
         },
       ],
       isPODEnabled: true,

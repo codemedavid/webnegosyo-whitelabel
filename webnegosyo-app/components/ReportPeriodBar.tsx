@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyl
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { ReportRangePicker } from "./ReportRangePicker";
 import { describeSelection, type ReportSelection } from "../lib/report-window";
+import { MIDNIGHT_SCHEDULE, type CutoffSchedule } from "../lib/business-day/trading-day";
 
 /**
  * "Which days?" — the one control every report carries.
@@ -22,6 +23,8 @@ interface ReportPeriodBarProps {
   /** Day counts to offer as pills, e.g. [7, 14, 30]. */
   presets: readonly number[];
   nowMs: number;
+  /** The store's business-day cutoffs (`useReportWindow().schedule`); none = Manila midnight. */
+  schedule?: CutoffSchedule;
   onChange: (selection: ReportSelection) => void;
   /**
    * Offered only once dates are chosen, and only by a screen that has
@@ -37,6 +40,7 @@ export function ReportPeriodBar({
   selection,
   presets,
   nowMs,
+  schedule = MIDNIGHT_SCHEDULE,
   onChange,
   onClear,
   clearLabel = "Live",
@@ -45,7 +49,7 @@ export function ReportPeriodBar({
   const [isPickerOpen, setPickerOpen] = useState(false);
 
   const isCustom = selection.kind !== "preset";
-  const pickLabel = isCustom ? describeSelection(selection, nowMs) : "Pick dates";
+  const pickLabel = isCustom ? describeSelection(selection, nowMs, schedule) : "Pick dates";
 
   return (
     <View style={[styles.row, style]}>
@@ -96,6 +100,7 @@ export function ReportPeriodBar({
         visible={isPickerOpen}
         selection={selection}
         nowMs={nowMs}
+        schedule={schedule}
         onApply={(picked) => {
           setPickerOpen(false);
           onChange(picked);

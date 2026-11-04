@@ -13,6 +13,9 @@
  */
 
 const IMAGEKIT_HOST = "ik.imagekit.io";
+/** Cloudflare R2 media host; resized through Cloudflare Image Transformations. */
+const MEDIA_HOST = "media.webnegosyo.com";
+const CF_TRANSFORM_PREFIX = "/cdn-cgi/image/";
 const CLOUDINARY_HOST = "res.cloudinary.com";
 const CLOUDINARY_UPLOAD = "/upload/";
 
@@ -30,6 +33,40 @@ function imagekitThumb(url: string, width: number): string {
   // resolved to the larger of the two.
   search.set("tr", `w-${width},q-${QUALITY},f-auto`);
   return `${base}?${search.toString().replace(/%2C/gi, ",")}`;
+}
+
+function parseMediaUrl(url: string): URL | null {
+  try {
+    const parsed = new URL(url);
+    const isMedia =
+      parsed.protocol === "https:" &&
+      parsed.host === MEDIA_HOST &&
+      parsed.username === "" &&
+      parsed.password === "";
+    return isMedia ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The object path, without an existing transformation prefix. */
+function mediaKey(parsed: URL): string {
+  const path = parsed.pathname;
+  if (!path.startsWith(CF_TRANSFORM_PREFIX)) return path;
+  const rest = path.slice(CF_TRANSFORM_PREFIX.length);
+  const slash = rest.indexOf("/");
+  return slash < 0 ? "/" : rest.slice(slash);
+}
+
+/** `/cdn-cgi/image/<opts>/https://other.host/…` names another origin — never ours. */
+const REMOTE_SOURCE = /^\/(https?:|\/)/i;
+
+function mediaThumb(parsed: URL, width: number): string | null {
+  // Replace an existing transformation rather than nesting one.
+  const key = mediaKey(parsed);
+  if (REMOTE_SOURCE.test(key)) return null;
+  const options = `width=${width},quality=${QUALITY},format=auto,onerror=redirect`;
+  return `${parsed.origin}${CF_TRANSFORM_PREFIX}${options}${key}${parsed.search}`;
 }
 
 function cloudinaryThumb(url: string, width: number): string {
@@ -59,6 +96,8 @@ export function thumbUrl(url: string | null | undefined, size: number): string |
 
   const width = Math.round(size);
 
+  const media = parseMediaUrl(url);
+  if (media) return mediaThumb(media, width) ?? url;
   if (url.includes(IMAGEKIT_HOST)) return imagekitThumb(url, width);
   if (url.includes(CLOUDINARY_HOST)) return cloudinaryThumb(url, width);
 

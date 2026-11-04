@@ -51,6 +51,7 @@ import {
   type PlatformQueryBuilder,
 } from "./platform-client";
 import { isUuid, toUuidOrNull } from "../uuid";
+import { cachedCutoffSchedule } from "../business-day/cached-schedule";
 import { PartialOrderWriteError } from "../offline/network-error";
 import { DELIVERED_NOT_CANCELLABLE_MESSAGE } from "../order-status-change";
 import { cancelReasonColumn, readOrderEventReason, type OrderEventReason } from "../order-cancel-reason";
@@ -928,7 +929,8 @@ export async function runPlatformQuery(
     case "orders:getRealtimeQueue":
       return getRealtimeQueue(client, tenant, scope);
     case "orders:getDashboardStats":
-      return getStatsBetween(client, tenant, scope, localDayStartMs(Date.now()));
+      // "Today" is the store's business day once its schedule is cached (midnight until then).
+      return getStatsBetween(client, tenant, scope, localDayStartMs(Date.now(), undefined, cachedCutoffSchedule(tenant)));
     case "orders:getDashboardStatsByPeriod": {
       // `Number(undefined)` is NaN and `new Date(NaN).toISOString()` throws a
       // bare RangeError with no clue which screen sent it — refuse loudly.

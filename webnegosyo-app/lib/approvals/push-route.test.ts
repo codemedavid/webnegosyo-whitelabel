@@ -70,6 +70,15 @@ describe("routeFromPushResponse (the app's one push router)", () => {
     expect(routeFromPushResponse({ campaignId: "c1" }, null)).toBe("/(main)/campaign/c1");
   });
 
+  test("a tapped bill reminder (a local notification) opens Bills to pay", () => {
+    expect(routeFromPushResponse({ type: "bill_reminder", billIds: ["bill-1"], url: "/(main)/expense-bills?bill=bill-1" }, null)).toBe(
+      "/(main)/expense-bills?bill=bill-1",
+    );
+    expect(routeFromPushResponse({ type: "bill_reminder", billIds: ["bill-1", "bill-2"] }, "expo.modules.notifications.actions.DEFAULT")).toBe(
+      "/(main)/expense-bills",
+    );
+  });
+
   test("the order of the rules decides a push that matches more than one", () => {
     // An approval wins over everything after it.
     expect(

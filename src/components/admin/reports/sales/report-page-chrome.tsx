@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import type { ReportContext } from '@/lib/reports/read/report-context'
 import { reportHref } from '@/lib/reports/report-links'
+import { SCHEDULE_FALLBACK_NOTE } from '@/lib/reports/schedule-fallback-note'
 import { BREAKDOWN_META, breakdownsFor, type BreakdownSlug } from '@/lib/reports/report-view-model'
 import { CoverageNote } from '../coverage-note'
 import { ReportFilters } from '../report-filters'
@@ -76,7 +77,7 @@ export function ReportHeader({ context, title, description, path, backHref, page
 
 /** Notes that change how far the figures can be trusted, above the figures (plan §4). */
 export function ReportNotices({ context, children }: { context: ReportContext; children?: ReactNode }) {
-  const hasAny = context.periodError || context.isMixedBackend || children
+  const hasAny = context.periodError || context.isMixedBackend || context.isScheduleFallback || children
   if (!hasAny) return null
   return (
     <div className="flex flex-col gap-2">
@@ -85,6 +86,7 @@ export function ReportNotices({ context, children }: { context: ReportContext; c
           {context.periodError} Showing {context.period.label.toLowerCase()} instead.
         </CoverageNote>
       )}
+      {context.isScheduleFallback && <CoverageNote tone="info">{SCHEDULE_FALLBACK_NOTE}</CoverageNote>}
       {context.isMixedBackend && (
         <CoverageNote tone="info">
           These reports read orders saved in WebNegosyo’s main database. Orders your store took on its earlier real-time

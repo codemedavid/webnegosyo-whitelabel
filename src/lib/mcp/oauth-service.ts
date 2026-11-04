@@ -19,7 +19,8 @@ import { signAccessToken } from '@/lib/mcp/oauth-jwt'
  * - All timestamps use the injected `now` so tests are deterministic.
  */
 
-export type PkceMethod = 'S256' | 'plain'
+/** OAuth 2.1 / the MCP auth profile: S256 only (`plain` exposes the verifier). */
+export type PkceMethod = 'S256'
 
 export interface TokenResponse {
   access_token: string
@@ -53,11 +54,15 @@ function isValidMerchantGrant(scope: string, tenantId: string | null): boolean {
     && requested.every((item) => allowed.has(item))
 }
 
-/** RFC 7636 PKCE verification. `S256` compares base64url(sha256(verifier)). */
-export function verifyPkce(codeVerifier: string, codeChallenge: string, method: PkceMethod): boolean {
+/**
+ * RFC 7636 PKCE verification: base64url(sha256(verifier)) must equal the
+ * challenge. Any other method — including `plain`, possibly stored on an old
+ * code row — is refused.
+ */
+export function verifyPkce(codeVerifier: string, codeChallenge: string, method: string): boolean {
+  if (method !== 'S256') return false
   if (!codeVerifier || !codeChallenge) return false
-  const derived = method === 'S256' ? sha256Base64Url(codeVerifier) : codeVerifier
-  return constantTimeEquals(derived, codeChallenge)
+  return constantTimeEquals(sha256Base64Url(codeVerifier), codeChallenge)
 }
 
 /**
@@ -197,7 +202,8 @@ interface StoredCodeRow {
   client_id: string
   redirect_uri: string
   code_challenge: string
-  code_challenge_method: PkceMethod
+  /** Text column: old rows may say `plain`, which verifyPkce refuses. */
+  code_challenge_method: string
   scope: string
   created_by: string
   consumed_at: string | null

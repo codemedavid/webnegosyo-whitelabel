@@ -11,11 +11,15 @@
  * is what lets the same choice drive a label, a query, and a CSV file name
  * without each of them re-deriving the dates and disagreeing at the edges.
  *
- * Day boundaries are NOT redefined here. They come from
- * `daily-report/business-day.ts`, so this module, the daily inventory report
- * and `assign_daily_order_number` in Postgres all agree on where a merchant's
- * day starts. A fifth implementation of "what is a day" is exactly how the
- * takings and the stock end up describing slightly different Tuesdays.
+ * Day boundaries are NOT redefined here. They come from the store's
+ * business-day schedule (`business-day/trading-day.ts`): every function that
+ * names a day takes an optional `schedule`, and without one it is the Manila
+ * calendar day of `daily-report/business-day.ts`, exactly as before the cutoff
+ * existed. A fifth implementation of "what is a day" is how the takings and the
+ * stock end up describing slightly different Tuesdays.
+ *
+ * Days are NOT assumed to be 24 h: on the day a cutoff changes, a day is longer
+ * or shorter, so spans are built from day starts, never `days × DAY_MS`.
  */
 
 import {
@@ -23,6 +27,12 @@ import {
   resolveBusinessDayWindow,
   toBusinessDayKey,
 } from "./daily-report/business-day";
+import {
+  MIDNIGHT_SCHEDULE,
+  tradingDayOf,
+  tradingDayWindow,
+  type CutoffSchedule,
+} from "./business-day/trading-day";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -62,9 +72,19 @@ export interface ReportWindow {
  */
 export type ReportQueryArgs = { daysBack: number } | { startMs: number; endMs: number };
 
-/** Epoch ms of the Manila midnight that opens `dayKey`. Throws on a bad key. */
-function dayStartMs(dayKey: string): number {
-  return Date.parse(resolveBusinessDayWindow(dayKey).startIso);
+/** Epoch ms at which business day `dayKey` opens. Throws on a bad key. */
+function dayStartMs(dayKey: string, schedule: CutoffSchedule): number {
+  return Date.parse(tradingDayWindow(dayKey, schedule).startIso);
+}
+
+/** Today's business day at `nowMs`. */
+function todayKeyAt(nowMs: number, schedule: CutoffSchedule): string {
+  return tradingDayOf(new Date(nowMs).toISOString(), schedule);
+}
+
+/** Calendar arithmetic on day keys; no day length is involved. */
+function addDayKeys(dayKey: string, days: number): string {
+  return new Date(Date.parse(`${dayKey}T00:00:00.000Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
 function isRealDayKey(value: string): boolean {
@@ -81,9 +101,9 @@ function clampDays(days: number): number {
   return Math.min(Math.max(Math.round(days), 1), MAX_RANGE_DAYS);
 }
 
-/** How many days `from`..`to` spans, counting both ends. */
+/** How many days `from`..`to` spans, counting both ends (calendar keys, any day length). */
 function daysBetween(fromKey: string, toKey: string): number {
-  return Math.round((dayStartMs(toKey) - dayStartMs(fromKey)) / DAY_MS) + 1;
+  return Math.round((Date.parse(`${toKey}T00:00:00.000Z`) - Date.parse(`${fromKey}T00:00:00.000Z`)) / DAY_MS) + 1;
 }
 
 /** The day `count - 1` days after `fromKey`. */
@@ -94,27 +114,36 @@ function dayKeyAfter(fromKey: string, count: number): string {
 }
 
 /** The instants a selection covers. Throws if a day key is not a real date. */
-export function resolveReportWindow(selection: ReportSelection, nowMs: number): ReportWindow {
-  const todayKey = toBusinessDayKey(new Date(nowMs).toISOString());
+export function resolveReportWindow(
+  selection: ReportSelection,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): ReportWindow {
+  const todayKey = todayKeyAt(nowMs, schedule);
 
   if (selection.kind === "day") {
-    const startMs = dayStartMs(selection.dayKey);
-    return { startMs, endMs: startMs + DAY_MS };
+    return {
+      startMs: dayStartMs(selection.dayKey, schedule),
+      endMs: dayStartMs(nextBusinessDayKey(selection.dayKey), schedule),
+    };
   }
 
   if (selection.kind === "range") {
     return {
-      startMs: dayStartMs(selection.fromKey),
+      startMs: dayStartMs(selection.fromKey, schedule),
       // The day AFTER the last one, because the window is half-open: a merchant
       // who asks for Sep 1–14 means the 14th's trade counts.
-      endMs: dayStartMs(nextBusinessDayKey(selection.toKey)),
+      endMs: dayStartMs(nextBusinessDayKey(selection.toKey), schedule),
     };
   }
 
-  // A preset ends at the end of the local today, so a sale rung up an hour ago
-  // is in the window, and covers `days` CALENDAR days counting today.
-  const endMs = dayStartMs(nextBusinessDayKey(todayKey));
-  return { startMs: endMs - clampDays(selection.days) * DAY_MS, endMs };
+  // A preset ends at the end of today's business day, so a sale rung up an
+  // hour ago is in the window, and covers `days` business days counting today.
+  const tomorrowKey = nextBusinessDayKey(todayKey);
+  return {
+    startMs: dayStartMs(addDayKeys(tomorrowKey, -clampDays(selection.days)), schedule),
+    endMs: dayStartMs(tomorrowKey, schedule),
+  };
 }
 
 /**
@@ -124,8 +153,12 @@ export function resolveReportWindow(selection: ReportSelection, nowMs: number): 
  * reversed, or nonsense. A report is a read: bad input is a reason to show a
  * sensible day, not to fail the screen.
  */
-export function clampSelection(selection: ReportSelection, nowMs: number): ReportSelection {
-  const todayKey = toBusinessDayKey(new Date(nowMs).toISOString());
+export function clampSelection(
+  selection: ReportSelection,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): ReportSelection {
+  const todayKey = todayKeyAt(nowMs, schedule);
 
   if (selection.kind === "preset") {
     return { kind: "preset", days: clampDays(selection.days) };
@@ -174,13 +207,16 @@ export function clampSelection(selection: ReportSelection, nowMs: number): Repor
 export function selectionToQueryArgs(
   selection: ReportSelection,
   nowMs: number,
-  canBound = false
+  canBound = false,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
 ): ReportQueryArgs {
   // A backend that understands bounded windows gets the CALENDAR days the
   // label names. `daysBack` means "now minus N×24h" on every backend, so
   // "Last 7 days" used to start mid-afternoon eight days ago, and "Today"
   // was the last 24 hours — neither matched Home, Trends or the till.
-  if (canBound || selection.kind !== "preset") return resolveReportWindow(selection, nowMs);
+  // `daysBack` cannot follow a cutoff (§2.6): an old bundle's preset stays
+  // "now minus N×24h" whatever the schedule says.
+  if (canBound || selection.kind !== "preset") return resolveReportWindow(selection, nowMs, schedule);
   return { daysBack: clampDays(selection.days) };
 }
 
@@ -253,8 +289,12 @@ function formatDay(dayKey: string, todayKey: string): string {
 }
 
 /** What the picker pill and the screen subtitle say. */
-export function describeSelection(selection: ReportSelection, nowMs: number): string {
-  const todayKey = toBusinessDayKey(new Date(nowMs).toISOString());
+export function describeSelection(
+  selection: ReportSelection,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): string {
+  const todayKey = todayKeyAt(nowMs, schedule);
 
   if (selection.kind === "preset") {
     const days = clampDays(selection.days);

@@ -6,7 +6,7 @@ import type { ServerPlace } from '@/lib/maps/apple/maps-server-api'
 jest.mock('server-only', () => ({}))
 
 function place(lat: number, lng: number, towns: string[]): ServerPlace {
-  return { name: null, address: towns.join(', '), coordinates: { lat, lng }, countryCode: 'PH', towns }
+  return { name: null, address: towns.join(', '), coordinates: { lat, lng }, countryCode: 'PH', towns, isStreetLevel: false }
 }
 
 async function load() {

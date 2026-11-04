@@ -9,6 +9,8 @@ import {
 import type { OrderStats } from "@/lib/order-stats";
 import type { OrderBackendTenantFields } from "@/lib/order-backend";
 import { resolveBranchScope } from "@/lib/outlets/branch-scope";
+import { createClient } from "@/lib/supabase/server";
+import { readCutoffScheduleForDisplay } from "@/lib/business-day/read-schedule";
 
 /**
  * Server-only entry points for reading a tenant's order queue out of their own
@@ -46,5 +48,7 @@ export async function getTenantSupabaseOrderStats(
   const { userRole } = await verifyTenantPermission(tenant.id, "orders", "view");
 
   const client = createTenantOrderWriteClient(tenant);
-  return fetchTenantOrderStats(client, tenant.id, new Date(), resolveBranchScope(userRole));
+  // The business-day cutoffs are a store setting on the platform database.
+  const { schedule } = await readCutoffScheduleForDisplay(await createClient(), tenant.id);
+  return fetchTenantOrderStats(client, tenant.id, new Date(), resolveBranchScope(userRole), schedule);
 }

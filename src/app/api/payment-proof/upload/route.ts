@@ -5,6 +5,7 @@ import { detectImageMime, type DetectedImageMime } from '@/lib/imagekit-signatur
 import { PAYMENT_PROOF_FOLDER, PAYMENT_PROOF_MAX_FILE_SIZE } from '@/lib/payment-proof'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
+import { signProofDeleteToken } from '@/lib/payment-proof-delete-token'
 
 /**
  * POST /api/payment-proof/upload (multipart: `file`, optional `purpose`)
@@ -20,7 +21,9 @@ import { getClientIP } from '@/lib/rate-limit'
  *  - uploads with the private key, unique-named and never overwriting;
  *  - rate limits per client IP (shared across instances).
  *
- * Response shape matches the old client upload: { url, fileId, filePath }.
+ * Response shape matches the old client upload: { url, fileId, filePath },
+ * plus `deleteToken` — the only thing that lets this uploader delete the file
+ * again (see payment-proof-delete-token.ts).
  */
 export const dynamic = 'force-dynamic'
 
@@ -100,7 +103,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const uploaded = await uploadBufferToImageKit(bytes, { folder, fileName, mimeType })
-    return respond(uploaded)
+    const deleteToken = signProofDeleteToken(uploaded.fileId)
+    return respond(deleteToken ? { ...uploaded, deleteToken } : uploaded)
   } catch (error) {
     console.error('[payment-proof/upload] upload failed', {
       error: error instanceof Error ? error.message : String(error),

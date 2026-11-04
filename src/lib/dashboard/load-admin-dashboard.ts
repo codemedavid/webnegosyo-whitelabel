@@ -21,12 +21,13 @@ import {
 import { buildVisitIndex } from '@/lib/growth/classify-sale'
 import { buildGrowth, type DashboardGrowth } from '@/lib/growth/growth-metrics'
 import { buildCustomerSummary, type CustomerSummary } from '@/lib/growth/customer-summary'
+import { readCutoffScheduleForDisplay } from '@/lib/business-day/read-schedule'
 import { buildOverview, type DashboardOverview } from './overview'
 import {
   DAY_MS,
   compareLabelFor,
-  manilaDayStart,
   resolveDashboardWindow,
+  tradingDayStart,
   type DashboardRange,
 } from './periods'
 import { isCompletedSale } from './sale-record'
@@ -113,9 +114,11 @@ async function computeDashboard(
   params: LoadAdminDashboardParams,
 ): Promise<AdminDashboardData> {
   const now = Date.now()
-  const window = resolveDashboardWindow(params.range, now)
+  // Service role like the rest of this cached loader; the schedule holds only times of day.
+  const { schedule } = await readCutoffScheduleForDisplay(createAdminClient(), tenantId)
+  const window = resolveDashboardWindow(params.range, now, schedule)
   const readStart = params.includeGrowth
-    ? Math.min(window.previousStart, manilaDayStart(now) - GROWTH_LOOKBACK_DAYS * DAY_MS)
+    ? Math.min(window.previousStart, tradingDayStart(now, schedule) - GROWTH_LOOKBACK_DAYS * DAY_MS)
     : window.previousStart
 
   // The customer signals do not depend on the order read: issue both at once.

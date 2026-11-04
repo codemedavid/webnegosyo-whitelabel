@@ -160,7 +160,8 @@ export async function readHistory(client: SupabaseClient, tenantId: string, now:
   const since = new Date(now.getTime() - HISTORY_DAYS * DAY_MS).toISOString()
   return readAll<HistoryRow>('text history', (from, to) => client.from('sms_outbox')
     .select('automation_id, recipe, customer_id, phone_e164, occurrence_key, status, created_at, sent_at')
-    .eq('tenant_id', tenantId).gte('created_at', since).order('created_at').order('id').range(from, to))
+    // The owner's test texts (web Texts → Send a test) never shape who a guest is texted next.
+    .eq('tenant_id', tenantId).neq('source', 'test').gte('created_at', since).order('created_at').order('id').range(from, to))
 }
 
 async function readSuppressedPhones(client: SupabaseClient, tenantId: string): Promise<Set<string>> {

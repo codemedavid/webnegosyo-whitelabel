@@ -18,6 +18,8 @@ export interface PaymentProofUploadResult {
   fileId: string
   /** Path relative to the URL endpoint (used to scope deletion) */
   filePath: string
+  /** Lets this app delete the file again; the delete route refuses without it. */
+  deleteToken?: string
 }
 
 export function isImageKitConfigured(): boolean {
@@ -32,6 +34,7 @@ interface ImageKitUploadResponse {
   url?: string
   fileId?: string
   filePath?: string
+  deleteToken?: string
   error?: string
 }
 
@@ -79,20 +82,25 @@ export async function pickAndUploadPaymentProof(): Promise<PaymentProofUploadRes
     throw new Error(json.error ?? 'Failed to upload screenshot.')
   }
 
-  return { url: json.url, fileId: json.fileId, filePath: json.filePath.replace(/^\//, '') }
+  return {
+    url: json.url,
+    fileId: json.fileId,
+    filePath: json.filePath.replace(/^\//, ''),
+    ...(typeof json.deleteToken === 'string' ? { deleteToken: json.deleteToken } : {}),
+  }
 }
 
 /**
  * Best-effort delete of a previously-uploaded proof via the web app's delete route.
  * No-ops if the web base URL is not configured.
  */
-export async function deletePaymentProof(fileId: string, filePath: string): Promise<void> {
-  if (!fileId || !filePath || !WEB_BASE_URL) return
+export async function deletePaymentProof(fileId: string, filePath: string, deleteToken?: string): Promise<void> {
+  if (!fileId || !filePath || !deleteToken || !WEB_BASE_URL) return
   try {
     await fetch(`${baseUrl()}/api/payment-proof/delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileId, filePath }),
+      body: JSON.stringify({ fileId, filePath, deleteToken }),
     })
   } catch {
     // Best-effort cleanup; never block the checkout flow.

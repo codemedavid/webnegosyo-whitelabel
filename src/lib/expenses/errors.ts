@@ -1,0 +1,130 @@
+/**
+ * Expenses — Postgres refusals as sentences a store owner can act on.
+ *
+ * The raw error is logged (code + message, never the input) and replaced with
+ * one of these messages, so an action can show `error.message` as it is and a
+ * constraint name or a policy name never reaches the screen.
+ */
+
+export const EXPENSE_MESSAGES = {
+  noAccess: "You don't have access to expenses.",
+  noteRequired: 'Add a note for this category.',
+  drawerLocked: 'A drawer expense keeps its amount and date. Record a pay in on the drawer to correct the cash.',
+  goneOrVoided: "That expense was already voided or doesn't exist.",
+  notFound: "That expense isn't available.",
+  invalid: "Some details don't add up. Check the amounts and try again.",
+  missingReference: 'That category, supplier or branch is no longer available. Pick another and try again.',
+  shiftClosed: "That drawer's shift is already closed. Pay from an open drawer or pick another source.",
+  duplicate: 'That is already saved.',
+  categoryNameTaken: 'There is already a category with that name.',
+  supplierNameTaken: 'There is already someone with that name under Paid to.',
+  categoryGone: 'That category is no longer available.',
+  supplierGone: 'That supplier is no longer available.',
+  payoutGone: 'That pay-out could not be found.',
+  payoutAlreadySorted: 'That pay-out is already filed as an expense.',
+  drawerGone: 'That drawer could not be found. Open a drawer first.',
+  drawerNotYours: "Only the cashier on this drawer, or someone who manages cash, can pay from it.",
+  spentOnFuture: "An expense can't be dated in the future.",
+  spentOnTooOld: "An expense can't be dated more than 400 days back.",
+  reasonRequired: 'Say why.',
+  drawerShiftClosed: "This shift is closed, so the cash can't go back into the drawer. Use Fix to change the category instead.",
+  starterCategoryLocked: 'A starter category keeps its group and its "Needs a note" setting. You can still rename it or change its badge.',
+  categoryGroupLocked: 'This category already has expenses, so its group stays. Add a new category in the other group instead.',
+  drawerVoidNotHolder: 'Only the cashier holding this drawer, or someone who manages cash, can void it and put the money back.',
+  unknown: "We couldn't save that. Please try again.",
+  readFailed: "We couldn't load your expenses. Please try again.",
+  // Bills to pay (bills-contract.md)
+  billGone: "That bill isn't available.",
+  billStopped: 'This bill was stopped, so it stays as it is. Add a new bill instead.',
+  billDueAlreadyPaid: 'That due date is already paid.',
+  billMarkGone: 'That was already undone.',
+  billsReadFailed: "We couldn't load your bills. Please try again.",
+  billStartTooOld: 'Pick a start date within the last 400 days.',
+  billNoDueLeft: 'This bill has no due date left before its end date. Pick a later end date, or stop the bill.',
+  billPauseInPast: 'Pick a day after today.',
+  billNotVisible: "That bill belongs to another branch, so it can't be marked here.",
+  billOtherBranch: 'Pay this bill from its own branch.',
+} as const
+
+export interface PostgresErrorLike {
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+}
+
+function mentions(error: PostgresErrorLike, word: string): boolean {
+  return [error.message, error.details, error.hint].some((text) => typeof text === 'string' && text.includes(word))
+}
+
+/** Refusals the expense SQL raises by name (migrations 20261022120000/120100/130000/140000). */
+const KNOWN_REFUSALS: ReadonlyArray<readonly [string, string]> = [
+  ['movement_not_found', EXPENSE_MESSAGES.payoutGone],
+  ['expenses_movement_recorded_uq', EXPENSE_MESSAGES.payoutAlreadySorted],
+  ['drawer_payout_already_sorted', EXPENSE_MESSAGES.payoutAlreadySorted],
+  ['drawer_shift_closed', EXPENSE_MESSAGES.drawerShiftClosed],
+  ['shift_not_found', EXPENSE_MESSAGES.drawerGone],
+  ['spent_on_in_future', EXPENSE_MESSAGES.spentOnFuture],
+  ['spent_on_too_old', EXPENSE_MESSAGES.spentOnTooOld],
+  ['reason_required', EXPENSE_MESSAGES.reasonRequired],
+  // 42501 from expense_categories_guard: a rule, not a missing permission.
+  ['A starter category keeps its group', EXPENSE_MESSAGES.starterCategoryLocked],
+  ['already has expenses; its group cannot change', EXPENSE_MESSAGES.categoryGroupLocked],
+  // 42501 from void_expense on a drawer expense.
+  ['cash manager can put cash back', EXPENSE_MESSAGES.drawerVoidNotHolder],
+  // Bills to pay (20261022140000).
+  ['expenses_bill_due_recorded_uq', EXPENSE_MESSAGES.billDueAlreadyPaid],
+  ['This bill was stopped', EXPENSE_MESSAGES.billStopped],
+  // Bills to pay fixes (20261022150000).
+  ['pause_until_past', EXPENSE_MESSAGES.billPauseInPast],
+  ["That bill isn't one you can see", EXPENSE_MESSAGES.billNotVisible],
+  ['A branch bill is paid from its own branch', EXPENSE_MESSAGES.billOtherBranch],
+]
+
+/** The sentence for a database refusal; `unknown` when it is not one we expect. */
+export function expenseErrorMessage(error: PostgresErrorLike): string {
+  if (mentions(error, 'note_required')) return EXPENSE_MESSAGES.noteRequired
+  if (mentions(error, 'drawer_locked')) return EXPENSE_MESSAGES.drawerLocked
+  if (mentions(error, 'This shift is already closed')) return EXPENSE_MESSAGES.shiftClosed
+  const known = KNOWN_REFUSALS.find(([word]) => mentions(error, word))
+  if (known) return known[1]
+  switch (error.code) {
+    case '42501':
+      return EXPENSE_MESSAGES.noAccess
+    case 'P0002':
+      return EXPENSE_MESSAGES.goneOrVoided
+    case '22023':
+    case '23514':
+    case '22P02':
+      return EXPENSE_MESSAGES.invalid
+    case '23503':
+      return EXPENSE_MESSAGES.missingReference
+    case '23505':
+      return EXPENSE_MESSAGES.duplicate
+    default:
+      return EXPENSE_MESSAGES.unknown
+  }
+}
+
+const SENTENCES: ReadonlySet<string> = new Set(Object.values(EXPENSE_MESSAGES))
+
+/** Whether a message is one of ours (safe to show), not a raw database or runtime text. */
+export function isExpenseSentence(message: string): boolean {
+  return SENTENCES.has(message)
+}
+
+/** Logs the raw refusal and returns an Error carrying only the sentence. */
+export function toExpenseError(context: string, error: PostgresErrorLike, override?: string): Error {
+  console.error(`[expenses] ${context} failed`, { code: error.code ?? null, message: error.message ?? null })
+  return new Error(override ?? expenseErrorMessage(error))
+}
+
+/** A unique violation on the request id: the same tap arrived twice. */
+export function isClientRequestConflict(error: PostgresErrorLike): boolean {
+  return error.code === '23505' && mentions(error, 'client_request')
+}
+
+/** A unique violation (name taken, double link …). */
+export function isUniqueViolation(error: PostgresErrorLike): boolean {
+  return error.code === '23505'
+}

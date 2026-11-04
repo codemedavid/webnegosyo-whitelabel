@@ -64,6 +64,14 @@ describe('authoritative combo checkout', () => {
     expect(priceOrderLines<PriceableOrderLine>(input(), context()).ok).toBe(false)
   })
 
+  test('drops a browser-sent add-on breakdown on combo lines', () => {
+    const forged = lines().map(line => ({ ...line, addon_details: [{ name: 'Gold flakes', price: 9999, quantity: 1 }] }))
+    const result = priceOrderLines(forged, context())
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('pricing failed')
+    for (const line of result.lines) expect(line).not.toHaveProperty('addon_details')
+  })
+
   test('rejects inactive combos and unavailable component dishes', () => {
     expect(priceOrderLines(lines(), context({ bundles: new Map([['combo', { ...bundle, is_active: false }]]) })).ok).toBe(false)
     const ctx = context()

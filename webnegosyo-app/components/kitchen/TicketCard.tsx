@@ -14,6 +14,7 @@ import {
   formatClock,
   prepPromiseState,
 } from "../../lib/prep-time";
+import type { KitchenTicketStatus } from "../../lib/kitchen-confirm";
 import { useTickerNow } from "../TickerProvider";
 
 /**
@@ -37,6 +38,8 @@ export const kds = {
   urgent: "#F87171",
   bump: "#047857",
   print: "#27272A",
+  ringing: "#B91C1C",
+  confirm: "#DC2626",
 } as const;
 
 const URGENCY_COLOR: Record<Urgency, string> = {
@@ -48,6 +51,11 @@ const URGENCY_COLOR: Record<Urgency, string> = {
 interface TicketCardProps {
   ticket: KitchenTicket;
   isNew: boolean;
+  /** Ringing / waiting for Confirm / confirmed — decided by lib/kitchen-confirm.ts. */
+  kitchenStatus: KitchenTicketStatus;
+  /** When this ticket first rang on this display; null = it has not. */
+  rangAtMs: number | null;
+  onConfirm: (orderId: string) => void;
   onBump: (orderId: string) => void;
   onPrint: (ticket: KitchenTicket) => void;
   canPrint: boolean;
@@ -69,6 +77,9 @@ interface TicketCardProps {
 export const TicketCard = memo(function TicketCard({
   ticket,
   isNew,
+  kitchenStatus,
+  rangAtMs,
+  onConfirm,
   onBump,
   onPrint,
   canPrint,
@@ -108,7 +119,14 @@ export const TicketCard = memo(function TicketCard({
   };
 
   return (
-    <View style={[styles.card, { borderTopColor: accent }, isNew && styles.cardNew]}>
+    <View
+      style={[
+        styles.card,
+        { borderTopColor: accent },
+        isNew && styles.cardNew,
+        kitchenStatus === "ringing" && styles.cardRinging,
+      ]}
+    >
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.orderRef}>#{order._id.slice(-4).toUpperCase()}</Text>
@@ -123,6 +141,8 @@ export const TicketCard = memo(function TicketCard({
         {order.status === "preparing" ? "  ·  PREPARING" : ""}
       </Text>
       {tableNumber ? <Text style={styles.table}>Table {tableNumber}</Text> : null}
+
+      <KitchenStatusStrip status={kitchenStatus} rangAtMs={rangAtMs} />
 
       <View style={styles.items}>
         {items.length === 0 ? (
@@ -214,6 +234,18 @@ export const TicketCard = memo(function TicketCard({
         )
       ) : null}
 
+      {kitchenStatus !== "confirmed" ? (
+        <TouchableOpacity
+          style={styles.confirmButton}
+          onPress={() => onConfirm(order._id)}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Confirm order"
+        >
+          <Text style={styles.confirmText}>Confirm</Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={styles.actions}>
         {canPrint ? (
           <TouchableOpacity
@@ -236,6 +268,25 @@ export const TicketCard = memo(function TicketCard({
   );
 });
 
+/**
+ * What the cashier side will see about this ticket. A ringing card says WHEN
+ * it rang, so a cook who heard nothing knows the tablet is muted.
+ */
+function KitchenStatusStrip({ status, rangAtMs }: { status: KitchenTicketStatus; rangAtMs: number | null }) {
+  if (status === "confirmed") {
+    return <Text style={styles.statusConfirmed}>✓ KITCHEN CONFIRMED</Text>;
+  }
+  if (status === "ringing") {
+    const rang = rangAtMs !== null ? ` · Rang ${formatClock(rangAtMs)}` : "";
+    return (
+      <View style={styles.statusRinging} accessibilityRole="alert">
+        <Text style={styles.statusRingingText}>🔔 RINGING{rang}</Text>
+      </View>
+    );
+  }
+  return <Text style={styles.statusWaiting}>NOT CONFIRMED YET</Text>;
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: kds.card,
@@ -248,6 +299,51 @@ const styles = StyleSheet.create({
   },
   cardNew: {
     borderColor: kds.fresh,
+  },
+  cardRinging: {
+    borderColor: kds.urgent,
+    borderWidth: 2,
+  },
+  statusRinging: {
+    marginTop: 8,
+    backgroundColor: kds.ringing,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  statusRingingText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  statusWaiting: {
+    marginTop: 8,
+    color: kds.warning,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  statusConfirmed: {
+    marginTop: 8,
+    color: kds.fresh,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  confirmButton: {
+    marginTop: 12,
+    backgroundColor: kds.confirm,
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   header: {
     flexDirection: "row",

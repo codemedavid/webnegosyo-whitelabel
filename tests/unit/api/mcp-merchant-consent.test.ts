@@ -198,3 +198,15 @@ it.each([
   expect(response.status).toBe(400)
   expect(response.headers.get('location')).toBeNull()
 })
+
+it('refuses code_challenge_method=plain before showing consent', async () => {
+  const url = new URL(requestUrl())
+  url.searchParams.set('code_challenge_method', 'plain')
+
+  const response = await GET(new Request(url.toString()))
+
+  expect(response.status).toBe(400)
+  expect((await response.json()).error).toBe('invalid_request')
+  expect(mockPending).toEqual([])
+  expect(mockIssueCode).not.toHaveBeenCalled()
+})

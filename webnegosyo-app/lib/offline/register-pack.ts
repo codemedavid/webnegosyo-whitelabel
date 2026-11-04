@@ -18,6 +18,7 @@ import { OUTLETS_RESOURCE, fetchOutlets } from "../use-outlets";
 import { DINING_TABLES_RESOURCE, fetchDiningTables } from "../tables/tables-service";
 import { taxProfileKey } from "../query/use-tax-profile";
 import { fetchTaxProfile } from "../tax-profile-service";
+import { cutoffScheduleKey, fetchCutoffSchedule } from "../business-day/schedule-service";
 import { resourceKey } from "../backends/query-keys";
 import { POS_TILE_THUMB_PX, thumbUrl } from "../image-thumb";
 import type { OfflinePackPart, OfflinePackSummary } from "./offline-pack";
@@ -69,6 +70,15 @@ export function registerPackParts({
       label: "tax settings",
       key: taxProfileKey(tenantId),
       fetch: () => fetchTaxProfile(tenantId),
+      isRequired: false,
+    },
+    {
+      // When the store's day ends (the cutoff), so a register opened with no
+      // signal still files a 1 AM sale under the night it belongs to. Optional:
+      // without it the Drawer and Home fall back to midnight and say so.
+      label: "business day",
+      key: cutoffScheduleKey(tenantId),
+      fetch: () => fetchCutoffSchedule(tenantId),
       isRequired: false,
     },
     {

@@ -21,6 +21,7 @@
 
 import { canChooseBranch } from "./branch-context";
 import { isBusinessTabVisible, type PortfolioAudience } from "./portfolio-landing";
+import { canSeeProfit } from "./profit/profit-view";
 import { isTabAllowed, type StaffPermissionHolder } from "./staff-permissions";
 import { getWorkspace, type WorkspaceKey } from "./workspaces";
 
@@ -59,6 +60,8 @@ export const SUBSCREEN_TABS: readonly string[] = [
   "customers",
   "loyalty",
   "texts",
+  // Bills to pay (rent, kuryente, sahod): reminders the expense book answers.
+  "expense-bills",
 ];
 
 /**
@@ -67,6 +70,9 @@ export const SUBSCREEN_TABS: readonly string[] = [
  * whether the Reports tab exists for an account at all.
  */
 export const REPORT_TABS: readonly string[] = [
+  // Money: what the store spent (the expense book), and what it kept.
+  "expenses",
+  "profit",
   "analytics",
   "growth",
   "product-analytics",
@@ -134,6 +140,11 @@ export function isTabReachable(tab: string, ctx: TabVisibilityContext): boolean 
     return [...REPORT_TABS, ...REPORTS_DOORS].some((report) => isTabReachable(report, ctx));
   }
   if (!isTabAllowed(ctx.caller, tab)) return false;
+  // The Profit tab rides `reports` in TAB_PERMISSIONS (the web, desktop and
+  // edge registries pin that mapping), but the screen needs expenses + costs
+  // too. Asked here so every door — hub row, Home, Expenses, tutorial — leads
+  // only where the account can actually see profit, never to a lock screen.
+  if (tab === "profit" && !canSeeProfit(ctx.caller)) return false;
   if (!isBusinessTabVisible(tab, ctx.audience)) return false;
   if (ADVANCE_ORDER_TABS.includes(tab) && !ctx.takesAdvanceOrders) return false;
   if (STORE_WIDE_TABS.includes(tab) && !canChooseBranch(ctx.audience.accountScope)) return false;

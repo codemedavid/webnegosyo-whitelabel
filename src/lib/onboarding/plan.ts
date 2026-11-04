@@ -13,7 +13,7 @@ import type { OnboardingAnswers, OnboardingOrderType } from './answers'
  */
 const RESERVED_STORE_SLUGS = new Set([
   'www', 'superadmin', 'app', 'admin', 'api', 'checkout', 'funnel', 'onboarding',
-  'download', 'privacy', 'support', 'university', 'login', 'menu', '_next',
+  'download', 'privacy', 'terms', 'data-deletion', 'support', 'university', 'login', 'menu', '_next',
 ])
 
 const MAX_SLUG_LENGTH = 40

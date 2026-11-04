@@ -50,9 +50,22 @@ export interface ModifierSelectionLine {
   addons?: readonly string[]
 }
 
+/**
+ * One add-on on a priced line, as stored in `order_items.addon_details`.
+ * `price` is per portion from the dish's own JSON; null when the dish does not
+ * carry it any more (nothing was charged for it, but the kitchen still saw it).
+ */
+export interface OrderLineAddonDetail {
+  name: string
+  price: number | null
+  quantity: number
+}
+
 export interface ModifierPricing {
   /** Per-unit amount the options and add-ons add to the base price. */
   delta: number
+  /** Each add-on on the line with its catalog price and portions. */
+  addons: OrderLineAddonDetail[]
   /** Claimed ids the dish does not carry. Priced at nothing. */
   unknownIds: string[]
   /** Display text that matched no option on the dish. Priced at nothing. */
@@ -245,6 +258,33 @@ function matchTokensToClaims(tokens: readonly TextToken[], claims: readonly Clai
   )
 }
 
+/**
+ * The add-on half of the line, one entry per add-on: every claimed add-on id at
+ * its catalog price, then every add-on label those ids do not account for,
+ * priced by name exactly as `priceLineModifiers` charges it.
+ */
+function describeAddons(
+  line: ModifierSelectionLine,
+  byId: ReadonlyMap<string, CatalogEntry>,
+  byName: ReadonlyMap<string, CatalogEntry>
+): OrderLineAddonDetail[] {
+  const claimed = (line.addon_ids ?? []).flatMap((id) => {
+    const entry = byId.get(id)
+    const quantity = addonQuantity({ quantity: line.addon_quantities?.[id] })
+    return entry && quantity > 0 ? [{ entry, quantity }] : []
+  })
+  const { uncovered } = matchTokensToClaims(addonTokens(line.addons ?? []), claimed)
+
+  return [
+    ...claimed.map(({ entry, quantity }) => ({ name: entry.name, price: entry.price, quantity })),
+    ...uncovered.map((token) => ({
+      name: token.name,
+      price: byName.get(normalizeName(token.name))?.price ?? null,
+      quantity: token.quantity,
+    })),
+  ]
+}
+
 /** Ids of the menu items this dish's linked modifier options point at, so the caller can fetch them. */
 export function collectLinkedModifierItemIds(source: ModifierCatalogSource): string[] {
   const ids = asArray(source.modifier_groups).flatMap((group) =>
@@ -290,5 +330,10 @@ export function priceLineModifiers(
     .filter((token) => !byName.has(normalizeName(token.name)))
     .map((token) => token.name)
 
-  return { delta: round(claimedTotal + textTotal), unknownIds, unpricedLabels }
+  return {
+    delta: round(claimedTotal + textTotal),
+    addons: describeAddons(line, byId, byName),
+    unknownIds,
+    unpricedLabels,
+  }
 }

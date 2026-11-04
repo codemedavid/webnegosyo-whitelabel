@@ -16,7 +16,7 @@
  */
 
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
-import { addonLabel } from '@/lib/addon-quantity'
+import { addonLabel, addonPriceList } from '@/lib/addon-quantity'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, Trash2, Pencil, ShoppingBag, Package } from 'lucide-react'
@@ -217,7 +217,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
               </div>
             )}
             {item.selected_addons.length > 0 && (
-              <p className="text-sm mt-1" style={{ color: p.muted }}><span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}</p>
+              <p className="text-sm mt-1" style={{ color: p.muted }}><span className="font-medium">Add-ons:</span> {addonPriceList(item.selected_addons, formatPrice)}</p>
             )}
             {item.special_instructions && (
               <p className="text-sm italic mt-0.5" style={{ color: p.muted }}><span className="font-medium">Note:</span> {item.special_instructions}</p>

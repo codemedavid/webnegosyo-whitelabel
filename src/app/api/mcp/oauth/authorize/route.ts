@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveAllowedRedirectUri, issueAuthorizationCode, type PkceMethod } from '@/lib/mcp/oauth-service'
+import { resolveAllowedRedirectUri, issueAuthorizationCode } from '@/lib/mcp/oauth-service'
 import {
   AUTH_CODE_TTL_SECONDS,
 } from '@/lib/mcp/oauth-config'
@@ -60,7 +60,8 @@ async function authorize(req: Request): Promise<Response> {
   const clientId = params.get('client_id')
   const redirectUri = params.get('redirect_uri')
   const codeChallenge = params.get('code_challenge')
-  const codeChallengeMethod = (params.get('code_challenge_method') ?? 'S256') as PkceMethod
+  // Absent = S256 (the only method the metadata advertises); verification always hashes.
+  const requestedChallengeMethod = params.get('code_challenge_method') ?? 'S256'
   const state = params.get('state')
   const scope = params.get('scope') ?? MERCHANT_OAUTH_SCOPE
   const resource = params.get('resource')
@@ -107,9 +108,10 @@ async function authorize(req: Request): Promise<Response> {
   if (!codeChallenge) {
     return badRequest('invalid_request', 'code_challenge (PKCE) is required')
   }
-  if (codeChallengeMethod !== 'S256' && codeChallengeMethod !== 'plain') {
-    return badRequest('invalid_request', 'Unsupported code_challenge_method')
+  if (requestedChallengeMethod !== 'S256') {
+    return badRequest('invalid_request', 'code_challenge_method must be S256')
   }
+  const codeChallengeMethod = 'S256' as const
   if (!isSupportedMerchantScope(scope)) {
     return badRequest('invalid_scope', 'Unsupported or missing OAuth scope')
   }

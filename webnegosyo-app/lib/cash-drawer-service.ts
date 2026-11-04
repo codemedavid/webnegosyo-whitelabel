@@ -247,6 +247,7 @@ export async function recordCashMove(
   );
   if (error) {
     if (/already closed/i.test(error.message ?? "")) throw new Error("That shift has already ended.");
+    if (/drawer_counted/.test(error.message ?? "")) throw new Error("This drawer was already counted. End the shift first.");
     if (error.code === "42501") throw new Error("You can only move cash in your own drawer.");
     throw asError(error, "The cash move could not be recorded.");
   }

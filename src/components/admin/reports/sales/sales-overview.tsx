@@ -98,12 +98,13 @@ function BreakItDown({ context }: { context: ReportContext }) {
 }
 
 function Trend({ context, current, previous }: { context: ReportContext; current: PeriodRow[]; previous: PeriodRow[] | null }) {
-  const { period, compare } = context
+  const { period, compare, schedule } = context
+  // Same business-day buckets as report_sales_by_period (20261027140000).
   const points = alignTrend({
     grain: period.grain,
-    currentKeys: bucketKeys(period.start, period.end, period.grain),
+    currentKeys: bucketKeys(period.start, period.end, period.grain, schedule),
     current,
-    previousKeys: compare && previous ? bucketKeys(compare.start, compare.end, period.grain) : null,
+    previousKeys: compare && previous ? bucketKeys(compare.start, compare.end, period.grain, schedule) : null,
     previous: compare ? previous : null,
   })
   const seriesLabel = METRIC_GLOSSARY.net.term

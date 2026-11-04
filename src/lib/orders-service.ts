@@ -5,6 +5,7 @@
 import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { readCutoffScheduleForDisplay } from '@/lib/business-day/read-schedule'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
@@ -35,6 +36,7 @@ import {
   isDuplicateClientOrderId,
 } from '@/lib/order-parity'
 import type { OrderDiscountPayload } from '@/lib/order-discount'
+import type { OrderLineAddonDetail } from '@/lib/order-line-modifier-pricing'
 
 export interface OrderWithItems extends Order {
   order_items: Array<{
@@ -46,6 +48,10 @@ export interface OrderWithItems extends Order {
     price: number
     subtotal: number
     special_instructions: string | null
+    /** Per add-on {name, price, quantity}; NULL before 20261029121000. Read via `describeOrderItem`. */
+    addon_details?: unknown
+    /** POS register lines keep their sizes and add-ons here instead. */
+    variation_selections?: unknown
   }>
 }
 
@@ -484,6 +490,8 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
   const { userRole } = await verifyTenantPermission(tenantId, 'orders', 'view')
 
   const supabase = await createClient()
+  // "Today" is the store's business day (a display: midnight if the setting can't be read).
+  const { schedule } = await readCutoffScheduleForDisplay(supabase, tenantId)
 
   // A branch account sees its own branch's day, like every other order read
   // here (ACCOUNT scope, never a client-chosen branch).
@@ -492,7 +500,7 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
       .from('orders')
       .select('status, total, created_at')
       .eq('tenant_id', tenantId)
-      .gte('created_at', startOfTodayISO()),
+      .gte('created_at', startOfTodayISO(new Date(), schedule)),
     resolveBranchScope(userRole)
   )
 
@@ -530,6 +538,8 @@ export async function createOrder(
     bundleId?: string
     bundleName?: string
     slotName?: string
+    /** Server-priced breakdown from `priceOrderLines`; absent on lines without add-ons. */
+    addon_details?: OrderLineAddonDetail[]
   }>,
   customerInfo?: {
     name?: string
@@ -790,6 +800,8 @@ export async function createOrder(
     menu_item_name: item.menu_item_name,
     variation: item.variation,
     addons: item.addons,
+    // Lets every order view print what each add-on cost (20261029121000).
+    ...(item.addon_details ? { addon_details: item.addon_details } : {}),
     quantity: item.quantity,
     price: item.price,
     subtotal: item.subtotal,

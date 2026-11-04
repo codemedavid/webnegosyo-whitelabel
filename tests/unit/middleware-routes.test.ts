@@ -17,6 +17,8 @@ describe('isPublicRoute', () => {
     '/shop/menu/item/abc',
     '/shop/login',
     '/privacy',
+    '/terms',
+    '/data-deletion',
     '/support/contact',
     '/download',
     '/university',

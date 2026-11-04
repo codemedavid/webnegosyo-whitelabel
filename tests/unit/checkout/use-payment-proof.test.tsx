@@ -15,6 +15,10 @@ async function renderPaymentProof() {
   return renderHook(() => usePaymentProof())
 }
 
+function deleteBodies(): Array<Record<string, unknown>> {
+  return fetchMock.mock.calls.map(call => JSON.parse(String((call as unknown as [string, RequestInit])[1].body)))
+}
+
 function deletedFileIds(): string[] {
   return fetchMock.mock.calls.map(call => {
     const [url, init] = call as unknown as [string, RequestInit]
@@ -33,11 +37,24 @@ describe('usePaymentProof', () => {
   it('stores an upload and deletes the screenshot it replaces', async () => {
     const { result } = await renderPaymentProof()
 
-    act(() => result.current.handlePaymentProofUploaded(FIRST_URL, 'file-1'))
-    act(() => result.current.handlePaymentProofUploaded(SECOND_URL, 'file-2'))
+    act(() => result.current.handlePaymentProofUploaded(FIRST_URL, 'file-1', 'token-1'))
+    act(() => result.current.handlePaymentProofUploaded(SECOND_URL, 'file-2', 'token-2'))
 
     expect(result.current.paymentProof).toEqual({ url: SECOND_URL, publicId: 'file-2', reference: '' })
     expect(deletedFileIds()).toEqual(['file-1'])
+  })
+
+  it('sends the delete token the upload handed back for that file', async () => {
+    const { result } = await renderPaymentProof()
+
+    act(() => result.current.handlePaymentProofUploaded(FIRST_URL, 'file-1', 'token-1'))
+    act(() => result.current.handlePaymentProofUploaded(SECOND_URL, 'file-2', 'token-2'))
+    act(() => result.current.handleRemovePaymentProof())
+
+    expect(deleteBodies()).toEqual([
+      expect.objectContaining({ fileId: 'file-1', deleteToken: 'token-1' }),
+      expect.objectContaining({ fileId: 'file-2', deleteToken: 'token-2' }),
+    ])
   })
 
   it('does not delete when the same file is reported twice', async () => {
@@ -53,13 +70,22 @@ describe('usePaymentProof', () => {
     const { result } = await renderPaymentProof()
 
     act(() => {
-      result.current.handlePaymentProofUploaded(FIRST_URL, 'file-1')
+      result.current.handlePaymentProofUploaded(FIRST_URL, 'file-1', 'token-1')
       result.current.setPaymentProofReference('REF-1')
     })
     act(() => result.current.handleRemovePaymentProof())
 
     expect(result.current.paymentProof).toEqual({ url: '', publicId: '', reference: 'REF-1' })
     expect(deletedFileIds()).toEqual(['file-1'])
+  })
+
+  it('cannot delete an upload that came back without a delete token', async () => {
+    const { result } = await renderPaymentProof()
+
+    act(() => result.current.handlePaymentProofUploaded(FIRST_URL, 'file-1'))
+    act(() => result.current.handleRemovePaymentProof())
+
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('has nothing to delete when no screenshot was uploaded', async () => {

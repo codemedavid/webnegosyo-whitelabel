@@ -131,3 +131,28 @@ describe('mapSupabaseOrderToReceipt — the service charge column', () => {
     expect(text).toContain('Service Charge:')
   })
 })
+
+describe('mapSupabaseOrderToReceipt — add-on prices and register lines', () => {
+  const withItems = (items: unknown[]) => ({ ...(order as object), order_items: items }) as never
+
+  it('prints each add-on with what it added, from addon_details', () => {
+    const mapped = mapSupabaseOrderToReceipt(withItems([{
+      id: 'oi2', menu_item_name: 'Tapsilog', variation: null, addons: ['Fried Rice ×2'],
+      addon_details: [{ name: 'Fried Rice', price: 15, quantity: 2 }],
+      quantity: 1, price: 130, subtotal: 130, special_instructions: null,
+    }]))
+
+    expect(mapped.items?.[0].addons).toEqual([{ name: 'Fried Rice ×2 (+P30.00)', price: 15 }])
+  })
+
+  it('prints a register line’s selections instead of dropping them', () => {
+    const mapped = mapSupabaseOrderToReceipt(withItems([{
+      id: 'oi3', menu_item_name: 'Mocha', variation: null, addons: [],
+      variation_selections: [{ typeName: 'SIZES', optionName: 'UPSIZE', priceAdjustment: 10 }],
+      quantity: 1, price: 29, subtotal: 39, special_instructions: null,
+    }]))
+
+    expect(mapped.items?.[0].variationSelections).toEqual([{ typeName: 'SIZES', optionName: 'UPSIZE' }])
+    expect(mapped.items?.[0]).not.toHaveProperty('addons')
+  })
+})

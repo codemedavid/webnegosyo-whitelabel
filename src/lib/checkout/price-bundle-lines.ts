@@ -70,8 +70,11 @@ export function priceBundleOrderLines<T extends PriceableOrderLine>(
       retailCents += cents(retail) * line.quantity
       extrasCents += cents(surcharge + modifiers.delta) * line.quantity
       weights.push(Math.max(1, cents(retail + surcharge + modifiers.delta)) * line.quantity)
-      canonical.push({ ...line, menu_item_name: item.name || line.menu_item_name,
-        bundleName: bundle.name, slotName: slot.name })
+      // The browser never supplies the add-on breakdown on a combo line either.
+      const { addon_details: _untrusted, ...rest } = line as typeof line & { addon_details?: unknown }
+      void _untrusted
+      canonical.push({ ...rest, menu_item_name: item.name || line.menu_item_name,
+        bundleName: bundle.name, slotName: slot.name } as typeof line)
     }
     if (bundle.slots.some(slot => !Number.isInteger(slot.pick_count) || slot.pick_count < 1 ||
       slotCounts.get(slot.id) !== slot.pick_count * count)) return refused

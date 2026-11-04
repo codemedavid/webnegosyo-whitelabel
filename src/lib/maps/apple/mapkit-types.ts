@@ -125,6 +125,8 @@ export interface MapKitMapOptions {
   showsUserLocationControl?: boolean
   showsPointsOfInterest?: boolean
   isRotationEnabled?: boolean
+  isScrollEnabled?: boolean
+  isZoomEnabled?: boolean
   padding?: MapKitPadding
 }
 
@@ -132,6 +134,9 @@ export interface MapKitMap extends MapKitEventTarget {
   center: MapKitCoordinate
   region: MapKitCoordinateRegion
   cameraDistance: number
+  mapType: string
+  isScrollEnabled: boolean
+  isZoomEnabled: boolean
   annotations: MapKitAnnotation[]
   selectedAnnotation: MapKitAnnotation | null
   selectableMapFeatures?: string[]

@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } 
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { formatCount, formatPeso } from "../../lib/format";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
-import { useBusinessDayAnchor } from "../../lib/use-report-window";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { buildStorePerformance } from "../../lib/product-performance/aggregate";
 import {
   DEFAULT_PERFORMANCE_PERIOD,
@@ -55,9 +55,12 @@ export function ProductsPerformanceView({ header, onOpenProduct }: ProductsPerfo
   const [listTab, setListTab] = useState<ListTab>("items");
   const [isExpanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const { anchorMs } = useBusinessDayAnchor();
+  const { anchorMs, schedule } = useTradingDay();
 
-  const period = useMemo(() => resolvePerformancePeriod(periodKey, anchorMs), [periodKey, anchorMs]);
+  const period = useMemo(
+    () => resolvePerformancePeriod(periodKey, anchorMs, schedule),
+    [periodKey, anchorMs, schedule]
+  );
   const wantsComparison = period.dayCount <= MAX_COMPARED_DAYS;
   const request = useMemo(
     () => ({

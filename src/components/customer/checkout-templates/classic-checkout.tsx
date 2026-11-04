@@ -12,7 +12,6 @@ import { formatPresellDateLabel } from '@/lib/presell/month-grid'
  * page shell (shared).
  */
 
-import dynamic from 'next/dynamic'
 import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, Check, Zap, CalendarClock, CalendarDays, Clock, Bike, ShoppingBag, Store, type LucideIcon } from 'lucide-react'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { Button } from '@/components/ui/button'
@@ -22,7 +21,6 @@ import { SmsOptInCheckbox, MinimumOrderNotice, OrderSummaryLines, PaymentMethodL
 import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { resolvePlaceOrderLabel } from '@/lib/checkout/checkout-cta'
 import {
-  applyDeliveryAddressChange,
   phPhoneDigitCount,
   phPhoneDisplayDigits,
   toPhPhoneValue,
@@ -41,15 +39,8 @@ const ORDER_TYPE_ICONS: Record<OrderTypeKind, LucideIcon> = {
   other: Store,
 }
 
-import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
+import { CheckoutAddressField } from './checkout-address-field'
 
-const AddressAutocomplete = dynamic(
-  () => import('@/components/shared/address-autocomplete').then(mod => ({ default: mod.AddressAutocomplete })),
-  {
-    loading: () => <input className={`w-full px-3 py-2 rounded-md ${CO.input}`} placeholder="Loading address field..." disabled />,
-    ssr: false,
-  }
-)
 
 export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
@@ -283,15 +274,13 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
                     {/* Special handling for delivery address with map-backed autocomplete */}
                     {isDeliveryAddressField(field) ? (
-                      <AddressAutocomplete
-                        value={customerData[field.field_name] || ''}
-                        coordinates={parseLatLng(customerData.delivery_lat, customerData.delivery_lng)}
-                        onChange={(address, coordinates) => {
-                          setCustomerData(prev => applyDeliveryAddressChange(prev, field.field_name, address, coordinates))
-                        }}
-                        placeholder={field.placeholder || 'Start typing your address...'}
-                        required={field.is_required}
-                        mapsEnabled={tenant?.mapbox_enabled ?? true}
+                      <CheckoutAddressField
+                        checkout={checkout}
+                        fieldName={field.field_name}
+                        placeholder={field.placeholder}
+                        isRequired={field.is_required}
+                        inputClassName={`w-full px-3 py-2 rounded-md ${CO.input}`}
+                        labelClassName="text-[color:var(--co-text)]"
                       />
                     ) : field.field_type === 'textarea' ? (
                       <textarea

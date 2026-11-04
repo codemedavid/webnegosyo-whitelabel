@@ -97,7 +97,7 @@ export default function AnalyticsScreen() {
   // One selection drives every query on this screen. `windowArgs` is spread
   // into each; `useReportWindow` decides whether the backend can take the
   // calendar days the label names, and moves "today" at Manila midnight.
-  const { selection, setSelection, nowMs, windowArgs, periodLabel } = useReportWindow(7);
+  const { selection, setSelection, nowMs, windowArgs, periodLabel, schedule } = useReportWindow(7);
   const [refreshing, setRefreshing] = useState(false);
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
@@ -228,6 +228,7 @@ export default function AnalyticsScreen() {
         selection={selection}
         presets={REPORT_PRESETS}
         nowMs={nowMs}
+        schedule={schedule}
         onChange={setSelection}
       />
 

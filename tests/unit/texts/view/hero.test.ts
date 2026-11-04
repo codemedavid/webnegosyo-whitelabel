@@ -5,7 +5,7 @@ const NOW = Date.parse('2026-10-14T06:10:00Z') // 2:10 PM Manila
 
 function phone(overrides: Partial<SendingPhone> = {}): SendingPhone {
   return {
-    deviceId: 'd1', name: "Juan's Galaxy A15", hasCustomName: true, model: 'SM-A155F', appVersion: '1.0.14',
+    deviceId: 'd1', name: "Juan's Galaxy A15", hasCustomName: true, manufacturer: null, model: 'SM-A155F', appVersion: '1.0.14',
     isAppOld: false, state: 'ready', lastSeenAt: new Date(NOW - 60_000).toISOString(), ageSeconds: 60,
     isInactive: false, connectedAt: null, connectedBy: null, sentToday: 0, failedToday: 0, sendingNow: 0,
     smsPermission: null, isBatteryUnrestricted: null, ...overrides,
@@ -24,7 +24,7 @@ describe('heroView', () => {
   test('ready, nothing waiting', () => {
     const view = heroView(sender(), false)
     expect(view.word).toBe('Ready')
-    expect(view.sentence).toBe("Juan's Galaxy A15 checked in 1 min ago")
+    expect(view.sentence).toBe("Juan's Galaxy A15 checked in 1 min ago · Nothing waiting to send")
     expect(view.tone).toBe('emerald')
     expect(view.action).toEqual({ label: 'Phones', kind: 'phones' })
     expect(view.meter).toEqual({ sent: 37, limit: 100, text: 'Sent today 37 of 100' })
@@ -80,6 +80,11 @@ describe('heroView', () => {
     expect(view.word).toBe('Resting')
     expect(view.icon).toBe('moon')
     expect(view.sentence).toBe('Quiet hours until 8:00 AM, Philippine time. 34 texts go out then.')
+  })
+
+  test('resting with nothing waiting says so', () => {
+    const view = heroView(sender({ heroState: 'resting', isQuietNow: true, quietUntil: '2026-10-15T00:00:00Z' }), false)
+    expect(view.sentence).toBe('Quiet hours until 8:00 AM, Philippine time. Nothing waiting to send.')
   })
 
   test('unknown never says Ready', () => {

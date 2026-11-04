@@ -481,7 +481,7 @@ export function FooterManagerCard({ tenant }: FooterManagerCardProps) {
               <div className="space-y-0.5">
                 <Label htmlFor="footer-show-powered-by">Show &quot;Powered by&quot;</Label>
                 <p className="text-sm text-muted-foreground">
-                  Display the powered-by credit in the footer bottom row.
+                  Display your credit line in the footer bottom row (hidden while the text is empty).
                 </p>
               </div>
               <Switch
@@ -498,7 +498,7 @@ export function FooterManagerCard({ tenant }: FooterManagerCardProps) {
                 id="footer-powered-by-text"
                 value={formData.footer_powered_by_text}
                 onChange={(e) => update('footer_powered_by_text', e.target.value)}
-                placeholder="Powered by WebNegosyo"
+                placeholder="e.g. Made with love in Cebu"
                 disabled={isPending}
               />
             </div>

@@ -97,17 +97,15 @@ export function FacebookConnectionCard({ tenant }: FacebookConnectionCardProps) 
     }
   }
 
-  async function handlePageSelected(pageId: string, pageName: string, pageAccessToken: string, userAccessToken: string) {
+  async function handlePageSelected(pageId: string, pageName: string) {
     try {
+      // Only ids: the server reads the tokens and page name from Facebook itself.
       const response = await fetch('/api/auth/facebook/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_id: tenant.id,
           page_id: pageId,
-          page_name: pageName,
-          page_access_token: pageAccessToken,
-          user_access_token: userAccessToken,
           temp_id: tempId,
         }),
       })

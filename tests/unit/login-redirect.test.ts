@@ -7,7 +7,11 @@
  * on this origin AND inside this tenant.
  */
 import { describe, it, expect } from '@jest/globals'
-import { resolveTenantLoginRedirect } from '@/lib/login-redirect'
+import {
+  resolveSameOriginRedirect,
+  resolveSuperadminLoginRedirect,
+  resolveTenantLoginRedirect,
+} from '@/lib/login-redirect'
 
 const ORIGIN = 'https://www.webnegosyo.com'
 const SLUG = 'cafe'
@@ -57,5 +61,54 @@ describe('resolveTenantLoginRedirect', () => {
     42,
   ])('falls back for %j', (redirect) => {
     expect(resolve(redirect)).toBe(FALLBACK)
+  })
+})
+
+describe('resolveSameOriginRedirect', () => {
+  it('keeps a same-origin path inside the prefix, query and hash included', () => {
+    expect(resolveSameOriginRedirect('/area/x?y=1#z', '/area/', ORIGIN, '/fallback')).toBe('/area/x?y=1#z')
+  })
+
+  it.each(['/%09/evil.com', '/\\evil.com', '//evil.com', 'https://evil.com/area/x', '/area/../other', '/other', 42])(
+    'falls back for %j',
+    (redirect) => {
+      expect(resolveSameOriginRedirect(redirect, '/area/', ORIGIN, '/fallback')).toBe('/fallback')
+    },
+  )
+})
+
+describe('resolveSuperadminLoginRedirect', () => {
+  const resolveSa = (redirect: unknown) => resolveSuperadminLoginRedirect(redirect, ORIGIN)
+
+  it('keeps the MCP consent return path built by superadmin-consent, query string included', () => {
+    const target = `/superadmin/mcp/authorize?authorization_id=${encodeURIComponent('abc_123-XYZ')}`
+    // The login link carries it URL-encoded; URLSearchParams.get decodes it once.
+    const fromQuery = new URLSearchParams(`redirect=${encodeURIComponent(target)}`).get('redirect')
+    expect(resolveSa(fromQuery)).toBe(target)
+  })
+
+  it.each([
+    ['/superadmin', '/superadmin'],
+    ['/superadmin/tenants', '/superadmin/tenants'],
+    ['/superadmin/tenants?page=2#top', '/superadmin/tenants?page=2#top'],
+  ])('keeps a superadmin path %j', (redirect, expected) => {
+    expect(resolveSa(redirect)).toBe(expected)
+  })
+
+  it.each([
+    '/%09/evil.com',
+    '/\t/evil.com',
+    '/\\evil.com',
+    '//evil.com',
+    'https://evil.com/superadmin',
+    'javascript:alert(1)',
+    '/superadmin/../cafe/admin',
+    '/superadmin/%2e%2e/cafe/admin',
+    '/superadminx',
+    '/cafe/admin',
+    '',
+    null,
+  ])('falls back to /superadmin for %j', (redirect) => {
+    expect(resolveSa(redirect)).toBe('/superadmin')
   })
 })

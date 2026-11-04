@@ -12,7 +12,8 @@ import {
 } from "./_generated/server";
 import { requireAccess } from "./auth";
 import { internal } from "./_generated/api";
-import { localDayStartMs } from "./time";
+import { businessDayStartMs } from "./time";
+import { readCutoffSchedule } from "./businessDayConfig";
 import {
   orderOutletIdFromCustomerData,
   filterOrdersToOutlet,
@@ -797,9 +798,9 @@ export const getRealtimeQueue = query({
 });
 
 async function getDashboardStatsHandler(ctx: QueryCtx) {
-    // Start of the merchant's local (PH) day, not UTC midnight, so "today"
-    // matches the calendar day the merchant is actually operating in.
-    const todayStart = localDayStartMs(Date.now());
+    // Start of the store's business day (PH time, at its cutoff; midnight with
+    // none), not UTC midnight, so "today" matches the day the merchant trades.
+    const todayStart = businessDayStartMs(Date.now(), await readCutoffSchedule(ctx));
 
     const todayOrders = await ctx.db
       .query("orders")

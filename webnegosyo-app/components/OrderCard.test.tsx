@@ -158,3 +158,15 @@ it('shows the daily display number while navigation keeps the canonical order ID
   render(<OrderCard order={{ ...baseOrder, dailyNumber: 7 }} onPress={onPress} />);
   expect(screen.getByText('#07')).toBeTruthy();
 });
+
+describe("OrderCard kitchen chip", () => {
+  it("tells the cashier the kitchen has confirmed the order", () => {
+    render(<OrderCard order={{ ...baseOrder, status: "preparing" }} onPress={jest.fn()} />);
+    expect(screen.getByText("✓ Kitchen confirmed")).toBeTruthy();
+  });
+
+  it("claims nothing while the order still waits on the kitchen", () => {
+    render(<OrderCard order={baseOrder} onPress={jest.fn()} />);
+    expect(screen.queryByText("✓ Kitchen confirmed")).toBeNull();
+  });
+});

@@ -15,6 +15,7 @@ import { useSmsGateway } from "../lib/loyalty/use-sms-gateway";
 import { planGatewayEnable } from "../lib/loyalty/sms-gateway";
 import { androidSmsPermissions } from "../lib/sms/android-permissions";
 import { requestGatewayNotificationPermission } from "../lib/loyalty/notification-permission";
+import { KeepAwakeSteps } from "./loyalty/KeepAwakeSteps";
 import { SmsFallbackCard } from "./loyalty/SmsFallbackCard";
 
 const SMS_PERMISSION_DENIED =
@@ -178,6 +179,7 @@ export function LoyaltySmsDeviceCard() {
                 </TouchableOpacity>
               </View>
             ) : null}
+            {gateway.isEnabled ? <KeepAwakeSteps /> : null}
           </>
         )}
         {error ? <Text style={styles.error}>{error}</Text> : null}

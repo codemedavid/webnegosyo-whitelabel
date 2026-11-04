@@ -12,6 +12,7 @@ import {
   policyFromCounting,
   describeCounting,
   drawerBreakdown,
+  dayRowLine,
   describeDrawerSale,
   describeIntake,
   describeShiftSales,
@@ -138,5 +139,13 @@ describe("section wording", () => {
     expect(describeShiftSales(2, "counter")).toMatch(/^2 sales/);
     expect(describeShiftSales(1, "counter")).toMatch(/^1 sale\b/);
     expect(describeShiftSales(2, "all")).toMatch(/smart menu/i);
+  });
+});
+
+describe("dayRowLine (the day's total folded under the shift hero)", () => {
+  it("says cash and, when there is any, non-cash", () => {
+    const base = { saleCount: 3, grossTotal: 0, cashTotal: 24615, nonCashTotal: 0, changeGiven: 0, refundsPaid: 0 };
+    expect(dayRowLine(base)).toBe("₱24,615.00 cash · tap for details");
+    expect(dayRowLine({ ...base, nonCashTotal: 9840 })).toBe("₱24,615.00 cash · ₱9,840.00 non-cash · tap for details");
   });
 });

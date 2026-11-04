@@ -4,8 +4,8 @@
  * Android channel id, and where a tapped push or action lands. The root
  * layout's tap handler is a thin shell around `routeFromPushResponse`, the
  * app's ONE push router. Order: approvals, approval batches, then the
- * merchant-notification router (announcements, then stock alerts), then
- * texting (texts waiting, a campaign's send reminder).
+ * merchant-notification router (announcements, stock alerts, then bill
+ * reminders), then texting (texts waiting, a campaign's send reminder).
  *
  * Design-spec §0.1 / §3.12: Approve must OPEN the app on both platforms (an
  * Android background action runs with the phone still locked) and require the

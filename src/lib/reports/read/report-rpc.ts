@@ -10,6 +10,7 @@
 import type { Database } from '@/types/supabase'
 import type { ReportGrain } from '../period'
 import type { PaymentBucket } from '../payment-buckets'
+import type { ExpenseCategoryTotal, ProfitFigures, ProfitGrain, ProfitPeriodFigures } from '../profit-facts'
 import type { BreakdownRow, HourCell, ItemRow, PeriodRow } from '../sales-breakdowns'
 import {
   toCategoryRows,
@@ -23,6 +24,7 @@ import {
   type DimensionMapping,
   type SalesTotals,
 } from './report-rpc-rows'
+import { toExpenseCategoryTotals, toProfitFigures, toProfitPeriods } from './report-profit-rows'
 import type { ReportBranchArgs } from './report-scope'
 
 interface RpcError {
@@ -62,6 +64,8 @@ export interface ReportFailure {
 export type ReportResult<T> = { ok: true; data: T } | { ok: false; error: ReportFailure }
 
 export const REPORT_FORBIDDEN_MESSAGE = 'You need the Reports permission to see this. Ask the store owner.'
+/** Profit also needs the Expenses and Costs keys (reporting.assert_profit_access). */
+export const PROFIT_FORBIDDEN_MESSAGE = 'Ask the owner for cost access to see profit.'
 export const REPORT_FAILED_MESSAGE = 'This part of the report couldn’t load. Try again in a moment.'
 
 const INSUFFICIENT_PRIVILEGE = '42501'
@@ -90,6 +94,7 @@ async function callReport<T>(
   fn: ReportFunction,
   args: Record<string, unknown>,
   map: (rows: unknown) => T,
+  forbiddenMessage = REPORT_FORBIDDEN_MESSAGE,
 ): Promise<ReportResult<T>> {
   let reply: { data: unknown; error: RpcError | null }
   try {
@@ -99,7 +104,7 @@ async function callReport<T>(
   }
   if (reply.error) {
     const { code, message } = reply.error
-    if (code === INSUFFICIENT_PRIVILEGE) return failure(fn, 'forbidden', message, REPORT_FORBIDDEN_MESSAGE)
+    if (code === INSUFFICIENT_PRIVILEGE) return failure(fn, 'forbidden', message, forbiddenMessage)
     // The functions' own range sentences are written for staff.
     if (code === INVALID_PARAMETER) return failure(fn, 'invalid', message, message)
     return failure(fn, 'failed', `${code ?? 'no code'}: ${message}`)
@@ -144,4 +149,20 @@ export function readCategories(client: ReportRpcClient, window: ReportWindow): P
 
 export function readPayments(client: ReportRpcClient, window: ReportWindow): Promise<ReportResult<PaymentBucket[]>> {
   return callReport(client, 'report_payments', baseArgs(window), toPaymentBuckets)
+}
+
+export function readProfitSummary(client: ReportRpcClient, window: ReportWindow): Promise<ReportResult<ProfitFigures>> {
+  return callReport(client, 'report_profit_summary', baseArgs(window), toProfitFigures, PROFIT_FORBIDDEN_MESSAGE)
+}
+
+export function readProfitPeriods(
+  client: ReportRpcClient,
+  window: ReportWindow,
+  grain: ProfitGrain,
+): Promise<ReportResult<ProfitPeriodFigures[]>> {
+  return callReport(client, 'report_profit_by_period', { ...baseArgs(window), p_grain: grain }, toProfitPeriods, PROFIT_FORBIDDEN_MESSAGE)
+}
+
+export function readExpenseCategories(client: ReportRpcClient, window: ReportWindow): Promise<ReportResult<ExpenseCategoryTotal[]>> {
+  return callReport(client, 'report_expenses_by_category', baseArgs(window), toExpenseCategoryTotals, PROFIT_FORBIDDEN_MESSAGE)
 }

@@ -33,6 +33,7 @@
 import { getOrderOutletId, type ScopedOrderLike } from "./branch-scope";
 import { getOrderOutletLabel } from "./branch-analytics";
 import { resolveOrderIdentityKey, type IdentifiableOrderLike } from "./customer-identity";
+import { tradingDayOf, type CutoffSchedule } from "./business-day/trading-day";
 
 /** Label for takings no branch owns. Matches `branch-analytics.ts`. */
 export const UNASSIGNED_OUTLET_LABEL = "Unassigned";
@@ -72,8 +73,13 @@ export interface KpiOutlet {
 export interface KpiPeriod {
   startMs: number;
   endMs: number;
-  /** Calendar days the window covers — the length of the daily series. */
+  /** Business days the window covers — the length of the daily series. */
   days: number;
+  /**
+   * The store's business-day cutoffs, when it has any: the daily series then
+   * buckets by business day. Absent = Manila calendar days.
+   */
+  schedule?: CutoffSchedule;
 }
 
 /** One branch's row on the redesigned screen. */
@@ -150,6 +156,13 @@ function isCancelled(order: KpiOrderLike): boolean {
 /** Whole days since the Manila epoch — the day-bucket key. */
 function manilaDayIndex(timestampMs: number): number {
   return Math.floor((timestampMs + MANILA_OFFSET_MS) / DAY_MS);
+}
+
+/** The day-bucket key on the store's business day (Manila calendar with no schedule). */
+function businessDayIndex(timestampMs: number, schedule: CutoffSchedule | undefined): number {
+  if (!schedule || schedule.length === 0) return manilaDayIndex(timestampMs);
+  const dayKey = tradingDayOf(new Date(timestampMs).toISOString(), schedule);
+  return Math.round(Date.parse(`${dayKey}T00:00:00.000Z`) / DAY_MS);
 }
 
 /** Hour of the Manila day, 0–23. */
@@ -239,7 +252,7 @@ export function buildBranchKpis(
     buckets.set(outlet.id, emptyBucket(outlet.name, period.days));
   }
 
-  const firstDayIndex = manilaDayIndex(period.startMs);
+  const firstDayIndex = businessDayIndex(period.startMs, period.schedule);
   const previous = previousWindow(period);
 
   // Chronological, so "did this guest order here before?" can be answered in a
@@ -281,7 +294,7 @@ export function buildBranchKpis(
     bucket.orderCount += 1;
     bucket.tradingHourKeys.add(manilaHourIndex(at));
 
-    const dayOffset = manilaDayIndex(at) - firstDayIndex;
+    const dayOffset = businessDayIndex(at, period.schedule) - firstDayIndex;
     if (dayOffset >= 0 && dayOffset < bucket.dailyRevenue.length) {
       bucket.dailyRevenue[dayOffset] += total;
     }

@@ -6,7 +6,8 @@ import { orderBranchFilter, eventBranchFilter } from "./branchFilter";
 import { summarizeOrderChannels } from "./analyticsChannels";
 import { mutation, query, internalQuery, type QueryCtx } from "./_generated/server";
 import { requireAccess } from "./auth";
-import { localDayStartMs, localDateKey, localDayOfWeek, localHour } from "./time";
+import { businessDayKey, businessDayStartMs, localDayOfWeek, localHour } from "./time";
+import { readCutoffSchedule } from "./businessDayConfig";
 import { resolveAnalyticsContact } from "./customerIdentity";
 import { orderMethodSlices, type SlicePayment } from "./paymentSlices";
 
@@ -252,17 +253,19 @@ async function getTrendsHandler(ctx: QueryCtx, args: ObjectType<typeof getTrends
     // series is reactive: cancelling an order — even on a past day — drops that
     // day's revenue immediately, and today's bar appears as soon as orders come
     // in (the old 23:59-UTC cron only wrote today's row, never corrected the
-    // past, and excluded the in-progress day). Bucketed by the merchant's
-    // local (PH) day.
+    // past, and excluded the in-progress day). Bucketed by the store's
+    // BUSINESS day (its cutoff, e.g. 4 AM: a 1:30 AM sale is the night
+    // before's); Manila calendar days when no cutoff is synced.
     //
     // A rolling request still gets the inclusive N-day window ending on the
-    // current local day, so the series starts on a day boundary rather than
+    // current business day, so the series starts on a day boundary rather than
     // mid-afternoon N days ago and the first bar is never a part-day.
+    const schedule = await readCutoffSchedule(ctx);
     const days = args.daysBack ?? 30;
     const window =
       args.startMs !== undefined
         ? resolveWindow(args, days)
-        : { start: localDayStartMs(Date.now()) - (days - 1) * DAY_MS, end: Infinity };
+        : { start: businessDayStartMs(Date.now() - (days - 1) * DAY_MS, schedule), end: Infinity };
 
     const orders = await ctx.db
       .query("orders")
@@ -278,7 +281,7 @@ async function getTrendsHandler(ctx: QueryCtx, args: ObjectType<typeof getTrends
 
     const dayMap = new Map<string, { totalOrders: number; totalRevenue: number }>();
     for (const order of orders) {
-      const date = localDateKey(orderTime(order));
+      const date = businessDayKey(orderTime(order), schedule);
       const existing = dayMap.get(date) ?? { totalOrders: 0, totalRevenue: 0 };
       existing.totalOrders += 1;
       existing.totalRevenue += order.total;
@@ -392,16 +395,17 @@ export const getUpsellTrends = query({
     const recentShown = shownEvents.filter((e) => inWindow(e._creationTime, window));
     const recentConverted = convertedEvents.filter((e) => inWindow(e._creationTime, window));
 
-    // Group by date for daily rates
+    // Group by business day for daily rates (Manila date with no cutoff).
+    const schedule = await readCutoffSchedule(ctx);
     const dailyMap = new Map<string, { shown: number; converted: number }>();
     for (const event of recentShown) {
-      const date = localDateKey(event._creationTime);
+      const date = businessDayKey(event._creationTime, schedule);
       const existing = dailyMap.get(date) ?? { shown: 0, converted: 0 };
       existing.shown += 1;
       dailyMap.set(date, existing);
     }
     for (const event of recentConverted) {
-      const date = localDateKey(event._creationTime);
+      const date = businessDayKey(event._creationTime, schedule);
       const existing = dailyMap.get(date) ?? { shown: 0, converted: 0 };
       existing.converted += 1;
       dailyMap.set(date, existing);
@@ -552,10 +556,11 @@ export const getPaymentMethodAnalytics = query({
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    // Daily breakdown for trend lines
+    // Daily breakdown for trend lines, by business day (Manila date with no cutoff).
+    const schedule = await readCutoffSchedule(ctx);
     const dailyMap = new Map<string, Map<string, number>>();
     for (const order of orders) {
-      const date = localDateKey(orderTime(order));
+      const date = businessDayKey(orderTime(order), schedule);
       if (!dailyMap.has(date)) dailyMap.set(date, new Map());
       const dayMethods = dailyMap.get(date)!;
       for (const slice of slicesOf(order)) {

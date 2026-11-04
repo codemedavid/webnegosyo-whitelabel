@@ -8,6 +8,14 @@ import { buildLoyverseOrderItemsFromConvexOrder } from '@/lib/loyverse/convex-or
 import { loyversePushBodySchema } from '@/lib/loyverse/push-request'
 import type { OrderItem } from '@/types/database'
 import { isUuid } from '@/lib/uuid'
+import { hasAnyPermission, type StaffPermissionKey } from '@/lib/staff-permissions'
+
+/**
+ * Who may push a receipt: the register (`pos`) and every account that can
+ * confirm an order, because the app's pushConfirmedOrderToLoyverse runs on
+ * confirmation from the orders list, kitchen and table screens too.
+ */
+const LOYVERSE_PUSH_KEYS: readonly StaffPermissionKey[] = ['orders', 'pos', 'kitchen', 'tables']
 
 /** Nothing was pushed, and that is not an error the merchant can act on. */
 function skipped(reason: string): NextResponse {
@@ -97,6 +105,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const caller = await requireBearerStoreCaller(request, tenantId, 'create')
   if (!caller.ok) return caller.response
+  if (!caller.appUser || !hasAnyPermission(caller.appUser, LOYVERSE_PUSH_KEYS)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   let orderItems: OrderItem[] = items ?? []
   let platformOrderId: string | null = null

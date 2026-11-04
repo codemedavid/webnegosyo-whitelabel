@@ -10,11 +10,11 @@ import { monthDayOf, sinceText, timeAgoText, toMs } from '@/lib/texts/view/time'
 import { cn } from '@/lib/utils'
 import { IconTile, StatusChip } from '../status-chip'
 import { useServerNow, useTexts } from '../texts-context'
+import { KeepAwakeSteps } from './keep-awake-steps'
 import { PhoneName } from './phone-name'
 
 const OFFLINE_STEPS = [
-  'Open SmartMenu on the phone.',
-  'Turn battery saver off, or set SmartMenu to "Unrestricted".',
+  'Open SmartMenu on the phone and check "Use this phone" is on.',
   'Keep mobile data or Wi-Fi on.',
   'Check the SIM has load.',
 ]
@@ -39,6 +39,8 @@ export function PhoneCard({ phone, isHighlighted, isFixOpenAtFirst = true, onDis
   const now = useServerNow()
   const [isEditing, setEditing] = useState(false)
   const [isFixOpen, setFixOpen] = useState(isFixOpenAtFirst || isHighlighted)
+  const [isAwakeOpen, setAwakeOpen] = useState(false)
+  const isTroubled = phone.state === 'offline' || phone.state === 'late'
   const connected = toMs(phone.connectedAt)
 
   const chip = phoneChip(phone.state, phone.isInactive)
@@ -94,7 +96,7 @@ export function PhoneCard({ phone, isHighlighted, isFixOpenAtFirst = true, onDis
           <span><span className="font-semibold">SMS permission off.</span> On the phone: Settings → Apps → SmartMenu → Permissions → SMS → Allow.</span>
         </p>
       )}
-      {phone.state === 'offline' && (
+      {isTroubled && (
         <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white">
           <button type="button" aria-expanded={isFixOpen} onClick={() => setFixOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-between px-3.5 text-left text-sm font-semibold text-amber-900">
             Get it back online
@@ -108,8 +110,24 @@ export function PhoneCard({ phone, isHighlighted, isFixOpenAtFirst = true, onDis
                   <span>{step}</span>
                 </li>
               ))}
+              <li className="flex gap-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[11px] font-semibold text-white" aria-hidden="true">{OFFLINE_STEPS.length + 1}</span>
+                <div className="min-w-0 space-y-1.5">
+                  <span>Stop the phone from putting SmartMenu to sleep:</span>
+                  <KeepAwakeSteps manufacturer={phone.manufacturer} model={phone.model} />
+                </div>
+              </li>
             </ol>
           )}
+        </div>
+      )}
+      {!isTroubled && (
+        <div className="rounded-xl border border-wn-line">
+          <button type="button" aria-expanded={isAwakeOpen} onClick={() => setAwakeOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-between px-3.5 text-left text-sm font-medium">
+            Keep it sending in the background
+            <ChevronDown className={cn('h-4 w-4 transition-transform motion-reduce:transition-none', isAwakeOpen && 'rotate-180')} aria-hidden="true" />
+          </button>
+          {isAwakeOpen && <div className="px-3.5 pb-3.5"><KeepAwakeSteps manufacturer={phone.manufacturer} model={phone.model} /></div>}
         </div>
       )}
     </li>

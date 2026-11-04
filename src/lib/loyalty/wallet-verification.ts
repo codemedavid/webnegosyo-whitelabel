@@ -34,6 +34,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export type WalletIssueResult =
   | { ok: true; challengeId: string; expiresAt: string }
   | { ok: false; error: 'request_denied' | 'unavailable' }
+  /** No stamp card or reward at this store for the number: nothing was queued. */
+  | { ok: false; error: 'not_member' }
   | { ok: false; error: 'rate_limited'; retryAfterSeconds: number }
 
 /** Every rate window is at most a day; an unreadable wait means "a minute". */
@@ -80,6 +82,7 @@ export async function issueWalletChallenge(
       if (data.ok === false && data.error === 'rate_limited') {
         return { ok: false, error: 'rate_limited', retryAfterSeconds: retrySeconds(data.retryAfterSeconds) }
       }
+      if (data.ok === false && data.error === 'not_member') return { ok: false, error: 'not_member' }
       if (data.ok === false) return { ok: false, error: 'request_denied' }
       if (data.ok !== true || data.challengeId !== args.p_challenge_id || typeof data.expiresAt !== 'string') {
         return { ok: false, error: 'unavailable' }

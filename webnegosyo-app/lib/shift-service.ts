@@ -31,7 +31,14 @@ const SHIFT_COLUMNS =
   "id, tenant_id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_id, drawer_name, is_zero_balance, closed_by_name";
 
 /** History rows also carry their cash moves, so turnover counts mid-shift pickups. */
-const HISTORY_COLUMNS = `${SHIFT_COLUMNS}, shift_cash_movements(kind, amount)`;
+const HISTORY_COLUMNS = `${SHIFT_COLUMNS}, shift_cash_movements(kind, amount, reason, created_at)`;
+
+/** One pay-out on a shift's history row: what was spent from the drawer, and why. */
+export interface ShiftPayOut {
+  amount: number;
+  reason: string | null;
+  createdAt: string | null;
+}
 
 /** One shift, as the screens consume it. */
 export interface ShiftRecord {
@@ -59,6 +66,8 @@ export interface ShiftRecord {
   closedByName: string | null;
   /** Pay ins / outs / pickups — present on history reads only. */
   moves?: CashMoveTotals;
+  /** Each pay-out with its reason, oldest first — present on history reads only. */
+  payOuts?: ShiftPayOut[];
 }
 
 interface ShiftRow {
@@ -77,7 +86,26 @@ interface ShiftRow {
   drawer_name?: string | null;
   is_zero_balance?: boolean | null;
   closed_by_name?: string | null;
-  shift_cash_movements?: { kind: string; amount: number | string }[] | null;
+  shift_cash_movements?: CashMoveRow[] | null;
+}
+
+interface CashMoveRow {
+  kind: string;
+  amount: number | string;
+  reason?: string | null;
+  created_at?: string | null;
+}
+
+/** The pay-outs among a shift's cash moves, oldest first, reasons trimmed. */
+function toPayOuts(rows: readonly CashMoveRow[]): ShiftPayOut[] {
+  return rows
+    .filter((m) => m.kind === "pay_out")
+    .map((m) => ({
+      amount: Number(m.amount),
+      reason: m.reason?.trim() ? m.reason.trim() : null,
+      createdAt: m.created_at ?? null,
+    }))
+    .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
 }
 
 /**
@@ -114,6 +142,7 @@ function toShift(row: ShiftRow): ShiftRecord {
                 row.shift_cash_movements.map((m) => ({ kind: m.kind as CashMoveKind, amount: Number(m.amount) })),
               )
             : NO_CASH_MOVES,
+          payOuts: toPayOuts(row.shift_cash_movements),
         }
       : {}),
   };
@@ -251,6 +280,10 @@ export async function openShift(
 function describeOpenRefusal(error: { code?: string; message?: string }): string {
   if (error.code === "23505" && /drawer/.test(error.message ?? "")) {
     return "Someone else just opened this drawer. Pick another one.";
+  }
+  // The day close (20261027170000) refuses a shift on a day already closed.
+  if (error.code === "55000" && /day_closed/.test(error.message ?? "")) {
+    return "This business day is already closed. Ask a manager to reopen it.";
   }
   return "The shift could not be started.";
 }
@@ -394,4 +427,66 @@ export async function isShiftStillOpen(
   );
   if (error) throw asError(error, "The shift could not be read.");
   return (data as { status?: string } | null)?.status === "open";
+}
+
+/** One shift for its sales report, with the columns the business-day work adds when the database has them. */
+export interface ShiftDetail extends ShiftRecord {
+  /** Blind count: the cashier sees money only after counting. False when the column is not there yet. */
+  isBlind: boolean;
+  /** Stamped by the server at clock-in; null until that column exists. */
+  businessDay: string | null;
+  /** The close's records (null until closed, or before the columns exist); parsed by their readers. */
+  closingDenominations: unknown;
+  closingNonCash: unknown;
+  varianceReason: string | null;
+  /** Cash left in the drawer for the next shift at close (centavos); null before the column exists or while open. */
+  floatKeptCents: number | null;
+}
+
+/**
+ * One shift by id (any status) — what the Shift sales screen counts on the
+ * tablet when the server report cannot. `select("*")` on purpose: the
+ * business-day columns (`is_blind`, `business_day`) arrive with a migration
+ * this build may run ahead of, and a named list would fail the read outright.
+ * Null when RLS hides it or it does not exist; THROWS on a failed read.
+ */
+export async function fetchShiftById(tenantId: string, shiftId: string, db: Db = supabase): Promise<ShiftDetail | null> {
+  const { data, error } = await withDeadline(
+    Promise.resolve(db.from("staff_shifts").select("*").eq("tenant_id", tenantId).eq("id", shiftId).maybeSingle()),
+    SHIFT_REQUEST_MS,
+  );
+  if (error) throw asError(error, "The shift could not be read.");
+  if (!data) return null;
+  const row = data as unknown as ShiftRow & {
+    is_blind?: boolean | null;
+    business_day?: string | null;
+    closing_denominations?: unknown;
+    closing_non_cash?: unknown;
+    variance_reason?: string | null;
+    float_kept_cents?: number | string | null;
+  };
+  return {
+    ...toShift(row),
+    isBlind: row.is_blind === true,
+    businessDay: row.business_day ?? null,
+    closingDenominations: row.closing_denominations ?? null,
+    closingNonCash: row.closing_non_cash ?? null,
+    varianceReason: row.variance_reason ?? null,
+    floatKeptCents: row.float_kept_cents === null || row.float_kept_cents === undefined ? null : Number(row.float_kept_cents),
+  };
+}
+
+/** The session read only names the person; it must never hold up a close or a clock-in. */
+const STAFF_NAME_READ_MS = 5_000;
+
+/** The signed-in person's name, snapshotted onto shifts and closes; falls back rather than blocking. */
+export async function readStaffName(): Promise<string> {
+  try {
+    const { data } = await withDeadline(supabase.auth.getSession(), STAFF_NAME_READ_MS);
+    const user = data.session?.user;
+    return (user?.user_metadata?.display_name as string | undefined) || user?.email || "Staff";
+  } catch (error) {
+    console.warn("[shift] session unavailable for the staff name", error);
+    return "Staff";
+  }
 }

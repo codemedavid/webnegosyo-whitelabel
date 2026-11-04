@@ -9,7 +9,7 @@ import { buildLead, hoursAgo, NOW_MS } from './fixtures'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 describe('parsePipelineFilters', () => {
-  it('defaults to the ₱999 monthly offer over the last 30 days', () => {
+  it('defaults to the funnel plans over the last 30 days', () => {
     expect(parsePipelineFilters({})).toEqual(DEFAULT_PIPELINE_FILTERS)
     expect(DEFAULT_PIPELINE_FILTERS).toEqual({ range: '30d', offer: 'monthly' })
   })
@@ -42,15 +42,22 @@ describe('filterPipelineLeads', () => {
   const downpayment = buildLead({ id: 'down', paymentTerm: 'downpayment_50', createdAt: hoursAgo(24) })
   const unknownTerm = buildLead({ id: 'none', paymentTerm: null, createdAt: hoursAgo(24) })
   const old = buildLead({ id: 'old', paymentTerm: 'monthly_subscription', createdAt: hoursAgo(24 * 40) })
+  const sixMonth = buildLead({ id: 'six', paymentTerm: 'six_month_full', createdAt: hoursAgo(24 * 40) })
+  const sixMonthDown = buildLead({ id: 'six-down', paymentTerm: 'six_month_downpayment', createdAt: hoursAgo(24 * 40) })
 
-  const all = [monthly, oneTime, downpayment, unknownTerm, old]
+  const all = [monthly, oneTime, downpayment, unknownTerm, old, sixMonth, sixMonthDown]
 
   function ids(leads: { id: string }[]): string[] {
     return leads.map((lead) => lead.id)
   }
 
-  it('keeps the monthly offer only', () => {
-    expect(ids(filterPipelineLeads(all, { range: 'all', offer: 'monthly' }, NOW_MS))).toEqual(['monthly', 'old'])
+  it('keeps the funnel plans only: monthly and both six-month terms', () => {
+    expect(ids(filterPipelineLeads(all, { range: 'all', offer: 'monthly' }, NOW_MS))).toEqual([
+      'monthly',
+      'old',
+      'six',
+      'six-down',
+    ])
   })
 
   it('treats every other term, and a missing term, as the one-time checkout', () => {

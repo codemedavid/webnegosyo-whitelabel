@@ -46,12 +46,25 @@ jest.mock('@/lib/maps/road-distance-server', () => ({
 
 /** The tenant row the caller's own (RLS-bound) client reads. */
 let tenantRow: Record<string, unknown> | null = null
+/** A branch row, returned when its id, store and active flag all match the filters. */
+let outletRow: Record<string, unknown> | null = null
 const callerSupabase = {
-  from: () => ({
-    select: () => ({
-      eq: () => ({ maybeSingle: async () => ({ data: tenantRow, error: null }) }),
-    }),
-  }),
+  from: (table: string) => {
+    const filters: Array<[string, unknown]> = []
+    const builder = {
+      select: () => builder,
+      eq: (column: string, value: unknown) => {
+        filters.push([column, value])
+        return builder
+      },
+      maybeSingle: async () => {
+        if (table !== 'outlets') return { data: tenantRow, error: null }
+        const matches = outletRow && filters.every(([column, value]) => outletRow![column] === value)
+        return { data: matches ? outletRow : null, error: null }
+      },
+    }
+    return builder
+  },
 }
 
 const TENANT = '11111111-1111-4111-8111-111111111111'
@@ -84,6 +97,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   requireBearerStoreCaller.mockResolvedValue({ ok: true, user: { id: 'user-1' }, supabase: callerSupabase })
   measureRoadDistanceKm.mockResolvedValue(6)
+  outletRow = null
   tenantRow = {
     lalamove_enabled: false,
     distance_delivery_enabled: true,
@@ -242,6 +256,30 @@ describe('POST /api/maps/delivery-quote', () => {
     const response = await quote(post('/api/maps/delivery-quote', body))
 
     expect(response.status).toBe(409)
+    expect(measureRoadDistanceKm).not.toHaveBeenCalled()
+  })
+
+  it('prices from the branch the order belongs to when one is named', async () => {
+    tenantRow = { ...tenantRow, multi_branch_enabled: true }
+    outletRow = {
+      id: '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d84', tenant_id: TENANT, is_active: true,
+      address: 'Branch St', latitude: 14.61, longitude: 121.01, delivery_radius_km: 5,
+    }
+    const { quote } = await loadRoutes()
+
+    const response = await quote(post('/api/maps/delivery-quote', { ...body, outletId: '7d0f8a7e-2b8c-4d6e-9a51-3f2c1b0e9d84' }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ fee: 90, distanceKm: 6, withinRadius: false, radiusKm: 5 })
+    expect(measureRoadDistanceKm).toHaveBeenCalledWith({ lat: 14.61, lng: 121.01 }, { lat: 14.62, lng: 121.02 })
+  })
+
+  it('rejects a branch id that is not a uuid before reading anything', async () => {
+    const { quote } = await loadRoutes()
+
+    const response = await quote(post('/api/maps/delivery-quote', { ...body, outletId: 'branch-1' }))
+
+    expect(response.status).toBe(400)
     expect(measureRoadDistanceKm).not.toHaveBeenCalled()
   })
 

@@ -32,6 +32,8 @@ interface BranchDetailProps {
   outlets: readonly StaffOutlet[]
   members: readonly RosterStaff[]
   storeWideMembers: readonly RosterStaff[]
+  /** Seats per branch this tenant's plan includes. Absent = the platform default. */
+  maxStaffPerBranch?: number | null
   /** Null when the branch has no takings, or they cannot be read. */
   metrics: BranchComparisonRow | null
   /** False when this store's takings cannot be split by branch at all. */
@@ -69,6 +71,7 @@ export function BranchDetail({
   outlets,
   members,
   storeWideMembers,
+  maxStaffPerBranch,
   metrics,
   hasMetrics,
   menuItems,
@@ -218,6 +221,7 @@ export function BranchDetail({
             outlets={outlets}
             members={members}
             storeWideMembers={storeWideMembers}
+            maxStaffPerBranch={maxStaffPerBranch}
           />
         </TabsContent>
 
@@ -225,6 +229,7 @@ export function BranchDetail({
           <OutletForm
             outlet={outlet}
             mapboxEnabled={mapboxEnabled}
+            tenantId={tenantId}
             isSaving={isSaving}
             onCancel={() => router.push(`/${tenantSlug}/admin/outlets`)}
             onSubmit={handleSave}

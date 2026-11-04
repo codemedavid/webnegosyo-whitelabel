@@ -86,7 +86,8 @@ export async function listRecentlyTextedPhones(tenantId: string, now: Date = new
     supabase.from("sms_sends").select("phone_e164")
       .eq("tenant_id", tenantId).eq("result", "sent").gte("sent_at", since).limit(MAX_RECENT_ROWS),
     supabase.from("sms_outbox").select("phone_e164")
-      .eq("tenant_id", tenantId).in("status", ["sent", "claimed"]).gte("created_at", since).limit(MAX_RECENT_ROWS),
+      // The owner's test texts (web Texts) never count against a guest.
+      .eq("tenant_id", tenantId).neq("source", "test").in("status", ["sent", "claimed"]).gte("created_at", since).limit(MAX_RECENT_ROWS),
   ]);
   for (const result of [campaigns, automations]) if (result.error) throw new Error(result.error.message);
   return new Set(

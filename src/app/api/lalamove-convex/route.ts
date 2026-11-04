@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTenantSecrets } from "@/lib/tenant-secrets";
+import { secretsEqual } from "@/lib/loyverse/secret-compare";
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate webhook secret to prevent unauthorized access
+    // Validate webhook secret to prevent unauthorized access (constant time;
+    // a missing platform secret refuses everything).
     const webhookSecret = request.nextUrl.searchParams.get("secret");
     const expectedSecret = process.env.LALAMOVE_WEBHOOK_SECRET;
-    if (!expectedSecret || webhookSecret !== expectedSecret) {
+    if (!secretsEqual(webhookSecret, expectedSecret)) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }

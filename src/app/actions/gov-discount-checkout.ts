@@ -37,6 +37,11 @@ export interface CheckoutGovKind {
 export interface CheckoutGovSetup {
   vatStatus: VatStatus
   kinds: CheckoutGovKind[]
+  /**
+   * False (the default) = the store applies Senior/PWD at the counter: the
+   * checkout shows a "show your ID" note instead of the claim form.
+   */
+  onlineClaims: boolean
 }
 
 async function loadRules() {
@@ -47,7 +52,10 @@ async function loadRules() {
   return createSupabaseLedgerStore(createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }))
 }
 
-/** Null when the store has not set up Tax & discounts (no field is shown). */
+/**
+ * Null when the store has not set up Tax & discounts (no field is shown).
+ * With online claims off the kinds still come back, for the counter note.
+ */
 export async function getCheckoutGovSetupAction(tenantId: string): Promise<CheckoutGovSetup | null> {
   if (!uuid.safeParse(tenantId).success) return null
   // Over the limit reads as "not offered": the order still goes through.
@@ -57,6 +65,7 @@ export async function getCheckoutGovSetupAction(tenantId: string): Promise<Check
     if (!profile) return null
     return {
       vatStatus: profile.vatStatus,
+      onlineClaims: profile.onlineClaimsEnabled,
       kinds: profile.enabledKinds.map((kind) => {
         const rule = GOV_DISCOUNT_RULES[kind]
         return { kind, label: rule.label, code: rule.code, idLabel: rule.idLabel, idPlaceholder: rule.idPlaceholder }

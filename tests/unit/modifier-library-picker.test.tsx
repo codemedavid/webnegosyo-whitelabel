@@ -17,6 +17,11 @@ jest.mock('@/app/actions/modifier-library', () => ({
   getModifierGroupLibraryAction: (...args: unknown[]) => getModifierGroupLibraryAction(...args),
 }))
 
+const getAddonLibraryAction = jest.fn()
+jest.mock('@/app/actions/addon-library', () => ({
+  getAddonLibraryAction: (...args: unknown[]) => getAddonLibraryAction(...args),
+}))
+
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), info: jest.fn() } }))
 
 function makeEntry(overrides: Partial<ModifierGroupLibraryEntry> = {}): ModifierGroupLibraryEntry {
@@ -41,6 +46,8 @@ function makeEntry(overrides: Partial<ModifierGroupLibraryEntry> = {}): Modifier
 
 beforeEach(() => {
   getModifierGroupLibraryAction.mockReset()
+  getAddonLibraryAction.mockReset()
+  getAddonLibraryAction.mockResolvedValue({ success: true, data: [] })
 })
 
 describe('ModifierLibraryPicker', () => {
@@ -92,5 +99,45 @@ describe('ModifierLibraryPicker', () => {
 
     await waitFor(() => expect(onAttach).toHaveBeenCalledTimes(1))
     expect(onAttach).toHaveBeenCalledWith([entry])
+  })
+
+  it('lists identical saved copies once and shows option prices', async () => {
+    // One store saved the same group 27 times; the picker listed every copy.
+    getModifierGroupLibraryAction.mockResolvedValue({
+      success: true,
+      data: [makeEntry({ id: 'a' }), makeEntry({ id: 'b', created_at: '2026-07-26T00:00:00Z' })],
+    })
+
+    render(<ModifierLibraryPicker tenantId="t1" onAttach={jest.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /add from library/i }))
+
+    expect(await screen.findAllByText('Size')).toHaveLength(1)
+    expect(screen.getByText(/Large \+₱20/)).toBeInTheDocument()
+  })
+
+  it('warns that a group the dish already has will be replaced', async () => {
+    getModifierGroupLibraryAction.mockResolvedValue({ success: true, data: [makeEntry()] })
+
+    render(<ModifierLibraryPicker tenantId="t1" onAttach={jest.fn()} existingGroupNames={['size ']} />)
+    fireEvent.click(screen.getByRole('button', { name: /add from library/i }))
+
+    expect(await screen.findByText(/replaces this dish’s size/i)).toBeInTheDocument()
+  })
+
+  it('offers single add-ons and hands them back separately', async () => {
+    getModifierGroupLibraryAction.mockResolvedValue({ success: true, data: [] })
+    const egg = { id: 's1', tenant_id: 't1', name: 'Egg', price: 20, is_active: true, display_order: 0, created_at: '', updated_at: '' }
+    getAddonLibraryAction.mockResolvedValue({ success: true, data: [egg] })
+    const onAttach = jest.fn()
+    const onAttachAddons = jest.fn()
+
+    render(<ModifierLibraryPicker tenantId="t1" onAttach={onAttach} onAttachAddons={onAttachAddons} />)
+    fireEvent.click(screen.getByRole('button', { name: /add from library/i }))
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: /egg/i }))
+    fireEvent.click(screen.getByRole('button', { name: /attach/i }))
+
+    await waitFor(() => expect(onAttachAddons).toHaveBeenCalledWith([egg]))
+    expect(onAttach).not.toHaveBeenCalled()
   })
 })

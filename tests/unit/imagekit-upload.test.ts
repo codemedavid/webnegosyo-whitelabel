@@ -23,6 +23,13 @@ class FakeXhr {
   static nextResponse: FakeXhrResponse = { status: 200, responseText: '{}' }
   static lastFields: Record<string, string> = {}
   static lastUrl = ''
+  static lastMethod = ''
+  static lastHeaders: Record<string, string> = {}
+  static lastBody: unknown = null
+
+  setRequestHeader(name: string, value: string) {
+    FakeXhr.lastHeaders = { ...FakeXhr.lastHeaders, [name]: value }
+  }
 
   upload = { addEventListener: jest.fn() }
   private listeners: Record<string, (() => void)[]> = {}
@@ -33,14 +40,18 @@ class FakeXhr {
     this.listeners[type] = [...(this.listeners[type] ?? []), handler]
   }
 
-  open(_method: string, url: string) {
+  open(method: string, url: string) {
+    FakeXhr.lastMethod = method
     FakeXhr.lastUrl = url
+    FakeXhr.lastHeaders = {}
   }
 
-  send(body: FormData) {
-    FakeXhr.lastFields = Object.fromEntries(
-      Array.from(body.entries()).map(([key, value]) => [key, String(value)]),
-    )
+  send(body: FormData | File) {
+    FakeXhr.lastBody = body
+    FakeXhr.lastFields =
+      body instanceof FormData
+        ? Object.fromEntries(Array.from(body.entries()).map(([key, value]) => [key, String(value)]))
+        : {}
     const response = FakeXhr.nextResponse
     this.status = response.status
     this.responseText = response.responseText
@@ -117,9 +128,14 @@ describe('uploadImageToImageKit', () => {
     await uploadImageToImageKit(makeFile(), { folder: 'page-backgrounds' })
 
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toBe('/api/imagekit/auth')
+    expect(url).toBe('/api/uploads/sign')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body)).toEqual({ folder: 'page-backgrounds', fileName: 'bg.jpg' })
+    expect(JSON.parse(init.body)).toEqual({
+      folder: 'page-backgrounds',
+      fileName: 'bg.jpg',
+      contentType: 'image/jpeg',
+      size: 1,
+    })
     expect(FakeXhr.lastUrl).toBe('https://upload.imagekit.io/api/v2/files/upload')
     const sentKeys = Object.keys(FakeXhr.lastFields).filter((key) => key !== 'file')
     expect(Object.fromEntries(sentKeys.map((key) => [key, FakeXhr.lastFields[key]]))).toEqual({
@@ -165,6 +181,46 @@ describe('uploadImageToImageKit', () => {
     await expect(
       uploadImageToImageKit(makeFile(), { folder: 'page-backgrounds' }),
     ).rejects.toThrow(/connection/i)
+  })
+})
+
+describe('uploadImageToImageKit when the server signs an R2 upload', () => {
+  const R2_SIGNED = {
+    provider: 'r2',
+    uploadUrl: 'https://acc.r2.cloudflarestorage.com/webnegosyo-media/page-backgrounds/bg-1.jpg?X-Amz-Signature=s',
+    method: 'PUT',
+    headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=31536000, immutable', 'if-none-match': '*' },
+    url: 'https://media.webnegosyo.com/page-backgrounds/bg-1.jpg',
+    fileId: 'r2:page-backgrounds/bg-1.jpg',
+    filePath: 'page-backgrounds/bg-1.jpg',
+  }
+
+  beforeEach(() => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => R2_SIGNED }) as unknown as typeof fetch
+  })
+
+  it('PUTs the raw file with exactly the signed headers and returns the media URL', async () => {
+    FakeXhr.nextResponse = { status: 200, responseText: '' }
+    const file = makeFile()
+
+    const result = await uploadImageToImageKit(file, { folder: 'page-backgrounds' })
+
+    expect(FakeXhr.lastMethod).toBe('PUT')
+    expect(FakeXhr.lastUrl).toBe(R2_SIGNED.uploadUrl)
+    expect(FakeXhr.lastHeaders).toEqual(R2_SIGNED.headers)
+    expect(FakeXhr.lastBody).toBe(file)
+    expect(result).toEqual({
+      url: 'https://media.webnegosyo.com/page-backgrounds/bg-1.jpg',
+      fileId: 'r2:page-backgrounds/bg-1.jpg',
+      filePath: 'page-backgrounds/bg-1.jpg',
+    })
+  })
+
+  it('rejects with the status when R2 refuses the upload', async () => {
+    FakeXhr.nextResponse = { status: 403, responseText: '<Error><Code>SignatureDoesNotMatch</Code></Error>' }
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(uploadImageToImageKit(makeFile(), { folder: 'page-backgrounds' })).rejects.toThrow('Upload failed (403)')
   })
 })
 

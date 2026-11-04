@@ -35,6 +35,7 @@ import {
 } from '@/lib/reports/read/report-rpc-rows'
 import { toReportOrder, type PlatformOrderItemRow, type PlatformOrderRow, type PlatformPaymentRow } from '@/lib/reports/read/platform-order-row'
 import { rollupCategories, rollupHours, rollupItems, rollupPeriods } from '@/lib/reports/sales-breakdowns'
+import type { CutoffChange, CutoffSchedule } from '@/lib/business-day/trading-day'
 import { rollupOrders, summarizeSales, type ReportOrder } from '@/lib/reports/sales-model'
 import { reportOrdersArb, toPlatformTables, type PlatformOrderSeed } from '../../fixtures/report-orders'
 import { propertyRuns } from '../../utils/property'
@@ -66,9 +67,36 @@ interface Store {
   ownerId: string
   rows: PlatformOrderSeed
   orders: ReportOrder[]
+  /** business_day_cutoffs rows (20261027140000): day/week/month + hour weekday follow it. */
+  schedule: CutoffSchedule
 }
 
-function toStore(generated: ReportOrder[], index: number, uuid: (key: string) => string): Store {
+/**
+ * A random business-day schedule per store, derived from the run seed: half
+ * the stores keep Manila midnight (no rows), the rest get one to three changes
+ * around and inside the window, so day buckets of 20 h / 28 h days, a single
+ * constant cutoff (the fast path) and mid-window changes are all reached.
+ */
+function scheduleFor(index: number, seed: number): CutoffSchedule {
+  let state = (seed * 7919 + index * 104729) >>> 0
+  const next = (n: number) => {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0
+    return state % n
+  }
+  if (index === 0 || next(2) === 0) return []
+  const days = new Set<number>()
+  const count = 1 + next(3)
+  for (let i = 0; i < count; i += 1) days.add(next(22)) // 2026-09-20 + 0..21 days
+  const base = Date.parse('2026-09-20T00:00:00.000Z')
+  return [...days]
+    .sort((a, b) => a - b)
+    .map((offset): CutoffChange => ({
+      effectiveFrom: new Date(base + offset * 86_400_000).toISOString().slice(0, 10),
+      cutoffMinutes: next(48) * 15, // 0..705, 15-minute steps
+    }))
+}
+
+function toStore(generated: ReportOrder[], index: number, uuid: (key: string) => string, seed: number): Store {
   const tenantId = uuid(`tenant:${index}`)
   const raw = toPlatformTables(generated, { tenantId, moneyAsText: index % 2 === 0 })
   const local = (id: string) => uuid(`${index}:${id}`)
@@ -97,7 +125,7 @@ function toStore(generated: ReportOrder[], index: number, uuid: (key: string) =>
       (payments.get(row.id) ?? []) as PlatformPaymentRow[],
     ),
   )
-  return { tenantId, ownerId: uuid(`owner:${index}`), rows, orders }
+  return { tenantId, ownerId: uuid(`owner:${index}`), rows, orders, schedule: scheduleFor(index, seed) }
 }
 
 const at = (hours: number) => WINDOW.start + hours * 60 * 60 * 1000
@@ -184,6 +212,9 @@ function runWorker(scenario: unknown): Result[] {
 function seedFor(stores: readonly Store[]) {
   return {
     tenants: stores.map((store) => ({ id: store.tenantId, is_active: true })),
+    cutoffs: stores.flatMap((store) =>
+      store.schedule.map((change) => ({ tenant_id: store.tenantId, effective_from: change.effectiveFrom, cutoff_minutes: change.cutoffMinutes })),
+    ),
     users: stores.map((store) => ({ id: store.ownerId })),
     appUsers: stores.map((store) => ({ user_id: store.ownerId, role: 'admin', tenant_id: store.tenantId, is_owner: true, permissions: '{}' })),
     orders: stores.flatMap((store) => store.rows.orders),
@@ -198,11 +229,11 @@ function expected(store: Store) {
   const { discountByKind: _kinds, ...withoutKinds } = totals
   return {
     summary: withoutKinds,
-    periods: GRAINS.map((grain) => rollupPeriods(store.orders, grain)),
+    periods: GRAINS.map((grain) => rollupPeriods(store.orders, grain, store.schedule)),
     channels: [...rollupOrders(store.orders, (order) => order.channel)].map(([key, row]) => ({ key, ...row })),
     orderTypes: [...rollupOrders(store.orders, (order) => order.orderType)].map(([key, row]) => ({ key, ...row })),
     outlets: [...rollupOrders(store.orders, (order) => order.outletId ?? 'unassigned')].map(([key, row]) => ({ key, ...row })),
-    hours: rollupHours(store.orders),
+    hours: rollupHours(store.orders, store.schedule),
     items: rollupItems(store.orders),
     categories: rollupCategories(store.orders),
     payments: bucketPayments(store.orders).buckets,
@@ -236,7 +267,7 @@ describe('SQL report functions = the TypeScript sales engine, to the centavo', (
   const seed = process.env.FC_SEED ? Number(process.env.FC_SEED) : 20261014
   const generated = fc.sample(reportOrdersArb({ minLength: 0, maxLength: 25, window: WINDOW }), { numRuns: runs, seed })
   const uuid = uuidFactory()
-  const stores = [EDGE_STORE, ...generated].map((orders, index) => toStore(orders, index, uuid))
+  const stores = [EDGE_STORE, ...generated].map((orders, index) => toStore(orders, index, uuid, seed))
   let results: Result[] = []
 
   beforeAll(() => {

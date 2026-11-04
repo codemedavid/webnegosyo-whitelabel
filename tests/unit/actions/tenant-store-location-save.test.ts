@@ -214,8 +214,13 @@ describe('tenantSchema — shared distance-delivery rule', () => {
   test('accepts a store pinned at the equator/prime meridian (0 is a real coordinate)', async () => {
     const { tenantSchema } = await import('@/lib/tenants-service')
 
+    // A non-PH Lalamove market: a Philippine store at 0,0 is refused as outside
+    // the country (below), but 0 itself must never be read as "not set". The
+    // market only counts while Lalamove is on (`delivery-market.ts`).
     const parsed = tenantSchema.parse({
       ...DISTANCE_DELIVERY_INPUT,
+      lalamove_enabled: true,
+      lalamove_market: 'SG',
       delivery_min_fee: 0,
       restaurant_latitude: 0,
       restaurant_longitude: 0,
@@ -225,3 +230,68 @@ describe('tenantSchema — shared distance-delivery rule', () => {
     expect(parsed.delivery_min_fee).toBe(0)
   })
 })
+
+describe('tenantSchema — store pin rules', () => {
+  const LALAMOVE_INPUT = {
+    ...BASE_INPUT,
+    lalamove_enabled: true,
+    lalamove_api_key: 'pk_test_x',
+    lalamove_secret_key: 'sk_test_x',
+    lalamove_market: 'PH',
+    lalamove_sandbox: true,
+  }
+
+  test('leaves the stored pin alone when a partial write omits it', async () => {
+    const { tenantSchema } = await import('@/lib/tenants-service')
+    expect(tenantSchema.safeParse({ ...LALAMOVE_INPUT, restaurant_address: 'Lucena' }).success).toBe(true)
+  })
+
+  test('refuses a Lalamove store with no pickup pin', async () => {
+    const { tenantSchema } = await import('@/lib/tenants-service')
+    const result = tenantSchema.safeParse({
+      ...LALAMOVE_INPUT,
+      restaurant_address: 'Lucena',
+      restaurant_latitude: null,
+      restaurant_longitude: null,
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.map((issue) => issue.message)).toContain(
+      "Pin your store's location on the map. Riders pick up orders there and delivery fees are measured from it.",
+    )
+  })
+
+  test('refuses a Philippine store pinned in Hong Kong', async () => {
+    const { tenantSchema } = await import('@/lib/tenants-service')
+    const result = tenantSchema.safeParse({ ...LALAMOVE_INPUT, restaurant_latitude: 22.3193, restaurant_longitude: 114.1694 })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.path).toEqual(['restaurant_latitude'])
+  })
+
+  test('accepts a Lalamove store pinned in the Philippines, and a store with no delivery and no pin', async () => {
+    const { tenantSchema } = await import('@/lib/tenants-service')
+    expect(tenantSchema.safeParse({ ...LALAMOVE_INPUT, restaurant_latitude: 14.62, restaurant_longitude: 121.07 }).success).toBe(true)
+    expect(tenantSchema.safeParse(BASE_INPUT).success).toBe(true)
+  })
+
+  test('refuses half a pin', async () => {
+    const { tenantSchema } = await import('@/lib/tenants-service')
+    expect(tenantSchema.safeParse({ ...BASE_INPUT, restaurant_latitude: 14.62 }).success).toBe(false)
+  })
+})
+
+describe('updateTenantAction — pin writes', () => {
+  test('writes 0-free coordinates through unchanged and leaves an omitted pin alone', async () => {
+    const updateTenantAction = await loadUpdateTenantAction()
+    await updateTenantAction(TENANT_ID, BASE_INPUT as never)
+    expect(updatedPayload).not.toBeNull()
+    expect(updatedPayload).not.toHaveProperty('restaurant_latitude', null)
+    expect(updatedPayload?.restaurant_latitude).toBeUndefined()
+  })
+
+  test('clears the pin when the caller sends null', async () => {
+    const updateTenantAction = await loadUpdateTenantAction()
+    await updateTenantAction(TENANT_ID, { ...BASE_INPUT, restaurant_latitude: null, restaurant_longitude: null } as never)
+    expect(updatedPayload).toMatchObject({ restaurant_latitude: null, restaurant_longitude: null })
+  })
+})
+

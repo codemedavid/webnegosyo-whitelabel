@@ -7,6 +7,7 @@ import {
 } from "@/lib/order-stats";
 import { scopeOrdersQuery } from "@/lib/outlets/branch-scope-query";
 import type { BranchScope } from "@/lib/outlets/branch-scope";
+import { MIDNIGHT_SCHEDULE, type CutoffSchedule } from "@/lib/business-day/trading-day";
 
 /**
  * Order reads against a tenant's OWN Supabase project (`order_backend = 'supabase'`).
@@ -142,7 +143,9 @@ export async function fetchTenantOrderStats(
   client: SupabaseClient,
   tenantId: string,
   now: Date = new Date(),
-  scope: BranchScope = { kind: "all" }
+  scope: BranchScope = { kind: "all" },
+  /** The cutoffs live on the PLATFORM database, never the tenant's own: pass them in. */
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
 ): Promise<OrderStats> {
   // Scoped for the same reason as the page above: a branch reading its own
   // order list under store-wide takings is a figure it cannot reconcile.
@@ -151,7 +154,7 @@ export async function fetchTenantOrderStats(
       .from("orders")
       .select("status, total, created_at")
       .eq("tenant_id", tenantId)
-      .gte("created_at", startOfTodayISO(now)),
+      .gte("created_at", startOfTodayISO(now, schedule)),
     scope
   );
 

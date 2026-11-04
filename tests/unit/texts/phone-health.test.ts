@@ -69,7 +69,7 @@ describe('phoneHealth', () => {
 
 function phone(overrides: Partial<SendingPhone>): SendingPhone {
   return {
-    deviceId: 'd', name: 'Phone', hasCustomName: false, model: null, appVersion: null, isAppOld: false,
+    deviceId: 'd', name: 'Phone', hasCustomName: false, manufacturer: null, model: null, appVersion: null, isAppOld: false,
     state: 'ready', lastSeenAt: ago(10), ageSeconds: 10, isInactive: false, connectedAt: null, connectedBy: null,
     sentToday: 0, failedToday: 0, sendingNow: 0, smsPermission: null, isBatteryUnrestricted: null,
     ...overrides,

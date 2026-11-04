@@ -76,6 +76,7 @@ export default function CheckoutScreen() {
   const [paymentProofUrl, setPaymentProofUrl] = useState('')
   const [paymentProofPublicId, setPaymentProofPublicId] = useState('')
   const [paymentProofFilePath, setPaymentProofFilePath] = useState('')
+  const [paymentProofDeleteToken, setPaymentProofDeleteToken] = useState('')
   const [paymentProofReference, setPaymentProofReference] = useState('')
   const [isUploadingProof, setIsUploadingProof] = useState(false)
 
@@ -245,25 +246,27 @@ export default function CheckoutScreen() {
       if (uploaded) {
         // Replace-cleanup: delete the previous screenshot before storing the new one.
         if (paymentProofPublicId && paymentProofPublicId !== uploaded.fileId) {
-          deletePaymentProof(paymentProofPublicId, paymentProofFilePath)
+          deletePaymentProof(paymentProofPublicId, paymentProofFilePath, paymentProofDeleteToken)
         }
         setPaymentProofUrl(uploaded.url)
         setPaymentProofPublicId(uploaded.fileId)
         setPaymentProofFilePath(uploaded.filePath)
+        setPaymentProofDeleteToken(uploaded.deleteToken ?? '')
       }
     } catch (error) {
       Alert.alert('Upload failed', error instanceof Error ? error.message : 'Please try again.')
     } finally {
       setIsUploadingProof(false)
     }
-  }, [paymentProofPublicId, paymentProofFilePath])
+  }, [paymentProofPublicId, paymentProofFilePath, paymentProofDeleteToken])
 
   const handleRemoveProof = useCallback(() => {
-    if (paymentProofPublicId) deletePaymentProof(paymentProofPublicId, paymentProofFilePath)
+    if (paymentProofPublicId) deletePaymentProof(paymentProofPublicId, paymentProofFilePath, paymentProofDeleteToken)
     setPaymentProofUrl('')
     setPaymentProofPublicId('')
     setPaymentProofFilePath('')
-  }, [paymentProofPublicId, paymentProofFilePath])
+    setPaymentProofDeleteToken('')
+  }, [paymentProofPublicId, paymentProofFilePath, paymentProofDeleteToken])
 
   const handleSubmitOrder = useCallback(async () => {
     if (!tenant || !selectedOrderType) return

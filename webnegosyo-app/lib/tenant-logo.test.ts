@@ -9,6 +9,11 @@ jest.mock("./authorized-post", () => ({
   getAccessTokenBounded: jest.fn(async () => "merchant-token"),
 }));
 
+// The picked file is read so an R2 upload can be signed for its exact size.
+jest.mock("./local-file", () => ({
+  readLocalFile: jest.fn(async () => ({ size: 1024 })),
+}));
+
 import {
   TENANT_LOGO_FOLDER,
   isValidLogoUrl,
@@ -135,7 +140,7 @@ describe("uploadTenantLogo", () => {
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       method: "POST",
       headers: expect.objectContaining({ Authorization: "Bearer merchant-token" }),
-      body: JSON.stringify({ folder: "tenant-logos", fileName: "logo.png" }),
+      body: JSON.stringify({ folder: "tenant-logos", fileName: "logo.png", contentType: "image/png", size: 1024 }),
     });
     const body = fetchMock.mock.calls[1][1].body as FormData;
     expect(body.get("folder")).toBe("tenant-logos");

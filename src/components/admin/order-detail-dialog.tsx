@@ -7,7 +7,8 @@ import { format, formatDistance } from 'date-fns'
 import { discountItemsText, orderSummaryRows } from '@/lib/order-summary-rows'
 import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { readOrderDiscount } from '@/lib/order-discount'
-import { buildCustomerDetailRows } from '@/lib/customer-details'
+import { buildCustomerDetailRows, DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
+import { orderMapLink } from '@/lib/delivery/order-map-link'
 import {
   Package,
   UtensilsCrossed,
@@ -22,7 +23,8 @@ import {
   ShoppingBag,
   CalendarClock,
   Store,
-  Printer
+  Printer,
+  ExternalLink
 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -109,6 +111,21 @@ function getOrderTypeConfig(orderType: string | undefined | null) {
   return configs[normalized] || null
 }
 
+function MapLink({ href }: { href: string | null }) {
+  if (!href) return null
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+    >
+      Open in Google Maps
+      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+    </a>
+  )
+}
+
 export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: OrderDetailDialogProps) {
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false)
 
@@ -140,6 +157,11 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
   // keys — resolved by the module the receipt prints from, so the dialog and
   // the paper never disagree about what an order captured.
   const customerDetailRows = buildCustomerDetailRows(order.customer_data)
+  // ONE row carries the map link: the address widget's own field, else the
+  // first row that reads as an address (a store that renamed the question).
+  const mapRowKey =
+    customerDetailRows.find((row) => row.key === DELIVERY_ADDRESS_FIELD_NAME)?.key ??
+    customerDetailRows.find((row) => row.key.toLowerCase().includes('address'))?.key
   // Keyed on the order TYPE, not on "has a quotation": a delivery whose
   // quotation was never stored or has been cleared still needs the tab, or
   // there is no way to get a new quote for it.
@@ -397,6 +419,9 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                                     {row.label}
                                   </div>
                                   <div className="font-medium break-words">{row.value}</div>
+                                  {row.key === mapRowKey && (
+                                    <MapLink href={orderMapLink(order.customer_data, row.value)} />
+                                  )}
                                 </div>
                               </div>
                             )

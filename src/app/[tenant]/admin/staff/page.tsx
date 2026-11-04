@@ -8,7 +8,7 @@ import { StaffStat, StaffStatStrip } from '@/components/admin/staff/staff-stat'
 import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
 import { listStaffAction } from '@/app/actions/staff'
-import { resolveStaffLimit } from '@/lib/billing/subscription-status'
+import { loadStaffSeatLimit } from '@/lib/billing/staff-seat-limit'
 import { canManageStaff } from '@/lib/staff-permissions'
 import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { formatPeso } from '@/lib/outlets/branch-format'
@@ -65,14 +65,14 @@ export default async function AdminStaffPage({ params, searchParams }: StaffPage
   const sinceIso = new Date(window.startMs).toISOString()
 
   const supabase = await createClient()
-  const [staffResult, outletRows, planRow, activity, shifts] = await Promise.all([
+  const [staffResult, outletRows, seatLimit, activity, shifts] = await Promise.all([
     listStaffAction(tenant.id),
     supabase
       .from('outlets')
       .select('id, name')
       .eq('tenant_id', tenant.id)
       .order('sort_order', { ascending: true }),
-    supabase.from('tenants').select('max_staff_per_branch').eq('id', tenant.id).maybeSingle(),
+    loadStaffSeatLimit(tenant.id),
     loadOrderStatusEvents(tenant.id, {
       sinceIso,
       // A branch admin reads their branch's events only; the owner reads all.
@@ -107,10 +107,6 @@ export default async function AdminStaffPage({ params, searchParams }: StaffPage
   })
   const stats = summarizeTeam(entries)
 
-  const seatLimit = resolveStaffLimit({
-    max_staff_per_branch:
-      (planRow.data as { max_staff_per_branch?: number | null } | null)?.max_staff_per_branch ?? null,
-  })
   const seatsUsed = entries.filter((entry) => !entry.isFormer && !entry.isOwner).length
   const basePath = `/${tenantSlug}/admin/staff`
 

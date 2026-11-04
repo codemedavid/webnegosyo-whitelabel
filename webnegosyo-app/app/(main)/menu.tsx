@@ -11,6 +11,8 @@ import { tabPresentation } from "../../lib/workspace-presentation";
 import { canOpenTeam } from "../../lib/staff-service";
 import { canEditApprovalRules } from "../../lib/approvals/access";
 import { canManageCash } from "../../lib/cash-drawers";
+import { CASH_RULES_ROUTE } from "../../lib/cash-routes";
+import { cashRulesAccess } from "../../lib/cash/rules-form";
 import { hasPermission } from "../../lib/staff-permissions";
 import { canOpenTaxSettings } from "../../lib/tax-settings/access";
 import { TAX_SETTINGS_ROUTE } from "../../lib/gov-ledger/routes";
@@ -52,6 +54,10 @@ export default function ManageScreen() {
   const showApprovalRules = !isDemo && canEditApprovalRules({ role, isOwner, permissions });
   const canDesignReceipt = hasPermission({ role, isOwner, permissions }, "store_setup");
   const showCashDrawers = !isDemo && canManageCash({ role, isOwner, permissions });
+  // Cash managers reach the rules from Cash drawers; an account holding only
+  // Settings (the business-day cutoff) has no drawers row, so it gets its own.
+  const showCashRules =
+    !isDemo && !showCashDrawers && cashRulesAccess({ role, isOwner, permissions, outletId, isDemo }).canOpen;
   const showTaxSettings = canOpenTaxSettings({ role, isOwner, permissions, isDemo });
   const chapters = useTutorialChapters();
   const { progress: tutorialProgress } = useTutorialProgress();
@@ -154,6 +160,15 @@ export default function ManageScreen() {
                 title="Cash drawers"
                 subtitle="Cashier 1, Cashier 2, floats and zero-balance"
                 onPress={() => router.push("/(main)/cash-drawers")}
+                grouped
+              />
+            ) : null}
+            {showCashRules ? (
+              <ListRow
+                icon="settings"
+                title="Shift & remit rules"
+                subtitle="When the business day ends"
+                onPress={() => router.push(CASH_RULES_ROUTE)}
                 grouped
               />
             ) : null}

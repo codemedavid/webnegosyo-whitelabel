@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { colors, typography, spacing } from "../../../theme/colors";
 import { formatCount, formatPeso } from "../../../lib/format";
 import { refreshWithMinSpinner } from "../../../lib/query/pull-to-refresh";
-import { useBusinessDayAnchor } from "../../../lib/use-report-window";
+import { useTradingDay } from "../../../lib/business-day/use-trading-day";
 import { buildProductPerformance } from "../../../lib/product-performance/aggregate";
 import { buildProductInsights } from "../../../lib/product-performance/insights";
 import {
@@ -46,7 +46,7 @@ export default function ProductPerformanceScreen() {
     isPerformancePeriod(params.period) ? params.period : DEFAULT_PERFORMANCE_PERIOD
   );
   const [refreshing, setRefreshing] = useState(false);
-  const { anchorMs } = useBusinessDayAnchor();
+  const { anchorMs, schedule } = useTradingDay();
 
   // This screen is a tab route that stays mounted, so opening another product
   // (or the same one from a different period) arrives as new params on the
@@ -56,7 +56,10 @@ export default function ProductPerformanceScreen() {
     if (isPerformancePeriod(requestedPeriod)) setPeriodKey(requestedPeriod);
   }, [requestedPeriod, productId]);
 
-  const period = useMemo(() => resolvePerformancePeriod(periodKey, anchorMs), [periodKey, anchorMs]);
+  const period = useMemo(
+    () => resolvePerformancePeriod(periodKey, anchorMs, schedule),
+    [periodKey, anchorMs, schedule]
+  );
   // One product's lines are few, so its page always reads the comparison too.
   const request = useMemo(
     () => (productId ? { startMs: period.previous.startMs, endMs: period.window.endMs, menuItemId: productId } : null),

@@ -13,6 +13,7 @@ import { useConfirm } from '../use-confirm'
 import { useTextsActions } from '../texts-actions'
 import { ConnectPhoneSteps } from './connect-phone-steps'
 import { PhoneCard } from './phone-card'
+import { TestTextCard } from './test-text-card'
 import { useNewPhone } from './use-new-phone'
 
 /** `?phones=1`: every sending phone, how to fix one, and how to add another. */
@@ -67,9 +68,10 @@ export function PhonesSheet() {
                 <ul className="space-y-3">
                   {phones.map((phone) => (
                     <PhoneCard key={phone.deviceId} phone={phone} isHighlighted={url.phone === phone.deviceId}
-                      isFixOpenAtFirst={phone.deviceId === phones.find((p) => p.state === 'offline')?.deviceId} onDisconnect={disconnect} />
+                      isFixOpenAtFirst={phone.deviceId === phones.find((p) => p.state === 'offline' || p.state === 'late')?.deviceId} onDisconnect={disconnect} />
                   ))}
                 </ul>
+                <TestTextCard />
                 {phones.length >= max ? (
                   <p className="text-sm text-muted-foreground">{max} of {max} phones. Disconnect one to add another.</p>
                 ) : (

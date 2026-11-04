@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { BadgeCheck, X } from 'lucide-react'
+import { BadgeCheck, IdCard, X } from 'lucide-react'
 import type { CheckoutGovClaimState } from '@/hooks/checkout/use-checkout-gov-claim'
 import type { GovDiscountKind } from '@/lib/gov-discount'
 
@@ -17,6 +17,9 @@ interface GovClaimFieldProps {
  * declares their status and ID number now and shows the card on pickup or
  * delivery. Collapsed by default — most customers never open it — and shown
  * only when the store has set up Senior/PWD discounts.
+ *
+ * Most stores keep online claims OFF and apply the discount on the register
+ * after seeing the card; their checkout shows only a "show your ID" note.
  */
 export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps) {
   const { govSetup, govClaim, govPreview, isCheckingGov, applyGovClaim, removeGovClaim } = state
@@ -26,6 +29,7 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
   const [idNumber, setIdNumber] = useState('')
 
   if (!govSetup || govSetup.kinds.length === 0) return null
+  if (!govSetup.onlineClaims) return <InPersonNote accent={accent} />
   const selected = govSetup.kinds.find((entry) => entry.kind === kind) ?? govSetup.kinds[0]
   const canApply = name.trim().length >= 2 && idNumber.trim().length >= 3 && !isCheckingGov
 
@@ -148,6 +152,18 @@ export function GovClaimField({ state, formatPrice, accent }: GovClaimFieldProps
         </button>
       </div>
     </fieldset>
+  )
+}
+
+function InPersonNote({ accent }: { accent: string }) {
+  return (
+    <p className="flex items-start gap-2 text-sm text-[color:var(--co-muted)]">
+      <IdCard className="mt-0.5 h-4 w-4 shrink-0" style={{ color: accent }} aria-hidden />
+      <span>
+        Senior Citizen or PWD? Show your ID at the counter or when your order arrives, and the store will apply your
+        discount.
+      </span>
+    </p>
   )
 }
 

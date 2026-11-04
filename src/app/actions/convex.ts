@@ -7,6 +7,7 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from "@/lib/convex-deploy";
 import { tenantsNeedingDeploy } from "@/lib/convex-deploy-selection";
+import { readBusinessDayConfigEntry } from "@/lib/business-day/convex-config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTenantSecrets, listTenantSecrets, mergeTenantSecrets } from "@/lib/tenant-secrets";
 import { requirePlatformPermission } from "@/lib/platform-staff/guard";
@@ -67,10 +68,20 @@ export async function deployConvexToTenantAction(tenantId: string) {
   // Sync tenant config (Lalamove creds, store address) into `tenantConfig`.
   // Same payload the tenant-save paths push, so a deploy and a settings save
   // can never leave the deployment holding different values.
+  // The business-day cutoff rides along: the deployment numbers orders by it.
+  let businessDayEntry: Record<string, string>;
+  try {
+    businessDayEntry = await readBusinessDayConfigEntry(supabase, tenantId);
+  } catch {
+    return {
+      success: false,
+      error: "Schema deployed but the store's business day setting could not be read. Try again.",
+    };
+  }
   const configSynced = await syncTenantConfig(
     tenant.convex_deployment_url,
     tenant.convex_deploy_key,
-    buildTenantConfigPayload(tenant as ConvexTenantConfigSource)
+    { ...buildTenantConfigPayload(tenant as ConvexTenantConfigSource), ...businessDayEntry }
   );
 
   if (!configSynced) {

@@ -34,7 +34,8 @@ const VERDICT_TONE = {
 /**
  * Counting the drawer at close — the cashier's own, or a manager closing a
  * cashier's. The verdict is shown live as the count is typed, so a ₱100 slip
- * is noticed (and recounted) BEFORE the shift is closed on it.
+ * is noticed (and recounted) BEFORE the shift is closed on it. Continue opens
+ * the close sheet (CloseShiftSheet), where "End shift" saves.
  */
 export function CountDrawerSheet({ target, isBusy, onConfirm, onClose }: CountDrawerSheetProps) {
   const [text, setText] = useState("");
@@ -123,13 +124,14 @@ export function CountDrawerSheet({ target, isBusy, onConfirm, onClose }: CountDr
       )}
 
       <Button
-        label={isBusy ? "Closing…" : "Confirm and end shift"}
+        label={isBusy ? "Adding up…" : "Continue"}
         onPress={submit}
         disabled={!canConfirm}
         isLoading={isBusy}
         size="lg"
         fullWidth
-        accessibilityLabel="Confirm end of shift"
+        accessibilityLabel="Confirm the count"
+        accessibilityHint="Shows what the drawer should hold before the shift ends"
         style={styles.confirm}
       />
     </DrawerSheet>

@@ -5,18 +5,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { Loader2, Facebook, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { getTempUserTokenAction } from '@/actions/facebook'
 
 interface FacebookPage {
   id: string
   name: string
-  access_token: string
 }
 
 interface FacebookPageSelectorProps {
   tenantId: string
   tempId: string
-  onPageSelected: (pageId: string, pageName: string, pageAccessToken: string, userAccessToken: string) => void
+  onPageSelected: (pageId: string, pageName: string) => Promise<void> | void
   onClose: () => void
 }
 
@@ -75,18 +73,7 @@ export function FacebookPageSelector({
 
     setIsConnecting(true)
     try {
-      // Get user token again for passing to connect
-      const tokenResult = await getTempUserTokenAction(tenantId, tempId)
-      if (!tokenResult.success || !tokenResult.data) {
-        throw new Error('Failed to get user token')
-      }
-
-      onPageSelected(
-        selectedPage.id,
-        selectedPage.name,
-        selectedPage.access_token,
-        tokenResult.data.user_access_token
-      )
+      await onPageSelected(selectedPage.id, selectedPage.name)
     } catch (error) {
       console.error('Error connecting page:', error)
       toast.error('Failed to connect page')

@@ -3,6 +3,7 @@ import { EditorPageHeader } from '@/components/admin/menu-editor/editor-page-hea
 import { MenuItemForm } from '@/components/admin/menu-item-form'
 import { dishCostConvexUrl } from '@/lib/menu-editor/cost-backend'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant, getCachedCurrentUserRole } from '@/lib/cache'
+import { isModifierGroupsEnabled } from '@/lib/modifier-groups-flag'
 import { getLinkableMenuItems } from '@/lib/admin-service'
 import { resolveInventoryAccess } from '@/components/admin/inventory-manager/inventory-access'
 
@@ -22,7 +23,7 @@ export default async function NewMenuItemPage({
     return <div>Tenant not found</div>
   }
 
-  const isModifierGroupsTenant = tenant.modifier_groups_enabled ?? false
+  const isModifierGroupsTenant = isModifierGroupsEnabled(tenant)
   const [categories, linkableItems, caller] = await Promise.all([
     getCachedCategoriesByTenant(tenant.id),
     // Only the modifier-groups editor reads these, and the query scans every

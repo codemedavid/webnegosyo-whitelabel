@@ -37,6 +37,8 @@ import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { EmptyState } from "../../../components/EmptyState";
 import { StockMovementSheet } from "../../../components/StockMovementSheet";
+import { DeliveryExpensePrompt } from "../../../components/money/DeliveryExpensePrompt";
+import type { RecordedMovement } from "../../../lib/expenses/money-glance";
 import { LEVEL_STYLE } from "../../../components/inventory/level-style";
 
 /** Matches the shelf card: the reorder level sits at the bar's midpoint. */
@@ -80,6 +82,7 @@ export default function IngredientScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [recording, setRecording] = useState<StockItemView | null>(null);
+  const [recordedMovement, setRecordedMovement] = useState<RecordedMovement | null>(null);
   const [reason, setReason] = useState<ManualMovementReason>("receive");
   const [isRestoring, setIsRestoring] = useState(false);
   const [openCountId, setOpenCountId] = useState<string | null>(null);
@@ -389,8 +392,13 @@ export default function IngredientScreen() {
         openCountId={openCountId}
         initialReason={reason}
         onClose={() => setRecording(null)}
-        onRecorded={load}
+        onRecorded={(movement) => {
+          load();
+          setRecordedMovement(movement);
+        }}
       />
+      {/* After a delivery: "Paid for this delivery? Record it". */}
+      <DeliveryExpensePrompt movement={recordedMovement} onDismiss={() => setRecordedMovement(null)} />
     </View>
   );
 }

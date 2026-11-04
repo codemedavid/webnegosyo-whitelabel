@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
 import { lalamoveStatusLabel } from "../lib/lalamove-status";
+import { KITCHEN_CONFIRMED_STATUS } from "../lib/kitchen-confirm";
 import {
   displayCustomerName,
   getInitials,
@@ -171,6 +172,11 @@ export const OrderCard = memo(function OrderCard({
             <Text style={styles.tableText}>Table {tableNumber}</Text>
           </View>
         ) : null}
+        {order.status === KITCHEN_CONFIRMED_STATUS ? (
+          <View style={styles.kitchenChip}>
+            <Text style={styles.kitchenText}>✓ Kitchen confirmed</Text>
+          </View>
+        ) : null}
         {scheduledLabel ? (
           <View style={styles.scheduledChip}>
             <Text style={styles.scheduledText}>Scheduled · {scheduledLabel}</Text>
@@ -315,6 +321,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
   },
   tableText: { ...typography.small, color: colors.primary, fontWeight: "700" },
+  kitchenChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.successLight,
+  },
+  kitchenText: { ...typography.small, color: colors.success, fontWeight: "700" },
   presellChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,

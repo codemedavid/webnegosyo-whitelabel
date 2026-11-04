@@ -133,3 +133,17 @@ test('a refused issuance (decoy) never reaches Semaphore', async () => {
   expect(response.status).toBe(202)
   expect(send).not.toHaveBeenCalled()
 })
+
+test('every reward-code request leaves one outcome line in the log, without the phone', async () => {
+  const { handle, issue } = await load()
+  const info = jest.spyOn(console, 'info').mockImplementation(() => {})
+  gateway(true)
+  issue.mockResolvedValue({ ok: false, error: 'request_denied' })
+
+  await handle(request())
+
+  expect(info).toHaveBeenCalledWith(expect.stringContaining('reward code'),
+    expect.objectContaining({ tenantId: TENANT, sender: 'gateway', outcome: 'request_denied' }))
+  expect(JSON.stringify(info.mock.calls)).not.toMatch(/\+639/)
+  info.mockRestore()
+})

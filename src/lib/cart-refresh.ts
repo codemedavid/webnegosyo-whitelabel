@@ -7,6 +7,7 @@ import {
   type OutletMenuOverrideRow,
 } from '@/lib/outlets/outlet-menu-overrides'
 import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
+import type { ModifierSource } from '@/lib/modifier-groups'
 
 // Types match MenuItem: discounted_price is optional (not null), image_url is string (not null)
 export interface FreshCartItemData {
@@ -15,6 +16,8 @@ export interface FreshCartItemData {
   discounted_price: number | undefined
   image_url: string
   is_available: boolean
+  /** The dish's option and add-on JSON, so the cart can re-price its selections. */
+  modifiers: ModifierSource
 }
 
 /**
@@ -37,7 +40,7 @@ export async function fetchFreshCartItemData(
   const supabase = createClient()
   const { data, error } = await supabase
     .from('menu_items')
-    .select('id, name, price, discounted_price, image_url, is_available')
+    .select('id, name, price, discounted_price, image_url, is_available, modifier_groups, variation_types, variations, addons')
     .eq('tenant_id', tenantId)
     .in('id', itemIds)
 
@@ -77,6 +80,12 @@ export async function fetchFreshCartItemData(
       discounted_price: resolved.discounted_price ?? undefined,
       image_url: item.image_url ?? '',
       is_available: isItemListedAtOutlet(override) && resolved.is_available !== false,
+      modifiers: {
+        modifier_groups: item.modifier_groups ?? undefined,
+        variation_types: item.variation_types ?? undefined,
+        variations: item.variations ?? undefined,
+        addons: item.addons ?? undefined,
+      } as ModifierSource,
     })
   }
   return map

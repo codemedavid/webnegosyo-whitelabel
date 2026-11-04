@@ -60,10 +60,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch user's pages
+    // Fetch user's pages. Only ids and names go to the browser: the connect
+    // route reads each page's token from Facebook itself.
     const pages = await getUserPages(typedTempRecord.user_access_token)
 
-    return NextResponse.json({ success: true, data: pages })
+    return NextResponse.json({ success: true, data: pages.map(({ id, name }) => ({ id, name })) })
   } catch (error) {
     console.error('[Facebook Pages API] Error:', error)
     return NextResponse.json(

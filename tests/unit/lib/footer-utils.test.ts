@@ -60,3 +60,29 @@ describe('getFooterConfig URL sanitization', () => {
     expect(config.logoUrl).toBe('https://res.cloudinary.com/x/logo.png')
   })
 })
+
+describe('getFooterConfig credit line', () => {
+  it('shows no platform credit when the owner wrote none', () => {
+    const config = getFooterConfig({ name: 'Cafe', footer_show_powered_by: true })
+    expect(config.showPoweredBy).toBe(false)
+    expect(config.poweredByText).not.toMatch(/webnegosyo/i)
+  })
+
+  it("shows the owner's own credit line when they wrote one", () => {
+    const config = getFooterConfig({
+      name: 'Cafe',
+      footer_powered_by_text: 'Made with love in Cebu',
+    })
+    expect(config.showPoweredBy).toBe(true)
+    expect(config.poweredByText).toBe('Made with love in Cebu')
+  })
+
+  it('hides the credit line when the owner switched it off', () => {
+    const config = getFooterConfig({
+      name: 'Cafe',
+      footer_show_powered_by: false,
+      footer_powered_by_text: 'Made with love in Cebu',
+    })
+    expect(config.showPoweredBy).toBe(false)
+  })
+})

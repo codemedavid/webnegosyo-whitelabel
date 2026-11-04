@@ -18,6 +18,7 @@ import {
   CalendarClock,
   Store,
   Printer,
+  ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
 import { getReceiptContext } from "@/app/actions/receipt";
@@ -59,6 +60,7 @@ import { GovDiscountSummary } from "@/components/admin/gov-discount-summary";
 import { displayCustomerName } from '@/lib/order-display-name'
 import { ConvexLalamovePanel } from "@/components/admin/convex-lalamove-panel";
 import { shouldShowLalamoveControls } from "@/lib/lalamove-order-visibility";
+import { orderMapLink } from "@/lib/delivery/order-map-link";
 
 interface ConvexOrderSheetProps {
   orderId: string | null;
@@ -184,6 +186,10 @@ export function ConvexOrderSheet({
     // A counter sale earns at SETTLEMENT, not at delivery.
     void notifyConvexLifecycleSync({ tenantId, externalOrderId: orderId, paymentStatus: newStatus });
   }
+
+  const mapHref = order
+    ? orderMapLink({ delivery_lat: order.deliveryLatitude, delivery_lng: order.deliveryLongitude }, order.deliveryAddress)
+    : null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -441,6 +447,17 @@ export function ConvexOrderSheet({
                       <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                       <span>{order.deliveryAddress}</span>
                     </div>
+                  )}
+                  {mapHref && (
+                    <a
+                      href={mapHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                    >
+                      Open in Google Maps
+                      <ExternalLink className="size-3.5" aria-hidden="true" />
+                    </a>
                   )}
                   <ConvexLalamovePanel order={order} lalamoveEnabled={lalamoveEnabled} />
                 </CardContent>

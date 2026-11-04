@@ -127,7 +127,7 @@ export async function readRecentlyTextedPhones(
   const since = new Date(now.getTime() - capDays * DAY_MS).toISOString()
   const [outbox, sends] = await Promise.all([
     readAll<{ phone_e164: string; campaign_run_id: string | null }>('recent texts', (from, to) => db.from('sms_outbox')
-      .select('phone_e164, campaign_run_id').eq('tenant_id', tenantId)
+      .select('phone_e164, campaign_run_id').eq('tenant_id', tenantId).neq('source', 'test')
       .or(`status.in.(queued,claimed),and(status.eq.sent,sent_at.gte.${since}),and(status.eq.failed,error.eq.unconfirmed,dispatch_started_at.gte.${since})`)
       .order('id').range(from, to), { makeError: fail }),
     readAll<{ phone_e164: string }>('recent campaign sends', (from, to) => db.from('sms_sends')

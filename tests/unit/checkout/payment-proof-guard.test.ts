@@ -21,6 +21,21 @@ describe('sanitizePaymentProof', () => {
     })
   })
 
+  it('keeps a proof stored on the Cloudflare R2 media host', () => {
+    const url = 'https://media.webnegosyo.com/payment-proofs/a.jpg'
+
+    expect(sanitizePaymentProof({ url, publicId: 'r2:payment-proofs/a.jpg' }, ENDPOINT)?.url).toBe(url)
+  })
+
+  it.each([
+    ['plain http media', 'http://media.webnegosyo.com/payment-proofs/a.jpg'],
+    ['a media lookalike', 'https://media.webnegosyo.com.evil.example/a.jpg'],
+    ['a media transformation URL', 'https://media.webnegosyo.com/cdn-cgi/image/width=100/payment-proofs/a.jpg'],
+    ['a media transformation of a remote origin', 'https://media.webnegosyo.com/cdn-cgi/image/width=100/https://evil.example/x.png'],
+  ])('drops %s', (_label, url) => {
+    expect(sanitizePaymentProof({ url }, ENDPOINT)?.url).toBeNull()
+  })
+
   it('keeps a URL on the configured custom endpoint host', () => {
     const url = 'https://img.example.com/proofs/a.jpg'
 

@@ -87,7 +87,40 @@ export type IconName =
   | "pin"
   | "external"
   // Approvals
-  | "shield";
+  | "shield"
+  // Expenses
+  | "lock"
+  | "wallet"
+  | "receipt"
+  | "backspace"
+  // Expense categories (lib/expenses/category-look.ts)
+  | "basket"
+  | "ice"
+  | "cup"
+  | "box"
+  | "people"
+  | "utensils"
+  | "home"
+  | "bolt"
+  | "droplet"
+  | "flame"
+  | "wifi"
+  | "bike"
+  | "percent"
+  | "car"
+  | "sparkle"
+  | "wrench"
+  | "megaphone"
+  | "document"
+  | "calculator"
+  | "bank"
+  | "appliance"
+  | "cash-out"
+  | "dots"
+  | "grid"
+  | "camera"
+  | "note"
+  | "repeat";
 
 interface IconProps {
   name: IconName;
@@ -610,4 +643,218 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Polyline points="8.5,12 11,14.5 15.5,9.5" />
     </>
   ),
+  // A closed padlock: a choice that is fixed here (the drawer an expense is paid from).
+  lock: (
+    <>
+      <Rect x={5} y={10.5} width={14} height={10} />
+      <Path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  // A wallet with its clasp: where money is paid from.
+  wallet: (
+    <>
+      <Path d="M4 7h14.5v12H4z" />
+      <Path d="M4 7l11-3.5V7" />
+      <Rect x={13.5} y={11} width={5} height={4} />
+    </>
+  ),
+  // A till slip with a torn foot: money that went out, on paper.
+  receipt: (
+    <>
+      <Path d="M6 3.5h12v17l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z" />
+      <Line x1={9} y1={8.5} x2={15} y2={8.5} />
+      <Line x1={9} y1={12} x2={15} y2={12} />
+    </>
+  ),
+  // A key with a cross in it, pointing back: delete the last digit.
+  backspace: (
+    <>
+      <Path d="M9 5.5h11.5v13H9L3.5 12z" />
+      <Line x1={11.5} y1={9.5} x2={16.5} y2={14.5} />
+      <Line x1={16.5} y1={9.5} x2={11.5} y2={14.5} />
+    </>
+  ),
+  // ── Expense categories: one mark per kind of spending, read at 15–32px. ──
+  // A market basket with its handles: palengke / ingredients.
+  basket: (
+    <>
+      <Path d="M4 10h16l-1.6 9.5H5.6z" />
+      <Path d="M8 10l3-6M16 10l-3-6" />
+      <Line x1={10} y1={13.5} x2={10} y2={16.5} />
+      <Line x1={14} y1={13.5} x2={14} y2={16.5} />
+    </>
+  ),
+  // A snowflake: yelo. (A cube read as the packaging box beside it.)
+  ice: (
+    <>
+      <Path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" />
+      <Path d="M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5" />
+    </>
+  ),
+  // A tall cup with a straw: drinks and bar stock.
+  cup: (
+    <>
+      <Path d="M6 8h12l-1.5 12.5h-9z" />
+      <Path d="M13 8l1.5-4.5H18" />
+    </>
+  ),
+  // A closed carton: packaging, lalagyan.
+  box: (
+    <>
+      <Path d="M4 8l8-4 8 4v8.5l-8 4-8-4z" />
+      <Path d="M4 8l8 4 8-4M12 12v8.5" />
+    </>
+  ),
+  // Two people: wages, the team.
+  people: (
+    <>
+      <Circle cx={9} cy={8.5} r={3.2} />
+      <Path d="M3.5 19.5c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" />
+      <Path d="M15.5 5.6a3.2 3.2 0 0 1 0 5.8M17.5 14.8c1.6.7 2.7 2.3 3 4.7" />
+    </>
+  ),
+  // Fork and spoon: staff meals.
+  utensils: (
+    <>
+      <Path d="M7 3.5v6a2 2 0 0 0 2 2v9M11 3.5v6a2 2 0 0 1-2 2M9 3.5v5" />
+      <Path d="M16.5 20.5V3.5c-2 1-3 3.3-3 6.5v3h3" />
+    </>
+  ),
+  // A house: rent, upa.
+  home: (
+    <>
+      <Path d="M4 11l8-6.5 8 6.5v9.5H4z" />
+      <Path d="M10 20.5v-5h4v5" />
+    </>
+  ),
+  // A lightning bolt: electricity, kuryente.
+  bolt: <Path d="M13 3L5 13.5h6L10 21l8-10.5h-6z" />,
+  // A drop: water, tubig.
+  droplet: <Path d="M12 3.5c3.4 4.2 5.5 7.3 5.5 10a5.5 5.5 0 0 1-11 0c0-2.7 2.1-5.8 5.5-10z" />,
+  // A flame: LPG and cooking gas.
+  flame: (
+    <Path d="M12 21c-3.6 0-6-2.4-6-5.6 0-3.9 3.6-5.6 3.6-9.4 2.5 1.4 4 3.4 4.2 5.8.9-.6 1.5-1.6 1.6-2.8 1.7 1.6 2.6 3.7 2.6 6.4 0 3.2-2.4 5.6-6 5.6z" />
+  ),
+  // Signal arcs: internet and load.
+  wifi: (
+    <>
+      <Path d="M3 9.5a13 13 0 0 1 18 0M6 13a8.5 8.5 0 0 1 12 0M9 16.5a4 4 0 0 1 6 0" />
+      <Rect x={11} y={19} width={2} height={2} />
+    </>
+  ),
+  // A motorbike: riders and delivery.
+  bike: (
+    <>
+      <Circle cx={6} cy={16.5} r={3} />
+      <Circle cx={18} cy={16.5} r={3} />
+      <Path d="M6 16.5l4-7h5l3 7M13 9.5L11.5 6H9" />
+    </>
+  ),
+  // A percent sign: platform commissions and payment fees.
+  percent: (
+    <>
+      <Line x1={18.5} y1={5.5} x2={5.5} y2={18.5} />
+      <Circle cx={7.5} cy={7.5} r={2.5} />
+      <Circle cx={16.5} cy={16.5} r={2.5} />
+    </>
+  ),
+  // A jeep from the side: transport, pamasahe.
+  car: (
+    <>
+      <Path d="M3.5 16.5V11l2-5h13l2 5v5.5z" />
+      <Line x1={3.5} y1={11} x2={20.5} y2={11} />
+      <Circle cx={7.5} cy={17.5} r={1.8} />
+      <Circle cx={16.5} cy={17.5} r={1.8} />
+    </>
+  ),
+  // A four-point sparkle: cleaning.
+  sparkle: (
+    <>
+      <Path d="M11 3.5l1.8 5.2 5.2 1.8-5.2 1.8L11 17.5l-1.8-5.2L4 10.5l5.2-1.8z" />
+      <Path d="M18 15.5v5M15.5 18h5" />
+    </>
+  ),
+  // A wrench: repairs, pagawa.
+  wrench: <Path d="M14.5 5.5a4 4 0 0 0-5 5L4 16v4h4l5.5-5.5a4 4 0 0 0 5-5l-2.6 2.6-2.5-.5-.5-2.5z" />,
+  // A megaphone: marketing and ads.
+  megaphone: (
+    <>
+      <Path d="M4 10h4l9-5v14l-9-5H4z" />
+      <Path d="M8 14l1.5 5.5h3L11 15.6" />
+    </>
+  ),
+  // A form with a stamp line: permits and taxes.
+  document: (
+    <>
+      <Path d="M6 3.5h8.5l3.5 3.5v13.5H6z" />
+      <Path d="M14.5 3.5V7H18" />
+      <Line x1={9} y1={12} x2={15} y2={12} />
+      <Line x1={9} y1={15.5} x2={13} y2={15.5} />
+    </>
+  ),
+  // A calculator: the accountant and software.
+  calculator: (
+    <>
+      <Rect x={5.5} y={3.5} width={13} height={17} />
+      <Rect x={8.5} y={6.5} width={7} height={3} />
+      <Path d="M9 13h.5M12 13h.5M15 13h.5M9 16.5h.5M12 16.5h.5M15 16.5h.5" />
+    </>
+  ),
+  // A bank front: bank charges, deposits and loans.
+  bank: (
+    <>
+      <Path d="M3.5 9.5L12 4.5l8.5 5z" />
+      <Path d="M6 9.5v8M10 9.5v8M14 9.5v8M18 9.5v8M3.5 20h17" />
+    </>
+  ),
+  // A range with its burners: a big equipment purchase.
+  appliance: (
+    <>
+      <Rect x={4.5} y={3.5} width={15} height={17} />
+      <Line x1={4.5} y1={9} x2={19.5} y2={9} />
+      <Rect x={8} y={12} width={8} height={5.5} />
+      <Path d="M8 6.2h.5M11.75 6.2h.5M15.5 6.2h.5" />
+    </>
+  ),
+  // A bill leaving a hand-held stack: cash taken out, not spent.
+  "cash-out": (
+    <>
+      <Rect x={3.5} y={10} width={14} height={9} />
+      <Circle cx={10.5} cy={14.5} r={2} />
+      <Path d="M14 6.5h6.5M17.5 3.5l3 3-3 3" />
+    </>
+  ),
+  // Three dots: anything else.
+  dots: (
+    <>
+      <Circle cx={6} cy={12} r={1.2} />
+      <Circle cx={12} cy={12} r={1.2} />
+      <Circle cx={18} cy={12} r={1.2} />
+    </>
+  ),
+  // Four squares: every category.
+  grid: (
+    <>
+      <Rect x={4} y={4} width={7} height={7} />
+      <Rect x={13} y={4} width={7} height={7} />
+      <Rect x={4} y={13} width={7} height={7} />
+      <Rect x={13} y={13} width={7} height={7} />
+    </>
+  ),
+  // A camera body: take a receipt photo.
+  camera: (
+    <>
+      <Path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z" />
+      <Circle cx={12} cy={13.2} r={3.3} />
+    </>
+  ),
+  // A ruled note: what the money was for.
+  note: (
+    <>
+      <Rect x={5} y={4} width={14} height={16} />
+      <Path d="M8.5 9h7M8.5 12.5h7M8.5 16h4" />
+    </>
+  ),
+  // Two arrows chasing each other: do the same again.
+  repeat: <Path d="M5 11V8h12M14 5l3 3-3 3M19 13v3H7M10 19l-3-3 3-3" />,
 };

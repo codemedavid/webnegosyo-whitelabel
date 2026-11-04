@@ -32,3 +32,24 @@ test('customer mobile uploads through the bounded proof endpoint without obtaini
   expect(global.fetch).toHaveBeenCalledTimes(1)
   expect(global.fetch).toHaveBeenCalledWith('https://store.example.com/api/payment-proof/upload', { method: 'POST', body: expect.anything() })
 })
+
+test('mobile keeps the delete token from the upload and sends it with the cleanup', async () => {
+  // Arrange
+  global.fetch = jest.fn(async () => ({
+    ok: true,
+    json: async () => ({ url: 'https://images.example.com/proof.jpg', fileId: 'proof-id', filePath: '/payment-proofs/proof.jpg', deleteToken: 'tok-1' }),
+  })) as unknown as typeof fetch
+  const { pickAndUploadPaymentProof, deletePaymentProof } = jest.requireActual<{
+    pickAndUploadPaymentProof: () => Promise<{ fileId: string; filePath: string; deleteToken?: string } | null>
+    deletePaymentProof: (fileId: string, filePath: string, deleteToken?: string) => Promise<void>
+  }>('../../mobile/lib/imagekit-upload')
+
+  // Act
+  const uploaded = await pickAndUploadPaymentProof()
+  await deletePaymentProof('proof-id', 'payment-proofs/proof.jpg', uploaded?.deleteToken)
+
+  // Assert
+  expect(uploaded).toMatchObject({ deleteToken: 'tok-1' })
+  const [, init] = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit]
+  expect(JSON.parse(String(init.body))).toEqual({ fileId: 'proof-id', filePath: 'payment-proofs/proof.jpg', deleteToken: 'tok-1' })
+})

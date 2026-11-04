@@ -52,6 +52,20 @@ describe('claim_sms_outbox_message (latest migration)', () => {
   it('still cancels automatic texts of an automation switched off', () => {
     expect(body).toMatch(/reason\s*:=\s*'automation_off'/)
   })
+
+  it('releases an owner test text without guest checks, but only after quiet hours, the daily limit and pacing', () => {
+    const testBranch = body.indexOf("if msg.source='test' then")
+    expect(testBranch).toBeGreaterThan(-1)
+    for (const gate of ["'quiet_hours'", "'daily_limit'", "'paced'", 'sms_outbox_delivery_allowed']) {
+      expect(body.indexOf(gate)).toBeGreaterThan(-1)
+      expect(body.indexOf(gate)).toBeLessThan(testBranch)
+    }
+    expect(testBranch).toBeLessThan(body.indexOf('select * into guest from public.customers'))
+  })
+
+  it('never counts an owner test text toward a guest\'s per-guest cap', () => {
+    expect(body).toMatch(/o\.id\s*<>\s*msg\.id and o\.source\s*<>\s*'test'/)
+  })
 })
 
 describe('sms_campaigns_guard (latest migration)', () => {

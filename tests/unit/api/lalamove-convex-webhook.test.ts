@@ -14,6 +14,10 @@ jest.mock('@/lib/supabase/admin', () => ({
     },
   }),
 }))
+jest.mock('@/lib/loyverse/secret-compare', () => {
+  const actual = jest.requireActual('@/lib/loyverse/secret-compare')
+  return { ...actual, secretsEqual: jest.fn(actual.secretsEqual) }
+})
 jest.mock('@/lib/tenant-secrets', () => ({
   getTenantSecrets: async () => ({ convex_deploy_key: 'test-deploy-key' }),
 }))
@@ -33,6 +37,20 @@ beforeEach(() => {
 
 test('rejects an unauthenticated webhook before accessing Convex', async () => {
   expect((await POST(request({ orderId: 'rider-1', status: 'ON_GOING' }, 'wrong'))).status).toBe(401)
+  expect(fetch).not.toHaveBeenCalled()
+})
+
+test('compares the webhook secret in constant time', async () => {
+  const { secretsEqual } = jest.requireMock('@/lib/loyverse/secret-compare') as { secretsEqual: jest.Mock }
+  secretsEqual.mockClear()
+
+  expect((await POST(request({ orderId: 'rider-1', status: 'ON_GOING' }, 'test-secreX'))).status).toBe(401)
+  expect(secretsEqual).toHaveBeenCalledWith('test-secreX', 'test-secret')
+})
+
+test('refuses every request when the platform secret is not configured', async () => {
+  delete process.env.LALAMOVE_WEBHOOK_SECRET
+  expect((await POST(request({ orderId: 'rider-1', status: 'ON_GOING' }, ''))).status).toBe(401)
   expect(fetch).not.toHaveBeenCalled()
 })
 

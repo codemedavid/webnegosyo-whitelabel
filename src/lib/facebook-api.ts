@@ -91,22 +91,74 @@ export async function getLongLivedToken(shortLivedToken: string): Promise<{
   }
 }
 
+const PAGE_FIELDS = 'id,name,access_token'
+const PAGE_GRANT_SCOPES = new Set(['pages_show_list', 'pages_messaging'])
+
 /**
- * Get user's Facebook Pages
+ * Page ids the person ticked in the Facebook Login for Business dialog, read
+ * from the token's granular scopes. null = the grant could not be read
+ * (no app credentials, Graph refused), so callers fall back to /me/accounts.
+ */
+async function getGrantedPageIds(accessToken: string): Promise<string[] | null> {
+  const appId = process.env.FACEBOOK_APP_ID
+  const appSecret = process.env.FACEBOOK_APP_SECRET
+  if (!appId || !appSecret) return null
+
+  const params = new URLSearchParams({ input_token: accessToken, access_token: `${appId}|${appSecret}` })
+  const response = await fetch(`${FACEBOOK_GRAPH_API}/debug_token?${params}`, { method: 'GET' })
+  if (!response.ok) return null
+
+  const body = (await response.json()) as {
+    data?: { granular_scopes?: { scope: string; target_ids?: string[] }[] }
+  }
+  const scopes = body.data?.granular_scopes
+  if (!scopes) return null
+
+  const ids = scopes
+    .filter((s) => PAGE_GRANT_SCOPES.has(s.scope))
+    .flatMap((s) => s.target_ids ?? [])
+  return [...new Set(ids)]
+}
+
+async function getPageWithToken(pageId: string, accessToken: string): Promise<FacebookPage | null> {
+  const params = new URLSearchParams({ fields: PAGE_FIELDS, access_token: accessToken })
+  const response = await fetch(`${FACEBOOK_GRAPH_API}/${encodeURIComponent(pageId)}?${params}`, { method: 'GET' })
+  if (!response.ok) return null
+
+  const page = (await response.json()) as Partial<FacebookPage>
+  return page.id && page.name && page.access_token
+    ? { id: page.id, name: page.name, access_token: page.access_token }
+    : null
+}
+
+/**
+ * Get the Facebook Pages the person granted this app.
+ *
+ * /me/accounts leaves out pages reached through a business portfolio, and
+ * lists pages the person did NOT tick in Login for Business. When the token's
+ * grant is readable, the granted ids decide; a granted page missing from the
+ * list is fetched directly.
  */
 export async function getUserPages(accessToken: string): Promise<FacebookPage[]> {
-  const response = await fetch(
-    `${FACEBOOK_GRAPH_API}/me/accounts?access_token=${accessToken}`,
-    { method: 'GET' }
-  )
+  const params = new URLSearchParams({ fields: PAGE_FIELDS, limit: '100', access_token: accessToken })
+  const response = await fetch(`${FACEBOOK_GRAPH_API}/me/accounts?${params}`, { method: 'GET' })
 
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Failed to get user pages: ${error}`)
   }
 
-  const data = (await response.json()) as { data: FacebookPage[] }
-  return data.data || []
+  const data = (await response.json()) as { data?: FacebookPage[] }
+  const listed = data.data || []
+
+  const grantedIds = await getGrantedPageIds(accessToken).catch(() => null)
+  if (!grantedIds) return listed
+
+  const listedById = new Map(listed.map((page) => [page.id, page]))
+  const pages = await Promise.all(
+    grantedIds.map((id) => listedById.get(id) ?? getPageWithToken(id, accessToken).catch(() => null))
+  )
+  return pages.filter((page): page is FacebookPage => page !== null)
 }
 
 /**
@@ -259,6 +311,25 @@ export async function sendMessage(
   pageAccessToken: string,
   message: string
 ): Promise<boolean> {
+  const first = await postTextMessage(psid, pageAccessToken, message)
+  if (first.ok) return true
+  if (first.errorSubcode !== THREAD_CONTROLLED_BY_ANOTHER_APP) return false
+
+  // Handover protocol: another app (a chatbot, or the Page inbox after a
+  // human reply) holds this conversation. The customer just opened it from
+  // our checkout, so take it back once and resend; never loop.
+  if (!(await takeThreadControl(psid, pageAccessToken))) return false
+  return (await postTextMessage(psid, pageAccessToken, message)).ok
+}
+
+/** Graph error_subcode: "another app is controlling this thread now". */
+const THREAD_CONTROLLED_BY_ANOTHER_APP = 2018300
+
+async function postTextMessage(
+  psid: string,
+  pageAccessToken: string,
+  message: string
+): Promise<{ ok: boolean; errorSubcode?: number }> {
   const response = await fetch(
     `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
     {
@@ -276,11 +347,36 @@ export async function sendMessage(
   if (!response.ok) {
     const error = await response.text()
     console.error(`Failed to send message: ${error}`)
-    return false
+    return { ok: false, errorSubcode: readErrorSubcode(error) }
   }
 
   const data = (await response.json()) as { recipient_id?: string; message_id?: string }
-  return !!data.message_id
+  return { ok: !!data.message_id }
+}
+
+function readErrorSubcode(body: string): number | undefined {
+  try {
+    return (JSON.parse(body) as { error?: { error_subcode?: number } }).error?.error_subcode
+  } catch {
+    return undefined
+  }
+}
+
+async function takeThreadControl(psid: string, pageAccessToken: string): Promise<boolean> {
+  const response = await fetch(
+    `${FACEBOOK_GRAPH_API}/me/take_thread_control?access_token=${pageAccessToken}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient: { id: psid }, metadata: 'webnegosyo_order_summary' }),
+    }
+  )
+
+  if (!response.ok) {
+    console.error(`[Facebook API] take_thread_control refused: ${await response.text()}`)
+    return false
+  }
+  return true
 }
 
 /**

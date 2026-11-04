@@ -22,6 +22,10 @@ jest.mock("../tables/tables-service", () => ({
 }));
 jest.mock("../products", () => ({ listProducts: jest.fn(), listCategories: jest.fn() }));
 jest.mock("../tax-profile-service", () => ({ fetchTaxProfile: jest.fn() }));
+jest.mock("../business-day/schedule-service", () => ({
+  ...jest.requireActual("../business-day/schedule-service"),
+  fetchCutoffSchedule: jest.fn(),
+}));
 jest.mock("../supabase", () => ({ supabase: {} }));
 
 import { fetchPosCatalog, posCatalogKey } from "../query/use-pos-catalog";
@@ -34,6 +38,7 @@ import { checkoutSetupKey } from "../query/use-checkout-setup";
 import { fetchDiningTables } from "../tables/tables-service";
 import { fetchTaxProfile } from "../tax-profile-service";
 import { taxProfileKey } from "../query/use-tax-profile";
+import { cutoffScheduleKey, fetchCutoffSchedule } from "../business-day/schedule-service";
 import { registerPackParts, registerPackThumbnails, summarizeRegisterPack } from "./register-pack";
 
 const SCOPE = { tenantId: "t1", paymentTenantId: "t1", outletId: "o-north" };
@@ -56,9 +61,12 @@ describe("registerPackParts", () => {
     expect(byLabel.get("checkout questions")?.key).toEqual(checkoutSetupKey("t1"));
     // Senior/PWD rules: optional, but the register prices them offline too.
     expect(byLabel.get("tax settings")?.key).toEqual(taxProfileKey("t1"));
+    // The business-day cutoff, under the key `useTradingDay` reads.
+    expect(byLabel.get("business day")?.key).toEqual(cutoffScheduleKey("t1"));
     expect(parts.filter((part) => !part.isRequired).map((part) => part.label)).toEqual([
       "checkout questions",
       "tax settings",
+      "business day",
       "branches",
       "tables",
     ]);
@@ -75,6 +83,7 @@ describe("registerPackParts", () => {
     expect(fetchOutlets).toHaveBeenCalledWith("t1");
     expect(fetchDiningTables).toHaveBeenCalledWith("t1");
     expect(fetchTaxProfile).toHaveBeenCalledWith("t1");
+    expect(fetchCutoffSchedule).toHaveBeenCalledWith("t1");
   });
 });
 

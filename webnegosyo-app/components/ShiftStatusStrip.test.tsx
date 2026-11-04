@@ -18,6 +18,9 @@ jest.mock("../stores/auth-store", () => ({
   ),
 }));
 jest.mock("../lib/shift-service", () => ({ loadOpenShift: jest.fn() }));
+// The cashier's own remittances: none unless a test says otherwise.
+const mockRemittances: { data: unknown[] | undefined } = { data: undefined };
+jest.mock("../lib/cash/use-remittances", () => ({ useRemittances: () => mockRemittances }));
 
 const openShiftRow = {
   id: "shift",
@@ -37,7 +40,10 @@ const openShiftRow = {
   closedByName: null,
 };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockRemittances.data = undefined;
+});
 
 it("reports an open drawer and how long it has run", async () => {
   jest.mocked(loadOpenShift).mockResolvedValue(openShiftRow);
@@ -68,4 +74,25 @@ it("draws nothing until the first read lands", () => {
 
   expect(screen.queryByText("Not clocked in")).toBeNull();
   expect(screen.queryByText("On shift")).toBeNull();
+});
+
+it("off shift, says the last remittance is still waiting for its receiver", async () => {
+  jest.mocked(loadOpenShift).mockResolvedValue(null);
+  mockRemittances.data = [
+    {
+      id: "r1",
+      kind: "shift",
+      status: "pending",
+      cashierUserId: "cashier",
+      cashierName: "Cashier",
+      handedOverCents: 634500,
+      remittedToName: "Maria Santos",
+      toSafe: false,
+      createdAt: "2026-10-27T02:00:00.000Z",
+    },
+  ];
+
+  const screen = render(<ShiftStatusStrip onPress={() => {}} />);
+
+  await waitFor(() => expect(screen.getByText("Remitted ₱6,345 · waiting for Maria")).toBeTruthy());
 });

@@ -21,9 +21,10 @@ import { isTabAllowed } from '../../webnegosyo-app/lib/staff-permissions'
  * screen. Texts is a store-wide owner screen and Store activity needs the
  * opt-in `activity_view` grant; the deployed `manage-staff` edge function
  * refuses any default_screen it doesn't know, so offering either here would
- * let an owner save a choice the server then rejects.
+ * let an owner save a choice the server then rejects. Bills to pay is a
+ * sub-screen of Expenses (opened from it), not a place to start a shift.
  */
-const NOT_OFFERED: ReadonlySet<string> = new Set(['texts', 'activity'])
+const NOT_OFFERED: ReadonlySet<string> = new Set(['texts', 'activity', 'expense-bills'])
 
 const APP_TABS = WORKSPACES.flatMap((workspace) => [...workspace.tabs]).filter((tab) => !NOT_OFFERED.has(tab))
 

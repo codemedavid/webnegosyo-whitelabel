@@ -10,6 +10,7 @@ import { applySupabaseSchema } from "@/lib/supabase-sql-runner";
 import { ORDER_SCHEMA_BUNDLE } from "@/lib/supabase-order-schema";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { syncTenantDbCutoffs } from "@/lib/business-day/order-backend-sync";
 
 /**
  * Auto-deploy the standalone order schema into a tenant's OWN Supabase project.
@@ -73,6 +74,17 @@ export async function deploySupabaseToTenantAction(tenantId: string) {
 
   if (!result.success) {
     return result;
+  }
+
+  // The bundle's order number resets at the business-day cutoff: copy the
+  // store's schedule in (read fail-closed; no rows would mean midnight).
+  const cutoffs = await syncTenantDbCutoffs({ ...tenant, id: tenantId });
+  if (cutoffs.status === "failed") {
+    return {
+      success: false,
+      error: `Schema deployed but the business day could not be copied: ${cutoffs.error}`,
+      schemaVersion: 0,
+    };
   }
 
   // Record the deployed schema version so bulk re-deploys can detect staleness.
