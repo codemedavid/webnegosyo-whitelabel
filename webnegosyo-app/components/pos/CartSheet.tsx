@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Icon } from "../Icon";
 import { LineNoteSheet } from "./LineNoteSheet";
+import { CartLineRow } from "./CartLineRow";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
-import { selectionLabel, type CartTotals, type PosCartLine } from "../../lib/pos-cart";
+import type { CartTotals, PosCartLine } from "../../lib/pos-cart";
 import type { PosOrderType } from "../../lib/pos-catalog";
 import { isDineInType } from "../../lib/pos-table";
 import type { OrderDiscountLine } from "../../lib/order-totals";
@@ -283,60 +283,13 @@ export function CartSheet({
             contentContainerStyle={styles.linesContent}
           >
             {lines.map((line) => (
-              <View key={line.key} style={styles.line}>
-                <TouchableOpacity
-                  style={styles.lineText}
-                  onPress={onEditNote ? () => setNoteKey(line.key) : undefined}
-                  disabled={!onEditNote}
-                  accessibilityRole={onEditNote ? "button" : undefined}
-                  accessibilityLabel={
-                    onEditNote
-                      ? line.note
-                        ? `${line.name}, note ${line.note}. Change the note`
-                        : `${line.name}. Add a note for the kitchen`
-                      : undefined
-                  }
-                >
-                  <Text style={styles.lineName} numberOfLines={1}>
-                    {line.name}
-                  </Text>
-                  {line.selections.length > 0 && (
-                    <Text style={styles.lineMeta} numberOfLines={1}>
-                      {line.selections.map(selectionLabel).join(", ")}
-                    </Text>
-                  )}
-                  {line.note ? (
-                    <View style={styles.noteRow}>
-                      <Icon name="note" size={13} color={colors.accent} />
-                      <Text style={styles.noteText} numberOfLines={2}>
-                        {line.note}
-                      </Text>
-                    </View>
-                  ) : onEditNote ? (
-                    <Text style={styles.addNote}>+ Note</Text>
-                  ) : null}
-                </TouchableOpacity>
-
-                <View style={styles.stepper}>
-                  <TouchableOpacity
-                    style={styles.step}
-                    onPress={() => onChangeQty(line.key, line.quantity - 1)}
-                    accessibilityLabel={`Decrease ${line.name}`}
-                  >
-                    <Text style={styles.stepText}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.quantity}>{line.quantity}</Text>
-                  <TouchableOpacity
-                    style={styles.step}
-                    onPress={() => onChangeQty(line.key, line.quantity + 1)}
-                    accessibilityLabel={`Increase ${line.name}`}
-                  >
-                    <Text style={styles.stepText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.lineTotal}>{formatPeso(line.subtotal)}</Text>
-              </View>
+              <CartLineRow
+                key={line.key}
+                line={line}
+                isPanel={isPanel}
+                onChangeQty={onChangeQty}
+                onOpenNote={onEditNote ? setNoteKey : undefined}
+              />
             ))}
           </ScrollView>
 
@@ -580,47 +533,6 @@ const styles = StyleSheet.create({
   // scroll, instead of capping at the four rows a phone can spare.
   linesPanel: { maxHeight: undefined, flex: 1 },
   linesContent: { gap: spacing.sm, paddingBottom: spacing.sm },
-  line: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  lineText: { flex: 1 },
-  lineName: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
-  lineMeta: { ...typography.small, color: colors.textSecondary },
-  noteRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-  noteText: { ...typography.small, color: colors.accent, fontWeight: "700", flexShrink: 1 },
-  addNote: { ...typography.small, color: colors.primary, fontWeight: "600", marginTop: 2 },
-  stepper: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  step: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.full,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepText: { fontSize: 17, lineHeight: 20, color: colors.textPrimary },
-  quantity: {
-    ...typography.body,
-    fontWeight: "800",
-    minWidth: 24,
-    textAlign: "center",
-    color: colors.textPrimary,
-  },
-  lineTotal: {
-    ...typography.caption,
-    fontWeight: "700",
-    minWidth: 68,
-    textAlign: "right",
-    color: colors.textPrimary,
-  },
   totals: {
     borderTopWidth: 1,
     borderTopColor: colors.separator,
