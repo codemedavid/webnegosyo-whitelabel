@@ -47,7 +47,7 @@ const COLUMNS =
 const PAGE_SIZE = 1000
 /** Ten pages. A store with more shifts than this in one read is a bug, not a day. */
 export const MAX_SHIFT_ROWS = 10 * PAGE_SIZE
-/** The reports' own ceiling (period.ts MAX_REPORT_DAYS). */
+/** One report function call's ceiling (period.ts SQL_REPORT_MAX_DAYS). */
 const MAX_RANGE_DAYS = 93
 
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/

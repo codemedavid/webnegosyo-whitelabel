@@ -113,7 +113,7 @@ export function buildReportContext(input: BuildReportContextInput): ReportPageSt
   const schedule = input.schedule ?? MIDNIGHT_SCHEDULE
   const parsed = parseReportSearchParams(input.searchParams)
   const { period, error, filter: periodFilter } = resolvePeriodOrDefault(parsed, input.now, schedule)
-  const compare = parsed.compare ? resolveComparePeriod(period, schedule) : null
+  const compare = parsed.compare ? resolveComparePeriod(period, schedule, parsed.compareTo) : null
 
   const activeOutlets = input.outlets.filter((outlet) => outlet.isActive)
   const isMultiBranch = input.tenant.multiBranchEnabled && activeOutlets.length >= 2
@@ -125,7 +125,15 @@ export function buildReportContext(input: BuildReportContextInput): ReportPageSt
   )
   const outletNames = new Map(input.outlets.map((outlet) => [outlet.id, outlet.name]))
 
-  const window = (start: number, end: number): ReportWindow => ({ tenantId: input.tenant.id, start, end, branch: branch.args })
+  const window = (start: number, end: number): ReportWindow => ({
+    tenantId: input.tenant.id,
+    start,
+    end,
+    branch: branch.args,
+    // A long window is read month by month, cut where this store's days are.
+    now: input.now,
+    schedule,
+  })
   const today = resolveReportPeriod({ preset: 'today' }, input.now, schedule)
   if (!today.ok) throw new Error(today.error)
 
