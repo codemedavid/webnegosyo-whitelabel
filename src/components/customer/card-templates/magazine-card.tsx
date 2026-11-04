@@ -128,7 +128,7 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                         </div>
 
                         <button
-                            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+                            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
                             style={{
                                 backgroundColor: branding.buttonPrimary,
                                 color: branding.buttonPrimaryText,

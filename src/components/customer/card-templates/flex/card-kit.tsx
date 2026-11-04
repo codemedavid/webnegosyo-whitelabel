@@ -204,6 +204,9 @@ export function AddButton({
   const soldOutText = useStorefrontLabel('menu.sold_out', 'Sold out')
   if (variant === 'hidden') return null
   const isGlyphShown = variant === 'icon' || showGlyph
+  // A bare "+" says nothing a sold-out veil doesn't, and dimmed it still reads
+  // as live on top of the photo; a labelled button stays, dimmed, saying "Sold out".
+  const disabledLook = variant === 'icon' ? 'disabled:pointer-events-none disabled:invisible' : 'disabled:opacity-40'
 
   const shape = {
     icon: 'h-9 w-9 @xs:h-10 @xs:w-10 justify-center rounded-full',
@@ -220,7 +223,7 @@ export function AddButton({
         event.stopPropagation()
         onSelect(item)
       }}
-      className={`relative z-10 inline-flex shrink-0 cursor-pointer items-center transition-[transform,opacity] duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${shape} ${className}`}
+      className={`relative z-10 inline-flex shrink-0 cursor-pointer items-center transition-[transform,opacity] duration-200 active:scale-95 disabled:cursor-not-allowed ${disabledLook} ${shape} ${className}`}
       style={{ backgroundColor: background, color, ...buttonStyle }}
     >
       {isGlyphShown && <PlusGlyph className={variant === 'bar' ? 'h-4 w-4' : 'h-[15px] w-[15px]'} />}

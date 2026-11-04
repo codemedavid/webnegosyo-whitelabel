@@ -103,7 +103,7 @@ export const StorefrontCard = memo(function StorefrontCard({
           )}
 
           <button
-            className="absolute bottom-3 right-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-900 shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition-transform duration-200 hover:scale-110 md:bottom-4 md:right-4 md:h-14 md:w-14"
+            className="absolute bottom-3 right-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-900 shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition-transform duration-200 hover:scale-110 md:bottom-4 md:right-4 md:h-14 md:w-14 disabled:pointer-events-none disabled:invisible"
             onClick={(event) => {
               event.stopPropagation()
               onSelect(item)

@@ -129,7 +129,7 @@ export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, brandin
                     </div>
 
                     <button
-                        className="flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full transition-all hover:scale-110"
+                        className="flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full transition-all hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
                         style={{
                             backgroundColor: branding.buttonPrimary,
                             color: branding.buttonPrimaryText,

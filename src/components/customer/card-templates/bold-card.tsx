@@ -148,7 +148,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
 
       {/* Large prominent CTA button */}
       <button
-        className="w-full py-2.5 md:py-4 text-sm md:text-base font-black uppercase tracking-wide transition-all"
+        className="w-full py-2.5 md:py-4 text-sm md:text-base font-black uppercase tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-40"
         style={{
           backgroundColor: branding.buttonPrimary,
           color: branding.buttonPrimaryText

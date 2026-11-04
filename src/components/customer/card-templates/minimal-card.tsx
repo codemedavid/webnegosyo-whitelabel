@@ -136,7 +136,7 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
 
         {/* Simple add button */}
         <button
-          className="w-full py-1 md:py-1.5 text-[11px] md:text-xs font-medium rounded transition-colors"
+          className="w-full py-1 md:py-1.5 text-[11px] md:text-xs font-medium rounded transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             backgroundColor: branding.buttonPrimary,
             color: branding.buttonPrimaryText

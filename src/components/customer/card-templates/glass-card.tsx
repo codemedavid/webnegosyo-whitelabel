@@ -129,7 +129,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
 
                 {/* Floating Add Button */}
                 <button
-                    className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl"
+                    className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl disabled:pointer-events-none disabled:invisible"
                     style={{
                         backgroundColor: `${branding.buttonPrimary}dd`,
                         color: branding.buttonPrimaryText,

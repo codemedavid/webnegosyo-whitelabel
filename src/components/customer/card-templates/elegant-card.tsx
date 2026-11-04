@@ -174,7 +174,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
 
           {/* Elegant add button */}
           <button
-            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-300"
+            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-40"
             style={{
               backgroundColor: branding.buttonPrimary,
               color: branding.buttonPrimaryText,

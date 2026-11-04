@@ -79,4 +79,42 @@ describe.each(CARD_TEMPLATES.map((definition) => definition.id))('the %s card te
 
     expect(disabledButtons(container)).toHaveLength(0)
   })
+
+  // Browser QA 2026-11-04: on phones a sold-out card's "+" kept its white,
+  // active look on top of the "Sold out" veil, so it read as tappable.
+  it('does not show a live-looking add button on a sold-out card', async () => {
+    mockCeilings = new Map([['dish-1', 0]])
+    const { container } = await renderCard(template)
+
+    const quiet = /(^|\s)disabled:(invisible|hidden|opacity-\d+)(\s|$)/
+    for (const button of disabledButtons(container)) {
+      expect(button.className).toMatch(quiet)
+    }
+  })
+})
+
+describe('the flexible kit\'s round "+" on a sold-out card', () => {
+  // The icon "+" sits on the photo in several designs; dimmed to 40% it still
+  // read as a live white button over the dark "Sold out" veil on phones.
+  it('is hidden rather than dimmed (the veil already says "Sold out")', async () => {
+    const { AddButton } = await import('@/components/customer/card-templates/flex/card-kit')
+    render(
+      <AddButton item={ITEM} variant="icon" isOrderable={false} onSelect={jest.fn()} background="#ffffff" color="#111111" />,
+    )
+
+    const button = screen.getByRole('button', { name: 'Add Tapsilog' })
+    expect(button).toBeDisabled()
+    expect(button.className).toMatch(/(^|\s)disabled:invisible(\s|$)/)
+  })
+
+  it('stays dimmed, not hidden, when it carries the "Sold out" words', async () => {
+    const { AddButton } = await import('@/components/customer/card-templates/flex/card-kit')
+    render(
+      <AddButton item={ITEM} variant="pill" isOrderable={false} onSelect={jest.fn()} background="#ffffff" color="#111111" />,
+    )
+
+    const button = screen.getByRole('button', { name: 'Add Tapsilog' })
+    expect(button.className).not.toMatch(/disabled:invisible/)
+    expect(button).toHaveTextContent('Sold out')
+  })
 })

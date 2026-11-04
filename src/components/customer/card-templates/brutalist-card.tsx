@@ -141,7 +141,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                     </div>
 
                     <button
-                        className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center transition-all hover:scale-110"
+                        className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center transition-all hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
                         style={{
                             backgroundColor: branding.buttonPrimary,
                             color: branding.buttonPrimaryText,

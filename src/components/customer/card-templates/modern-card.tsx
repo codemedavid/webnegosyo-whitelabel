@@ -129,7 +129,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, i
 
         {/* Floating Add Button - bottom right */}
         <button
-          className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex h-9 w-9 md:h-12 md:w-12 items-center justify-center rounded-xl md:rounded-2xl shadow-2xl transition-all hover:scale-110"
+          className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex h-9 w-9 md:h-12 md:w-12 items-center justify-center rounded-xl md:rounded-2xl shadow-2xl transition-all hover:scale-110 disabled:pointer-events-none disabled:invisible"
           style={{
             backgroundColor: branding.buttonPrimary,
             color: branding.buttonPrimaryText

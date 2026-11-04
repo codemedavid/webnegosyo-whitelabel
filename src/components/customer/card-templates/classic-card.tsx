@@ -91,7 +91,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
 
         {/* Add to Cart Button */}
         <button
-          className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full shadow-lg transition-all hover:scale-110 hover:opacity-90"
+          className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full shadow-lg transition-all hover:scale-110 hover:opacity-90 disabled:pointer-events-none disabled:invisible"
           style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
           onClick={(e) => {
             e.stopPropagation()

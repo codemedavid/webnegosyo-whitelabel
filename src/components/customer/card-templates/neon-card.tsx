@@ -171,7 +171,7 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrd
                     </div>
 
                     <button
-                        className="flex h-7 w-7 md:h-9 md:w-9 items-center justify-center rounded-lg transition-all duration-200 hover:scale-110"
+                        className="flex h-7 w-7 md:h-9 md:w-9 items-center justify-center rounded-lg transition-all duration-200 hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
                         style={{
                             backgroundColor: 'transparent',
                             color: branding.primary,
