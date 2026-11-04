@@ -5,7 +5,6 @@
  * the platform. Now it is keyed on WHICH dishes are in the sale and debounced,
  * so a burst of taps is one read, and a quantity change is none.
  */
-import React from "react";
 import { renderHook, act } from "@testing-library/react-native";
 
 jest.mock("expo-constants", () => ({
