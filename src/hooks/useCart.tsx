@@ -12,6 +12,7 @@ import {
   replaceCartItem,
   getEffectiveItemPrice,
   MAX_CART_ITEM_QUANTITY,
+  rekeyLegacyNoteLines,
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
 import { repriceCartSelections } from '@/lib/cart-selection-reprice'
@@ -135,7 +136,8 @@ function loadCartFromStorage(tenantSlug?: string | null): CartItem[] {
     if (stored) {
       const parsed: unknown = JSON.parse(stored)
       if (isValidCartItems(parsed)) {
-        return parsed
+        // Saved before line ids carried the note: re-key so a plain add stays apart.
+        return rekeyLegacyNoteLines(parsed)
       }
       console.warn('[useCart] Cart data in localStorage failed validation, resetting cart')
       localStorage.removeItem(key)

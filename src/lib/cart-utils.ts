@@ -198,6 +198,38 @@ export function makeCartItem(
   }
 }
 
+/** `target` with `extraQuantity` more of it (clamped), repriced. */
+function mergeCartLines(target: CartItem, extraQuantity: number, maxQuantity: number): CartItem {
+  const quantity = Math.min(target.quantity + extraQuantity, maxQuantity)
+  const subtotal = calculateCartItemSubtotal(
+    getEffectiveItemPrice(target.menu_item),
+    target.selected_variations || target.selected_variation,
+    target.selected_addons,
+    quantity
+  )
+  return { ...target, quantity, subtotal }
+}
+
+/**
+ * Carts saved before line ids carried the kitchen note have the note on the
+ * line but not in its id, so a plain add of the same dish would merge into
+ * the noted line. Gives each such line the id today's rule gives it (the note
+ * part is always last) and merges any two lines that now share an id.
+ */
+export function rekeyLegacyNoteLines(
+  items: CartItem[],
+  maxQuantity: number = MAX_CART_ITEM_QUANTITY
+): CartItem[] {
+  return items.reduce<CartItem[]>((lines, item) => {
+    const noteKey = itemNoteKey(item.special_instructions)
+    const suffix = noteKey ? `_${noteKey}` : ''
+    const line = suffix && !item.id.endsWith(suffix) ? { ...item, id: `${item.id}${suffix}` } : item
+    const twinIndex = lines.findIndex((existing) => existing.id === line.id)
+    if (twinIndex === -1) return [...lines, line]
+    return lines.map((existing, index) => (index === twinIndex ? mergeCartLines(existing, line.quantity, maxQuantity) : existing))
+  }, [])
+}
+
 /**
  * Immutably replace one cart line item with an edited configuration.
  *
@@ -221,16 +253,7 @@ export function replaceCartItem(
   const collisionIndex = items.findIndex((item, idx) => idx !== oldIndex && item.id === newItem.id)
 
   if (collisionIndex !== -1) {
-    const target = items[collisionIndex]
-    const mergedQuantity = Math.min(target.quantity + newItem.quantity, maxQuantity)
-    const mergedVariations = target.selected_variations || target.selected_variation
-    const mergedSubtotal = calculateCartItemSubtotal(
-      getEffectiveItemPrice(target.menu_item),
-      mergedVariations,
-      target.selected_addons,
-      mergedQuantity
-    )
-    const merged: CartItem = { ...target, quantity: mergedQuantity, subtotal: mergedSubtotal }
+    const merged = mergeCartLines(items[collisionIndex], newItem.quantity, maxQuantity)
 
     return items
       .filter((_, idx) => idx !== oldIndex)
