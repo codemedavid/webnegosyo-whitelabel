@@ -817,6 +817,146 @@ export type Database = {
           },
         ]
       }
+      business_day_closes: {
+        Row: {
+          business_day: string
+          closed_at: string
+          closed_by: string | null
+          closed_by_name: string
+          deposit_cents: number | null
+          deposit_proof_url: string | null
+          deposit_recorded_at: string | null
+          deposit_recorded_by: string | null
+          deposit_ref: string | null
+          deposit_to: string | null
+          forced_shift_ids: string[]
+          id: string
+          note: string | null
+          outlet_id: string | null
+          reopen_reason: string | null
+          reopened_at: string | null
+          reopened_by: string | null
+          reopened_by_name: string | null
+          sales_source: string
+          snapshot: Json
+          snapshot_version: number
+          status: string
+          tenant_id: string
+          unsettled_remittance_ids: string[]
+          version: number
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          business_day: string
+          closed_at?: string
+          closed_by?: string | null
+          closed_by_name: string
+          deposit_cents?: number | null
+          deposit_proof_url?: string | null
+          deposit_recorded_at?: string | null
+          deposit_recorded_by?: string | null
+          deposit_ref?: string | null
+          deposit_to?: string | null
+          forced_shift_ids?: string[]
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          reopen_reason?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          reopened_by_name?: string | null
+          sales_source: string
+          snapshot: Json
+          snapshot_version: number
+          status?: string
+          tenant_id: string
+          unsettled_remittance_ids?: string[]
+          version?: number
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          business_day?: string
+          closed_at?: string
+          closed_by?: string | null
+          closed_by_name?: string
+          deposit_cents?: number | null
+          deposit_proof_url?: string | null
+          deposit_recorded_at?: string | null
+          deposit_recorded_by?: string | null
+          deposit_ref?: string | null
+          deposit_to?: string | null
+          forced_shift_ids?: string[]
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          reopen_reason?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          reopened_by_name?: string | null
+          sales_source?: string
+          snapshot?: Json
+          snapshot_version?: number
+          status?: string
+          tenant_id?: string
+          unsettled_remittance_ids?: string[]
+          version?: number
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_day_closes_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_day_closes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_day_cutoffs: {
+        Row: {
+          cutoff_minutes: number
+          effective_from: string
+          set_at: string
+          set_by: string | null
+          set_by_name: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cutoff_minutes: number
+          effective_from: string
+          set_at?: string
+          set_by?: string | null
+          set_by_name?: string | null
+          tenant_id: string
+        }
+        Update: {
+          cutoff_minutes?: number
+          effective_from?: string
+          set_at?: string
+          set_by?: string | null
+          set_by_name?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_day_cutoffs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_drawers: {
         Row: {
           archived_at: string | null
@@ -861,6 +1001,125 @@ export type Database = {
           },
           {
             foreignKeyName: "cash_drawers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_remittances: {
+        Row: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        Insert: {
+          accept_method?: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id?: string | null
+          created_at?: string
+          dispute_reason?: string | null
+          handed_over_cents?: number | null
+          id?: string
+          is_self_received?: boolean
+          kind: string
+          movement_id?: string | null
+          outlet_id?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          received_by_name?: string | null
+          received_cents?: number | null
+          receiver_note?: string | null
+          remitted_to?: string | null
+          remitted_to_name?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_by_name?: string | null
+          resolved_note?: string | null
+          shift_id: string
+          status?: string
+          tenant_id: string
+          to_safe?: boolean
+        }
+        Update: {
+          accept_method?: string | null
+          business_day?: string
+          cashier_name?: string
+          cashier_user_id?: string | null
+          created_at?: string
+          dispute_reason?: string | null
+          handed_over_cents?: number | null
+          id?: string
+          is_self_received?: boolean
+          kind?: string
+          movement_id?: string | null
+          outlet_id?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          received_by_name?: string | null
+          received_cents?: number | null
+          receiver_note?: string | null
+          remitted_to?: string | null
+          remitted_to_name?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_by_name?: string | null
+          resolved_note?: string | null
+          shift_id?: string
+          status?: string
+          tenant_id?: string
+          to_safe?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_remittances_movement_id_fkey"
+            columns: ["movement_id"]
+            isOneToOne: false
+            referencedRelation: "shift_cash_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_remittances_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_remittances_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_remittances_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1066,6 +1325,72 @@ export type Database = {
           },
           {
             foreignKeyName: "complementary_pairs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_orders: {
+        Row: {
+          app_id: string
+          backend: string
+          created_at: string
+          customer_id: string
+          id: string
+          idempotency_key: string
+          last_status: string | null
+          last_status_at: string | null
+          order_id: string | null
+          placed_at: string | null
+          state: string
+          summary: Json | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          app_id: string
+          backend: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          idempotency_key: string
+          last_status?: string | null
+          last_status_at?: string | null
+          order_id?: string | null
+          placed_at?: string | null
+          state?: string
+          summary?: Json | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          app_id?: string
+          backend?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          idempotency_key?: string
+          last_status?: string | null
+          last_status_at?: string | null
+          order_id?: string | null
+          placed_at?: string | null
+          state?: string
+          summary?: Json | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_orders_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -2484,6 +2809,7 @@ export type Database = {
       inventory_items: {
         Row: {
           category: string | null
+          counted_at: string | null
           created_at: string | null
           current_qty: number
           id: string
@@ -2500,6 +2826,7 @@ export type Database = {
         }
         Insert: {
           category?: string | null
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2516,6 +2843,7 @@ export type Database = {
         }
         Update: {
           category?: string | null
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2549,6 +2877,7 @@ export type Database = {
       }
       inventory_stock: {
         Row: {
+          counted_at: string | null
           created_at: string | null
           current_qty: number
           id: string
@@ -2559,6 +2888,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2569,6 +2899,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -4418,6 +4749,7 @@ export type Database = {
       menu_items: {
         Row: {
           addons: Json
+          auto_86_snoozed_until: string | null
           auto_disabled_at: string | null
           badge_text: string | null
           bcg_classification: string | null
@@ -4445,6 +4777,7 @@ export type Database = {
         }
         Insert: {
           addons?: Json
+          auto_86_snoozed_until?: string | null
           auto_disabled_at?: string | null
           badge_text?: string | null
           bcg_classification?: string | null
@@ -4472,6 +4805,7 @@ export type Database = {
         }
         Update: {
           addons?: Json
+          auto_86_snoozed_until?: string | null
           auto_disabled_at?: string | null
           badge_text?: string | null
           bcg_classification?: string | null
@@ -5076,6 +5410,7 @@ export type Database = {
       }
       order_items: {
         Row: {
+          addon_details: Json | null
           addons: string[]
           bundle_id: string | null
           bundle_name: string | null
@@ -5096,6 +5431,7 @@ export type Database = {
           variation_selections: Json | null
         }
         Insert: {
+          addon_details?: Json | null
           addons?: string[]
           bundle_id?: string | null
           bundle_name?: string | null
@@ -5116,6 +5452,7 @@ export type Database = {
           variation_selections?: Json | null
         }
         Update: {
+          addon_details?: Json | null
           addons?: string[]
           bundle_id?: string | null
           bundle_name?: string | null
@@ -7178,6 +7515,60 @@ export type Database = {
           },
         ]
       }
+      service_periods: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          ends_minutes: number
+          id: string
+          name: string
+          outlet_id: string | null
+          sort: number
+          starts_minutes: number
+          tenant_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_minutes: number
+          id?: string
+          name: string
+          outlet_id?: string | null
+          sort?: number
+          starts_minutes: number
+          tenant_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_minutes?: number
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          sort?: number
+          starts_minutes?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_periods_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_periods_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shift_cash_movements: {
         Row: {
           amount: number
@@ -7189,7 +7580,10 @@ export type Database = {
           recorded_by: string | null
           recorded_by_name: string
           shift_id: string
+          taken_by: string | null
+          taken_by_name: string | null
           tenant_id: string
+          to_safe: boolean
         }
         Insert: {
           amount: number
@@ -7201,7 +7595,10 @@ export type Database = {
           recorded_by?: string | null
           recorded_by_name: string
           shift_id: string
+          taken_by?: string | null
+          taken_by_name?: string | null
           tenant_id: string
+          to_safe?: boolean
         }
         Update: {
           amount?: number
@@ -7213,7 +7610,10 @@ export type Database = {
           recorded_by?: string | null
           recorded_by_name?: string
           shift_id?: string
+          taken_by?: string | null
+          taken_by_name?: string | null
           tenant_id?: string
+          to_safe?: boolean
         }
         Relationships: [
           {
@@ -7232,6 +7632,143 @@ export type Database = {
           },
           {
             foreignKeyName: "shift_cash_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_counts: {
+        Row: {
+          attempt: number
+          counted_at: string
+          counted_by: string | null
+          counted_by_name: string | null
+          counted_cents: number
+          denominations: Json | null
+          device_expected_cents: number | null
+          expected_cents: number | null
+          expected_source: string
+          id: string
+          outlet_id: string | null
+          server_expected_cents: number | null
+          shift_id: string
+          tenant_id: string
+        }
+        Insert: {
+          attempt: number
+          counted_at?: string
+          counted_by?: string | null
+          counted_by_name?: string | null
+          counted_cents: number
+          denominations?: Json | null
+          device_expected_cents?: number | null
+          expected_cents?: number | null
+          expected_source: string
+          id?: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id: string
+          tenant_id: string
+        }
+        Update: {
+          attempt?: number
+          counted_at?: string
+          counted_by?: string | null
+          counted_by_name?: string | null
+          counted_cents?: number
+          denominations?: Json | null
+          device_expected_cents?: number | null
+          expected_cents?: number | null
+          expected_source?: string
+          id?: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_counts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_counts_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_counts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_expectations: {
+        Row: {
+          breakdown: Json
+          computed_at: string
+          device_expected_cents: number | null
+          engine_version: number
+          expected_cents: number | null
+          mode: string
+          outlet_id: string | null
+          server_expected_cents: number | null
+          shift_id: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          breakdown?: Json
+          computed_at?: string
+          device_expected_cents?: number | null
+          engine_version: number
+          expected_cents?: number | null
+          mode: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id: string
+          source: string
+          tenant_id: string
+        }
+        Update: {
+          breakdown?: Json
+          computed_at?: string
+          device_expected_cents?: number | null
+          engine_version?: number
+          expected_cents?: number | null
+          mode?: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_expectations_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_expectations_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: true
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_expectations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -7538,7 +8075,7 @@ export type Database = {
           claimed_by_actor: string | null
           claimed_by_device: string | null
           created_at: string
-          customer_id: string
+          customer_id: string | null
           dispatch_started_at: string | null
           entitlement_id: string | null
           error: string | null
@@ -7567,7 +8104,7 @@ export type Database = {
           claimed_by_actor?: string | null
           claimed_by_device?: string | null
           created_at?: string
-          customer_id: string
+          customer_id?: string | null
           dispatch_started_at?: string | null
           entitlement_id?: string | null
           error?: string | null
@@ -7596,7 +8133,7 @@ export type Database = {
           claimed_by_actor?: string | null
           claimed_by_device?: string | null
           created_at?: string
-          customer_id?: string
+          customer_id?: string | null
           dispatch_started_at?: string | null
           entitlement_id?: string | null
           error?: string | null
@@ -7892,64 +8429,94 @@ export type Database = {
       }
       staff_shifts: {
         Row: {
+          business_day: string
+          close_kind: string | null
           closed_at: string | null
           closed_by: string | null
           closed_by_name: string | null
           closing_count: number | null
+          closing_denominations: Json | null
+          closing_non_cash: Json | null
           created_at: string
+          device_expected_cash: number | null
           drawer_id: string | null
           drawer_name: string | null
           expected_cash: number | null
+          float_kept_cents: number | null
           id: string
+          is_blind: boolean
           is_zero_balance: boolean
           note: string | null
           opened_at: string
+          opening_denominations: Json | null
           opening_float: number
           outlet_id: string | null
+          service_period_id: string | null
           staff_name: string
           staff_user_id: string | null
           status: string
           tenant_id: string
+          variance_reason: string | null
         }
         Insert: {
+          business_day: string
+          close_kind?: string | null
           closed_at?: string | null
           closed_by?: string | null
           closed_by_name?: string | null
           closing_count?: number | null
+          closing_denominations?: Json | null
+          closing_non_cash?: Json | null
           created_at?: string
+          device_expected_cash?: number | null
           drawer_id?: string | null
           drawer_name?: string | null
           expected_cash?: number | null
+          float_kept_cents?: number | null
           id?: string
+          is_blind?: boolean
           is_zero_balance?: boolean
           note?: string | null
           opened_at?: string
+          opening_denominations?: Json | null
           opening_float?: number
           outlet_id?: string | null
+          service_period_id?: string | null
           staff_name: string
           staff_user_id?: string | null
           status?: string
           tenant_id: string
+          variance_reason?: string | null
         }
         Update: {
+          business_day?: string
+          close_kind?: string | null
           closed_at?: string | null
           closed_by?: string | null
           closed_by_name?: string | null
           closing_count?: number | null
+          closing_denominations?: Json | null
+          closing_non_cash?: Json | null
           created_at?: string
+          device_expected_cash?: number | null
           drawer_id?: string | null
           drawer_name?: string | null
           expected_cash?: number | null
+          float_kept_cents?: number | null
           id?: string
+          is_blind?: boolean
           is_zero_balance?: boolean
           note?: string | null
           opened_at?: string
+          opening_denominations?: Json | null
           opening_float?: number
           outlet_id?: string | null
+          service_period_id?: string | null
           staff_name?: string
           staff_user_id?: string | null
           status?: string
           tenant_id?: string
+          variance_reason?: string | null
         }
         Relationships: [
           {
@@ -7964,6 +8531,13 @@ export type Database = {
             columns: ["outlet_id"]
             isOneToOne: false
             referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_shifts_service_period_id_fkey"
+            columns: ["service_period_id"]
+            isOneToOne: false
+            referencedRelation: "service_periods"
             referencedColumns: ["id"]
           },
           {
@@ -8914,6 +9488,56 @@ export type Database = {
           },
         ]
       }
+      tenant_cash_settings: {
+        Row: {
+          blind_close: boolean
+          default_float_cents: number | null
+          overdue_grace_minutes: number
+          remittance_mode: string
+          require_denominations: boolean
+          require_shift_to_sell: boolean
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          updated_by_name: string | null
+          variance_reason_from_cents: number
+        }
+        Insert: {
+          blind_close?: boolean
+          default_float_cents?: number | null
+          overdue_grace_minutes?: number
+          remittance_mode?: string
+          require_denominations?: boolean
+          require_shift_to_sell?: boolean
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_name?: string | null
+          variance_reason_from_cents?: number
+        }
+        Update: {
+          blind_close?: boolean
+          default_float_cents?: number | null
+          overdue_grace_minutes?: number
+          remittance_mode?: string
+          require_denominations?: boolean
+          require_shift_to_sell?: boolean
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_name?: string | null
+          variance_reason_from_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_cash_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_secrets: {
         Row: {
           convex_deploy_key: string | null
@@ -9062,6 +9686,8 @@ export type Database = {
           checkout_button_color: string | null
           checkout_button_text_color: string | null
           checkout_card_background_color: string | null
+          checkout_design: string | null
+          checkout_design_enabled: boolean
           checkout_modal_background_color: string | null
           checkout_modal_border_color: string | null
           checkout_modal_button_color: string | null
@@ -9077,6 +9703,10 @@ export type Database = {
           checkout_upsell_max_items: number | null
           checkout_upsell_subtitle: string | null
           checkout_upsell_title: string | null
+          confirmation_design: string | null
+          confirmation_design_enabled: boolean
+          confirmation_redirect: string
+          confirmation_redirect_seconds: number
           convex_auth_enforced: boolean
           convex_deployment_url: string | null
           convex_public_reads: boolean
@@ -9237,6 +9867,7 @@ export type Database = {
           pending_domain_claimed_at: string | null
           pending_domain_token: string | null
           pickup_scan_enabled: boolean
+          pos_stock_policy: string
           presell_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
@@ -9274,6 +9905,8 @@ export type Database = {
           text_primary_color: string | null
           text_secondary_color: string | null
           timezone: string
+          tracking_design: string | null
+          tracking_design_enabled: boolean
           tracking_style: Json
           updated_at: string
           warning_color: string | null
@@ -9354,6 +9987,8 @@ export type Database = {
           checkout_button_color?: string | null
           checkout_button_text_color?: string | null
           checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
           checkout_modal_background_color?: string | null
           checkout_modal_border_color?: string | null
           checkout_modal_button_color?: string | null
@@ -9369,6 +10004,10 @@ export type Database = {
           checkout_upsell_max_items?: number | null
           checkout_upsell_subtitle?: string | null
           checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
           convex_auth_enforced?: boolean
           convex_deployment_url?: string | null
           convex_public_reads?: boolean
@@ -9529,6 +10168,7 @@ export type Database = {
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
           pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -9566,6 +10206,8 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
           tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
@@ -9646,6 +10288,8 @@ export type Database = {
           checkout_button_color?: string | null
           checkout_button_text_color?: string | null
           checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
           checkout_modal_background_color?: string | null
           checkout_modal_border_color?: string | null
           checkout_modal_button_color?: string | null
@@ -9661,6 +10305,10 @@ export type Database = {
           checkout_upsell_max_items?: number | null
           checkout_upsell_subtitle?: string | null
           checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
           convex_auth_enforced?: boolean
           convex_deployment_url?: string | null
           convex_public_reads?: boolean
@@ -9821,6 +10469,7 @@ export type Database = {
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
           pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -9858,6 +10507,8 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
           tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
@@ -10353,6 +11004,88 @@ export type Database = {
         }
         Returns: Json
       }
+      accept_remittance: {
+        Args: { p_id: string; p_note?: string; p_received_cents: number }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      accept_remittance_as: {
+        Args: {
+          p_entered_by?: string
+          p_id: string
+          p_note?: string
+          p_received_cents: number
+          p_receiver: string
+        }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       allow_loyalty_verification_attempt: {
         Args: { p_ip_hash: string; p_phone_hash: string; p_tenant_id: string }
         Returns: Json
@@ -10366,6 +11099,10 @@ export type Database = {
       }
       app_user_has_permission: {
         Args: { p_permission: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_has_permission_of: {
+        Args: { p_permission: string; p_tenant_id: string; p_user: string }
         Returns: boolean
       }
       app_user_holds_any_permission: {
@@ -10416,6 +11153,18 @@ export type Database = {
           p_tenant_id: string
           p_threshold: number
           p_version_id: string
+        }
+        Returns: Json
+      }
+      apply_order_stock_claim: {
+        Args: {
+          p_kind: string
+          p_mode?: string
+          p_movements?: Json
+          p_order_id: string
+          p_reason: string
+          p_revision: number
+          p_tenant_id: string
         }
         Returns: Json
       }
@@ -10643,6 +11392,31 @@ export type Database = {
         Args: { p_challenge_id: string; p_tenant_id: string }
         Returns: Json
       }
+      business_day_bounds: {
+        Args: { p_day: string; p_tenant: string }
+        Returns: Record<string, unknown>
+      }
+      business_day_cutoff_for: {
+        Args: { p_day: string; p_tenant: string }
+        Returns: string
+      }
+      business_day_cutoff_label: {
+        Args: { p_minutes: number }
+        Returns: string
+      }
+      business_day_cutoff_starts_on: {
+        Args: {
+          p_at: string
+          p_cutoff_minutes: number
+          p_tenant: string
+          p_today_closed: boolean
+        }
+        Returns: string
+      }
+      business_day_of: {
+        Args: { p_at: string; p_tenant: string }
+        Returns: string
+      }
       claim_approval_side_effects: {
         Args: { p_limit?: number; p_tenant_id?: string }
         Returns: {
@@ -10798,8 +11572,40 @@ export type Database = {
         Returns: Json
       }
       cleanup_loyalty_data: { Args: never; Returns: Json }
+      close_business_day: {
+        Args: {
+          p_day: string
+          p_force?: boolean
+          p_note?: string
+          p_outlet: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
+      close_shift: {
+        Args: {
+          p_closed_by_name?: string
+          p_float_kept_cents?: number
+          p_non_cash?: Json
+          p_note?: string
+          p_remit_to?: string
+          p_remit_to_safe?: boolean
+          p_shift_id: string
+          p_variance_reason?: string
+        }
+        Returns: Json
+      }
       consume_discount_approval: {
         Args: { p_order_id: string; p_tenant_id: string; p_token: string }
+        Returns: Json
+      }
+      count_shift: {
+        Args: {
+          p_counted_cents: number
+          p_denominations?: Json
+          p_device_expected_cents?: number
+          p_shift_id: string
+        }
         Returns: Json
       }
       create_and_execute_approval: {
@@ -10876,6 +11682,44 @@ export type Database = {
       delete_inventory_item: {
         Args: { p_dry_run?: boolean; p_item_id: string; p_tenant_id: string }
         Returns: Json
+      }
+      dispute_remittance: {
+        Args: { p_id: string; p_reason: string; p_received_cents?: number }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       enroll_loyalty_sms_device: {
         Args: {
@@ -10964,6 +11808,12 @@ export type Database = {
         }
         Returns: Json
       }
+      force_close_shift: {
+        Args: { p_note: string; p_shift_id: string }
+        Returns: Json
+      }
+      get_business_day_close: { Args: { p_close_id: string }; Returns: Json }
+      get_cash_settings: { Args: { p_tenant: string }; Returns: Json }
       get_customer_order: {
         Args: { p_order_id: string }
         Returns: {
@@ -10973,6 +11823,10 @@ export type Database = {
           status: string
           total: number
         }[]
+      }
+      get_day_close_status: {
+        Args: { p_day: string; p_outlet: string; p_tenant: string }
+        Returns: Json
       }
       get_store_activity: {
         Args: {
@@ -11040,13 +11894,37 @@ export type Database = {
         }
         Returns: number
       }
+      inventory_count_has_movements: {
+        Args: { p_count_id: string }
+        Returns: boolean
+      }
       inventory_effective_unit_cost: {
         Args: { p_item_id: string; p_path?: string[]; p_tenant_id: string }
+        Returns: number
+      }
+      inventory_item_has_stock_on_any_shelf: {
+        Args: { p_item_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_may_act_for_branch: {
+        Args: { p_outlet_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_outlet_in_tenant: {
+        Args: { p_outlet_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_recent_own_movements: {
+        Args: { p_tenant_id: string }
         Returns: number
       }
       inventory_recipe_cost: {
         Args: { p_path?: string[]; p_recipe_id: string; p_tenant_id: string }
         Returns: number
+      }
+      inventory_units_in_use: {
+        Args: { p_tenant_id: string; p_unit_id: string }
+        Returns: boolean
       }
       issue_customer_login_challenge: {
         Args: {
@@ -11096,6 +11974,18 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: Json
+      }
+      list_cash_receivers: {
+        Args: { p_outlet?: string; p_tenant: string }
+        Returns: {
+          has_pin: boolean
+          is_on_shift: boolean
+          is_owner: boolean
+          last_seen_at: string
+          name: string
+          outlet_id: string
+          user_id: string
+        }[]
       }
       list_sms_sender_devices: {
         Args: { p_day_start: string; p_tenant_id: string }
@@ -11187,6 +12077,18 @@ export type Database = {
         }
         Returns: Json
       }
+      open_shift: {
+        Args: {
+          p_drawer_id: string
+          p_opening_denominations?: Json
+          p_opening_float_cents: number
+          p_outlet: string
+          p_service_period_id?: string
+          p_staff_name?: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
       order_accepts_anon_items: {
         Args: { p_order_id: string }
         Returns: boolean
@@ -11232,6 +12134,7 @@ export type Database = {
           phone_e164: string
         }[]
       }
+      preview_shift_close: { Args: { p_shift_id: string }; Returns: Json }
       project_loyalty_pos_receipt: {
         Args: { p_receipt: Json; p_settlement_id: string; p_tenant_id: string }
         Returns: string
@@ -11248,6 +12151,26 @@ export type Database = {
       record_assistant_usage: {
         Args: { p_cost_usd: number; p_tenant_id: string; p_tokens: number }
         Returns: undefined
+      }
+      record_cash_pickup: {
+        Args: {
+          p_amount_cents: number
+          p_note?: string
+          p_shift_id: string
+          p_taken_by?: string
+          p_to_safe?: boolean
+        }
+        Returns: Json
+      }
+      record_day_deposit: {
+        Args: {
+          p_cents: number
+          p_close_id: string
+          p_proof_url?: string
+          p_ref?: string
+          p_to: string
+        }
+        Returns: Json
       }
       record_drawer_expense: {
         Args: {
@@ -11313,9 +12236,71 @@ export type Database = {
         Args: { p_order_id: string; p_tenant_id: string }
         Returns: number
       }
+      reopen_business_day: {
+        Args: { p_close_id: string; p_reason: string }
+        Returns: Json
+      }
       replace_expense: {
         Args: { p_expense_id: string; p_patch: Json; p_reason: string }
         Returns: string
+      }
+      report_cash_by_staff: {
+        Args: {
+          p_from_day: string
+          p_outlet?: string
+          p_tenant: string
+          p_to_day: string
+        }
+        Returns: {
+          counted_shifts: number
+          forced_closes: number
+          over_cents: number
+          over_count: number
+          over_short_cents: number
+          recount_changed: number
+          shifts: number
+          short_cents: number
+          short_count: number
+          staff_name: string
+          staff_user_id: string
+        }[]
+      }
+      report_cash_summary: {
+        Args: {
+          p_from_day: string
+          p_outlet?: string
+          p_tenant: string
+          p_to_day: string
+        }
+        Returns: {
+          business_day: string
+          close_kind: string
+          closed_at: string
+          count_attempts: number
+          counted_cents: number
+          difference_cents: number
+          discrepancy_cents: number
+          drawer_name: string
+          expected_cents: number
+          expected_source: string
+          final_count_cents: number
+          first_count_cents: number
+          float_cents: number
+          handed_over_cents: number
+          is_blind: boolean
+          opened_at: string
+          outlet_id: string
+          received_by_name: string
+          received_cents: number
+          recount_changed: boolean
+          remittance_id: string
+          remittance_status: string
+          shift_id: string
+          staff_name: string
+          staff_user_id: string
+          status: string
+          variance_reason: string
+        }[]
       }
       report_expenses_by_category: {
         Args: {
@@ -11351,6 +12336,15 @@ export type Database = {
           method_key: string
           orders: number
         }[]
+      }
+      report_period_sales: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+        }
+        Returns: Json
       }
       report_profit_by_period: {
         Args: {
@@ -11539,6 +12533,11 @@ export type Database = {
           void_orders: number
         }[]
       }
+      report_shift_nets: { Args: { p_shift_ids: string[] }; Returns: Json }
+      report_shift_sales: {
+        Args: { p_scope?: string; p_shift_id: string }
+        Returns: Json
+      }
       resolve_loyalty_entitlement: {
         Args: {
           p_action: string
@@ -11548,6 +12547,44 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: Json
+      }
+      resolve_remittance: {
+        Args: { p_id: string; p_note: string }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       restore_loyalty_refunded_receipt: {
         Args: { p_settlement_id: string; p_tenant_id: string }
@@ -11573,9 +12610,17 @@ export type Database = {
         Args: { p_actor_id: string; p_device_id: string; p_tenant_id: string }
         Returns: Json
       }
+      save_cash_settings: {
+        Args: { p_settings: Json; p_tenant: string }
+        Returns: Json
+      }
       set_approval_rules: {
         Args: { p_actor: string; p_rules: Json; p_tenant_id: string }
         Returns: Json
+      }
+      set_business_day_cutoff: {
+        Args: { p_cutoff_minutes: number; p_tenant: string }
+        Returns: string
       }
       set_staff_approval_pin: {
         Args: { p_pin: string; p_tenant_id: string; p_user_id: string }
@@ -11650,6 +12695,10 @@ export type Database = {
           p_transfer_id: string
         }
         Returns: number
+      }
+      stock_transfer_has_movements: {
+        Args: { p_transfer_id: string }
+        Returns: boolean
       }
       store_activity_actor: { Args: never; Returns: string }
       store_activity_actor_name: {
