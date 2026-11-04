@@ -24,8 +24,17 @@ describe('Page Designer editor locks', () => {
   it('removes an optional block, which can then be added back once', () => {
     const start = createStandardDesign('checkout')
     const { result } = renderHook(() => useHeroBuilder(start, PAGE_NODE_POLICY))
-    act(() => result.current.remove(widgetId(start, 'checkout.voucher')))
-    expect(blockIdsIn(result.current.design)).not.toContain('checkout.voucher')
+    act(() => result.current.remove(widgetId(start, 'checkout.sms_opt_in')))
+    expect(blockIdsIn(result.current.design)).not.toContain('checkout.sms_opt_in')
+  })
+
+  it('locks the voucher field, so a design can never stop customers entering a code', () => {
+    const start = createStandardDesign('checkout')
+    const { result } = renderHook(() => useHeroBuilder(start, PAGE_NODE_POLICY))
+    const voucher = widgetId(start, 'checkout.voucher')
+    expect(result.current.canRemove(voucher)).toBe(false)
+    act(() => result.current.remove(voucher))
+    expect(blockIdsIn(result.current.design)).toContain('checkout.voucher')
   })
 
   it('keeps the plain Hero Builder unlocked', () => {

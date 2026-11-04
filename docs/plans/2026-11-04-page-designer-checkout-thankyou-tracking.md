@@ -79,7 +79,7 @@ interface PageBlockDef {
 
 | Page | Locked (required) | Optional system blocks |
 |---|---|---|
-| **Checkout** | Customer details (when required fields exist), Payment methods (when any), Order summary + total, Place order button; Order type (when asked), Schedule (when advance orders on) | Voucher, Senior/PWD, Loyalty progress, SMS opt-in, Minimum-order notice, Store-closed banner |
+| **Checkout** | Customer details (when required fields exist), Payment methods (when any), Order summary + total, Place order button; Order type (when asked), Schedule (when advance orders on), Voucher (owner, 2026-11-05: a design must never stop customers entering a code), Senior/PWD |  Loyalty progress, SMS opt-in, Minimum-order notice, Store-closed banner |
 | **Thank-you** | Status message (success / not-confirmed variants), Save-failure notice, Messenger handoff (when Messenger on), Track order button, Kiosk return (kiosk only) | Order summary, Customer info, Payment instructions, Scheduled-for, Order message, Loyalty card |
 | **Tracking** | Order status (hero + progress) | Header, Timeline, Ready-time, Ring me, Items, Totals, Pickup QR, Loyalty card, Wallet buttons, Order details, Back to menu |
 
