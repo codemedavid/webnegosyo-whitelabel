@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getMenuStockAvailability, type OptionStockCeilings } from '@/lib/inventory/menu-ceilings'
+import { DEFAULT_POS_STOCK_POLICY, readPosStockPolicy } from '@/lib/inventory/pos-stock-policy'
 import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
 import { readBearerToken } from '@/lib/supabase/bearer-session'
@@ -39,6 +40,11 @@ import { readBearerToken } from '@/lib/supabase/bearer-session'
  * checkout remains the authoritative refusal either way. A broken menu would be
  * a far worse outcome than an uncapped one. Callers treat any non-OK answer,
  * a 400 or 429 included, the same way.
+ *
+ * `stockPolicy` ('warn' | 'block', `tenants.pos_stock_policy`) tells the
+ * register what to do when a sale asks for more than a ceiling: warn the
+ * cashier (default) or ask for a manager PIN. It is 'warn' whenever the
+ * ceilings could not be read — there is nothing to hold a sale against.
  */
 
 const querySchema = z.object({
@@ -71,15 +77,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // whole feature exists to prevent.
   const headers = { 'Cache-Control': 'no-store' }
 
+  // Read alongside the graph; readPosStockPolicy never throws (warn on failure).
+  const policyRead = readPosStockPolicy(tenantId)
   try {
     const { dishes, options } = await getMenuStockAvailability(tenantId, outletId)
     return NextResponse.json(
-      { ceilings: Object.fromEntries(dishes), optionCeilings: toJsonOptionCeilings(options) },
+      {
+        ceilings: Object.fromEntries(dishes),
+        optionCeilings: toJsonOptionCeilings(options),
+        stockPolicy: await policyRead,
+      },
       { headers },
     )
   } catch (error) {
     console.error('[inventory] Ceilings read failed', tenantId, error)
-    return NextResponse.json({ ceilings: {}, optionCeilings: {} }, { headers })
+    return NextResponse.json({ ceilings: {}, optionCeilings: {}, stockPolicy: DEFAULT_POS_STOCK_POLICY }, { headers })
   }
 }
 

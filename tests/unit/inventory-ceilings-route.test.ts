@@ -20,6 +20,12 @@ jest.mock('@/lib/inventory/menu-ceilings', () => ({
   getMenuStockAvailability: (...a: unknown[]) => getMenuStockAvailability(...a),
 }))
 
+const readPosStockPolicy = jest.fn()
+jest.mock('@/lib/inventory/pos-stock-policy', () => ({
+  DEFAULT_POS_STOCK_POLICY: 'warn',
+  readPosStockPolicy: (...a: unknown[]) => readPosStockPolicy(...a),
+}))
+
 const checkRateLimit = jest.fn()
 jest.mock('@/lib/distributed-rate-limit', () => ({
   checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
@@ -43,6 +49,7 @@ beforeEach(() => {
     options: new Map([['m-tea', new Map([['opt-pearls', 0]])]]),
   })
   checkRateLimit.mockResolvedValue({ allowed: true, remaining: 100, retryAfterSec: 30 })
+  readPosStockPolicy.mockResolvedValue('warn')
 })
 
 describe('GET /api/inventory/ceilings', () => {
@@ -58,6 +65,39 @@ describe('GET /api/inventory/ceilings', () => {
     const body = await (await GET(request(`?tenantId=${TENANT}`))).json()
 
     expect(body.optionCeilings).toEqual({ 'm-tea': { 'opt-pearls': 0 } })
+  })
+
+  describe('stockPolicy — what the register does when stock runs short (contract)', () => {
+    it('answers the store’s policy', async () => {
+      readPosStockPolicy.mockResolvedValue('block')
+
+      const body = await (await GET(request(`?tenantId=${TENANT}`))).json()
+
+      expect(body.stockPolicy).toBe('block')
+      expect(readPosStockPolicy).toHaveBeenCalledWith(TENANT)
+    })
+
+    it('answers warn by default', async () => {
+      const body = await (await GET(request(`?tenantId=${TENANT}`))).json()
+
+      expect(body.stockPolicy).toBe('warn')
+    })
+
+    it('still answers warn when the stock read fails', async () => {
+      getMenuStockAvailability.mockRejectedValue(new Error('boom'))
+      readPosStockPolicy.mockResolvedValue('block')
+
+      const body = await (await GET(request(`?tenantId=${TENANT}`))).json()
+
+      // A failed read never blocks a sale: nothing to compare against.
+      expect(body).toEqual({ ceilings: {}, optionCeilings: {}, stockPolicy: 'warn' })
+    })
+
+    it('never reads the policy for a refused request', async () => {
+      await GET(request(''))
+
+      expect(readPosStockPolicy).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects a request that names no tenant', async () => {
