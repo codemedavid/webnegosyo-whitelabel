@@ -6,6 +6,7 @@ import { buildDesignCss } from '@/lib/hero-builder/css'
 import { safeAnchor, safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import type { Column, HeroDesignV5, Section, Widget } from '@/lib/hero-builder/types'
 
+import { isShownInState, usePageRuntime } from './page-runtime'
 import { WidgetView } from './widget-view'
 
 export interface HeroBuilderRendererProps {
@@ -20,10 +21,21 @@ export interface HeroBuilderRendererProps {
 interface NodeContext {
   classes: Record<string, string>
   isEditor: boolean
+  /** Page Designer state ("preparing"…) for "Show when"; null = no states. */
+  pageState: string | null
 }
 
 function editorAttrs(ctx: NodeContext, id: string, kind: 'section' | 'column' | 'widget') {
   return ctx.isEditor ? { 'data-hb-id': id, 'data-hb-kind': kind } : {}
+}
+
+/**
+ * "Show when": off-state nodes are left out of the storefront; the editor
+ * keeps them (faded) so they stay selectable.
+ */
+function stateAttrs(ctx: NodeContext, showWhen: readonly string[] | undefined): { skip: boolean; attrs: Record<string, string> } {
+  if (isShownInState(showWhen, ctx.pageState)) return { skip: false, attrs: {} }
+  return ctx.isEditor ? { skip: false, attrs: { 'data-hb-state-off': 'true' } } : { skip: true, attrs: {} }
 }
 
 /** The first mp4 any device layer asks for; CSS shows it only where used. */
@@ -39,12 +51,14 @@ function sectionVideo(section: Section): string | null {
 }
 
 function WidgetNode({ widget, ctx, isPriority }: { widget: Widget; ctx: NodeContext; isPriority: boolean }) {
+  const state = stateAttrs(ctx, widget.showWhen)
+  if (state.skip) return null
   return (
     // `hb-w--<kind>`, not `hb-<kind>`: the inner elements already use
     // hb-heading / hb-text / hb-badge / hb-divider / hb-gallery / hb-html, and
     // sharing the class made the base sheet style the wrapper too (a 3-column
     // grid around the gallery, a second divider line).
-    <div className={`hb-w hb-w--${widget.kind} ${ctx.classes[widget.id] ?? ''}`} {...editorAttrs(ctx, widget.id, 'widget')}>
+    <div className={`hb-w hb-w--${widget.kind} ${ctx.classes[widget.id] ?? ''}`} {...editorAttrs(ctx, widget.id, 'widget')} {...state.attrs}>
       <WidgetView widget={widget} isEditor={ctx.isEditor} isPriority={isPriority} />
     </div>
   )
@@ -68,12 +82,15 @@ function ColumnNode({ column, ctx, isPriority }: { column: Column; ctx: NodeCont
 function SectionNode({ section, ctx, isPriority }: { section: Section; ctx: NodeContext; isPriority: boolean }) {
   const video = sectionVideo(section)
   const anchor = safeAnchor(section.anchor)
+  const state = stateAttrs(ctx, section.showWhen)
+  if (state.skip) return null
   return (
     <section
       id={anchor ?? undefined}
       aria-label={section.label || undefined}
       className={`hb-section ${ctx.classes[section.id] ?? ''}`}
       {...editorAttrs(ctx, section.id, 'section')}
+      {...state.attrs}
     >
       {video && (
         <>
@@ -109,7 +126,8 @@ export const HeroBuilderRenderer = memo(function HeroBuilderRenderer({
     () => buildDesignCss(design, { scope, showHidden: isEditor, viewportHeight }),
     [design, scope, isEditor, viewportHeight],
   )
-  const ctx: NodeContext = { classes: built.classes, isEditor }
+  const pageState = usePageRuntime()?.state ?? null
+  const ctx: NodeContext = { classes: built.classes, isEditor, pageState }
 
   if (!design.sections.length && !isEditor) return null
 

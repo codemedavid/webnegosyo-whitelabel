@@ -12,6 +12,9 @@ import { HeroIcon } from '../icons'
 import { useHeroLinkClick } from './link-context'
 import { CountdownBlock, EmbedBlock, HtmlBlock } from './live-blocks'
 import { OrderEntryBlock, SlideshowBlock, StoreLogoBlock } from './welcome-blocks'
+import { applyTokens } from '@/lib/page-designer/text'
+
+import { PageBlockView, usePageRuntime } from './page-runtime'
 import { useStoreNameToken } from './welcome-runtime'
 
 interface WidgetViewProps {
@@ -42,12 +45,20 @@ function Placeholder({ show, label }: { show: boolean; label: string }) {
 
 const STORE_TOKEN = /\{store\}/gi
 
-function Markup({ value }: { value: unknown }) {
-  const onLinkClick = useHeroLinkClick()
+/** `{store}`, plus a Page Designer page's own tokens (`{name}`, `{order_number}`…). */
+function useTokenText(value: unknown): unknown {
   const storeName = useStoreNameToken()
+  const page = usePageRuntime()
+  if (typeof value !== 'string') return value
+  if (page) return applyTokens(value, page.tokens)
   // `{store}` is only swapped where a store is known (the welcome page and its
   // editor); elsewhere it stays as typed rather than vanishing.
-  const source = storeName && typeof value === 'string' ? value.replace(STORE_TOKEN, storeName) : value
+  return storeName ? value.replace(STORE_TOKEN, storeName) : value
+}
+
+function Markup({ value }: { value: unknown }) {
+  const onLinkClick = useHeroLinkClick()
+  const source = useTokenText(value)
   return (
     <>
       {parseMarkup(source).map((token, i) => {
@@ -225,6 +236,8 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
       return <StoreLogoBlock content={c} isEditor={isEditor} />
     case 'slideshow':
       return <SlideshowBlock content={c} isEditor={isEditor} />
+    case 'page-block':
+      return <PageBlockView content={c} isEditor={isEditor} />
     default:
       return null
   }

@@ -13,7 +13,10 @@ import type { ButtonItem, EntryMode, OrderEntryContent, Section, Slide, Widget, 
 
 import { Field, Group, IconPicker, ImageField, Segmented, SelectField, TextArea, TextInput, Toggle } from '../controls'
 import type { HeroBuilderApi } from '../use-hero-builder'
+import { usePageRuntime } from '@/components/hero-builder/renderer/page-runtime'
+
 import { LinkPicker, sectionAnchorsOf, useLinkSurface } from './link-picker'
+import { PageBlockFields, ShowWhenGroup, tokenHint } from './page-block-fields'
 
 function move<T>(items: readonly T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return [...items]
@@ -138,7 +141,8 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
   const edit = (patch: Partial<WidgetContent>, key?: string) => api.editContent(widget.id, patch, key)
   const sectionAnchors = sectionAnchorsOf(api.design.sections)
   const isWelcome = useLinkSurface() === 'welcome'
-  const markupHint = isWelcome ? MARKUP_HINT + STORE_HINT : MARKUP_HINT
+  const page = usePageRuntime()?.page
+  const markupHint = page ? MARKUP_HINT + tokenHint(page) : isWelcome ? MARKUP_HINT + STORE_HINT : MARKUP_HINT
   const newButtonHref = isWelcome ? '#welcome-start' : '#storefront-menu'
 
   switch (c.kind) {
@@ -468,15 +472,20 @@ interface ContentPanelProps {
 export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
   if (!node) return null
   if (nodeKind === 'widget') {
+    const widget = node as Widget
     return (
-      <Group title="Content">
-        <WidgetContentFields widget={node as Widget} api={api} />
-      </Group>
+      <>
+        <Group title="Content">
+          {widget.kind === 'page-block' ? <PageBlockFields widget={widget} api={api} /> : <WidgetContentFields widget={widget} api={api} />}
+        </Group>
+        <ShowWhenGroup node={widget} api={api} />
+      </>
     )
   }
   if (nodeKind === 'section') {
     const section = node as Section
     return (
+      <>
       <Group title="Section">
         <Field label="Name" hint="Only you see this, in the Layers list.">
           <TextInput value={section.label} maxLength={80} onChange={(e) => api.editSectionMeta(section.id, { label: e.target.value }, 'label')} />
@@ -492,6 +501,8 @@ export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
           />
         </Field>
       </Group>
+      <ShowWhenGroup node={section} api={api} />
+      </>
     )
   }
   return (

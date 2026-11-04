@@ -1,0 +1,123 @@
+import type { PageBlockDef } from './types'
+
+/**
+ * Checkout's working parts. Every one wraps an existing checkout component
+ * fed by useCheckout — a design only moves and re-words them, it never
+ * changes how an order is checked or placed.
+ */
+export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
+  {
+    id: 'checkout.order_type',
+    page: 'checkout',
+    label: 'Order type',
+    description: 'Dine-in, pickup or delivery (only when the customer has a choice).',
+    icon: 'Utensils',
+    required: true,
+    texts: [{ key: 'title', label: 'Title', fallback: 'Order Type', labelKey: 'checkout.order_type', maxLength: 60 }],
+    options: [],
+  },
+  {
+    id: 'checkout.schedule',
+    page: 'checkout',
+    label: 'Schedule',
+    description: 'As soon as possible or later (only when advance orders are on).',
+    icon: 'CalendarClock',
+    required: true,
+    texts: [],
+    options: [],
+  },
+  {
+    id: 'checkout.customer',
+    page: 'checkout',
+    label: 'Customer details',
+    description: 'Name, phone, address and your own checkout questions.',
+    icon: 'User',
+    required: true,
+    texts: [{ key: 'title', label: 'Title', fallback: 'Customer Information', labelKey: 'checkout.customer', maxLength: 60 }],
+    options: [],
+  },
+  {
+    id: 'checkout.summary',
+    page: 'checkout',
+    label: 'Order summary',
+    description: 'The dishes, fees, discounts and total.',
+    icon: 'ReceiptText',
+    required: true,
+    texts: [{ key: 'title', label: 'Title', fallback: 'Order Summary', labelKey: 'checkout.summary', maxLength: 60 }],
+    options: [],
+  },
+  {
+    id: 'checkout.voucher',
+    page: 'checkout',
+    label: 'Voucher code',
+    description: 'Where customers type a voucher or promo code.',
+    icon: 'TicketPercent',
+    required: false,
+    texts: [],
+    options: [],
+  },
+  {
+    id: 'checkout.gov_discount',
+    page: 'checkout',
+    label: 'Senior / PWD',
+    description: 'The Senior Citizen / PWD discount (only when online claims are on).',
+    icon: 'BadgePercent',
+    required: true,
+    texts: [],
+    options: [],
+  },
+  {
+    id: 'checkout.payment',
+    page: 'checkout',
+    label: 'Payment methods',
+    description: 'How the customer pays.',
+    icon: 'Wallet',
+    required: true,
+    texts: [{ key: 'title', label: 'Title', fallback: 'Payment Method', labelKey: 'checkout.payment', maxLength: 60 }],
+    options: [],
+  },
+  {
+    id: 'checkout.loyalty',
+    page: 'checkout',
+    label: 'Loyalty progress',
+    description: 'How close the customer is to a reward (only when you run a loyalty program).',
+    icon: 'Stamp',
+    required: false,
+    texts: [],
+    options: [],
+  },
+  {
+    id: 'checkout.sms_opt_in',
+    page: 'checkout',
+    label: 'Text me offers',
+    description: 'The tick box for texts from your store.',
+    icon: 'MessageSquare',
+    required: false,
+    texts: [],
+    options: [],
+  },
+  {
+    id: 'checkout.place_order',
+    page: 'checkout',
+    label: 'Place order button',
+    description: 'The button that sends the order, with the minimum-order note.',
+    icon: 'ShoppingBag',
+    required: true,
+    texts: [],
+    options: [],
+  },
+]
+
+/** Today's checkout, top to bottom. */
+export const CHECKOUT_STANDARD_ORDER: readonly string[] = [
+  'checkout.order_type',
+  'checkout.schedule',
+  'checkout.customer',
+  'checkout.loyalty',
+  'checkout.summary',
+  'checkout.voucher',
+  'checkout.gov_discount',
+  'checkout.payment',
+  'checkout.sms_opt_in',
+  'checkout.place_order',
+]

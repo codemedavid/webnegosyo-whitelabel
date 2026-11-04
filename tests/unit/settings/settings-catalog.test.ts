@@ -66,6 +66,7 @@ describe('buildSettingsCatalog — what each viewer is offered', () => {
       'branding',
       'hero',
       'welcome',
+      'page-designer',
       'footer',
       'team',
       'account',
