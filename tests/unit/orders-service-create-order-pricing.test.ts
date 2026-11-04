@@ -124,6 +124,14 @@ describe('createOrder — keeps the price the action verified', () => {
     await expect(createOrder('tenant-1', [line({ menu_item_id: 'other-tenant-dish' })])).rejects.toThrow(/not found/i)
   })
 
+  test('writes each dish\'s kitchen note to order_items.special_instructions', async () => {
+    const createOrder = await loadCreateOrder()
+
+    await createOrder('tenant-1', [line({ special_instructions: 'no onions' }), line()])
+
+    expect(insertedItems().map((row) => row.special_instructions)).toEqual(['no onions', undefined])
+  })
+
   test('never mutates the caller’s items or customer data', async () => {
     const createOrder = await loadCreateOrder()
     const items = [line({ subtotal: 1, special_instructions: 'x'.repeat(1500) })]
