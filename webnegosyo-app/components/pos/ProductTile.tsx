@@ -38,6 +38,8 @@ interface ProductTileProps {
  * long menu stays cheap. Items without a photo get deterministic initials
  * rather than a grey hole, which also keeps every tile the same height.
  */
+const SOLD_OUT_HINT = "Double-tap for details";
+
 export function ProductTile({
   name,
   price,
@@ -67,7 +69,9 @@ export function ProductTile({
       onPress={onPress}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityState={{ disabled: isSoldOut }}
+      // A sold-out tile still opens its sheet (why, and "Sell anyway"), so it
+      // is not "disabled" to a screen reader.
+      accessibilityHint={isSoldOut ? SOLD_OUT_HINT : undefined}
       accessibilityLabel={accessibilityLabel}
     >
       <View style={styles.media}>

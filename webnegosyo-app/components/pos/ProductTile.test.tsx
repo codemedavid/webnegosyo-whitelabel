@@ -41,4 +41,15 @@ describe("ProductTile", () => {
     expect(screen.queryByText("2 left")).toBeNull();
     expect(screen.getByLabelText(/Margherita, sold out/)).toBeTruthy();
   });
+
+  it("a sold-out tile still opens its details, so a screen reader is not told it is disabled", () => {
+    const onPress = jest.fn();
+    render(<ProductTile {...base} isSoldOut onPress={onPress} />);
+
+    const tile = screen.getByLabelText(/Margherita, sold out/);
+    expect(tile.props.accessibilityState?.disabled).not.toBe(true);
+    expect(tile.props.accessibilityHint).toBe("Double-tap for details");
+    fireEvent.press(tile);
+    expect(onPress).toHaveBeenCalled();
+  });
 });
