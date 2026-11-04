@@ -25,6 +25,7 @@ import {
   reverseOrderStockMovements,
 } from '@/lib/inventory/order-stock-service'
 import type { OrderStockClaimRow } from '@/lib/inventory/order-stock-claim'
+import { bindOrderStockClaimRpc, routeStockRpc, type SimMovement } from '../fixtures/order-stock-claim-rpc'
 
 const TENANT = '44444444-4444-4444-8444-444444444444'
 const ORDER = 'ord-race-1'
@@ -32,8 +33,9 @@ const FLOUR = 'item-flour'
 const GRAM = 'unit-gram'
 
 const from = jest.fn()
+const rpc = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
@@ -153,32 +155,39 @@ function buildWorld(options: {
     return chain
   }
 
+  rpc.mockImplementation(routeStockRpc(bindOrderStockClaimRpc({
+    claims: claims as never,
+    movements: () => [...((options.movementsNow?.() ?? []) as SimMovement[]), ...(ledgerInserts as unknown as SimMovement[])],
+    onWritten: (rows) => ledgerInserts.push(...(rows as unknown as Record<string, unknown>[])),
+  })))
+
   return { impl, claims, claimInserts, claimReleases, ledgerInserts }
 }
 
 beforeEach(() => {
   from.mockReset()
+  rpc.mockReset()
   jest.spyOn(console, 'warn').mockImplementation(() => {})
   jest.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => jest.restoreAllMocks())
 
-describe('reverse claims the void before reading movements', () => {
-  it('reverses a sale that lands between the claim and the read', async () => {
-    // Arrange — the sale claim exists but its ledger rows only become visible
-    // AFTER the reverse has taken its void claim (the exact race window).
+describe('reverse claims the void and reads movements in one transaction', () => {
+  it('reverses a sale that landed before the cancellation', async () => {
+    // The claim and the reversal are computed together under the order's
+    // lock (apply_order_stock_claim reverse_all), so there is no window
+    // between "claim" and "read" any more for a sale to slip through.
     const world = buildWorld({
       claims: [{ reason: 'sale', revision: 0 }],
-      movementsNow: () =>
-        world.claims.some((c) => c.reason === 'void') ? [SALE_MOVEMENT] : [],
+      movementsNow: () => [SALE_MOVEMENT],
     })
     from.mockImplementation(world.impl)
 
     // Act
     const result = await reverseOrderStockMovements(TENANT, ORDER)
 
-    // Assert — claim-first ordering means the read sees the landed sale.
+    // Assert
     expect(result.movementCount).toBe(1)
     expect(world.ledgerInserts).toContainEqual(
       expect.objectContaining({ inventory_item_id: FLOUR, reason: 'void', quantity_delta: 100 }),
@@ -207,7 +216,7 @@ describe('the sale path defers to an existing void claim (cancel wins)', () => {
 
     expect(result.movementCount).toBe(0)
     expect(world.ledgerInserts).toEqual([])
-    // The sale claim was handed back, so the aborted attempt leaves no trace.
+    // The refused sale never took a claim, so the attempt leaves no trace.
     expect(world.claims).toEqual([{ reason: 'void', revision: 0 }])
   })
 

@@ -19,10 +19,20 @@ import {
   applyOrderStockMovements,
   reverseOrderStockMovements,
 } from '@/lib/inventory/order-stock-service'
+import { routeStockRpc, simulateOrderStockClaim, type ClaimRpcState } from '../fixtures/order-stock-claim-rpc'
 
 const from = jest.fn()
+/** What `apply_order_stock_claim` sees for order-1, and where its ledger writes are logged. */
+let claimState: ClaimRpcState = { claims: [], movements: [] }
+let ledgerWrites: unknown[][] = []
+const rpc = routeStockRpc((args) => {
+  const answer = simulateOrderStockClaim(claimState, args)
+  const rows = (answer.data as { rows?: unknown[] } | null)?.rows ?? []
+  if (rows.length > 0) ledgerWrites.push(rows)
+  return answer
+})
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (name: string, args: unknown) => rpc(name, args) }),
 }))
 
 /** Chainable, thenable Supabase stub that records what it was asked to write. */
@@ -137,6 +147,14 @@ function wire(options: {
   // Idempotency is a claim row now, not a read of the ledger, so
   // `stock_movements` answers one thing: the sale a restore reverses.
   const movements = table([])
+  // The ledger rows are written by the claim RPC (20261103140000), in the same
+  // transaction as the claim; log them where the assertions look.
+  ledgerWrites = movements.writes.insert
+  claimState = {
+    claims: options.alreadyRestored ? [{ reason: 'void', revision: 0 }] : [],
+    movements: ((options.recordedSales ?? []) as Array<Record<string, unknown>>)
+      .map((row) => ({ outlet_id: null, ...row })) as ClaimRpcState['movements'],
+  }
 
   from.mockImplementation((name: string) => {
     if (name === 'order_stock_applications') {

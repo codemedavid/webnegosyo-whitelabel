@@ -18,10 +18,12 @@
  */
 
 import { reverseOrderStockMovements } from '@/lib/inventory/order-stock-service'
+import { bindOrderStockClaimRpc, routeStockRpc, type SimMovement } from '../fixtures/order-stock-claim-rpc'
 
 const from = jest.fn()
+const rpc = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
@@ -51,6 +53,13 @@ interface MovementRow {
  * precisely the difference under test here, so this stub tracks the filters.
  */
 function stubLedger(rows: MovementRow[], captured: unknown[][]) {
+  // The reversal is netted by the database (apply_order_stock_claim,
+  // reverse_all) over EVERY movement the order recorded; the twin mirrors it.
+  rpc.mockImplementation(routeStockRpc(bindOrderStockClaimRpc({
+    claims: [{ reason: 'sale', revision: 0 }],
+    movements: () => rows as unknown as SimMovement[],
+    onWritten: (written) => { if (written.length > 0) captured.push(written) },
+  })))
   return (table: string) => {
     if (table === 'order_stock_applications') {
       // The reverse lists the order's claims first to pick its void revision.

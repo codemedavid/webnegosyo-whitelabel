@@ -15,24 +15,18 @@ import { expandLinkedStockItems, linkedStockMenuItemIds, selectedStockOptionIds,
 import { resolveOrderDepletions, type DepletionOrderItem, type StockDepletion } from './order-depletion'
 import { resolveMovementDelta } from './stock-ledger'
 import { resolveMovementOutletId } from './stock-location'
-import { reportStockFailure } from './stock-failure-report'
 import {
-  claimOrderStockApplication,
-  releaseOrderStockApplication,
   listOrderStockClaims,
   resolveVoidClaimRevision,
-  hasBlockingVoidClaim,
-  isCancelledByClaims,
-  recordRestoredMovements,
   type OrderStockClaimKind,
-  type RestoredMovement,
 } from './order-stock-claim'
 import {
   EMPTY_RESULT,
   unwritten,
   toUnit,
   applySimpleOptionStockIsolated,
-  writeOrderLedgerRows,
+  commitOrderLedgerRows,
+  commitOrderLedgerReversal,
   type AdminClient,
   type OrderLedgerRow,
   type OrderStockResult,
@@ -70,58 +64,29 @@ export async function applyOrderStockMovements(
 
   // The option RPC has its own transaction/claim. Run it even on a retried
   // ingredient claim, so either independently failed stock path can recover.
-  const simpleMovementCount = await applySimpleOptionStockIsolated(supabase, tenantId, orderId, direction, revision, items, movementOutletId)
+  const simple = await applySimpleOptionStockIsolated(supabase, tenantId, orderId, direction, revision, items, movementOutletId)
+  const withSimple = (result: OrderStockResult): OrderStockResult => ({
+    ...result,
+    movementCount: result.movementCount + simple.count,
+    ...(simple.shortfalls.length > 0 ? { shortfalls: simple.shortfalls } : {}),
+  })
 
-  // Idempotency. The order-creation path is retryable, and depleting twice
-  // would take stock down twice for one sale with two ledger rows each claiming
-  // to be the truth. The claim is a unique-indexed row, so the database refuses
-  // the second caller — a SELECT-then-INSERT here let every racing call through.
-  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, direction, revision, kind))) {
-    return unwritten('duplicate', simpleMovementCount)
-  }
-  const release = () => releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision, kind)
+  // The rows are computed first, then claimed and written in ONE transaction
+  // (`apply_order_stock_claim`): the database refuses a second caller
+  // (`duplicate`), and refuses a sale its cancellation beat, or an edit of a
+  // cancelled order (`cancelled_first`), under a per-order lock. Nothing to
+  // deduct takes no claim, so a later retry (recipes added, a sweep) can.
+  const built = await buildOrderLedgerRows(supabase, tenantId, orderId, items, direction, movementOutletId)
+  if (built.rows.length === 0) return withSimple({ ...EMPTY_RESULT, skipped: built.skipped })
 
-  // Every exit between the claim and the ledger write has to hand the claim
-  // back. A claim that outlives a depletion which never happened marks the
-  // order permanently done with its stock still on the shelf — the failure mode
-  // is silent, and worse than the double-deduction the claim exists to stop.
-  try {
-    if (await isRefusedByCancellation(supabase, tenantId, orderId, direction, revision, kind)) {
-      await release()
-      return unwritten('cancelled_first')
-    }
-
-    const result = await depleteClaimedOrder(supabase, tenantId, orderId, items, direction, movementOutletId)
-    if (result.movementCount === 0) await release()
-    return { ...result, movementCount: result.movementCount + simpleMovementCount }
-  } catch (error) {
-    await release()
-    throw error
-  }
-}
-
-/**
- * Cancel wins. Depletion is fire-and-forget, so a fast cancellation can take
- * its void claim before the sale's rows land. The reverse keeps that claim even
- * when it found nothing to reverse — it is this guard — so a sale arriving
- * afterwards must stand down, hand its claim back, and leave the cancelled
- * order with no stock moved in either direction.
- *
- * An edit stands down the same way once the order is cancelled: the
- * cancellation already netted everything recorded, so a late edit would spend
- * for a dead order or give back stock that was never out.
- */
-async function isRefusedByCancellation(
-  supabase: AdminClient,
-  tenantId: string,
-  orderId: string,
-  direction: 'sale' | 'void',
-  revision: number,
-  kind: OrderStockClaimKind,
-): Promise<boolean> {
-  if (direction !== 'sale' && kind !== 'edit') return false
-  const claims = await listOrderStockClaims(supabase, tenantId, orderId)
-  return kind === 'edit' ? isCancelledByClaims(claims) : hasBlockingVoidClaim(claims, revision)
+  const result = await commitOrderLedgerRows(
+    supabase,
+    { tenantId, orderId, reason: direction, kind, revision },
+    built.rows,
+    built.inventoryItems,
+  )
+  if (result.outcome === 'cancelled_first') return { ...result, skipped: built.skipped }
+  return withSimple({ ...result, skipped: built.skipped })
 }
 
 interface RecipeGraph {
@@ -246,103 +211,47 @@ function buildDepletionRows(
   return { rows, skipped }
 }
 
-/**
- * The depletion itself, once this caller owns the claim.
- *
- * Split out so the claim's release has exactly one place to live: this body has
- * several exits and a caller that forgot one of them would leak a claim.
- */
-async function depleteClaimedOrder(
+interface BuiltOrderLedger {
+  rows: OrderLedgerRow[]
+  skipped: string[]
+  /** PRE-movement ingredient rows, for the alert path. */
+  inventoryItems: InventoryItem[]
+}
+
+/** The ledger rows an order's lines spend (or return), computed before any claim. */
+async function buildOrderLedgerRows(
   supabase: AdminClient,
   tenantId: string,
   orderId: string,
   items: readonly DepletionOrderItem[],
   direction: 'sale' | 'void',
   outletId: string | null,
-): Promise<OrderStockResult> {
+): Promise<BuiltOrderLedger> {
+  const none: BuiltOrderLedger = { rows: [], skipped: [], inventoryItems: [] }
   const graph = await readRecipeGraph(supabase, tenantId, items)
-  if (graph.recipes.length === 0) return EMPTY_RESULT
+  if (graph.recipes.length === 0) return none
 
   const depletions = resolveOrderDepletions(
     expandLinkedStockItems(items, graph.catalog, graph.recipes),
     graph.recipes,
     graph.components,
   )
-  if (depletions.length === 0) return EMPTY_RESULT
+  if (depletions.length === 0) return none
 
   const context = await readIngredientContext(supabase, tenantId, depletions)
   const { rows, skipped } = buildDepletionRows(depletions, context, { tenantId, orderId, direction, outletId })
-  if (rows.length === 0) return { ...EMPTY_RESULT, skipped }
-
-  const result = await writeOrderLedgerRows(supabase, tenantId, rows, context.inventoryItems)
-  return { ...result, skipped }
-}
-
-interface RecordedMovement {
-  inventory_item_id: string
-  outlet_id: string | null
-  quantity_delta: number
-  entered_quantity: number | null
-  entered_unit_id: string | null
-}
-
-/**
- * The reversal of everything an order recorded, netted per ingredient AND
- * entered unit AND branch.
- *
- * The unit keeps the audit value coherent: the same ingredient can be recorded
- * in grams by a base recipe and kilograms by an addon, and summing those into
- * one `entered_quantity` would print a number that means nothing.
- *
- * The BRANCH keeps the stock in the right shop. An order that spent flour at
- * two branches — or whose branch was corrected mid-life — nets to one row
- * without it, and that row would take stock out of one pool and give it back to
- * another, leaving the branch that actually spent it permanently short. The
- * branch is read off the recorded movement rather than re-resolved from the
- * order, so a sale and its reversal cannot disagree by construction.
- */
-export function buildReversalRows(
-  tenantId: string,
-  orderId: string,
-  movements: readonly RecordedMovement[],
-): OrderLedgerRow[] {
-  const netted = new Map<string, { movement: RecordedMovement; delta: number; entered: number }>()
-
-  for (const movement of movements) {
-    const key = `${movement.inventory_item_id}|${movement.entered_unit_id ?? ''}|${movement.outlet_id ?? ''}`
-    const existing = netted.get(key)
-    // `entered_quantity` is stored unsigned — the reason carries the direction —
-    // so it has to be signed by its own movement before it can be netted.
-    // Summing the raw magnitudes would report 800 g entered for a 400 g net.
-    const enteredSigned = (movement.entered_quantity ?? 0) * Math.sign(movement.quantity_delta)
-    netted.set(key, {
-      movement,
-      delta: (existing?.delta ?? 0) + movement.quantity_delta,
-      entered: (existing?.entered ?? 0) + enteredSigned,
-    })
-  }
-
-  return [...netted.values()]
-    // An ingredient an edit already returned in full has nothing left to give
-    // back, and a zero-delta ledger row reads as a real event that never was.
-    .filter((entry) => entry.delta !== 0)
-    .map(({ movement, delta, entered }) => ({
-      tenant_id: tenantId,
-      inventory_item_id: movement.inventory_item_id,
-      outlet_id: movement.outlet_id ?? null,
-      reason: 'void' as const,
-      quantity_delta: -delta,
-      // Carried across so the reversal reads "0.6 kg returned", matching the
-      // sale's audit trail rather than showing a bare converted number.
-      entered_quantity: entered === 0 ? null : Math.abs(entered),
-      entered_unit_id: movement.entered_unit_id,
-      order_id: orderId,
-    }))
+  return { rows, skipped, inventoryItems: context.inventoryItems }
 }
 
 /**
  * Put a cancelled order's ingredients back by reversing exactly what its sale
- * recorded.
+ * recorded, netted per ingredient AND entered unit AND branch (the database
+ * does the netting: `apply_order_stock_claim` mode `reverse_all`).
+ *
+ * The unit keeps the audit value coherent (grams from a base recipe and
+ * kilograms from an add-on never sum into one meaningless number); the BRANCH
+ * keeps the stock in the shop that spent it, read off the recorded movement so
+ * a sale and its reversal cannot disagree by construction.
  *
  * Deliberately does NOT recompute from the order's lines. Recomputing was a
  * drift bug waiting to happen: once depletion accounts for an option's
@@ -355,8 +264,7 @@ export async function reverseOrderStockMovements(
   orderId: string,
 ): Promise<OrderStockResult> {
   const supabase = createAdminClient()
-  const simpleMovementCount = await applySimpleOptionStockIsolated(supabase, tenantId, orderId, 'cancel')
-  const simpleResult = unwritten('nothing_to_deduct', simpleMovementCount)
+  const simple = await applySimpleOptionStockIsolated(supabase, tenantId, orderId, 'cancel')
 
   // The void claim is taken at a revision that pairs with the order's latest
   // sale, skipping any void an edit already burned — so a cancellation works
@@ -364,74 +272,13 @@ export async function reverseOrderStockMovements(
   const claims = await listOrderStockClaims(supabase, tenantId, orderId)
   const voidRevision = resolveVoidClaimRevision(claims)
 
-  // Claim BEFORE reading movements — cancelling twice would put the stock back
-  // twice, and the database refusing the second caller is the guard. Claiming
-  // first also closes the race against the fire-and-forget depletion: a sale
-  // landing after this claim is seen by the read below and reversed, and a
-  // sale that has not landed yet finds this claim and stands down.
-  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, 'void', voidRevision))) {
-    return unwritten('duplicate', simpleMovementCount)
-  }
-  // A claim outliving a reversal that never wrote would leave the order
-  // permanently un-restorable, its ingredients still counted as sold.
-  const release = () => releaseOrderStockApplication(supabase, tenantId, orderId, 'void', voidRevision)
-
-  // EVERY movement this order recorded, not just its sale: an edit that
-  // removes an item writes a `void` correction while the order is still live,
-  // so reversing the sale rows alone would give back stock already given back.
-  const { data: movementRows, error: movementError } = await supabase
-    .from('stock_movements')
-    .select('inventory_item_id, outlet_id, quantity_delta, entered_quantity, entered_unit_id')
-    .eq('tenant_id', tenantId)
-    .eq('order_id', orderId)
-  if (movementError) {
-    await release()
-    throw movementError
-  }
-
-  // Nothing recorded (yet), or nothing left to give back. The claim is
-  // deliberately KEPT: it is the marker the sale path checks, so a depletion
-  // racing this cancellation no-ops instead of spending stock for an order that
-  // no longer exists.
-  const rows = buildReversalRows(tenantId, orderId, (movementRows ?? []) as unknown as RecordedMovement[])
-  if (rows.length === 0) return simpleResult
-
-  let result: OrderStockResult
-  try {
-    result = await writeOrderLedgerRows(supabase, tenantId, rows)
-  } catch (error) {
-    await release()
-    throw error
-  }
-
-  await rememberRestored(supabase, tenantId, orderId, voidRevision, rows)
-  return { ...result, movementCount: result.movementCount + simpleMovementCount }
-}
-
-/**
- * Remember exactly what came back, so an un-cancel re-spends precisely this
- * (option and add-on recipes included) instead of recomputing from order lines
- * that carry no option ids. Losing the record only costs that precision — the
- * un-cancel falls back to recomputing — so it never fails the reversal that
- * already landed.
- */
-async function rememberRestored(
-  supabase: AdminClient,
-  tenantId: string,
-  orderId: string,
-  voidRevision: number,
-  rows: readonly OrderLedgerRow[],
-): Promise<void> {
-  const restored: RestoredMovement[] = rows.map((row) => ({
-    inventory_item_id: row.inventory_item_id,
-    outlet_id: row.outlet_id,
-    quantity_delta: row.quantity_delta,
-    entered_quantity: row.entered_quantity,
-    entered_unit_id: row.entered_unit_id,
-  }))
-  try {
-    await recordRestoredMovements(supabase, tenantId, orderId, voidRevision, restored)
-  } catch (error) {
-    reportStockFailure({ tenantId, orderId, operation: 'record_restored_movements', revision: voidRevision }, error)
-  }
+  // Claim + reversal + the "what came back" record in ONE transaction, the
+  // reversal computed by the database from EVERY movement this order recorded
+  // (an edit that removed an item already wrote its own `void`). A sale racing
+  // this cancellation is serialised by the per-order lock: it either landed
+  // first and is reversed here, or finds this claim and stands down. A
+  // cancellation with nothing to reverse still keeps its claim, as that
+  // marker.
+  const result = await commitOrderLedgerReversal(supabase, tenantId, orderId, voidRevision)
+  return { ...result, movementCount: result.movementCount + simple.count }
 }
