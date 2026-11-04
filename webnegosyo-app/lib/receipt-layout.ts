@@ -84,6 +84,19 @@ export interface ReceiptOrder {
   amountPaid?: number;
   /** Set when this paper is a bill over several orders, or one guest's part. */
   bill?: ReceiptBill;
+  /**
+   * Set only on a copy printed again by hand (the Reprint button). The paper
+   * then says "*** REPRINT ***" and when, under the order number. It never
+   * changes a number or a figure: auto-print and the first print after a sale
+   * leave it unset.
+   */
+  reprint?: ReceiptReprint;
+}
+
+/** When a reprinted copy came out of the printer. */
+export interface ReceiptReprint {
+  /** Epoch milliseconds. */
+  at: number;
 }
 
 /**
@@ -1218,6 +1231,8 @@ interface BlockEnv {
   storeAddress: string | undefined;
   /** The block the tax footer rides on (the last one that is not a blank line), or -1. */
   footerIndex: number;
+  /** The block the REPRINT mark follows (the first order number), or -1 for the top. */
+  reprintIndex: number;
 }
 
 function buildEnv(order: ReceiptOrder, config: ReceiptConfig, layout: ReceiptLayout): BlockEnv {
@@ -1236,6 +1251,7 @@ function buildEnv(order: ReceiptOrder, config: ReceiptConfig, layout: ReceiptLay
     covered: coveredDetailKeys(layout, isModern, address?.key ?? null),
     storeAddress: config.storeAddress || config.tax?.businessAddress || undefined,
     footerIndex: config.tax ? lastPrintingBlockIndex(layout) : -1,
+    reprintIndex: layout.blocks.findIndex((block) => REPRINT_ANCHORS.has(block.kind)),
   };
 }
 
@@ -1483,9 +1499,49 @@ function taxFooterLines(env: BlockEnv): string[] {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Reprint mark: a copy printed again by hand says so
+// ---------------------------------------------------------------------------
+
+export const REPRINT_MARK = "*** REPRINT ***";
+
+/** The mark follows the order number; a layout without one gets it on top. */
+const REPRINT_ANCHORS: ReadonlySet<ReceiptBlockKind> = new Set<ReceiptBlockKind>(["orderNumber", "orderMeta"]);
+
+function reprintTimeText(at: number): string {
+  const date = new Date(at);
+  const dateStr = date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+  const timeStr = date.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
+  return `Reprinted ${dateStr}  ${timeStr}`;
+}
+
+/** "*** REPRINT ***" and when — plain on Classic, bold and centred on Modern. */
+function reprintLines(env: BlockEnv): string[] {
+  const at = env.order.reprint?.at;
+  if (typeof at !== "number" || !Number.isFinite(at)) return [];
+  const { w, isModern } = env;
+  const time = reprintTimeText(at);
+  return isModern
+    ? [`<C><B>${REPRINT_MARK}</B></C>`, centered(time, w)]
+    : [center(REPRINT_MARK, w), center(truncate(time, w), w)];
+}
+
+/**
+ * The anchor block's lines with the mark under the number: after an
+ * orderNumber block (however it wrapped), or after orderMeta's first line.
+ */
+function withReprintMark(block: ReceiptBlock, lines: string[], env: BlockEnv): string[] {
+  const mark = reprintLines(env);
+  if (block.kind !== "orderMeta" || lines.length === 0) return [...lines, ...mark];
+  return [lines[0]!, ...mark, ...lines.slice(1)];
+}
+
 /** One block as printer pieces: a text piece per line, or an image / QR. */
 function renderBlock(block: ReceiptBlock, env: BlockEnv, index: number): ReceiptSegment[] {
   const pieces: ReceiptSegment[] = [];
+  if (index === 0 && env.reprintIndex === -1) {
+    for (const text of reprintLines(env)) pieces.push({ type: "text", text });
+  }
 
   if (block.kind === "logo") {
     if (env.config.logoUrl) pieces.push({ type: "image", url: env.config.logoUrl });
@@ -1502,7 +1558,8 @@ function renderBlock(block: ReceiptBlock, env: BlockEnv, index: number): Receipt
       block.style && support
         ? renderStyledBlockLines(block, block.style, support, env)
         : renderPlainBlockLines(block, env);
-    for (const text of lines) pieces.push({ type: "text", text });
+    const marked = index === env.reprintIndex ? withReprintMark(block, lines, env) : lines;
+    for (const text of marked) pieces.push({ type: "text", text });
     // Plain whatever the block's style: a TIN printed double width wraps.
     for (const text of taxHeaderLines(block, env)) pieces.push({ type: "text", text });
   }

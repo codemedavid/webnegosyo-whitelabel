@@ -59,6 +59,9 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ListRow } from "../../components/ListRow";
 import { canOpenMyActivity, MY_ACTIVITY_HREF } from "../../lib/activity/my-activity";
+import { usePrinterStore } from "../../stores/printer-store";
+import { reprintGate } from "../../lib/reprint-gate";
+import { reprintOrderHref } from "../../lib/reprint-route";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -278,6 +281,8 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
   const includeOnlineOrders = useRegisterSettingsStore((s) => s.drawerIncludesOnlineOrders);
   const setIncludeOnlineOrders = useRegisterSettingsStore((s) => s.setDrawerIncludesOnlineOrders);
   const scope = useBranchScope();
+  // "Reprint" on a sale row opens the order and prints from its full record.
+  const printers = usePrinterStore((s) => s.printers);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   // One ink hero per screen (06 §1): on shift, the shift card is the hero and
   // the day's counter total folds into a row under it.
@@ -542,6 +547,16 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
                     </Text>
                   </View>
                   <Text style={styles.saleTotal}>{formatPeso(sale.total)}</Text>
+                  {reprintGate({ status: sale.status ?? "confirmed" }, printers).enabled ? (
+                    <Button
+                      label="Reprint"
+                      icon="printer"
+                      tone="secondary"
+                      size="md"
+                      onPress={() => router.push(reprintOrderHref(sale._id) as never)}
+                      accessibilityLabel={`Reprint the receipt for the ${formatSaleTime(sale._creationTime)} sale`}
+                    />
+                  ) : null}
                 </TouchableOpacity>
               );
             })}

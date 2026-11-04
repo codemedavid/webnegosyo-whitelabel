@@ -41,6 +41,7 @@ import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
 import { usePosSaleTotals } from "../../lib/use-pos-sale-totals";
 import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
 import { SaleCompleteBanner } from "../../components/pos/SaleCompleteBanner";
+import { useLastSaleReprint } from "../../hooks/useLastSaleReprint";
 import { useOutbox } from "../../lib/offline/use-outbox-sync";
 import { usePosStockCeilings } from "../../lib/query/use-pos-stock-ceilings";
 import {
@@ -123,6 +124,8 @@ export default function PosScreen() {
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
   // Sales still on their way to the server (written behind).
   const outbox = useOutbox();
+  // The banner's "Reprint" (undefined without a receipt printer on this device).
+  const reprintLastSale = useLastSaleReprint();
   // Warm the tender screen's payment methods while items are still being
   // added, so Charge opens on the amount due instead of a spinner. Keyed the
   // way the tender screen reads them (impersonation included).
@@ -605,6 +608,7 @@ export default function PosScreen() {
         <SaleCompleteBanner
           onOpenOrder={(id) => router.push(`/(main)/order/${id}`)}
           isSaving={(id) => outbox.sales.some((queued) => queued.localId === id)}
+          onReprint={reprintLastSale}
         />
       </View>
 
