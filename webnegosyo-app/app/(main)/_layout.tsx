@@ -182,7 +182,7 @@ export default function MainLayout() {
         <Tabs.Screen name="pos-sales" options={{ href: show("pos-sales"), title: "Drawer" }} />
 
         {/* ── Reports ─────────────────────────────────────────────────── */}
-        <Tabs.Screen name="analytics" options={{ href: show("analytics"), title: "Analytics" }} />
+        <Tabs.Screen name="analytics" options={{ href: show("analytics"), title: "Sales" }} />
         <Tabs.Screen name="trends" options={{ href: show("trends"), title: "Trends" }} />
         <Tabs.Screen name="growth" options={{ href: show("growth"), title: "Growth" }} />
         <Tabs.Screen name="customers" options={{ href: show("customers"), title: "Guest list" }} />
