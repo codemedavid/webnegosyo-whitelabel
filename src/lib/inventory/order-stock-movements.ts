@@ -22,7 +22,6 @@ import {
 } from './order-stock-claim'
 import {
   EMPTY_RESULT,
-  unwritten,
   toUnit,
   applySimpleOptionStockIsolated,
   commitOrderLedgerRows,
