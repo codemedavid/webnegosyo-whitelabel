@@ -21,8 +21,8 @@ import { useShiftSalesLens } from "./use-shift-sales-lens";
 
 describe("useShiftSalesLens", () => {
   it("opens on the param, and follows a new ?lens= on the still-mounted screen", () => {
-    const { result, rerender } = renderHook((props: { param?: string; canSeeStore: boolean }) => useShiftSalesLens(props), {
-      initialProps: { param: undefined, canSeeStore: true },
+    const { result, rerender } = renderHook((props: { param: string | undefined; canSeeStore: boolean }) => useShiftSalesLens(props), {
+      initialProps: { param: undefined as string | undefined, canSeeStore: true },
     });
     expect(result.current[0]).toBe("store");
     rerender({ param: "mine", canSeeStore: true });
@@ -30,8 +30,8 @@ describe("useShiftSalesLens", () => {
   });
 
   it("an account that can no longer see the store falls back to her own sales", () => {
-    const { result, rerender } = renderHook((props: { param?: string; canSeeStore: boolean }) => useShiftSalesLens(props), {
-      initialProps: { param: undefined, canSeeStore: true },
+    const { result, rerender } = renderHook((props: { param: string | undefined; canSeeStore: boolean }) => useShiftSalesLens(props), {
+      initialProps: { param: undefined as string | undefined, canSeeStore: true },
     });
     rerender({ param: undefined, canSeeStore: false });
     expect(result.current[0]).toBe("mine");

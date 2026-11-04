@@ -26,7 +26,7 @@ describe("useReprintLedgerWait", () => {
   });
 
   it("never fires while nothing is waiting, and starts over on the next wait", () => {
-    const { result, rerender } = renderHook(({ isWaiting }) => useReprintLedgerWait(isWaiting), {
+    const { result, rerender } = renderHook(({ isWaiting }: { isWaiting: boolean }) => useReprintLedgerWait(isWaiting), {
       initialProps: { isWaiting: false },
     });
     act(() => {
