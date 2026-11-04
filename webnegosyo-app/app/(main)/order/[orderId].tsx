@@ -17,6 +17,7 @@ import { OrderPrintActions } from "../../../components/order/OrderPrintActions";
 import { useReceiptReprint } from "../../../hooks/useReceiptReprint";
 import { kitchenChitGate, reprintGate } from "../../../lib/reprint-gate";
 import { printManualKitchenChit } from "../../../lib/kitchen-chit-reprint";
+import { useReprintLedgerWait } from "../../../lib/use-reprint-ledger-wait";
 import { buildKitchenChitSegments } from "../../../lib/kitchen-chit";
 import { printForRole } from "../../../lib/printer";
 import { usePrintedLedger } from "../../../lib/printed-ledger";
@@ -850,8 +851,11 @@ export default function OrderDetailScreen() {
 
   // "Reprint" from the Drawer's sales list lands here: print once the order
   // AND its ledger have loaded, so the copy says what was paid.
+  // Offline the ledger may never answer: after ~5 s the copy prints without
+  // it (lib/use-reprint-ledger-wait.ts) instead of waiting forever.
   const isLedgerSettled = payments !== undefined || paymentsError != null;
-  const canRunReprintIntent = intent === "reprint" && isOrderLoaded && isLedgerSettled;
+  const hasLedgerWaitExpired = useReprintLedgerWait(intent === "reprint" && isOrderLoaded && !isLedgerSettled);
+  const canRunReprintIntent = intent === "reprint" && isOrderLoaded && (isLedgerSettled || hasLedgerWaitExpired);
   const reprintTargetId = reprintPrinters.length === 1 ? reprintPrinters[0]?.id : undefined;
   useEffect(() => {
     if (!canRunReprintIntent) return;

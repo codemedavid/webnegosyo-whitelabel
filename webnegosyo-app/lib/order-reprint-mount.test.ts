@@ -69,6 +69,12 @@ describe("order screen: Reprint on delivered orders", () => {
     expect(src).toMatch(/"reprint"/);
     expect(src).toMatch(/isLedgerSettled/);
   });
+
+  it("does not wait forever for the ledger offline: it times out and reprints without it", () => {
+    const src = screen();
+    expect(src).toMatch(/useReprintLedgerWait\(/);
+    expect(src).toMatch(/isLedgerSettled \|\| hasLedgerWaitExpired/);
+  });
 });
 
 describe("the sale banner's receipt state is what really printed", () => {
