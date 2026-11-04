@@ -9,7 +9,7 @@
  * warning is an aid, and an aid that can break the till is not one.
  */
 
-import { fetchPosStockCeilings } from "./pos-stock-ceilings";
+import { fetchPosStockCeilings, isFailedStockRead } from "./pos-stock-ceilings";
 import { NO_STOCK_CEILINGS } from "./pos-stock-warning";
 
 jest.mock("expo-constants", () => ({
@@ -128,5 +128,21 @@ describe("fetchPosStockCeilings", () => {
 
     expect(ceilings).toEqual(NO_STOCK_CEILINGS);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("isFailedStockRead", () => {
+  it("tells every failure apart from a read that found nothing tracked", async () => {
+    fetchMock.mockRejectedValue(new Error("offline"));
+    expect(isFailedStockRead(await fetchPosStockCeilings("t1", null))).toBe(true);
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
+    expect(isFailedStockRead(await fetchPosStockCeilings("t1", null))).toBe(true);
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    expect(isFailedStockRead(await fetchPosStockCeilings("t1", null, 20))).toBe(true);
+
+    fetchMock.mockReset().mockResolvedValue({ ok: true, json: async () => ({ ceilings: {} }) });
+    const empty = await fetchPosStockCeilings("t1", null);
+    expect(empty.dishes.size).toBe(0);
+    expect(isFailedStockRead(empty)).toBe(false);
   });
 });

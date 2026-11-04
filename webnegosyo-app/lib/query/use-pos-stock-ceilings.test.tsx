@@ -19,8 +19,10 @@ jest.mock("../pos-stock-ceilings", () => ({
   fetchPosStockCeilings: (...args: unknown[]) => mockFetchCeilings(...args),
 }));
 
+import { NO_STOCK_CEILINGS } from "../pos-stock-warning";
 import {
   STOCK_AFTER_SALE_DELAY_MS,
+  STOCK_FAILURE_GRACE_MS,
   STOCK_CEILING_DEBOUNCE_MS,
   STOCK_REFRESH_INTERVAL_MS,
   usePosStockCeilings,
@@ -190,6 +192,92 @@ describe("usePosStockCeilings", () => {
       unmount();
       await flush(STOCK_REFRESH_INTERVAL_MS * 2);
       expect(mockFetchCeilings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a failed read", () => {
+    const good = { dishes: new Map([["m-1", 4]]), options: new Map(), stockPolicy: "block" as const };
+    type Props = { tenantId: string; outletId: string | null };
+    const renderFocused = (initial: Props = { tenantId: "t1", outletId: "o1" }) =>
+      renderHook(
+        ({ tenantId, outletId }: Props) =>
+          usePosStockCeilings(tenantId, outletId, [line("m-1", 1)], { isFocused: true }),
+        { initialProps: initial }
+      );
+    /** One timer poll: the interval tick, then the debounced read landing. */
+    const poll = async () => {
+      await flush(STOCK_REFRESH_INTERVAL_MS);
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+    };
+
+    beforeEach(() => {
+      mockFetchCeilings.mockReset().mockResolvedValueOnce(good).mockResolvedValue(NO_STOCK_CEILINGS);
+    });
+
+    it("keeps the last good ceilings (and the block policy) through a failed poll", async () => {
+      const { result } = renderFocused();
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.get("m-1")).toBe(4);
+
+      await poll();
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(2);
+      expect(result.current.dishes.get("m-1")).toBe(4);
+      expect(result.current.stockPolicy).toBe("block");
+    });
+
+    it("falls back to no opinion once the failures outlast the grace period", async () => {
+      const { result } = renderFocused();
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      await poll();
+      expect(result.current.dishes.get("m-1")).toBe(4);
+
+      await flush(STOCK_FAILURE_GRACE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.size).toBe(0);
+      expect(result.current.stockPolicy).toBeUndefined();
+    });
+
+    it("drops the grace period when a good read lands again", async () => {
+      mockFetchCeilings
+        .mockReset()
+        .mockResolvedValueOnce(good)
+        .mockResolvedValueOnce(NO_STOCK_CEILINGS)
+        .mockResolvedValue({ dishes: new Map([["m-1", 2]]), options: new Map() });
+      const { result } = renderFocused();
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      await poll();
+      await poll();
+      expect(result.current.dishes.get("m-1")).toBe(2);
+
+      await flush(STOCK_FAILURE_GRACE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.get("m-1")).toBe(2);
+    });
+
+    it("has nothing to keep when the very first read fails", async () => {
+      mockFetchCeilings.mockReset().mockResolvedValue(NO_STOCK_CEILINGS);
+      const { result } = renderFocused();
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.size).toBe(0);
+    });
+
+    it("never carries one branch's ceilings to another", async () => {
+      const { result, rerender } = renderFocused();
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.get("m-1")).toBe(4);
+
+      rerender({ tenantId: "t1", outletId: "o2" });
+      await act(async () => {});
+      expect(result.current.dishes.size).toBe(0);
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.size).toBe(0);
     });
   });
 });

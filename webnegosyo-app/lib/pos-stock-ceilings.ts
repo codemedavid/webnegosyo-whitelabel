@@ -92,6 +92,15 @@ export async function fetchPosStockCeilings(
   }
 }
 
+/**
+ * True for the answer `fetchPosStockCeilings` gives on a failure (the shared
+ * `NO_STOCK_CEILINGS`); a read that succeeded always builds a fresh value,
+ * even when the store tracks nothing.
+ */
+export function isFailedStockRead(ceilings: PosStockCeilings): boolean {
+  return ceilings === NO_STOCK_CEILINGS;
+}
+
 /** The part of a cart line the ceiling read cares about. */
 export interface StockCeilingLineLike {
   menuItemId: string;
