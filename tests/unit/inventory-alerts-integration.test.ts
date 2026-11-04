@@ -26,7 +26,7 @@ jest.mock('@/lib/supabase/admin', () => ({
 }))
 
 /** Chainable, thenable Supabase stub that records what it was asked to write. */
-function table(data: unknown) {
+function table(data: unknown, pagedData: unknown = data) {
   const writes: { insert: unknown[][]; update: unknown[] } = { insert: [], update: [] }
   const chain: Record<string, unknown> = {
     writes,
@@ -40,9 +40,12 @@ function table(data: unknown) {
       return chain
     },
   }
-  for (const method of ['select', 'eq', 'is', 'not', 'in', 'single', 'limit']) {
+  for (const method of ['select', 'eq', 'is', 'not', 'in', 'single', 'limit', 'order']) {
     chain[method] = () => chain
   }
+  // The paged reads (auto-86) end in a range, and run after the ledger write:
+  // they see the shelf as the sale left it.
+  chain.range = () => Promise.resolve({ data: pagedData, error: null })
   return chain as Record<string, unknown> & { writes: typeof writes }
 }
 
@@ -73,11 +76,27 @@ const FLOUR_IN_RECIPE = {
 }
 
 /** One ingredient, one dish, both alert features on. */
+function flourRow(qty: number) {
+  return {
+    id: 'flour',
+    tenant_id: 't1',
+    name: 'Flour',
+    current_qty: qty,
+    reorder_level: 20,
+    is_active: true,
+    stock_unit_id: 'unit-g',
+    unit_cost: 1,
+    is_prep: false,
+    counted_at: '2026-10-01T00:00:00.000Z',
+  }
+}
+
 function wire(options: {
   flourQty: number
   openAlerts?: unknown[]
   recordedSales?: unknown[]
   alreadyRestored?: boolean
+  dishHiddenByAuto86?: boolean
   /**
    * The unbranched store pool's row AFTER the movement. Branch-aware alerting
    * reads `inventory_stock` once the ledger row exists, so this is the shelf as
@@ -91,28 +110,26 @@ function wire(options: {
     tenants: table({ low_stock_alerts_enabled: true, auto_86_enabled: true }),
     recipes: table([BASE_RECIPE]),
     recipe_components: table([FLOUR_IN_RECIPE]),
-    inventory_items: table([
-      {
-        id: 'flour',
-        tenant_id: 't1',
-        name: 'Flour',
-        current_qty: options.flourQty,
-        reorder_level: 20,
-        is_active: true,
-        stock_unit_id: 'unit-g',
-        unit_cost: 1,
-        is_prep: false,
-      },
-    ]),
+    inventory_items: table(
+      [flourRow(options.flourQty)],
+      [flourRow(options.poolQtyAfter ?? options.flourQty - 10)],
+    ),
     inventory_units: table([GRAMS]),
     stock_alerts: table(options.openAlerts ?? []),
-    menu_items: table([{ id: 'menu-carbonara' }]),
+    // Auto-86 is state-based (2026-11-03): it reads whether the dish is on
+    // sale and whose doing it was hidden.
+    menu_items: table([
+      options.dishHiddenByAuto86
+        ? { id: 'menu-carbonara', is_available: false, auto_disabled_at: '2026-11-03T03:00:00.000Z', auto_86_snoozed_until: null }
+        : { id: 'menu-carbonara', is_available: true, auto_disabled_at: null, auto_86_snoozed_until: null },
+    ]),
     inventory_stock: table([
       {
         inventory_item_id: 'flour',
         outlet_id: null,
         current_qty: options.poolQtyAfter ?? options.flourQty - 10,
         reorder_level: 0,
+        counted_at: '2026-10-01T00:00:00.000Z',
       },
     ]),
   }
@@ -216,6 +233,7 @@ describe('cancelling that order', () => {
       flourQty: 0, // as the sale left it
       poolQtyAfter: 10, // the reversal puts the 10 g back
       recordedSales: THE_SALE,
+      dishHiddenByAuto86: true,
       openAlerts: [{ id: 'alert-1', inventory_item_id: 'flour' }],
     })
 
