@@ -113,6 +113,7 @@ export default function PosScreen() {
   );
   const add = usePosCartStore((s) => s.add);
   const setQty = usePosCartStore((s) => s.setQty);
+  const setLineNote = usePosCartStore((s) => s.setLineNote);
   const reset = usePosCartStore((s) => s.reset);
   const setOrderType = usePosCartStore((s) => s.setOrderType);
   const editContext = usePosCartStore((s) => s.editContext);
@@ -325,7 +326,12 @@ export default function PosScreen() {
     [visibleItems, layout.columns],
   );
 
-  const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+  const addToCart = (
+    item: RegisterItem,
+    selections: PosCartSelection[],
+    quantity: number,
+    note?: string,
+  ) => {
     // Both at the store price: the store derives `basePrice` from
     // `listBasePrice` through the sale's channel pricing.
     const listBasePrice = item.product.discounted_price ?? item.product.price;
@@ -337,6 +343,7 @@ export default function PosScreen() {
         basePrice: listBasePrice,
         quantity,
         selections,
+        ...(note ? { note } : {}),
       });
       setSheetFor(null);
     } catch (error) {
@@ -621,6 +628,7 @@ export default function PosScreen() {
         setOrderType(type.id, type.name, type.serviceCharge, pricingFor(type), type.type)
       }
       onChangeQty={setQty}
+      onEditNote={setLineNote}
       onClear={() => {
         reset();
         setIsCartExpanded(false);
@@ -746,7 +754,7 @@ export default function PosScreen() {
           groups={sheetFor.groups}
           pricing={activePricing}
           onCancel={() => setSheetFor(null)}
-          onConfirm={(selections, quantity) => addToCart(sheetFor, selections, quantity)}
+          onConfirm={(selections, quantity, note) => addToCart(sheetFor, selections, quantity, note)}
         />
       )}
 

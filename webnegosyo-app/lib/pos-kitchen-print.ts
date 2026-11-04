@@ -61,6 +61,8 @@ export async function printPosKitchenChit(
         _creationTime: createdAt,
         customerName: args.customerName,
         orderType: args.orderType,
+        // Checkout answers ("Notes", …): the chit prints the note-like ones.
+        customerData: args.customerData,
         items: args.items.map((item) => ({
           menuItemName: item.menuItemName,
           quantity: item.quantity,

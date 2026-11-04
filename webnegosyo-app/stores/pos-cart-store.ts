@@ -16,8 +16,10 @@ import {
   addLine,
   cartTotals,
   clearCart,
+  lineKeyWithNote,
   removeLine,
   round2,
+  setLineNote,
   updateQty,
   type CartTotals,
   type PosCartLine,
@@ -66,6 +68,7 @@ import {
 } from "../lib/pos-gov-discount";
 import type { StoredGovDiscount } from "../lib/gov-discount";
 import { useGovDiscountContextStore } from "./gov-discount-context-store";
+import { rekeyDiscountSession, rekeyEditDiscount } from "../lib/pos-line-rekey";
 import { govRecordDraft, type GovRecordDraft } from "../lib/gov-ledger/record-request";
 import { previewSessionVoucher, type VoucherEntryVerdict } from "../lib/pos-voucher-entry";
 import type { StaffPermissionHolder } from "../lib/staff-permissions";
@@ -151,6 +154,12 @@ interface PosCartState {
   add: (input: PosLineInput) => void;
   setQty: (key: string, quantity: number) => void;
   remove: (key: string) => void;
+  /**
+   * Write (or, blank, clear) a line's kitchen note. The note is part of the
+   * line's key, so the line is re-keyed (merging into an identical line) and
+   * its item discount, voucher unit picks and Senior/PWD claims move with it.
+   */
+  setLineNote: (key: string, note: string) => void;
   reset: () => void;
   setOrderType: (
     orderTypeId: string,
@@ -340,6 +349,34 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
     set((s) => {
       const lines = removeLine(s.lines, key);
       return { lines, discount: discountAfterCartChange(s.discount, lines) };
+    }),
+
+  setLineNote: (key, note) =>
+    set((s) => {
+      const line = s.lines.find((entry) => entry.key === key);
+      if (!line) return {};
+      const lines = setLineNote(s.lines, key, note);
+      if (lines === s.lines) return {};
+      const nextKey = lineKeyWithNote(line, note);
+      // Appending to a placed order: a new line that shares its key with a
+      // placed one is priced together with it (`effectiveEditCart`), so what
+      // is held under that key belongs to the placed dish and stays put.
+      const isPlacedKey =
+        s.editContext?.mode === "append" &&
+        s.editContext.appendBaseCart.some((placed) => placed.key === key);
+      if (isPlacedKey) return { lines, discount: discountAfterCartChange(s.discount, lines) };
+
+      const discount = discountAfterCartChange(rekeyDiscountSession(s.discount, key, nextKey), lines);
+      const storedDiscount = s.editContext
+        ? rekeyEditDiscount(s.editContext.storedDiscount, key, nextKey)
+        : null;
+      return {
+        lines,
+        discount,
+        ...(s.editContext && storedDiscount !== s.editContext.storedDiscount
+          ? { editContext: { ...s.editContext, storedDiscount } }
+          : {}),
+      };
     }),
 
   // Clears the sale but keeps the order type, so a cashier ringing up a queue
