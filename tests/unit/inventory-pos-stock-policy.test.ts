@@ -97,3 +97,5 @@ describe('readPosStockPolicy', () => {
     await expect(readPosStockPolicy(TENANT)).resolves.toBe('warn')
   })
 })
+
+export {}
