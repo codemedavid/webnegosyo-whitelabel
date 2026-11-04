@@ -5,6 +5,9 @@
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 
 import { createStandardDesign } from './standard-designs'
+import { CHECKOUT_TEMPLATES } from './templates-checkout'
+import { CONFIRMATION_TEMPLATES } from './templates-confirmation'
+import { TRACKING_TEMPLATES } from './templates-tracking'
 import type { PageId } from './types'
 
 export interface PageTemplate {
@@ -25,9 +28,9 @@ const standard = (page: PageId): PageTemplate => ({
   build: () => createStandardDesign(page),
 })
 
-/** Page-specific templates are appended by each page's templates file. */
+/** "Standard" first, then each page's own templates (templates-<page>.ts). */
 export const PAGE_TEMPLATES: Readonly<Record<PageId, readonly PageTemplate[]>> = {
-  tracking: [standard('tracking')],
-  confirmation: [standard('confirmation')],
-  checkout: [standard('checkout')],
+  tracking: [standard('tracking'), ...TRACKING_TEMPLATES],
+  confirmation: [standard('confirmation'), ...CONFIRMATION_TEMPLATES],
+  checkout: [standard('checkout'), ...CHECKOUT_TEMPLATES],
 }

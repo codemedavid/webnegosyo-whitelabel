@@ -2,7 +2,17 @@ import type { CSSProperties } from 'react'
 
 import type { PageId } from '@/lib/page-designer/types'
 
+import { checkoutThemeStyle } from './page-theme-checkout'
+import { confirmationThemeStyle } from './page-theme-confirmation'
+import { trackingThemeStyle } from './page-theme-tracking'
+
 type TenantRow = Readonly<Record<string, unknown>>
+
+const THEMES: Record<PageId, (tenant: TenantRow) => CSSProperties> = {
+  tracking: trackingThemeStyle,
+  confirmation: confirmationThemeStyle,
+  checkout: checkoutThemeStyle,
+}
 
 /**
  * The page's own theme variables (`--trk-*` for tracking, `--co-*` for
@@ -10,7 +20,5 @@ type TenantRow = Readonly<Record<string, unknown>>
  * paint exactly like the live page. Server-safe (pure).
  */
 export function pageThemeStyle(page: PageId, tenant: TenantRow): CSSProperties {
-  void page
-  void tenant
-  return {}
+  return THEMES[page](tenant)
 }
