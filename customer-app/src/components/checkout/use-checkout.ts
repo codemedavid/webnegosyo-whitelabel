@@ -106,6 +106,7 @@ export function useCheckout() {
     outlet,
     needsOutlet: features?.multiBranch ?? false,
     paymentMethodId: paymentMethod?.id ?? null,
+    hasPaymentMethods: paymentMethods.length > 0,
     needsPaymentReference,
     paymentReference,
     hasDeliveryPlace: deliveryPlace !== null,
@@ -119,12 +120,13 @@ export function useCheckout() {
   const context = stableStringify({ lines, mode, outletId: outlet?.id ?? null, paymentId: paymentMethod?.id ?? null, deliveryPlace, paymentReference })
 
   const send = (delivery: AppOrderDelivery | null) => {
-    if (!orderType || !paymentMethod) return
+    // No method offered = the order goes without one (as on the web); a method offered but unpicked never sends.
+    if (!orderType || (!paymentMethod && paymentMethods.length > 0)) return
     const draft = buildOrderDraft({
       orderTypeId: orderType.id,
       outletId: outlet?.id ?? null,
       lines,
-      paymentMethodId: paymentMethod.id,
+      paymentMethodId: paymentMethod?.id ?? null,
       paymentReference: needsPaymentReference ? paymentReference : null,
       voucherCode: voucher.codeToSend,
       rewardId: rewardCentavos > 0 && reward ? reward.id : null,

@@ -34,6 +34,12 @@ describe('buildOrderDraft', () => {
     expect(appOrderDraftSchema.safeParse(draft).success).toBe(true)
   })
 
+  it('sends no payment method (null) for a store that offers none', () => {
+    const draft = buildOrderDraft({ ...input, paymentMethodId: null })
+    expect(draft.paymentMethodId).toBeNull()
+    expect(appOrderDraftSchema.safeParse(draft).success).toBe(true)
+  })
+
   it('sends a blank reference or code as null', () => {
     expect(buildOrderDraft({ ...input, paymentReference: '   ', voucherCode: '' })).toMatchObject({ paymentReference: null, voucherCode: null })
   })

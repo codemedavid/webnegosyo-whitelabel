@@ -39,6 +39,8 @@ export interface CheckoutState {
   /** Multi-branch stores must know which branch makes the order. */
   needsOutlet: boolean
   paymentMethodId: string | null
+  /** The order type offers at least one method; with none the order goes without one, as on the web. */
+  hasPaymentMethods: boolean
   /** The chosen method needs proof: a typed reference number until screenshots arrive. */
   needsPaymentReference: boolean
   paymentReference: string
@@ -72,7 +74,7 @@ export function checkoutBlockers(state: CheckoutState): string[] {
       ? [[true, (state.deliveryFee === 'refused' ? state.deliveryRefusal : null) ?? FEE_BLOCKERS[state.deliveryFee]] as [boolean, string]]
       : []),
     [state.shortfallCentavos > 0, `Add ${formatPeso(state.shortfallCentavos)} more for ${MODE_WORDS[state.mode]}`],
-    [state.paymentMethodId === null, 'Choose how to pay'],
+    [state.paymentMethodId === null && state.hasPaymentMethods, 'Choose how to pay'],
     [state.paymentMethodId !== null && state.needsPaymentReference && state.paymentReference.trim() === '', 'Add your payment reference number'],
     ...(VOUCHER_BLOCKERS[state.voucher] ? [[true, VOUCHER_BLOCKERS[state.voucher]] as [boolean, string]] : []),
   ]

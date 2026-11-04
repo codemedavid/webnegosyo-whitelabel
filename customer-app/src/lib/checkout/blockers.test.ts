@@ -27,6 +27,7 @@ const ready = {
   outlet,
   needsOutlet: true,
   paymentMethodId: 'pm-cash',
+  hasPaymentMethods: true,
   needsPaymentReference: false,
   paymentReference: '',
   hasDeliveryPlace: false,
@@ -76,6 +77,11 @@ describe('checkoutBlockers', () => {
       'Add ₱60 more for delivery',
       'Choose how to pay',
     ])
+  })
+
+  // The web checkout places the order without a method when the order type offers none.
+  it('does not ask how to pay when the store offers no payment method', () => {
+    expect(checkoutBlockers({ ...ready, paymentMethodId: null, hasPaymentMethods: false })).toEqual([])
   })
 
   it('needs a branch on multi-branch stores and an order type the store offers', () => {

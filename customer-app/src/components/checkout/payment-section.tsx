@@ -77,7 +77,7 @@ export function PaymentSection({ methods, selected, onSelect, reference, onRefer
     return (
       <CheckoutSection title="Payment">
         <AppText variant="body" color="textMuted">
-          This store hasn’t set up a way to pay in the app yet.
+          You’ll pay the store directly for this order.
         </AppText>
       </CheckoutSection>
     )

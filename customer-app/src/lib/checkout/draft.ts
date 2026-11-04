@@ -10,7 +10,8 @@ export interface DraftInput {
   orderTypeId: string
   outletId: string | null
   lines: readonly CartLine[]
-  paymentMethodId: string
+  /** null only when the order type offers no method (the order then goes without one). */
+  paymentMethodId: string | null
   /** Only for a method that needs proof; blank = none. */
   paymentReference: string | null
   /** A voucher the server's preview says applies; null otherwise. */

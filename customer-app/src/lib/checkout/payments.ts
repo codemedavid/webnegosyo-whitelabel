@@ -3,7 +3,9 @@ import type { AppPaymentMethod } from '@/lib/contract'
 /**
  * Methods the customer may pick for this order: online (the merchant's
  * PayMongo) only once the store switched it on, and only methods linked to
- * the order type — an empty link list means every order type.
+ * the order type — a method linked to none is offered for none, as on the web
+ * checkout (and the server refuses it). No method offered = the order goes
+ * without one, as the web places it.
  */
 export function availablePaymentMethods(
   methods: readonly AppPaymentMethod[],
@@ -13,6 +15,7 @@ export function availablePaymentMethods(
   return methods.filter(
     (method) =>
       (method.kind !== 'online' || hasOnlinePayments) &&
-      (method.orderTypeIds.length === 0 || (orderTypeId !== undefined && method.orderTypeIds.includes(orderTypeId))),
+      orderTypeId !== undefined &&
+      method.orderTypeIds.includes(orderTypeId),
   )
 }

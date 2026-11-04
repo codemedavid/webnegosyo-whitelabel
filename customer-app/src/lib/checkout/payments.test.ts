@@ -11,7 +11,12 @@ const method = (id: string, kind: AppPaymentMethod['kind'], orderTypeIds: string
 })
 
 describe('availablePaymentMethods', () => {
-  const methods = [method('online', 'online'), method('gcash', 'manual'), method('cash', 'cash', ['ot-pickup', 'ot-dine'])]
+  const methods = [
+    method('online', 'online', ['ot-pickup', 'ot-delivery']),
+    method('gcash', 'manual', ['ot-pickup', 'ot-delivery']),
+    method('cash', 'cash', ['ot-pickup', 'ot-dine']),
+    method('unlinked', 'manual'),
+  ]
   const ids = (found: AppPaymentMethod[]) => found.map((candidate) => candidate.id)
 
   it('offers everything linked to the order type when the store takes online payments', () => {
@@ -26,7 +31,12 @@ describe('availablePaymentMethods', () => {
     expect(ids(availablePaymentMethods(methods, true, 'ot-delivery'))).toEqual(['online', 'gcash'])
   })
 
-  it('offers only unlinked (every-type) methods while no order type is known', () => {
-    expect(ids(availablePaymentMethods(methods, true, undefined))).toEqual(['online', 'gcash'])
+  // The web checkout and the server (choosePaymentMethod) offer a method only for the types it is linked to.
+  it('never offers a method linked to no order type', () => {
+    expect(ids(availablePaymentMethods(methods, true, 'ot-dine'))).toEqual(['cash'])
+  })
+
+  it('offers nothing while no order type is known', () => {
+    expect(ids(availablePaymentMethods(methods, true, undefined))).toEqual([])
   })
 })
