@@ -28,6 +28,7 @@ import { decodeAppQuoteToken } from '../delivery/quote-token'
 export const REWARDS_SOON = 'Rewards at checkout are coming soon. Remove the reward and try again.'
 export const ORDER_TYPE_GONE = 'That way of ordering is not available right now. Choose another one.'
 export const PAYMENT_GONE = 'That payment method is not available for this order. Choose another one.'
+export const PAYMENT_NEEDED = 'Choose how you will pay for this order.'
 export const PROOF_NEEDED = 'Enter the reference number of your payment to continue.'
 export const DELIVERY_NEEDED = 'Choose your delivery address from the suggestions.'
 export const QUOTE_NEEDED = 'Your delivery quote has expired. Choose your address again to get a new one.'
@@ -53,7 +54,7 @@ export interface OrderRequestInput {
 }
 
 export type OrderRequest =
-  | { ok: true; input: PlaceOrderInput; paymentMethodName: string }
+  | { ok: true; input: PlaceOrderInput; paymentMethodName: string | null }
   | { ok: false; message: string }
 
 const refuse = (message: string): OrderRequest => ({ ok: false, message })
@@ -65,16 +66,24 @@ export function chooseOrderType(orderTypes: readonly OrderType[], orderTypeId: s
   return { id: row.id, kind: row.type, name: row.name, row }
 }
 
+/**
+ * The active methods checkout offers for the order type: those linked to it
+ * (the web's `groupPaymentMethodsByOrderType` — an unlinked method is offered
+ * for no order type).
+ */
+export function offeredPaymentMethods(methods: readonly PaymentMethodWithLinks[], orderTypeId: string): PaymentMethodWithLinks[] {
+  return methods.filter(
+    (method) => method.is_active !== false && (method.payment_method_order_types ?? []).some((link) => link.order_type_id === orderTypeId),
+  )
+}
+
 /** The active method linked to the order type, as checkout offers it. */
 export function choosePaymentMethod(
   methods: readonly PaymentMethodWithLinks[],
   paymentMethodId: string,
   orderTypeId: string,
 ): PaymentMethodWithLinks | null {
-  const method = methods.find((candidate) => candidate.id === paymentMethodId)
-  if (!method || method.is_active === false) return null
-  const isLinked = (method.payment_method_order_types ?? []).some((link) => link.order_type_id === orderTypeId)
-  return isLinked ? method : null
+  return offeredPaymentMethods(methods, orderTypeId).find((candidate) => candidate.id === paymentMethodId) ?? null
 }
 
 /** The customer data the web writes for the same answers (see the header). */
@@ -104,14 +113,43 @@ function proofOf(method: PaymentMethodWithLinks, reference: string | null) {
   return method.require_payment_proof === true ? { ok: false as const } : { ok: true as const, proof: undefined }
 }
 
+type PaymentChoice = { ok: true; fields: Partial<PlaceOrderInput>; name: string | null } | { ok: false; message: string }
+
+/**
+ * What the order carries about payment. No method is sent only when the order
+ * type offers none: the web checkout then places the order without one
+ * (`resolvePaymentSubmitPlan` → 'submit-order') and the store settles it in person.
+ */
+function choosePayment(request: OrderRequestInput): PaymentChoice {
+  const { draft, orderType } = request
+  if (draft.paymentMethodId === null) {
+    return offeredPaymentMethods(request.paymentMethods, orderType.id).length === 0
+      ? { ok: true, fields: {}, name: null }
+      : { ok: false, message: PAYMENT_NEEDED }
+  }
+  const method = choosePaymentMethod(request.paymentMethods, draft.paymentMethodId, orderType.id)
+  if (!method) return { ok: false, message: PAYMENT_GONE }
+  const proof = proofOf(method, draft.paymentReference)
+  if (!proof.ok) return { ok: false, message: PROOF_NEEDED }
+  return {
+    ok: true,
+    name: method.name,
+    fields: {
+      paymentMethodId: method.id,
+      paymentMethodName: method.name || undefined,
+      paymentMethodDetails: method.details || undefined,
+      paymentMethodQrCodeUrl: method.qr_code_url || undefined,
+      ...(proof.proof ? { paymentProof: proof.proof } : {}),
+    },
+  }
+}
+
 export function buildPlaceOrderInput(request: OrderRequestInput): OrderRequest {
   const { draft, orderType, profile } = request
   if (draft.rewardId !== null) return refuse(REWARDS_SOON)
 
-  const method = choosePaymentMethod(request.paymentMethods, draft.paymentMethodId, orderType.id)
-  if (!method) return refuse(PAYMENT_GONE)
-  const proof = proofOf(method, draft.paymentReference)
-  if (!proof.ok) return refuse(PROOF_NEEDED)
+  const payment = choosePayment(request)
+  if (!payment.ok) return refuse(payment.message)
 
   const isDelivery = orderType.kind === 'delivery'
   const delivery = isDelivery ? draft.delivery : null
@@ -121,7 +159,7 @@ export function buildPlaceOrderInput(request: OrderRequestInput): OrderRequest {
 
   return {
     ok: true,
-    paymentMethodName: method.name,
+    paymentMethodName: payment.name,
     input: {
       tenantId: request.tenantId,
       items: request.lines,
@@ -129,11 +167,7 @@ export function buildPlaceOrderInput(request: OrderRequestInput): OrderRequest {
       orderTypeId: orderType.id,
       customerData: buildAppCustomerData(profile, delivery, draft.notes),
       ...(lalamove ?? {}),
-      paymentMethodId: method.id,
-      paymentMethodName: method.name || undefined,
-      paymentMethodDetails: method.details || undefined,
-      paymentMethodQrCodeUrl: method.qr_code_url || undefined,
-      ...(proof.proof ? { paymentProof: proof.proof } : {}),
+      ...payment.fields,
       ...(request.outletId ? { outletId: request.outletId } : {}),
       ...(draft.voucherCode ? { voucherCodes: [draft.voucherCode] } : {}),
       clientOrderId: request.idempotencyKey,

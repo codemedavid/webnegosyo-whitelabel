@@ -58,7 +58,7 @@ interface PreparedOrder {
   input: PlaceOrderInput
   orderType: ChosenOrderType
   outletName: string | null
-  paymentMethodName: string
+  paymentMethodName: string | null
 }
 
 type Prepared = { ok: true; order: PreparedOrder } | { ok: false; outcome: AppOutcome<AppOrderDetail> }

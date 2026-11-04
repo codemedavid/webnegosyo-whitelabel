@@ -98,7 +98,7 @@ export const appPaymentMethodSchema = z.object({
   instructions: z.string().max(2000).nullable(),
   /** The store wants a screenshot or reference number before it confirms. */
   requiresProof: z.boolean(),
-  /** Order types this method is offered for (the web's payment_method_order_types); empty = every type. */
+  /** Order types this method is offered for (the web's payment_method_order_types); empty = none, as on the web. */
   orderTypeIds: z.array(z.string().min(1)),
 })
 

@@ -97,7 +97,8 @@ export const appOrderDraftSchema = z.object({
     )
     .min(1)
     .max(50),
-  paymentMethodId: z.string().min(1),
+  /** null only when the store offers no payment method for this order type (the web then places the order without one). */
+  paymentMethodId: z.string().min(1).nullable(),
   /** Typed proof (reference number) for a method that requires proof; null when none was typed. */
   paymentReference: z.string().trim().min(1).max(80).nullable(),
   voucherCode: z.string().trim().min(1).max(40).nullable(),

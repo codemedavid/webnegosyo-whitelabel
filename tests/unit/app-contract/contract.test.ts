@@ -149,6 +149,12 @@ describe('app contract — order draft', () => {
     expect(appOrderDraftSchema.safeParse(zero).success).toBe(false)
   })
 
+  it('takes no payment method (null) for a store that offers none, but never an empty id', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentMethodId: null }).success).toBe(true)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentMethodId: '' }).success).toBe(false)
+  })
+
   it('takes a delivery as a picked place, never bare text', async () => {
     const { appOrderDraftSchema } = await loadContract()
     const delivery = { address: ' 12 Rizal St, Makati ', lat: 14.55, lng: 121.02, quoteToken: null }

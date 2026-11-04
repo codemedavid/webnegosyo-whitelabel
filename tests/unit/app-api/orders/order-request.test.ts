@@ -4,6 +4,7 @@ import {
   chooseOrderType,
   DELIVERY_NEEDED,
   PAYMENT_GONE,
+  PAYMENT_NEEDED,
   PROOF_NEEDED,
   QUOTE_NEEDED,
   REWARDS_SOON,
@@ -76,6 +77,32 @@ describe('buildPlaceOrderInput', () => {
   it('refuses a method that is not linked to the order type', () => {
     expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: 'delivery-only' }) }))).toEqual({ ok: false, message: PAYMENT_GONE })
     expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: 'unknown' }) }))).toEqual({ ok: false, message: PAYMENT_GONE })
+  })
+
+  // The web checkout places the order without a method when the order type offers none
+  // (resolvePaymentSubmitPlan 'submit-order'); 119 of 301 live stores have no payment method.
+  it('places without a method when the order type offers none, as the web checkout does', () => {
+    const built = buildPlaceOrderInput(request({ paymentMethods: [], draft: draft({ paymentMethodId: null, paymentReference: 'IGNORED' }) }))
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    expect(built.paymentMethodName).toBeNull()
+    expect(built.input).not.toHaveProperty('paymentMethodId')
+    expect(built.input).not.toHaveProperty('paymentMethodName')
+    expect(built.input).not.toHaveProperty('paymentProof')
+    expect(built.input).toMatchObject({ orderTypeId: PICKUP_TYPE, clientOrderId: KEY, channel: 'app' })
+  })
+
+  it('counts only active methods linked to this order type as offered', () => {
+    const elsewhere = [
+      { id: 'inactive', name: 'Old', is_active: false, payment_method_order_types: [{ order_type_id: PICKUP_TYPE }] },
+      { id: 'unlinked', name: 'Bank', is_active: true, payment_method_order_types: [] },
+      { id: 'delivery-only', name: 'COD', is_active: true, payment_method_order_types: [{ order_type_id: DELIVERY_TYPE }] },
+    ] as unknown as PaymentMethodWithLinks[]
+    expect(buildPlaceOrderInput(request({ paymentMethods: elsewhere, draft: draft({ paymentMethodId: null }) })).ok).toBe(true)
+  })
+
+  it('asks for a method when the order type offers one and none was sent', () => {
+    expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: null }) }))).toEqual({ ok: false, message: PAYMENT_NEEDED })
   })
 
   it('asks for the reference when the method requires proof', () => {
