@@ -61,6 +61,14 @@ describe("GlobalReceiptAutoPrint logic reuse", () => {
     expect(src).toMatch(/usePrintedLedger\(/);
   });
 
+  it("gives a claim back when the print FAILED (printClaimed), so a manual retry is not a REPRINT", () => {
+    const src = component();
+    const loop = src.slice(src.indexOf("async function printReceiptsSequentially"));
+    expect(loop).toMatch(/printClaimed\("receipt", /);
+    // No retry loop of its own: a failed order is not re-queued behind the cashier's back.
+    expect(src).not.toMatch(/seenRef\.current\s*=\s*.*delete|releasePrinted/);
+  });
+
   it("prints through the same receipt hook the Reprint button uses", () => {
     expect(component()).toMatch(/useOrderPrint/);
   });

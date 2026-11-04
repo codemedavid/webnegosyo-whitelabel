@@ -6,8 +6,10 @@
  */
 
 const mockClaimPrinted = jest.fn();
+const mockReleasePrinted = jest.fn(async () => {});
 jest.mock("./printed-ledger", () => ({
   claimPrinted: (...args: unknown[]) => mockClaimPrinted(...args),
+  releasePrinted: (...args: unknown[]) => mockReleasePrinted(...(args as [])),
 }));
 
 const mockPrintForRole = jest.fn();
@@ -109,10 +111,26 @@ describe("printPosKitchenChit", () => {
     expect(mockClaimPrinted).not.toHaveBeenCalled();
   });
 
-  it("never throws — a dead kitchen printer only logs", async () => {
+  it("never throws — a dead kitchen printer only logs — and gives the claim back", async () => {
     mockPrintForRole.mockRejectedValue(new Error("boom"));
     const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
     expect(await printPosKitchenChit("order-1", ARGS, 0, ON)).toBe(false);
     warn.mockRestore();
+    expect(mockReleasePrinted).toHaveBeenCalledWith("kitchen", ["order-1"]);
+  });
+
+  it("gives the claim back when no paper came out, so the cashier's retry is not stamped REPRINT", async () => {
+    mockPrintForRole.mockResolvedValue({ anySuccess: false, results: [{ result: { error: "off" } }] });
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await printPosKitchenChit("order-1", ARGS, 0, ON)).toBe(false);
+    warn.mockRestore();
+    expect(mockReleasePrinted).toHaveBeenCalledWith("kitchen", ["order-1"]);
+  });
+
+  it("keeps the claim once the chit printed, and never releases a claim it lost", async () => {
+    await printPosKitchenChit("order-1", ARGS, 0, ON);
+    mockClaimPrinted.mockResolvedValue([]);
+    await printPosKitchenChit("order-2", ARGS, 0, ON);
+    expect(mockReleasePrinted).not.toHaveBeenCalled();
   });
 });

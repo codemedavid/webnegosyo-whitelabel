@@ -98,9 +98,10 @@ export async function claimPrinted(
 /**
  * Give back a claim whose paper never came out (the printer was off or out
  * of reach), so the next print of that order is a FIRST print, not a copy.
- * Only a manual print releases: the auto-print watchers keep their claim on a
- * failure (their dedupe is on the ids they have SEEN, so a release never makes
- * them print an old order behind the cashier's back).
+ * Manual prints release here directly; automatic ones (the watchers, the
+ * register's chit) through printClaimed (claimed-print.ts). A release never
+ * makes a watcher print an old order behind the cashier's back: its dedupe is
+ * on the ids it has SEEN.
  */
 export async function releasePrinted(kind: PrintedLedgerKind, ids: readonly string[]): Promise<void> {
   const ledger = ledgers[kind];
