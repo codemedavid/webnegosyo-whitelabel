@@ -11,6 +11,7 @@ import { useStorefrontMenu } from '@/storefront/catalog/use-storefront-menu'
 import { STOREFRONT_PACK_PAGES, type StorefrontPackPages } from '@/storefront/packs/registry'
 import { getStorefrontPack, resolveStorefrontPack } from '@/lib/storefront-packs'
 import { StorefrontRuntime } from '@/storefront/runtime/storefront-runtime'
+import { MenuStockProvider } from '@/components/customer/card-templates/card-stock'
 import type { StorefrontMenuInput } from '@/storefront/contracts'
 
 type StorefrontPage = 'menu' | 'home'
@@ -62,8 +63,14 @@ function ReadyMenu({ isWelcomePreview, page = 'menu', ...props }: StorefrontClie
     <TableLinkCapture tenantSlug={props.tenantSlug} />
     <StorefrontVisitBeacon tenantSlug={props.tenantSlug} isOwnerViewing={!!props.isBrandAdmin || isWelcomePreview} />
     <OutletGate tenant={props.tenant} tenantSlug={props.tenantSlug} outlets={props.outlets} isPreview={isWelcomePreview} />
-    <StorefrontRuntime menu={menu} checkoutEntry={getStorefrontPack(packId).checkoutEntry}>
-      <PackPage />
-    </StorefrontRuntime>
+    <MenuStockProvider
+      tenantId={props.tenant?.id}
+      outletId={menu.selectedOutletId ?? null}
+      isInventoryEnabled={Boolean(props.tenant?.inventory_enabled)}
+    >
+      <StorefrontRuntime menu={menu} checkoutEntry={getStorefrontPack(packId).checkoutEntry}>
+        <PackPage />
+      </StorefrontRuntime>
+    </MenuStockProvider>
   </>
 }

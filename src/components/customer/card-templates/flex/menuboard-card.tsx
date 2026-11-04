@@ -6,6 +6,7 @@ import {
   AddButton, selectOnCardClick, CardMedia, CardTitleButton, Price, SoldOutVeil, optionHint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
+import { LowStockBadge } from '../card-stock'
 
 const MENUBOARD_DEFAULTS: CardStyle = {
   imageRatio: 'square',
@@ -71,6 +72,7 @@ export const MenuboardCard = memo(function MenuboardCard({
         className={`shrink-0 ${THUMB_CLASS[style.imageRatio]}`}
         imageClassName="transition-transform duration-500 group-hover:scale-110"
       >
+        <LowStockBadge branding={branding} />
         {!isOrderable && <SoldOutVeil label="Out" />}
       </CardMedia>
 

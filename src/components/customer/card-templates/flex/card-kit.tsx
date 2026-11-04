@@ -26,6 +26,7 @@ import type { BrandingColors } from '@/lib/branding-utils'
 import { resolveCardStyle, type CardStyle } from '@/lib/card-style'
 import type { MenuItem } from '@/types/database'
 import { readableOn, tint } from '@/lib/card-color'
+import { useCardStock } from '../card-stock'
 
 export { readableOn, tint }
 
@@ -123,7 +124,10 @@ export function CardMedia({
 
 /** Sold-out veil over the photo. The card stays tappable so the dish can be read. */
 export function SoldOutVeil({ label = 'Sold out' }: { label?: string }) {
-  const text = useStorefrontLabel(label === 'Unavailable' ? 'menu.unavailable' : 'menu.sold_out', label)
+  // A dish switched on but out of stock always says "Sold out" (card-stock.tsx).
+  const { isSoldOut } = useCardStock()
+  const shown = isSoldOut && label === 'Unavailable' ? 'Sold out' : label
+  const text = useStorefrontLabel(shown === 'Unavailable' ? 'menu.unavailable' : 'menu.sold_out', shown)
   return (
     <div className="absolute inset-0 z-[1] flex items-center justify-center bg-black/45 backdrop-blur-[1.5px]">
       <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-900">
