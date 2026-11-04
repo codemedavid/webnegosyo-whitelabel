@@ -20,6 +20,21 @@ function renderPicker(overrides: Partial<React.ComponentProps<typeof ReportRange
 }
 
 describe("ReportRangePicker", () => {
+  it("closes without applying from a Cancel with a 44pt target (not a second 'Done' beside Apply)", () => {
+    const props = renderPicker();
+
+    fireEvent.press(screen.getByLabelText("2026-09-03"));
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(screen.queryByText("Done")).toBeNull();
+    const flat = Array.isArray(cancel.props.style) ? Object.assign({}, ...cancel.props.style) : cancel.props.style;
+    expect(flat.minHeight).toBeGreaterThanOrEqual(44);
+    expect(flat.minWidth).toBeGreaterThanOrEqual(44);
+    fireEvent.press(cancel);
+
+    expect(props.onClose).toHaveBeenCalled();
+    expect(props.onApply).not.toHaveBeenCalled();
+  });
+
   it("applies the day the merchant tapped", () => {
     // Arrange
     const props = renderPicker();

@@ -124,14 +124,15 @@ export function itemSummaryBranchArgs(viewOutletId: string | null): { outletId: 
   return { outletId: viewOutletId, isUnassigned: false };
 }
 
-export type ItemSummaryAccess = "hidden" | "unavailable" | "available";
+export type ItemSummaryAccess = "hidden" | "available";
 
 /**
  * Whether the Orders tab offers the summary, and what it shows.
  *
  * Owner decision: whole-store sales need `reports`; without it the toggle is
  * not drawn at all (no locked tab to tease). Stores whose orders are not on
- * the platform get the toggle and an explanation — never ₱0.
+ * the platform get no toggle either (the panel's "Not on this store yet"
+ * stays only as a fallback) — never ₱0.
  */
 export function resolveItemSummaryAccess(input: {
   holder: StaffPermissionHolder;
@@ -140,7 +141,9 @@ export function resolveItemSummaryAccess(input: {
 }): ItemSummaryAccess {
   if (!input.isDated || input.route === "idle") return "hidden";
   if (!hasPermission(input.holder, "reports")) return "hidden";
-  return input.route === "platform" ? "available" : "unavailable";
+  // Convex / tenant-database stores get no toggle at all: a tab that only
+  // opens "Not on this store yet" is a dead end (QA, 2026-11-05).
+  return input.route === "platform" ? "available" : "hidden";
 }
 
 function plural(count: number, one: string, many: string): string {

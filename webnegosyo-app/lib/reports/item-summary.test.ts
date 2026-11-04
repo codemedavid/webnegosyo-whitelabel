@@ -352,8 +352,8 @@ describe("resolveItemSummaryAccess", () => {
     );
   });
 
-  it("explains instead of reading on Convex and tenant-database stores", () => {
-    expect(resolveItemSummaryAccess({ holder: owner, route: "convex", isDated: true })).toBe("unavailable");
-    expect(resolveItemSummaryAccess({ holder: owner, route: "unsupported", isDated: true })).toBe("unavailable");
+  it("offers nothing on Convex and tenant-database stores (no toggle into an explainer)", () => {
+    expect(resolveItemSummaryAccess({ holder: owner, route: "convex", isDated: true })).toBe("hidden");
+    expect(resolveItemSummaryAccess({ holder: owner, route: "unsupported", isDated: true })).toBe("hidden");
   });
 });

@@ -464,6 +464,7 @@ export default function KitchenScreen() {
       <RingStatusBar
         ringingCount={ringTracker.ringing.size}
         waitingCount={waitingCount}
+        isDemo={isDemo}
         onTestSound={testSound}
       />
 

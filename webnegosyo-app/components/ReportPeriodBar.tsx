@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from "react-native";
 
 import { colors, typography, spacing, radius } from "../theme/colors";
@@ -86,6 +86,7 @@ export function ReportPeriodBar({
   style,
 }: ReportPeriodBarProps) {
   const [isPickerOpen, setPickerOpen] = useState(false);
+  const chipRowRef = useRef<ScrollView>(null);
 
   const isCustom = selection.kind !== "preset";
   const pickLabel = isCustom ? describeSelection(selection, nowMs, schedule) : "Pick dates";
@@ -110,7 +111,18 @@ export function ReportPeriodBar({
     const isCustomActive = isDated && matches.length === 0;
     return (
       <View style={style}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        <ScrollView
+          ref={chipRowRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+          // Picked dates turn the last chip ("Custom") into "Sep 1 – Sep 30":
+          // the row grows under a fixed offset and the chip ends cut at the
+          // gutter. Keep the active last chip in view.
+          onContentSizeChange={() => {
+            if (isCustomActive) chipRowRef.current?.scrollToEnd({ animated: false });
+          }}
+        >
           {onClear ? <Chip label={clearLabel} isActive={!isDated} onPress={onClear} /> : null}
           {quickPicks.map((pick) => (
             <Chip

@@ -163,6 +163,29 @@ describe("ReportPeriodBar — quick picks", () => {
     expect(screen.getByText("Custom")).toBeTruthy();
   });
 
+  it("scrolls the row to its end when picked dates widen the last chip, so it is never cut off", () => {
+    renderQuick({ kind: "range", fromKey: "2026-09-02", toKey: "2026-09-05" });
+    const { ScrollView } = jest.requireActual("react-native");
+    const row = screen.UNSAFE_getByType(ScrollView);
+    expect(row.props.contentContainerStyle).toEqual(expect.objectContaining({ paddingRight: expect.any(Number) }));
+    const scrollToEnd = jest.fn();
+    row.instance.scrollToEnd = scrollToEnd;
+
+    fireEvent(row, "contentSizeChange", 600, 40);
+    expect(scrollToEnd).toHaveBeenCalled();
+  });
+
+  it("leaves the row where it is while a quick pick is chosen", () => {
+    renderQuick({ kind: "day", dayKey: "2026-09-18" });
+    const { ScrollView } = jest.requireActual("react-native");
+    const row = screen.UNSAFE_getByType(ScrollView);
+    const scrollToEnd = jest.fn();
+    row.instance.scrollToEnd = scrollToEnd;
+
+    fireEvent(row, "contentSizeChange", 600, 40);
+    expect(scrollToEnd).not.toHaveBeenCalled();
+  });
+
   it("names custom dates on the Custom chip", () => {
     renderQuick({ kind: "range", fromKey: "2026-09-02", toKey: "2026-09-05" });
 

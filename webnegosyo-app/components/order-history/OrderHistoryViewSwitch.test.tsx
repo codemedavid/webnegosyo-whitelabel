@@ -30,9 +30,10 @@ describe("OrderHistoryViewSwitch", () => {
     expect(onChange).toHaveBeenCalledWith("summary");
   });
 
-  it("still offers the toggle on a Convex store, where the summary explains itself", () => {
+  it("draws no toggle on a Convex store, where the summary has nothing to show", () => {
     render(<OrderHistoryViewSwitch holder={OWNER} route="convex" isDated view="orders" onChange={jest.fn()} />);
 
-    expect(screen.getByLabelText("Show Item summary")).toBeTruthy();
+    expect(screen.queryByLabelText("Show Item summary")).toBeNull();
+    expect(screen.queryByText("Orders")).toBeNull();
   });
 });
