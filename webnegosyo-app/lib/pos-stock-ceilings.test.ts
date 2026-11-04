@@ -57,6 +57,27 @@ describe("fetchPosStockCeilings", () => {
     expect(ceilings.options.get("m-latte")?.has("o-oat")).toBe(false);
   });
 
+  it("reads the store's stock policy from the route", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ceilings: { "m-pizza": 5 }, stockPolicy: "block" }) });
+
+    const ceilings = await fetchPosStockCeilings("t1", null);
+    expect(ceilings.stockPolicy).toBe("block");
+  });
+
+  it("reads warn when an older server sends no policy, or an unknown one", async () => {
+    expect((await fetchPosStockCeilings("t1", null)).stockPolicy).toBe("warn");
+
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ceilings: {}, stockPolicy: "refuse" }) });
+    expect((await fetchPosStockCeilings("t1", null)).stockPolicy).toBe("warn");
+  });
+
+  it("gives up on a read that never answers, with no opinion", async () => {
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+
+    const ceilings = await fetchPosStockCeilings("t1", null, 20);
+    expect(ceilings).toBe(NO_STOCK_CEILINGS);
+  });
+
   it("sends the cashier's token when signed in, so the platform limits per person", async () => {
     mockToken.mockResolvedValue("tok-1");
     await fetchPosStockCeilings("t1", null);

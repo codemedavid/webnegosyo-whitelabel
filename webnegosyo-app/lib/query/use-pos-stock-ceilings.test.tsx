@@ -19,7 +19,12 @@ jest.mock("../pos-stock-ceilings", () => ({
   fetchPosStockCeilings: (...args: unknown[]) => mockFetchCeilings(...args),
 }));
 
-import { STOCK_CEILING_DEBOUNCE_MS, usePosStockCeilings } from "./use-pos-stock-ceilings";
+import {
+  STOCK_AFTER_SALE_DELAY_MS,
+  STOCK_CEILING_DEBOUNCE_MS,
+  STOCK_REFRESH_INTERVAL_MS,
+  usePosStockCeilings,
+} from "./use-pos-stock-ceilings";
 import type { PosCartLine } from "../pos-cart";
 
 const line = (menuItemId: string, quantity: number) =>
@@ -93,5 +98,98 @@ describe("usePosStockCeilings", () => {
     const { result } = renderHook(() => usePosStockCeilings(null, null, [line("m-1", 1)]));
     await flush(STOCK_CEILING_DEBOUNCE_MS);
     expect(result.current.dishes.size).toBe(0);
+  });
+
+  describe("freshness", () => {
+    type Props = { isFocused: boolean; saleStamp: number | null };
+    const renderFresh = (initial: Props) =>
+      renderHook(
+        ({ isFocused, saleStamp }: Props) =>
+          usePosStockCeilings("t1", null, [line("m-1", 1)], { isFocused, saleStamp }),
+        { initialProps: initial }
+      );
+
+    it("re-reads on a timer while the register is on screen", async () => {
+      renderFresh({ isFocused: true, saleStamp: null });
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+
+      await flush(STOCK_REFRESH_INTERVAL_MS);
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(2);
+
+      await flush(STOCK_REFRESH_INTERVAL_MS);
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(3);
+    });
+
+    it("shows the fresh count once the timer read lands", async () => {
+      const { result } = renderFresh({ isFocused: true, saleStamp: null });
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.get("m-1")).toBe(4);
+
+      mockFetchCeilings.mockResolvedValue({ dishes: new Map([["m-1", 2]]), options: new Map() });
+      await flush(STOCK_REFRESH_INTERVAL_MS);
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await act(async () => {});
+      expect(result.current.dishes.get("m-1")).toBe(2);
+    });
+
+    it("stops the timer on blur and re-reads when the register comes back", async () => {
+      const { rerender } = renderFresh({ isFocused: true, saleStamp: null });
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+
+      rerender({ isFocused: false, saleStamp: null });
+      await flush(STOCK_REFRESH_INTERVAL_MS * 3);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+
+      rerender({ isFocused: true, saleStamp: null });
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(2);
+    });
+
+    it("never runs a timer when not focused (the default)", async () => {
+      renderHook(() => usePosStockCeilings("t1", null, [line("m-1", 1)]));
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      await flush(STOCK_REFRESH_INTERVAL_MS * 2);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-reads shortly after each completed sale", async () => {
+      const { rerender } = renderFresh({ isFocused: false, saleStamp: null });
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+
+      rerender({ isFocused: false, saleStamp: 1000 });
+      await flush(STOCK_AFTER_SALE_DELAY_MS - 1);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+      await flush(1);
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(2);
+
+      rerender({ isFocused: false, saleStamp: 2000 });
+      await flush(STOCK_AFTER_SALE_DELAY_MS);
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(3);
+    });
+
+    it("skips a timer tick while a read is still in flight", async () => {
+      mockFetchCeilings.mockImplementation(() => new Promise(() => {}));
+      renderFresh({ isFocused: true, saleStamp: null });
+      await flush(STOCK_CEILING_DEBOUNCE_MS);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+
+      await flush(STOCK_REFRESH_INTERVAL_MS * 3);
+      expect(mockFetchCeilings).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears its timers on unmount", async () => {
+      const { unmount } = renderFresh({ isFocused: true, saleStamp: 5 });
+      unmount();
+      await flush(STOCK_REFRESH_INTERVAL_MS * 2);
+      expect(mockFetchCeilings).not.toHaveBeenCalled();
+    });
   });
 });

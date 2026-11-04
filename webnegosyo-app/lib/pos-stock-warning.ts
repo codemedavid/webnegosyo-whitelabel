@@ -30,6 +30,7 @@
 import type { PosCartLine } from "./pos-cart";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
 import { posStockRevision } from "./pos-stock-revision";
+import type { PosStockPolicy } from "./pos-stock-decision";
 
 /** What the platform said the kitchen can make. Absent means no ceiling. */
 export interface PosStockCeilings {
@@ -37,6 +38,8 @@ export interface PosStockCeilings {
   dishes: ReadonlyMap<string, number>;
   /** Menu item id → option id → units of that dish producible with that option. */
   options: ReadonlyMap<string, ReadonlyMap<string, number>>;
+  /** The store's rule for selling past the count (`stockPolicy`); absent = warn. */
+  stockPolicy?: PosStockPolicy;
 }
 
 /** No read yet, or none possible. "No opinion" — never "empty shelves". */
@@ -68,6 +71,8 @@ export interface StockShortfall {
   dishName: string;
   /** The picked option whose shelf is the binding one; null for the dish's own. */
   optionName: string | null;
+  /** That option's id (null with `optionName`), so a "Sell N" can find its lines. */
+  optionId: string | null;
   producible: number;
   wanted: number;
 }
@@ -194,14 +199,14 @@ export function findStockShortfalls(
 
     const dishCeiling = ceilings.dishes.get(menuItemId);
     if (dishCeiling !== undefined && tally.units > dishCeiling) {
-      candidates.push({ menuItemId, dishName: tally.name, optionName: null, producible: dishCeiling, wanted: tally.units });
+      candidates.push({ menuItemId, dishName: tally.name, optionName: null, optionId: null, producible: dishCeiling, wanted: tally.units });
     }
 
     const optionCeilings = ceilings.options.get(menuItemId);
     for (const [optionId, picked] of tally.byOption) {
       const optionCeiling = optionCeilings?.get(optionId);
       if (optionCeiling === undefined || picked.units <= optionCeiling) continue;
-      candidates.push({ menuItemId, dishName: tally.name, optionName: picked.name, producible: optionCeiling, wanted: picked.units });
+      candidates.push({ menuItemId, dishName: tally.name, optionName: picked.name, optionId, producible: optionCeiling, wanted: picked.units });
     }
 
     if (candidates.length === 0) continue;
@@ -236,6 +241,22 @@ export function resolvePosStockWarning(
 }
 
 /**
+ * The shortfall of the dish being added, judged with what the sale already
+ * holds, or null when the count covers it.
+ */
+export function findAddedShortfall(
+  current: readonly StockDemandLine[],
+  added: StockDemandLine,
+  ceilings: PosStockCeilings,
+): StockShortfall | null {
+  return (
+    findStockShortfalls([...current, added], ceilings).find(
+      (candidate) => candidate.menuItemId === added.menuItemId,
+    ) ?? null
+  );
+}
+
+/**
  * What to ask when ONE more configuration joins the sale, or `null`.
  *
  * Judged with what the sale already holds, but only the dish being added is
@@ -246,9 +267,7 @@ export function resolveAddStockWarning(
   added: StockDemandLine,
   ceilings: PosStockCeilings,
 ): string | null {
-  const shortfall = findStockShortfalls([...current, added], ceilings).find(
-    (candidate) => candidate.menuItemId === added.menuItemId,
-  );
+  const shortfall = findAddedShortfall(current, added, ceilings);
   if (!shortfall) return null;
 
   const producible = Math.max(0, shortfall.producible);
