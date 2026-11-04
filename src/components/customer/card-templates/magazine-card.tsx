@@ -82,7 +82,6 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                     )}
                 </div>
 
-                <LowStockBadge branding={branding} />
                 {!isOrderable && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-20">
                         <span className="text-sm font-semibold text-white/90 uppercase tracking-wider">
@@ -93,6 +92,7 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
 
                 {/* Editorial content overlay — bottom */}
                 <div className="absolute bottom-0 left-0 right-0 p-3 space-y-1.5 md:p-5 md:space-y-3 z-10">
+                    <LowStockBadge branding={branding} placement="inline" />
                     {/* Category-like label */}
                     {item.variations.length > 0 && (
                         <span

@@ -95,7 +95,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, i
           )}
         </div>
 
-        <LowStockBadge branding={branding} />
+        <LowStockBadge branding={branding} placement="above-price" />
         {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
             <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-gray-900">

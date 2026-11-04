@@ -12,7 +12,7 @@
 
 import { cache } from 'react'
 import { createPublicClient } from '@/lib/supabase/public'
-import { createCachedRead, doNotCache, storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
+import { createCachedRead, doNotCache, projectionCacheKey, storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
 import { omitTenantSecrets } from '@/lib/tenant-public'
 import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
 import { MENU_ITEM_DETAIL_SELECT } from '@/lib/queries/menu-item-select'
@@ -111,7 +111,7 @@ export interface SelectedTenant {
 
 /** Minimal tenant data for page rendering. Cached across requests by slug. */
 export const getCachedTenantBySlug = cache(
-    createCachedRead(['product-detail-tenant'], async (slug: string) => {
+    createCachedRead(['product-detail-tenant', projectionCacheKey(PRODUCT_DETAIL_TENANT_SELECT)], async (slug: string) => {
         const { tenant, error, isDegraded } = await fetchActiveTenantBySlug<SelectedTenant>(
             asTenantQueryClient(createPublicClient()),
             slug,

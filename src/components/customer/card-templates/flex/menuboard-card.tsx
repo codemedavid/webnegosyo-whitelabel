@@ -72,7 +72,6 @@ export const MenuboardCard = memo(function MenuboardCard({
         className={`shrink-0 ${THUMB_CLASS[style.imageRatio]}`}
         imageClassName="transition-transform duration-500 group-hover:scale-110"
       >
-        <LowStockBadge branding={branding} />
         {!isOrderable && <SoldOutVeil label="Out" />}
       </CardMedia>
 
@@ -108,6 +107,7 @@ export const MenuboardCard = memo(function MenuboardCard({
             </span>
           )}
           {hint && <span className="text-[11px]" style={{ color: branding.textMuted }}>{hint}</span>}
+          <LowStockBadge branding={branding} placement="inline" />
           <AddButton
             item={item}
             variant={style.addButton === 'bar' ? 'pill' : style.addButton}

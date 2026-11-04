@@ -78,22 +78,51 @@ export function UnavailableLabel() {
 }
 
 /**
- * "Only N left" (the owner's `menu.only_left` wording), centred at the top of
- * the card's (relative) image box: the corners already carry the designs'
- * featured / SALE badges. Plain text, not a tappable Studio label: the shown
- * words carry the number, which must never be saved back as the label.
+ * Where "Only N left" sits. Never a top corner or top-centre by default: the
+ * designs' featured / SALE badges live along the top of the photo, and on
+ * 390px phones a top-centre badge ran into them (browser QA 2026-11-05).
+ *   - `bottom-left`: the photo's bottom edge is free.
+ *   - `bottom-left-clear`: bottom-left, stopping short of a button or price
+ *     in the bottom-right corner (round add buttons, the sticker price).
+ *   - `above-price`: stacked over modern's bottom-left price tag.
+ *   - `top-center`: only for designs whose merch badges sit at the bottom (arch).
+ *   - `inline`: in the template's own flow (text overlaid on the photo,
+ *     menuboard's thumbnail row), so it cannot overlap anything.
+ * `tests/unit/card-template-low-stock-placement.test.tsx` pins every design.
  */
-export function LowStockBadge({ branding }: { branding: BrandingColors }) {
+const LOW_STOCK_PLACEMENT_CLASS = {
+  'bottom-left': 'absolute bottom-2 left-2 max-w-[calc(100%-1rem)]',
+  'bottom-left-clear': 'absolute bottom-2 left-2 max-w-[calc(100%-5.5rem)]',
+  'above-price': 'absolute bottom-10 left-2 max-w-[calc(100%-5.5rem)] md:bottom-[4.25rem] md:left-4',
+  'top-center': 'absolute left-1/2 top-2 max-w-[calc(100%-1rem)] -translate-x-1/2',
+  inline: 'relative inline-block min-w-0 max-w-full align-middle',
+} as const
+
+export type LowStockPlacement = keyof typeof LOW_STOCK_PLACEMENT_CLASS
+
+interface LowStockBadgeProps {
+  branding: BrandingColors
+  placement?: LowStockPlacement
+}
+
+/**
+ * "Only N left" (the owner's `menu.only_left` wording) in the card's image box
+ * (or its flow, see `LowStockPlacement`). Plain text, not a tappable Studio
+ * label: the shown words carry the number, which must never be saved back as
+ * the label. Long wording truncates.
+ */
+export function LowStockBadge({ branding, placement = 'bottom-left' }: LowStockBadgeProps) {
   const { onlyLeft } = useCardStock()
   const wording = useStorefrontLabel('menu.only_left', 'Only {count} left')
   if (onlyLeft === null) return null
+  const text = fillLabelCount(wording, onlyLeft)
   return (
     <span
-      className="pointer-events-none absolute left-1/2 top-2 z-[4] -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm md:text-xs"
+      className={`pointer-events-none z-[4] truncate rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm md:text-xs ${LOW_STOCK_PLACEMENT_CLASS[placement]}`}
       style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
       data-testid="low-stock-badge"
     >
-      {fillLabelCount(wording, onlyLeft)}
+      {text}
     </span>
   )
 }

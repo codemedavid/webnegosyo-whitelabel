@@ -92,7 +92,6 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
           )}
         </div>
 
-        <LowStockBadge branding={branding} />
         {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80">
             <div className="rounded-xl bg-white px-6 py-3 text-base font-black uppercase tracking-wide text-gray-900">
@@ -103,6 +102,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
 
         {/* Content overlaid on image - bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-2.5 space-y-1.5 md:p-4 md:space-y-3">
+          <LowStockBadge branding={branding} placement="inline" />
           <div>
             <h3
               className="text-base md:text-xl font-black line-clamp-1"

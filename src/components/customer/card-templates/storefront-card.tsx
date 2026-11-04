@@ -93,7 +93,7 @@ export const StorefrontCard = memo(function StorefrontCard({
             </div>
           )}
 
-          <LowStockBadge branding={branding} />
+          <LowStockBadge branding={branding} placement="bottom-left-clear" />
           {!isOrderable && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
               <span className="rounded-full bg-white/95 px-3 py-1.5 text-sm font-medium text-gray-900">

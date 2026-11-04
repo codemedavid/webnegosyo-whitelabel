@@ -20,3 +20,19 @@ describe('ClassicCart — edit a line', () => {
     expect(cart.setItemToEdit).toHaveBeenCalledWith(line)
   })
 })
+
+// Browser QA 2026-11-05: the classic page's −/+ buttons were unnamed icons to
+// a screen reader; the other designs (cart-primitives) already name them.
+describe('ClassicCart — quantity stepper', () => {
+  it('names the − and + buttons and they change the quantity', () => {
+    const line = cartLine()
+    const cart = makeCartView([line])
+    render(<ClassicCart cart={cart} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease quantity' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Increase quantity' }))
+
+    expect(cart.handleDecreaseQuantity).toHaveBeenCalledWith(line)
+    expect(cart.updateQuantity).toHaveBeenCalledWith(line.id, line.quantity + 1)
+  })
+})

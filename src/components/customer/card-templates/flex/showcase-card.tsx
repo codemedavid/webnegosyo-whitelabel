@@ -46,7 +46,7 @@ export const ShowcaseCard = memo(function ShowcaseCard({
           className="rounded-[var(--brand-radius,14px)]"
           imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.035]"
         >
-          <LowStockBadge branding={branding} />
+          <LowStockBadge branding={branding} placement="bottom-left-clear" />
           {!isOrderable && <SoldOutVeil />}
         </CardMedia>
 

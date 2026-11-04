@@ -112,7 +112,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                     </div>
                 )}
 
-                <LowStockBadge branding={branding} />
+                <LowStockBadge branding={branding} placement="bottom-left-clear" />
                 {!isOrderable && (
                     <div
                         className="absolute inset-0 flex items-center justify-center"

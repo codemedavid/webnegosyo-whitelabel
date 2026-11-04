@@ -176,6 +176,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             className="h-10 w-10 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
                             style={outlineControl}
                             onClick={() => handleDecreaseQuantity(item)}
+                            aria-label="Decrease quantity"
                           >
                             <Minus className="h-4 w-4" />
                           </Button>
@@ -189,6 +190,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             style={outlineControl}
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                             disabled={!canIncreaseItem(item)}
+                            aria-label="Increase quantity"
                           >
                             <Plus className="h-4 w-4" />
                           </Button>

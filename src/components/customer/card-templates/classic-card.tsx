@@ -80,7 +80,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
           </div>
         )}
 
-        <LowStockBadge branding={branding} />
+        <LowStockBadge branding={branding} placement="bottom-left-clear" />
         {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-gray-900">

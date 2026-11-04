@@ -47,7 +47,7 @@ export const ArchCard = memo(function ArchCard({
           className="rounded-t-[999px] rounded-b-[calc(var(--brand-radius,24px)*0.6)]"
           imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
         >
-          <LowStockBadge branding={branding} />
+          <LowStockBadge branding={branding} placement="top-center" />
           {!isOrderable && <SoldOutVeil />}
         </CardMedia>
         <CardBadges

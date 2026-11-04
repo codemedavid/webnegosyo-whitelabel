@@ -111,6 +111,14 @@ original sale is now capped to zero (the atomic claim's edit cap), so the late s
   for a cash manager / `reports` holder (unchanged) and HER OWN sales for a plain cashier (was the branch window;
   never 42501), with every key the 1.0.16 parser reads (`run-shift-report-cashier.cjs`).
 
+## Deploy: storefront tenant cache
+
+The storefront's cached tenant reads (`storefront-tenant`, `product-detail-tenant`; 5 min) are keyed on
+`projectionCacheKey(<select>)` since 2026-11-05 (`tests/unit/storefront/tenant-cache-key.test.ts`). Adding
+`inventory_enabled` to the projections changes the key, so the first request after the deploy reads fresh rows and
+the stock badges show at once; no manual revalidation is needed. (Before this, the pre-deploy entry lacked the
+column and badges appeared only after it expired.)
+
 ## Loly's after deploy
 
 Their counts are wrong (−3200 and similar). Verifier's corrected prediction (2026-11-04, live SELECT-only) once
