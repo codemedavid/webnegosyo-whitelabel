@@ -263,6 +263,14 @@ export interface Tenant {
   /** Welcome Builder design (v5 JSON as TEXT) — read via loadHeroDesign. */
   welcome_design?: string | null;
   welcome_design_enabled?: boolean | null;
+  checkout_design?: string | null;
+  checkout_design_enabled?: boolean | null;
+  confirmation_design?: string | null;
+  confirmation_design_enabled?: boolean | null;
+  tracking_design?: string | null;
+  tracking_design_enabled?: boolean | null;
+  confirmation_redirect?: string | null;
+  confirmation_redirect_seconds?: number | null;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen

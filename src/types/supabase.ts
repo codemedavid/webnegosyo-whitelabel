@@ -9611,6 +9611,8 @@ export type Database = {
           checkout_button_color: string | null
           checkout_button_text_color: string | null
           checkout_card_background_color: string | null
+          checkout_design: string | null
+          checkout_design_enabled: boolean
           checkout_modal_background_color: string | null
           checkout_modal_border_color: string | null
           checkout_modal_button_color: string | null
@@ -9626,6 +9628,10 @@ export type Database = {
           checkout_upsell_max_items: number | null
           checkout_upsell_subtitle: string | null
           checkout_upsell_title: string | null
+          confirmation_design: string | null
+          confirmation_design_enabled: boolean
+          confirmation_redirect: string
+          confirmation_redirect_seconds: number
           convex_auth_enforced: boolean
           convex_deployment_url: string | null
           convex_public_reads: boolean
@@ -9823,6 +9829,8 @@ export type Database = {
           text_primary_color: string | null
           text_secondary_color: string | null
           timezone: string
+          tracking_design: string | null
+          tracking_design_enabled: boolean
           tracking_style: Json
           updated_at: string
           warning_color: string | null
@@ -9903,6 +9911,8 @@ export type Database = {
           checkout_button_color?: string | null
           checkout_button_text_color?: string | null
           checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
           checkout_modal_background_color?: string | null
           checkout_modal_border_color?: string | null
           checkout_modal_button_color?: string | null
@@ -9918,6 +9928,10 @@ export type Database = {
           checkout_upsell_max_items?: number | null
           checkout_upsell_subtitle?: string | null
           checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
           convex_auth_enforced?: boolean
           convex_deployment_url?: string | null
           convex_public_reads?: boolean
@@ -10115,6 +10129,8 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
           tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
@@ -10195,6 +10211,8 @@ export type Database = {
           checkout_button_color?: string | null
           checkout_button_text_color?: string | null
           checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
           checkout_modal_background_color?: string | null
           checkout_modal_border_color?: string | null
           checkout_modal_button_color?: string | null
@@ -10210,6 +10228,10 @@ export type Database = {
           checkout_upsell_max_items?: number | null
           checkout_upsell_subtitle?: string | null
           checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
           convex_auth_enforced?: boolean
           convex_deployment_url?: string | null
           convex_public_reads?: boolean
@@ -10407,6 +10429,8 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
           tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
