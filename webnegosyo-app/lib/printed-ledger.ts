@@ -96,6 +96,27 @@ export async function claimPrinted(
 }
 
 /**
+ * Give back a claim whose paper never came out (the printer was off or out
+ * of reach), so the next print of that order is a FIRST print, not a copy.
+ * Only a manual print releases: the auto-print watchers keep their claim on a
+ * failure (their dedupe is on the ids they have SEEN, so a release never makes
+ * them print an old order behind the cashier's back).
+ */
+export async function releasePrinted(kind: PrintedLedgerKind, ids: readonly string[]): Promise<void> {
+  const ledger = ledgers[kind];
+  await hydratePrintedLedger(kind);
+  const current = ledger.list ?? [];
+  const dropped = new Set(ids);
+  if (!current.some((id) => dropped.has(id))) return;
+
+  ledger.list = current.filter((id) => !dropped.has(id));
+  notify(ledger);
+  AsyncStorage.setItem(STORAGE_KEYS[kind], serializePrintedList(ledger.list)).catch(() => {
+    // A failed persist only risks a REPRINT stamp after a relaunch.
+  });
+}
+
+/**
  * Subscribe a component to the history. Kicks off hydration on first use, so
  * a watcher mounting is enough to load the list.
  */

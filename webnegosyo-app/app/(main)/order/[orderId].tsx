@@ -16,7 +16,7 @@ import { receiptAmountPaid } from "../../../lib/receipt-settlement";
 import { OrderPrintActions } from "../../../components/order/OrderPrintActions";
 import { useReceiptReprint } from "../../../hooks/useReceiptReprint";
 import { kitchenChitGate, reprintGate } from "../../../lib/reprint-gate";
-import { manualChitOptions } from "../../../lib/kitchen-chit-reprint";
+import { printManualKitchenChit } from "../../../lib/kitchen-chit-reprint";
 import { buildKitchenChitSegments } from "../../../lib/kitchen-chit";
 import { printForRole } from "../../../lib/printer";
 import { usePrintedLedger } from "../../../lib/printed-ledger";
@@ -872,23 +872,30 @@ export default function OrderDetailScreen() {
     if (!order) return;
     setChitPrinting(true);
     try {
-      // A chit this device already printed comes out marked REPRINT.
-      const chitOptions = await manualChitOptions(String(order._id), Date.now());
-      const outcome = await printForRole(
-        "kitchen",
-        buildKitchenChitSegments(
-          {
-            _id: String(order._id),
-            _creationTime: order._creationTime,
-            customerName: displayCustomerName(order.customerName),
-            orderType: order.orderType,
-            items: order.items ?? [],
-          },
-          chitOptions,
-        ),
-      );
-      if (!outcome.anySuccess) {
-        Alert.alert("Print failed", outcome.results[0]?.result.error ?? "Could not reach the kitchen printer.");
+      // A chit this device already printed comes out marked REPRINT; a first
+      // chit that never came out is given back so the retry is not.
+      let failure: string | undefined;
+      const isPrinted = await printManualKitchenChit(String(order._id), Date.now(), async (chitOptions) => {
+        const outcome = await printForRole(
+          "kitchen",
+          buildKitchenChitSegments(
+            {
+              _id: String(order._id),
+              _creationTime: order._creationTime,
+              customerName: displayCustomerName(order.customerName),
+              orderType: order.orderType,
+              items: order.items ?? [],
+              // The order-level NOTE (allergies, requests) prints from here.
+              customerData: order.customerData,
+            },
+            chitOptions,
+          ),
+        );
+        failure = outcome.results[0]?.result.error;
+        return outcome.anySuccess;
+      });
+      if (!isPrinted) {
+        Alert.alert("Print failed", failure ?? "Could not reach the kitchen printer.");
       }
     } finally {
       setChitPrinting(false);

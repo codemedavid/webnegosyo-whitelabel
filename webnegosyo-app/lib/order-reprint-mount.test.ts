@@ -50,7 +50,18 @@ describe("order screen: Reprint on delivered orders", () => {
     const src = screen();
     expect(src).toMatch(/useReceiptReprint\(\)/);
     expect(src).toMatch(/kitchenChitGate\(order, printers\)/);
-    expect(src).toMatch(/manualChitOptions\(/);
+    expect(src).toMatch(/printManualKitchenChit\(/);
+  });
+
+  it("prints the order-level note (allergies, requests) on the kitchen chit", () => {
+    const src = screen();
+    const start = src.indexOf("const handleKitchenChit");
+    const body = src.slice(start, src.indexOf("};", start));
+    expect(body).toMatch(/customerData: order\.customerData/);
+  });
+
+  it("the kitchen board prints by hand through the same claim-and-give-back path", () => {
+    expect(read("app", "(main)", "kitchen.tsx")).toMatch(/printManualKitchenChit\(/);
   });
 
   it("handles the Drawer's ?intent=reprint once the ledger has loaded", () => {
@@ -78,7 +89,7 @@ describe("only a manual reprint is marked", () => {
   });
 
   it("auto-print never marks a kitchen chit", () => {
-    expect(read("components", "GlobalKitchenAutoPrint.tsx")).not.toMatch(/reprintAt|manualChitOptions/);
-    expect(read("lib", "pos-kitchen-print.ts")).not.toMatch(/reprintAt|manualChitOptions/);
+    expect(read("components", "GlobalKitchenAutoPrint.tsx")).not.toMatch(/reprintAt|manualChitOptions|printManualKitchenChit/);
+    expect(read("lib", "pos-kitchen-print.ts")).not.toMatch(/reprintAt|manualChitOptions|printManualKitchenChit/);
   });
 });

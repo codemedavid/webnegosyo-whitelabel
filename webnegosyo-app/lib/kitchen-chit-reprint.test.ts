@@ -1,5 +1,5 @@
 import { buildKitchenChitText } from "./kitchen-chit";
-import { manualChitOptions } from "./kitchen-chit-reprint";
+import { printManualKitchenChit } from "./kitchen-chit-reprint";
 
 const ORDER = {
   _id: "j57abc123xyz789ef",
@@ -29,22 +29,67 @@ describe("kitchen chit REPRINT line", () => {
   });
 });
 
-describe("manualChitOptions", () => {
-  it("marks the chit when this device already printed one for the order", async () => {
-    const claim = jest.fn(async () => []);
-    await expect(manualChitOptions("o1", REPRINT_AT, claim)).resolves.toEqual({ reprintAt: REPRINT_AT });
-    expect(claim).toHaveBeenCalledWith("kitchen", ["o1"]);
+describe("printManualKitchenChit", () => {
+  const ledger = (already: readonly string[] = []) => {
+    const held = new Set(already);
+    return {
+      held,
+      claim: jest.fn(async (_kind: string, ids: readonly string[]) => {
+        const fresh = ids.filter((id) => !held.has(id));
+        fresh.forEach((id) => held.add(id));
+        return fresh;
+      }),
+      release: jest.fn(async (_kind: string, ids: readonly string[]) => {
+        ids.forEach((id) => held.delete(id));
+      }),
+    };
+  };
+
+  it("prints the first chit unmarked, and keeps the claim once paper came out", async () => {
+    const deps = ledger();
+    const print = jest.fn(async () => true);
+    await expect(printManualKitchenChit("o1", REPRINT_AT, print, deps)).resolves.toBe(true);
+    expect(print).toHaveBeenCalledWith({});
+    expect(deps.claim).toHaveBeenCalledWith("kitchen", ["o1"]);
+    expect(deps.held.has("o1")).toBe(true);
   });
 
-  it("prints the first chit unmarked, and claims it so auto-print does not repeat it", async () => {
-    const claim = jest.fn(async (_kind: string, ids: readonly string[]) => [...ids]);
-    await expect(manualChitOptions("o1", REPRINT_AT, claim)).resolves.toEqual({});
+  it("marks the chit REPRINT when this device already printed one, and never gives that claim back", async () => {
+    const deps = ledger(["o1"]);
+    const print = jest.fn(async () => false);
+    await expect(printManualKitchenChit("o1", REPRINT_AT, print, deps)).resolves.toBe(false);
+    expect(print).toHaveBeenCalledWith({ reprintAt: REPRINT_AT });
+    expect(deps.release).not.toHaveBeenCalled();
+    expect(deps.held.has("o1")).toBe(true);
+  });
+
+  it("kitchen printer off: the first chit is given back, so the retry prints unmarked (not REPRINT)", async () => {
+    const deps = ledger();
+    const print = jest.fn(async () => false);
+    await expect(printManualKitchenChit("o1", REPRINT_AT, print, deps)).resolves.toBe(false);
+    expect(deps.release).toHaveBeenCalledWith("kitchen", ["o1"]);
+    expect(deps.held.has("o1")).toBe(false);
+
+    print.mockResolvedValueOnce(true);
+    await printManualKitchenChit("o1", REPRINT_AT + 60_000, print, deps);
+    expect(print).toHaveBeenLastCalledWith({});
+  });
+
+  it("a print that throws gives the claim back too", async () => {
+    const deps = ledger();
+    const print = jest.fn(async () => {
+      throw new Error("bluetooth");
+    });
+    await expect(printManualKitchenChit("o1", REPRINT_AT, print, deps)).resolves.toBe(false);
+    expect(deps.held.has("o1")).toBe(false);
   });
 
   it("prints unmarked when the device's history cannot be read", async () => {
-    const claim = jest.fn(async () => {
-      throw new Error("storage");
-    });
-    await expect(manualChitOptions("o1", REPRINT_AT, claim)).resolves.toEqual({});
+    const deps = ledger();
+    deps.claim.mockRejectedValueOnce(new Error("storage"));
+    const print = jest.fn(async () => true);
+    await expect(printManualKitchenChit("o1", REPRINT_AT, print, deps)).resolves.toBe(true);
+    expect(print).toHaveBeenCalledWith({});
+    expect(deps.release).not.toHaveBeenCalled();
   });
 });
