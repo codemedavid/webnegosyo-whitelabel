@@ -18,6 +18,7 @@ interface Recorded {
   filters: { table: string; column: string; value: unknown }[];
   isFilters: { table: string; column: string }[];
   gteFilters: { table: string; column: string; value: unknown }[];
+  limits: { table: string; count: number }[];
   inserts: { table: string; row: Record<string, unknown> }[];
   updates: { table: string; row: Record<string, unknown> }[];
 }
@@ -31,6 +32,7 @@ function makeDb(results: Record<string, unknown>) {
     filters: [],
     isFilters: [],
     gteFilters: [],
+    limits: [],
     inserts: [],
     updates: [],
   };
@@ -49,7 +51,10 @@ function makeDb(results: Record<string, unknown>) {
 
     chain.select = () => chain;
     chain.order = () => chain;
-    chain.limit = () => chain;
+    chain.limit = (count: number) => {
+      recorded.limits.push({ table, count });
+      return chain;
+    };
     chain.eq = (column: string, value: unknown) => {
       recorded.filters.push({ table, column, value });
       return chain;
@@ -352,6 +357,15 @@ describe("listShifts", () => {
       column: "staff_user_id",
       value: "u1",
     });
+  });
+
+  it("reads at most `limit` shifts when asked (My shifts), and no limit otherwise", async () => {
+    const { db, recorded } = makeDb({ staff_shifts: [{ data: [], error: null }, { data: [], error: null }] });
+
+    await listShifts("t1", { staffUserId: "u1", limit: 30 }, db);
+    await listShifts("t1", {}, db);
+
+    expect(recorded.limits).toEqual([{ table: "staff_shifts", count: 30 }]);
   });
 
   it("throws when the read fails — an empty history would read as a clean one", async () => {

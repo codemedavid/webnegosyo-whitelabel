@@ -4,6 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { formatPeso } from "../../lib/expenses/keypad";
 import { paidByRows, type DrawerLens } from "../../lib/cash/shift-sales-view";
 import type { ShiftSalesBreakdown, ShiftSalesItem, ShiftSalesPayment } from "../../lib/cash/shift-sales";
+import { slipQuantity, sortItemsForSlip } from "../../lib/cash-slips/shift-report-cashier";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { BigAmount } from "../BigAmount";
 import { Icon } from "../Icon";
@@ -88,6 +89,48 @@ export function TopItemsCard({ items }: { items: readonly ShiftSalesItem[] }) {
           <Icon name="chevron" size={14} color={colors.textPrimary} />
         </TouchableOpacity>
       ) : null}
+    </View>
+  );
+}
+
+/** Her items sold, all of them, most sold first — the same order and total the paper prints. */
+export function ItemsSoldCard({ items, isTruncated }: { items: readonly ShiftSalesItem[] | null; isTruncated: boolean }) {
+  if (!items) {
+    return (
+      <View style={card.card} testID="shift-sales-items-sold">
+        <Text style={card.title}>Items sold</Text>
+        <Text style={card.meta}>Items not available for this store.</Text>
+      </View>
+    );
+  }
+  const sorted = sortItemsForSlip(items);
+  const total = sorted.reduce((sum, item) => sum + item.netCents, 0);
+  return (
+    <View style={card.card} testID="shift-sales-items-sold">
+      <View style={card.head}>
+        <Text style={card.title}>Items sold</Text>
+        <Text style={card.hint}>{`${sorted.length} ${sorted.length === 1 ? "item" : "items"}`}</Text>
+      </View>
+      {sorted.length === 0 ? <Text style={card.meta}>Nothing sold yet.</Text> : null}
+      {sorted.map((item, index) => (
+        <View key={`${item.label}:${index}`} style={card.row}>
+          <Text style={card.label} numberOfLines={2}>
+            {item.label}
+          </Text>
+          <Text style={card.meta}>{`×${slipQuantity(item.quantity)}`}</Text>
+          <Text style={card.money}>{formatPeso(item.netCents)}</Text>
+        </View>
+      ))}
+      {sorted.length > 0 ? (
+        <>
+          <View style={card.divider} />
+          <View style={card.row}>
+            <Text style={card.label}>Items total</Text>
+            <Text style={card.money}>{formatPeso(total)}</Text>
+          </View>
+        </>
+      ) : null}
+      {isTruncated ? <Text style={card.meta}>Only the 500 most sold are listed.</Text> : null}
     </View>
   );
 }

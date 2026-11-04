@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 
 import { defaultDrawerChoice, describeDrawerPolicy, type DrawerSlot } from "../../lib/cash-drawers";
+import { MY_SHIFTS_ROUTE } from "../../lib/cash-routes";
 import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
@@ -217,6 +219,16 @@ export function ClockInCard({
         size="lg"
         fullWidth
         accessibilityLabel="Start shift"
+      />
+
+      <Button
+        label="My past shifts"
+        tone="ghost"
+        icon="clock"
+        fullWidth
+        onPress={() => router.push(MY_SHIFTS_ROUTE as never)}
+        accessibilityHint="View or reprint the report of a shift you worked"
+        testID="clock-in-my-shifts"
       />
 
       {!hasDrawers && canManage ? (

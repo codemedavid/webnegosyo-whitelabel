@@ -24,6 +24,7 @@
 import { getOrderOutletId } from "../branch-scope";
 import { toCents } from "../bill/money";
 import { readOrderDiscount } from "../order-discount";
+import { readPosPayment } from "../pos-order";
 import { ORDER_SOURCE_LABELS } from "../order-channels";
 import { formatDailyOrderNumber } from "../order-number";
 import { getOrderTableNumber } from "../order-table-number";
@@ -38,6 +39,7 @@ import type {
   ShiftSalesReport,
   ShiftSalesShift,
   ShiftSalesSummary,
+  ShiftSalesVoid,
 } from "./shift-sales";
 
 /** An order row as the app's order readers hand it over (platform DTO or Convex document). */
@@ -64,6 +66,12 @@ export interface DeviceSalesInput {
   /** Blind count: every peso figure stays unknown. */
   hidden: boolean;
   receiptLimit?: number;
+  /**
+   * Only this cashier's own sales (the drawer rule's sale test: POS, her
+   * cashierId on it); cancelled ones are listed as voids. Undefined = the
+   * whole window, as the store lens counts it.
+   */
+  cashierId?: string;
 }
 
 /** The server's own cap on the receipt list (the totals still count every order). */
@@ -249,12 +257,40 @@ function groupPayments(payments: readonly StaffPayment[]): Map<string, StaffPaym
   return byOrder;
 }
 
-/** The orders in the window (and branch), oldest first. */
+function isRungBy(order: DeviceSalesOrder, cashierId: string | undefined): boolean {
+  if (cashierId === undefined) return true;
+  return order.source === "pos" && cashierId !== "" && readPosPayment(order.customerData)?.cashierId === cashierId;
+}
+
+/** The orders in the window (and branch, and cashier when asked), oldest first. */
 function ordersInWindow(input: DeviceSalesInput): DeviceSalesOrder[] {
   return input.orders
     .filter((order) => order._creationTime >= input.fromMs && order._creationTime < input.toMs)
     .filter((order) => input.outletId === undefined || getOrderOutletId(order) === input.outletId)
+    .filter((order) => isRungBy(order, input.cashierId))
     .sort((a, b) => a._creationTime - b._creationTime);
+}
+
+function toVoid(order: DeviceSalesOrder, money: OrderMoney, hidden: boolean): ShiftSalesVoid {
+  return {
+    orderId: order._id,
+    number: formatDailyOrderNumber(order.dailyNumber, order._id),
+    placedAt: new Date(order._creationTime).toISOString(),
+    totalCents: hidden ? null : Math.max(0, money.billedCents),
+    status: lower(order.status) === "refunded" ? "refunded" : "void",
+  };
+}
+
+/** What a cashier-scope count adds: her voids; items, drawer cash and collections stay unknown here. */
+function cashierExtras(entries: readonly { order: DeviceSalesOrder; money: OrderMoney }[], hidden: boolean): Partial<ShiftSalesReport> {
+  return {
+    scope: "cashier",
+    itemsTruncated: false,
+    voids: entries.filter((e) => !e.money.isLive).map((e) => toVoid(e.order, e.money, hidden)),
+    voidsTruncated: false,
+    cash: null,
+    otherCollections: null,
+  };
 }
 
 export function countShiftSalesOnDevice(input: DeviceSalesInput): ShiftSalesReport {
@@ -285,6 +321,7 @@ export function countShiftSalesOnDevice(input: DeviceSalesInput): ShiftSalesRepo
     receiptsTruncated: entries.length > limit,
     firstNumber: numbers[0] ?? null,
     lastNumber: numbers[numbers.length - 1] ?? null,
+    ...(input.cashierId !== undefined ? cashierExtras(entries, input.hidden) : {}),
   };
 }
 
