@@ -29,8 +29,9 @@ const CHOICES: readonly PolicyChoice[] = [
   },
   {
     value: 'block',
-    label: 'Ask for a manager PIN',
-    detail: 'Selling more than what is left needs a manager to approve it.',
+    label: 'Only a manager can sell past the count',
+    detail:
+      'A manager or owner signs in on the register to sell more than the stock covers. Sales made while the register is offline are never blocked.',
   },
 ]
 

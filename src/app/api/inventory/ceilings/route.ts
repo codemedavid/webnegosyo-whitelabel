@@ -47,7 +47,7 @@ import { readBearerToken } from '@/lib/supabase/bearer-session'
  *
  * `stockPolicy` ('warn' | 'block', `tenants.pos_stock_policy`) tells the
  * register what to do when a sale asks for more than a ceiling: warn the
- * cashier (default) or ask for a manager PIN. It is 'warn' whenever the
+ * cashier (default) or only let a manager/owner sign-in sell past it. It is 'warn' whenever the
  * ceilings could not be read — there is nothing to hold a sale against.
  */
 

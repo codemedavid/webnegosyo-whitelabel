@@ -1,7 +1,7 @@
 /**
  * tenants.pos_stock_policy (20261104150000): what the register does when a sale
  * asks for more than the shelf holds. 'warn' (default, today's behaviour) or
- * 'block' (selling past the stock needs a manager PIN).
+ * 'block' (only a manager or owner signed in may sell past the stock).
  *
  * A failed or impossible read is ALWAYS 'warn': a store whose policy cannot be
  * read must never have its register stopped by it (a failed stock read never

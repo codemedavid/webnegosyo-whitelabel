@@ -50,7 +50,7 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks())
 
 describe('setPosStockPolicyAction', () => {
-  it('lets the owner switch to "ask for a manager PIN"', async () => {
+  it('lets the owner switch to "only a manager can sell past the count"', async () => {
     const { setPosStockPolicyAction } = await load()
 
     const result = await setPosStockPolicyAction(TENANT, 'lolys', 'block')

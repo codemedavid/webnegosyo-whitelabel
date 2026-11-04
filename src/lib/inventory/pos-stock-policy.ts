@@ -3,7 +3,8 @@
  * `tenants.pos_stock_policy` (migration 20261104150000).
  *
  *   'warn'  (default) the cashier is told and may sell anyway (today's behaviour)
- *   'block' selling past the stock needs a manager PIN
+ *   'block' only a manager or owner signed in on the register sells past the
+ *           stock (no PIN); offline sales are never blocked
  *
  * CONTRACT with the register: `GET /api/inventory/ceilings` answers
  * `stockPolicy: 'warn' | 'block'`, and the app session may read the column
