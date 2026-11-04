@@ -84,11 +84,65 @@ interfaces until then).
 original sale is now capped to zero (the atomic claim's edit cap), so the late sale deducts in full: −200 g where
 −100 g would be exact. It errs toward less on the shelf (never oversells); before the claim it invented +100 g.
 
+## Pre-apply checklist (SELECT-only, each probe starts `set local statement_timeout = '5s';`)
+
+- **Before `20261103130100`**: duplicate transfer legs. Non-empty = the unique index is skipped with a NOTICE
+  (no data changes), so look before, not after:
+  ```sql
+  select stock_transfer_id, inventory_item_id, reason,
+         coalesce(outlet_id, '00000000-0000-0000-0000-000000000000'::uuid) as outlet, count(*)
+    from public.stock_movements
+   where stock_transfer_id is not null
+   group by 1, 2, 3, 4
+  having count(*) > 1;
+  ```
+- **Before `20261103130200`**: compare the LIVE bodies of the two functions it replaces with the repo's latest
+  definition (`select pg_get_functiondef('public.stock_alerts_to_notifications()'::regprocedure)` and
+  `… 'public.recipe_components_unit_guard()'::regprocedure`). A live hotfix not in the repo would be overwritten.
+- **Before `20261104140000`** (shift report per cashier): the helpers it calls must have the signatures it calls
+  them with — `cash.window_sales(uuid, timestamptz, timestamptz, uuid, integer)`,
+  `cash.shift_expected(public.staff_shifts, timestamptz)`, `cash.tenant_order_backend(uuid)`:
+  ```sql
+  select p.oid::regprocedure, pg_get_function_result(p.oid)
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'cash' and p.proname in ('window_sales', 'shift_expected', 'tenant_order_backend');
+  ```
+  App 1.0.16 (live) calls `report_shift_sales(id)` with no scope: after this migration that answers the window
+  for a cash manager / `reports` holder (unchanged) and HER OWN sales for a plain cashier (was the branch window;
+  never 42501), with every key the 1.0.16 parser reads (`run-shift-report-cashier.cjs`).
+
 ## Loly's after deploy
 
-Their counts are wrong (−3200 and similar). With `counted_at` backfilled, received-then-oversold ingredients are
-"counted" and negative, so their dishes will show Sold out online until the owner does an opening stocktake in the
-app. Tell them; do not edit their data.
+Their counts are wrong (−3200 and similar). Verifier's corrected prediction (2026-11-04, live SELECT-only) once
+`20261103120000` backfills `counted_at`:
+
+- **28 of 34 ingredients are marked counted** (they had a receive / stocktake / transfer-in or stock > 0).
+- **SOLD OUT**: Chicken Karage (already switched off) and Spam (counted 10-29, now 0).
+- **"Only N left"**: Chicken Skin 2, Chicken Pops 4, Chicken 6, Nuggets 7, Tocino 8, Fries 9, Shanghai 9, and the
+  three Breezes 10 (their Sprite).
+- **Become UNLIMITED (never counted)**: the negative ones — Straw −63, Cold cup −63, Garlic rice −49, Hot cup −2 —
+  and the never-received Mozzarella sticks and Chicken poppers spicy. A never-counted ingredient caps nothing, so
+  about **16 dishes that checkout refuses today become sellable**.
+
+Owner action (tell them; do not edit their data): an opening stocktake in the app for cups, straws, garlic rice,
+mozzarella sticks and spicy poppers if she wants them tracked; recount karaage and spam.
+
+## Follow-up: orphaned simple-option holds (MEDIUM-4)
+
+On the platform backend the simple-option counters are claimed BEFORE the order row exists
+(`simple-option-hold.ts`). A failure the action sees releases them (`cancel` under the same id); a function killed
+between claim and insert does not. Fixed cheaply (2026-11-04): the claim is now the LAST step before the insert
+(after delivery fee / road distance / vouchers / Senior-PWD pricing, which used to sit inside the window —
+`create-order-stock-claims.test.ts` pins `price → claim → write`). What is left is the gap between two consecutive
+DB calls. The leak errs toward UNDER-selling (counters lower than real), never overselling.
+
+Not built — a sweeper, because it is not safe cheaply: `simple_option_stock_applications` has no `created_at`
+index (a new migration), the table also holds Convex and tenant-Supabase orders (claimed AFTER their own insert,
+ids not in platform `orders`), so each candidate needs `resolveOrderBackend` before "no order row" means orphan,
+and a register's offline queue may claim before its order syncs. If wanted: an existing 5-minute cron
+(`/api/loyalty/maintenance` or `/api/sms/automations/tick`) calling a service-role SQL function that, for
+platform tenants only, cancels `sale` claims older than 30 minutes and younger than 2 days with no `cancel` and no
+`orders` row of that id, bounded (≤ 100 per run), with a PGlite runner for each of those exclusions.
 
 ## Evidence (2026-11-04)
 
