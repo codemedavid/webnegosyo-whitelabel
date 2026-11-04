@@ -115,7 +115,12 @@ async function deletionsBehave(db) {
   await db.query('insert into public.orders(id, customer_id) values ($1, $2)', ['00000000-0000-4000-8000-0000000000d1', CUSTOMER])
   await insertRow(db, { customer_id: OTHER_CUSTOMER, idempotency_key: 'key-other-customer' })
 
-  await refused(db, () => db.query('delete from public.tenant_apps where tenant_id = $1', [STORE]), /violates foreign key/, 'removing the app does not erase its customers’ history')
+  // No foreign key to tenant_apps (20261104120200): a store without an app row
+  // (dev build, pre-launch) can still record orders, and removing the app row
+  // never cascades into its customers' history.
+  await db.query('delete from public.tenant_apps where tenant_id = $1', [STORE])
+  const kept = (await db.query('select count(*)::int as n from public.customer_app_orders where tenant_id = $1', [STORE])).rows[0].n
+  assert.ok(kept >= 1, 'removing the app does not erase its customers’ history')
 
   await db.query('delete from public.customers where id = $1', [CUSTOMER])
   const left = (await db.query('select customer_id from public.customer_app_orders where tenant_id = $1', [STORE])).rows
@@ -182,6 +187,7 @@ async function main() {
       ('${OTHER_STORE}', 'Other', 'com.webnegosyo.other', 'com.webnegosyo.other')`)
     await db.exec(readMigration('20261104120000_customer_app_orders.sql'))
     await db.exec(readMigration('20261104120100_customer_app_account_delete_orders.sql'))
+    await db.exec(readMigration('20261104120200_customer_app_orders_no_app_fk.sql'))
 
     const rls = (await db.query("select relrowsecurity from pg_class where oid = 'public.customer_app_orders'::regclass")).rows[0]
     assert.equal(rls.relrowsecurity, true, 'RLS is on')

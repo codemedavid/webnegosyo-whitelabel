@@ -20,7 +20,8 @@
 create table if not exists public.customer_app_orders (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
-  -- tenant_apps is keyed by tenant_id (one app per store). NO ACTION (not
+  -- tenant_apps is keyed by tenant_id (one app per store). The foreign key
+  -- below was DROPPED by 20261104120200 (dev builds have no app row). NO ACTION (not
   -- cascade): removing a store's app must not silently erase its customers'
   -- history; deleting the whole store still cascades both in one statement.
   app_id uuid not null references public.tenant_apps(tenant_id),
