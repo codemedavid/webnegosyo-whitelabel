@@ -85,6 +85,12 @@ function Markup({ value }: { value: unknown }) {
   )
 }
 
+/** Plain text with `{tokens}` filled in (button labels, list rows) — no markup. */
+function TokenText({ value }: { value: string }) {
+  const source = useTokenText(value)
+  return <>{typeof source === 'string' ? source : value}</>
+}
+
 function Maybe({ link, children }: { link: LinkProps | null; children: ReactNode }) {
   const onLinkClick = useHeroLinkClick()
   if (!link) return <>{children}</>
@@ -124,7 +130,9 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
             return (
               <a key={item.id} className={`hb-btn hb-btn--${variant}`} {...link} onClick={onLinkClick}>
                 {item.icon && <HeroIcon name={item.icon} />}
-                <span>{text(item.label) || 'Button'}</span>
+                <span>
+                  <TokenText value={text(item.label) || 'Button'} />
+                </span>
               </a>
             )
           })}
@@ -189,7 +197,9 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
           {items.map((item) => (
             <li key={item.id}>
               <HeroIcon name={item.icon} />
-              <span>{text(item.text)}</span>
+              <span>
+                <TokenText value={text(item.text)} />
+              </span>
             </li>
           ))}
         </ul>

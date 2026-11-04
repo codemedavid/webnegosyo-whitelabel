@@ -43,7 +43,7 @@ export function RedirectSetting({ tenantId, initial }: { tenantId: string; initi
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger className="flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-100" title="After the order is placed">
         <Timer className="h-4 w-4" />
-        <span className="hidden xl:inline">{summary}</span>
+        <span className="hidden whitespace-nowrap 2xl:inline">{summary}</span>
       </DialogTrigger>
       <DialogContent className="max-w-sm space-y-3 p-5">
         <div>

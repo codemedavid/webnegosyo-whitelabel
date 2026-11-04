@@ -86,3 +86,19 @@ describe('Page Designer rendering', () => {
     expect(screen.getByText('Back to menu shows here')).toBeInTheDocument()
   })
 })
+
+describe('tokens in other widgets', () => {
+  it('fills {tokens} in icon-list rows, badges and button labels', () => {
+    const list: Widget = { ...createWidget('icon-list'), id: 'l', content: { kind: 'icon-list', layout: 'vertical', items: [{ id: 'i', icon: 'Check', text: 'Straight to {store}' }] } }
+    const badge: Widget = { ...createWidget('badge'), id: 'g', content: { kind: 'badge', text: 'Hi {name}' } }
+    const buttons: Widget = { ...createWidget('buttons'), id: 'u', content: { kind: 'buttons', items: [{ id: 'b1', label: 'More from {store}', href: '#x', newTab: false, variant: 'solid' }] } }
+    render(
+      <PageRuntimeProvider value={runtime(null)}>
+        <HeroBuilderRenderer design={designOf([section('s', [column('c', [list, badge, buttons])])])} />
+      </PageRuntimeProvider>,
+    )
+    expect(screen.getByText('Straight to Lola’s')).toBeInTheDocument()
+    expect(screen.getByText('Hi Maria')).toBeInTheDocument()
+    expect(screen.getByText('More from Lola’s')).toBeInTheDocument()
+  })
+})

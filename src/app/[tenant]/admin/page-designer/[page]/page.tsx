@@ -4,6 +4,7 @@ import { getCachedTenantBySlug } from '@/lib/cache'
 import { generateBrandingCSS, getTenantBranding } from '@/lib/branding-utils'
 import { hasPageDesign, readConfirmationRedirect, storedPageDesign } from '@/lib/page-designer/page-mode'
 import { pageBySlug, PAGE_META } from '@/lib/page-designer/pages'
+import { createStandardDesign } from '@/lib/page-designer/standard-designs'
 import { readStorefrontLabels } from '@/lib/storefront-labels'
 import { PageDesignerEditor } from '@/components/page-designer/editor/page-designer-editor'
 import { pageThemeStyle } from '@/components/page-designer/editor/page-theme'
@@ -38,7 +39,8 @@ export default async function PageDesignerPage({ params }: PageProps) {
       page={page}
       storeName={tenant.name}
       labels={readStorefrontLabels(row) as Record<string, string>}
-      initialDesign={storedPageDesign(row, page)}
+      // Built here, not in the browser: the standard design's fresh ids must match on both sides.
+      initialDesign={storedPageDesign(row, page) ?? createStandardDesign(page)}
       initialIsLive={hasPageDesign(row, page)}
       brandStyle={brandStyle}
       redirect={readConfirmationRedirect(row)}

@@ -32,10 +32,9 @@ function presetsFor(page: PageId) {
 }
 
 export function buildPageSurface(page: PageId, runtime: (state: string | null) => PageRuntime): BuilderSurface {
-  const meta = PAGE_META[page]
   return {
     linkSurface: 'hero',
-    title: `Page Designer · ${meta.label}`,
+    title: 'Page Designer',
     draftPrefix: `pd-draft-${page}`,
     templates: PAGE_TEMPLATES[page],
     templateCategories: PAGE_TEMPLATE_CATEGORIES,

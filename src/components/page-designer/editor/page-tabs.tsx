@@ -16,7 +16,7 @@ export function PageTabs({ tenantSlug, current }: { tenantSlug: string; current:
           href={`/${tenantSlug}/admin/page-designer/${PAGE_META[id].slug}`}
           aria-current={id === current ? 'page' : undefined}
           className={cn(
-            'rounded-md px-2.5 py-1 text-xs font-semibold transition',
+            'whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold transition',
             id === current ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-900',
           )}
         >
