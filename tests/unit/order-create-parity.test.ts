@@ -124,7 +124,10 @@ describe('isDuplicateClientOrderId', () => {
 
 describe('write-path wiring', () => {
   const ordersService = readFileSync(join(process.cwd(), 'src/lib/orders-service.ts'), 'utf8')
-  const action = readFileSync(join(process.cwd(), 'src/app/actions/orders.ts'), 'utf8')
+  // The action is a wrapper; the backend writes live in the order engine.
+  const action = ['src/app/actions/orders.ts', 'src/lib/checkout/place-order/write-order.ts']
+    .map((file) => readFileSync(join(process.cwd(), file), 'utf8'))
+    .join('\n')
   const checkout = readFileSync(join(process.cwd(), 'src/hooks/useCheckout.ts'), 'utf8')
 
   it('createOrder spreads the parity columns into the insert', () => {

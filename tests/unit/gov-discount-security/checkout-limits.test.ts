@@ -56,7 +56,8 @@ describe('gov claim limits', () => {
   })
 
   it('createOrderAction checks the claim limit', () => {
-    const source = readFileSync(join(process.cwd(), 'src/app/actions/orders.ts'), 'utf8')
+    // The check lives in the order engine createOrderAction calls.
+    const source = readFileSync(join(process.cwd(), 'src/lib/checkout/place-order/validate-request.ts'), 'utf8')
     expect(source).toMatch(/govClaimLimitRefusal\(tenantId, governmentClaim\)/)
   })
 })

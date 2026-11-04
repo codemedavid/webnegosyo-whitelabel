@@ -39,6 +39,11 @@ const MONEY_BEARING_FILES = [
   `${CHECKOUT_TEMPLATE_DIR}/wizard-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/express-checkout.tsx`,
   'src/app/actions/orders.ts',
+  // The order engine createOrderAction (and the customer app) call: pricing,
+  // the backend writes and the totals handed back to the app.
+  'src/lib/checkout/place-order/pricing.ts',
+  'src/lib/checkout/place-order/write-order.ts',
+  'src/lib/checkout/place-order/placed-result.ts',
   // The three write paths. Each one persists the amount actually charged, for
   // a different order backend, and each had its own copy of the arithmetic.
   // A discount applied on the display side and missed here would show the
