@@ -7,12 +7,23 @@
  * and the wording is the owner's (`item.note_title` / `item.note_placeholder`).
  */
 
-import { useId, type CSSProperties } from 'react'
+import { useId, type CSSProperties, type FocusEvent } from 'react'
 import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { ITEM_NOTE_MAX_LENGTH } from '@/lib/item-note'
 
 export const ITEM_NOTE_TITLE_FALLBACK = 'Notes for the kitchen'
 export const ITEM_NOTE_PLACEHOLDER_FALLBACK = 'e.g. no onions, less ice'
+
+/**
+ * On a phone the item page's fixed "Add to cart" bar sits over the fold, and
+ * the open keyboard shrinks the view further: bring the whole field (box and
+ * counter) to the middle instead of leaving the counter under the bar.
+ */
+function revealField(event: FocusEvent<HTMLTextAreaElement>) {
+  const field = event.currentTarget.parentElement
+  if (typeof field?.scrollIntoView !== 'function') return
+  field.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
 
 /** Every colour the box paints with, from the host's theme. */
 export interface ItemNoteColors {
@@ -42,7 +53,7 @@ export function ItemNoteField({ value, onChange, colors, titleStyle, className =
   const vars = { '--note-placeholder': colors.muted, '--note-focus': colors.focus } as CSSProperties
 
   return (
-    <div className={className} data-branding-scope={brandingScope} style={vars}>
+    <div className={`scroll-mb-28 ${className}`} data-branding-scope={brandingScope} style={vars}>
       <label htmlFor={fieldId} className="mb-2 block text-base font-semibold" style={{ color: colors.title, ...titleStyle }}>
         <StoreLabel name="item.note_title" fallback={ITEM_NOTE_TITLE_FALLBACK} />{' '}
         <span className="text-xs font-normal" style={{ color: colors.muted }}>(Optional)</span>
@@ -51,6 +62,7 @@ export function ItemNoteField({ value, onChange, colors, titleStyle, className =
         id={fieldId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onFocus={revealField}
         maxLength={ITEM_NOTE_MAX_LENGTH}
         rows={2}
         placeholder={placeholder}
