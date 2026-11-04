@@ -1,0 +1,318 @@
+{
+  "cashier": {
+    "cash": {
+      "floatCents": 50000,
+      "payInCents": 0,
+      "payOutCents": 0,
+      "countedCents": 160000,
+      "expectedCents": 165000,
+      "cashSalesCents": 115000,
+      "collectedCents": 0,
+      "expectedSource": "device",
+      "differenceCents": -5000
+    },
+    "items": [
+      {
+        "label": "Adobo",
+        "netCents": 72548,
+        "quantity": 5
+      },
+      {
+        "label": "Halo-halo",
+        "netCents": 30000,
+        "quantity": 2
+      },
+      {
+        "label": "Rice",
+        "netCents": 5000,
+        "quantity": 2
+      },
+      {
+        "label": "Iced tea",
+        "netCents": 9502,
+        "quantity": 1
+      }
+    ],
+    "scope": "cashier",
+    "shift": {
+      "id": "5a000000-0000-4000-8000-000000000001",
+      "closedAt": "2026-10-20T12:00:00.000Z",
+      "openedAt": "2026-10-20T02:00:00.000Z",
+      "staffName": "Loly Cashier",
+      "drawerName": null,
+      "businessDay": "2026-10-20",
+      "servicePeriodName": null
+    },
+    "voids": [
+      {
+        "number": "#03",
+        "status": "void",
+        "orderId": "0a000000-0000-4000-8000-000000000003",
+        "placedAt": "2026-10-20T03:00:00.000Z",
+        "totalCents": 21000
+      }
+    ],
+    "hidden": false,
+    "source": "server",
+    "window": {
+      "to": "2026-10-20T12:00:00.000Z",
+      "from": "2026-10-20T02:00:00.000Z"
+    },
+    "summary": {
+      "orders": 3,
+      "netCents": 117050,
+      "voidCents": 21000,
+      "voidCount": 1,
+      "grossCents": 122050,
+      "refundCents": 5000,
+      "unpaidCents": 0,
+      "deliveryCents": 0,
+      "discountCents": 5000,
+      "overpaidCents": 0,
+      "collectedCents": 117050,
+      "serviceChargeCents": 0
+    },
+    "channels": [
+      {
+        "key": "counter",
+        "label": "Counter (POS)",
+        "orders": 3,
+        "netCents": 117050
+      }
+    ],
+    "payments": [
+      {
+        "key": "name:cash",
+        "cents": 65000,
+        "count": 2,
+        "label": "Cash"
+      },
+      {
+        "key": "name:gcash",
+        "cents": 52050,
+        "count": 1,
+        "label": "GCash"
+      }
+    ],
+    "receipts": [
+      {
+        "number": "#07",
+        "status": "paid",
+        "orderId": "0a000000-0000-4000-8000-000000000007",
+        "placedAt": "2026-10-20T04:00:00.000Z",
+        "totalCents": 30000,
+        "methodLabel": "Cash",
+        "orderTypeLabel": "Unspecified"
+      },
+      {
+        "number": "#03",
+        "status": "void",
+        "orderId": "0a000000-0000-4000-8000-000000000003",
+        "placedAt": "2026-10-20T03:00:00.000Z",
+        "totalCents": 21000,
+        "methodLabel": "Cash",
+        "orderTypeLabel": "Unspecified"
+      },
+      {
+        "number": "#02",
+        "status": "paid",
+        "orderId": "0a000000-0000-4000-8000-000000000002",
+        "placedAt": "2026-10-20T02:30:00.000Z",
+        "totalCents": 52050,
+        "methodLabel": "GCash",
+        "orderTypeLabel": "Unspecified"
+      },
+      {
+        "number": "#01",
+        "status": "paid",
+        "orderId": "0a000000-0000-4000-8000-000000000001",
+        "placedAt": "2026-10-20T02:05:00.000Z",
+        "totalCents": 35000,
+        "methodLabel": "Cash",
+        "orderTypeLabel": "Unspecified"
+      }
+    ],
+    "lastNumber": "#07",
+    "orderTypes": [
+      {
+        "key": "unspecified",
+        "label": "Unspecified",
+        "orders": 3,
+        "netCents": 117050
+      }
+    ],
+    "firstNumber": "#01",
+    "itemsTruncated": false,
+    "voidsTruncated": false,
+    "otherCollections": {
+      "cents": 99900,
+      "count": 1
+    },
+    "receiptsTruncated": false
+  },
+  "hidden": {
+    "cash": null,
+    "items": null,
+    "scope": "cashier",
+    "shift": {
+      "id": "5a000000-0000-4000-8000-000000000004",
+      "closedAt": null,
+      "openedAt": "2026-11-04T04:55:18.444Z",
+      "staffName": "Cy",
+      "drawerName": null,
+      "businessDay": "2026-11-04",
+      "servicePeriodName": null
+    },
+    "voids": [],
+    "hidden": true,
+    "source": "server",
+    "window": {
+      "to": "2026-11-04T07:55:24.730Z",
+      "from": "2026-11-04T04:55:18.444Z"
+    },
+    "summary": null,
+    "channels": null,
+    "payments": null,
+    "receipts": [
+      {
+        "number": "#02",
+        "status": "unpaid",
+        "orderId": "0a000000-0000-4000-8000-000000000021",
+        "placedAt": "2026-11-04T07:05:18.351Z",
+        "totalCents": null,
+        "methodLabel": "Cash",
+        "orderTypeLabel": "Unspecified"
+      }
+    ],
+    "lastNumber": "#02",
+    "orderTypes": null,
+    "firstNumber": "#02",
+    "itemsTruncated": false,
+    "voidsTruncated": false,
+    "otherCollections": null,
+    "receiptsTruncated": false
+  },
+  "unavailable": {
+    "scope": "cashier",
+    "shift": {
+      "id": "5a000000-0000-4000-8000-000000000007",
+      "closedAt": null,
+      "openedAt": "2026-11-04T06:55:18.444Z",
+      "staffName": "Cole",
+      "drawerName": null,
+      "businessDay": "2026-11-04",
+      "servicePeriodName": null
+    },
+    "hidden": false,
+    "source": "unavailable",
+    "window": {
+      "to": "2026-11-04T07:55:25.532Z",
+      "from": "2026-11-04T06:55:18.444Z"
+    }
+  },
+  "truncatedHead": {
+    "cash": {
+      "floatCents": 0,
+      "payInCents": 0,
+      "payOutCents": 0,
+      "countedCents": 0,
+      "expectedCents": 0,
+      "cashSalesCents": 0,
+      "collectedCents": 0,
+      "expectedSource": "device",
+      "differenceCents": 0
+    },
+    "items": [
+      {
+        "label": "Dish 001",
+        "netCents": 1000,
+        "quantity": 3
+      },
+      {
+        "label": "Dish 002",
+        "netCents": 1000,
+        "quantity": 3
+      },
+      {
+        "label": "Dish 003",
+        "netCents": 1000,
+        "quantity": 3
+      }
+    ],
+    "scope": "cashier",
+    "shift": {
+      "id": "5a000000-0000-4000-8000-000000000006",
+      "closedAt": "2026-09-01T12:00:00.000Z",
+      "openedAt": "2026-09-01T01:00:00.000Z",
+      "staffName": "Loly Cashier",
+      "drawerName": null,
+      "businessDay": "2026-09-01",
+      "servicePeriodName": null
+    },
+    "voids": [],
+    "hidden": false,
+    "source": "server",
+    "window": {
+      "to": "2026-09-01T12:00:00.000Z",
+      "from": "2026-09-01T01:00:00.000Z"
+    },
+    "summary": {
+      "orders": 1,
+      "netCents": 505000,
+      "voidCents": 0,
+      "voidCount": 0,
+      "grossCents": 505000,
+      "refundCents": 0,
+      "unpaidCents": 0,
+      "deliveryCents": 0,
+      "discountCents": 0,
+      "overpaidCents": 0,
+      "collectedCents": 505000,
+      "serviceChargeCents": 0
+    },
+    "channels": [
+      {
+        "key": "counter",
+        "label": "Counter (POS)",
+        "orders": 1,
+        "netCents": 505000
+      }
+    ],
+    "payments": [
+      {
+        "key": "name:cash",
+        "cents": 505000,
+        "count": 1,
+        "label": "Cash"
+      }
+    ],
+    "receipts": [
+      {
+        "number": "#01",
+        "status": "paid",
+        "orderId": "0a000000-0000-4000-8000-000000000090",
+        "placedAt": "2026-09-01T02:00:00.000Z",
+        "totalCents": 505000,
+        "methodLabel": "Cash",
+        "orderTypeLabel": "Unspecified"
+      }
+    ],
+    "lastNumber": "#01",
+    "orderTypes": [
+      {
+        "key": "unspecified",
+        "label": "Unspecified",
+        "orders": 1,
+        "netCents": 505000
+      }
+    ],
+    "firstNumber": "#01",
+    "itemsTruncated": true,
+    "voidsTruncated": false,
+    "otherCollections": {
+      "cents": 0,
+      "count": 0
+    },
+    "receiptsTruncated": false
+  }
+}
