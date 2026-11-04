@@ -26,7 +26,9 @@ describe("Shift sales screen", () => {
   it("owner decision 2026-11-04: a plain cashier is only ever asked her own sales, and opens on them", () => {
     expect(screen()).toMatch(/canSeeStoreSales\(\{ role, isOwner, permissions \}\)/);
     expect(screen()).toMatch(/scope: reportScopeFor\(lens, canSeeStore\)/);
-    expect(screen()).toMatch(/initialLens\(\{/);
+    // Re-derived on focus / param change: the screen never unmounts.
+    expect(screen()).toMatch(/useShiftSalesLens\(\{/);
+    expect(read("lib", "cash", "use-shift-sales-lens.ts")).toMatch(/initialLens\(\{/);
     // The tablet's own count narrows to her sales too.
     expect(screen()).toMatch(/cashierId,\n/);
   });

@@ -16,7 +16,8 @@ import { canManageCash } from "../../lib/cash-drawers";
 import { buildShiftReportSlip } from "../../lib/cash-slips/shift-report";
 import { slipPlainText } from "../../lib/cash-slips/slip-text";
 import { printStateText } from "../../lib/cash/shift-report-actions";
-import { canSeeStoreSales, initialLens, lensOptions, reportScopeFor, type ShiftSalesLensKey } from "../../lib/cash/shift-sales-lens";
+import { canSeeStoreSales, lensOptions, reportScopeFor, type ShiftSalesLensKey } from "../../lib/cash/shift-sales-lens";
+import { useShiftSalesLens } from "../../lib/cash/use-shift-sales-lens";
 import { useServicePeriods } from "../../lib/cash/use-cash-rules";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
@@ -94,9 +95,11 @@ export default function ShiftSalesScreen() {
   const permissions = useAuthStore((s) => s.permissions);
   // Owner decision 2026-11-04: a cashier sees her own sales, never the store's.
   const canSeeStore = isDemo || canSeeStoreSales({ role, isOwner, permissions });
-  const [lens, setLens] = useState<ShiftSalesLensKey>(() =>
-    initialLens({ param: typeof params.lens === "string" ? params.lens : undefined, canSeeStore }),
-  );
+  // Re-derived on focus / param change: this screen is never unmounted.
+  const [lens, setLens] = useShiftSalesLens({
+    param: typeof params.lens === "string" ? params.lens : undefined,
+    canSeeStore,
+  });
   // A shift's report is asked in the lens's scope: hers ("cashier") or the store's ("window").
   const target = useMemo<ShiftSalesTarget | null>(
     () => (requested?.kind === "shift" ? { ...requested, scope: reportScopeFor(lens, canSeeStore) } : requested),
