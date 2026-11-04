@@ -61,23 +61,23 @@ describe('ProductDetailContent — kitchen note after an add', () => {
 
   it('sends the note with the dish, then empties the box for the next add', async () => {
     await renderPage()
-    const box = screen.getByRole('textbox', { name: /notes for the kitchen/i })
+    const box = screen.getByRole('textbox', { name: /note for the kitchen/i })
     fireEvent.change(box, { target: { value: 'no onion' } })
 
     fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
 
     expect(mockAddItem).toHaveBeenCalledTimes(1)
     expect(mockAddItem.mock.calls[0][4]).toBe('no onion')
-    expect(screen.getByRole('textbox', { name: /notes for the kitchen/i })).toHaveValue('')
+    expect(screen.getByRole('textbox', { name: /note for the kitchen/i })).toHaveValue('')
   })
 
   it('keeps the note when the add is refused', async () => {
     mockAddItem.mockReturnValueOnce({ ok: false, committedDate: '2026-11-05' })
     await renderPage()
-    fireEvent.change(screen.getByRole('textbox', { name: /notes for the kitchen/i }), { target: { value: 'no onion' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /note for the kitchen/i }), { target: { value: 'no onion' } })
 
     fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
 
-    expect(screen.getByRole('textbox', { name: /notes for the kitchen/i })).toHaveValue('no onion')
+    expect(screen.getByRole('textbox', { name: /note for the kitchen/i })).toHaveValue('no onion')
   })
 })

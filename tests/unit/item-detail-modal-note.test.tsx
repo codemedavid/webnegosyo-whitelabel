@@ -32,7 +32,7 @@ describe('ItemDetailModal — kitchen note', () => {
   it('shows the line\'s note in the box', () => {
     renderEdit('less ice')
 
-    const box = screen.getByRole('textbox', { name: /notes for the kitchen/i })
+    const box = screen.getByRole('textbox', { name: /note for the kitchen/i })
     expect(box).toHaveValue('less ice')
     expect(box).toHaveAttribute('maxLength', String(ITEM_NOTE_MAX_LENGTH))
     expect(screen.getByText(`8/${ITEM_NOTE_MAX_LENGTH}`)).toBeInTheDocument()
@@ -50,7 +50,7 @@ describe('ItemDetailModal — kitchen note', () => {
   it('sends the changed note', () => {
     const onAddToCart = renderEdit()
 
-    fireEvent.change(screen.getByRole('textbox', { name: /notes for the kitchen/i }), { target: { value: 'no sugar' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /note for the kitchen/i }), { target: { value: 'no sugar' } })
     fireEvent.click(screen.getByRole('button', { name: /update cart/i }))
 
     expect(onAddToCart).toHaveBeenCalledWith(latte, undefined, [], 2, 'no sugar')

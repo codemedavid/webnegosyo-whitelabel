@@ -118,3 +118,19 @@ describe('the flexible kit\'s round "+" on a sold-out card', () => {
     expect(button).toHaveTextContent('Sold out')
   })
 })
+
+describe('"Only N left" in the store\'s own words', () => {
+  it('uses the owner\'s menu.only_left label with the count filled in', async () => {
+    const { LowStockBadge, CardStockProvider } = await import('@/components/customer/card-templates/card-stock')
+    const { StorefrontLabelsProvider } = await import('@/components/customer/storefront-labels-provider')
+    render(
+      <StorefrontLabelsProvider tenant={{ storefront_labels: { 'menu.only_left': '{count} na lang' } }}>
+        <CardStockProvider stock={{ isOrderable: true, isSoldOut: false, onlyLeft: 2 }}>
+          <LowStockBadge branding={branding} />
+        </CardStockProvider>
+      </StorefrontLabelsProvider>,
+    )
+
+    expect(screen.getByTestId('low-stock-badge')).toHaveTextContent('2 na lang')
+  })
+})

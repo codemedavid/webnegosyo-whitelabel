@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * "Notes for the kitchen" — the optional per-dish note box on the item page,
+ * "Note for the kitchen" — the optional per-dish note box on the item page,
  * the item sheet and the cart's "Edit item" dialog. It never hard-codes a
  * colour: each host passes the store's own (CSS variables or branding hex),
  * and the wording is the owner's (`item.note_title` / `item.note_placeholder`).
@@ -11,7 +11,7 @@ import { useId, type CSSProperties, type FocusEvent } from 'react'
 import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { ITEM_NOTE_MAX_LENGTH } from '@/lib/item-note'
 
-export const ITEM_NOTE_TITLE_FALLBACK = 'Notes for the kitchen'
+export const ITEM_NOTE_TITLE_FALLBACK = 'Note for the kitchen'
 export const ITEM_NOTE_PLACEHOLDER_FALLBACK = 'e.g. no onions, less ice'
 
 /**

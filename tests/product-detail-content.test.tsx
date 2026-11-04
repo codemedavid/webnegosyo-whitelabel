@@ -257,7 +257,7 @@ const renderWithQuery = (ui: React.ReactElement) =>
         it('offers an optional note box with a character counter', () => {
             renderWithQuery(<ProductDetailContent tenant={mockTenant} item={createMockItem()} branding={mockBranding} />)
 
-            const box = screen.getByRole('textbox', { name: /notes for the kitchen/i })
+            const box = screen.getByRole('textbox', { name: /note for the kitchen/i })
             expect(box).toHaveAttribute('placeholder', 'e.g. no onions, less ice')
             expect(box).toHaveAttribute('maxLength', String(ITEM_NOTE_MAX_LENGTH))
             expect(screen.getByText(`0/${ITEM_NOTE_MAX_LENGTH}`)).toBeInTheDocument()
@@ -271,7 +271,7 @@ const renderWithQuery = (ui: React.ReactElement) =>
             const item = createMockItem()
             renderWithQuery(<ProductDetailContent tenant={mockTenant} item={item} branding={mockBranding} />)
 
-            fireEvent.change(screen.getByRole('textbox', { name: /notes for the kitchen/i }), { target: { value: '  no onions ' } })
+            fireEvent.change(screen.getByRole('textbox', { name: /note for the kitchen/i }), { target: { value: '  no onions ' } })
             fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
 
             expect(mockAddItem.mock.calls[0]).toEqual([item, undefined, [], 1, 'no onions', undefined, undefined, undefined])
@@ -284,7 +284,7 @@ const renderWithQuery = (ui: React.ReactElement) =>
             })
             renderWithQuery(<ProductDetailContent tenant={mockTenant} item={item} branding={mockBranding} modifierGroupsEnabled />)
 
-            fireEvent.change(screen.getByRole('textbox', { name: /notes for the kitchen/i }), { target: { value: 'less ice' } })
+            fireEvent.change(screen.getByRole('textbox', { name: /note for the kitchen/i }), { target: { value: 'less ice' } })
             fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
 
             expect((mockAddItem.mock.calls[0] as unknown[])[4]).toBe('less ice')

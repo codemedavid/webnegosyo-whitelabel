@@ -23,7 +23,8 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 import { useStockCeilings } from '@/hooks/use-stock-ceilings'
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
+import { fillLabelCount } from '@/lib/storefront-labels'
 import type { MenuStockCeilings } from '@/lib/inventory/menu-ceilings'
 import type { MenuCardStock } from '@/lib/menu-item-availability'
 import type { BrandingColors } from '@/lib/branding-utils'
@@ -77,11 +78,14 @@ export function UnavailableLabel() {
 }
 
 /**
- * "Only N left", centred at the top of the card's (relative) image box: the
- * corners already carry the designs' featured / SALE badges.
+ * "Only N left" (the owner's `menu.only_left` wording), centred at the top of
+ * the card's (relative) image box: the corners already carry the designs'
+ * featured / SALE badges. Plain text, not a tappable Studio label: the shown
+ * words carry the number, which must never be saved back as the label.
  */
 export function LowStockBadge({ branding }: { branding: BrandingColors }) {
   const { onlyLeft } = useCardStock()
+  const wording = useStorefrontLabel('menu.only_left', 'Only {count} left')
   if (onlyLeft === null) return null
   return (
     <span
@@ -89,7 +93,7 @@ export function LowStockBadge({ branding }: { branding: BrandingColors }) {
       style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
       data-testid="low-stock-badge"
     >
-      Only {onlyLeft} left
+      {fillLabelCount(wording, onlyLeft)}
     </span>
   )
 }
