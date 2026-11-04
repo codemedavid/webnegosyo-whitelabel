@@ -151,3 +151,60 @@ platform tenants only, cancels `sale` claims older than 30 minutes and younger t
 - Full web suite `npx jest --ci`: 1609 suites / 18,300 tests passed (11 suites, 35 tests skipped = opt-in live), exit 0.
 - `npx tsc --noEmit` clean (apart from webnegosyo-desktop's missing `electron` types, pre-existing);
   `npx eslint` over the 71 touched src files: 0 errors.
+
+## Follow-up migration `20261105120000_inventory_followups.sql` (NOT applied)
+
+Runner `node tests/sql/run-inventory-followups.cjs` (96 checks over the live slice + the five applied migrations above +
+this one, run twice for idempotency; `--before` = without it, fails). Mutation-checked: dropping each fix fails its checks.
+
+1. **Tracking starts at the first delivery.** A receive / transfer_in (> 0) on a shelf with `counted_at IS NULL` and
+   `current_qty < 0` first writes a correcting `stocktake` (target 0, `opens_tracking = true`, same actor, 1 ms earlier,
+   note "Tracking started: earlier untracked sales cleared"), so Cold cup −65 + receive 5 = **5** (was −60 → sold out).
+   Counted shelves, shelves ≥ 0 and missing shelves are a plain add. Only the movement's OWN shelf is corrected (a branch
+   receive never touches the store shelf or other branches). Done in the DB (trigger `stock_movements_05_open_tracking`,
+   between the client guard and `stock_movements_apply`; worker `inventory_private.open_shelf_tracking`, definer, locks
+   ingredient → shelf like `apply_stock_movement`, refuses calls outside a trigger), so web, app, transfers and any server
+   writer get it without code changes; Σ ledger = `current_qty` holds. Clients/service role cannot set `opens_tracking`.
+   **Reports:** the correction is UNCOSTED (`stock_movements_apply_opening_uncosted` nulls the frozen cost) — the
+   untracked sales already booked their cost, and a costed +65 would have shown as a negative count loss in Profit. Until
+   reports filter `not opens_tracking`, Profit shows it only as +1 "uncosted movement" (info), the daily report as a +65
+   count adjustment (never shrinkage), Store Activity as "Cold cup set to 0 (+65 pcs)" with the note.
+   Known gap: a store-wide caller that names no branch (`outletId === undefined`) computes alert crossings from the
+   pre-read −65, so an open "out" alert may stay open until the next movement (auto-86 re-reads and is fine).
+2. **Guard helpers no longer answer for other stores.** The five definer helpers moved to the non-exposed schema
+   `inventory_private` (like `reporting`/`cash`; USAGE for authenticated + service_role so the invoker guards and the
+   audit-log policy still call them); a caller who is not a member / superadmin / platform staff gets the REFUSING
+   constant. The four guards were repointed (live bodies) and the `public` copies dropped.
+3. **Count sessions:** a stocktake joins only an OPEN count of its own branch (every role). Web and app write the session's
+   stocktakes before flipping the count to closed, so closing is unaffected (pinned).
+4. **Policies:** `stock_alerts_select_member` and `presell_stock_select_member` (each replaces a member + superadmin pair)
+   and `inventory_audit_log_insert_branch` use `(select auth.uid())`; same rows visible.
+
+Post-apply probes (each starts `set local statement_timeout = '5s';`):
+
+```sql
+-- objects
+select column_name, data_type, column_default from information_schema.columns
+ where table_schema = 'public' and table_name = 'stock_movements' and column_name = 'opens_tracking';
+select tgname from pg_trigger where tgrelid = 'public.stock_movements'::regclass and not tgisinternal order by tgname;
+  -- expect stock_movements_00_client_guard, stock_movements_05_open_tracking, stock_movements_apply,
+  --        stock_movements_apply_opening_uncosted, stock_movements_mark_counted, stock_movements_stamp_actor, ...
+select p.oid::regprocedure from pg_proc p where p.pronamespace = 'inventory_private'::regnamespace order by 1;   -- 7
+select p.oid::regprocedure from pg_proc p where p.pronamespace = 'public'::regnamespace
+ and p.proname in ('inventory_item_has_stock_on_any_shelf','inventory_units_in_use','stock_transfer_has_movements',
+                   'inventory_count_has_movements','inventory_outlet_in_tenant');                                  -- 0 rows
+select has_schema_privilege('anon', 'inventory_private', 'USAGE') as anon,                                         -- false
+       has_schema_privilege('authenticated', 'inventory_private', 'USAGE') as auth;                                -- true
+select pg_get_functiondef('public.stock_movement_count_session_is_valid()'::regprocedure) ~ 'already closed';     -- true
+select tablename, policyname, cmd, qual, with_check from pg_policies
+ where schemaname = 'public' and tablename in ('stock_alerts','presell_stock','inventory_audit_log') order by 1, 2;
+  -- no stock_alerts_select_branch/_superadmin or presell_stock_select_superadmin; auth.uid() only as ( SELECT auth.uid() ...)
+-- nothing is rewritten by the migration: the 29 uncounted negative shelves are still there until their next delivery
+select count(*) from public.inventory_stock where counted_at is null and current_qty < 0;                         -- 29 (as on 2026-11-05)
+select count(*) from public.stock_movements where opens_tracking;                                                  -- 0
+```
+
+Then get_advisors (performance): `auth_rls_initplan` / `multiple_permissive_policies` for the three tables'
+policies above should be gone (the shared `platform_staff_*` ones remain). Regenerate `src/types/database.ts` via the
+Supabase MCP (new `stock_movements.opens_tracking`). After Loly's next cup delivery:
+`select reason, quantity_delta, balance_after, unit_cost, note from stock_movements where opens_tracking order by created_at desc limit 5;`
