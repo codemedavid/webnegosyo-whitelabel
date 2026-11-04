@@ -61,6 +61,7 @@ import {
   type TenderMode,
 } from "../../lib/pos-tender-mode";
 import { usePosLastSaleStore } from "../../stores/pos-last-sale-store";
+import { trackTenderReceiptPrint } from "../../lib/last-sale-receipt";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Icon } from "../../components/Icon";
 import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
@@ -704,9 +705,14 @@ export default function PosTenderScreen() {
       // no receipt yet — its bill prints when it is collected from the order
       // screen, with the cash and change on it.
       const receipt = tender ? posReceiptOrder(String(orderId), args, tender, createdAt) : undefined;
-      const isReceiptPrinted = receipt !== undefined && shouldPrint("counterSale");
-      const receiptPrinted =
-        receipt && isReceiptPrinted ? printOrder(receipt) : Promise.resolve(false);
+      const isReceiptSent = receipt !== undefined && shouldPrint("counterSale");
+      // The banner says "Reprint" only once this print SUCCEEDED; a print
+      // that was only sent (printer off) leaves it "Print receipt".
+      const receiptPrinted = trackTenderReceiptPrint(
+        String(orderId),
+        receipt && isReceiptSent ? printOrder(receipt) : Promise.resolve(false),
+        usePosLastSaleStore.getState().markReceiptPrinted,
+      );
       // The kitchen chit too, from the lines this register already holds,
       // instead of waiting for the auto-print watcher to hear about the sale
       // from the server.
@@ -731,7 +737,8 @@ export default function PosTenderScreen() {
         canOpenOrder: !isSavedOffline,
         // The banner's "Reprint" prints this same paper again, marked REPRINT.
         receipt,
-        isReceiptPrinted,
+        isReceiptPrinted: false,
+        receiptPrintJob: isReceiptSent ? receiptPrinted : undefined,
       });
       reset();
       // The sale (and its upload queue) owns its ID photos now.

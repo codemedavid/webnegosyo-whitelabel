@@ -1,13 +1,15 @@
 import { useCallback } from "react";
 import { Alert } from "react-native";
 import { useReceiptReprint } from "./useReceiptReprint";
-import type { LastSale } from "../stores/pos-last-sale-store";
+import { usePosLastSaleStore, type LastSale } from "../stores/pos-last-sale-store";
+import { printLastSaleReceipt } from "../lib/last-sale-receipt";
 
 /**
  * The sale-complete banner's "Reprint": the receipt the register just built,
  * printed again from memory (works offline, no server round trip). Marked
- * REPRINT when the register already printed it; a sale whose receipt never
- * printed (print trigger off) gets its first, unmarked print instead.
+ * REPRINT only when a receipt for the sale really came out already; otherwise
+ * (print trigger off, printer off at tender) it is the first, unmarked print,
+ * and a success makes the next tap a REPRINT (lib/last-sale-receipt.ts).
  * Undefined on a device without a receipt printer, so the banner offers nothing.
  */
 export function useLastSaleReprint(): ((sale: LastSale) => void) | undefined {
@@ -16,10 +18,14 @@ export function useLastSaleReprint(): ((sale: LastSale) => void) | undefined {
 
   const onReprint = useCallback(
     (sale: LastSale) => {
-      const receipt = sale.receipt;
-      if (!receipt) return;
-      const job = sale.isReceiptPrinted ? reprint(receipt) : print(receipt);
-      void job.then((isPrinted) => {
+      if (!sale.receipt) return;
+      const { markReceiptPrinted } = usePosLastSaleStore.getState();
+      void printLastSaleReceipt(sale, {
+        print: (receipt) => print(receipt),
+        reprint: (receipt) => reprint(receipt),
+        latest: () => usePosLastSaleStore.getState().lastSale,
+        markPrinted: markReceiptPrinted,
+      }).then((isPrinted) => {
         if (!isPrinted) Alert.alert("Print failed", "Check the receipt printer in Printer settings, then try again.");
       });
     },

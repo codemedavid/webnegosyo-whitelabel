@@ -71,6 +71,18 @@ describe("order screen: Reprint on delivered orders", () => {
   });
 });
 
+describe("the sale banner's receipt state is what really printed", () => {
+  it("the tender shows the sale unprinted and marks it only after the print succeeds", () => {
+    const src = read("app", "(main)", "pos-tender.tsx");
+    expect(src).toMatch(/isReceiptPrinted: false/);
+    expect(src).toMatch(/trackTenderReceiptPrint\(/);
+  });
+
+  it("the banner button goes through printLastSaleReceipt, which marks after success", () => {
+    expect(read("hooks", "useLastSaleReprint.ts")).toMatch(/printLastSaleReceipt\(/);
+  });
+});
+
 describe("only a manual reprint is marked", () => {
   it("the reprint hook marks the copy and reports it after the paper is out", () => {
     const hook = read("hooks", "useReceiptReprint.ts");
