@@ -12,6 +12,7 @@ import { StepBar } from "../../components/cash/StepBar";
 import { initialNonCashAnswers, isNonCashComplete, toCloseNonCash } from "../../components/cash/non-cash";
 import { isRemitReady, remitCloseArgs, type RemitHow, type RemitTarget } from "../../components/cash/remit-target";
 import { CountStep, NonCashStep, RemitStep, ResultStep } from "../../components/end-shift/EndShiftSteps";
+import { ShiftReportCard } from "../../components/shift-sales/ShiftReportCard";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { formatPeso } from "../../lib/expenses/keypad";
 import { pendingDrawerCents } from "../../lib/expenses/expense-queue";
@@ -21,7 +22,7 @@ import { usePendingSaleCounts } from "../../lib/offline/use-outbox-sync";
 import { isTabletScreen } from "../../lib/screen-size";
 import { formatClock, formatDayLabel } from "../../lib/staff-format";
 import { readStaffName } from "../../lib/shift-service";
-import { remittanceHref } from "../../lib/cash-routes";
+import { myShiftSalesHref, remittanceHref } from "../../lib/cash-routes";
 import { toRemitReceivers } from "../../lib/cash/receivers";
 import { useCashReceivers, useCashSettings } from "../../lib/cash/use-cash-rules";
 import { closeShiftRpc, countShift, type ShiftClosePreview } from "../../lib/cash/shift-close";
@@ -194,7 +195,11 @@ function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft
     forgetDeviceExpected(shift.id);
     const { remittanceId } = result.data;
     if (!remittanceId) {
-      Alert.alert("Shift ended", `Hand over ${formatPeso(result.data.handedOverCents)}.`);
+      // No slip to land on: offer her shift report before the Drawer.
+      Alert.alert("Shift ended", `Hand over ${formatPeso(result.data.handedOverCents)}.`, [
+        { text: "Print my shift report", onPress: () => router.navigate(myShiftSalesHref(shift.id) as never) },
+        { text: "Done", style: "cancel" },
+      ]);
       router.replace(DRAWER_ROUTE as never);
       return;
     }
@@ -308,6 +313,8 @@ function EndShiftFlow({ shift, preview, previewNotice, draft, update, clearDraft
             isRemitOff={isRemitOff}
           />
         ) : null}
+        {/* Counted: her own sales so far (items, voids, drawer) can go on paper before the hand-over. */}
+        {(step === "result" || step === "remit") && count ? <ShiftReportCard shiftId={shift.id} /> : null}
         {error && error !== END_SHIFT_COPY.pickReason ? (
           <Text style={styles.error} accessibilityRole="alert">
             {error}

@@ -15,10 +15,26 @@ function read(...segments: string[]): string {
 const screen = () => read("app", "(main)", "shift-sales.tsx");
 
 describe("Shift sales screen", () => {
-  it("is drawn with BackHeader and the Store sales | My drawer lens", () => {
+  it("is drawn with BackHeader and the My sales | Store sales | My drawer lenses (lib/cash/shift-sales-lens.ts)", () => {
     expect(screen()).toMatch(/<BackHeader/);
-    expect(screen()).toMatch(/"Store sales"/);
-    expect(screen()).toMatch(/"My drawer"/);
+    // The labels moved into the lens rules so a plain cashier's set can be tested.
+    expect(screen()).toMatch(/lensOptions\(\{ canSeeStore, isMine \}\)/);
+    const lenses = read("lib", "cash", "shift-sales-lens.ts");
+    for (const label of ['"My sales"', '"Store sales"', '"My drawer"']) expect(lenses).toContain(label);
+  });
+
+  it("owner decision 2026-11-04: a plain cashier is only ever asked her own sales, and opens on them", () => {
+    expect(screen()).toMatch(/canSeeStoreSales\(\{ role, isOwner, permissions \}\)/);
+    expect(screen()).toMatch(/scope: reportScopeFor\(lens, canSeeStore\)/);
+    expect(screen()).toMatch(/initialLens\(\{/);
+    // The tablet's own count narrows to her sales too.
+    expect(screen()).toMatch(/cashierId,\n/);
+  });
+
+  it("shows her report's paper exactly as it prints, with a printing / printed / failed line", () => {
+    expect(screen()).toMatch(/slipPlainText\(buildShiftReportSlip\(report/);
+    expect(screen()).toMatch(/printStateText\(printer\.state\)/);
+    expect(screen()).toMatch(/printer\.noPrinterMessage/);
   });
 
   it("asks the server report only on the platform backend, and counts on the tablet otherwise", () => {
@@ -49,10 +65,19 @@ describe("Shift sales screen", () => {
 });
 
 describe("Shift sales doors", () => {
-  it("the Drawer's own shift card opens it for the open shift", () => {
+  it("the Drawer's own shift card opens it for the open shift, on her own sales", () => {
     const card = read("components", "drawer", "MyShiftCard.tsx");
     expect(card).toMatch(/label="Shift sales"/);
-    expect(card).toMatch(/shiftSalesHref\(shift\.id\)/);
+    expect(card).toMatch(/myShiftSalesHref\(shift\.id\)/);
+  });
+
+  it("End shift and the remittance slip offer Print my shift report", () => {
+    const endShift = read("app", "(main)", "end-shift.tsx");
+    expect(endShift).toMatch(/step === "result" \|\| step === "remit"[\s\S]{0,80}<ShiftReportCard shiftId=\{shift\.id\}/);
+    expect(read("app", "(main)", "remittance.tsx")).toMatch(/<ShiftReportCard shiftId=\{shiftId\} tone="primary"/);
+    const card = read("components", "shift-sales", "ShiftReportCard.tsx");
+    expect(card).toMatch(/label="Print my shift report"/);
+    expect(card).toMatch(/scope: "cashier"/);
   });
 
   it("a shift in the history opens it for that shift", () => {

@@ -6,7 +6,8 @@ import type { DrawerLens } from "../../lib/cash/shift-sales-view";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ReceiptList } from "./ReceiptList";
 import { ShiftSalesHero } from "./ShiftSalesHero";
-import { BreakdownCard, DrawerLensCard, PaidByCard, TopItemsCard } from "./ShiftSalesSections";
+import { BreakdownCard, DrawerLensCard, ItemsSoldCard, PaidByCard, TopItemsCard } from "./ShiftSalesSections";
+import { SlipPreview } from "./SlipPreview";
 import { ink } from "./shift-sales-styles";
 
 export type ShiftSalesLens = "store" | "drawer";
@@ -24,6 +25,10 @@ export interface ShiftSalesBodyProps {
   onShare?: () => void;
   isPrinting?: boolean;
   onEndShift?: () => void;
+  printLabel?: string;
+  printStatus?: string | null;
+  /** The paper as it prints (her own report): shown under the figures. */
+  paper?: string | null;
 }
 
 /**
@@ -47,6 +52,8 @@ export function ShiftSalesBody(props: ShiftSalesBodyProps) {
         onShare={props.onShare}
         isPrinting={props.isPrinting}
         onEndShift={props.onEndShift}
+        printLabel={props.printLabel}
+        printStatus={props.printStatus}
       />
     );
   const notice = props.notice ? (
@@ -64,7 +71,13 @@ export function ShiftSalesBody(props: ShiftSalesBodyProps) {
   const receipts = (
     <ReceiptList receipts={report.receipts} hidden={report.hidden} isTruncated={report.receiptsTruncated} onOpen={props.onOpenReceipt} />
   );
-  const items = report.items ? <TopItemsCard items={report.items} /> : null;
+  const isCashier = report.scope === "cashier";
+  const items = isCashier ? (
+    report.hidden ? null : <ItemsSoldCard items={report.items} isTruncated={report.itemsTruncated === true} />
+  ) : report.items ? (
+    <TopItemsCard items={report.items} />
+  ) : null;
+  const paper = props.paper ? <SlipPreview text={props.paper} /> : null;
 
   if (!isWide) {
     return (
@@ -72,8 +85,10 @@ export function ShiftSalesBody(props: ShiftSalesBodyProps) {
         {notice}
         {hero}
         {figures}
+        {isCashier ? items : null}
         {receipts}
-        {items}
+        {isCashier ? null : items}
+        {paper}
       </View>
     );
   }
@@ -86,7 +101,10 @@ export function ShiftSalesBody(props: ShiftSalesBodyProps) {
           {figures}
           {items}
         </View>
-        <View style={[styles.column, styles.side]}>{receipts}</View>
+        <View style={[styles.column, styles.side]}>
+          {paper}
+          {receipts}
+        </View>
       </View>
     </View>
   );
