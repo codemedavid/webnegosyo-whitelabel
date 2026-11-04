@@ -12,7 +12,6 @@
 
 const LINE_BREAK = /\r\n?/g;
 const SPACING = /[\t\v\f]/g;
-// eslint-disable-next-line no-control-regex
 const CONTROL = /[\x00-\x09\x0B-\x1F\x7F-\x9F]/g;
 
 export function toPrintableText(text: string): string {
