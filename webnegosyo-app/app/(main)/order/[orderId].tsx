@@ -13,7 +13,13 @@ import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
 import { receiptAmountPaid } from "../../../lib/receipt-settlement";
-import { ReprintButton } from "../../../components/order/ReprintButton";
+import { OrderPrintActions } from "../../../components/order/OrderPrintActions";
+import { useReceiptReprint } from "../../../hooks/useReceiptReprint";
+import { kitchenChitGate, reprintGate } from "../../../lib/reprint-gate";
+import { manualChitOptions } from "../../../lib/kitchen-chit-reprint";
+import { buildKitchenChitSegments } from "../../../lib/kitchen-chit";
+import { printForRole } from "../../../lib/printer";
+import { usePrintedLedger } from "../../../lib/printed-ledger";
 import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { displayCustomerName, getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
@@ -113,9 +119,9 @@ const NEXT_ACTION_LABEL: Partial<Record<OrderStatus, string>> = {
  * Drawer send an unpaid order here to be confirmed or handed over, because the
  * payment question needs the order's payment details and the collect sheet.
  */
-type OrderIntent = "confirm" | "deliver" | "collect";
+type OrderIntent = "confirm" | "deliver" | "collect" | "reprint";
 
-const INTENT_STATUS: Record<Exclude<OrderIntent, "collect">, OrderStatus> = {
+const INTENT_STATUS: Record<Exclude<OrderIntent, "collect" | "reprint">, OrderStatus> = {
   confirm: "confirmed",
   deliver: "delivered",
 };
@@ -438,7 +444,12 @@ export default function OrderDetailScreen() {
   const isLoading = !isFromDevice && !isOffline && isServerLoading;
   const error = isFromDevice ? null : isOffline ? null : serverError;
   const updateStatus = useOfflineOrderMutation(updateOrderStatusRef);
-  const { printOrder, printAt, hasPrinter, feedback: printFeedback } = useOrderPrint();
+  const { printAt } = useOrderPrint();
+  // Reprint: marked REPRINT on paper, a printer picker when there are two or
+  // more, and a Store Activity line once the paper is out.
+  const { reprint, feedback: reprintFeedback, targets: reprintPrinters, printers } = useReceiptReprint();
+  const kitchenLedger = usePrintedLedger("kitchen");
+  const [isChitPrinting, setChitPrinting] = useState(false);
 
   // The settlement ledger. A backend that cannot serve these refs reports an
   // error rather than an empty list — which is the point: an empty ledger and
@@ -806,7 +817,7 @@ export default function OrderDetailScreen() {
   // visit to this still-mounted tab screen does not replay it.
   const { requestStatusChange, openCollect } = paymentFlow;
   const runIntent = useCallback(
-    (wanted: OrderIntent) => {
+    (wanted: Exclude<OrderIntent, "reprint">) => {
       if (wanted === "collect") openCollect();
       else requestStatusChange(INTENT_STATUS[wanted]);
     },
@@ -815,10 +826,74 @@ export default function OrderDetailScreen() {
   const isOrderLoaded =
     order != null && (order._id === orderId || order._id === offlineDetail.serverOrderId);
   useEffect(() => {
-    if (!intent || !isOrderLoaded) return;
+    if (!intent || intent === "reprint" || !isOrderLoaded) return;
     router.setParams({ intent: undefined });
     runIntent(intent);
   }, [intent, isOrderLoaded, runIntent]);
+
+  const receiptGate = reprintGate(order, printers);
+  const handleReprint = useCallback(
+    async (printerId?: string) => {
+      if (!order) return;
+      const isPrinted = await reprint(
+        {
+          ...order,
+          amountPaid: receiptAmountPaid({ isUnpaid, total: order.total, ledgerPaid: collectedFromLedger }),
+        },
+        { dailyNumber: order.dailyNumber, outletId: order.outletId ?? order.outlet_id ?? null },
+        printerId,
+      );
+      if (!isPrinted) Alert.alert("Print failed", "Check the receipt printer in Printer settings, then try again.");
+    },
+    [order, reprint, isUnpaid, collectedFromLedger],
+  );
+
+  // "Reprint" from the Drawer's sales list lands here: print once the order
+  // AND its ledger have loaded, so the copy says what was paid.
+  const isLedgerSettled = payments !== undefined || paymentsError != null;
+  const canRunReprintIntent = intent === "reprint" && isOrderLoaded && isLedgerSettled;
+  const reprintTargetId = reprintPrinters.length === 1 ? reprintPrinters[0]?.id : undefined;
+  useEffect(() => {
+    if (!canRunReprintIntent) return;
+    router.setParams({ intent: undefined });
+    if (!receiptGate.show) return;
+    if (!receiptGate.enabled) {
+      Alert.alert("Can't reprint here", `${receiptGate.reason}. Add one in Printer settings.`);
+      return;
+    }
+    // Two or more receipt printers: the picker on this screen asks which.
+    if (reprintPrinters.length >= 2) return;
+    void handleReprint(reprintTargetId);
+    // Runs once per arrival; the intent is cleared above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRunReprintIntent]);
+
+  const handleKitchenChit = async () => {
+    if (!order) return;
+    setChitPrinting(true);
+    try {
+      // A chit this device already printed comes out marked REPRINT.
+      const chitOptions = await manualChitOptions(String(order._id), Date.now());
+      const outcome = await printForRole(
+        "kitchen",
+        buildKitchenChitSegments(
+          {
+            _id: String(order._id),
+            _creationTime: order._creationTime,
+            customerName: displayCustomerName(order.customerName),
+            orderType: order.orderType,
+            items: order.items ?? [],
+          },
+          chitOptions,
+        ),
+      );
+      if (!outcome.anySuccess) {
+        Alert.alert("Print failed", outcome.results[0]?.result.error ?? "Could not reach the kitchen printer.");
+      }
+    } finally {
+      setChitPrinting(false);
+    }
+  };
 
   if (error) {
     return (
@@ -873,6 +948,30 @@ export default function OrderDetailScreen() {
           />
         </View>
       )}
+
+      {/*
+        The order's paper, near the top and outside the status actions: those
+        are gone on a delivered order, and a finished sale is exactly the one
+        a customer comes back to ask a receipt for.
+      */}
+      <View style={styles.section}>
+        <OrderPrintActions
+          gate={receiptGate}
+          status={reprintFeedback?.orderId === order._id ? reprintFeedback.status : null}
+          targets={reprintPrinters}
+          onReprint={(printerId) => void handleReprint(printerId)}
+          onOpenPrinterSettings={() => router.push("/(main)/printer-settings")}
+          kitchenChit={
+            kitchenChitGate(order, printers)
+              ? {
+                  label: kitchenLedger?.includes(String(order._id)) ? "Reprint kitchen chit" : "Print kitchen chit",
+                  isPrinting: isChitPrinting,
+                  onPress: () => void handleKitchenChit(),
+                }
+              : null
+          }
+        />
+      </View>
 
       {/* Refunds and paid cancels (approvals): the live request card and the entries. */}
       {!isFromDevice && (
@@ -1172,24 +1271,6 @@ export default function OrderDetailScreen() {
                 {NEXT_ACTION_LABEL[nextStatus] ?? `Mark as ${nextStatus}`}
               </Text>
             </TouchableOpacity>
-          )}
-          {order.status !== "pending" && order.status !== "cancelled" && hasPrinter && (
-            <ReprintButton
-              status={printFeedback?.orderId === order._id ? printFeedback.status : null}
-              onPress={async () => {
-                const printed = await printOrder({
-                  ...order,
-                  amountPaid: receiptAmountPaid({
-                    isUnpaid,
-                    total: order.total,
-                    ledgerPaid: collectedFromLedger,
-                  }),
-                });
-                if (!printed) {
-                  Alert.alert("Print Failed", "Could not print receipt.");
-                }
-              }}
-            />
           )}
           {order.status !== "cancelled" && !isFromDevice && (
             <TouchableOpacity
