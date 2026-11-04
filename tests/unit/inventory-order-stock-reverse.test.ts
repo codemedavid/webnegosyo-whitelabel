@@ -11,10 +11,12 @@
  */
 
 import { reverseOrderStockMovements } from '@/lib/inventory/order-stock-service'
+import { bindOrderStockClaimRpc, routeStockRpc, type SimClaim, type SimMovement } from '../fixtures/order-stock-claim-rpc'
 
 const from = jest.fn()
+const rpc = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 
 // Restore also reports the movement to the alert path. That wiring is proven in
@@ -40,6 +42,14 @@ jest.mock('@/lib/inventory/stock-alerts-service', () => ({
  * table gets its own stub and only ledger inserts are captured.
  */
 function stubLedger(saleRows: unknown[], captured: unknown[][], alreadyRestored = false) {
+  // The claim + reversal is one RPC (apply_order_stock_claim, reverse_all);
+  // the twin nets the recorded rows exactly as the SQL does.
+  const claims: SimClaim[] = [{ reason: 'sale', revision: 0 }, ...(alreadyRestored ? [{ reason: 'void' as const, revision: 0 }] : [])]
+  rpc.mockImplementation(routeStockRpc(bindOrderStockClaimRpc({
+    claims,
+    movements: () => saleRows as SimMovement[],
+    onWritten: (rows) => { if (rows.length > 0) captured.push(rows) },
+  })))
   return (table: string) => {
     if (table === 'order_stock_applications') {
       // The reverse now lists the order's claims first, to pick the void
@@ -90,6 +100,7 @@ const SALE_ROWS = [
 
 beforeEach(() => {
   from.mockReset()
+  rpc.mockReset()
   jest.spyOn(console, 'warn').mockImplementation(() => {})
 })
 

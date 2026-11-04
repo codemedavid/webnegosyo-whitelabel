@@ -64,7 +64,9 @@ export interface ServerShiftSales {
 }
 
 function targetParams(target: ShiftSalesTarget): unknown[] {
-  return target.kind === "shift" ? ["report", target.shiftId] : ["period", target.fromMs, target.toMs, target.outletId ?? "all"];
+  return target.kind === "shift"
+    ? ["report", target.shiftId, target.scope ?? "window"]
+    : ["period", target.fromMs, target.toMs, target.outletId ?? "all"];
 }
 
 export function useServerShiftSales(target: ShiftSalesTarget | null, isEnabled: boolean): ServerShiftSales {
@@ -72,7 +74,7 @@ export function useServerShiftSales(target: ShiftSalesTarget | null, isEnabled: 
   const targetKey = target ? JSON.stringify(targetParams(target)) : "";
   const fetcher = useCallback(async () => {
     if (!target) throw new Error("No shift chosen.");
-    if (target.kind === "shift") return settle(await fetchShiftSales(target.shiftId));
+    if (target.kind === "shift") return settle(await fetchShiftSales(target.shiftId, undefined, target.scope ?? "window"));
     return settle(
       await fetchPeriodSales({
         tenantId: tenantId as string,

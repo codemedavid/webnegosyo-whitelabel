@@ -28,9 +28,11 @@ const SOUTH = 'outlet-south'
 const FLOUR = 'item-flour'
 const GRAM = 'unit-gram'
 
+import { bindOrderStockClaimRpc, routeStockRpc, type SimMovement } from '../fixtures/order-stock-claim-rpc'
 const from = jest.fn()
+const rpc = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
@@ -67,6 +69,12 @@ type Captured = Record<string, unknown>[]
  * path never reads that table, so one stub serves both directions.
  */
 function stubDepletion(captured: Captured, movements: unknown[] = []) {
+  // Claim + rows are one call (apply_order_stock_claim); the twin writes.
+  rpc.mockImplementation(routeStockRpc(bindOrderStockClaimRpc({
+    claims: [],
+    movements: () => movements as SimMovement[],
+    onWritten: (rows) => captured.push(...(rows as unknown as Record<string, unknown>[])),
+  })))
   const dataFor = (table: string): unknown[] => {
     if (table === 'recipes') return RECIPES
     if (table === 'recipe_components') return COMPONENTS

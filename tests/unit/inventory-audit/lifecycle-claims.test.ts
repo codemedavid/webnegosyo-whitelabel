@@ -18,6 +18,7 @@ import {
   redepleteOrderStockBestEffort,
   reverseOrderStockMovements,
 } from '@/lib/inventory/order-stock-service'
+import { rowStoreStockRpc } from '../../fixtures/order-stock-claim-rpc'
 
 const TENANT = '55555555-5555-4555-8555-555555555555'
 const ORDER = 'b0000000-0000-4000-8000-0000000000c1'
@@ -130,7 +131,10 @@ function query(table: string) {
 }
 
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (table: string) => query(table), rpc: async () => rpcAnswer }),
+  createAdminClient: () => ({
+    from: (table: string) => query(table),
+    rpc: rowStoreStockRpc({ claims: db.order_stock_applications, movements: db.stock_movements }, () => rpcAnswer),
+  }),
 }))
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
   processStockLevelChanges: jest.fn(() => Promise.resolve({})),
@@ -196,10 +200,14 @@ describe('BUG — an EDIT void is treated as a cancellation', () => {
     // Act — the original sale finally arrives.
     await applyOrderStockMovements(TENANT, ORDER, TWO_PLAIN, 'sale', 0)
 
-    // Assert — the live order holds 1× → −100 g. Main: +100 g (the edit
-    // returned stock that was never taken; the sale was refused as
-    // `cancelled_first` because hasBlockingVoidClaim counts the edit's void).
-    expect(netFlour()).toBe(-100)
+    // Assert — never invents stock. Before the fix: +100 g (the edit returned
+    // stock that was never taken and the sale stood down as `cancelled_first`).
+    // Since the atomic claim (20261103140000) an edit may only give back what
+    // the order holds — nothing yet — so its give-back is capped to zero and
+    // the late sale takes its full 2× → −200 g. That over-counts by the edit
+    // (−100 g would be exact) but errs toward "less on the shelf", the side
+    // that never oversells; a stocktake corrects it.
+    expect(netFlour()).toBe(-200)
   })
 
   it('un-cancel after a cancel that never restored deducts twice when the order was edited', async () => {

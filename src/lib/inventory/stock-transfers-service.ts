@@ -22,6 +22,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import type { InventoryItem } from '@/types/database'
 import {
   resolveActingBranchScope,
   type StockActorClient,
@@ -143,6 +144,8 @@ async function writeMovements(
 ): Promise<void> {
   if (movements.length === 0) return
 
+  const before = await readItemsBeforeLegs(supabase, tenantId, movements)
+
   const { error } = await supabase.from('stock_movements').insert(
     movements.map((movement) => ({
       tenant_id: tenantId,
@@ -157,6 +160,58 @@ async function writeMovements(
     })) as never,
   )
   if (error) throw error
+
+  await notifyLegs(tenantId, before, movements)
+}
+
+/**
+ * The ingredient rows as they stood before the legs, for the alert path's
+ * crossings. A failed read only costs the alerts, never the transfer.
+ */
+async function readItemsBeforeLegs(
+  supabase: StockActorClient,
+  tenantId: string,
+  movements: readonly TransferMovement[],
+): Promise<InventoryItem[] | null> {
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .in('id', [...new Set(movements.map((movement) => movement.inventoryItemId))])
+  if (error) {
+    console.error('[inventory] Transfer legs: ingredient read failed; skipping alerts', tenantId, error.message)
+    return null
+  }
+  return (data ?? []) as unknown as InventoryItem[]
+}
+
+/**
+ * A transfer moves stock like any other movement, so it alerts, 86es and
+ * restores like one: the van that empties North alerts North, and the
+ * delivery that lands at South puts its hidden dishes back. Until 2026-11-03
+ * the legs bypassed this entirely, leaving stale "out" alerts at the branch
+ * that had just received stock. One call per branch the legs touched.
+ */
+async function notifyLegs(
+  tenantId: string,
+  items: readonly InventoryItem[] | null,
+  movements: readonly TransferMovement[],
+): Promise<void> {
+  if (!items) return
+  const byOutlet = new Map<string | null, Map<string, number>>()
+  for (const movement of movements) {
+    const deltas = byOutlet.get(movement.outletId) ?? new Map<string, number>()
+    deltas.set(movement.inventoryItemId, (deltas.get(movement.inventoryItemId) ?? 0) + movement.quantityDelta)
+    byOutlet.set(movement.outletId, deltas)
+  }
+  try {
+    const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
+    for (const [outletId, deltas] of byOutlet) {
+      await processStockLevelChanges(tenantId, items, deltas, outletId)
+    }
+  } catch (error) {
+    console.error('[inventory] Transfer stock alerting failed', tenantId, error)
+  }
 }
 
 /**

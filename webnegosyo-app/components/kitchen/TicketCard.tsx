@@ -7,6 +7,7 @@ import {
 } from "../../lib/kitchen-tickets";
 import { displayCustomerName, getUrgency, getOrderTypeMeta, type Urgency } from "../../lib/order-visuals";
 import { getOrderTableNumber } from "../../lib/order-table-number";
+import { kitchenNotesOf } from "../../lib/kitchen-order-note";
 import {
   PREP_MINUTE_PRESETS,
   PREP_MINUTE_EXTENDED,
@@ -40,6 +41,11 @@ export const kds = {
   print: "#27272A",
   ringing: "#B91C1C",
   confirm: "#DC2626",
+  /** The order's note banner: black on amber, the loudest thing on the card. */
+  noteBanner: "#FBBF24",
+  noteBannerInk: "#111113",
+  /** An item note's box: amber ink on a dark amber well. */
+  noteBox: "#3B2F0B",
 } as const;
 
 const URGENCY_COLOR: Record<Urgency, string> = {
@@ -99,6 +105,7 @@ export const TicketCard = memo(function TicketCard({
   const accent = URGENCY_COLOR[urgency];
   const typeLabel = order.orderType ? getOrderTypeMeta(order.orderType).label : null;
   const tableNumber = getOrderTableNumber(order.customerData);
+  const orderNotes = kitchenNotesOf(order.customerData);
 
   const promisedMs = order.promisedReadyAt ? Date.parse(order.promisedReadyAt) : null;
   const promise = prepPromiseState(
@@ -144,6 +151,17 @@ export const TicketCard = memo(function TicketCard({
 
       <KitchenStatusStrip status={kitchenStatus} rangAtMs={rangAtMs} />
 
+      {orderNotes.length > 0 ? (
+        <View style={styles.noteBanner} accessibilityRole="text">
+          <Text style={styles.noteBannerLabel}>NOTE</Text>
+          {orderNotes.map((note, noteIndex) => (
+            <Text key={noteIndex} style={styles.noteBannerText}>
+              {note}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       <View style={styles.items}>
         {items.length === 0 ? (
           <Text style={styles.loadingItems}>Loading items…</Text>
@@ -173,9 +191,14 @@ export const TicketCard = memo(function TicketCard({
                     </Text>
                   ))}
                   {item.specialInstructions ? (
-                    <Text style={[styles.itemNote, isStruck && styles.itemStruck]}>
-                      ✱ {item.specialInstructions}
-                    </Text>
+                    <View
+                      testID={`ticket-item-note-${index}`}
+                      style={[styles.itemNoteBox, isStruck && styles.itemNoteBoxStruck]}
+                    >
+                      <Text style={[styles.itemNote, isStruck && styles.itemStruck]}>
+                        ✱ {item.specialInstructions}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -427,11 +450,45 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 1,
   },
+  itemNoteBox: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    backgroundColor: kds.noteBox,
+    borderWidth: 1,
+    borderColor: kds.warning,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  itemNoteBoxStruck: {
+    backgroundColor: "transparent",
+    borderColor: kds.struck,
+  },
   itemNote: {
     color: kds.warning,
-    fontSize: 14,
-    fontWeight: "700",
-    marginTop: 1,
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 21,
+  },
+  noteBanner: {
+    marginTop: 10,
+    backgroundColor: kds.noteBanner,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  noteBannerLabel: {
+    color: kds.noteBannerInk,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  noteBannerText: {
+    color: kds.noteBannerInk,
+    fontSize: 17,
+    fontWeight: "800",
+    lineHeight: 22,
   },
   itemStruck: {
     textDecorationLine: "line-through",

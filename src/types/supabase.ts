@@ -2743,6 +2743,7 @@ export type Database = {
       inventory_items: {
         Row: {
           category: string | null
+          counted_at: string | null
           created_at: string | null
           current_qty: number
           id: string
@@ -2759,6 +2760,7 @@ export type Database = {
         }
         Insert: {
           category?: string | null
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2775,6 +2777,7 @@ export type Database = {
         }
         Update: {
           category?: string | null
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2808,6 +2811,7 @@ export type Database = {
       }
       inventory_stock: {
         Row: {
+          counted_at: string | null
           created_at: string | null
           current_qty: number
           id: string
@@ -2818,6 +2822,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2828,6 +2833,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -4677,6 +4683,7 @@ export type Database = {
       menu_items: {
         Row: {
           addons: Json
+          auto_86_snoozed_until: string | null
           auto_disabled_at: string | null
           badge_text: string | null
           bcg_classification: string | null
@@ -4704,6 +4711,7 @@ export type Database = {
         }
         Insert: {
           addons?: Json
+          auto_86_snoozed_until?: string | null
           auto_disabled_at?: string | null
           badge_text?: string | null
           bcg_classification?: string | null
@@ -4731,6 +4739,7 @@ export type Database = {
         }
         Update: {
           addons?: Json
+          auto_86_snoozed_until?: string | null
           auto_disabled_at?: string | null
           badge_text?: string | null
           bcg_classification?: string | null
@@ -9786,6 +9795,7 @@ export type Database = {
           pending_domain_claimed_at: string | null
           pending_domain_token: string | null
           pickup_scan_enabled: boolean
+          pos_stock_policy: string
           presell_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
@@ -10078,6 +10088,7 @@ export type Database = {
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
           pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -10370,6 +10381,7 @@ export type Database = {
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
           pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -11051,6 +11063,18 @@ export type Database = {
           p_tenant_id: string
           p_threshold: number
           p_version_id: string
+        }
+        Returns: Json
+      }
+      apply_order_stock_claim: {
+        Args: {
+          p_kind: string
+          p_mode?: string
+          p_movements?: Json
+          p_order_id: string
+          p_reason: string
+          p_revision: number
+          p_tenant_id: string
         }
         Returns: Json
       }
@@ -11780,13 +11804,37 @@ export type Database = {
         }
         Returns: number
       }
+      inventory_count_has_movements: {
+        Args: { p_count_id: string }
+        Returns: boolean
+      }
       inventory_effective_unit_cost: {
         Args: { p_item_id: string; p_path?: string[]; p_tenant_id: string }
+        Returns: number
+      }
+      inventory_item_has_stock_on_any_shelf: {
+        Args: { p_item_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_may_act_for_branch: {
+        Args: { p_outlet_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_outlet_in_tenant: {
+        Args: { p_outlet_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_recent_own_movements: {
+        Args: { p_tenant_id: string }
         Returns: number
       }
       inventory_recipe_cost: {
         Args: { p_path?: string[]; p_recipe_id: string; p_tenant_id: string }
         Returns: number
+      }
+      inventory_units_in_use: {
+        Args: { p_tenant_id: string; p_unit_id: string }
+        Returns: boolean
       }
       issue_customer_login_challenge: {
         Args: {
@@ -12395,7 +12443,11 @@ export type Database = {
           void_orders: number
         }[]
       }
-      report_shift_sales: { Args: { p_shift_id: string }; Returns: Json }
+      report_shift_nets: { Args: { p_shift_ids: string[] }; Returns: Json }
+      report_shift_sales: {
+        Args: { p_scope?: string; p_shift_id: string }
+        Returns: Json
+      }
       resolve_loyalty_entitlement: {
         Args: {
           p_action: string
@@ -12553,6 +12605,10 @@ export type Database = {
           p_transfer_id: string
         }
         Returns: number
+      }
+      stock_transfer_has_movements: {
+        Args: { p_transfer_id: string }
+        Returns: boolean
       }
       store_activity_actor: { Args: never; Returns: string }
       store_activity_actor_name: {

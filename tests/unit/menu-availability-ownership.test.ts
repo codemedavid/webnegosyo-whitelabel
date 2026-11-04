@@ -91,7 +91,7 @@ describe('a merchant toggling availability by hand', () => {
   it('releases the auto-86 marker when putting an item back on sale', async () => {
     await toggleMenuItemAvailability('item-1', 't1', true)
 
-    expect(updatePayloads[0]).toEqual({ is_available: true, auto_disabled_at: null })
+    expect(updatePayloads[0]).toEqual({ is_available: true, auto_disabled_at: null, auto_86_snoozed_until: null })
   })
 
   it('releases the auto-86 marker when taking an item off sale', async () => {
@@ -100,6 +100,6 @@ describe('a merchant toggling availability by hand', () => {
     // delivery — so hiding it by hand clears the marker too.
     await toggleMenuItemAvailability('item-1', 't1', false)
 
-    expect(updatePayloads[0]).toEqual({ is_available: false, auto_disabled_at: null })
+    expect(updatePayloads[0]).toEqual({ is_available: false, auto_disabled_at: null, auto_86_snoozed_until: null })
   })
 })

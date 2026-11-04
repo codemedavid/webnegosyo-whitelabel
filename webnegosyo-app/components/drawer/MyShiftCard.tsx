@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { CASH_MOVE_COPY, type CashMove } from "../../lib/cash-drawers";
-import { shiftSalesHref } from "../../lib/cash-routes";
+import { MY_SHIFTS_ROUTE, myShiftSalesHref } from "../../lib/cash-routes";
 import type { DrawerExpectationRead } from "../../lib/drawer-expectation";
 import type { RefusedPayout } from "../../lib/expenses/expense-queue";
 import { formatPeso } from "../../lib/format";
@@ -85,7 +85,8 @@ export function MyShiftCard({
   isBlind = false,
   businessDayNote = null,
 }: MyShiftCardProps) {
-  const openShiftSales = onShiftSales ?? (() => router.push(shiftSalesHref(shift.id) as never));
+  // Her own sales first (owner decision 2026-11-04); a manager can switch to the store's.
+  const openShiftSales = onShiftSales ?? (() => router.push(myShiftSalesHref(shift.id) as never));
   const ready = expectation.state === "ready" ? expectation.value : null;
   const lines: { label: string; value: string }[] = ready
     ? [
@@ -241,6 +242,16 @@ export function MyShiftCard({
         accessibilityHint="Count the drawer, then hand the cash over"
         testID="my-shift-end"
       />
+      <Button
+        label="My shifts"
+        tone="ghost"
+        icon="clock"
+        fullWidth
+        onPress={() => router.push(MY_SHIFTS_ROUTE as never)}
+        style={styles.myShifts}
+        accessibilityHint="Your past shifts: view or reprint a shift report"
+        testID="my-shift-history"
+      />
       {businessDayNote ? <Text style={styles.businessDay}>{businessDayNote}</Text> : null}
     </View>
   );
@@ -300,6 +311,7 @@ const styles = StyleSheet.create({
   moveAmount: { ...typography.small, fontWeight: "800", color: colors.heroInkText },
   moveOut: { color: colors.accentLight },
   actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  myShifts: { alignSelf: "stretch" },
   // The card is ink; an ink primary button would vanish into it.
   endShift: { backgroundColor: colors.accent },
 });

@@ -18,6 +18,10 @@ interface ShiftSalesHeroProps {
   isPrinting?: boolean;
   /** Only for the cashier's own open shift. */
   onEndShift?: () => void;
+  /** "Print shift report" for her own sales; "Print" otherwise. */
+  printLabel?: string;
+  /** Printing… / Printed / why it failed, under the buttons. */
+  printStatus?: string | null;
 }
 
 /**
@@ -26,7 +30,7 @@ interface ShiftSalesHeroProps {
  * and voids, what is still unpaid). Blind count shows the receipts' range
  * and a plain sentence instead of any peso — never a zero.
  */
-export function ShiftSalesHero({ report, title, isOpen, onPrint, onShare, isPrinting, onEndShift }: ShiftSalesHeroProps) {
+export function ShiftSalesHero({ report, title, isOpen, onPrint, onShare, isPrinting, onEndShift, printLabel = "Print", printStatus = null }: ShiftSalesHeroProps) {
   const note = sourceNote(report.source);
   const lines = heroLines(report);
   return (
@@ -50,7 +54,7 @@ export function ShiftSalesHero({ report, title, isOpen, onPrint, onShare, isPrin
         ) : null}
       </View>
 
-      <Text style={ink.eyebrow}>{isOpen ? "Net sales this shift" : "Net sales"}</Text>
+      <Text style={ink.eyebrow}>{report.scope === "cashier" ? (isOpen ? "Your sales so far" : "Your sales") : isOpen ? "Net sales this shift" : "Net sales"}</Text>
       <HeroFigure report={report} />
       <Text style={ink.text} testID="shift-sales-range">
         {receiptRangeText(report)}
@@ -70,10 +74,15 @@ export function ShiftSalesHero({ report, title, isOpen, onPrint, onShare, isPrin
       {onPrint || onShare ? (
         <View style={ink.actions}>
           {onPrint ? (
-            <Button label="Print" icon="printer" tone="secondary" size="lg" fullWidth={false} onPress={onPrint} isLoading={isPrinting} style={ink.action} />
+            <Button label={printLabel} icon="printer" tone="secondary" size="lg" fullWidth={false} onPress={onPrint} isLoading={isPrinting} style={ink.action} />
           ) : null}
           {onShare ? <Button label="Share" icon="export" tone="secondary" size="lg" fullWidth={false} onPress={onShare} style={ink.action} /> : null}
         </View>
+      ) : null}
+      {printStatus ? (
+        <Text style={ink.muted} accessibilityLiveRegion="polite" testID="shift-sales-print-status">
+          {printStatus}
+        </Text>
       ) : null}
       {onEndShift ? (
         <Button

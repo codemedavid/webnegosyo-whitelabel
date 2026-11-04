@@ -1,9 +1,24 @@
 /**
- * Auto-86: resolving which menu items an exhausted ingredient makes unsellable.
+ * Auto-86: which dishes come off the menu, and which come back, given the
+ * shelf as it stands.
  *
  * Pure, like `low-stock.ts` — the decision of what to take off the menu is
- * separable from the act of taking it off, and only the pure half is worth
- * testing exhaustively.
+ * separable from the act of taking it off (`auto-86-service.ts`), and only the
+ * pure half is worth testing exhaustively.
+ *
+ * **It decides on the LEVEL, not the crossing** (2026-11-03). The first
+ * version hid a dish only on the movement that carried an ingredient INTO
+ * "out". An ingredient already out never crossed again, so a dish a person
+ * turned back on over an empty shelf stayed on sale forever while the shelf
+ * went negative — the Lolys Egg incident. Like Lavu's "track 86 by inventory
+ * level", every stock change now asks of each affected dish: can one serving
+ * be made? No → off. A dish this system hid, yes again → back on.
+ *
+ * "Can one serving be made" is the checkout's own arithmetic
+ * (`resolveProducibleUnits`, base recipe, unit conversion, portion size), so a
+ * dish is never on the menu while checkout would refuse it, or hidden while
+ * checkout would sell it. An ingredient left OFF the shelf the caller hands in
+ * — never counted, inactive, unconvertible — has no opinion, exactly as there.
  *
  * **Only a base recipe can 86 an item.** An ingredient used solely by a
  * variation option, modifier option, or addon leaves the item sellable in its
@@ -16,90 +31,63 @@
  * it arrives here as an out-of-stock ingredient on its own account.
  */
 
+import { resolveProducibleUnits, type ProducibleStock } from '@/lib/inventory/producible'
+import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 import type { Recipe, RecipeComponent } from '@/types/database'
 
-/** Base recipes (recipe id → menu item id) — the only ones that can 86 an item. */
-function indexBaseRecipes(recipes: readonly Recipe[]): Map<string, string> {
-  const base = new Map<string, string>()
-  for (const recipe of recipes) {
-    if (recipe.target_type !== 'menu_item') continue
-    if (!recipe.menu_item_id) continue
-    base.set(recipe.id, recipe.menu_item_id)
-  }
-  return base
+/** The slice of a menu item the decision depends on. */
+export interface Auto86Dish {
+  id: string
+  is_available: boolean
+  /** Set when THIS system took the dish off; only those are ever put back. */
+  auto_disabled_at: string | null
+  /** "Sell anyway" until this instant: the owner overrode an empty reading. */
+  auto_86_snoozed_until: string | null
+}
+
+export interface Auto86Decision {
+  /** Dishes to take off the menu, in input order. */
+  disable: string[]
+  /** Dishes this system hid that can be made again, in input order. */
+  reEnable: string[]
+}
+
+function isSnoozed(dish: Auto86Dish, nowMs: number): boolean {
+  if (!dish.auto_86_snoozed_until) return false
+  const until = Date.parse(dish.auto_86_snoozed_until)
+  return Number.isFinite(until) && until > nowMs
 }
 
 /**
- * Menu item ids whose base recipe depends on at least one exhausted ingredient.
+ * What to do with each dish, given its base recipe and the judged shelf.
  *
- * Ids are unique and returned in the order their recipes appear, so a caller
- * writing them to the database gets a stable, replayable list. Filtering out
- * the items that are already unavailable is the caller's job — it is the one
- * that knows the current menu.
+ * `recipes` may hold any recipes; only base (`menu_item`) recipes are read, so
+ * an ingredient only an option or add-on uses never 86es the whole dish — the
+ * dish is still sellable in its other configurations. `shelf` must already
+ * exclude ingredients that have no opinion (never counted, unknown units).
  */
-export function resolveMenuItemsToDisable(
-  outOfStockIngredientIds: readonly string[],
+export function decideAuto86(
+  dishes: readonly Auto86Dish[],
   recipes: readonly Recipe[],
   components: readonly RecipeComponent[],
-): string[] {
-  if (outOfStockIngredientIds.length === 0) return []
+  shelf: readonly ProducibleStock[],
+  units: readonly InventoryUnit[],
+  nowMs: number,
+): Auto86Decision {
+  const baseRecipes = recipes.filter((recipe) => recipe.target_type === 'menu_item' && Boolean(recipe.menu_item_id))
+  const disable: string[] = []
+  const reEnable: string[] = []
 
-  const outOfStock = new Set(outOfStockIngredientIds)
+  for (const dish of dishes) {
+    const canMake = resolveProducibleUnits({ menuItemId: dish.id }, baseRecipes, components, shelf, units)
+    const cannotBeMade = canMake === 0
 
-  const baseRecipes = indexBaseRecipes(recipes)
-
-  const menuItemIds = new Set<string>()
-  for (const component of components) {
-    if (!outOfStock.has(component.inventory_item_id)) continue
-    const menuItemId = baseRecipes.get(component.recipe_id)
-    if (menuItemId) menuItemIds.add(menuItemId)
+    if (dish.is_available) {
+      if (cannotBeMade && !isSnoozed(dish, nowMs)) disable.push(dish.id)
+      continue
+    }
+    if (dish.auto_disabled_at && !cannotBeMade) reEnable.push(dish.id)
   }
 
-  return [...menuItemIds]
-}
-
-/**
- * Menu items that can go back on the menu now that an ingredient is stocked
- * again.
- *
- * The question is the mirror image of disabling, not its negation: disabling
- * asks whether ANY base ingredient ran out, so re-enabling has to ask whether
- * EVERY base ingredient is in stock. A dish needing flour and sugar is still
- * unsellable when the flour arrives and the sugar has not.
- *
- * `components` must therefore be the COMPLETE component list of each candidate
- * base recipe, not only the rows naming a recovered ingredient — a partial list
- * would read as a fully-stocked recipe and put the dish back too early.
- *
- * Deciding which of these the system is actually entitled to re-enable is the
- * caller's job: only an item this system took off the menu may be put back.
- */
-export function resolveMenuItemsToReEnable(
-  recoveredIngredientIds: readonly string[],
-  recipes: readonly Recipe[],
-  components: readonly RecipeComponent[],
-  outOfStockIngredientIds: readonly string[],
-): string[] {
-  if (recoveredIngredientIds.length === 0) return []
-
-  const recovered = new Set(recoveredIngredientIds)
-  const outOfStock = new Set(outOfStockIngredientIds)
-  const baseRecipes = indexBaseRecipes(recipes)
-
-  const touchedRecipeIds = new Set<string>()
-  const blockedRecipeIds = new Set<string>()
-  for (const component of components) {
-    if (!baseRecipes.has(component.recipe_id)) continue
-    if (recovered.has(component.inventory_item_id)) touchedRecipeIds.add(component.recipe_id)
-    if (outOfStock.has(component.inventory_item_id)) blockedRecipeIds.add(component.recipe_id)
-  }
-
-  const menuItemIds = new Set<string>()
-  for (const recipeId of touchedRecipeIds) {
-    if (blockedRecipeIds.has(recipeId)) continue
-    const menuItemId = baseRecipes.get(recipeId)
-    if (menuItemId) menuItemIds.add(menuItemId)
-  }
-
-  return [...menuItemIds]
+  return { disable, reEnable }
 }

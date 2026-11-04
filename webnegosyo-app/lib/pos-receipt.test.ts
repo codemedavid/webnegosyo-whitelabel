@@ -8,7 +8,8 @@
 import { buildPosOrder } from "./pos-order";
 import { posReceiptOrder } from "./pos-receipt";
 import { renderReceipt, CLASSIC_RECEIPT_LAYOUT } from "./receipt-layout";
-import type { PosCartLine } from "./pos-cart";
+import { addLine, setLineNote, type PosCartLine } from "./pos-cart";
+import { buildKitchenChitText } from "./kitchen-chit";
 
 const LINE: PosCartLine = {
   key: "l1",
@@ -89,5 +90,31 @@ describe("posReceiptOrder settlement", () => {
     expect(renderReceipt(receipt, { storeName: "Shop" }, CLASSIC_RECEIPT_LAYOUT)).toMatch(
       /AMOUNT DUE:\s+P100\.00/,
     );
+  });
+});
+
+describe("a kitchen note written at the register", () => {
+  it("reaches the order item, the printed receipt and the kitchen chit", () => {
+    // Arrange — rung up, then the note added from the cart line.
+    const rung = addLine([], { menuItemId: "m1", name: "Latte", basePrice: 100, quantity: 1, selections: [] });
+    const cart = setLineNote(rung, rung[0].key, "Less ice, No sugar");
+    const tender = { methodName: "Cash", isCash: true, cashTendered: 100, changeDue: 0 };
+
+    // Act
+    const { args, receipt } = saleWith({ cart, tender, clientOrderId: "c-note" });
+
+    // Assert
+    expect(args.items[0].specialInstructions).toBe("Less ice, No sugar");
+    expect(renderReceipt(receipt, { storeName: "Shop" }, CLASSIC_RECEIPT_LAYOUT)).toContain(
+      "Note: Less ice, No sugar",
+    );
+    expect(
+      buildKitchenChitText({
+        _id: "order-1",
+        _creationTime: 1_700_000_000_000,
+        customerName: args.customerName,
+        items: args.items,
+      }),
+    ).toContain("** Less ice, No sugar **");
   });
 });

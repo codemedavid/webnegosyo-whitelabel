@@ -1,11 +1,11 @@
 'use client'
 
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { LowStockBadge, UnavailableLabel } from './card-stock'
 
 interface GlassCardProps {
     item: MenuItem
@@ -112,6 +112,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                     </div>
                 )}
 
+                <LowStockBadge branding={branding} placement="bottom-left-clear" />
                 {!isOrderable && (
                     <div
                         className="absolute inset-0 flex items-center justify-center"
@@ -121,14 +122,14 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                             className="rounded-full px-4 py-2 text-sm font-semibold backdrop-blur-xl"
                             style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: branding.textPrimary }}
                         >
-                            <StoreLabel name="menu.unavailable" fallback="Unavailable" />
+                            <UnavailableLabel />
                         </span>
                     </div>
                 )}
 
                 {/* Floating Add Button */}
                 <button
-                    className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl"
+                    className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl disabled:pointer-events-none disabled:invisible"
                     style={{
                         backgroundColor: `${branding.buttonPrimary}dd`,
                         color: branding.buttonPrimaryText,

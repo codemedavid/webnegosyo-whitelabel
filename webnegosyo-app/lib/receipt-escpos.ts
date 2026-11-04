@@ -1,4 +1,5 @@
 import type { PaperWidth } from "./printer-registry";
+import { toPrintableText } from "./printable-text";
 
 /**
  * Receipt markup → ESC/POS control bytes, applied right before printBill.
@@ -47,7 +48,12 @@ function boldBytes(isOn: boolean): string {
   return `${ESC}E${isOn ? "\x01" : "\x00"}`;
 }
 
-export function receiptMarkupToEscPos(text: string): string {
+/**
+ * The text between tags goes through `toPrintableText` first: only the bytes
+ * emitted here may be printer commands, never a note or a name a guest typed.
+ */
+export function receiptMarkupToEscPos(markup: string): string {
+  const text = toPrintableText(markup);
   let out = ALIGN.left;
   let last = 0;
   const state: FontState = { bold: 0, tall: 0, wide: 0 };

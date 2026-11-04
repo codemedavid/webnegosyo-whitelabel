@@ -16,7 +16,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { useSafeQuery } from "../../lib/hooks";
 import { notifyMenuRevalidate } from "../../lib/menu-revalidate";
-import { productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
+import { ingredientHref, productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
 import { Icon } from "../../components/Icon";
@@ -25,11 +25,15 @@ import {
   describeMenuAvailability,
   MENU_AVAILABILITY_LABEL,
 } from "../../lib/menu-availability";
+import { calculateMargin, type Product } from "../../lib/products";
 import {
-  toggleProductAvailability,
-  calculateMargin,
-  type Product,
-} from "../../lib/products";
+  describeDishAvailabilityBlockers,
+  findIngredientIdByName,
+  setDishAvailability,
+  type DishAvailabilityBlocker,
+} from "../../lib/dish-availability";
+import { loadIngredientIndex } from "../../lib/ingredient-service";
+import { formatManilaTime } from "../../lib/activity/format";
 import { moveId, reorderProducts, STALE_ARRANGEMENT_ERROR } from "../../lib/product-arrangement";
 import type { MoveDirection } from "../../lib/categories";
 import { useCategories, useMenuCatalogCache, useProducts } from "../../lib/query/use-products";
@@ -134,24 +138,87 @@ export default function ProductManagementScreen() {
     [load],
   );
 
-  const handleToggleAvailability = async (product: Product) => {
-    if (useAuthStore.getState().isDemo) {
-      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+  /**
+   * "Record a count" on the turn-back-on question: straight to the short
+   * ingredient's page when it can be pinned down, else the Stock list.
+   */
+  const openStockFor = async (blocker: DishAvailabilityBlocker | undefined) => {
+    if (!tenantId || !blocker) {
+      router.push("/(main)/inventory");
       return;
     }
+    try {
+      const id =
+        blocker.inventoryItemId ??
+        findIngredientIdByName(await loadIngredientIndex(tenantId), blocker.name);
+      router.push(id ? ingredientHref(id) : "/(main)/inventory");
+    } catch {
+      router.push("/(main)/inventory");
+    }
+  };
+
+  /**
+   * One save through the web route (`lib/dish-availability.ts`). The switch is
+   * flipped optimistically and ALWAYS rolled back unless the server saved that
+   * exact state — a re-enable the kitchen can't make comes back as a question,
+   * never as a silently flipped switch.
+   */
+  const saveAvailability = async (product: Product, nextAvailable: boolean, sellAnyway: boolean) => {
     if (!tenantId) return;
-    const nextAvailable = !product.is_available;
     const rollback = patchProductAvailability(tenantId, product.id, nextAvailable);
     try {
-      await toggleProductAvailability(product.id, tenantId, nextAvailable);
+      const result = await setDishAvailability({
+        menuItemId: product.id,
+        isAvailable: nextAvailable,
+        sellAnyway,
+      });
+
+      if (result.status === "needs_confirmation") {
+        rollback();
+        askToTurnBackOn(product, result.blockers, result.sellAnywayUntil);
+        return;
+      }
+
+      if (result.isAvailable !== nextAvailable) {
+        rollback();
+        patchProductAvailability(tenantId, product.id, result.isAvailable);
+      }
       // The register sells from its own cached copy: 86'ing a dish here has to
       // reach it, or the cashier keeps ringing up something the kitchen pulled.
       void invalidateCatalog(tenantId);
       if (tenantSlug) void notifyMenuRevalidate(tenantId, tenantSlug);
-    } catch {
+    } catch (saveError) {
       rollback();
-      Alert.alert("Error", "Could not update availability.");
+      Alert.alert(
+        "Couldn't update availability",
+        saveError instanceof Error ? saveError.message : "Please try again.",
+      );
     }
+  };
+
+  const askToTurnBackOn = (
+    product: Product,
+    blockers: DishAvailabilityBlocker[],
+    sellAnywayUntil: string,
+  ) => {
+    const copy = describeDishAvailabilityBlockers(product.name, blockers);
+    const until = formatManilaTime(sellAnywayUntil);
+    Alert.alert(copy.title, copy.message, [
+      { text: "Record a count", onPress: () => void openStockFor(blockers[0]) },
+      {
+        text: until ? `Sell anyway until ${until}` : "Sell anyway for today",
+        onPress: () => void saveAvailability(product, true, true),
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const handleToggleAvailability = (product: Product) => {
+    if (useAuthStore.getState().isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+    void saveAvailability(product, !product.is_available, false);
   };
 
   const handleCreate = () => {

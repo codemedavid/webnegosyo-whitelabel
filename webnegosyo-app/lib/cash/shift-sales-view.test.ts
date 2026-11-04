@@ -84,6 +84,15 @@ describe("hero", () => {
     expect(receiptRangeText(report({ summary: null, firstNumber: null, lastNumber: null }))).toBe("No receipts yet");
   });
 
+  it("names the cashier lens's first and last receipt, like her slip, never a #range", () => {
+    // Daily numbers are the branch's: the ones between hers are other cashiers'.
+    expect(receiptRangeText(report({ scope: "cashier" }))).toBe("First #01 · Last #37 · 37 receipts");
+    expect(receiptRangeText(report({ scope: "cashier", lastNumber: "#01" }))).toBe("Receipt #01 · 37 receipts");
+    expect(receiptRangeText(report({ scope: "cashier", summary: null, firstNumber: null, lastNumber: null }))).toBe(
+      "No receipts yet",
+    );
+  });
+
   it("counts receipts from the list when the money is hidden, with a + when the list was cut", () => {
     const hidden = report({
       summary: null,

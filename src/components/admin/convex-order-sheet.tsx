@@ -306,11 +306,11 @@ export function ConvexOrderSheet({
                 {order.items?.map((item: OrderItem, index: number) => (
                   <div key={index} className="flex flex-col gap-1">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
+                      <div className="flex min-w-0 items-start gap-2">
                         <Badge variant="secondary" className="mt-0.5 shrink-0 text-xs">
                           {item.quantity}x
                         </Badge>
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex min-w-0 flex-col gap-0.5">
                           <span className="text-sm font-medium">{item.menuItemName}</span>
                           {item.variation && (
                             <span className="text-xs text-muted-foreground">{item.variation}</span>
@@ -326,7 +326,7 @@ export function ConvexOrderSheet({
                             </span>
                           )}
                           {item.specialInstructions && (
-                            <span className="text-xs italic text-amber-600">
+                            <span className="wrap-anywhere text-xs italic text-amber-600">
                               &quot;{item.specialInstructions}&quot;
                             </span>
                           )}

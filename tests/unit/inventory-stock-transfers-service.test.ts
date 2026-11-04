@@ -35,6 +35,10 @@ jest.mock('@/lib/supabase/server', () => ({
 jest.mock('@/lib/inventory/acting-branch-scope', () => ({
   resolveActingBranchScope: (...a: unknown[]) => scope(...a),
 }))
+const mockProcessStockLevelChanges = jest.fn()
+jest.mock('@/lib/inventory/stock-alerts-service', () => ({
+  processStockLevelChanges: (...a: unknown[]) => mockProcessStockLevelChanges(...a),
+}))
 
 interface Writes {
   inserts: Array<{ table: string; rows: unknown }>
@@ -92,6 +96,7 @@ function stub(options: {
 
 beforeEach(() => {
   from.mockReset()
+  mockProcessStockLevelChanges.mockReset()
   scope.mockReset()
   scope.mockResolvedValue(ALL)
 })
@@ -221,6 +226,25 @@ describe('receiveTransfer', () => {
         quantity_delta: 8,
         stock_transfer_id: XFER,
       }),
+    )
+  })
+
+  it('alerts, 86es and restores per branch the legs touched, like any other movement', async () => {
+    // Until 2026-11-03 transfer legs bypassed alerts and auto-86: the branch
+    // that just received stock kept its "out" alert and its hidden dishes.
+    scope.mockResolvedValue(AT_SOUTH)
+    stub({ transfer: sent, items: [{ id: FLOUR, unit_cost: 25, current_qty: 10 }] })
+
+    await receiveTransfer(TENANT, XFER, { [FLOUR]: 8 })
+
+    const calls = mockProcessStockLevelChanges.mock.calls.map(([tenant, , deltas, outlet]) => [tenant, outlet, [...deltas]])
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        [TENANT, SOUTH, [[FLOUR, 8]]],
+        // The shortfall goes back on the sender's shelf and is wasted there:
+        // net zero, as the sender's stock really is.
+        [TENANT, NORTH, [[FLOUR, 0]]],
+      ]),
     )
   })
 

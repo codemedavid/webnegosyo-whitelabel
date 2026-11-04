@@ -10,8 +10,14 @@ import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { OrderSettlementReader, type StaffPayment } from "../../components/OrderSettlementReader";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { useIsWideReports } from "../../components/reports/ReportsColumns";
-import { ShiftSalesBody, ShiftSalesSkeleton, type ShiftSalesLens } from "../../components/shift-sales/ShiftSalesBody";
+import { ShiftSalesBody, ShiftSalesSkeleton } from "../../components/shift-sales/ShiftSalesBody";
+import { useShiftReportPrint } from "../../components/shift-sales/use-shift-report-print";
 import { canManageCash } from "../../lib/cash-drawers";
+import { buildShiftReportSlip } from "../../lib/cash-slips/shift-report";
+import { slipPlainText } from "../../lib/cash-slips/slip-text";
+import { printStateText } from "../../lib/cash/shift-report-actions";
+import { canSeeStoreSales, lensOptions, reportScopeFor, type ShiftSalesLensKey } from "../../lib/cash/shift-sales-lens";
+import { useShiftSalesLens } from "../../lib/cash/use-shift-sales-lens";
 import { useServicePeriods } from "../../lib/cash/use-cash-rules";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
@@ -19,7 +25,6 @@ import { summarizeShiftDrawer } from "../../lib/shift-drawer";
 import type { ShiftDetail } from "../../lib/shift-service";
 import { countShiftSalesOnDevice, DEVICE_TOO_MANY_MESSAGE, type DeviceSalesOrder } from "../../lib/cash/shift-sales-fallback";
 import { useDeviceShiftOrders, useServerShiftSales, useShiftDetail, type DeviceShiftOrders } from "../../lib/cash/shift-sales-hooks";
-import { printShiftReport, shareShiftReport } from "../../lib/cash/shift-sales-print";
 import { sampleShiftSales } from "../../lib/cash/shift-sales-sample";
 import {
   needsDeviceCount,
@@ -34,14 +39,10 @@ import { drawerLens, HIDDEN_TITLE, shiftSalesSubtitle, shiftSalesTitle, type Dra
 import type { ShiftSalesShift } from "../../lib/cash/shift-sales";
 import { colors, spacing } from "../../theme/colors";
 
-const LENSES: readonly { label: string; value: ShiftSalesLens }[] = [
-  { label: "Store sales", value: "store" },
-  { label: "My drawer", value: "drawer" },
-];
-
 const MINUTE_MS = 60_000;
 const DRAWER_ROUTE = "/(main)/pos-sales";
 const NOT_FOUND_MESSAGE = "This shift isn't here. It may belong to a branch this account can't see.";
+const NO_CASHIER_MESSAGE = "This shift has no cashier on it, so there are no sales of theirs to count.";
 /** The demo's "My drawer" — matches the sample report's cash and non-cash. */
 const SAMPLE_DRAWER: DrawerLens = { cashCents: 81_000, nonCashCents: 274_000, changeCents: 12_500, refundCents: 0, sales: 9 };
 
@@ -80,8 +81,8 @@ function headerShift(shift: ShiftDetail): ShiftSalesShift {
  * open), `?from&to&period&outlet` for a past named service period.
  */
 export default function ShiftSalesScreen() {
-  const params = useLocalSearchParams<{ shift?: string; from?: string; to?: string; period?: string; outlet?: string }>();
-  const target = useMemo(
+  const params = useLocalSearchParams<{ shift?: string; from?: string; to?: string; period?: string; outlet?: string; lens?: string }>();
+  const requested = useMemo(
     () => parseShiftSalesTarget(params),
     // The params object is new every render; its values decide the target.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,7 +90,21 @@ export default function ShiftSalesScreen() {
   );
   const isDemo = useAuthStore((s) => s.isDemo);
   const orderBackend = useAuthStore((s) => s.orderBackend);
-  const [lens, setLens] = useState<ShiftSalesLens>("store");
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  // Owner decision 2026-11-04: a cashier sees her own sales, never the store's.
+  const canSeeStore = isDemo || canSeeStoreSales({ role, isOwner, permissions });
+  // Re-derived on focus / param change: this screen is never unmounted.
+  const [lens, setLens] = useShiftSalesLens({
+    param: typeof params.lens === "string" ? params.lens : undefined,
+    canSeeStore,
+  });
+  // A shift's report is asked in the lens's scope: hers ("cashier") or the store's ("window").
+  const target = useMemo<ShiftSalesTarget | null>(
+    () => (requested?.kind === "shift" ? { ...requested, scope: reportScopeFor(lens, canSeeStore) } : requested),
+    [requested, lens, canSeeStore],
+  );
 
   const shiftRead = useShiftDetail(!isDemo && target?.kind === "shift" ? target.shiftId : null);
   const server = useServerShiftSales(target, !isDemo && orderBackend === "platform");
@@ -118,6 +133,7 @@ export default function ShiftSalesScreen() {
             target={target}
             lens={lens}
             onLens={setLens}
+            canSeeStore={canSeeStore}
             shiftRead={shiftRead}
             server={server}
             device={device}
@@ -133,8 +149,9 @@ export default function ShiftSalesScreen() {
 
 interface ContentProps {
   target: ShiftSalesTarget;
-  lens: ShiftSalesLens;
-  onLens: (lens: ShiftSalesLens) => void;
+  lens: ShiftSalesLensKey;
+  onLens: (lens: ShiftSalesLensKey) => void;
+  canSeeStore: boolean;
   shiftRead: ReturnType<typeof useShiftDetail>;
   server: ReturnType<typeof useServerShiftSales>;
   device: DeviceShiftOrders;
@@ -159,6 +176,9 @@ function readDevice(props: ContentProps, hidden: boolean): DeviceSalesRead {
   if (!ledger.ready) return { status: "loading" };
   const shift = shiftRead.data ?? null;
   const outletId = target.kind === "period" ? target.outletId : shift?.outletId;
+  // Her own sales: the drawer rule's sale test (POS, her cashierId), on the tablet too.
+  const cashierId = target.kind === "shift" && target.scope === "cashier" ? (shift?.staffUserId ?? "") : undefined;
+  if (cashierId === "") return { status: "unavailable", reason: NO_CASHIER_MESSAGE };
   return {
     status: "ready",
     report: countShiftSalesOnDevice({
@@ -170,6 +190,7 @@ function readDevice(props: ContentProps, hidden: boolean): DeviceSalesRead {
       outletId: outletId ?? undefined,
       shift: shift ? headerShift(shift) : null,
       hidden,
+      cashierId,
     }),
   };
 }
@@ -192,7 +213,7 @@ function readDrawerLens(props: ContentProps, hidden: boolean, isDemo: boolean): 
 }
 
 function ShiftSalesContent(props: ContentProps) {
-  const { target, lens, onLens, shiftRead, server, device } = props;
+  const { target, lens, onLens, canSeeStore, shiftRead, server, device } = props;
   const isDemo = useAuthStore((s) => s.isDemo);
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);
@@ -202,8 +223,9 @@ function ShiftSalesContent(props: ContentProps) {
   const outletName = useAuthStore((s) => s.outletName) ?? undefined;
   const isWide = useIsWideReports();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
-  const sample = useMemo(() => (isDemo ? sampleShiftSales(Date.now()) : null), [isDemo]);
+  const printer = useShiftReportPrint();
+  const sampleScope = reportScopeFor(lens, canSeeStore);
+  const sample = useMemo(() => (isDemo ? sampleShiftSales(Date.now(), sampleScope) : null), [isDemo, sampleScope]);
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   // Reports, Shifts tab, links a named shift by id; its name is the title.
   const periods = useServicePeriods(!isDemo && target.kind === "period" && target.periodId ? tenantId : null);
@@ -231,21 +253,26 @@ function ShiftSalesContent(props: ContentProps) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
-    setIsPrinting(true);
-    try {
-      const outcome = await printShiftReport(report, storeName, outletName);
-      if (!outcome.ok) Alert.alert("Couldn't print", outcome.message);
-    } finally {
-      setIsPrinting(false);
-    }
+    await printer.print(report);
   };
+  const isCashierReport = report?.scope === "cashier";
+  // Her own report: the paper on screen, exactly as it prints on this tablet's roll.
+  const paper = useMemo(
+    () =>
+      report && isCashierReport
+        ? slipPlainText(buildShiftReportSlip(report, { storeName, branchName: outletName, width: isWide ? 48 : 32, printedAt: new Date() }))
+        : null,
+    [report, isCashierReport, storeName, outletName, isWide],
+  );
+  const printStatus =
+    printStateText(printer.state) ?? (report && !printer.hasPrinter && !isDemo ? printer.noPrinterMessage : null);
 
   return (
     <>
       <BackHeader title={`${title} sales`} subtitle={subtitle} />
       {target.kind === "shift" ? (
         <View style={styles.toolbar}>
-          <SegmentedControl options={LENSES} value={lens} onChange={onLens} accessibilityPrefix="Show" />
+          <SegmentedControl options={lensOptions({ canSeeStore, isMine })} value={lens} onChange={onLens} accessibilityPrefix="Show" />
         </View>
       ) : null}
       <OfflineOrdersNotice isOffline={device.isOffline} savedAt={device.savedAt} />
@@ -265,13 +292,16 @@ function ShiftSalesContent(props: ContentProps) {
             title={title}
             isOpen={isOpen}
             isWide={isWide}
-            lens={target.kind === "shift" ? lens : "store"}
+            lens={target.kind === "shift" && lens === "drawer" ? "drawer" : "store"}
             drawer={readDrawerLens(props, hidden, isDemo)}
             notice={state.kind === "ready" ? (state.notice ?? server.staleNotice) : null}
             onOpenReceipt={isDemo ? undefined : (orderId) => router.push(`/(main)/order/${orderId}` as never)}
             onPrint={() => void print()}
-            onShare={() => void shareShiftReport(report, storeName, outletName)}
-            isPrinting={isPrinting}
+            onShare={() => void printer.share(report)}
+            isPrinting={printer.state.status === "printing"}
+            printLabel={isCashierReport ? "Print shift report" : "Print"}
+            printStatus={printStatus}
+            paper={paper}
             // Until the End shift & remit flow lands, its door is the Drawer's End shift.
             onEndShift={isMine && isOpen ? () => router.push(DRAWER_ROUTE as never) : undefined}
           />

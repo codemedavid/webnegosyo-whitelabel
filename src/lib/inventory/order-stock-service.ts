@@ -17,12 +17,12 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { applySimpleOptionStock } from './simple-option-stock-service'
+import { applySimpleOptionStockSettled } from './simple-option-stock-service'
 import type { DepletionOrderItem } from './order-depletion'
 import { reportStockFailure } from './stock-failure-report'
 import type { StockAuditContext } from './stock-audit'
 import { applyOrderStockMovements, reverseOrderStockMovements } from './order-stock-movements'
-import type { StockWriteOutcome } from './order-stock-ledger'
+import { unwritten, type StockWriteOutcome } from './order-stock-ledger'
 import {
   SYSTEM_CONTEXT,
   auditOrderStock,
@@ -133,12 +133,23 @@ export async function applyOrderRevisionStockBestEffort(
 ): Promise<StockWriteOutcome> {
   // Simple counters enforce a floor: return the old configuration first so a
   // swap can reuse its own stock. The RPC distinguishes edits from cancellation
-  // and retries below are no-ops under its independent transaction claims.
+  // and retries below are no-ops under its independent transaction claims. A
+  // counter that cannot cover the edit is a recorded, terminal outcome — it
+  // takes what is there and the edit is never retried for it (a 503 here made
+  // the app's stock queue retry the edit forever).
   let counters: StockWriteOutcome = 'settled'
   try {
     const supabase = createAdminClient()
-    if (restore.length) await applySimpleOptionStock(supabase, tenantId, orderId, 'void', revision, restore, outletId)
-    if (deplete.length) await applySimpleOptionStock(supabase, tenantId, orderId, 'sale', revision, deplete, outletId)
+    if (restore.length) await applySimpleOptionStockSettled(supabase, tenantId, orderId, 'void', revision, restore, outletId)
+    if (deplete.length) {
+      const { count, shortfalls } = await applySimpleOptionStockSettled(supabase, tenantId, orderId, 'sale', revision, deplete, outletId)
+      if (shortfalls.length > 0) {
+        await auditOrderStock(
+          { tenantId, orderId, event: 'order_edit', context, revision, outletId },
+          { result: { ...unwritten('applied', count), shortfalls } },
+        )
+      }
+    }
   } catch (error) {
     reportStockFailure({ tenantId, orderId, operation: 'revise_simple_option_stock' }, error)
     counters = 'failed'

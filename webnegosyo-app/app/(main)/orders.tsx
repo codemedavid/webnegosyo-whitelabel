@@ -28,14 +28,25 @@ import {
 import { CollapsingHeaderList, DOCKED_SEARCH_CLEARANCE } from "../../components/CollapsingHeaderList";
 import { useScreenTopInset } from "../../lib/use-screen-top-inset";
 import { ReportPeriodBar } from "../../components/ReportPeriodBar";
-import { defaultSelection, selectionToQueryArgs, type ReportQueryArgs, type ReportSelection } from "../../lib/report-window";
+import {
+  defaultSelection,
+  describeSelection,
+  resolveReportWindow,
+  supportsBoundedWindow,
+  type ReportSelection,
+} from "../../lib/report-window";
 import { useTradingDay } from "../../lib/business-day/use-trading-day";
-
-/**
- * A day's orders are a report, not a queue: the window has to be fetched, and
- * a busy store's day can run well past the queue's default page.
- */
-const DATED_FETCH_LIMIT = 2000;
+import {
+  datedOrdersArgs,
+  orderHistoryCapNotice,
+  orderHistoryExportFileName,
+  orderHistoryQuickPicks,
+} from "../../lib/orders-history";
+import { useRefRoute } from "../../lib/hooks";
+import { resolveItemSummaryAccess } from "../../lib/reports/item-summary";
+import { OrderHistoryViewSwitch, type OrderHistoryView } from "../../components/order-history/OrderHistoryViewSwitch";
+import { OrderHistorySummary } from "../../components/order-history/OrderHistorySummary";
+import { OrderHistoryNotice } from "../../components/order-history/OrderHistoryNotice";
 
 /** What the picker opens on when the screen is still showing the live queue. */
 const LIVE_QUEUE_SELECTION = defaultSelection(1);
@@ -108,20 +119,22 @@ interface ConvexOrder extends OrderListRowOrder {
   status: OrderStatus;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** The window a dated read asked for, so queued sales outside it stay out. */
-function queryWindow(args: ReportQueryArgs, nowMs: number): { startMs: number; endMs: number } {
-  return "daysBack" in args
-    ? { startMs: nowMs - args.daysBack * DAY_MS, endMs: Number.MAX_SAFE_INTEGER }
-    : { startMs: args.startMs, endMs: args.endMs };
-}
-
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 const keyExtractor = (order: ConvexOrder) => order._id;
+
+/** The branch a printed summary names: the pill being viewed, else the account's own branch. */
+function resolveViewedBranchName(
+  viewOutletId: string | null,
+  outlets: readonly { id: string; name: string }[],
+  accountOutletName: string | undefined,
+): string | undefined {
+  if (viewOutletId === ORDER_BRANCH_FILTER_UNASSIGNED) return "Unassigned orders";
+  if (viewOutletId) return outlets.find((outlet) => outlet.id === viewOutletId)?.name ?? accountOutletName;
+  return accountOutletName;
+}
 
 export default function OrdersScreen() {
   const params = useLocalSearchParams<{ status?: string }>();
@@ -143,9 +156,20 @@ export default function OrdersScreen() {
   // screen into "the orders of these days", which needs a windowed fetch: the
   // queue is a most-recent-N page and would have nothing from a past day in it.
   const [dateSelection, setDateSelection] = useState<ReportSelection | null>(null);
-  const [nowMs] = useState(() => Date.now());
   // Picked days are the store's business days (a 4 AM store's Friday runs to Sat 3:59 AM).
-  const { schedule } = useTradingDay();
+  // The anchor moves at the cutoff, so "Today" is still today on a tab mounted last night.
+  const { schedule, anchorMs: nowMs } = useTradingDay();
+  const quickPicks = useMemo(() => orderHistoryQuickPicks(nowMs, schedule), [nowMs, schedule]);
+  // Orders | Item summary — only offered once days are picked (OrderHistoryViewSwitch).
+  const [historyView, setHistoryView] = useState<OrderHistoryView>("orders");
+  const ordersRoute = useRefRoute(String(getOrdersRef));
+  const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
+  const canBoundOrders = supportsBoundedWindow(ordersRoute, convexSchemaVersion);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  const permissionHolder = useMemo(() => ({ role, isOwner, permissions }), [role, isOwner, permissions]);
+  const accountOutletName = useAuthStore((s) => s.outletName) ?? undefined;
   const [refreshing, setRefreshing] = useState(false);
 
   // Deep link from the dashboard pipeline (`/orders?status=preparing`). The tab
@@ -167,18 +191,21 @@ export default function OrdersScreen() {
 
   // Fetch the recent queue once, then filter/search/sort on the client so
   // every status pill can show a live count without extra round-trips.
-  const dateArgs = dateSelection ? selectionToQueryArgs(dateSelection, nowMs, false, schedule) : null;
+  // A picked period is a report: the whole window, up to the windowed cap.
+  const dateWindow = useMemo(
+    () => (dateSelection ? resolveReportWindow(dateSelection, nowMs, schedule) : null),
+    [dateSelection, nowMs, schedule],
+  );
+  const dateArgs = dateWindow ? datedOrdersArgs(dateWindow, canBoundOrders) : null;
   const viewArgs = viewOutletId ? { viewOutletId } : {};
   const ordersResult = useSafeQuery<ConvexOrder[]>(
     getOrdersRef,
-    dateArgs ? { ...dateArgs, limit: DATED_FETCH_LIMIT, ...viewArgs } : viewArgs
+    dateArgs ? { ...dateArgs, ...viewArgs } : viewArgs
   );
+  const capNotice = dateArgs ? orderHistoryCapNotice(ordersResult.data?.length, dateArgs.limit) : null;
   // Sales rung up and changes made while offline are part of the queue too;
   // the live queue is also kept on the device for a launch with no signal.
-  const offlineWindow = useMemo(
-    () => (dateSelection ? queryWindow(selectionToQueryArgs(dateSelection, nowMs, false, schedule), nowMs) : null),
-    [dateSelection, nowMs, schedule],
-  );
+  const offlineWindow = dateWindow;
   const {
     data: mergedOrders,
     isLoading,
@@ -200,14 +227,16 @@ export default function OrdersScreen() {
 
   // Export state. The deeper reads (a 2000-order page plus every line item)
   // are mounted only while the sheet is open, so the queue screen itself
-  // never pays for them.
+  // never pays for them. With days picked, the export IS that period: the
+  // dated list already holds its orders, so only their line items are read.
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const { data: exportOrders, refetch: refetchExportOrders } = useSafeQuery<ConvexOrder[]>(
+  const { data: deepExportOrders, refetch: refetchExportOrders } = useSafeQuery<ConvexOrder[]>(
     getOrdersRef,
-    isExportOpen ? { limit: EXPORT_FETCH_LIMIT } : "skip"
+    isExportOpen && !dateSelection ? { limit: EXPORT_FETCH_LIMIT } : "skip"
   );
+  const exportOrders = dateSelection ? ordersResult.data : deepExportOrders;
   const { data: exportItems, refetch: refetchExportItems } = useSafeQuery<ExportOrderItemInput[]>(
     getAllOrderItemsRef,
     isExportOpen && exportOrders !== undefined
@@ -417,7 +446,7 @@ export default function OrdersScreen() {
     // Prefer the deep export page; fall back to the queue's own page so the
     // button still works while the bigger read is in flight — reporting the
     // fallback's coverage against the rows it really holds.
-    const source = resolveExportSource(exportOrders, orders, EXPORT_FETCH_LIMIT);
+    const source = resolveExportSource(exportOrders, orders, dateArgs ? dateArgs.limit : EXPORT_FETCH_LIMIT);
     const fetched = filterOrdersToScope(scope, source.orders) as ConvexOrder[];
     setExporting(true);
     setExportError(null);
@@ -429,6 +458,10 @@ export default function OrdersScreen() {
         status: filter === "all" ? undefined : filter,
         nowMs: Date.now(),
         fetchLimit: source.fetchLimit,
+        // A picked period exports exactly those business days.
+        ...(dateWindow && dateSelection
+          ? { window: dateWindow, fileName: orderHistoryExportFileName(dateSelection) ?? undefined }
+          : {}),
       });
       setExportOpen(false);
       if (!coverage.isComplete) {
@@ -510,11 +543,26 @@ export default function OrdersScreen() {
     <EmptyState message={search ? "No orders match your search" : "No orders found"} />
   );
 
+  // The summary needs `reports` and picked days; anything else falls back to the list.
+  const summaryAccess = resolveItemSummaryAccess({
+    holder: permissionHolder,
+    route: ordersRoute,
+    isDated: dateSelection !== null,
+  });
+  const isSummaryShown = historyView === "summary" && summaryAccess !== "hidden";
+  const viewedBranchName = resolveViewedBranchName(viewOutletId, outlets, accountOutletName);
+
   const header = (
     <>
       <ScreenHeader
         title="Orders"
-        subtitle={isLoading ? undefined : `${visibleOrders.length} shown`}
+        subtitle={
+          isSummaryShown && dateSelection
+            ? describeSelection(dateSelection, nowMs, schedule)
+            : isLoading
+              ? undefined
+              : `${visibleOrders.length} shown`
+        }
         ignoreTopInset
         style={styles.header}
         actions={
@@ -533,18 +581,22 @@ export default function OrdersScreen() {
         }
       />
 
-      <OrderSearchRow
-        inputRef={searchInputRef}
-        sort={sort}
-        onSortToggle={() => setSort((s) => (s === "newest" ? "oldest" : "newest"))}
-        search={search}
-        onSearchChange={setSearch}
-      />
+      {isSummaryShown ? null : (
+        <OrderSearchRow
+          inputRef={searchInputRef}
+          sort={sort}
+          onSortToggle={() => setSort((s) => (s === "newest" ? "oldest" : "newest"))}
+          search={search}
+          onSearchChange={setSearch}
+        />
+      )}
 
       <View style={styles.period}>
         <ReportPeriodBar
           selection={dateSelection ?? LIVE_QUEUE_SELECTION}
           presets={[]}
+          quickPicks={quickPicks}
+          customLabel="Custom"
           nowMs={nowMs}
           schedule={schedule}
           onChange={setDateSelection}
@@ -552,8 +604,16 @@ export default function OrdersScreen() {
           clearLabel="Live queue"
           style={styles.periodRow}
         />
+        <OrderHistoryViewSwitch
+          holder={permissionHolder}
+          route={ordersRoute}
+          isDated={dateSelection !== null}
+          view={isSummaryShown ? "summary" : "orders"}
+          onChange={setHistoryView}
+        />
       </View>
 
+      {isSummaryShown ? null : <OrderHistoryNotice message={capNotice} />}
       <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
     </>
   );
@@ -575,8 +635,20 @@ export default function OrdersScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: topInset }]}>
-      {/* One clock for every card's age and urgency accent, so a tick redraws
-          the cards and not the list. */}
+      {isSummaryShown && dateSelection ? (
+        <OrderHistorySummary
+          header={header}
+          selection={dateSelection}
+          nowMs={nowMs}
+          schedule={schedule}
+          // A branch account always reads its own branch.
+          outletFilter={accountScope.kind === "branch" ? accountScope.outletId : viewOutletId}
+          branchName={viewedBranchName}
+          route={ordersRoute}
+        />
+      ) : (
+      // One clock for every card's age and urgency accent, so a tick redraws
+      // the cards and not the list.
       <TickerProvider>
         <CollapsingHeaderList
           style={styles.list}
@@ -597,11 +669,14 @@ export default function OrdersScreen() {
           }
         />
       </TickerProvider>
+      )}
 
       <ExportSheet
         visible={isExportOpen}
         title={filter === "all" ? "Export orders" : `Export ${filter} orders`}
         isBusy={isExporting}
+        showPresets={!dateSelection}
+        coverageNote={dateSelection ? `Exports ${describeSelection(dateSelection, nowMs, schedule)}.` : null}
         errorMessage={exportError}
         onExport={handleExport}
         onClose={() => setExportOpen(false)}

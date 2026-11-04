@@ -137,7 +137,7 @@ function OrderLine({ item }: { item: CartItem }) {
           <p className="mt-0.5 text-sm text-[var(--bs-text-muted)]">{options.join(', ')}</p>
         )}
         {item.special_instructions && (
-          <p className="mt-0.5 text-sm italic text-[var(--bs-text-muted)]">Note: {item.special_instructions}</p>
+          <p className="mt-0.5 min-w-0 wrap-anywhere text-sm italic text-[var(--bs-text-muted)]">Note: {item.special_instructions}</p>
         )}
         <span className="mt-1.5 inline-flex rounded-full bg-[var(--bs-surface-high)] px-2.5 py-0.5 text-xs font-bold tabular-nums">
           ×{item.quantity}

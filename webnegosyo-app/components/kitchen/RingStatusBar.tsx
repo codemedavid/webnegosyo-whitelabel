@@ -7,6 +7,8 @@ interface RingStatusBarProps {
   ringingCount: number;
   /** Unconfirmed tickets that were already on the board — no ring. */
   waitingCount: number;
+  /** The demo never rings (useKitchenRing is off), so the line must not say it does. */
+  isDemo?: boolean;
   onTestSound: () => void;
 }
 
@@ -19,9 +21,11 @@ function plural(count: number, word: string): string {
  * make a sound? "Test sound" plays the ringtone once, so a cook can check the
  * volume before a rush instead of finding out during one.
  */
-export function RingStatusBar({ ringingCount, waitingCount, onTestSound }: RingStatusBarProps) {
-  const isRinging = ringingCount > 0;
-  const message = isRinging
+export function RingStatusBar({ ringingCount, waitingCount, isDemo = false, onTestSound }: RingStatusBarProps) {
+  const isRinging = !isDemo && ringingCount > 0;
+  const message = isDemo
+    ? "🔕 Sound off in demo · a real store's board rings for new orders"
+    : isRinging
     ? `🔔 Ringing — ${plural(ringingCount, "new order")} waiting for Confirm`
     : waitingCount > 0
       ? `${plural(waitingCount, "order")} not confirmed yet`

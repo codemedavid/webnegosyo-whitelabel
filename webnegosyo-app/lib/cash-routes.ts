@@ -14,7 +14,7 @@
 import { servicePeriodWindow, type ServicePeriodTimes } from "./business-day/service-periods";
 import { tradingDayWindow, type CutoffSchedule } from "./business-day/trading-day";
 
-export const CASH_SCREENS = ["shift-sales", "end-shift", "remittance", "remittances", "day-close", "cash-rules"] as const;
+export const CASH_SCREENS = ["shift-sales", "end-shift", "remittance", "remittances", "day-close", "cash-rules", "my-shifts"] as const;
 export type CashScreen = (typeof CASH_SCREENS)[number];
 
 /** The screen each one is reached from — the door the merchant uses (06 §3). */
@@ -27,10 +27,14 @@ export const CASH_SCREEN_DOORS: Readonly<Record<CashScreen, readonly string[]>> 
   "remittances": ["reports", "dashboard"],
   "day-close": ["remittances", "dashboard"],
   "cash-rules": ["cash-drawers", "menu"],
+  // A cashier's own past shifts (View / Reprint): the Drawer's shift and clock-in cards.
+  "my-shifts": ["pos-sales"],
 };
 
 export const CASH_RULES_ROUTE = "/(main)/cash-rules" as const;
 export const REMITTANCES_ROUTE = "/(main)/remittances" as const;
+/** The signed-in person's own last shifts, each with View / Reprint. */
+export const MY_SHIFTS_ROUTE = "/(main)/my-shifts" as const;
 /** day-close without a day: the history of closes. */
 export const DAY_CLOSE_HISTORY_ROUTE = "/(main)/day-close" as const;
 
@@ -39,6 +43,11 @@ const enc = encodeURIComponent;
 /** One clocked-in shift's sales (live while open, final once closed). */
 export function shiftSalesHref(shiftId: string): `/(main)/shift-sales?${string}` {
   return `/(main)/shift-sales?shift=${enc(shiftId)}`;
+}
+
+/** The holder's OWN sales in that shift (End shift, My shifts, the Drawer) — opens on "My sales". */
+export function myShiftSalesHref(shiftId: string): `/(main)/shift-sales?${string}` {
+  return `${shiftSalesHref(shiftId)}&lens=mine`;
 }
 
 export interface PeriodSalesTarget {

@@ -1,0 +1,58 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`item summary slip at 32 columns matches the printed layout 1`] = `
+"          LOLY'S CAFE
+          Main branch
+          ITEM SUMMARY
+--------------------------------
+From           Thu, Oct 29, 2026
+To              Wed, Nov 4, 2026
+Orders                        42
+--------------------------------
+ITEM            QTY       AMOUNT
+Sizzling Pork Sisig with Garlic
+Rice and Egg     20     7,000.00
+Iced Spanish Latte (16oz)
+                 51     5,350.00
+Items not recorded
+                  -       150.00
+--------------------------------
+NET SALES        71    12,500.00
+--------------------------------
+1 order was saved without its
+dishes. Its sales are listed as
+"Items not recorded", so the
+rows still add up to net sales.
+--------------------------------
+  Printed Nov 4, 2026 9:30 PM
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`item summary slip at 48 columns matches the printed layout 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                  ITEM SUMMARY
+------------------------------------------------
+From                           Thu, Oct 29, 2026
+To                              Wed, Nov 4, 2026
+Orders                                        42
+------------------------------------------------
+ITEM                         QTY          AMOUNT
+Sizzling Pork Sisig with Garlic Rice and Egg
+                              20        7,000.00
+Iced Spanish Latte (16oz)     51        5,350.00
+Items not recorded             -          150.00
+------------------------------------------------
+NET SALES                     71       12,500.00
+------------------------------------------------
+1 order was saved without its dishes. Its sales
+are listed as "Items not recorded", so the rows
+still add up to net sales.
+------------------------------------------------
+          Printed Nov 4, 2026 9:30 PM
+            Not an official receipt.
+                 For store use.
+"
+`;

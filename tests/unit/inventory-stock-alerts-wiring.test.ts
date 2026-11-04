@@ -19,6 +19,7 @@ import {
 } from '@/lib/inventory/order-stock-service'
 import { recordStockMovement } from '@/lib/inventory/stock-service'
 import { processStockLevelChanges } from '@/lib/inventory/stock-alerts-service'
+import { routeStockRpc, simulateOrderStockClaim, type ClaimRpcState } from '../fixtures/order-stock-claim-rpc'
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
   processStockLevelChanges: jest.fn(() =>
@@ -32,8 +33,11 @@ jest.mock('@/lib/inventory/stock-alerts-service', () => ({
 }))
 
 const from = jest.fn()
+/** What `apply_order_stock_claim` sees for order-1: its claims and recorded movements. */
+let claimState: ClaimRpcState = { claims: [], movements: [] }
+const rpc = routeStockRpc((args) => simulateOrderStockClaim(claimState, args))
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (name: string, args: unknown) => rpc(name, args) }),
 }))
 jest.mock('@/lib/supabase/server', () => ({
   createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
@@ -82,6 +86,7 @@ const mockedProcess = processStockLevelChanges as jest.MockedFunction<
 >
 
 beforeEach(() => {
+  claimState = { claims: [], movements: [] }
   from.mockReset()
   mockedProcess.mockClear()
   jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -181,6 +186,14 @@ describe('cancellation restore reaches the alert path', () => {
    * whose unique index is what refuses the duplicate cancellation.
    */
   function wireRestore(saleRows: unknown[], alreadyRestored = false) {
+    // The claim RPC reverses what the sale recorded; a lost claim = a void
+    // claim at the revision the reverse picks (0, after sale@0) already exists.
+    claimState = {
+      claims: [{ reason: 'sale', revision: 0 }, ...(alreadyRestored ? [{ reason: 'void' as const, revision: 0 }] : [])],
+      movements: (saleRows as Array<Record<string, unknown>>).map((row) => ({
+        outlet_id: null, ...row,
+      })) as ClaimRpcState['movements'],
+    }
     from.mockImplementation((name: string) => {
       switch (name) {
         case 'order_stock_applications': {

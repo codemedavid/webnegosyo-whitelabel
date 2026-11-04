@@ -351,6 +351,8 @@ export interface ListShiftsFilter {
   staffUserId?: string;
   /** Only shifts opened at or after this instant. */
   sinceIso?: string;
+  /** At most this many, newest first. Omit for all. */
+  limit?: number;
 }
 
 /**
@@ -376,6 +378,7 @@ export async function listShifts(
     query = query.eq("outlet_id", filter.outletId);
   }
   if (filter.sinceIso) query = query.gte("opened_at", filter.sinceIso);
+  if (filter.limit !== undefined) query = query.limit(filter.limit);
 
   const { data, error } = await query;
   if (error) throw asError(error, "The shift history could not be read.");

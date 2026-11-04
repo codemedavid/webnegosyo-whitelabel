@@ -766,7 +766,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       cartPresellDate
         ? preflightPresellAction(tenantId, toPresellPreflightLines(items))
         : Promise.resolve({ ok: true } as const),
-      preflightCheckoutStockAction(tenantId, toStockPreflightLines(items), outlet.selectedOutletId ?? null),
+      preflightCheckoutStockAction(tenantId, toStockPreflightLines(items, bundleItems), outlet.selectedOutletId ?? null),
     ])
     const refusal = [presellVerdict, stockVerdict].find(verdict => !verdict.ok)
     return refusal && !refusal.ok ? refusal.message : null

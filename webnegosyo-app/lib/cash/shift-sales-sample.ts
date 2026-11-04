@@ -2,9 +2,11 @@
  * The demo store's shift (no account, read-only): a believable Day shift so
  * an App Store reviewer or a prospect sees the screen filled, labelled
  * "Sample shift". Built relative to now so it always reads as today. Pure.
+ * Every figure adds up from SAMPLE_RECEIPTS (shift-sales-sample.test.ts):
+ * change a receipt and the summary, payments and breakdowns with it.
  */
 
-import type { ShiftReceiptStatus, ShiftSalesReceipt, ShiftSalesReport } from "./shift-sales";
+import type { ShiftReceiptStatus, ShiftSalesReceipt, ShiftSalesReport, ShiftSalesScope } from "./shift-sales";
 
 const MINUTE_MS = 60_000;
 const SHIFT_LENGTH_MS = 6 * 60 * MINUTE_MS;
@@ -35,11 +37,16 @@ function sampleReceipts(openedMs: number): ShiftSalesReceipt[] {
   }));
 }
 
-export function sampleShiftSales(nowMs: number): ShiftSalesReport {
+/**
+ * `scope` follows the screen's lens: under "Cashier's sales" the sample is
+ * her own report (First / Last receipt, the slip on screen), not the store's.
+ */
+export function sampleShiftSales(nowMs: number, scope: ShiftSalesScope = "window"): ShiftSalesReport {
   const openedMs = nowMs - SHIFT_LENGTH_MS;
   const openedAt = new Date(openedMs).toISOString();
   return {
     source: "sample",
+    scope,
     hidden: false,
     window: { from: openedAt, to: new Date(nowMs).toISOString() },
     shift: {
@@ -66,19 +73,20 @@ export function sampleShiftSales(nowMs: number): ShiftSalesReport {
       refundCents: 0,
     },
     payments: [
-      { key: "cash", label: "Cash", cents: 81_000, count: 4 },
+      { key: "cash", label: "Cash", cents: 82_000, count: 3 },
       { key: "gcash", label: "GCash", cents: 141_000, count: 3 },
       { key: "card", label: "Card", cents: 88_000, count: 1 },
       { key: "maya", label: "Maya", cents: 45_000, count: 1 },
     ].sort((a, b) => b.cents - a.cents),
     orderTypes: [
-      { key: "dine_in", label: "Dine-in", orders: 5, netCents: 257_000 },
+      { key: "dine_in", label: "Dine-in", orders: 5, netCents: 267_500 },
       { key: "pickup", label: "Pickup", orders: 3, netCents: 99_000 },
       { key: "delivery", label: "Delivery", orders: 1, netCents: 61_500 },
     ],
     channels: [
-      { key: "pos", label: "Counter", orders: 7, netCents: 300_500 },
-      { key: "web", label: "Online", orders: 2, netCents: 117_000 },
+      // Online = the GCash pickup (#02) and the delivery (#04).
+      { key: "pos", label: "Counter", orders: 7, netCents: 314_500 },
+      { key: "web", label: "Online", orders: 2, netCents: 113_500 },
     ],
     items: [
       { label: "Iced Spanish Latte", quantity: 14, netCents: 196_000 },

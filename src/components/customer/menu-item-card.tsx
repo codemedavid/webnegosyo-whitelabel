@@ -4,8 +4,9 @@ import { memo, useCallback } from 'react'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
-import { isMenuItemOrderable } from '@/lib/menu-item-availability'
+import { isMenuItemOrderable, resolveMenuCardStock } from '@/lib/menu-item-availability'
 import { CardTemplateRenderer } from './card-templates'
+import { useMenuItemCeiling } from './card-templates/card-stock'
 import { useEagerImages } from '@/components/customer/eager-images-context'
 
 interface MenuItemCardProps {
@@ -27,12 +28,14 @@ export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, brandin
    * sits here, on the one wrapper they all render through, for the same reason
    * the click-to-inspect tag does: no template can opt out of it.
    */
+  // A dish the kitchen can make 0 times is refused here too ("Sold out").
+  const ceiling = useMenuItemCeiling(item.id)
   const handleSelect = useCallback(
     (selected: MenuItem) => {
-      if (!isMenuItemOrderable(selected)) return
+      if (!resolveMenuCardStock(isMenuItemOrderable(selected), selected.id === item.id ? ceiling : null).isOrderable) return
       onSelect(selected)
     },
-    [onSelect],
+    [onSelect, item.id, ceiling],
   )
 
   // A copy of the layout hidden on this viewport must not fetch eagerly.
