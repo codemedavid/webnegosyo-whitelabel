@@ -69,6 +69,7 @@ const CONVERTED_ROUTES = [
   'src/app/api/vouchers/list/route.ts',
   'src/app/api/lalamove/route.ts',
   'src/app/api/staff/order-activity/route.ts',
+  'src/app/api/staff/receipt-reprinted/route.ts',
   'src/app/api/orders/tracking-url/route.ts',
   'src/app/api/revalidate-menu/route.ts',
   'src/app/api/loyverse/route.ts',
