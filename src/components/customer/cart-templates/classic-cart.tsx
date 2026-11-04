@@ -122,18 +122,17 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             )}
                           </div>
                           <div className="flex items-center">
-                            {((item.menu_item.variation_types?.length ?? 0) > 0 || item.menu_item.variations.length > 0 || item.menu_item.addons.length > 0) && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-10 w-10 hover:bg-[var(--cart-soft)] rounded-full touch-manipulation"
-                                style={{ color: palette.muted }}
-                                onClick={() => setItemToEdit(item)}
-                                aria-label="Edit item"
-                              >
-                                <Pencil className="h-4.5 w-4.5" />
-                              </Button>
-                            )}
+                            {/* Every line is editable: a plain dish still has its kitchen note. */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-10 w-10 hover:bg-[var(--cart-soft)] rounded-full touch-manipulation"
+                              style={{ color: palette.muted }}
+                              onClick={() => setItemToEdit(item)}
+                              aria-label="Edit item"
+                            >
+                              <Pencil className="h-4.5 w-4.5" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
