@@ -88,9 +88,12 @@ jest.mock('@/lib/orders-service', () => ({
   },
 }))
 
+const priceOrderWithVouchers = jest.fn()
 jest.mock('@/lib/vouchers/order-pricing', () => ({
-  priceOrderWithVouchers: async () => ({ application: { discountLines: [] }, discountPayload: null, redemptions: [] }),
+  priceOrderWithVouchers: (...args: unknown[]) =>
+    (priceOrderWithVouchers as unknown as (...a: unknown[]) => unknown)(...args),
 }))
+const NO_VOUCHERS = { application: { discountLines: [] }, discountPayload: null, redemptions: [] }
 jest.mock('@/lib/vouchers/repository', () => ({ createVoucherLookup: () => ({}) }))
 jest.mock('@/lib/vouchers/order-voucher-flow', () => ({
   burnRedemptions: async () => ({ failures: [] }),
@@ -138,6 +141,7 @@ describe('createOrderAction — simple-option counters are claimed before the or
     checkOrderRateLimit.mockImplementation(async () => ({ allowed: true, retryAfterSec: 0 }))
     applySimpleOptionStock.mockImplementation(async () => 1)
     assertSimpleOptionStockAvailable.mockImplementation(async () => {})
+    priceOrderWithVouchers.mockImplementation(async () => NO_VOUCHERS)
     createOrder.mockImplementation(async () => ({ order: { id: 'unused', total: 230 }, orderToken: 'tok', deduped: false }))
     tableRows = {
       tenants: {
@@ -169,6 +173,34 @@ describe('createOrderAction — simple-option counters are claimed before the or
     expect(createOrderParity()?.orderId).toBe(claim[2])
     // No unlocked read on the platform path — the claim IS the check.
     expect(assertSimpleOptionStockAvailable).not.toHaveBeenCalled()
+  })
+
+  test('claims as the LAST step before the write, after pricing (MEDIUM-4: no orphan window)', async () => {
+    // A claim taken before the delivery fee, road distance and voucher pricing
+    // was held through seconds of network calls; a function killed in that
+    // window left the counters reduced with no order (and nothing to cancel).
+    const order: string[] = []
+    priceOrderWithVouchers.mockImplementation(async () => { order.push('price'); return NO_VOUCHERS })
+    applySimpleOptionStock.mockImplementation(async () => { order.push('claim'); return 1 })
+    createOrder.mockImplementation(async () => {
+      order.push('write')
+      return { order: { id: createOrderParity()?.orderId, total: 230 }, orderToken: 'tok', deduped: false }
+    })
+
+    await placeOrder()
+
+    expect(order).toEqual(['price', 'claim', 'write'])
+  })
+
+  test('claims nothing when the order fails before the write step', async () => {
+    priceOrderWithVouchers.mockImplementation(async () => { throw new Error('voucher read failed') })
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await placeOrder()
+
+    expect(result.success).toBe(false)
+    expect(applySimpleOptionStock).not.toHaveBeenCalled()
+    expect(createOrder).not.toHaveBeenCalled()
   })
 
   test('an add-on named only as text is claimed and stored with its id', async () => {

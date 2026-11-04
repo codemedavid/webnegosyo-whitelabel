@@ -569,21 +569,25 @@ export async function createOrderAction(
       return { success: false, error }
     }
 
-    // ── Simple-option counters (platform: claimed before the order exists) ──
-    // Under the id the order is then inserted with, so the post-order
-    // depletion finds the claim taken and a cancel finds its movements. Lines
-    // carry the ids their text was charged for (see priceOrderLines).
+    // ── Simple-option counters ──
+    // Platform: CLAIMED under the id the order is then inserted with, so the
+    // post-order depletion finds the claim taken and a cancel finds its
+    // movements — as the very last step before the insert (below), so a
+    // function killed mid-checkout (road distance, vouchers…) never leaves
+    // counters reduced for an order that was never written (MEDIUM-4). Other
+    // backends: the unlocked courtesy read, here, before anything else.
+    // Lines carry the ids their text was charged for (see priceOrderLines).
     const platformOrderId = resolveOrderBackend(tenantConfig) === 'platform' ? crypto.randomUUID() : null
-    if (tenantConfig.inventory_enabled === true) {
-      const hold = await holdSimpleOptionStock({
-        db: supabaseAdmin,
-        tenantId,
-        orderId: platformOrderId,
-        items,
-        outletId: resolvedOutlet?.id ?? null,
-      })
-      if (!hold.ok) return await refuse(hold.error)
-      releaseOptionHold = hold.release
+    const holdOptionStock = () => holdSimpleOptionStock({
+      db: supabaseAdmin,
+      tenantId,
+      orderId: platformOrderId,
+      items,
+      outletId: resolvedOutlet?.id ?? null,
+    })
+    if (tenantConfig.inventory_enabled === true && !platformOrderId) {
+      const check = await holdOptionStock()
+      if (!check.ok) return await refuse(check.error)
     }
 
     // ── Delivery fee (authoritative) ──
@@ -879,7 +883,14 @@ export async function createOrderAction(
       return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
-    // Otherwise, continue with existing Supabase flow
+    // Otherwise, continue with existing Supabase flow.
+    // The option claim (see "Simple-option counters" above), right before the
+    // insert: nothing that can stall sits between the two.
+    if (tenantConfig.inventory_enabled === true && platformOrderId) {
+      const hold = await holdOptionStock()
+      if (!hold.ok) return await refuse(hold.error)
+      releaseOptionHold = hold.release
+    }
     const result = await createOrder(
       tenantId,
       items,
