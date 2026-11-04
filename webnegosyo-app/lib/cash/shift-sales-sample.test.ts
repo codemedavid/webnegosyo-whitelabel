@@ -2,6 +2,9 @@
 // prospect ever sees. Its figures must add up the way a real one does: QA
 // found "Cash ₱810 · 4 payments" over receipts that took ₱820 in 3 cash sales.
 import { sampleShiftSales } from "./shift-sales-sample";
+import { receiptRangeText } from "./shift-sales-view";
+import { buildShiftReportSlip } from "../cash-slips/shift-report";
+import { slipPlainText } from "../cash-slips/slip-text";
 
 const NOW = Date.parse("2026-11-05T11:35:00.000Z");
 const sum = (values: readonly (number | null)[]) => values.reduce<number>((total, value) => total + (value ?? 0), 0);
@@ -66,5 +69,21 @@ describe("the demo store's sample shift", () => {
   it("numbers its receipts first to last", () => {
     expect(report.firstNumber).toBe(report.receipts[0].number);
     expect(report.lastNumber).toBe(report.receipts[report.receipts.length - 1].number);
+  });
+});
+
+describe("the sample shift follows the lens", () => {
+  it("is the store's window by default", () => {
+    expect(sampleShiftSales(NOW).scope).toBe("window");
+    expect(receiptRangeText(sampleShiftSales(NOW))).toBe("#01 – #10 · 10 receipts");
+  });
+
+  it("is the cashier's own report under her lens, numbered First / Last like her slip", () => {
+    const mine = sampleShiftSales(NOW, "cashier");
+    expect(mine.scope).toBe("cashier");
+    expect(receiptRangeText(mine)).toBe("First #01 · Last #10 · 10 receipts");
+    const paper = slipPlainText(buildShiftReportSlip(mine, { storeName: "Demo", width: 32, printedAt: new Date(NOW) }));
+    expect(paper).toMatch(/First receipt/);
+    expect(paper).not.toMatch(/#01 - #10|#01 – #10/);
   });
 });

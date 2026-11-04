@@ -6,7 +6,7 @@
  * change a receipt and the summary, payments and breakdowns with it.
  */
 
-import type { ShiftReceiptStatus, ShiftSalesReceipt, ShiftSalesReport } from "./shift-sales";
+import type { ShiftReceiptStatus, ShiftSalesReceipt, ShiftSalesReport, ShiftSalesScope } from "./shift-sales";
 
 const MINUTE_MS = 60_000;
 const SHIFT_LENGTH_MS = 6 * 60 * MINUTE_MS;
@@ -37,11 +37,16 @@ function sampleReceipts(openedMs: number): ShiftSalesReceipt[] {
   }));
 }
 
-export function sampleShiftSales(nowMs: number): ShiftSalesReport {
+/**
+ * `scope` follows the screen's lens: under "Cashier's sales" the sample is
+ * her own report (First / Last receipt, the slip on screen), not the store's.
+ */
+export function sampleShiftSales(nowMs: number, scope: ShiftSalesScope = "window"): ShiftSalesReport {
   const openedMs = nowMs - SHIFT_LENGTH_MS;
   const openedAt = new Date(openedMs).toISOString();
   return {
     source: "sample",
+    scope,
     hidden: false,
     window: { from: openedAt, to: new Date(nowMs).toISOString() },
     shift: {

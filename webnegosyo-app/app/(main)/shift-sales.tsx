@@ -224,7 +224,8 @@ function ShiftSalesContent(props: ContentProps) {
   const isWide = useIsWideReports();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const printer = useShiftReportPrint();
-  const sample = useMemo(() => (isDemo ? sampleShiftSales(Date.now()) : null), [isDemo]);
+  const sampleScope = reportScopeFor(lens, canSeeStore);
+  const sample = useMemo(() => (isDemo ? sampleShiftSales(Date.now(), sampleScope) : null), [isDemo, sampleScope]);
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   // Reports, Shifts tab, links a named shift by id; its name is the title.
   const periods = useServicePeriods(!isDemo && target.kind === "period" && target.periodId ? tenantId : null);
