@@ -8,6 +8,25 @@ const DEMO_VIDEO = {
   poster: 'https://media.webnegosyo.com/marketing/smartmenu-product-demo-v3-poster.jpg',
 } as const
 
+/** Beracah Cafe's owner on camera beside their ordering screen (vertical, 0:47). */
+const BERACAH_VIDEO = {
+  src: 'https://media.webnegosyo.com/marketing/beracah-cafe-testimonial.mp4',
+  poster: 'https://media.webnegosyo.com/marketing/beracah-cafe-testimonial-poster.jpg',
+  name: 'Fernando San Juan',
+  business: 'Beracah Cafe',
+} as const
+
+/**
+ * Transcribed word for word from merchants' Messenger messages (screenshots
+ * the owner shared, 2026-11-04). Only the praise is quoted: one message also
+ * asks about Apple printer support, another about a room-booking site.
+ */
+const MESSENGER_MESSAGES = [
+  { quote: 'nag relaunch kami now, mas manageable na kasi ang bagong updates sa app. this is way better sa previous versions', from: 'Merchant' },
+  { quote: 'malaking tulong yung platform actually', from: 'Merchant' },
+  { quote: 'Sobrang ganda ng gawa mo', from: 'Chona' },
+] as const
+
 /** Transcribed from /testimonial2.png, the merchant's real Facebook recommendation. */
 const FACEBOOK_REVIEW = {
   quote:
@@ -17,8 +36,8 @@ const FACEBOOK_REVIEW = {
 } as const
 
 /**
- * Proof uses only what is real: the product demo, a merchant's video and two
- * reviews. No invented star ratings or review counts.
+ * Proof uses only what is real: the product demo, two merchants' videos,
+ * their own messages and a Facebook review. No invented star ratings or review counts.
  */
 export function FunnelProof() {
   return (
@@ -39,7 +58,34 @@ export function FunnelProof() {
           <figcaption className="mt-3 text-center text-[13px] text-[#A99C8D]">{PROOF.demoTitle}</figcaption>
         </figure>
 
-        <div className="mt-12 grid gap-4 md:grid-cols-2">
+        <div className="mt-12 grid gap-4 md:grid-cols-[320px_1fr]">
+          <figure className="mx-auto w-full max-w-[320px]">
+            <video
+              src={BERACAH_VIDEO.src}
+              poster={BERACAH_VIDEO.poster}
+              controls
+              playsInline
+              preload="none"
+              className="fn-shot aspect-[9/16] w-full bg-black object-cover"
+              aria-label={`${BERACAH_VIDEO.name} of ${BERACAH_VIDEO.business}, video testimonial`}
+            />
+            <figcaption className="mt-3 text-center text-[13px] text-[#A99C8D]">
+              <span className="font-semibold text-white">{BERACAH_VIDEO.name}</span> · {BERACAH_VIDEO.business}
+            </figcaption>
+          </figure>
+          <div className="flex flex-col justify-center gap-4">
+            {MESSENGER_MESSAGES.map((m) => (
+              <figure key={m.quote} className="fn-card p-5">
+                <blockquote className="text-[17px] leading-relaxed text-white">“{m.quote}”</blockquote>
+                <figcaption className="mt-3 text-[13px] text-[#A99C8D]">
+                  <span className="font-semibold text-white">{m.from}</span> · {PROOF.messengerSource}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
           <video
             src="/testimonial-720.mp4"
             poster="/testimonial-poster.jpg"
