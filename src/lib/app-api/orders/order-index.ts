@@ -266,6 +266,28 @@ export function createOrderIndex(database: SupabaseClient, deps: Dependencies = 
     return updateWhere(id, 'failed', backend ? { state: 'placing', backend } : { state: 'placing' })
   }
 
+  /**
+   * Platform only: an attempt still 'placing' after `staleMs` died mid-flight
+   * (a function timeout between the write and markPlaced). Its order may
+   * exist; re-running it is safe because the same key is the order's
+   * clientOrderId, so the engine answers with the first order (deduped) and
+   * the index finally records it. Touching updated_at makes the take-over
+   * itself the lock: of two retries only one row update succeeds.
+   */
+  async function takeOverStalePlacing(id: string, staleMs: number): Promise<boolean> {
+    if (!UUID.test(id)) return false
+    const cutoff = new Date(Date.parse(now()) - staleMs).toISOString()
+    const { data, error } = await table()
+      .update({ updated_at: now() })
+      .eq('id', id)
+      .eq('state', 'placing')
+      .eq('backend', 'platform')
+      .lt('updated_at', cutoff)
+      .select('id')
+    if (error) throw failed(error.message)
+    return (data ?? []).length === 1
+  }
+
   async function getCustomerOrder(tenantId: string, customerId: string, orderId: string): Promise<PlacedOrderRow | null> {
     if (!UUID.test(tenantId) || !UUID.test(customerId) || !orderIdSchema.safeParse(orderId).success) return null
     const { data, error } = await table()
@@ -319,7 +341,7 @@ export function createOrderIndex(database: SupabaseClient, deps: Dependencies = 
     return updateWhere(id, 'placed', { last_status: parsed, last_status_at: now() })
   }
 
-  return { claimOrderKey, markPlaced, markFailed, reopenFailed, getCustomerOrder, listCustomerOrders, recordStatus }
+  return { claimOrderKey, markPlaced, markFailed, reopenFailed, takeOverStalePlacing, getCustomerOrder, listCustomerOrders, recordStatus }
 }
 
 export type OrderIndex = ReturnType<typeof createOrderIndex>

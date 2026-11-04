@@ -7,6 +7,7 @@ import {
   STILL_PLACING,
   STORE_UNAVAILABLE,
   type PlaceAppOrderDeps,
+  STALE_PLACING_MS,
 } from '@/lib/app-api/orders/place-app-order'
 import { ORDER_TYPE_GONE, PROOF_NEEDED, REWARDS_SOON } from '@/lib/app-api/orders/order-request'
 import type { DraftTenant } from '@/lib/app-api/orders/load-draft'
@@ -41,6 +42,7 @@ function deps(overrides: Partial<PlaceAppOrderDeps> = {}): TestDeps {
     markPlaced: jest.fn().mockResolvedValue(true),
     markFailed: jest.fn().mockResolvedValue(true),
     reopenFailed: jest.fn().mockResolvedValue(true),
+    takeOverStalePlacing: jest.fn().mockResolvedValue(false),
   }
   return {
     index,
@@ -164,6 +166,25 @@ describe('placeAppOrder — a key already held', () => {
     const d = deps()
     d.index.claimOrderKey.mockResolvedValue({ kind: 'placing', row: placedRow({ state: 'placing' } as never) })
     expect(await place(d)).toEqual({ ok: false, code: 'conflict', message: STILL_PLACING })
+    expect(d.placeOrder).not.toHaveBeenCalled()
+  })
+
+  it('a platform key stuck placing past the stale window is taken over and finished (the engine dedupes on the key)', async () => {
+    const d = deps()
+    d.index.claimOrderKey.mockResolvedValue({ kind: 'placing', row: { ...placedRow(), id: CLAIM_ID, state: 'placing' } })
+    d.index.takeOverStalePlacing.mockResolvedValue(true)
+    const outcome = await place(d)
+    expect(d.index.takeOverStalePlacing).toHaveBeenCalledWith(CLAIM_ID, STALE_PLACING_MS)
+    expect(d.placeOrder).toHaveBeenCalledWith(expect.objectContaining({ clientOrderId: expect.any(String) }))
+    expect(outcome.ok && outcome.status).toBe(201)
+  })
+
+  it('a Convex key stuck placing is never re-run — the write may have happened', async () => {
+    const d = deps({ readTenant: jest.fn().mockResolvedValue(tenant('convex')) })
+    d.index.claimOrderKey.mockResolvedValue({ kind: 'placing', row: { ...placedRow(), id: CLAIM_ID, state: 'placing' } })
+    d.index.takeOverStalePlacing.mockResolvedValue(true)
+    expect(await place(d)).toEqual({ ok: false, code: 'conflict', message: STILL_PLACING })
+    expect(d.index.takeOverStalePlacing).not.toHaveBeenCalled()
     expect(d.placeOrder).not.toHaveBeenCalled()
   })
 

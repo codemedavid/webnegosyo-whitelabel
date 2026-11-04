@@ -71,7 +71,7 @@ function createFake(seed: Row[] = []): Fake {
         const conflict = action.conflict
         if (rows.some((row) => conflict.every((column) => row[column] === candidate[column]))) return { data: [], error: null }
         sequence += 1
-        const inserted = { id: uuid(sequence), state: 'placing', order_id: null, summary: null, last_status: null, last_status_at: null, placed_at: null, created_at: stamp(sequence), ...candidate }
+        const inserted = { id: uuid(sequence), state: 'placing', order_id: null, summary: null, last_status: null, last_status_at: null, placed_at: null, created_at: stamp(sequence), updated_at: stamp(sequence), ...candidate }
         rows.push(inserted)
         return { data: [{ id: inserted.id }], error: null }
       }
@@ -101,6 +101,10 @@ function createFake(seed: Row[] = []): Fake {
       select: () => api,
       eq: (column: string, value: unknown) => {
         predicates.push((row) => row[column] === value)
+        return api
+      },
+      lt: (column: string, value: unknown) => {
+        predicates.push((row) => String(row[column]) < String(value))
         return api
       },
       or: (filter: string) => {
@@ -194,6 +198,28 @@ describe('claimOrderKey', () => {
     expect(await index.reopenFailed(first.id, 'convex')).toBe(true)
     expect(fake.rows[0]).toMatchObject({ state: 'placing', backend: 'convex' })
     expect(await index.reopenFailed(first.id)).toBe(false)
+  })
+
+  it('takes over a platform attempt stuck placing past the stale window, once', async () => {
+    const { index, fake } = await setup()
+    const first = await index.claimOrderKey(claimInput())
+    if (first.kind !== 'claimed') throw new Error('expected a claim')
+    // The claim was stamped 10:00; "now" is 12:00, so a 2-minute window has long passed.
+    expect(await index.takeOverStalePlacing(first.id, 2 * 60 * 1000)).toBe(true)
+    expect(fake.rows[0]).toMatchObject({ state: 'placing', updated_at: '2026-11-04T12:00:00.000Z' })
+    // The take-over touched updated_at: a second retry racing it finds nothing stale.
+    expect(await index.takeOverStalePlacing(first.id, 2 * 60 * 1000)).toBe(false)
+  })
+
+  it('never takes over a fresh attempt, a non-platform attempt or a placed key', async () => {
+    const { index, fake } = await setup()
+    const first = await index.claimOrderKey(claimInput())
+    if (first.kind !== 'claimed') throw new Error('expected a claim')
+    expect(await index.takeOverStalePlacing(first.id, 3 * 60 * 60 * 1000)).toBe(false)
+    fake.rows[0] = { ...fake.rows[0], backend: 'convex' }
+    expect(await index.takeOverStalePlacing(first.id, 60 * 1000)).toBe(false)
+    fake.rows[0] = { ...fake.rows[0], backend: 'platform', state: 'placed' }
+    expect(await index.takeOverStalePlacing(first.id, 60 * 1000)).toBe(false)
   })
 
   it('treats a key held by another customer as a conflict, never their order', async () => {

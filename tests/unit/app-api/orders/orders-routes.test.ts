@@ -23,6 +23,7 @@ const index = {
   markPlaced: jest.fn(),
   markFailed: jest.fn(),
   reopenFailed: jest.fn(),
+  takeOverStalePlacing: jest.fn(),
   getCustomerOrder: jest.fn(),
   listCustomerOrders: jest.fn(),
   recordStatus: jest.fn(),

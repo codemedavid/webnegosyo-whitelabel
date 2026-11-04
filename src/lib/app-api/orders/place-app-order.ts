@@ -32,8 +32,11 @@ export const STILL_PLACING = 'Your order is still being placed — check Orders 
 export const KEY_CONFLICT = 'Something went wrong with this checkout. Please start it again.'
 export const LOST_ORDER = "We couldn't confirm your order. Check Orders before trying again."
 
+/** A platform attempt still 'placing' this long after its last touch died mid-flight (see takeOverStalePlacing). */
+export const STALE_PLACING_MS = 2 * 60 * 1000
+
 export interface PlaceAppOrderDeps {
-  index: Pick<OrderIndex, 'claimOrderKey' | 'markPlaced' | 'markFailed' | 'reopenFailed'>
+  index: Pick<OrderIndex, 'claimOrderKey' | 'markPlaced' | 'markFailed' | 'reopenFailed' | 'takeOverStalePlacing'>
   readTenant: (tenantId: string) => Promise<DraftTenant | null>
   loadDraft: (tenant: DraftTenant, request: DraftRequest) => Promise<LoadedDraft>
   readOrderTypes: (tenantId: string) => Promise<OrderType[]>
@@ -171,6 +174,9 @@ export async function placeAppOrder(request: PlaceAppOrderRequest, deps: PlaceAp
     case 'placed':
       return okOutcome(toAppOrderDetail(claim.row, await deps.readLive(request.tenantId, claim.row.orderId)))
     case 'placing':
+      // Platform dedupes on the key, so a dead attempt can be finished; elsewhere a re-run could double the order.
+      if (tenant.backend === 'platform' && (await deps.index.takeOverStalePlacing(claim.row.id, STALE_PLACING_MS)))
+        return attempt(claim.row.id, request, tenant, deps)
       return failOutcome('conflict', STILL_PLACING)
     case 'failed':
       if (!(await deps.index.reopenFailed(claim.row.id, tenant.backend))) return failOutcome('conflict', STILL_PLACING)
