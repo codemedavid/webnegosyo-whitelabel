@@ -19,9 +19,15 @@ const BASE = `
 create function public.set_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new; end $$;
 create table public.tenants(id uuid primary key);
 create table public.customers(id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references public.tenants(id) on delete cascade, phone_e164 text);
+  tenant_id uuid not null references public.tenants(id) on delete cascade, phone_e164 text, created_source text);
 create table public.orders(id uuid primary key default gen_random_uuid(),
   customer_id uuid references public.customers(id) on delete set null);
+-- What delete_customer_app_account touches besides the index (shapes as live).
+create table public.customer_app_sessions(tenant_id uuid not null, customer_id uuid not null, phone_hash text);
+create table public.customer_app_profiles(tenant_id uuid not null, customer_id uuid not null, display_name text);
+create table public.loyalty_otp_challenges(tenant_id uuid not null, purpose text, verified_at timestamptz, phone_hash text);
+create table public.loyalty_balances(customer_id uuid);
+create table public.sms_sends(customer_id uuid);
 insert into public.tenants(id) values ('${STORE}'), ('${OTHER_STORE}');
 insert into public.customers(id, tenant_id, phone_e164) values
   ('${CUSTOMER}', '${STORE}', '+639170000001'), ('${OTHER_CUSTOMER}', '${STORE}', '+639170000002');
@@ -120,6 +126,51 @@ async function deletionsBehave(db) {
   assert.equal((await db.query('select count(*)::int as n from public.customer_app_orders where tenant_id = $1', [STORE])).rows[0].n, 0, 'deleting the store cascades app + index together')
 }
 
+// 20261104120100: deleting the app account drops ONLY that customer's index
+// rows at that store; the customer record (kept: it has an order), other
+// customers' rows and the order itself stay.
+async function accountDeletionDropsIndex(db) {
+  await reset(db)
+  await db.query('insert into public.orders(id, customer_id) values ($1, $2)', ['00000000-0000-4000-8000-0000000000d2', CUSTOMER])
+  await db.query('insert into public.customer_app_profiles(tenant_id, customer_id) values ($1, $2)', [STORE, CUSTOMER])
+  await insertRow(db, { idempotency_key: 'key-deleted-1' })
+  await insertRow(db, { idempotency_key: 'key-deleted-2', state: 'failed' })
+  await insertRow(db, { customer_id: OTHER_CUSTOMER, idempotency_key: 'key-survivor' })
+  const before = (await db.query('select count(*)::int as n from public.customer_app_orders')).rows[0].n
+  const mineBefore = (await db.query('select count(*)::int as n from public.customer_app_orders where customer_id = $1 and tenant_id = $2', [CUSTOMER, STORE])).rows[0].n
+  const elsewhereBefore = (await db.query('select count(*)::int as n from public.customer_app_orders where customer_id = $1 and tenant_id = $2', [CUSTOMER, OTHER_STORE])).rows[0].n
+  assert.equal(elsewhereBefore, 1, 'fixture: the same customer id holds a row at another store')
+  assert.ok(mineBefore >= 2, 'the customer has app history to delete')
+
+  for (const [label, enter] of [['anon', () => asAnon(db)], ['authenticated', () => as(db, 'authenticated', STAFF)]]) {
+    await enter()
+    await refused(db, () => db.query('select public.delete_customer_app_account($1, $2)', [STORE, CUSTOMER]), /permission denied/, `${label} cannot delete an app account`)
+  }
+
+  await as(db, 'service_role', null)
+  const result = (await db.query('select public.delete_customer_app_account($1, $2) as r', [STORE, CUSTOMER])).rows[0].r
+  assert.deepEqual(result, { ok: true, removedProfile: 1, removedCustomer: 0 }, 'the account goes, the customer record stays')
+  await reset(db)
+  const mine = (await db.query('select count(*)::int as n from public.customer_app_orders where customer_id = $1 and tenant_id = $2', [CUSTOMER, STORE])).rows[0].n
+  assert.equal(mine, 0, 'every app-order index row of the deleted account is gone')
+  const elsewhere = (await db.query('select count(*)::int as n from public.customer_app_orders where customer_id = $1 and tenant_id = $2', [CUSTOMER, OTHER_STORE])).rows[0].n
+  assert.equal(elsewhere, 1, 'another store’s rows are not this account’s')
+  const after = (await db.query('select count(*)::int as n from public.customer_app_orders')).rows[0].n
+  assert.equal(before - after, mineBefore, 'only that customer’s rows went')
+  const survivor = (await db.query("select count(*)::int as n from public.customer_app_orders where idempotency_key = 'key-survivor'")).rows[0].n
+  assert.equal(survivor, 1, 'another customer’s app history is untouched')
+  assert.equal((await db.query('select count(*)::int as n from public.customers where id = $1', [CUSTOMER])).rows[0].n, 1, 'the store keeps its customer record')
+  assert.equal((await db.query('select count(*)::int as n from public.orders where id = $1', ['00000000-0000-4000-8000-0000000000d2'])).rows[0].n, 1, 'the store keeps the order')
+
+  const grants = (await db.query("select prosecdef, proconfig from pg_proc where proname = 'delete_customer_app_account'")).rows[0]
+  assert.equal(grants.prosecdef, true, 'still SECURITY DEFINER')
+  assert.deepEqual(grants.proconfig, ['search_path=public'], 'still pinned to public')
+
+  // Leave the fixture as deletionsBehave expects it.
+  await db.query("delete from public.customer_app_orders where idempotency_key = 'key-survivor'")
+  await db.query('delete from public.orders where id = $1', ['00000000-0000-4000-8000-0000000000d2'])
+}
+
 async function main() {
   const db = new PGlite()
   try {
@@ -130,6 +181,7 @@ async function main() {
       ('${STORE}', 'Kape', 'com.webnegosyo.kape', 'com.webnegosyo.kape'),
       ('${OTHER_STORE}', 'Other', 'com.webnegosyo.other', 'com.webnegosyo.other')`)
     await db.exec(readMigration('20261104120000_customer_app_orders.sql'))
+    await db.exec(readMigration('20261104120100_customer_app_account_delete_orders.sql'))
 
     const rls = (await db.query("select relrowsecurity from pg_class where oid = 'public.customer_app_orders'::regclass")).rows[0]
     assert.equal(rls.relrowsecurity, true, 'RLS is on')
@@ -151,6 +203,7 @@ async function main() {
 
     await clientRolesAreRefused(db)
     await constraintsHold(db)
+    await accountDeletionDropsIndex(db)
     await deletionsBehave(db)
 
     await db.exec('rollback')

@@ -1,0 +1,131 @@
+import {
+  buildAppCustomerData,
+  buildPlaceOrderInput,
+  chooseOrderType,
+  DELIVERY_NEEDED,
+  PAYMENT_GONE,
+  PROOF_NEEDED,
+  QUOTE_NEEDED,
+  REWARDS_SOON,
+  type OrderRequestInput,
+} from '@/lib/app-api/orders/order-request'
+import { encodeAppQuoteToken } from '@/lib/app-api/delivery/quote-token'
+import type { PaymentMethodWithLinks } from '@/lib/checkout/checkout-config'
+import type { OrderType } from '@/types/database'
+import { CASH, DELIVERY_TYPE, DISH, GCASH, KEY, PICKUP_TYPE, TENANT, draft } from './order-fixtures'
+
+const ORDER_TYPES = [
+  { id: PICKUP_TYPE, type: 'pickup', name: 'Pick Up', is_enabled: true, available_on_web: true },
+  { id: DELIVERY_TYPE, type: 'delivery', name: 'Delivery', is_enabled: true, available_on_web: true },
+  { id: 'pos-only', type: 'grab', name: 'Grab', is_enabled: true, available_on_web: false },
+  { id: 'odd', type: 'drive_thru', name: 'Drive', is_enabled: true, available_on_web: true },
+] as unknown as OrderType[]
+
+const METHODS = [
+  { id: CASH, name: 'Cash', is_active: true, details: '', qr_code_url: '', require_payment_proof: false, payment_method_order_types: [{ order_type_id: PICKUP_TYPE }, { order_type_id: DELIVERY_TYPE }] },
+  { id: GCASH, name: 'GCash', is_active: true, details: '0917 000 0000', qr_code_url: 'https://qr', require_payment_proof: true, payment_method_order_types: [{ order_type_id: PICKUP_TYPE }, { order_type_id: DELIVERY_TYPE }] },
+  { id: 'delivery-only', name: 'COD', is_active: true, require_payment_proof: false, payment_method_order_types: [{ order_type_id: DELIVERY_TYPE }] },
+] as unknown as PaymentMethodWithLinks[]
+
+const PROFILE = { name: 'Ana', phoneE164: '+639171234567' }
+const LINES = [{ menu_item_id: DISH, menu_item_name: 'Iced Latte', addons: [], quantity: 2, price: 0, subtotal: 0, option_ids: [], addon_ids: [] }]
+const PLACE = { address: '12 Mabini St, QC', lat: 14.62, lng: 121.01, quoteToken: null }
+
+function request(overrides: Partial<OrderRequestInput> = {}, typeId = PICKUP_TYPE): OrderRequestInput {
+  const orderType = chooseOrderType(ORDER_TYPES, typeId)
+  if (!orderType) throw new Error('fixture order type')
+  return { tenantId: TENANT, draft: draft(), idempotencyKey: KEY, orderType, paymentMethods: METHODS, profile: PROFILE, isLalamoveStore: false, lines: LINES, outletId: null, ...overrides }
+}
+
+describe('chooseOrderType', () => {
+  it('finds the enabled, web-orderable type of a known kind', () => {
+    expect(chooseOrderType(ORDER_TYPES, PICKUP_TYPE)).toMatchObject({ id: PICKUP_TYPE, kind: 'pickup', name: 'Pick Up' })
+  })
+
+  it.each([['pos-only'], ['odd'], ['missing']])('refuses %s', (id) => {
+    expect(chooseOrderType(ORDER_TYPES, id)).toBeNull()
+  })
+})
+
+describe('buildPlaceOrderInput', () => {
+  it('builds the engine input: session contact, app channel, idempotency key as clientOrderId', () => {
+    const built = buildPlaceOrderInput(request({ draft: draft({ voucherCode: 'SAVE10', notes: '  no ice  ', outletId: 'branch-1' }), outletId: 'branch-1' }))
+    expect(built).toEqual({
+      ok: true,
+      paymentMethodName: 'Cash',
+      input: {
+        tenantId: TENANT,
+        items: LINES,
+        customerInfo: { name: 'Ana', contact: '+639171234567' },
+        orderTypeId: PICKUP_TYPE,
+        customerData: { customer_name: 'Ana', customer_phone: '+639171234567', notes: 'no ice' },
+        paymentMethodId: CASH,
+        paymentMethodName: 'Cash',
+        outletId: 'branch-1',
+        voucherCodes: ['SAVE10'],
+        clientOrderId: KEY,
+        channel: 'app',
+      },
+    })
+  })
+
+  it('refuses a reward until Phase 5', () => {
+    expect(buildPlaceOrderInput(request({ draft: draft({ rewardId: 'reward-1' }) }))).toEqual({ ok: false, message: REWARDS_SOON })
+  })
+
+  it('refuses a method that is not linked to the order type', () => {
+    expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: 'delivery-only' }) }))).toEqual({ ok: false, message: PAYMENT_GONE })
+    expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: 'unknown' }) }))).toEqual({ ok: false, message: PAYMENT_GONE })
+  })
+
+  it('asks for the reference when the method requires proof', () => {
+    expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH }) }))).toEqual({ ok: false, message: PROOF_NEEDED })
+  })
+
+  it('passes the method as the web does, with the typed reference as proof', () => {
+    const built = buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH, paymentReference: 'REF123' }) }))
+    expect(built.ok && built.input).toMatchObject({
+      paymentMethodName: 'GCash',
+      paymentMethodDetails: '0917 000 0000',
+      paymentMethodQrCodeUrl: 'https://qr',
+      paymentProof: { reference: 'REF123' },
+    })
+  })
+
+  it('requires a picked place for delivery and writes the web address keys', () => {
+    expect(buildPlaceOrderInput(request({}, DELIVERY_TYPE))).toEqual({ ok: false, message: DELIVERY_NEEDED })
+    const built = buildPlaceOrderInput(request({ draft: draft({ orderTypeId: DELIVERY_TYPE, delivery: PLACE }) }, DELIVERY_TYPE))
+    expect(built.ok && built.input.customerData).toEqual({
+      customer_name: 'Ana',
+      customer_phone: '+639171234567',
+      delivery_address: '12 Mabini St, QC',
+      delivery_lat: '14.62',
+      delivery_lng: '121.01',
+    })
+    expect(built.ok && built.input.lalamoveQuotationId).toBeUndefined()
+  })
+
+  it('ignores a delivery place on a pickup order', () => {
+    const built = buildPlaceOrderInput(request({ draft: draft({ delivery: PLACE }) }))
+    expect(built.ok && built.input.customerData).not.toHaveProperty('delivery_address')
+  })
+
+  it('hands a Lalamove store the quotation and signature from the quote token', () => {
+    const quoteToken = encodeAppQuoteToken({ quotationId: 'q-1', signature: 'sig.abc' })
+    const built = buildPlaceOrderInput(
+      request({ isLalamoveStore: true, draft: draft({ orderTypeId: DELIVERY_TYPE, delivery: { ...PLACE, quoteToken } }) }, DELIVERY_TYPE),
+    )
+    expect(built.ok && built.input).toMatchObject({ lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: 'sig.abc' })
+  })
+
+  it('refuses a Lalamove delivery without a readable quote token', () => {
+    const built = buildPlaceOrderInput(request({ isLalamoveStore: true, draft: draft({ orderTypeId: DELIVERY_TYPE, delivery: { ...PLACE, quoteToken: 'forged' } }) }, DELIVERY_TYPE))
+    expect(built).toEqual({ ok: false, message: QUOTE_NEEDED })
+  })
+})
+
+describe('buildAppCustomerData', () => {
+  it('omits a missing name and blank notes (never invents keys)', () => {
+    expect(buildAppCustomerData({ name: null, phoneE164: '+639171234567' }, null, '   ')).toEqual({ customer_phone: '+639171234567' })
+  })
+})

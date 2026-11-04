@@ -10,6 +10,7 @@ import { resolveFreeDeliveryThreshold, waiveDeliveryFee } from '@/lib/free-deliv
 import { priceOrderWithVouchers, type PricedOrder } from '@/lib/vouchers/order-pricing'
 import { sanitizeUnitPicks } from '@/lib/vouchers/unit-picks'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
+import type { VoucherLookup } from '@/lib/vouchers/resolve'
 import { loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
 import { writeOrderDiscount } from '@/lib/order-discount'
 import { resolveOrderContact } from '@/lib/customer-identity'
@@ -20,9 +21,9 @@ import {
   applyCheckoutGovernment,
   type AppliedCheckoutGovernment,
 } from '@/lib/gov-discount-checkout/apply-checkout-government'
-import type { AdmittedOrder } from './context'
+import type { AdminClient, AdmittedOrder } from './context'
 import { INVALID_DELIVERY_FEE_MESSAGE } from './validate-request'
-import { lost, refused, type PlaceOrderFailure } from './types'
+import { lost, refused, type PlaceOrderFailure, type PlaceOrderLineInput } from './types'
 
 /**
  * ── Delivery fee (authoritative) ──
@@ -99,6 +100,57 @@ export interface PricedCharges {
   customerData: Record<string, unknown>
 }
 
+/** What `priceOrderVouchers` needs: server-priced lines and charges, plus CODES (never amounts). */
+export interface OrderVoucherPricingInput {
+  db: AdminClient
+  tenantId: string
+  /** Server-priced lines. */
+  items: readonly PlaceOrderLineInput[]
+  deliveryFee: number | undefined
+  serviceCharge: number
+  /** As the customer typed them; untrusted, non-strings dropped. */
+  voucherCodes: unknown
+  outletId: string | null
+  customerKey: string | null
+  voucherUnitPicks?: unknown
+  /** Defaults to the tenant's voucher rows; a caller may wrap it to see what was found. */
+  lookup?: VoucherLookup
+}
+
+/**
+ * The checkout's voucher pricing — the ONE definition the order engine and the
+ * customer app's voucher preview share (same channel, customer key, branch and
+ * category map), so the number previewed is the number charged.
+ */
+export async function priceOrderVouchers(input: OrderVoucherPricingInput): Promise<PricedOrder> {
+  const requestedCodes = Array.isArray(input.voucherCodes)
+    ? input.voucherCodes.filter((code): code is string => typeof code === 'string')
+    : []
+
+  // Category-scoped vouchers need to know each item's category. Loaded only
+  // when a code was actually presented — an ordinary order pays nothing for
+  // this feature. An empty map matches nothing, which is the safe direction.
+  const categoryByMenuItemId =
+    requestedCodes.length === 0
+      ? {}
+      : await loadCategoryMap(input.db, input.tenantId, input.items.map((i) => i.menu_item_id))
+
+  return priceOrderWithVouchers({
+    tenantId: input.tenantId,
+    items: input.items,
+    deliveryFee: input.deliveryFee,
+    serviceCharge: input.serviceCharge,
+    voucherCodes: requestedCodes,
+    channel: 'checkout',
+    now: new Date(),
+    lookup: input.lookup ?? createVoucherLookup(input.db),
+    categoryByMenuItemId,
+    outletId: input.outletId,
+    customerKey: input.customerKey,
+    unitPicks: sanitizeUnitPicks(input.voucherUnitPicks),
+  })
+}
+
 export async function priceCharges(
   order: AdmittedOrder,
   effectiveDeliveryFee: number | undefined
@@ -112,42 +164,26 @@ export async function priceCharges(
   // ignored — a negative one used to be stored as a discount.
   const serviceCharge = computeServiceCharge(orderTypeRow, itemsSubtotal)
 
-  // ---- Vouchers -------------------------------------------------------
-  // Priced here, after the server has re-priced every line and settled the
-  // delivery fee, so the discount is computed against numbers the customer
-  // could not influence. Only codes came from the browser.
-  const voucherCodes = input.voucherCodes
-  const requestedCodes = Array.isArray(voucherCodes)
-    ? voucherCodes.filter((code): code is string => typeof code === 'string')
-    : []
-
-  // Category-scoped vouchers need to know each item's category. Loaded only
-  // when a code was actually presented — an ordinary order pays nothing for
-  // this feature. An empty map matches nothing, which is the safe direction.
-  const categoryByMenuItemId =
-    requestedCodes.length === 0
-      ? {}
-      : await loadCategoryMap(supabaseAdmin, tenantId, items.map((i) => i.menu_item_id))
-
   const customerKey = resolveOrderContact({
     name: customerInfo?.name,
     contact: customerInfo?.contact,
     customerData: order.customerData,
   })
 
-  const voucherPricing = await priceOrderWithVouchers({
+  // ---- Vouchers -------------------------------------------------------
+  // Priced here, after the server has re-priced every line and settled the
+  // delivery fee, so the discount is computed against numbers the customer
+  // could not influence. Only codes came from the browser.
+  const voucherPricing = await priceOrderVouchers({
+    db: supabaseAdmin,
     tenantId,
     items,
     deliveryFee: effectiveDeliveryFee,
     serviceCharge,
-    voucherCodes: requestedCodes,
-    channel: 'checkout',
-    now: new Date(),
-    lookup: createVoucherLookup(supabaseAdmin),
-    categoryByMenuItemId,
+    voucherCodes: input.voucherCodes,
     outletId: resolvedOutlet?.id ?? null,
     customerKey,
-    unitPicks: sanitizeUnitPicks(input.voucherUnitPicks),
+    voucherUnitPicks: input.voucherUnitPicks,
   })
 
   // ---- Senior / PWD ----------------------------------------------------
