@@ -17,6 +17,14 @@
 //   * roles: holder ok (cashier scope); holder window → 42501 unless she holds
 //     `reports`; another cashier 42501; cash manager both; branch-locked
 //     manager elsewhere 42501; anon 42501; bad scope 22023; unknown P0002;
+//   * OMITTED scope (app 1.0.16, live, calls report_shift_sales(id)): whoever
+//     may read the window gets the window exactly as before; a plain cashier
+//     gets HER cashier scope (never 42501 — her End shift must keep working),
+//     with every key the 1.0.16 parser reads; an EXPLICIT 'window' from her is
+//     still 42501;
+//   * cost guards: a shift open > 93 days is refused in both scopes;
+//     report_shift_nets dedupes ids (≤ 31 distinct) and answers `too_long`
+//     without computing for a shift longer than 2 days;
 //   * items ≤ 500 with itemsTruncated; report_shift_nets; Convex unavailable.
 // SHIFT_REPORT_DUMP=<file>: also write real answers there (app parser fixture).
 const assert = require('node:assert/strict')
@@ -36,6 +44,8 @@ const U = {
   branchMgr: '00000000-0000-4000-8000-000000000005',
   lead: '00000000-0000-4000-8000-000000000006', // pos + reports
   ownerC: '00000000-0000-4000-8000-000000000008',
+  longer: '00000000-0000-4000-8000-000000000009', // plain cashier on a 3-day open shift
+  stuck: '00000000-0000-4000-8000-00000000000a', // plain cashier on a 94-day open shift
 }
 const S = {
   closed: '5a000000-0000-4000-8000-000000000001', // cashier, A1, closed 2026-10-20 10:00–20:00 Manila
@@ -45,6 +55,10 @@ const S = {
   lead: '5a000000-0000-4000-8000-000000000005', // lead, A1, open
   busy: '5a000000-0000-4000-8000-000000000006', // cashier, A1, closed 2026-09-01, 505 dishes
   convex: '5a000000-0000-4000-8000-000000000007',
+  long: '5a000000-0000-4000-8000-000000000008', // longer, A1, open 3 days
+  ancient: '5a000000-0000-4000-8000-000000000009', // stuck, A1, open 94 days
+  twoDays: '5a000000-0000-4000-8000-00000000000a', // cashier, A1, closed after exactly 2 days
+  overTwo: '5a000000-0000-4000-8000-00000000000b', // cashier, A1, closed after 2 days + 1 minute
 }
 const MENU = { adobo: '88888888-0000-4000-8000-000000000001', rice: '88888888-0000-4000-8000-000000000002' }
 const FROM = '2026-10-20T10:00:00+08:00'
@@ -65,7 +79,9 @@ const PEOPLE = `
     ('${U.manager}',   'admin', '${T}',   false, '{cash_manage,pos}',  null,    'Mara'),
     ('${U.branchMgr}', 'admin', '${T}',   false, '{cash_manage}',      '${A2}', 'Bran'),
     ('${U.lead}',      'admin', '${T}',   false, '{pos,reports}',      '${A1}', 'Lea'),
-    ('${U.ownerC}',    'admin', '${T_C}', true,  '{}',                 null,    'Cole');
+    ('${U.ownerC}',    'admin', '${T_C}', true,  '{}',                 null,    'Cole'),
+    ('${U.longer}',    'admin', '${T}',   false, '{pos}',              '${A1}', 'Lon'),
+    ('${U.stuck}',     'admin', '${T}',   false, '{pos}',              '${A1}', 'Stu');
   insert into categories values ('99999999-0000-4000-8000-000000000001', '${T}', 'Mains');
   insert into menu_items values ('${MENU.adobo}', '${T}', '99999999-0000-4000-8000-000000000001'), ('${MENU.rice}', '${T}', null);
 `
@@ -125,6 +141,12 @@ const SHIFTS = `
   insert into staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, opening_float, opened_at) values
     ('${S.busy}', '${T}', '${A1}', '${U.cashier}', 'Loly Cashier', 0, '2026-09-01T09:00:00+08:00');
   update staff_shifts set status = 'closed', closed_at = '2026-09-01T20:00:00+08:00', expected_cash = 0, closing_count = 0 where id = '${S.busy}';
+  insert into staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, opening_float, opened_at) values
+    ('${S.twoDays}', '${T}', '${A1}', '${U.cashier}', 'Loly Cashier', 0, '2026-08-01T08:00:00+08:00');
+  update staff_shifts set status = 'closed', closed_at = '2026-08-03T08:00:00+08:00', expected_cash = 0, closing_count = 0 where id = '${S.twoDays}';
+  insert into staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, opening_float, opened_at) values
+    ('${S.overTwo}', '${T}', '${A1}', '${U.cashier}', 'Loly Cashier', 0, '2026-08-05T08:00:00+08:00');
+  update staff_shifts set status = 'closed', closed_at = '2026-08-07T08:01:00+08:00', expected_cash = 0, closing_count = 0 where id = '${S.overTwo}';
   insert into staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, drawer_name, opening_float, opened_at) values
     ('${S.open}',      '${T}', '${A1}', '${U.cashier}',  'Loly Cashier', 'Cashier 1', 500, now() - interval '3 hours'),
     ('${S.lead}',      '${T}', '${A1}', '${U.lead}',     'Lea',          null,        0,   now() - interval '3 hours');
@@ -137,6 +159,9 @@ const SHIFTS = `
   update tenant_cash_settings set blind_close = false where tenant_id = '${T}';
   insert into staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, opening_float, opened_at) values
     ('${S.convex}', '${T_C}', null, '${U.ownerC}', 'Cole', 0, now() - interval '1 hour');
+  insert into staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, opening_float, opened_at) values
+    ('${S.long}',    '${T}', '${A1}', '${U.longer}',  'Lon',          0, now() - interval '3 days'),
+    ('${S.ancient}', '${T}', '${A1}', '${U.stuck}',   'Stu',          0, now() - interval '94 days');
 `
 
 let checks = 0
@@ -242,8 +267,7 @@ async function checkCashierScope(db) {
 }
 
 async function checkAccess(db) {
-  await refused(oldCall(db, U.cashier, S.closed), '42501', 'owner decision: a plain cashier cannot read the store window of her own shift (old call)')
-  await refused(scoped(db, U.cashier, S.closed, 'window'), '42501', "nor with p_scope 'window'")
+  await refused(scoped(db, U.cashier, S.closed, 'window'), '42501', "owner decision: an EXPLICIT 'window' from a plain cashier is refused")
   await refused(scoped(db, U.cashier2, S.closed, 'cashier'), '42501', "another cashier cannot read a colleague's report")
   await refused(scoped(db, U.cashier2, S.closed, 'window'), '42501', 'nor its window')
   await refused(scoped(db, U.branchMgr, S.closed, 'cashier'), '42501', "a branch-locked cash manager cannot read another branch's shift")
@@ -257,6 +281,66 @@ async function checkAccess(db) {
   await refused(db.query("select cash.cashier_sales(s, now()) from staff_shifts s limit 1"), '42501', 'cash.cashier_sales is internal')
   await refused(db.query('select cash.cashier_cash(s) from staff_shifts s limit 1'), '42501', 'cash.cashier_cash is internal')
   await refused(db.query("select cash.cashier_order_ids(s, now()) from staff_shifts s limit 1"), '42501', 'cash.cashier_order_ids is internal')
+  await reset(db)
+}
+
+// Every key app 1.0.16's parseShiftSalesReply (origin/main
+// webnegosyo-app/lib/cash/shift-sales.ts) reads, with the type it insists on.
+function assertOldParserReads(report, label) {
+  const isText = (v) => typeof v === 'string'
+  const isTextOrNull = (v) => v === null || v === undefined || typeof v === 'string'
+  const isWhole = (v) => Number.isSafeInteger(typeof v === 'string' ? Number(v) : v)
+  const isWholeOrNull = (v) => v === null || v === undefined || isWhole(v)
+  const isListOrNull = (v) => v === null || v === undefined || Array.isArray(v)
+  const ok = report.source === 'server'
+    && typeof report.hidden === 'boolean'
+    && typeof report.receiptsTruncated === 'boolean'
+    && report.window && isText(report.window.from) && isText(report.window.to)
+    && Array.isArray(report.receipts)
+    && report.receipts.every((r) => isText(r.orderId) && isText(r.placedAt) && isTextOrNull(r.orderTypeLabel)
+      && isTextOrNull(r.methodLabel) && isWholeOrNull(r.totalCents) && ['paid', 'unpaid', 'void', 'refunded'].includes(r.status)
+      && (r.number === null || r.number === undefined || isText(r.number) || typeof r.number === 'number'))
+    && (report.shift === null || (isText(report.shift.id) && isText(report.shift.openedAt) && isTextOrNull(report.shift.closedAt)
+      && isTextOrNull(report.shift.staffName) && isTextOrNull(report.shift.drawerName)
+      && isTextOrNull(report.shift.businessDay) && isTextOrNull(report.shift.servicePeriodName)))
+    && (report.summary === null || ['orders', 'grossCents', 'discountCents', 'netCents', 'serviceChargeCents', 'deliveryCents',
+      'collectedCents', 'unpaidCents', 'overpaidCents', 'voidCount', 'voidCents', 'refundCents'].every((k) => isWhole(report.summary[k])))
+    && isListOrNull(report.payments) && (report.payments ?? []).every((p) => isText(p.key) && isText(p.label) && isWhole(p.cents) && isWhole(p.count))
+    && [report.orderTypes, report.channels].every((list) => isListOrNull(list)
+      && (list ?? []).every((b) => isText(b.key) && isText(b.label) && isWhole(b.orders) && isWhole(b.netCents)))
+    && isListOrNull(report.items) && (report.items ?? []).every((i) => isText(i.label) && Number(i.quantity) >= 0 && isWhole(i.netCents))
+    && isTextOrNull(report.firstNumber) && isTextOrNull(report.lastNumber)
+  eq(ok, true, `${label}: every key app 1.0.16's parser reads is there, with its type`)
+}
+
+async function checkOmittedScope(db, before) {
+  // Cash manager / owner / reports holder: covered key-for-key by checkWindowUnchanged.
+  const mine = await scoped(db, U.cashier, S.closed, 'cashier')
+  const auto = await oldCall(db, U.cashier, S.closed)
+  eq(auto, mine, 'omitted scope, plain cashier: her own cashier report (not 42501, not the store window)')
+  eq(auto.receipts.length < before.cashierBefore.receipts.length, true, 'narrower than the branch window she used to get')
+  assertOldParserReads(auto, 'omitted scope, plain cashier')
+  await asUser(db, U.cashier)
+  eq(await scalar(db, 'select public.report_shift_sales($1, null)', [S.closed]), mine, 'an explicit NULL scope is the same as omitting it')
+  eq(await scalar(db, "select public.report_shift_sales($1, '  ')", [S.closed]), mine, 'so is a blank scope')
+  const open = await oldCall(db, U.cashier, S.open)
+  eq([open.scope, open.receipts.map((r) => r.orderId)], ['cashier', [O(20)]], 'omitted scope on her running shift: her sales so far')
+  assertOldParserReads(open, 'omitted scope, open shift')
+  const hidden = await oldCall(db, U.cashier2, S.blind)
+  eq([hidden.scope, hidden.hidden, hidden.summary], ['cashier', true, null], 'omitted scope, blind + uncounted: hidden as before')
+  assertOldParserReads(hidden, 'omitted scope, hidden')
+  const lead = await oldCall(db, U.lead, S.lead)
+  eq(lead.scope, undefined, 'omitted scope, holder with reports: the window (no scope key, as before)')
+  assertOldParserReads(await oldCall(db, U.manager, S.closed), 'omitted scope, cash manager window')
+  await refused(oldCall(db, U.cashier2, S.closed), '42501', "omitted scope never opens a colleague's shift")
+  await reset(db)
+}
+
+async function checkLongShifts(db) {
+  await refused(scoped(db, U.stuck, S.ancient, 'cashier'), '22023', 'cashier scope: a shift open > 93 days is refused before any read')
+  await refused(oldCall(db, U.stuck, S.ancient), '22023', 'so is the omitted scope')
+  await refused(scoped(db, U.manager, S.ancient, 'window'), '22023', 'and the window scope')
+  eq((await scoped(db, U.longer, S.long, 'cashier')).source, 'server', 'a 3-day shift still reads in full (within the 93-day cap)')
   await reset(db)
 }
 
@@ -304,7 +388,19 @@ async function checkNets(db) {
   const mgr = await nets(db, U.manager, [S.colleague, S.blind])
   eq(mgr.shifts.map((s) => s.status), ['ok', 'ok'], 'a cash manager may ask for anyone\'s')
   eq((await nets(db, U.ownerC, [S.convex])).shifts[0].status, 'unavailable', 'a Convex store: unavailable')
-  await refused(nets(db, U.cashier, Array.from({ length: 32 }, () => S.closed)), '22023', 'at most 31 shifts')
+  const dup = await nets(db, U.cashier, Array.from({ length: 40 }, () => S.closed))
+  eq(dup.shifts.map((s) => [s.shiftId, s.status]), [[S.closed, 'ok']], 'duplicate ids are asked once (40 copies of one shift = one row, under the cap)')
+  const distinct32 = Array.from({ length: 32 }, (_, i) => `5a000000-0000-4000-8000-${String(1000 + i).padStart(12, '0')}`)
+  await refused(nets(db, U.cashier, distinct32), '22023', 'at most 31 DISTINCT shifts')
+  eq((await nets(db, U.cashier, [...distinct32.slice(0, 30), null, S.closed, S.closed])).shifts.length, 1, '31 distinct (30 unknown + hers) + a null + a repeat: allowed')
+  const long = await nets(db, U.manager, [S.long, S.twoDays, S.overTwo, S.ancient])
+  eq(long.shifts.map((s) => [s.shiftId, s.status, s.orders, s.netCents]).sort((a, b) => a[0].localeCompare(b[0])), [
+    [S.long, 'too_long', null, null], // opened 3 days ago, still open
+    [S.ancient, 'too_long', null, null], // open 94 days
+    [S.twoDays, 'ok', 0, 0], // exactly 2 days
+    [S.overTwo, 'too_long', null, null], // closed after 2 days + 1 minute
+  ], 'My shifts: a shift longer than 2 days (open: now − opened_at) is too_long, not added up; exactly 2 days is fine')
+  eq((await nets(db, U.longer, [S.long])).shifts.map((s) => s.status), ['too_long'], 'the holder of a 3-day open shift: too_long too')
   await refused(nets(db, 'anon', [S.closed]), '42501', 'anon is refused')
   eq((await nets(db, U.cashier, [])).shifts, [], 'no shifts, no rows')
   await reset(db)
@@ -332,12 +428,14 @@ async function main() {
     await checkWindowUnchanged(db, before)
     await checkCashierScope(db)
     await checkAccess(db)
+    await checkOmittedScope(db, before)
+    await checkLongShifts(db)
     await checkOpenAndBlind(db)
     await checkNets(db)
     await checkUnavailable(db)
     await checkTruncation(db)
     if (process.env.SHIFT_REPORT_DUMP) require('node:fs').writeFileSync(process.env.SHIFT_REPORT_DUMP, JSON.stringify(dumped, null, 2))
-    console.log(`Shift report per cashier: ${checks} checks passed (window scope + Reports unchanged, her sales only, voids, items = net, cash block, blind, roles, truncation, nets, unavailable).`)
+    console.log(`Shift report per cashier: ${checks} checks passed (window scope + Reports unchanged, omitted scope = window or hers, cost guards, her sales only, voids, items = net, cash block, blind, roles, truncation, nets, unavailable).`)
   } finally {
     await db.close()
   }

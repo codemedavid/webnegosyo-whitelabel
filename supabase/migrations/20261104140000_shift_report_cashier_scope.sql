@@ -2,7 +2,7 @@
 -- Shift report per cashier (Loly's request 3, 2026-11-04): at the end of her
 -- shift a cashier prints HER sales, with quantity and sales per item.
 --
---   report_shift_sales(p_shift_id, p_scope default 'window')
+--   report_shift_sales(p_shift_id, p_scope default null)
 --     'window'  : unchanged answer — the whole branch inside the shift's
 --                 window (20261027121000). OWNER DECISION 2026-11-04: only a
 --                 cash manager reaching the branch, or the holder when they
@@ -10,8 +10,18 @@
 --     'cashier' : the same figures over HER sales only (below), every item
 --                 (≤ 500, `itemsTruncated`), the voids list, her drawer's cash
 --                 block and the money she took on other people's bills.
+--     omitted / NULL / blank : 'window' when the caller may read it, else
+--                 'cashier'. App 1.0.16 (live) calls report_shift_sales(id)
+--                 with no scope for End shift / Shift sales; a plain cashier
+--                 must keep getting an answer (now HER sales — the cashier
+--                 answer carries every key the 1.0.16 parser reads, plus
+--                 `scope`), never 42501. Everyone who could read the window
+--                 gets it key for key as before.
 --   report_shift_nets(p_shift_ids uuid[])   net + orders per shift (cashier
---                 scope) for the "My shifts" list, ≤ 31 shifts per call.
+--                 scope) for the "My shifts" list, ≤ 31 DISTINCT shifts per
+--                 call; a shift longer than 2 days answers `too_long` without
+--                 being added up (a cashier's shift is hours long; a list call
+--                 must stay cheap whatever shift ids it is handed).
 --
 -- "Her sales" mirrors belongsToDrawer (webnegosyo-app/lib/shift-drawer.ts) and
 -- its SQL twin cash.shift_expected (20261027130000): source = 'pos' exactly,
@@ -46,7 +56,14 @@
 --
 -- Performance: as 20261027121000 — EXECUTE'd statements (custom plans),
 -- orders by (tenant_id, created_at) inside the shift's window, children by
--- `order_id = any(array(...))`, windows ≤ 93 days. A shift is hours long.
+-- `order_id = any(array(...))`, windows ≤ 93 days in BOTH scopes (checked
+-- before any read). A shift is hours long.
+-- statement_timeout is deliberately NOT a function attribute (same call as
+-- 20261027121000): `SET statement_timeout` on a function is accepted with
+-- SECURITY DEFINER, but the timer is armed when the top-level statement
+-- starts, so changing it inside the call does not bound that call. The bound
+-- is the window caps above plus the calling role's own timeout (probed live
+-- 2026-11-04: authenticated = 8s, authenticator = 8s, anon = 3s).
 -- Live probes: `set local statement_timeout = '5s'`, one shift.
 -- NOT APPLIED to the platform database by this branch.
 -- ===========================================================================
@@ -506,11 +523,12 @@ grant execute on function cash.cashier_cash(public.staff_shifts) to service_role
 -- report_shift_sales(p_shift_id, p_scope). The one-argument form is replaced
 -- (not overloaded: PostgREST could not choose between the two for
 -- {p_shift_id}); `report_shift_sales(id)` and {p_shift_id} keep working
--- through the default and answer exactly as before for whoever may still ask.
+-- through the NULL default: the window, exactly as before, for whoever may
+-- read it; a plain cashier's own sales otherwise (app 1.0.16 compatibility).
 -- ---------------------------------------------------------------------------
 drop function if exists public.report_shift_sales(uuid);
 
-create or replace function public.report_shift_sales(p_shift_id uuid, p_scope text default 'window')
+create or replace function public.report_shift_sales(p_shift_id uuid, p_scope text default null)
 returns jsonb
 language plpgsql
 stable
@@ -519,11 +537,13 @@ set search_path = ''
 as $$
 declare
   v_uid uuid := auth.uid();
-  v_scope text := lower(coalesce(nullif(btrim(p_scope), ''), 'window'));
+  -- NULL = not asked: decided below from what the caller may read.
+  v_scope text := lower(nullif(btrim(p_scope), ''));
   s public.staff_shifts%rowtype;
   v_to timestamptz;
   v_reach boolean;
   v_manager boolean;
+  v_may_window boolean;
   v_hidden boolean;
   v_head jsonb;
   v_report jsonb;
@@ -531,7 +551,7 @@ begin
   if v_uid is null then
     raise exception 'Sign in to see shift sales.' using errcode = '42501';
   end if;
-  if v_scope not in ('window', 'cashier') then
+  if v_scope is not null and v_scope not in ('window', 'cashier') then
     raise exception 'A shift report is either the store''s (window) or the cashier''s own (cashier).' using errcode = '22023';
   end if;
   select * into s from public.staff_shifts where id = p_shift_id;
@@ -544,7 +564,11 @@ begin
     raise exception 'Only the cashier on this shift or someone who handles cash can see its sales.' using errcode = '42501';
   end if;
   -- Owner decision 2026-11-04: a cashier sees her own sales, never the store's.
-  if v_scope = 'window' and not v_manager and not public.app_user_has_permission(s.tenant_id, 'reports') then
+  -- (Past the check above the caller is a manager or the holder reaching the
+  -- branch, so `reports` here is the holder's own.)
+  v_may_window := v_manager or public.app_user_has_permission(s.tenant_id, 'reports');
+  v_scope := coalesce(v_scope, case when v_may_window then 'window' else 'cashier' end);
+  if v_scope = 'window' and not v_may_window then
     raise exception 'Your shift report shows your own sales. Store sales need the Reports permission.' using errcode = '42501';
   end if;
 
@@ -591,7 +615,7 @@ end;
 $$;
 
 comment on function public.report_shift_sales(uuid, text) is
-  'Sales during one shift (CONTRACTS §4). p_scope window (default): the branch inside the shift window — cash_manage with branch reach, or the holder holding reports. p_scope cashier: the holder''s own POS sales (belongsToDrawer), every item ≤ 500, voids, drawer cash — the holder or cash_manage. Blind + open + not a cash manager: money hidden (cashier scope: until counted). Non-platform store: source unavailable. 20261104140000.';
+  'Sales during one shift (CONTRACTS §4). p_scope omitted/NULL: window if the caller may read it, else cashier. p_scope window: the branch inside the shift window — cash_manage with branch reach, or the holder holding reports. p_scope cashier: the holder''s own POS sales (belongsToDrawer), every item ≤ 500, voids, drawer cash — the holder or cash_manage. Blind + open + not a cash manager: money hidden (cashier scope: until counted). Non-platform store: source unavailable. 20261104140000.';
 
 revoke all on function public.report_shift_sales(uuid, text) from public, anon;
 grant execute on function public.report_shift_sales(uuid, text) to authenticated;
@@ -601,7 +625,9 @@ grant execute on function public.report_shift_sales(uuid, text) to authenticated
 -- orders and net (cashier scope), one call. A shift the caller may not read,
 -- or one that does not exist, is left out (the list already came from
 -- staff_shifts under RLS). Blind + open + uncounted: hidden, no pesos.
--- Non-platform store: unavailable. At most 31 shifts per call.
+-- Non-platform store: unavailable. Longer than 2 days (open: now() −
+-- opened_at): too_long, nothing added up. Ids are deduplicated (NULLs
+-- dropped) and at most 31 distinct shifts per call.
 -- ---------------------------------------------------------------------------
 create or replace function public.report_shift_nets(p_shift_ids uuid[])
 returns jsonb
@@ -615,6 +641,7 @@ declare
   s public.staff_shifts%rowtype;
   v_to timestamptz;
   v_manager boolean;
+  v_wanted uuid[];
   v_ids uuid[];
   v_row jsonb;
   v_rows jsonb := '[]'::jsonb;
@@ -622,11 +649,12 @@ begin
   if v_uid is null then
     raise exception 'Sign in to see shift sales.' using errcode = '42501';
   end if;
-  if coalesce(cardinality(p_shift_ids), 0) > 31 then
+  v_wanted := array(select distinct x from unnest(coalesce(p_shift_ids, '{}'::uuid[])) as u(x) where x is not null);
+  if cardinality(v_wanted) > 31 then
     raise exception 'Ask for at most 31 shifts at a time.' using errcode = '22023';
   end if;
   for s in
-    select * from public.staff_shifts where id = any (coalesce(p_shift_ids, '{}'::uuid[])) order by opened_at desc
+    select * from public.staff_shifts where id = any (v_wanted) order by opened_at desc
   loop
     continue when not public.app_user_may_reach_branch(s.tenant_id, s.outlet_id);
     v_manager := public.app_user_manages_cash(s.tenant_id);
@@ -634,7 +662,7 @@ begin
     v_to := coalesce(s.closed_at, now());
     if cash.tenant_order_backend(s.tenant_id) is distinct from 'platform' then
       v_row := jsonb_build_object('status', 'unavailable', 'orders', null, 'netCents', null);
-    elsif v_to - s.opened_at > interval '93 days' then
+    elsif v_to - s.opened_at > interval '2 days' then
       v_row := jsonb_build_object('status', 'too_long', 'orders', null, 'netCents', null);
     elsif s.is_blind and s.status = 'open' and not v_manager
           and not exists (select 1 from public.shift_counts c where c.shift_id = s.id) then
@@ -656,7 +684,7 @@ end;
 $$;
 
 comment on function public.report_shift_nets(uuid[]) is
-  'Orders + net per shift over the holder''s own POS sales (report_shift_sales cashier scope), for the My shifts list. Holder or cash_manage with branch reach; others left out. ≤ 31 shifts. 20261104140000.';
+  'Orders + net per shift over the holder''s own POS sales (report_shift_sales cashier scope), for the My shifts list. Holder or cash_manage with branch reach; others left out. ≤ 31 distinct shifts; longer than 2 days = too_long (not added up). 20261104140000.';
 
 revoke all on function public.report_shift_nets(uuid[]) from public, anon;
 grant execute on function public.report_shift_nets(uuid[]) to authenticated;
