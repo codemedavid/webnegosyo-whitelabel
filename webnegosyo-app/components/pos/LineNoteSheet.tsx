@@ -14,6 +14,8 @@ interface LineNoteSheetProps {
   itemName: string;
   /** The line's current note, if any. */
   initialNote?: string;
+  /** Why the last save was refused; shown above the buttons, sheet stays open. */
+  error?: string | null;
   onCancel: () => void;
   /** Called with the trimmed note, or "" to clear it. */
   onSave: (note: string) => void;
@@ -23,7 +25,14 @@ interface LineNoteSheetProps {
  * "Note for kitchen" on one cart line: quick chips, free text, Save / Clear.
  * The note prints on the kitchen ticket, the chit and the receipt.
  */
-export function LineNoteSheet({ visible, itemName, initialNote, onCancel, onSave }: LineNoteSheetProps) {
+export function LineNoteSheet({
+  visible,
+  itemName,
+  initialNote,
+  error = null,
+  onCancel,
+  onSave,
+}: LineNoteSheetProps) {
   const [draft, setDraft] = useState(initialNote ?? "");
   const isCentered = useCenteredDialog();
   const hasNote = Boolean(initialNote);
@@ -44,6 +53,11 @@ export function LineNoteSheet({ visible, itemName, initialNote, onCancel, onSave
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
             <KitchenNoteField value={draft} onChange={setDraft} autoFocus={!hasNote} />
           </ScrollView>
+          {error ? (
+            <Text style={styles.error} accessibilityRole="alert">
+              {error}
+            </Text>
+          ) : null}
           <View style={styles.footer}>
             {hasNote ? (
               <Button
@@ -94,4 +108,10 @@ const styles = StyleSheet.create({
     borderTopColor: colors.separator,
   },
   save: { flex: 1 },
+  error: {
+    ...typography.caption,
+    color: colors.danger,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+  },
 });

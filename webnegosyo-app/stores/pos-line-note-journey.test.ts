@@ -8,7 +8,7 @@
  * would quietly have put the dish back at full price.
  */
 
-import { enterEditMode } from "../lib/pos-edit-mode";
+import { enterAppendMode, enterEditMode } from "../lib/pos-edit-mode";
 import { lineKey } from "../lib/pos-cart";
 import { useAuthStore } from "./auth-store";
 import { usePosCartStore } from "./pos-cart-store";
@@ -126,5 +126,112 @@ describe("a kitchen note on a register line", () => {
     expect(usePosCartStore.getState().lines[0].note).toBe("take-out");
     expect(after?.newTotal).toBe(before?.newTotal);
     expect(after?.isDirty).toBe(true);
+  });
+
+  it("refuses to merge two lines whose item discounts differ, and keeps both", () => {
+    ringLatte(1, "no sugar");
+    ringLatte(1);
+    const lines = usePosCartStore.getState().lines;
+    const noted = lines.find((line) => line.note)?.key ?? "";
+    const plain = lines.find((line) => !line.note)?.key ?? "";
+    usePosCartStore.getState().setItemDiscount(
+      { lineKey: noted, units: 1, kind: "percent", value: 50, reason: "Promo" },
+      owner,
+    );
+    usePosCartStore.getState().setItemDiscount(
+      { lineKey: plain, units: 1, kind: "fixed", value: 10, reason: "Staff" },
+      owner,
+    );
+    const before = usePosCartStore.getState();
+
+    const result = usePosCartStore.getState().setLineNote(plain, "no sugar");
+
+    const after = usePosCartStore.getState();
+    expect(result).toEqual({ ok: false, reason: "conflicting-discounts" });
+    expect(after.lines).toBe(before.lines);
+    expect(after.discount).toBe(before.discount);
+    expect(after.totals().total).toBe(50 + 90);
+  });
+
+  it("merges two lines whose item discounts are on the same terms", () => {
+    ringLatte(1, "no sugar");
+    ringLatte(1);
+    const lines = usePosCartStore.getState().lines;
+    for (const line of lines) {
+      usePosCartStore.getState().setItemDiscount(
+        { lineKey: line.key, units: 1, kind: "percent", value: 50, reason: "Promo" },
+        owner,
+      );
+    }
+    const plain = lines.find((line) => !line.note)?.key ?? "";
+
+    const result = usePosCartStore.getState().setLineNote(plain, "no sugar");
+
+    const state = usePosCartStore.getState();
+    expect(result).toEqual({ ok: true });
+    expect(state.lines).toHaveLength(1);
+    expect(state.discount.itemDiscounts).toEqual([
+      expect.objectContaining({ lineKey: lineKey("m-latte", [], "no sugar"), units: 2 }),
+    ]);
+    expect(state.totals().total).toBe(100);
+  });
+
+  it("answers ok when the note is saved", () => {
+    ringLatte();
+    const key = usePosCartStore.getState().lines[0].key;
+    expect(usePosCartStore.getState().setLineNote(key, "hot")).toEqual({ ok: true });
+  });
+});
+
+describe("a kitchen note on a line added to a placed order", () => {
+  const placedOrder = {
+    _id: "order-1",
+    total: 200,
+    revisionNumber: 0,
+    items: [
+      {
+        _id: "oi-1",
+        orderId: "order-1",
+        menuItemId: "m-latte",
+        menuItemName: "Latte",
+        quantity: 2,
+        price: 100,
+        subtotal: 200,
+        addons: [],
+      },
+    ],
+  };
+
+  function appendNotedLatte() {
+    usePosCartStore.getState().beginEdit(enterAppendMode(placedOrder, [{ kind: "charge", amount: 200 }], {}));
+    ringLatte(1, "extra hot");
+    return usePosCartStore.getState().lines[0].key;
+  }
+
+  it("refuses a note that lands a discounted new line on a placed dish's key", () => {
+    const key = appendNotedLatte();
+    usePosCartStore.getState().setItemDiscount(
+      { lineKey: key, units: 1, kind: "percent", value: 50, reason: "Promo" },
+      owner,
+    );
+    const before = usePosCartStore.getState();
+
+    const result = usePosCartStore.getState().setLineNote(key, "");
+
+    const after = usePosCartStore.getState();
+    expect(result).toEqual({ ok: false, reason: "placed-line-discount" });
+    expect(after.lines).toBe(before.lines);
+    expect(after.discount.itemDiscounts).toEqual([expect.objectContaining({ lineKey: key })]);
+  });
+
+  it("lets an undiscounted new line take the placed dish's key", () => {
+    const key = appendNotedLatte();
+
+    const result = usePosCartStore.getState().setLineNote(key, "");
+
+    const state = usePosCartStore.getState();
+    expect(result).toEqual({ ok: true });
+    expect(state.lines[0].key).toBe(lineKey("m-latte", []));
+    expect(state.discount.itemDiscounts ?? []).toEqual([]);
   });
 });

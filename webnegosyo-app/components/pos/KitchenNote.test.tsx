@@ -12,6 +12,7 @@ import { CartSheet } from "./CartSheet";
 import { ModifierSheet } from "./ModifierSheet";
 import { addLine, cartTotals, type PosCartLine } from "../../lib/pos-cart";
 import type { ModifierGroup } from "../../lib/modifier-groups";
+import type { LineNoteResult } from "../../lib/pos-line-rekey";
 
 function cart(note?: string): PosCartLine[] {
   return addLine([], {
@@ -24,7 +25,7 @@ function cart(note?: string): PosCartLine[] {
   });
 }
 
-function renderCart(lines: PosCartLine[], onEditNote?: (key: string, note: string) => void) {
+function renderCart(lines: PosCartLine[], onEditNote?: (key: string, note: string) => LineNoteResult | void) {
   render(
     <CartSheet
       lines={lines}
@@ -80,6 +81,34 @@ describe("note on a cart line", () => {
     fireEvent.press(screen.getByText("Clear note"));
 
     expect(onEditNote).toHaveBeenCalledWith(lines[0].key, "");
+  });
+
+  it("keeps the sheet open and says why when the register refuses the note", () => {
+    const onEditNote = jest.fn((): LineNoteResult => ({ ok: false, reason: "conflicting-discounts" }));
+    const lines = cart();
+    renderCart(lines, onEditNote);
+
+    fireEvent.press(screen.getByLabelText("Latte. Add a note for the kitchen"));
+    fireEvent.changeText(screen.getByLabelText("Note for kitchen"), "no sugar");
+    fireEvent.press(screen.getByText("Save note"));
+
+    expect(onEditNote).toHaveBeenCalledWith(lines[0].key, "no sugar");
+    expect(
+      screen.getByText(
+        "Another \u201cLatte\u201d line already has this note with a different discount. Remove one discount first.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Save note")).toBeTruthy();
+  });
+
+  it("closes the sheet when the note is saved", () => {
+    const onEditNote = jest.fn((): LineNoteResult => ({ ok: true }));
+    renderCart(cart(), onEditNote);
+
+    fireEvent.press(screen.getByLabelText("Latte. Add a note for the kitchen"));
+    fireEvent.press(screen.getByText("Save note"));
+
+    expect(screen.queryByText("Save note")).toBeNull();
   });
 
   it("leaves lines read-only when no note handler is given", () => {

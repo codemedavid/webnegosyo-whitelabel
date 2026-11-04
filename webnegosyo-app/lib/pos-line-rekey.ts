@@ -155,3 +155,48 @@ function mergeItems(items: readonly StoredItem[], from: string, to: string): Sto
     return [...out.slice(0, at), merged, ...out.slice(at + 1)];
   }, []);
 }
+
+/** Why the register refused a note edit. */
+export type LineNoteRefusal = "conflicting-discounts" | "placed-line-discount";
+
+/** What `setLineNote` did: saved (or nothing to do), or refused with a reason. */
+export type LineNoteResult = { ok: true } | { ok: false; reason: LineNoteRefusal };
+
+export const LINE_NOTE_SAVED: LineNoteResult = { ok: true };
+
+/**
+ * True when re-keying `from` onto `to` would merge two lines that each carry
+ * their own item discount on DIFFERENT terms. One line holds one item
+ * discount, so the merge would silently drop one of them — the register
+ * refuses it instead and asks the cashier to remove one first.
+ */
+export function hasConflictingItemDiscounts(
+  session: PosDiscountSession,
+  from: string,
+  to: string,
+): boolean {
+  if (from === to) return false;
+  const held = session.itemDiscounts ?? [];
+  const moving = held.find((discount) => discount.lineKey === from);
+  const existing = held.find((discount) => discount.lineKey === to);
+  return Boolean(moving && existing && !isSameTerms(moving, existing));
+}
+
+/** True when an item discount, a voucher unit pick or a Senior/PWD claim names `key`. */
+export function holdsLineKey(session: PosDiscountSession, key: string): boolean {
+  const hasItemDiscount = (session.itemDiscounts ?? []).some((discount) => discount.lineKey === key);
+  const hasUnitPick = Object.values(session.unitPicks ?? {}).some((byLine) => key in byLine);
+  const hasGovUnits = (session.government?.claimants ?? []).some(
+    (claimant) => claimant.allocation.mode === "items" && key in claimant.allocation.units,
+  );
+  return hasItemDiscount || hasUnitPick || hasGovUnits;
+}
+
+/** The cashier-facing reason a note was not saved on `itemName`. */
+export function lineNoteRefusalMessage(reason: LineNoteRefusal, itemName: string): string {
+  const dish = `“${itemName}”`;
+  if (reason === "placed-line-discount") {
+    return `${dish} with this note is already on the order. Remove the discount on the new ${dish} first.`;
+  }
+  return `Another ${dish} line already has this note with a different discount. Remove one discount first.`;
+}

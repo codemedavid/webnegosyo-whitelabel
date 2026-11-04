@@ -6,9 +6,16 @@
  * must follow the dish to its new key, or the note silently drops the money.
  */
 
-import { rekeyDiscountSession, rekeyEditDiscount } from "./pos-line-rekey";
+import {
+  hasConflictingItemDiscounts,
+  holdsLineKey,
+  lineNoteRefusalMessage,
+  rekeyDiscountSession,
+  rekeyEditDiscount,
+} from "./pos-line-rekey";
 import { EMPTY_POS_DISCOUNT_SESSION, type PosDiscountSession } from "./pos-discount-session";
 import type { ManualItemDiscount } from "./pos-discount";
+import { EMPTY_GOV_SESSION } from "./pos-gov-discount";
 import type { OrderDiscountPayload } from "./order-discount";
 
 const halfOff = (lineKey: string, units = 1): ManualItemDiscount => ({
@@ -128,5 +135,64 @@ describe("rekeyEditDiscount", () => {
     const payload = stored("other");
     expect(rekeyEditDiscount(payload, "old", "new")).toBe(payload);
     expect(rekeyEditDiscount(null, "old", "new")).toBeNull();
+  });
+});
+
+describe("hasConflictingItemDiscounts", () => {
+  const fixed = (lineKey: string): ManualItemDiscount => ({ ...halfOff(lineKey), kind: "fixed", value: 10 });
+
+  it("is true when both lines carry an item discount on different terms", () => {
+    const session = { ...EMPTY_POS_DISCOUNT_SESSION, itemDiscounts: [halfOff("old"), fixed("new")] };
+    expect(hasConflictingItemDiscounts(session, "old", "new")).toBe(true);
+  });
+
+  it("is false when the terms match (they merge, units added)", () => {
+    const session = { ...EMPTY_POS_DISCOUNT_SESSION, itemDiscounts: [halfOff("old"), halfOff("new", 2)] };
+    expect(hasConflictingItemDiscounts(session, "old", "new")).toBe(false);
+  });
+
+  it("treats a reason that differs only by spaces as the same terms", () => {
+    const session = {
+      ...EMPTY_POS_DISCOUNT_SESSION,
+      itemDiscounts: [halfOff("old"), { ...halfOff("new"), reason: " Promo " }],
+    };
+    expect(hasConflictingItemDiscounts(session, "old", "new")).toBe(false);
+  });
+
+  it("is false when only one side has a discount, or the key does not change", () => {
+    const one = { ...EMPTY_POS_DISCOUNT_SESSION, itemDiscounts: [halfOff("old")] };
+    expect(hasConflictingItemDiscounts(one, "old", "new")).toBe(false);
+    const both = { ...EMPTY_POS_DISCOUNT_SESSION, itemDiscounts: [halfOff("old"), fixed("new")] };
+    expect(hasConflictingItemDiscounts(both, "old", "old")).toBe(false);
+  });
+});
+
+describe("holdsLineKey", () => {
+  it("sees an item discount, a voucher unit pick or a Senior/PWD claim on the key", () => {
+    expect(holdsLineKey({ ...EMPTY_POS_DISCOUNT_SESSION, itemDiscounts: [halfOff("k")] }, "k")).toBe(true);
+    expect(holdsLineKey({ ...EMPTY_POS_DISCOUNT_SESSION, unitPicks: { PROMO: { k: 1 } } }, "k")).toBe(true);
+    const government = { ...EMPTY_GOV_SESSION, claimants: [senior({ k: 1 })] };
+    expect(holdsLineKey({ ...EMPTY_POS_DISCOUNT_SESSION, government }, "k")).toBe(true);
+  });
+
+  it("is false when nothing names the key", () => {
+    const session: PosDiscountSession = {
+      ...EMPTY_POS_DISCOUNT_SESSION,
+      itemDiscounts: [halfOff("other")],
+      unitPicks: { PROMO: { other: 1 } },
+    };
+    expect(holdsLineKey(session, "k")).toBe(false);
+    expect(holdsLineKey(EMPTY_POS_DISCOUNT_SESSION, "k")).toBe(false);
+  });
+});
+
+describe("lineNoteRefusalMessage", () => {
+  it("names the dish and says what to do", () => {
+    expect(lineNoteRefusalMessage("conflicting-discounts", "Fries")).toBe(
+      "Another \u201cFries\u201d line already has this note with a different discount. Remove one discount first.",
+    );
+    expect(lineNoteRefusalMessage("placed-line-discount", "Fries")).toBe(
+      "\u201cFries\u201d with this note is already on the order. Remove the discount on the new \u201cFries\u201d first.",
+    );
   });
 });

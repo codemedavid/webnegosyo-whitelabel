@@ -8,6 +8,7 @@ import { selectionLabel, type CartTotals, type PosCartLine } from "../../lib/pos
 import type { PosOrderType } from "../../lib/pos-catalog";
 import { isDineInType } from "../../lib/pos-table";
 import type { OrderDiscountLine } from "../../lib/order-totals";
+import { lineNoteRefusalMessage, type LineNoteResult } from "../../lib/pos-line-rekey";
 
 interface CartSheetProps {
   lines: PosCartLine[];
@@ -23,7 +24,7 @@ interface CartSheetProps {
    * line opens "Note for kitchen"; absent (e.g. the tutorial) = lines are
    * read-only, as before.
    */
-  onEditNote?: (key: string, note: string) => void;
+  onEditNote?: (key: string, note: string) => LineNoteResult | void;
   onClear: () => void;
   onCharge: () => void;
   /**
@@ -133,6 +134,7 @@ export function CartSheet({
   const isDeliveryType = activeType?.type === "delivery";
   const isDineIn = isDineInType(activeType);
   const [noteKey, setNoteKey] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
   const noteLine = noteKey ? lines.find((line) => line.key === noteKey) : undefined;
 
   return (
@@ -505,9 +507,18 @@ export function CartSheet({
           visible
           itemName={noteLine.name}
           initialNote={noteLine.note}
-          onCancel={() => setNoteKey(null)}
+          error={noteError}
+          onCancel={() => {
+            setNoteError(null);
+            setNoteKey(null);
+          }}
           onSave={(note) => {
-            onEditNote(noteLine.key, note);
+            const result = onEditNote(noteLine.key, note);
+            if (result && !result.ok) {
+              setNoteError(lineNoteRefusalMessage(result.reason, noteLine.name));
+              return;
+            }
+            setNoteError(null);
             setNoteKey(null);
           }}
         />
