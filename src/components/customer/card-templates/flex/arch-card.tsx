@@ -6,6 +6,7 @@ import {
   AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, tint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
+import { LowStockBadge } from '../card-stock'
 
 const ARCH_DEFAULTS: CardStyle = {
   imageRatio: 'portrait',
@@ -46,6 +47,7 @@ export const ArchCard = memo(function ArchCard({
           className="rounded-t-[999px] rounded-b-[calc(var(--brand-radius,24px)*0.6)]"
           imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
         >
+          <LowStockBadge branding={branding} />
           {!isOrderable && <SoldOutVeil />}
         </CardMedia>
         <CardBadges

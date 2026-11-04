@@ -899,9 +899,11 @@ export async function toggleMenuItemAvailability(itemId: string, tenantId: strin
     // Clearing `auto_disabled_at` hands ownership of this item's availability
     // back to the merchant. Auto-86 recovery only ever re-enables items still
     // carrying the marker, so leaving it set on a dish the merchant has just
-    // decided about would let the next delivery overrule them.
+    // decided about would let the next delivery overrule them. A person's
+    // decision also ends any "sell anyway" override — the stock-aware toggle
+    // with the "<ingredient> shows 0" question is `setDishAvailability`.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .update({ is_available: isAvailable, auto_disabled_at: null } as any)
+    .update({ is_available: isAvailable, auto_disabled_at: null, auto_86_snoozed_until: null } as any)
     .eq('id', itemId)
     .eq('tenant_id', tenantId)
     .select()

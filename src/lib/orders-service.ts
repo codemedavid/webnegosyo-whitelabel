@@ -579,6 +579,12 @@ export async function createOrder(
   parityOptions?: {
     clientOrderId?: string | null
     discountPayload?: OrderDiscountPayload | null
+    /**
+     * The row id, chosen by the caller BEFORE the insert — the checkout claims
+     * simple-option counters under it (see simple-option-hold.ts). Absent =
+     * the database default.
+     */
+    orderId?: string | null
   }
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
@@ -720,6 +726,7 @@ export async function createOrder(
   const { data: order, error: orderError } = await orderWriter
     .from('orders')
     .insert({
+      ...(parityOptions?.orderId ? { id: parityOptions.orderId } : {}),
       tenant_id: tenantId,
       order_type_id: orderTypeId || null,
       order_type: orderTypeName,

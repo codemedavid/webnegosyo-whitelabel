@@ -146,7 +146,7 @@ export function CartEmptyPanel({
 
 /** A single cart line item with image, variations, addons, quantity stepper. */
 export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; item: CartItem; index: number }) {
-  const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor } = cart
+  const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor, stockHintFor } = cart
   const p = useCartColors(cart)
   // Senior mode enlarges the page, so a long dish name gets a second line
   // instead of being cut to "Skinles…".
@@ -154,6 +154,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
   const mi = item.menu_item
   const canIncrease = canIncreaseItem(item)
   const presellHint = presellHintFor(item)
+  const stockHint = stockHintFor(item)
   const canEdit =
     (mi.variation_types?.length ?? 0) > 0 || mi.variations.length > 0 || mi.addons.length > 0
 
@@ -257,6 +258,9 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
                 <p className="text-xs" style={{ color: p.muted }}>{formatPrice(item.subtotal / item.quantity)} each</p>
               )}
             </div>
+            {stockHint && (
+              <p className="basis-full text-xs font-medium" role="status" style={{ color: p.accent }}>{stockHint}</p>
+            )}
           </div>
         </div>
       </div>

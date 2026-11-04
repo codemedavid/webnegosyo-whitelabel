@@ -5,6 +5,7 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { LowStockBadge } from './card-stock'
 
 interface BrutalistCardProps {
     item: MenuItem
@@ -90,6 +91,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                     </div>
                 )}
 
+                <LowStockBadge branding={branding} />
                 {!isOrderable && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                         <span

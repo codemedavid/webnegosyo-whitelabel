@@ -27,6 +27,8 @@ const MOCK_REFUSED_ITEM_ID = 'refused-for-another-reason'
  * id whose flag says it is perfectly available — no field read can pass that.
  */
 jest.mock('@/lib/menu-item-availability', () => ({
+  // The stock half is pure and takes the rule's answer as input; keep it real.
+  resolveMenuCardStock: jest.requireActual('@/lib/menu-item-availability').resolveMenuCardStock,
   isMenuItemOrderable: (item: { id?: string; is_available?: boolean | null }) =>
     item.id !== MOCK_REFUSED_ITEM_ID && item.is_available !== false,
 }))

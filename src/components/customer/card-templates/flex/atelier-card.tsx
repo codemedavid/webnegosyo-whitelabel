@@ -6,6 +6,7 @@ import {
   AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, optionHint, tint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
+import { LowStockBadge } from '../card-stock'
 
 const ATELIER_DEFAULTS: CardStyle = {
   imageRatio: 'square',
@@ -46,6 +47,7 @@ export const AtelierCard = memo(function AtelierCard({
           className="rounded-[var(--brand-radius,6px)]"
           imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.05] group-hover:-translate-y-1"
         >
+          <LowStockBadge branding={branding} />
           {!isOrderable && <SoldOutVeil />}
         </CardMedia>
         <CardBadges

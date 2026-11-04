@@ -31,7 +31,9 @@ export function useCartView() {
   // saved tenant when the cart page renders inside the preview iframe.
   const tenant = useBrandingPreviewTenant(fetchedTenant)
   const [isLoading, setIsLoading] = useState(true)
-  const commands = useCartCommands({ tenantId: tenant?.id, cart })
+  const commands = useCartCommands({
+    tenantId: tenant?.id, tenantSlug, isInventoryEnabled: Boolean(tenant?.inventory_enabled), cart,
+  })
   const checkout = useCartCheckout({ tenant, tenantSlug, items,
     hasItems: items.length + bundleItems.length > 0, enabled: true })
   const { router } = checkout

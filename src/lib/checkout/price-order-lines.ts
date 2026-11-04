@@ -13,6 +13,8 @@
 import { resolveOrderLinePrice, type StoreMenuItemPricing } from '@/lib/order-line-price-floor'
 import {
   priceLineModifiers,
+  unavailablePickMessage,
+  withTextSelectionIds,
   type LinkedModifierItem,
   type ModifierCatalogSource,
   type ModifierSelectionLine,
@@ -81,23 +83,28 @@ export function priceOrderLines<T extends PriceableOrderLine>(
   for (const line of lines) {
     if (line.isBundleItem) continue
     const storeItem = context.storeItems.get(line.menu_item_id)
-    const modifiers = storeItem
-      ? priceLineModifiers(line, storeItem, context.linkedItems)
-      : { delta: 0, addons: [], unknownIds: [], unpricedLabels: [] }
+    const modifiers = storeItem ? priceLineModifiers(line, storeItem, context.linkedItems) : null
 
     const result = resolveOrderLinePrice(
       line,
       storeItem,
       findOutletMenuOverride(context.branchOverrides, context.outletId, line.menu_item_id),
-      modifiers.delta
+      modifiers?.delta ?? 0
     )
     if (!result.ok) return { ok: false, error: result.error }
 
+    const menuName = typeof storeItem?.name === 'string' && storeItem.name.trim() !== '' ? storeItem.name : line.menu_item_name
+    if (!modifiers) return { ok: false, error: `Menu item not found: ${line.menu_item_name}` }
+    // Hidden in the storefront, but nothing stops a stale tab or a direct call.
+    if (modifiers.unavailableNames.length > 0) {
+      return { ok: false, error: unavailablePickMessage(menuName, modifiers.unavailableNames) }
+    }
+
     reportSelectionGaps(line, modifiers.unknownIds, modifiers.unpricedLabels)
 
-    const menuName = typeof storeItem?.name === 'string' && storeItem.name.trim() !== '' ? storeItem.name : line.menu_item_name
     // The browser never supplies the breakdown: it is rebuilt here or dropped.
-    const { addon_details: _untrusted, ...rest } = line
+    // The ids the text was charged for join the line's own, so stock agrees.
+    const { addon_details: _untrusted, ...rest } = withTextSelectionIds(line, modifiers)
     void _untrusted
     priced.push({
       ...rest,

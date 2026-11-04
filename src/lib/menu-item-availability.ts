@@ -12,6 +12,8 @@
  * different question — *who* took the dish off, which only merchants see.
  */
 
+import { STOCK_HINT_THRESHOLD } from '@/lib/inventory/stepper-cap'
+
 /** The subset of a menu item this decision depends on. */
 export interface MenuItemOrderabilityInput {
   is_available?: boolean | null
@@ -29,4 +31,34 @@ export interface MenuItemOrderabilityInput {
  */
 export function isMenuItemOrderable(item: MenuItemOrderabilityInput): boolean {
   return item.is_available !== false
+}
+
+/** What a menu card shows about stock. */
+export interface MenuCardStock {
+  /** The dish can be added (switched on AND the kitchen can make at least one). */
+  isOrderable: boolean
+  /** Switched on, but the kitchen can make none right now ("Sold out"). */
+  isSoldOut: boolean
+  /** Few left: the number to show ("Only N left"), else null. */
+  onlyLeft: number | null
+}
+
+/**
+ * The card's stock state from whether the dish is switched on
+ * (`isMenuItemOrderable`, passed in so callers keep calling the one rule) and
+ * its producible ceiling
+ * (`/api/inventory/ceilings`; `null` = untracked or unknown — a missing branch
+ * shelf row or a never-counted ingredient — which never limits a dish).
+ * The low-stock threshold is the stepper's (`STOCK_HINT_THRESHOLD`) so the
+ * card and the stepper say the same thing. Checkout stays the hard refusal.
+ */
+export function resolveMenuCardStock(
+  isSwitchedOn: boolean,
+  ceiling: number | null,
+): MenuCardStock {
+  if (!isSwitchedOn) return { isOrderable: false, isSoldOut: false, onlyLeft: null }
+  if (ceiling === null || !Number.isFinite(ceiling)) return { isOrderable: true, isSoldOut: false, onlyLeft: null }
+  const whole = Math.floor(ceiling)
+  if (whole <= 0) return { isOrderable: false, isSoldOut: true, onlyLeft: null }
+  return { isOrderable: true, isSoldOut: false, onlyLeft: whole <= STOCK_HINT_THRESHOLD ? whole : null }
 }

@@ -50,6 +50,8 @@ export interface MenuLayoutContentProps {
 /** Stable commands/data for a whole storefront view, independent of its markup. */
 export interface StorefrontMenuController {
   tenant: Tenant | null
+  /** The branch the customer is shopping, if one is chosen (stock ceilings read that shelf). */
+  selectedOutletId?: string | null
   tenantSlug: string
   categories: Category[]
   allMenuItems: MenuItem[]

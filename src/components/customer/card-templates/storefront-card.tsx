@@ -1,11 +1,11 @@
 'use client'
 
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { MenuItem } from '@/types/database'
+import { LowStockBadge, UnavailableLabel } from './card-stock'
 
 interface StorefrontCardProps {
   item: MenuItem
@@ -93,10 +93,11 @@ export const StorefrontCard = memo(function StorefrontCard({
             </div>
           )}
 
+          <LowStockBadge branding={branding} />
           {!isOrderable && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
               <span className="rounded-full bg-white/95 px-3 py-1.5 text-sm font-medium text-gray-900">
-                <StoreLabel name="menu.unavailable" fallback="Unavailable" />
+                <UnavailableLabel />
               </span>
             </div>
           )}
