@@ -26,7 +26,7 @@ import {
   type IncomingOrder,
 } from "../../lib/pos-incoming";
 import { usePosCartStore } from "../../stores/pos-cart-store";
-import { sanitizeSearchQuery, type Category } from "../../lib/products";
+import type { Category } from "../../lib/products";
 import { type PosOrderType } from "../../lib/pos-catalog";
 import {
   pricingForOrderType,
@@ -43,7 +43,21 @@ import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-meth
 import { SaleCompleteBanner } from "../../components/pos/SaleCompleteBanner";
 import { useOutbox } from "../../lib/offline/use-outbox-sync";
 import { usePosStockCeilings } from "../../lib/query/use-pos-stock-ceilings";
-import { resolvePosStockWarning } from "../../lib/pos-stock-warning";
+import {
+  resolvePosStockWarning,
+  saleStockDemand,
+  type StockDemandLine,
+} from "../../lib/pos-stock-warning";
+import { describeStockHint, unitsByDish } from "../../lib/pos-stock-hint";
+import { canSellPastStock, parsePosStockPolicy } from "../../lib/pos-stock-decision";
+import { useRegisterStockGuard } from "../../lib/use-register-stock-guard";
+import { useSoldOutOverride } from "../../lib/use-sold-out-override";
+import { filterRegisterItems } from "../../lib/pos-grid-filter";
+import { hasPermission } from "../../lib/staff-permissions";
+import { useConnectivity } from "../../lib/offline/use-connectivity";
+import { usePosLastSaleStore } from "../../stores/pos-last-sale-store";
+import { StockShortSheet } from "../../components/pos/StockShortSheet";
+import { SoldOutSheet } from "../../components/pos/SoldOutSheet";
 import { formatPeso } from "../../lib/format";
 import { resolvePosLayout } from "../../lib/pos-layout";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -67,6 +81,12 @@ import { PayOutButton } from "../../components/money/PayOutButton";
 import { Icon } from "../../components/Icon";
 import { CollapsingHeaderList, DOCKED_SEARCH_CLEARANCE } from "../../components/CollapsingHeaderList";
 import { useScreenTopInset } from "../../lib/use-screen-top-inset";
+
+/**
+ * The option picker is a modal; the stock question is another. iOS will not
+ * present one while the other is still animating away.
+ */
+const MODAL_HANDOFF_MS = 350;
 
 /** Rows rendered before the first scroll — roughly two screens' worth. */
 const INITIAL_ROWS = 6;
@@ -228,15 +248,59 @@ export default function PosScreen() {
 
   // ── What the kitchen can actually make ──
   // A WARNING, never a refusal: the cashier is facing a paying customer and can
-  // see the shelf, so the software says its piece and the human decides. The
-  // web checkout refuses instead, because nobody is standing over that customer.
+  // see the shelf, so the software says its piece and the human decides — when
+  // a dish is added, and again at Charge. The web checkout refuses instead,
+  // because nobody is standing over that customer. Only the merchant's own
+  // "sold out" switch refuses here (greyed tiles and options).
   // Debounce dish changes; changing a quantity does not change kitchen stock.
-  const stockCeilings = usePosStockCeilings(tenantId, registerOutletId, lines);
+  // Kept fresh while the register is on screen and after each sale, so the
+  // "N left" badges follow what other tills and the storefront sell.
+  const [isRegisterFocused, setIsRegisterFocused] = useState(false);
+  const lastSaleStamp = usePosLastSaleStore((s) => s.lastSale?.shownAt ?? null);
+  const stockCeilings = usePosStockCeilings(tenantId, registerOutletId, lines, {
+    isFocused: isRegisterFocused,
+    saleStamp: lastSaleStamp,
+  });
 
-  const stockWarning = useMemo(
-    () => resolvePosStockWarning(lines, stockCeilings),
-    [lines, stockCeilings],
+  // What THIS sale asks of the shelf. Under an edit that is only what the edit
+  // adds: the ceilings already have the placed order taken out.
+  const stockDemand = useMemo(
+    () =>
+      saleStockDemand(
+        lines,
+        editContext
+          ? { mode: editContext.mode, originalStockItems: editContext.originalStockItems }
+          : null,
+      ),
+    [lines, editContext],
   );
+  const stockWarning = useMemo(
+    () => resolvePosStockWarning(stockDemand, stockCeilings),
+    [stockDemand, stockCeilings],
+  );
+  const demandByDish = useMemo(() => unitsByDish(stockDemand), [stockDemand]);
+
+  // The "Only 5 left" question (lib/pos-stock-decision.ts). The store's policy
+  // rides on the stock read: warn (default) lets the cashier sell anyway; block
+  // needs an account that may sell past the count. Offline never blocks.
+  const { status: connectivity } = useConnectivity();
+  const stockContext = useMemo(
+    () => ({
+      policy: parsePosStockPolicy(stockCeilings.stockPolicy),
+      isOnline: connectivity !== "offline",
+      canSellShort: canSellPastStock({ role, isOwner, permissions }),
+    }),
+    [stockCeilings.stockPolicy, connectivity, role, isOwner, permissions],
+  );
+  const stockGuard = useRegisterStockGuard({
+    lines,
+    demand: stockDemand,
+    ceilings: stockCeilings,
+    context: stockContext,
+    // A revised order's demand is a difference; cutting its lines is the
+    // cashier's call, not a button's.
+    canClamp: editContext?.mode !== "revise",
+  });
 
   // Default to the first order type so the cashier can ring up immediately;
   // they can switch before tendering. Priced from the index that came with the
@@ -271,6 +335,8 @@ export default function PosScreen() {
       setSheetFor(null);
       setIsCartExpanded(false);
       setIsIncomingExpanded(false);
+      setIsRegisterFocused(true);
+      return () => setIsRegisterFocused(false);
     }, []),
   );
 
@@ -311,21 +377,18 @@ export default function PosScreen() {
     router.push(`/(main)/order/${orderId}`);
   };
 
-  const visibleItems = useMemo(() => {
-    const term = sanitizeSearchQuery(search).toLowerCase();
-    return items.filter(({ product }) => {
-      const inCategory = !activeCategory || product.category_id === activeCategory;
-      const matches = !term || product.name.toLowerCase().includes(term);
-      return inCategory && matches;
-    });
-  }, [items, activeCategory, search]);
+  // Sold-out tiles stay in every category and search (lib/pos-grid-filter.ts).
+  const visibleItems = useMemo(
+    () => filterRegisterItems(items, activeCategory, search),
+    [items, activeCategory, search],
+  );
 
   const rows = useMemo(
     () => toRows(visibleItems, layout.columns),
     [visibleItems, layout.columns],
   );
 
-  const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+  const commitAdd = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
     // Both at the store price: the store derives `basePrice` from
     // `listBasePrice` through the sale's channel pricing.
     const listBasePrice = item.product.discounted_price ?? item.product.price;
@@ -344,7 +407,51 @@ export default function PosScreen() {
     }
   };
 
+  // Loyverse-style: an estimate that says the shelf is short asks once, at the
+  // tap ("Only 5 left" → Sell 5 / Sell anyway / Cancel). No ceilings (offline,
+  // a failed read, inventory off) means no question — the till never waits on
+  // a guess.
+  const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+    const added: StockDemandLine = {
+      menuItemId: item.product.id,
+      name: item.product.name,
+      quantity,
+      options: selections.map((s) => ({ id: s.optionId, name: s.optionName })),
+    };
+    const isPickerOpen = sheetFor !== null;
+    stockGuard.guardAdd(
+      added,
+      (units) => commitAdd(item, selections, units),
+      isPickerOpen ? { presentAfterMs: MODAL_HANDOFF_MS } : undefined,
+    );
+    // The picker closes either way; a question takes over from it.
+    if (isPickerOpen) setSheetFor(null);
+  };
+
+  // Charge asks once more, over the whole sale.
+  const handleCharge = () => {
+    stockGuard.guardCharge(
+      () => router.push("/(main)/pos-tender"),
+      (changes) => changes.forEach(({ key, quantity }) => setQty(key, quantity)),
+    );
+  };
+
+  // A tap on a "Sold out" tile explains itself; a menu holder may put the dish
+  // back on sale until end of day (lib/use-sold-out-override.ts).
+  const isDemo = useAuthStore((s) => s.isDemo);
+  const soldOut = useSoldOutOverride({
+    canChangeMenu: !isDemo && hasPermission({ role, isOwner, permissions }, "menu"),
+    onTurnedOn: () => {
+      void refetchCatalog();
+    },
+  });
+
   const handleTap = (item: RegisterItem) => {
+    // The merchant's switch: the tile explains itself and adds nothing.
+    if (item.soldOutReason) {
+      soldOut.open({ menuItemId: item.product.id, name: item.product.name ?? "", reason: item.soldOutReason });
+      return;
+    }
     // Nothing to configure — straight into the cart, one tap.
     if (item.groups.length === 0) {
       addToCart(item, [], 1);
@@ -523,6 +630,11 @@ export default function PosScreen() {
                 imageUrl={item.product.image_url}
                 quantity={inSale[item.product.id] ?? 0}
                 hasOptions={item.groups.length > 0}
+                isSoldOut={Boolean(item.soldOutReason)}
+                stockHint={describeStockHint(
+                  stockCeilings.dishes.get(item.product.id),
+                  demandByDish[item.product.id] ?? 0,
+                )}
                 onPress={() => handleTap(item)}
               />
             ))}
@@ -576,9 +688,9 @@ export default function PosScreen() {
 
   /*
     Sits above the cart, where the cashier is already looking before they
-    charge. Deliberately not a modal and not a blocker — it informs the
-    person who can see the shelf, and they ring the sale anyway if they
-    have the stock.
+    charge. Never a blocker — it informs the person who can see the shelf,
+    and they sell anyway if they have the stock. The same words are asked
+    once as a question at the tap and again at Charge ("Sell anyway").
   */
   const stockBanner = stockWarning ? (
     <View style={styles.stockWarning}>
@@ -625,7 +737,7 @@ export default function PosScreen() {
         reset();
         setIsCartExpanded(false);
       }}
-      onCharge={() => router.push("/(main)/pos-tender")}
+      onCharge={handleCharge}
       discountLines={discountLines}
       // Offered on an edit too. The order's own discount is re-priced by
       // `repriceEditDiscount` and a code added here is a second line on top
@@ -745,10 +857,16 @@ export default function PosScreen() {
           basePrice={displayPriceForOrderType(sheetFor.product, activePricing)}
           groups={sheetFor.groups}
           pricing={activePricing}
+          optionCeilings={stockCeilings.options.get(sheetFor.product.id)}
           onCancel={() => setSheetFor(null)}
           onConfirm={(selections, quantity) => addToCart(sheetFor, selections, quantity)}
         />
       )}
+
+      {/* "Only 5 left" — Sell 5 / Sell anyway / Cancel (lib/pos-stock-decision.ts). */}
+      <StockShortSheet {...stockGuard.sheet} />
+      {/* A tap on a greyed "Sold out" tile. */}
+      <SoldOutSheet override={soldOut} />
 
       <DiscountSheet
         visible={isDiscountOpen}

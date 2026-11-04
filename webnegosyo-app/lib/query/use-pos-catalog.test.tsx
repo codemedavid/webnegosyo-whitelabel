@@ -44,10 +44,38 @@ afterEach(() => {
 });
 
 describe("buildRegisterItems", () => {
-  it("keeps only available products and normalises their modifier groups", () => {
+  it("normalises every product's modifier groups, in menu order", () => {
     const items = buildRegisterItems([LATTE, SOLD_OUT] as never);
-    expect(items.map((item) => item.product.id)).toEqual(["p1"]);
+    expect(items.map((item) => item.product.id)).toEqual(["p1", "p2"]);
     expect(items[0].groups).toEqual([]);
+  });
+
+  it("keeps a dish switched off as sold out — a greyed tile, not a missing one", () => {
+    const [latte, cake] = buildRegisterItems([LATTE, SOLD_OUT] as never);
+    expect(latte.soldOutReason).toBeNull();
+    expect(cake.soldOutReason).toMatch(/sold out/i);
+  });
+
+  it("marks a dish sold out when a required choice has nothing left to pick", () => {
+    const [latte] = buildRegisterItems([
+      {
+        ...LATTE,
+        modifier_groups: [
+          {
+            id: "g-milk",
+            name: "Milk",
+            display_order: 0,
+            min_select: 1,
+            max_select: 1,
+            options: [
+              { id: "o1", name: "Whole", price_modifier: 0, display_order: 0, is_available: false },
+              { id: "o2", name: "Oat", price_modifier: 0, display_order: 1, stock_mode: "simple", stock_qty: 0 },
+            ],
+          },
+        ],
+      },
+    ] as never);
+    expect(latte.soldOutReason).toContain("Milk");
   });
 });
 
@@ -67,7 +95,7 @@ describe("usePosCatalog", () => {
 
     expect(mockListProducts).toHaveBeenCalledTimes(1);
     expect(mockListProducts).toHaveBeenCalledWith("t1", "o-north");
-    expect(result.current.b.data?.items.map((i) => i.product.id)).toEqual(["p1"]);
+    expect(result.current.b.data?.items.map((i) => i.product.id)).toEqual(["p1", "p2"]);
     expect(result.current.b.data?.categories).toEqual([{ id: "c1", name: "Drinks" }]);
   });
 

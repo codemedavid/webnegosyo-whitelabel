@@ -4,6 +4,7 @@ import { colors, radius, shadow, spacing, typography } from "../../theme/colors"
 import { formatPeso } from "../../lib/format";
 import { POS_TILE_THUMB_PX, thumbUrl } from "../../lib/image-thumb";
 import { getAvatarColor, getInitials } from "../../lib/order-visuals";
+import type { StockHint } from "../../lib/pos-stock-hint";
 
 interface ProductTileProps {
   name: string;
@@ -14,6 +15,14 @@ interface ProductTileProps {
   quantity: number;
   /** True when tapping opens the modifier sheet instead of adding directly. */
   hasOptions: boolean;
+  /**
+   * The merchant's "sold out" switch (dish off, or a required choice with
+   * nothing left). Greyed and labelled; the screen decides what a tap says —
+   * it never adds the dish.
+   */
+  isSoldOut?: boolean;
+  /** "N left" / "0 left" from the stock ESTIMATE. A hint only — still tappable. */
+  stockHint?: StockHint | null;
   onPress: () => void;
 }
 
@@ -35,22 +44,31 @@ export function ProductTile({
   imageUrl,
   quantity,
   hasOptions,
+  isSoldOut = false,
+  stockHint = null,
   onPress,
 }: ProductTileProps) {
   const isInSale = quantity > 0;
   const thumb = useMemo(() => thumbUrl(imageUrl, POS_TILE_THUMB_PX), [imageUrl]);
+  // The switch outranks the estimate: a dish that is off has no "left".
+  const hint = isSoldOut ? null : stockHint;
+  const baseLabel = isInSale
+    ? `${name}, ${formatPeso(price)}, ${quantity} in sale`
+    : `${name}, ${formatPeso(price)}`;
+  const accessibilityLabel = isSoldOut
+    ? `${name}, sold out`
+    : hint
+      ? `${baseLabel}, ${hint.label}`
+      : baseLabel;
 
   return (
     <TouchableOpacity
-      style={[styles.tile, isInSale && styles.tileInSale]}
+      style={[styles.tile, isInSale && styles.tileInSale, isSoldOut && styles.tileSoldOut]}
       onPress={onPress}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityLabel={
-        isInSale
-          ? `${name}, ${formatPeso(price)}, ${quantity} in sale`
-          : `${name}, ${formatPeso(price)}`
-      }
+      accessibilityState={{ disabled: isSoldOut }}
+      accessibilityLabel={accessibilityLabel}
     >
       <View style={styles.media}>
         {thumb ? (
@@ -72,6 +90,18 @@ export function ProductTile({
         {isInSale ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{quantity}</Text>
+          </View>
+        ) : null}
+
+        {isSoldOut ? (
+          <View style={styles.soldOutVeil}>
+            <Text style={styles.soldOutText}>Sold out</Text>
+          </View>
+        ) : null}
+
+        {hint ? (
+          <View style={[styles.stockPill, hint.isOut && styles.stockPillOut]}>
+            <Text style={[styles.stockPillText, hint.isOut && styles.stockPillTextOut]}>{hint.label}</Text>
           </View>
         ) : null}
       </View>
@@ -100,6 +130,27 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   tileInSale: { borderColor: colors.accent, borderWidth: 1.5 },
+  tileSoldOut: { opacity: 0.55 },
+  soldOutVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(29,24,21,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  soldOutText: { ...typography.caption, fontWeight: "800", color: colors.textOnDark },
+  stockPill: {
+    position: "absolute",
+    left: spacing.xs,
+    bottom: spacing.xs,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    ...shadow.sm,
+  },
+  stockPillOut: { backgroundColor: colors.danger },
+  stockPillText: { ...typography.small, fontWeight: "700", color: colors.warning },
+  stockPillTextOut: { color: colors.textOnDark },
   media: { width: "100%", aspectRatio: 4 / 3, backgroundColor: colors.surfaceSubtle },
   image: { width: "100%", height: "100%" },
   placeholder: { flex: 1, alignItems: "center", justifyContent: "center" },
