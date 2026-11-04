@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Icon } from "../Icon";
+import { LineNoteSheet } from "./LineNoteSheet";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
 import { selectionLabel, type CartTotals, type PosCartLine } from "../../lib/pos-cart";
@@ -16,6 +18,12 @@ interface CartSheetProps {
   onToggle: () => void;
   onSelectOrderType: (type: PosOrderType) => void;
   onChangeQty: (key: string, quantity: number) => void;
+  /**
+   * Writes (or, with "", clears) a line's kitchen note. Present = tapping a
+   * line opens "Note for kitchen"; absent (e.g. the tutorial) = lines are
+   * read-only, as before.
+   */
+  onEditNote?: (key: string, note: string) => void;
   onClear: () => void;
   onCharge: () => void;
   /**
@@ -97,6 +105,7 @@ export function CartSheet({
   onToggle,
   onSelectOrderType,
   onChangeQty,
+  onEditNote,
   onClear,
   onCharge,
   chargeLabel,
@@ -123,6 +132,8 @@ export function CartSheet({
   // to send the food over.
   const isDeliveryType = activeType?.type === "delivery";
   const isDineIn = isDineInType(activeType);
+  const [noteKey, setNoteKey] = useState<string | null>(null);
+  const noteLine = noteKey ? lines.find((line) => line.key === noteKey) : undefined;
 
   return (
     <View style={[styles.sheet, isPanel && styles.panel]}>
@@ -271,7 +282,19 @@ export function CartSheet({
           >
             {lines.map((line) => (
               <View key={line.key} style={styles.line}>
-                <View style={styles.lineText}>
+                <TouchableOpacity
+                  style={styles.lineText}
+                  onPress={onEditNote ? () => setNoteKey(line.key) : undefined}
+                  disabled={!onEditNote}
+                  accessibilityRole={onEditNote ? "button" : undefined}
+                  accessibilityLabel={
+                    onEditNote
+                      ? line.note
+                        ? `${line.name}, note ${line.note}. Change the note`
+                        : `${line.name}. Add a note for the kitchen`
+                      : undefined
+                  }
+                >
                   <Text style={styles.lineName} numberOfLines={1}>
                     {line.name}
                   </Text>
@@ -281,11 +304,16 @@ export function CartSheet({
                     </Text>
                   )}
                   {line.note ? (
-                    <Text style={styles.lineMeta} numberOfLines={1}>
-                      Note: {line.note}
-                    </Text>
+                    <View style={styles.noteRow}>
+                      <Icon name="note" size={13} color={colors.accent} />
+                      <Text style={styles.noteText} numberOfLines={2}>
+                        {line.note}
+                      </Text>
+                    </View>
+                  ) : onEditNote ? (
+                    <Text style={styles.addNote}>+ Note</Text>
                   ) : null}
-                </View>
+                </TouchableOpacity>
 
                 <View style={styles.stepper}>
                   <TouchableOpacity
@@ -470,6 +498,20 @@ export function CartSheet({
           </>
         )}
       </TouchableOpacity>
+
+      {noteLine && onEditNote ? (
+        <LineNoteSheet
+          key={noteLine.key}
+          visible
+          itemName={noteLine.name}
+          initialNote={noteLine.note}
+          onCancel={() => setNoteKey(null)}
+          onSave={(note) => {
+            onEditNote(noteLine.key, note);
+            setNoteKey(null);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -539,6 +581,9 @@ const styles = StyleSheet.create({
   lineText: { flex: 1 },
   lineName: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
   lineMeta: { ...typography.small, color: colors.textSecondary },
+  noteRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
+  noteText: { ...typography.small, color: colors.accent, fontWeight: "700", flexShrink: 1 },
+  addNote: { ...typography.small, color: colors.primary, fontWeight: "600", marginTop: 2 },
   stepper: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   step: {
     width: 30,

@@ -87,6 +87,17 @@ describe("printPosKitchenChit", () => {
     expect(segments[0]!.text).toContain("Walk-in");
   });
 
+  it("prints the sale's checkout note (from More details) as NOTE:", async () => {
+    await printPosKitchenChit(
+      "order-1",
+      { ...ARGS, customerData: { pos: {} as never, Notes: "allergic to shrimp" } } as PosOrderArgs,
+      0,
+      ON,
+    );
+    const [, segments] = mockPrintForRole.mock.calls[0] as [string, { type: string; text: string }[]];
+    expect(segments[0]!.text).toContain("NOTE: allergic to shrimp");
+  });
+
   it("stays quiet when the watcher (or a previous session) already printed it", async () => {
     mockClaimPrinted.mockResolvedValue([]);
     expect(await printPosKitchenChit("order-1", ARGS, 0, ON)).toBe(false);

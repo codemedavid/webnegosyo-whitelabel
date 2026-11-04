@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +11,7 @@ import {
 import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
+import { KitchenNoteField } from "./KitchenNoteField";
 import { formatPeso } from "../../lib/format";
 import {
   isOptionAvailable,
@@ -22,6 +25,7 @@ import {
   type OrderTypePricing,
 } from "../../lib/order-type-pricing";
 import {
+  normalizeLineNote,
   unitPrice,
   validateSelection,
   type PosCartSelection,
@@ -44,7 +48,8 @@ interface ModifierSheetProps {
    */
   optionCeilings?: ReadonlyMap<string, number>;
   onCancel: () => void;
-  onConfirm: (selections: PosCartSelection[], quantity: number) => void;
+  /** `note` is the trimmed kitchen note, absent when none was written. */
+  onConfirm: (selections: PosCartSelection[], quantity: number, note?: string) => void;
 }
 
 function toSelection(
@@ -102,6 +107,7 @@ export function ModifierSheet({
     initialSelections(groups, pricing),
   );
   const [quantity, setQuantity] = useState(1);
+  const [note, setNote] = useState("");
 
   // Remount-free reset: a new item reuses this sheet, so re-seed when it opens.
   const [seededFor, setSeededFor] = useState(itemName);
@@ -109,6 +115,7 @@ export function ModifierSheet({
     setSeededFor(itemName);
     setSelections(initialSelections(groups, pricing));
     setQuantity(1);
+    setNote("");
   }
 
   const validation = useMemo(
@@ -140,12 +147,23 @@ export function ModifierSheet({
     });
   };
 
+  // The note goes along only when one was written, so a caller that never
+  // asked for one sees the call it always did.
+  const confirm = () => {
+    const kitchenNote = normalizeLineNote(note);
+    if (kitchenNote) onConfirm(selections, quantity, kitchenNote);
+    else onConfirm(selections, quantity);
+  };
+
   // A docked sheet becomes a centred dialog once the glass is a tablet's
   // (components/pos/dialog-layout.ts).
   const isCentered = useCenteredDialog();
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
-      <View style={[styles.backdrop, isCentered && centeredDialog.backdrop]}>
+      <KeyboardAvoidingView
+        style={[styles.backdrop, isCentered && centeredDialog.backdrop]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>
@@ -223,6 +241,9 @@ export function ModifierSheet({
                 )}
               </View>
             ))}
+            <View style={styles.note}>
+              <KitchenNoteField value={note} onChange={setNote} />
+            </View>
           </ScrollView>
 
           <View style={styles.footer}>
@@ -247,13 +268,13 @@ export function ModifierSheet({
             <TouchableOpacity
               style={[styles.addButton, !canAdd && styles.addButtonDisabled]}
               disabled={!canAdd}
-              onPress={() => onConfirm(selections, quantity)}
+              onPress={confirm}
             >
               <Text style={styles.addText}>Add {formatPeso(linePrice)}</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -308,6 +329,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   error: { ...typography.small, color: colors.danger, marginTop: spacing.xs },
+  note: { marginTop: spacing.xl, marginBottom: spacing.lg },
   footer: {
     flexDirection: "row",
     alignItems: "center",

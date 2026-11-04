@@ -168,5 +168,16 @@ describe("OrderCard kitchen chip", () => {
   it("claims nothing while the order still waits on the kitchen", () => {
     render(<OrderCard order={baseOrder} onPress={jest.fn()} />);
     expect(screen.queryByText("✓ Kitchen confirmed")).toBeNull();
+    expect(screen.queryByText("✓ Kitchen")).toBeNull();
+  });
+
+  it.each(["ready", "delivered"])("keeps a kitchen chip once the order is %s", (status) => {
+    render(<OrderCard order={{ ...baseOrder, status }} onPress={jest.fn()} />);
+    expect(screen.getByText("✓ Kitchen")).toBeTruthy();
+  });
+
+  it("shows no kitchen chip on a cancelled order", () => {
+    render(<OrderCard order={{ ...baseOrder, status: "cancelled" }} onPress={jest.fn()} />);
+    expect(screen.queryByText(/Kitchen/)).toBeNull();
   });
 });

@@ -133,6 +133,7 @@ export default function PosScreen() {
   );
   const add = usePosCartStore((s) => s.add);
   const setQty = usePosCartStore((s) => s.setQty);
+  const setLineNote = usePosCartStore((s) => s.setLineNote);
   const reset = usePosCartStore((s) => s.reset);
   const setOrderType = usePosCartStore((s) => s.setOrderType);
   const editContext = usePosCartStore((s) => s.editContext);
@@ -388,7 +389,12 @@ export default function PosScreen() {
     [visibleItems, layout.columns],
   );
 
-  const commitAdd = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+  const commitAdd = (
+    item: RegisterItem,
+    selections: PosCartSelection[],
+    quantity: number,
+    note?: string,
+  ) => {
     // Both at the store price: the store derives `basePrice` from
     // `listBasePrice` through the sale's channel pricing.
     const listBasePrice = item.product.discounted_price ?? item.product.price;
@@ -400,6 +406,7 @@ export default function PosScreen() {
         basePrice: listBasePrice,
         quantity,
         selections,
+        ...(note ? { note } : {}),
       });
       setSheetFor(null);
     } catch (error) {
@@ -411,7 +418,12 @@ export default function PosScreen() {
   // tap ("Only 5 left" → Sell 5 / Sell anyway / Cancel). No ceilings (offline,
   // a failed read, inventory off) means no question — the till never waits on
   // a guess.
-  const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+  const addToCart = (
+    item: RegisterItem,
+    selections: PosCartSelection[],
+    quantity: number,
+    note?: string,
+  ) => {
     const added: StockDemandLine = {
       menuItemId: item.product.id,
       name: item.product.name,
@@ -421,7 +433,7 @@ export default function PosScreen() {
     const isPickerOpen = sheetFor !== null;
     stockGuard.guardAdd(
       added,
-      (units) => commitAdd(item, selections, units),
+      (units) => commitAdd(item, selections, units, note),
       isPickerOpen ? { presentAfterMs: MODAL_HANDOFF_MS } : undefined,
     );
     // The picker closes either way; a question takes over from it.
@@ -733,6 +745,7 @@ export default function PosScreen() {
         setOrderType(type.id, type.name, type.serviceCharge, pricingFor(type), type.type)
       }
       onChangeQty={setQty}
+      onEditNote={setLineNote}
       onClear={() => {
         reset();
         setIsCartExpanded(false);
@@ -859,7 +872,7 @@ export default function PosScreen() {
           pricing={activePricing}
           optionCeilings={stockCeilings.options.get(sheetFor.product.id)}
           onCancel={() => setSheetFor(null)}
-          onConfirm={(selections, quantity) => addToCart(sheetFor, selections, quantity)}
+          onConfirm={(selections, quantity, note) => addToCart(sheetFor, selections, quantity, note)}
         />
       )}
 
