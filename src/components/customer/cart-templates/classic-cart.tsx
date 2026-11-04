@@ -27,7 +27,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
     router, tenantSlug, tenant,
     items, bundleItems, total,
     updateQuantity, removeBundleFromCart, updateBundleQuantity,
-    setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor,
+    setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor, stockHintFor,
     isNavigating, requestCheckout, exitToMenu,
   } = cart
   // Senior mode's larger text gets a second line for long dish names.
@@ -163,6 +163,9 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             <span className="font-medium">Pre-order for:</span> {formatPresellDateLabel(item.presell_date)}
                             {presellHintFor(item) && <span className="ml-2 text-xs" style={{ color: palette.muted }}>{presellHintFor(item)}</span>}
                           </p>
+                        )}
+                        {stockHintFor(item) && (
+                          <p className="text-xs font-medium" role="status" style={{ color: palette.accent }}>{stockHintFor(item)}</p>
                         )}
                       </div>
 
