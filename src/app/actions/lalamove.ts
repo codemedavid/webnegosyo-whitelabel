@@ -5,8 +5,6 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import {
   createLalamoveQuotation,
   createLalamoveOrder,
@@ -22,32 +20,16 @@ import { resolveRequoteGate, retireDeadBookingPatch } from '@/lib/lalamove-reboo
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { Database, Tenant } from '@/types/database'
-import { signDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
+import {
+  LALAMOVE_PICKUP_COLUMNS,
+  LALAMOVE_TENANT_COLUMNS,
+  LALAMOVE_TENANT_QUOTE_LIMIT,
+  createSignedLalamoveQuote,
+  lalamoveQuoteRateKey,
+  withLalamoveKeys,
+} from '@/lib/lalamove-signed-quote'
 import { claimLalamoveBooking, persistLalamoveBooking, releaseLalamoveBookingClaim, LALAMOVE_BOOKING_PENDING_MESSAGE } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
-
-/**
- * The tenant columns Lalamove work actually needs. Several of these actions
- * are reachable from anonymous checkout traffic, so the row must be named
- * column by column — a select('*') drags every secret on the tenants table
- * into an anon-reachable code path.
- */
-const LALAMOVE_TENANT_COLUMNS =
-  'id, name, footer_business_name, footer_phone, footer_whatsapp, ' +
-  'lalamove_enabled, lalamove_market, ' +
-  'lalamove_service_type, lalamove_sandbox, lalamove_sender_phone'
-
-/**
- * The signing keys live in `tenant_secrets`, which anon is never granted —
- * and quoting is an anonymous action — so they are read with the service
- * role, and only for a store that has Lalamove switched on. The keys never
- * leave this server module: the SDK consumes them and the action returns
- * quotation data only.
- */
-async function withLalamoveKeys(tenant: Tenant): Promise<Tenant> {
-  if (!tenant.lalamove_enabled) return tenant
-  return mergeTenantSecrets(tenant, await getTenantSecrets(createAdminClient(), tenant.id))
-}
 
 /**
  * Quotations are billable calls against the tenant's own Lalamove account and
@@ -57,7 +39,6 @@ async function withLalamoveKeys(tenant: Tenant): Promise<Tenant> {
  * customers out of delivery quotes. Both are counted in Redis, so they hold
  * across serverless instances.
  */
-const QUOTATION_RATE_LIMIT = { limit: 30, windowSec: 60 }
 const QUOTATION_CLIENT_RATE_LIMIT = { limit: 10, windowSec: 60 }
 
 const MAX_DELIVERY_ADDRESS_LENGTH = 500
@@ -113,14 +94,14 @@ export async function createQuotationAction(
     const clientRate = await checkActionRateLimit('lalamove-quote-client', QUOTATION_CLIENT_RATE_LIMIT)
     if (!clientRate.allowed) return QUOTE_RATE_LIMITED
 
-    const rate = await checkRateLimit(`lalamove-quote:${tenantId}`, QUOTATION_RATE_LIMIT)
+    const rate = await checkRateLimit(lalamoveQuoteRateKey(tenantId), LALAMOVE_TENANT_QUOTE_LIMIT)
     if (!rate.allowed) return QUOTE_RATE_LIMITED
 
     // Get tenant data
     const supabase = await createClient()
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select(`${LALAMOVE_TENANT_COLUMNS}, restaurant_address, restaurant_latitude, restaurant_longitude`)
+      .select(`${LALAMOVE_TENANT_COLUMNS}, ${LALAMOVE_PICKUP_COLUMNS}`)
       .eq('id', tenantId)
       .single()
 
@@ -134,42 +115,23 @@ export async function createQuotationAction(
       return { success: false, error: 'Lalamove delivery is not enabled for this restaurant' }
     }
 
-    const pickupAddress = tenantTyped.restaurant_address
-    const pickupLat = toFiniteNumber(tenantTyped.restaurant_latitude)
-    const pickupLng = toFiniteNumber(tenantTyped.restaurant_longitude)
-    if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
-      return {
-        success: false,
-        error: 'This store has not set its pickup location yet. Please contact the store.',
-      }
-    }
-
-    const quotation = await createLalamoveQuotation(
-      tenantTyped,
-      pickupAddress,
-      { lat: pickupLat, lng: pickupLng },
-      deliveryAddress,
-      { lat: deliveryLat, lng: deliveryLng },
-    )
-
-    const expiresAt = new Date(quotation.expiresAt).getTime()
-    const quoteSignature = signDeliveryQuote({
-      tenantId,
-      quotationId: quotation.quotationId,
-      fee: quotation.price,
-      destination: { address: deliveryAddress, lat: deliveryLat, lng: deliveryLng },
-      expiresAt,
+    const quote = await createSignedLalamoveQuote(tenantTyped, {
+      address: deliveryAddress,
+      lat: deliveryLat,
+      lng: deliveryLng,
     })
-    if (!quoteSignature) {
-      return { success: false, error: 'Could not verify a valid delivery quotation. Please try again or contact the store.' }
-    }
+    if (!quote.ok) return { success: false, error: quote.error }
 
     return {
       success: true,
       data: {
-        ...quotation,
-        expiresAt: new Date(expiresAt).toISOString(),
-        quoteSignature,
+        quotationId: quote.quotationId,
+        price: quote.fee,
+        currency: quote.currency,
+        expiresAt: new Date(quote.providerExpiresAt).toISOString(),
+        distance: '0 km', // Not provided in Lalamove's price breakdown
+        duration: '0 min',
+        quoteSignature: quote.quoteSignature,
       },
     }
   } catch (error) {
