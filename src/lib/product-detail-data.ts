@@ -79,6 +79,8 @@ export interface SelectedTenant {
     pairing_rules_enabled?: boolean
     /** Per-date presell stock (see src/lib/presell). */
     presell_enabled?: boolean
+    /** Ingredient stock tracking; off = no stock ceilings are read. */
+    inventory_enabled?: boolean | null
     /** Unified modifier groups (multi-select with min/max picks) on the storefront. */
     modifier_groups_enabled?: boolean
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)

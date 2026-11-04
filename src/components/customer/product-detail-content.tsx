@@ -287,7 +287,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // Options whose own recipe the shelf cannot cover read as sold out — the
     // same answer checkout's stock guard would give (inventory stores only;
     // every other store gets no ceilings and nothing changes).
-    const optionCeilings = useOptionStockCeilings(tenant.id, branchPricing.selectedOutletId).get(item.id)
+    // Only stores that track stock have ceilings; the rest never ask.
+    const stockTenantId = tenant.inventory_enabled === true ? tenant.id : null
+    const optionCeilings = useOptionStockCeilings(stockTenantId, branchPricing.selectedOutletId).get(item.id)
     const soldOutOptions = useMemo(() => soldOutOptionIds(optionCeilings), [optionCeilings])
     // The category's default add-ons join the dish's groups, as checkout prices them.
     const groupedItem = useMemo(() => withCategoryAddons(item, category?.default_addons), [item, category?.default_addons])
@@ -304,7 +306,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // ceiling surfaced where the number is chosen, so nobody walks through the
     // whole checkout to be turned away on the last screen. Untracked dishes get
     // `null` and behave exactly as they always have.
-    const ceilings = useStockCeilings(tenant.id, branchPricing.selectedOutletId)
+    const ceilings = useStockCeilings(stockTenantId, branchPricing.selectedOutletId)
     // The configuration being picked: a Large with pearls is capped by the
     // pearls as well as by the base recipe.
     const stockCeiling = useMemo(
