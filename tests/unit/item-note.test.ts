@@ -131,3 +131,34 @@ describe('the note on its way to the order', () => {
     expect(parsed.ok && parsed.lines[0].special_instructions).toBe(longest)
   })
 })
+
+describe('control bytes never reach a thermal printer', () => {
+  // ESC (0x1B) and GS (0x1D) start ESC/POS commands: a note carrying "ESC @"
+  // resets the printer, "GS V" cuts the paper, "ESC p" kicks the cash drawer.
+  // Every C0 (0x00–0x1F), DEL and C1 (0x80–0x9F) control is dropped as a space.
+  const ESC = '\u001b'
+  const GS = '\u001d'
+
+  it('the storefront normaliser drops ESC/GS and every other C0/C1 control', () => {
+    expect(normalizeItemNote(`no${ESC}@onions${GS}V\u0000A\u0007\u007f\u0085\u009b`)).toBe('no @onions V A')
+    expect(normalizeItemNote(`${ESC}p${'\u0000'}${'\u0019'}`)).toBe('p')
+    expect(normalizeItemNote(`${ESC}${GS}\u0000`)).toBeUndefined()
+  })
+
+  it('keeps ordinary text, accents and emoji', () => {
+    expect(normalizeItemNote('Walang sibuyas — extra ñ, 🌶️')).toBe('Walang sibuyas — extra ñ, 🌶️')
+  })
+
+  it('the server line schema strips them too, whatever the client sent', () => {
+    const line = { menu_item_id: 'm1', menu_item_name: 'Burger', quantity: 1, price: 100, subtotal: 100 }
+    const parsed = parseOrderLines([
+      { ...line, special_instructions: `no onions${ESC}@${GS}V\u0001\r\n\u009bplease` },
+      { ...line, menu_item_id: 'm2', special_instructions: `${ESC}${GS}\u0000` },
+    ])
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.lines[0].special_instructions).toBe('no onions @ V please')
+    expect(parsed.lines[1].special_instructions).toBeUndefined()
+    expect(/[\u0000-\u001f\u007f-\u009f]/.test(parsed.lines[0].special_instructions ?? '')).toBe(false)
+  })
+})

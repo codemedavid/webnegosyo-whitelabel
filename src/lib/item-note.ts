@@ -17,10 +17,22 @@ export const ITEM_NOTE_MAX_LENGTH = 200
 
 const WHITESPACE_RUN = /\s+/g
 
-/** The note as stored: trimmed, single-spaced, capped; blank means no note. */
+/**
+ * Every C0 control (0x00–0x1F), DEL and C1 control (0x80–0x9F). A note is
+ * printed raw on thermal kitchen chits and receipts, where ESC (0x1B) and GS
+ * (0x1D) begin ESC/POS commands — reset, cut, drawer kick — so none survive.
+ */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g
+
+/** `text` with every control character turned into a space (word breaks kept). */
+export function stripControlChars(text: string): string {
+  return text.replace(CONTROL_CHARS, ' ')
+}
+
+/** The note as stored: controls dropped, trimmed, single-spaced, capped; blank means no note. */
 export function normalizeItemNote(raw: string | null | undefined): string | undefined {
   if (typeof raw !== 'string') return undefined
-  const tidy = raw.replace(WHITESPACE_RUN, ' ').trim().slice(0, ITEM_NOTE_MAX_LENGTH).trim()
+  const tidy = stripControlChars(raw).replace(WHITESPACE_RUN, ' ').trim().slice(0, ITEM_NOTE_MAX_LENGTH).trim()
   return tidy === '' ? undefined : tidy
 }
 
