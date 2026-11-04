@@ -19,6 +19,7 @@ import {
 } from '@/lib/order-line-modifier-pricing'
 import {
   findOutletMenuOverride,
+  resolveItemForOutlet,
   type OutletMenuIndex,
 } from '@/lib/outlets/outlet-menu-overrides'
 import { priceBundleOrderLines, type CheckoutBundle } from './price-bundle-lines'
@@ -45,9 +46,12 @@ export interface PriceableOrderLine extends ModifierSelectionLine {
 }
 
 export interface PriceOrderLinesContext {
+  /** The cart's dishes, with any category default add-ons already merged in (see load-line-pricing). */
   storeItems: ReadonlyMap<string, StoreMenuItemRow>
+  /** Overrides for the cart's dishes AND the dishes their linked options point at. */
   branchOverrides: OutletMenuIndex
   outletId: string | null
+  /** Store-wide rows of the linked dishes; priced here at the branch's price. */
   linkedItems: ReadonlyMap<string, LinkedModifierItem>
   bundles?: ReadonlyMap<string, CheckoutBundle>
 }
@@ -69,10 +73,28 @@ function reportSelectionGaps(line: PriceableOrderLine, unknownIds: string[], unp
   })
 }
 
+/**
+ * The linked dishes as the chosen branch sells them, resolved by the same
+ * override rule the app catalog's `linkedItemsAtBranch` uses. An UNLISTED
+ * linked dish keeps its (branch-resolved) price instead of vanishing: the
+ * catalog shows its option as unavailable, so only a forged claim can name it,
+ * and a forged claim must pay rather than get it free.
+ */
+function linkedItemsAtOutlet(context: PriceOrderLinesContext): ReadonlyMap<string, LinkedModifierItem> {
+  if (!context.outletId) return context.linkedItems
+  return new Map(
+    [...context.linkedItems].map(([id, item]) => [
+      id,
+      resolveItemForOutlet(item, findOutletMenuOverride(context.branchOverrides, context.outletId, id)),
+    ])
+  )
+}
+
 export function priceOrderLines<T extends PriceableOrderLine>(
   lines: readonly T[],
-  context: PriceOrderLinesContext
+  storeContext: PriceOrderLinesContext
 ): PriceOrderLinesResult<T> {
+  const context: PriceOrderLinesContext = { ...storeContext, linkedItems: linkedItemsAtOutlet(storeContext) }
   const priced: T[] = []
 
   for (const line of lines) {

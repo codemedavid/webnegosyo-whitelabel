@@ -84,7 +84,9 @@ export async function admitOrder(input: PlaceOrderInput): Promise<Admission> {
   // add-ons priced from the dish's own JSON. The browser's price can only
   // raise that; its subtotal is never used. Priced before the stock guard and
   // the presell claim so a refusal here has nothing to hand back.
-  const pricedLines = await loadAndPriceOrderLines(supabaseAdmin, tenantId, items, resolvedOutlet?.id ?? null)
+  const pricedLines = await loadAndPriceOrderLines(supabaseAdmin, tenantId, items, resolvedOutlet?.id ?? null, {
+    modifierGroupsEnabled: tenantConfig.modifier_groups_enabled === true,
+  })
   if (!pricedLines.ok) {
     return deny(pricedLines.refused ? refused(pricedLines.error) : lost(pricedLines.error))
   }

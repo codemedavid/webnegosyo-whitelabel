@@ -95,3 +95,30 @@ describe('resolveOrderLinePrice — the modifier floor', () => {
     expect(result.ok).toBe(false)
   })
 })
+
+/**
+ * The float slack used to be a whole centavo (`price < floor - 0.01`), so a
+ * claim one centavo under the floor was kept: the customer app (which sends
+ * every line at 0) got a ₱0.01 dish free, and a forged web claim shaved a
+ * centavo per unit. Prices are compared in whole centavos instead.
+ */
+describe('resolveOrderLinePrice — no centavo of slack below the floor', () => {
+  it('raises a claim one centavo under the floor', () => {
+    const result = resolveOrderLinePrice(line({ price: 179.99, quantity: 1 }), storeItem, null)
+
+    expect(result).toEqual({ ok: true, price: 180, subtotal: 180 })
+  })
+
+  it('charges a ₱0.01 dish sent at price 0', () => {
+    const result = resolveOrderLinePrice(line({ price: 0, quantity: 3 }), { ...storeItem, price: 0.01 }, null)
+
+    expect(result).toEqual({ ok: true, price: 0.01, subtotal: 0.03 })
+  })
+
+  it('still reads float noise at the floor as the floor', () => {
+    const noisy = 0.1 + 0.2 // 0.30000000000000004
+    const result = resolveOrderLinePrice(line({ price: 0.3 - 1e-12, quantity: 1 }), { ...storeItem, price: noisy }, null)
+
+    expect(result).toEqual({ ok: true, price: 0.3, subtotal: 0.3 })
+  })
+})

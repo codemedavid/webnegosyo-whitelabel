@@ -1,26 +1,30 @@
 /**
  * Round trip: whatever the app can legally pick from the PROJECTED catalog
- * translates, and the server's own modifier pricing (`priceLineModifiers`, fed
- * the raw dish row like `loadAndPriceOrderLines` does) charges exactly the
- * deltas the app was shown.
+ * translates, and the server's whole pricing pipeline (`loadAndPriceOrderLines`
+ * over the raw rows, the line sent at price 0 as the app sends it) charges
+ * exactly the price the app displayed: the dish at the branch plus the deltas
+ * of the picked options.
  *
- * Store-wide menu only (outletId null) and no category default add-ons: the
- * server prices linked options at their store-wide price and does not see
- * category add-ons at all (it reads the dish's own columns), so neither can
- * round-trip today — see the Phase 4 report.
+ * Covers what used to be excluded: a chosen branch (dish and linked-dish
+ * overrides, other branches' rows as noise) and category default add-ons, on
+ * both the legacy path (merged, item wins on a name clash) and the unified
+ * path (never shown, never priced) — with the store's flag either way.
  */
 import fc from 'fast-check'
 import type { AppMenuItem } from '@/lib/app-contract'
 import { draftToOrderLines } from '@/lib/app-api/orders/draft-to-lines'
 import { projectAppCatalog } from '@/lib/app-api/project-catalog'
+import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
 import { parseOrderLines } from '@/lib/checkout/order-line-schema'
-import { priceLineModifiers } from '@/lib/order-line-modifier-pricing'
-import { buildOutletMenuIndex } from '@/lib/outlets/outlet-menu-overrides'
+import { buildOutletMenuIndex, type OutletMenuOverrideRow } from '@/lib/outlets/outlet-menu-overrides'
 import type { Addon, Category, MenuItem, ModifierGroup, Variation, VariationType } from '@/types/database'
+import { fakeSupabaseTables } from '../../../fixtures/fake-supabase-tables'
 import { createTestMenuItem } from '../../../fixtures/menu-item.fixture'
 import { propertyParameters } from '../../../utils/property'
 
-const CATEGORY: Category = { id: 'cat-1', tenant_id: 't', name: 'Menu', order: 0, is_active: true, display_layout: 'grid', created_at: '', updated_at: '' }
+const TENANT = 't'
+const OUTLET = 'outlet-1'
+const CATEGORY: Category = { id: 'cat-1', tenant_id: TENANT, name: 'Menu', order: 0, is_active: true, display_layout: 'grid', created_at: '', updated_at: '' }
 const NAMES = ['Large', 'Small', 'Oat milk', 'Cheese', 'Extra shot', 'Rice', 'Gravy', 'No onions']
 const QUANTITY_CAP_WHEN_UNLIMITED = 6
 
@@ -28,7 +32,10 @@ const nameArb = fc.constantFrom(...NAMES)
 const centavosArb = fc.integer({ min: 0, max: 50_000 })
 const pesos = (centavos: number) => centavos / 100
 
-const linkedArb = fc.array(fc.record({ name: nameArb, price: centavosArb, discount: fc.option(centavosArb), isAvailable: fc.boolean() }), { maxLength: 2 })
+/** Mostly true, so the interesting (listed, available, priced) paths are hit often. */
+const mostlyTrue = fc.oneof({ arbitrary: fc.constant(true), weight: 4 }, { arbitrary: fc.constant(false), weight: 1 })
+
+const linkedArb = fc.array(fc.record({ name: nameArb, price: centavosArb, discount: fc.option(centavosArb), isAvailable: mostlyTrue }), { maxLength: 2 })
 
 const unifiedGroupsArb = (linkedCount: number) =>
   fc.array(
@@ -50,10 +57,32 @@ const legacyArb = fc.record({
   addons: fc.array(fc.record({ name: nameArb, price: centavosArb }), { maxLength: 3 }),
 })
 
+const categoryDefaultsArb = fc.array(fc.record({ name: nameArb, price: centavosArb }), { maxLength: 3 })
+
+/** A branch's opinion on one dish; null = no row. Rows for another branch are noise both sides must ignore. */
+const overrideSpecArb = fc.option(
+  fc.record({
+    outletId: fc.oneof({ arbitrary: fc.constant(OUTLET), weight: 4 }, { arbitrary: fc.constant('outlet-2'), weight: 1 }),
+    isListed: mostlyTrue,
+    isAvailable: mostlyTrue,
+    price: fc.option(centavosArb),
+    discount: fc.option(centavosArb),
+    discountCleared: fc.boolean(),
+  }),
+)
+
+type OverrideSpec = NonNullable<typeof overrideSpecArb extends fc.Arbitrary<infer T> ? T : never>
+
 interface Store {
   dish: MenuItem
   linked: MenuItem[]
   tenant: Record<string, unknown>
+}
+
+interface Scenario extends Store {
+  category: Category
+  overrides: OutletMenuOverrideRow[]
+  outletId: string | null
 }
 
 const storeArb: fc.Arbitrary<Store> = linkedArb.chain((linkedSpecs) => {
@@ -67,7 +96,7 @@ const storeArb: fc.Arbitrary<Store> = linkedArb.chain((linkedSpecs) => {
       is_available: spec.isAvailable,
     }),
   )
-  const unified = unifiedGroupsArb(linked.length).map((specs): Store => {
+  const unified = fc.tuple(unifiedGroupsArb(linked.length), fc.boolean()).map(([specs, isFlagOn]): Store => {
     const groups: ModifierGroup[] = specs.map((spec, g) => ({
       id: `g${g}`,
       name: `Group ${g}`,
@@ -84,7 +113,9 @@ const storeArb: fc.Arbitrary<Store> = linkedArb.chain((linkedSpecs) => {
         ...(option.link !== null && linked[option.link] ? { menu_item_id: linked[option.link].id } : {}),
       })),
     }))
-    return { dish: createTestMenuItem({ id: 'dish', category_id: 'cat-1', name: 'Dish', modifier_groups: groups }), linked, tenant: { modifier_groups_enabled: true } }
+    // Flag off: the store shows the legacy columns (here only the category's
+    // defaults) even though the dish carries groups.
+    return { dish: createTestMenuItem({ id: 'dish', category_id: 'cat-1', name: 'Dish', modifier_groups: groups }), linked, tenant: { modifier_groups_enabled: isFlagOn } }
   })
   const legacy = legacyArb.map((spec): Store => {
     const variationTypes: VariationType[] = spec.types.map((type, t) => ({
@@ -101,18 +132,52 @@ const storeArb: fc.Arbitrary<Store> = linkedArb.chain((linkedSpecs) => {
   return fc.oneof(unified, legacy)
 })
 
-const projectDish = (store: Store): AppMenuItem =>
+const toOverride = (menuItemId: string, spec: OverrideSpec): OutletMenuOverrideRow & Record<string, unknown> => ({
+  id: `ovr-${spec.outletId}-${menuItemId}`,
+  tenant_id: TENANT,
+  outlet_id: spec.outletId,
+  menu_item_id: menuItemId,
+  is_listed: spec.isListed,
+  is_available: spec.isAvailable,
+  price: spec.price === null ? null : pesos(spec.price),
+  discounted_price: spec.discount === null ? null : pesos(spec.discount),
+  discount_cleared: spec.discountCleared,
+  created_at: '',
+  updated_at: '',
+})
+
+const scenarioArb: fc.Arbitrary<Scenario> = storeArb.chain((store) =>
+  fc
+    .record({
+      defaults: categoryDefaultsArb,
+      outletId: fc.option(fc.constant(OUTLET)),
+      dishOverride: overrideSpecArb,
+      linkedOverrides: fc.array(overrideSpecArb, { minLength: store.linked.length, maxLength: store.linked.length }),
+    })
+    .map(({ defaults, outletId, dishOverride, linkedOverrides }): Scenario => {
+      const defaultAddons: Addon[] = defaults.map((addon, c) => ({ id: `ca${c}`, name: addon.name, price: pesos(addon.price) }))
+      const specs: Array<[string, OverrideSpec | null]> = [['dish', dishOverride], ...store.linked.map((row, index): [string, OverrideSpec | null] => [row.id, linkedOverrides[index]])]
+      return {
+        ...store,
+        category: { ...CATEGORY, default_addons: defaultAddons },
+        overrides: specs.flatMap(([menuItemId, spec]) => (spec === null ? [] : [toOverride(menuItemId, spec)])),
+        outletId,
+      }
+    }),
+)
+
+const projectDish = (scenario: Scenario): AppMenuItem | undefined =>
   projectAppCatalog({
-    tenant: store.tenant,
-    categories: [CATEGORY],
-    menuItems: [store.dish, ...store.linked],
+    tenant: scenario.tenant,
+    categories: [scenario.category],
+    menuItems: [scenario.dish, ...scenario.linked],
     orderTypes: [],
     outlets: [],
-    outletOverrides: [],
-    outletId: null,
+    outletOverrides: scenario.overrides,
+    outletId: scenario.outletId,
     paymentMethods: [],
     pairs: [],
-  }).items.find((item) => item.id === 'dish') as AppMenuItem
+  }).items.find((item) => item.id === 'dish')
 
 type Selections = Record<string, Record<string, number>>
 
@@ -150,29 +215,46 @@ function shownDeltaCentavos(item: AppMenuItem, selections: Selections): number {
 }
 
 describe('draftToOrderLines round trip (property)', () => {
-  it('translates every legal catalog pick, and the server prices it at the deltas the app showed', () => {
-    fc.assert(
-      fc.property(storeArb, fc.integer({ min: 1, max: 99 }), fc.gen(), (store, quantity, gen) => {
-        const item = projectDish(store)
-        const selections = pickSelections(gen, item)
+  it('translates every legal catalog pick, and the server pipeline charges exactly the price the app showed', async () => {
+    await fc.assert(
+      fc.asyncProperty(scenarioArb, fc.integer({ min: 1, max: 99 }), fc.gen(), async (scenario, quantity, gen) => {
+        const item = projectDish(scenario)
+        fc.pre(item !== undefined && item.isAvailable)
+        const shown = item as AppMenuItem
+        const selections = pickSelections(gen, shown)
         fc.pre(selections !== null)
+        const rows = [scenario.dish, ...scenario.linked]
         const result = draftToOrderLines({
           lines: [{ itemId: 'dish', quantity, selections: selections as Selections }],
-          menuItems: new Map([store.dish, ...store.linked].map((row) => [row.id, row])),
-          categories: [CATEGORY],
-          tenant: store.tenant,
-          branchIndex: buildOutletMenuIndex([]),
-          outletId: null,
+          menuItems: new Map(rows.map((row) => [row.id, row])),
+          categories: [scenario.category],
+          tenant: scenario.tenant,
+          branchIndex: buildOutletMenuIndex(scenario.overrides),
+          outletId: scenario.outletId,
         })
         if (!result.ok) throw new Error(result.error)
         const [line] = result.lines
         expect(parseOrderLines([line]).ok).toBe(true)
-        const pricing = priceLineModifiers(line, store.dish, new Map(store.linked.map((row) => [row.id, row])))
-        expect(pricing.unknownIds).toEqual([])
-        expect(pricing.unpricedLabels).toEqual([])
-        expect(Math.round(pricing.delta * 100)).toBe(shownDeltaCentavos(item, selections as Selections))
+
+        // The server pipeline over the raw rows; any selection gap is logged.
+        const { client } = fakeSupabaseTables({
+          menu_items: rows.map((row) => ({ ...row, tenant_id: TENANT })),
+          categories: [scenario.category],
+          outlet_menu_items: scenario.overrides,
+        })
+        const gaps = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        const priced = await loadAndPriceOrderLines(client, TENANT, [line], scenario.outletId, {
+          modifierGroupsEnabled: scenario.tenant.modifier_groups_enabled === true,
+        }).finally(() => gaps.mockRestore())
+        if (!priced.ok) throw new Error(priced.error)
+        expect(gaps.mock.calls).toEqual([])
+
+        const shownUnit = Math.round(shown.price * 100) + shownDeltaCentavos(shown, selections as Selections)
+        expect(Math.round(priced.lines[0].price * 100)).toBe(shownUnit)
+        expect(Math.round(priced.itemsSubtotal * 100)).toBe(shownUnit * quantity)
       }),
       propertyParameters(),
     )
-  })
+    // Each run awaits the real pipeline; under a loaded full-suite run 200 of them can pass 5s.
+  }, 60_000)
 })

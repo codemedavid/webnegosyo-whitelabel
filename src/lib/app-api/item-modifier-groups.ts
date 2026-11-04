@@ -14,13 +14,40 @@ import type { Addon, Category, MenuItem, ModifierGroup } from '@/types/database'
 /** The columns of a `menu_items` row the groups are read from. */
 export type ModifierItemRow = Pick<MenuItem, 'modifier_groups' | 'variation_types' | 'variations' | 'addons'>
 
-/** Item add-ons win over the category's defaults on a (case-insensitive) name clash, as on the web. */
-function mergeCategoryAddons(item: ModifierItemRow, category: Pick<Category, 'default_addons'> | undefined): Addon[] {
-  const defaults = category?.default_addons ?? []
-  const own = item.addons ?? []
+/** The add-on's name as the clash rule compares it; null for a nameless (malformed) entry. */
+function addonNameKey(addon: unknown): string | null {
+  const name = typeof addon === 'object' && addon !== null ? (addon as { name?: unknown }).name : undefined
+  return typeof name === 'string' ? name.toLowerCase() : null
+}
+
+/**
+ * The dish's add-ons plus its category's default add-ons. Item add-ons win over
+ * the category's defaults on a (case-insensitive) name clash, as on the web
+ * (`useVariationState`). Shared with server pricing (`load-line-pricing.ts`),
+ * so the add-ons a dish is priced with are the ones it was shown with. Takes
+ * untrusted row JSON: a non-array reads as none.
+ */
+export function mergeCategoryAddons(
+  item: { addons?: unknown },
+  category: { default_addons?: unknown } | undefined,
+): Addon[] {
+  const defaults = Array.isArray(category?.default_addons) ? (category.default_addons as Addon[]) : []
+  const own = Array.isArray(item.addons) ? (item.addons as Addon[]) : []
   if (defaults.length === 0) return own
-  const names = new Set(own.map((addon) => addon.name.toLowerCase()))
-  return [...own, ...defaults.filter((addon) => !names.has(addon.name.toLowerCase()))]
+  const names = new Set(own.map(addonNameKey))
+  return [...own, ...defaults.filter((addon) => {
+    const key = addonNameKey(addon)
+    return key === null || !names.has(key)
+  })]
+}
+
+/**
+ * Whether the dish is read from `modifier_groups` (the store has the feature on
+ * AND the dish was authored with it). Otherwise the legacy columns plus the
+ * category's default add-ons are shown.
+ */
+export function usesUnifiedModifierGroups(item: { modifier_groups?: unknown }, tenant: Record<string, unknown>): boolean {
+  return tenant.modifier_groups_enabled === true && Array.isArray(item.modifier_groups) && item.modifier_groups.length > 0
 }
 
 /**
@@ -33,9 +60,8 @@ export function modifierGroupsFor(
   category: Pick<Category, 'default_addons'> | undefined,
   tenant: Record<string, unknown>,
 ): ModifierGroup[] {
-  const useUnified = tenant.modifier_groups_enabled === true && (item.modifier_groups?.length ?? 0) > 0
   return normalizeModifierGroups(
-    useUnified
+    usesUnifiedModifierGroups(item, tenant)
       ? { modifier_groups: item.modifier_groups }
       : { variation_types: item.variation_types, variations: item.variations, addons: mergeCategoryAddons(item, category) },
   )
