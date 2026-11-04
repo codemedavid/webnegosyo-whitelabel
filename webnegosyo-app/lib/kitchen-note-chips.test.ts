@@ -1,16 +1,10 @@
 import { KITCHEN_NOTE_CHIPS, hasNoteChip, toggleNoteChip } from "./kitchen-note-chips";
 
 describe("kitchen note quick chips", () => {
-  it("offers the common requests in a fixed order", () => {
-    expect(KITCHEN_NOTE_CHIPS).toEqual([
-      "No onion",
-      "Less ice",
-      "No sugar",
-      "Less sugar",
-      "Spicy",
-      "Extra sauce",
-      "Take-out",
-    ]);
+  it("offers a short, fixed list of café requests — none that fights the order type", () => {
+    expect(KITCHEN_NOTE_CHIPS).toEqual(["No sugar", "Less sugar", "Less ice", "No ice", "Extra hot", "No onion"]);
+    // "Take-out" on a line read as an order type the sale did not have.
+    expect(KITCHEN_NOTE_CHIPS.some((chip) => /take.?out|dine|delivery/i.test(chip))).toBe(false);
   });
 
   it("adds a chip to an empty note", () => {
@@ -34,7 +28,7 @@ describe("kitchen note quick chips", () => {
   });
 
   it("reports whether a chip is in the note", () => {
-    expect(hasNoteChip("Less ice, Take-out", "take-out")).toBe(true);
+    expect(hasNoteChip("Less ice, Extra hot", "extra hot")).toBe(true);
     expect(hasNoteChip("", "Spicy")).toBe(false);
   });
 });

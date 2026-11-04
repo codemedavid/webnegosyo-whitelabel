@@ -12,6 +12,7 @@ import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { KitchenNoteField } from "./KitchenNoteField";
+import { useScrollNoteIntoView } from "./use-scroll-note-into-view";
 import { formatPeso } from "../../lib/format";
 import {
   isOptionAvailable,
@@ -158,6 +159,7 @@ export function ModifierSheet({
   // A docked sheet becomes a centred dialog once the glass is a tablet's
   // (components/pos/dialog-layout.ts).
   const isCentered = useCenteredDialog();
+  const { scrollRef, onNoteFocus } = useScrollNoteIntoView();
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
       <KeyboardAvoidingView
@@ -174,7 +176,12 @@ export function ModifierSheet({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.body}
+            automaticallyAdjustKeyboardInsets
+            keyboardShouldPersistTaps="handled"
+          >
             {unfillable && (
               <Text style={styles.soldOutNotice}>
                 Every {unfillable.name} choice is sold out, so this can&apos;t be added right now.
@@ -242,7 +249,7 @@ export function ModifierSheet({
               </View>
             ))}
             <View style={styles.note}>
-              <KitchenNoteField value={note} onChange={setNote} />
+              <KitchenNoteField value={note} onChange={setNote} onFocus={onNoteFocus} />
             </View>
           </ScrollView>
 

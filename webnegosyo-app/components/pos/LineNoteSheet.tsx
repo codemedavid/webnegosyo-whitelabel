@@ -5,7 +5,8 @@ import { Button } from "../Button";
 import { IconButton } from "../IconButton";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
-import { KitchenNoteField } from "./KitchenNoteField";
+import { KITCHEN_NOTE_LABEL, KitchenNoteField } from "./KitchenNoteField";
+import { useScrollNoteIntoView } from "./use-scroll-note-into-view";
 import { normalizeLineNote } from "../../lib/pos-cart";
 
 interface LineNoteSheetProps {
@@ -22,7 +23,7 @@ interface LineNoteSheetProps {
 }
 
 /**
- * "Note for kitchen" on one cart line: quick chips, free text, Save / Clear.
+ * "Note for the kitchen" on one cart line: quick chips, free text, Save / Clear.
  * The note prints on the kitchen ticket, the chit and the receipt.
  */
 export function LineNoteSheet({
@@ -36,6 +37,7 @@ export function LineNoteSheet({
   const [draft, setDraft] = useState(initialNote ?? "");
   const isCentered = useCenteredDialog();
   const hasNote = Boolean(initialNote);
+  const { scrollRef, onNoteFocus } = useScrollNoteIntoView();
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
@@ -45,13 +47,29 @@ export function LineNoteSheet({
       >
         <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
-            <Text style={styles.title} numberOfLines={1}>
-              {itemName}
-            </Text>
+            <View style={styles.heading}>
+              <Text style={styles.title} numberOfLines={1}>
+                {KITCHEN_NOTE_LABEL}
+              </Text>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {itemName}
+              </Text>
+            </View>
             <IconButton icon="close" onPress={onCancel} label="Close" />
           </View>
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            <KitchenNoteField value={draft} onChange={setDraft} autoFocus={!hasNote} />
+          <ScrollView
+            ref={scrollRef}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+          >
+            <KitchenNoteField
+              value={draft}
+              onChange={setDraft}
+              autoFocus={!hasNote}
+              showLabel={false}
+              onFocus={onNoteFocus}
+            />
           </ScrollView>
           {error ? (
             <Text style={styles.error} accessibilityRole="alert">
@@ -98,7 +116,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.separator,
   },
-  title: { ...typography.heading, color: colors.textPrimary, flex: 1 },
+  heading: { flex: 1 },
+  title: { ...typography.heading, color: colors.textPrimary },
+  subtitle: { ...typography.caption, color: colors.textMuted },
   body: { padding: spacing.xl },
   footer: {
     flexDirection: "row",

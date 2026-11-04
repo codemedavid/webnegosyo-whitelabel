@@ -1,18 +1,19 @@
 /**
- * Quick requests a cashier taps into a line's kitchen note.
+ * Quick requests a cashier taps into a line's kitchen note — a short, fixed
+ * list for a café. Nothing that reads as an order type ("Take-out" on a
+ * dine-in line contradicted the sale's own order type).
  *
  * A chip is one comma-separated part of the note, compared without case, so
  * tapping it again takes it back out and leaves whatever was typed alone.
  */
 
 export const KITCHEN_NOTE_CHIPS: readonly string[] = [
-  "No onion",
-  "Less ice",
   "No sugar",
   "Less sugar",
-  "Spicy",
-  "Extra sauce",
-  "Take-out",
+  "Less ice",
+  "No ice",
+  "Extra hot",
+  "No onion",
 ];
 
 const SEPARATOR = ", ";

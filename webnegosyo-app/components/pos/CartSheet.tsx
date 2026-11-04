@@ -21,7 +21,7 @@ interface CartSheetProps {
   onChangeQty: (key: string, quantity: number) => void;
   /**
    * Writes (or, with "", clears) a line's kitchen note. Present = tapping a
-   * line opens "Note for kitchen"; absent (e.g. the tutorial) = lines are
+   * line opens "Note for the kitchen"; absent (e.g. the tutorial) = lines are
    * read-only, as before.
    */
   onEditNote?: (key: string, note: string) => LineNoteResult | void;

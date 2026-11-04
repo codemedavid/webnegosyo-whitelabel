@@ -50,7 +50,9 @@ describe("note on a cart line", () => {
     renderCart(lines, onEditNote);
 
     fireEvent.press(screen.getByLabelText("Latte. Add a note for the kitchen"));
-    expect(screen.getByText("Note for kitchen")).toBeTruthy();
+    // One wording everywhere: the sheet's title, the dish under it.
+    expect(screen.getByText("Note for the kitchen")).toBeTruthy();
+    expect(screen.getAllByText("Latte").length).toBeGreaterThan(1);
 
     fireEvent.press(screen.getByText("Less ice"));
     fireEvent.press(screen.getByText("No sugar"));
@@ -65,7 +67,7 @@ describe("note on a cart line", () => {
     renderCart(lines, onEditNote);
 
     fireEvent.press(screen.getByLabelText("Latte. Add a note for the kitchen"));
-    fireEvent.changeText(screen.getByLabelText("Note for kitchen"), "  well done  ");
+    fireEvent.changeText(screen.getByLabelText("Note for the kitchen"), "  well done  ");
     fireEvent.press(screen.getByText("Save note"));
 
     expect(onEditNote).toHaveBeenCalledWith(lines[0].key, "well done");
@@ -89,7 +91,7 @@ describe("note on a cart line", () => {
     renderCart(lines, onEditNote);
 
     fireEvent.press(screen.getByLabelText("Latte. Add a note for the kitchen"));
-    fireEvent.changeText(screen.getByLabelText("Note for kitchen"), "no sugar");
+    fireEvent.changeText(screen.getByLabelText("Note for the kitchen"), "no sugar");
     fireEvent.press(screen.getByText("Save note"));
 
     expect(onEditNote).toHaveBeenCalledWith(lines[0].key, "no sugar");
@@ -149,14 +151,39 @@ describe("note in the option picker", () => {
     const onConfirm = renderPicker();
 
     fireEvent.press(screen.getByText(/Large/));
-    fireEvent.press(screen.getByText("Spicy"));
+    fireEvent.press(screen.getByText("Extra hot"));
     fireEvent.press(screen.getByText(/^Add ₱/));
 
     expect(onConfirm).toHaveBeenCalledWith(
       [expect.objectContaining({ optionId: "o-large" })],
       1,
-      "Spicy",
+      "Extra hot",
     );
+  });
+
+  it("labels the field with the same wording as the cart's note sheet", () => {
+    renderPicker();
+    expect(screen.getByText("Note for the kitchen")).toBeTruthy();
+    expect(screen.getByLabelText("Note for the kitchen")).toBeTruthy();
+  });
+
+  it("keeps the note field above the iOS keyboard: insets adjust, and focusing scrolls it into view", () => {
+    jest.useFakeTimers();
+    try {
+      renderPicker();
+      const { ScrollView } = jest.requireActual("react-native");
+      const scroll = screen.UNSAFE_getByType(ScrollView);
+      expect(scroll.props.automaticallyAdjustKeyboardInsets).toBe(true);
+      expect(scroll.props.keyboardShouldPersistTaps).toBe("handled");
+
+      const scrollToEnd = jest.fn();
+      scroll.instance.scrollToEnd = scrollToEnd;
+      fireEvent(screen.getByLabelText("Note for the kitchen"), "focus");
+      jest.runAllTimers();
+      expect(scrollToEnd).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("sends no note when none was written", () => {
