@@ -72,3 +72,22 @@ describe('page mode', () => {
     expect(readConfirmationRedirect({ confirmation_redirect: 'weird', confirmation_redirect_seconds: 999 })).toEqual({ mode: 'instant', seconds: 5 })
   })
 })
+
+describe('published design columns', () => {
+  it('copies only the design text of published pages', async () => {
+    const { hasPublishedFlag, publishedDesignColumns } = await import('@/lib/page-designer/page-mode')
+    const row = { checkout_design: 'C', checkout_design_enabled: true, confirmation_design: 'T', confirmation_design_enabled: false }
+    expect(publishedDesignColumns(row, ['checkout', 'confirmation'])).toEqual({ checkout_design: 'C' })
+    expect(hasPublishedFlag(row, ['confirmation'])).toBe(false)
+    expect(hasPublishedFlag(row, ['checkout', 'confirmation'])).toBe(true)
+  })
+
+  it('keeps the design text out of the shared storefront select (menu visitors never download it)', async () => {
+    const { TENANT_STOREFRONT_SELECT } = await import('@/lib/queries/tenant-storefront-select')
+    const columns = TENANT_STOREFRONT_SELECT.split(',').map((c) => c.trim())
+    for (const page of ['checkout', 'confirmation', 'tracking']) {
+      expect(columns).toContain(`${page}_design_enabled`)
+      expect(columns).not.toContain(`${page}_design`)
+    }
+  })
+})

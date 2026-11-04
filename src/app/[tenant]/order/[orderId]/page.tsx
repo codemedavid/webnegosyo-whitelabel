@@ -9,7 +9,7 @@ import { describeLoyaltyOffer, type LoyaltyOffer } from '@/lib/loyalty/offer'
 import { readLoyaltyTenantFlags } from '@/lib/loyalty/tenant-flags'
 import { readWalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 import { readTrackingStyle } from '@/lib/tracking-style/keys'
-import { resolvePageDesign } from '@/lib/page-designer/page-mode'
+import { publishedDesignColumns, resolvePageDesign } from '@/lib/page-designer/page-mode'
 import type { Tenant } from '@/types/database'
 import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { OrderTrackingFallback } from './order-tracking-fallback'
@@ -34,7 +34,11 @@ async function renderStudioPreview(tenant: Tenant, tenantSlug: string) {
   const menu = await getCachedMenuItemsList(tenant.id).catch(() => [])
   return (
     <TrackingStudioPreview
-      tenant={pickStorefrontColumns(tenant as unknown as Record<string, unknown>)}
+      tenant={{
+        ...pickStorefrontColumns(tenant as unknown as Record<string, unknown>),
+        // The shared select carries only the flag; the preview shows a published design too.
+        ...publishedDesignColumns(tenant as unknown as Record<string, unknown>, ['tracking']),
+      }}
       tenantSlug={tenantSlug}
       tenantId={tenant.id}
       storeName={tenant.name}

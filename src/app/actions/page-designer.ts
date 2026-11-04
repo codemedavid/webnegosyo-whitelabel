@@ -40,6 +40,7 @@ async function writeTenant(tenantId: string, update: Update, label: string): Pro
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('tenants')
+    // Column names are picked per page (PAGE_DESIGN_COLUMNS), so the generated row type can't see them.
     .update(update as never)
     .eq('id', tenantId)
     .select('id, slug')
@@ -74,7 +75,8 @@ export async function publishPageDesignAction(tenantId: string, page: unknown, d
     if (problem) return { success: false, error: problem }
 
     const serialized = JSON.stringify(parsed.data)
-    if (serialized.length > LIMITS.designBytes) {
+    // Bytes, not characters: emoji and accented text count more than once in the column.
+    if (Buffer.byteLength(serialized, 'utf8') > LIMITS.designBytes) {
       return { success: false, error: 'This design is too large. Remove some elements or shorten custom code.' }
     }
 

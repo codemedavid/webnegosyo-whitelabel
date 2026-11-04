@@ -30,6 +30,26 @@ export function resolvePageDesign(tenant: TenantLike, page: PageId): HeroDesignV
   return design ? preparePageDesign(design, page) : null
 }
 
+/**
+ * The design TEXT of each published page in `pages`, copied from a full
+ * tenant row. The shared storefront select carries only the `_enabled` flags
+ * (every menu visitor would otherwise download up to 600 KB per design), so
+ * the routes that render a design add its text with this.
+ */
+export function publishedDesignColumns(tenant: TenantLike, pages: readonly PageId[]): Record<string, unknown> {
+  const columns: Record<string, unknown> = {}
+  for (const page of pages) {
+    const { design, enabled } = PAGE_DESIGN_COLUMNS[page]
+    if (tenant?.[enabled] === true) columns[design] = tenant[design]
+  }
+  return columns
+}
+
+/** True when any of `pages` is published (its design text must be fetched). */
+export function hasPublishedFlag(tenant: TenantLike, pages: readonly PageId[]): boolean {
+  return pages.some((page) => tenant?.[PAGE_DESIGN_COLUMNS[page].enabled] === true)
+}
+
 export function hasPageDesign(tenant: TenantLike, page: PageId): boolean {
   return resolvePageDesign(tenant, page) !== null
 }
