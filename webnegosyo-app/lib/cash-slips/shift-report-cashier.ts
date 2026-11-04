@@ -9,7 +9,7 @@
 // no money at all. Never titled "X-READING" (06 §8: nothing here is
 // BIR-accredited).
 
-import type { ShiftSalesCash, ShiftSalesItem, ShiftSalesReport, ShiftSalesVoid } from "../cash/shift-sales";
+import type { ShiftSalesCash, ShiftSalesCollections, ShiftSalesItem, ShiftSalesReport, ShiftSalesVoid } from "../cash/shift-sales";
 import { HIDDEN_TOTALS_LINE, NO_TOTALS_LINE, paidByLines, receiptLines, totalsLines } from "./shift-report-parts";
 import {
   DEVICE_SOURCE_LINE,
@@ -41,7 +41,15 @@ export const ITEMS_UNAVAILABLE_LINE = "Items not available for this store.";
 export const ITEMS_TRUNCATED_LINE = "Only the 500 most sold are listed.";
 export const OPEN_LABEL = "So far";
 export const CLOSED_LABEL = "Closed";
-export const OTHER_BILLS_NOTE = "Taken on bills rung earlier or by others. Already in cash sales.";
+/**
+ * The drawer's cash line (`cash.cashier_cash` cashSalesCents = expected − float
+ * − pay in + pay out + pickups): every peso of cash SHE recorded in her window,
+ * on any bill — her own and other bills alike — less the change and refunds
+ * she handed back. Not "her bills' cash sales": PAID BY is that.
+ */
+export const CASH_TAKEN_LABEL = "Cash taken (net)";
+export const OTHER_BILLS_NOTE = "Taken on bills rung earlier or by others. Any cash is already in Cash taken.";
+export const OTHER_CHANGE_LABEL = "Change given on other bills";
 const NARROW: SlipWidth = 32;
 const ITEM_INDENT = "   ";
 
@@ -92,7 +100,7 @@ function cashLines(report: ShiftSalesReport, w: SlipWidth): string[] {
     divider(w),
     sectionLabel("CASH IN DRAWER"),
     leftRight("Starting cash", slipMoney(cash.floatCents), w),
-    leftRight("Cash sales", slipMoney(cash.cashSalesCents), w),
+    leftRight(CASH_TAKEN_LABEL, slipMoney(cash.cashSalesCents), w),
     ...optional("Paid in", cash.payInCents, 1),
     ...optional("Paid out", cash.payOutCents, -1),
     ...optional("Pickups", cash.collectedCents, -1),
@@ -100,10 +108,28 @@ function cashLines(report: ShiftSalesReport, w: SlipWidth): string[] {
     ...(cash.expectedSource === "device" ? [center(DEVICE_SOURCE_LINE, w)] : []),
     leftRight("Counted", cash.countedCents === null ? "not yet" : slipMoney(cash.countedCents), w),
     ...differenceLine(cash, w),
-    ...(other && other.count > 0
-      ? [labelCountAmount("Other bills", String(other.count), slipMoney(other.cents), w), ...wrap(OTHER_BILLS_NOTE, w, "  ")]
-      : []),
+    ...(other && other.count > 0 ? otherBillsLines(other, w) : []),
   ];
+}
+
+/** A label and an amount on one line when they fit, else the label then the amount. */
+function labelThenAmount(label: string, amount: string, w: SlipWidth): string[] {
+  if (label.length + 1 + amount.length <= w) return [leftRight(label, amount, w)];
+  return [label, leftRight("", amount, w)];
+}
+
+/**
+ * Money she recorded on bills she did not ring here. Net negative means she
+ * handed back more than she took (change after a colleague's bill was edited
+ * down): that is change given, not a negative count of "other bills".
+ */
+function otherBillsLines(other: ShiftSalesCollections, w: SlipWidth): string[] {
+  if (other.cents >= 0) {
+    return [labelCountAmount("Other bills", String(other.count), slipMoney(other.cents), w), ...wrap(OTHER_BILLS_NOTE, w, "  ")];
+  }
+  const bills = other.count === 1 ? "1 bill" : `${other.count} bills`;
+  const note = `Handed back on ${bills} rung earlier or by others. Already taken out of Cash taken.`;
+  return [...labelThenAmount(OTHER_CHANGE_LABEL, slipMoney(other.cents), w), ...wrap(note, w, "  ")];
 }
 
 function itemLines(item: ShiftSalesItem, w: SlipWidth): string[] {

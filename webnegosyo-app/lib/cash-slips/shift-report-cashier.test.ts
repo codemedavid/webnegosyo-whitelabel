@@ -125,6 +125,8 @@ describe.each(WIDTHS)("cashier shift report at %i columns", (width) => {
     expect(text).toContain("VOIDS");
     expect(text).toMatch(/#03/);
     expect(text).toMatch(/SHORT +50\.00/);
+    expect(text).toMatch(/Cash taken \(net\) +1,150\.00/);
+    expect(text).toMatch(/Other bills +1 +999\.00/);
     expect(text).toContain("Cashier signature:");
     expect(text).toContain("Checked by:");
     expect(slipPlainText([{ type: "text", text }])).toMatchSnapshot();
@@ -136,6 +138,21 @@ describe.each(WIDTHS)("cashier shift report at %i columns", (width) => {
     expect(text).not.toMatch(/\d\.\d\d/);
     expect(text).toContain("#01 - #07");
     expect(text).toMatch(/#03/);
+    expect(slipPlainText([{ type: "text", text }])).toMatchSnapshot();
+  });
+
+  it("words change handed back on a colleague's bill as change given, never as negative other bills", () => {
+    const report: ShiftSalesReport = {
+      ...MINE,
+      cash: MINE.cash ? { ...MINE.cash, cashSalesCents: -15500, expectedCents: 40500 } : null,
+      otherCollections: { count: 1, cents: -15500 },
+    };
+    const text = printable(report, width);
+    expect(text).toMatch(/Cash taken \(net\) +-155\.00/);
+    expect(text.replace(/\s+/g, " ")).toMatch(/Change given on other bills -155\.00/);
+    expect(text.replace(/\s+/g, " ")).toContain("Handed back on 1 bill rung earlier or by others.");
+    expect(text).not.toMatch(/Other bills/);
+    expect(text).not.toMatch(/Cash sales/);
     expect(slipPlainText([{ type: "text", text }])).toMatchSnapshot();
   });
 
