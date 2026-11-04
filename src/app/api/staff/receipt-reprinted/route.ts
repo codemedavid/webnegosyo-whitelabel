@@ -3,6 +3,7 @@ import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { hasAnyPermission, ORDER_READ_KEYS } from '@/lib/staff-permissions'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
+import { resolveOrderBackend, type OrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import {
   buildReprintActivityArgs,
   isUuid,
@@ -22,9 +23,13 @@ import {
  * actor, they must belong to the store AND be allowed to read its orders
  * (ORDER_READ_KEYS — anyone who can open an order can reprint it), and the
  * write runs as the service role because store_activity has no client grants.
- * A platform order is looked up inside the tenant first (its branch and daily
- * number come from the row, and a branch account cannot file a line against
- * another branch's order). One row per order per minute (event_key).
+ * The backend is resolved HERE from the tenant row (resolveOrderBackend), never
+ * taken from the body: a platform order is always looked up inside the tenant
+ * first (404 when it does not exist; its branch and daily number come from the
+ * row, and a branch account cannot file a line against another branch's
+ * order). Elsewhere the line is filed under the account's own branch, or a
+ * body branch only once it is proven to be this store's (400 otherwise).
+ * One row per order per minute (event_key).
  */
 
 const RATE_LIMIT: RateLimitOptions = { limit: 60, windowSec: 60, onRedisFailure: 'instance' }
@@ -49,6 +54,30 @@ async function readPlatformOrder(admin: AdminClient, request: ReceiptReprintRequ
   if (!data) return null
   const row = data as { outlet_id: string | null; daily_number: number | null }
   return { outletId: row.outlet_id ?? null, dailyNumber: row.daily_number ?? null }
+}
+
+/** The store's order backend, from its own row. Throws when the row cannot be read. */
+async function readTenantBackend(admin: AdminClient, tenantId: string): Promise<OrderBackend> {
+  const { data, error } = await admin
+    .from('tenants')
+    .select('order_backend, convex_deployment_url')
+    .eq('id', tenantId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error('tenant row not found')
+  // The column is typed `string`; resolveOrderBackend validates the value itself.
+  return resolveOrderBackend(data as OrderBackendTenantFields)
+}
+
+async function isTenantOutlet(admin: AdminClient, tenantId: string, outletId: string): Promise<boolean> {
+  const { data, error } = await admin
+    .from('outlets')
+    .select('id')
+    .eq('id', outletId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data !== null
 }
 
 function notFound(): NextResponse {
@@ -88,18 +117,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const admin = createAdminClient({ timeoutMs: 8_000 })
 
   try {
-    let facts: OrderFacts = { outletId: accountOutlet ?? body.outletId ?? null, dailyNumber: null }
-    if (body.backend === 'platform_supabase') {
+    const backend = await readTenantBackend(admin, body.tenantId)
+    let facts: OrderFacts = { outletId: accountOutlet, dailyNumber: null }
+    if (backend === 'platform') {
       const order = await readPlatformOrder(admin, body)
       // Another branch's order reads as missing, as it would through RLS.
       if (!order || (accountOutlet && order.outletId !== accountOutlet)) return notFound()
       facts = order
+    } else if (!accountOutlet && body.outletId) {
+      if (!(await isTenantOutlet(admin, body.tenantId, body.outletId))) {
+        return NextResponse.json({ error: 'Unknown branch' }, { status: 400 })
+      }
+      facts = { outletId: body.outletId, dailyNumber: null }
     }
 
     const args = buildReprintActivityArgs({
       request: body,
       actorUserId: user.id,
       actorEmail: user.email,
+      backend,
       outletId: facts.outletId,
       dailyNumber: facts.dailyNumber,
       nowMs: Date.now(),

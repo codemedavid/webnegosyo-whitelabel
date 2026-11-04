@@ -5,6 +5,10 @@
  * Activity line ("Ana reprinted #12 receipt"), written as the service role for
  * a caller who may read the store's orders, about an order the store really
  * owns, deduped per order per minute.
+ *
+ * The backend is the SERVER's call (resolveOrderBackend over the tenant row):
+ * a body saying "convex" for a platform store must not skip the order lookup,
+ * and a body branch is believed only once it is proven to be this store's.
  */
 
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
@@ -40,6 +44,9 @@ describe('POST /api/staff/receipt-reprinted', () => {
   let orderRow: Record<string, unknown> | null
   let rpcResult: { data: unknown; error: { message: string } | null }
   let rateAllowed: boolean
+  let tenantRow: Record<string, unknown> | null
+  let outletRow: Record<string, unknown> | null
+  let tables: string[]
 
   async function asCaller(appUser: Record<string, unknown>) {
     const scope = await import('@/lib/queries/fetch-app-user-scope')
@@ -57,6 +64,9 @@ describe('POST /api/staff/receipt-reprinted', () => {
     orderRow = { id: ORDER_ID, outlet_id: OUTLET, daily_number: 12 }
     rpcResult = { data: true, error: null }
     rateAllowed = true
+    tenantRow = { order_backend: 'auto', convex_deployment_url: null }
+    outletRow = { id: OUTLET }
+    tables = []
 
     const { createClient } = await import('@supabase/supabase-js')
     ;(createClient as unknown as jest.Mock).mockReturnValue({
@@ -73,11 +83,13 @@ describe('POST /api/staff/receipt-reprinted', () => {
 
     const admin = await import('@/lib/supabase/admin')
     ;(admin.createAdminClient as unknown as jest.Mock).mockReturnValue({
-      from: () => {
+      from: (table: string) => {
+        tables.push(table)
+        const rows: Record<string, unknown> = { orders: orderRow, tenants: tenantRow, outlets: outletRow }
         const chain = {
           select: () => chain,
           eq: () => chain,
-          maybeSingle: async () => ({ data: orderRow, error: null }),
+          maybeSingle: async () => ({ data: rows[table] ?? null, error: null }),
         }
         return chain
       },
@@ -178,10 +190,92 @@ describe('POST /api/staff/receipt-reprinted', () => {
   })
 
   test("a branch account's Convex reprint is filed under its own branch, whatever the body says", async () => {
+    tenantRow = { order_backend: 'auto', convex_deployment_url: 'https://happy-otter-1.convex.cloud' }
     await asCaller({ permissions: ['pos'], outlet_id: OUTLET })
     const res = await post({ tenantId: TENANT, backend: 'convex', orderId: 'k57convexid', outletId: OTHER_OUTLET, dailyNumber: 3 })
     expect(res.status).toBe(200)
     expect(rpcCalls[0]!.params).toMatchObject({ p_outlet_id: OUTLET, p_backend: 'convex', p_order_number: '#03' })
+  })
+
+  describe('the backend is decided on the server', () => {
+    test('a platform store looks the order up even when the body says convex', async () => {
+      orderRow = null
+      const res = await post({ ...PLATFORM_BODY, backend: 'convex' })
+      expect(res.status).toBe(404)
+      expect(tables).toContain('orders')
+      expect(rpcCalls).toHaveLength(0)
+    })
+
+    test('a platform store files the line as platform, with the row’s branch and number, whatever the body says', async () => {
+      const res = await post({ ...PLATFORM_BODY, backend: 'tenant_supabase', outletId: OTHER_OUTLET, dailyNumber: 99 })
+      expect(res.status).toBe(200)
+      expect(rpcCalls[0]!.params).toMatchObject({ p_backend: 'platform', p_outlet_id: OUTLET, p_order_number: '#12' })
+    })
+
+    test('a body without a backend is accepted (the server needs none)', async () => {
+      const res = await post({ tenantId: TENANT, orderId: ORDER_ID })
+      expect(res.status).toBe(200)
+      expect(rpcCalls[0]!.params).toMatchObject({ p_backend: 'platform' })
+    })
+
+    test('a platform-pinned store with a leftover Convex URL is still platform', async () => {
+      tenantRow = { order_backend: 'platform', convex_deployment_url: 'https://happy-otter-1.convex.cloud' }
+      orderRow = null
+      expect((await post({ ...PLATFORM_BODY, backend: 'convex' })).status).toBe(404)
+    })
+
+    test('a Convex store is filed as convex even when the body says platform (no platform lookup)', async () => {
+      tenantRow = { order_backend: 'auto', convex_deployment_url: 'https://happy-otter-1.convex.cloud' }
+      orderRow = null
+      const res = await post({ tenantId: TENANT, backend: 'platform_supabase', orderId: 'k57convexid', dailyNumber: 4 })
+      expect(res.status).toBe(200)
+      expect(tables).not.toContain('orders')
+      expect(rpcCalls[0]!.params).toMatchObject({ p_backend: 'convex', p_order_number: '#04', p_outlet_id: null })
+    })
+
+    test('a tenant-Supabase store is filed as supabase', async () => {
+      tenantRow = { order_backend: 'supabase', convex_deployment_url: null }
+      const res = await post({ tenantId: TENANT, backend: 'convex', orderId: ORDER_ID })
+      expect(res.status).toBe(200)
+      expect(rpcCalls[0]!.params).toMatchObject({ p_backend: 'supabase' })
+    })
+
+    test('500 (logged) when the store row cannot be read — never a guess', async () => {
+      tenantRow = null
+      const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      expect((await post(PLATFORM_BODY)).status).toBe(500)
+      expect(rpcCalls).toHaveLength(0)
+      spy.mockRestore()
+    })
+  })
+
+  describe('a body branch must be this store’s', () => {
+    const CONVEX_BODY = { tenantId: TENANT, backend: 'convex', orderId: 'k57convexid', outletId: OUTLET }
+
+    beforeEach(() => {
+      tenantRow = { order_backend: 'convex', convex_deployment_url: 'https://happy-otter-1.convex.cloud' }
+    })
+
+    test('a store-wide account may name one of the store’s branches', async () => {
+      const res = await post(CONVEX_BODY)
+      expect(res.status).toBe(200)
+      expect(tables).toContain('outlets')
+      expect(rpcCalls[0]!.params).toMatchObject({ p_outlet_id: OUTLET })
+    })
+
+    test('400 for a branch that is not this store’s, and nothing is written', async () => {
+      outletRow = null
+      const res = await post({ ...CONVEX_BODY, outletId: OTHER_OUTLET })
+      expect(res.status).toBe(400)
+      expect(rpcCalls).toHaveLength(0)
+    })
+
+    test('no branch named: filed store-wide, no branch read', async () => {
+      const res = await post({ tenantId: TENANT, backend: 'convex', orderId: 'k57convexid' })
+      expect(res.status).toBe(200)
+      expect(tables).not.toContain('outlets')
+      expect(rpcCalls[0]!.params).toMatchObject({ p_outlet_id: null })
+    })
   })
 
   test('400 when the body names the actor or is malformed', async () => {
