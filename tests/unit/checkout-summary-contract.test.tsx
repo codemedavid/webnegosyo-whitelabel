@@ -166,6 +166,13 @@ describe.each(DESIGNS)('%s checkout order summary', (_name, Design) => {
     expect(screen.queryByText(/more for free delivery/i)).not.toBeInTheDocument()
   })
 
+  it('shows the kitchen note under its dish', () => {
+    const [line] = makeCheckout().items
+    renderWithSummary(Design, makeCheckout({ items: [{ ...line, special_instructions: 'less ice' }] }))
+
+    expect(screen.getAllByText(/less ice/).length).toBeGreaterThan(0)
+  })
+
   it('tells the customer how much more unlocks free delivery', () => {
     renderWithSummary(Design, makeCheckout({ freeDeliveryRemaining: 150 }))
 

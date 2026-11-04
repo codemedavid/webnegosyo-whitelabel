@@ -189,6 +189,7 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'product/variation-option': scope('product', 'Variations', 'Variation option', 'variation_option_background_color'),
   'product/addon-option': scope('product', 'Add-ons', 'Add-on option', 'addon_background_color'),
   'product/presell': scope('product', 'Variations', 'Pickup date', 'variation_section_title_color'),
+  'product/note': scope('product', 'Add-ons', 'Kitchen note', 'addon_background_color'),
   'product/related-item': scope('product', 'Related items', 'Related item', 'related_item_background_color'),
   'product/quantity': scope('product', 'Sticky footer & actions', 'Quantity controls', 'quantity_controls_background'),
   'product/add-to-cart': scope('product', 'Sticky footer & actions', 'Add to Cart button', 'add_to_cart_button_background'),

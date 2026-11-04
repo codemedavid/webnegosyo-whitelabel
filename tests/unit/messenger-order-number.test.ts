@@ -32,3 +32,19 @@ describe('formatOrderMessage — daily order number header', () => {
     expect(msg.split('\n')[0]).toBe('🍽️ New Order from Cafe X')
   })
 })
+
+describe('formatOrderMessage — kitchen notes', () => {
+  it('prints a dish\'s note under that dish', () => {
+    const msg = formatOrderMessage(makeOrder({
+      items: [
+        { menu_item_id: 'b', menu_item_name: 'Burger', addons: [], quantity: 1, price: 100, subtotal: 100, special_instructions: 'no onions' },
+        { menu_item_id: 'f', menu_item_name: 'Fries', addons: [], quantity: 1, price: 50, subtotal: 50 },
+      ],
+    } as Partial<Order>), tenant)
+
+    const lines = msg.split('\n')
+    const burger = lines.indexOf('1. Burger')
+    expect(lines[burger + 1]).toBe('   Special: no onions')
+    expect(msg.match(/Special:/g)).toHaveLength(1)
+  })
+})

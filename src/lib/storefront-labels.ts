@@ -33,6 +33,8 @@ export const STOREFRONT_LABELS = {
     'item.related_title': { screen: 'item', label: '"You might also like" title', example: 'You might also like', maxLength: MEDIUM },
     'item.unavailable': { screen: 'item', label: 'Unavailable notice', example: 'This item is currently unavailable.', maxLength: LONG },
     'item.pickup_date': { screen: 'item', label: 'Pickup date title', example: 'Choose a pickup date', maxLength: MEDIUM },
+    'item.note_title': { screen: 'item', label: 'Kitchen note title', example: 'Notes for the kitchen', maxLength: MEDIUM },
+    'item.note_placeholder': { screen: 'item', label: 'Kitchen note hint', example: 'e.g. no onions, less ice', maxLength: MEDIUM },
     'item.added_title': { screen: 'item', label: 'After adding — title', example: 'Added to your order', maxLength: MEDIUM },
     'item.added_pairings': { screen: 'item', label: 'After adding — suggestions', example: 'Goes well with it', maxLength: MEDIUM },
     'item.view_cart': { screen: 'item', label: 'View cart button', example: 'View cart', maxLength: SHORT },

@@ -683,11 +683,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
             newQuantity
           )
 
+          // Same id = same kitchen note (it is part of the id), so the
+          // line keeps its own note; a different note is a different line.
           updatedItems[existingItemIndex] = {
             ...existingItem,
             quantity: newQuantity,
             subtotal: newSubtotal,
-            special_instructions: specialInstructions || existingItem.special_instructions,
           }
 
           return updatedItems

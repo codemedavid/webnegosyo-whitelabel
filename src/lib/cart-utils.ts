@@ -1,6 +1,7 @@
 import type { CartItem, MenuItem, Variation, Addon, VariationOption, CartBundleItem } from '@/types/database'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 import { addonQuantity, addonCartKey, addonPriceList } from '@/lib/addon-quantity'
+import { itemNoteKey, normalizeItemNote } from '@/lib/item-note'
 
 /** Maximum quantity allowed for a single cart line item. */
 export const MAX_CART_ITEM_QUANTITY = 99
@@ -94,7 +95,9 @@ export function generateCartItemId(
   menuItemId: string,
   variationOrVariations?: string | { [typeId: string]: VariationOption },
   addonIds?: string[],
-  presellDate?: string
+  presellDate?: string,
+  /** The diner's kitchen note: two different notes are two lines. */
+  note?: string
 ): string {
   const parts = [menuItemId]
 
@@ -120,6 +123,10 @@ export function generateCartItemId(
   // different pickup dates is two lines, each capped by its own date's stock.
   if (presellDate) {
     parts.push(`@${presellDate}`)
+  }
+  const noteKey = itemNoteKey(note)
+  if (noteKey) {
+    parts.push(noteKey)
   }
   return parts.join('_')
 }
@@ -156,13 +163,15 @@ export function makeCartItem(
         menuItem.id,
         variationOrVariations as { [typeId: string]: VariationOption },
         addons.map(addonCartKey),
-        presellDate
+        presellDate,
+        specialInstructions
       )
     : generateCartItemId(
         menuItem.id,
         (variationOrVariations as Variation | undefined)?.id,
         addons.map(addonCartKey),
-        presellDate
+        presellDate,
+        specialInstructions
       )
 
   const subtotal = calculateCartItemSubtotal(
@@ -180,7 +189,7 @@ export function makeCartItem(
       : { selected_variation: variationOrVariations as Variation | undefined }),
     selected_addons: addons,
     quantity,
-    special_instructions: specialInstructions,
+    special_instructions: normalizeItemNote(specialInstructions),
     subtotal,
     ...(upsell?.upsellSource
       ? { upsellSource: upsell.upsellSource, upsellSourceItemId: upsell.upsellSourceItemId }
