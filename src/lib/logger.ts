@@ -24,7 +24,7 @@
  */
 
 /** Debug namespaces. Add the flag here and it is readable everywhere. */
-export type DebugFlagKey = 'DEBUG_TENANT_RESOLUTION' | 'DEBUG_MIDDLEWARE' | 'DEBUG_ASSISTANT' | 'DEBUG_GOV_DISCOUNTS' | 'DEBUG_SMS_AUTOMATIONS'
+export type DebugFlagKey = 'DEBUG_TENANT_RESOLUTION' | 'DEBUG_MIDDLEWARE' | 'DEBUG_ASSISTANT' | 'DEBUG_GOV_DISCOUNTS' | 'DEBUG_SMS_AUTOMATIONS' | 'DEBUG_CUSTOMER_APP'
 
 /** The subset of the environment the gate consults. */
 export interface DebugFlags {
@@ -33,6 +33,7 @@ export interface DebugFlags {
   DEBUG_ASSISTANT?: string
   DEBUG_GOV_DISCOUNTS?: string
   DEBUG_SMS_AUTOMATIONS?: string
+  DEBUG_CUSTOMER_APP?: string
   /** Turns on every namespace at once. */
   DEBUG_ALL?: string
   /** Read only so callers can reason about it; it does NOT enable tracing. */
@@ -54,6 +55,7 @@ export function readDebugFlags(): DebugFlags {
     DEBUG_ASSISTANT: process.env.DEBUG_ASSISTANT,
     DEBUG_GOV_DISCOUNTS: process.env.DEBUG_GOV_DISCOUNTS,
     DEBUG_SMS_AUTOMATIONS: process.env.DEBUG_SMS_AUTOMATIONS,
+    DEBUG_CUSTOMER_APP: process.env.DEBUG_CUSTOMER_APP,
     DEBUG_ALL: process.env.DEBUG_ALL,
     NODE_ENV: process.env.NODE_ENV,
   }
