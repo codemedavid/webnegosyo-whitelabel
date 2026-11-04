@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { BackHeader } from "../../components/BackHeader";
+import { useReturnTo } from "../../hooks/use-return-to";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { SectionHeader } from "../../components/SectionHeader";
@@ -46,6 +47,9 @@ const TEST_PAGE_TEXT = [
 ].join("\n");
 
 export default function PrinterSettingsScreen() {
+  // Opened from an order's "Printer settings" link: Back returns to the order.
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const { leave } = useReturnTo(returnTo);
   const printers = usePrinterStore((s) => s.printers);
   const connectedAddress = usePrinterStore((s) => s.connectedAddress);
   const health = usePrinterStore((s) => s.health);
@@ -165,7 +169,7 @@ export default function PrinterSettingsScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Printers" subtitle="Receipts and kitchen tickets" />
+      <BackHeader title="Printers" subtitle="Receipts and kitchen tickets" onBack={leave} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {!printerSupported ? (
           <View style={styles.warningBanner}>

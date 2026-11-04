@@ -62,6 +62,8 @@ import {
 } from "../../../lib/modifier-groups";
 import type { ModifierCatalog } from "../../../lib/order-edit-cart";
 import { goTo } from "../../../lib/tab-navigation";
+import { withReturnTo } from "../../../lib/return-to";
+import { useReturnTo } from "../../../hooks/use-return-to";
 import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 import { discountItemsText, orderSummaryRows } from "../../../lib/order-summary-rows";
@@ -420,7 +422,17 @@ const bundleStyles = StyleSheet.create({
 });
 
 export default function OrderDetailScreen() {
-  const { orderId, intent } = useLocalSearchParams<{ orderId: string; intent?: OrderIntent }>();
+  const { orderId, intent, returnTo } = useLocalSearchParams<{
+    orderId: string;
+    intent?: OrderIntent;
+    returnTo?: string;
+  }>();
+  // Opened from the Drawer (or back from Printer settings): Back returns
+  // there, not Home — the tabs' own back goes to the first tab.
+  const { returnTo: orderReturnTo, leave } = useReturnTo(returnTo);
+  const orderHrefWithReturn = withReturnTo(`/(main)/order/${encodeURIComponent(String(orderId))}`, orderReturnTo);
+  const openPrinterSettings = () =>
+    router.push(withReturnTo("/(main)/printer-settings", orderHrefWithReturn) as never);
   // A sale rung up offline is not on the server yet: the order comes from
   // this device, and changes made here wait for it (lib/offline/).
   const offlineDetail = useOfflineOrderDetail(orderId);
@@ -938,6 +950,7 @@ export default function OrderDetailScreen() {
   return (
     <View style={styles.screen}>
       <BackHeader
+        onBack={leave}
         title={`Order ${formatDailyOrderNumber(order.dailyNumber, order._id)}`}
         subtitle={displayCustomerName(order.customerName)}
         actions={<Badge label={order.status} variant={order.status} />}
@@ -971,7 +984,7 @@ export default function OrderDetailScreen() {
           status={reprintFeedback?.orderId === order._id ? reprintFeedback.status : null}
           targets={reprintPrinters}
           onReprint={(printerId) => void handleReprint(printerId)}
-          onOpenPrinterSettings={() => router.push("/(main)/printer-settings")}
+          onOpenPrinterSettings={openPrinterSettings}
           kitchenChit={
             kitchenChitGate(order, printers)
               ? {

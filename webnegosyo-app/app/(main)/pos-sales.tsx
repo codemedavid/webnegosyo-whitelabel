@@ -62,6 +62,7 @@ import { canOpenMyActivity, MY_ACTIVITY_HREF } from "../../lib/activity/my-activ
 import { usePrinterStore } from "../../stores/printer-store";
 import { reprintGate } from "../../lib/reprint-gate";
 import { reprintOrderHref } from "../../lib/reprint-route";
+import { withReturnTo } from "../../lib/return-to";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -89,6 +90,9 @@ const NO_SALES: DrawerSale[] = [];
  * screen is where a real backlog gets worked.
  */
 const INTAKE_PREVIEW = 3;
+
+/** Where an order opened from the Drawer comes back to (the tabs' own back goes Home). */
+const DRAWER_ROUTE = "/(main)/pos-sales";
 
 function formatSaleTime(at: number): string {
   return new Date(at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
@@ -365,7 +369,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
     // and the collect sheet are.
     const route = resolveListAdvance({ ...order, status: order.status ?? "pending" }, "confirmed");
     if (route.kind === "open") {
-      router.push(`/(main)/order/${order._id}?intent=${route.intent}`);
+      router.push(withReturnTo(`/(main)/order/${order._id}?intent=${route.intent}`, DRAWER_ROUTE) as never);
       return;
     }
 
@@ -478,7 +482,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
                   <View key={order._id} style={[styles.intake, !isLast && styles.grouped]}>
                     <TouchableOpacity
                       style={styles.intakeText}
-                      onPress={() => router.push(`/(main)/order/${order._id}`)}
+                      onPress={() => router.push(withReturnTo(`/(main)/order/${order._id}`, DRAWER_ROUTE) as never)}
                       accessibilityLabel={`Open order from ${order.customerName ?? "customer"}`}
                     >
                       <Text style={styles.rowTitle}>{describeIncomingOrder(order)}</Text>
@@ -526,7 +530,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
                 <TouchableOpacity
                   key={sale._id}
                   style={[styles.sale, !isLast && styles.grouped]}
-                  onPress={() => router.push(`/(main)/order/${sale._id}`)}
+                  onPress={() => router.push(withReturnTo(`/(main)/order/${sale._id}`, DRAWER_ROUTE) as never)}
                   accessibilityLabel={`${formatSaleTime(sale._creationTime)}, ${row.meta}, ${formatPeso(sale.total)}`}
                 >
                   <View style={styles.saleText}>
@@ -553,7 +557,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
                       icon="printer"
                       tone="secondary"
                       size="md"
-                      onPress={() => router.push(reprintOrderHref(sale._id) as never)}
+                      onPress={() => router.push(withReturnTo(reprintOrderHref(sale._id), DRAWER_ROUTE) as never)}
                       accessibilityLabel={`Reprint the receipt for the ${formatSaleTime(sale._creationTime)} sale`}
                     />
                   ) : null}
