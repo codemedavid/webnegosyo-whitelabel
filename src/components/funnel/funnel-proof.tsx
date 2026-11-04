@@ -16,15 +16,26 @@ const BERACAH_VIDEO = {
   business: 'Beracah Cafe',
 } as const
 
-/**
- * Transcribed word for word from merchants' Messenger messages (screenshots
- * the owner shared, 2026-11-04). Only the praise is quoted: one message also
- * asks about Apple printer support, another about a room-booking site.
- */
-const MESSENGER_MESSAGES = [
-  { quote: 'nag relaunch kami now, mas manageable na kasi ang bagong updates sa app. this is way better sa previous versions', from: 'Merchant' },
-  { quote: 'malaking tulong yung platform actually', from: 'Merchant' },
-  { quote: 'Sobrang ganda ng gawa mo', from: 'Chona' },
+/** Merchants' own Messenger messages, as the screenshots the owner shared (2026-11-04). */
+const MESSENGER_SCREENSHOTS = [
+  {
+    src: '/testimonials/message-relaunch.jpg',
+    width: 1179,
+    height: 386,
+    alt: 'Merchant on Messenger: "nag relaunch kami now, mas manageable na kasi ang bagong updates sa app. this is way better sa previous versions"',
+  },
+  {
+    src: '/testimonials/message-platform-help.jpg',
+    width: 1179,
+    height: 746,
+    alt: 'Merchant on Messenger: "pero malaking tulong yung platform actually, iniintay ko lang yung updated for apple products to connect them from printers hehehe as of now android yung gamit namin e"',
+  },
+  {
+    src: '/testimonials/message-chona.jpg',
+    width: 1179,
+    height: 671,
+    alt: 'Chona on Messenger: "Sobrang ganda ng gawa mo. possible kaya to for a staycation? gusto sana namin pagawa ng room booking if possible"',
+  },
 ] as const
 
 /** Transcribed from /testimonial2.png, the merchant's real Facebook recommendation. */
@@ -37,7 +48,7 @@ const FACEBOOK_REVIEW = {
 
 /**
  * Proof uses only what is real: the product demo, two merchants' videos,
- * their own messages and a Facebook review. No invented star ratings or review counts.
+ * screenshots of their own messages and a Facebook review. No invented star ratings or review counts.
  */
 export function FunnelProof() {
   return (
@@ -74,13 +85,16 @@ export function FunnelProof() {
             </figcaption>
           </figure>
           <div className="flex flex-col justify-center gap-4">
-            {MESSENGER_MESSAGES.map((m) => (
-              <figure key={m.quote} className="fn-card p-5">
-                <blockquote className="text-[17px] leading-relaxed text-white">“{m.quote}”</blockquote>
-                <figcaption className="mt-3 text-[13px] text-[#A99C8D]">
-                  <span className="font-semibold text-white">{m.from}</span> · {PROOF.messengerSource}
-                </figcaption>
-              </figure>
+            {MESSENGER_SCREENSHOTS.map((shot) => (
+              <Image
+                key={shot.src}
+                src={shot.src}
+                alt={shot.alt}
+                width={shot.width}
+                height={shot.height}
+                sizes="(min-width: 768px) 500px, 100vw"
+                className="fn-shot h-auto w-full"
+              />
             ))}
           </div>
         </div>
