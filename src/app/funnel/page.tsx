@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
 import { FunnelPage } from '@/components/funnel/funnel-page'
+import { SIX_MONTH_PER_MONTH, formatPeso } from '@/components/funnel/funnel-offer'
 
-const TITLE = 'SmartMenu: More Repeat Customers and Bigger Orders | ₱999/month'
+const TITLE = `SmartMenu: Ordering, POS, Inventory, Loyalty at SMS | from ${formatPeso(SIX_MONTH_PER_MONTH)}/month`
 const DESCRIPTION =
-  'Get more customers ordering, bigger orders with automatic upsells, and regulars who come back with stamp cards and SMS. ₱999/month, free done-for-you setup, live in 48 hours. No lock-in.'
+  'Ordering website (dine-in, pick-up, delivery), Lalamove, POS, inventory, expense tracker, loyalty, SMS marketing, analytics at automatic upsells in one system. 6 months for ₱5,499 with free done-for-you setup, or ₱1,499/month.'
 
 export const metadata: Metadata = {
   title: TITLE,
