@@ -92,4 +92,8 @@ app. Tell them; do not edit their data.
 
 ## Evidence (2026-11-04)
 
-See the final report for the counts of: inventory suites, `npm run test:sql`, full `npx jest --ci`.
+- `npm run test:sql`: 48/48 runners passed (incl. run-inventory-counted 20, run-inventory-permission-hardening 81,
+  run-order-stock-atomic-claim, run-pos-stock-policy 21).
+- Full web suite `npx jest --ci`: 1609 suites / 18,300 tests passed (11 suites, 35 tests skipped = opt-in live), exit 0.
+- `npx tsc --noEmit` clean (apart from webnegosyo-desktop's missing `electron` types, pre-existing);
+  `npx eslint` over the 71 touched src files: 0 errors.
