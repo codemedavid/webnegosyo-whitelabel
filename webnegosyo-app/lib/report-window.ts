@@ -24,6 +24,7 @@
 
 import {
   nextBusinessDayKey,
+  previousBusinessDayKey,
   resolveBusinessDayWindow,
   toBusinessDayKey,
 } from "./daily-report/business-day";
@@ -321,6 +322,55 @@ export function rangeDayCount(selection: ReportSelection): number {
 /** The window of equal length immediately before this one, for "vs previous". */
 export function previousReportWindow(window: ReportWindow): ReportWindow {
   return { startMs: window.startMs - (window.endMs - window.startMs), endMs: window.startMs };
+}
+
+// ---------------------------------------------------------------------------
+// Quick picks: one-tap selections named after what a person says ("Today",
+// "This month"). They are picked DAYS, never `daysBack` presets, so they mean
+// the store's business days on every backend and can be compared, labelled
+// and exported like any day chosen on the calendar.
+
+/** A chip that stands for one selection. */
+export interface ReportQuickPick {
+  key: string;
+  label: string;
+  selection: ReportSelection;
+}
+
+/** Today's business day (the store's cutoff, else Manila midnight). */
+export function todaySelection(nowMs: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): ReportSelection {
+  return { kind: "day", dayKey: todayKeyAt(nowMs, schedule) };
+}
+
+/** The business day before today. */
+export function yesterdaySelection(nowMs: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): ReportSelection {
+  return { kind: "day", dayKey: previousBusinessDayKey(todayKeyAt(nowMs, schedule)) };
+}
+
+/** The last `days` business days, counting today. */
+export function lastNDaysSelection(
+  days: number,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): ReportSelection {
+  const todayKey = todayKeyAt(nowMs, schedule);
+  return { kind: "range", fromKey: addDayKeys(todayKey, -(clampDays(days) - 1)), toKey: todayKey };
+}
+
+/** The 1st of today's business month through today. */
+export function thisMonthSelection(nowMs: number, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): ReportSelection {
+  const todayKey = todayKeyAt(nowMs, schedule);
+  return { kind: "range", fromKey: `${todayKey.slice(0, 8)}01`, toKey: todayKey };
+}
+
+/** Whether two selections name the same days (a one-day range IS that day). */
+export function isSameSelection(a: ReportSelection, b: ReportSelection): boolean {
+  if (a.kind === "preset" || b.kind === "preset") {
+    return a.kind === "preset" && b.kind === "preset" && clampDays(a.days) === clampDays(b.days);
+  }
+  const [aFrom, aTo] = a.kind === "day" ? [a.dayKey, a.dayKey] : [a.fromKey, a.toKey];
+  const [bFrom, bTo] = b.kind === "day" ? [b.dayKey, b.dayKey] : [b.fromKey, b.toKey];
+  return aFrom === bFrom && aTo === bTo;
 }
 
 /** The day counts the report pills offer. Unchanged from what they shipped. */
