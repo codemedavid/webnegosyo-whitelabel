@@ -25,6 +25,9 @@ const ceilingsOf = (latte: number): PosStockCeilings => ({
 });
 
 let pressCharge: () => void = () => {};
+let addSevenAfterPicker: () => void = () => {};
+let addOne: () => void = () => {};
+let leaveRegister: () => void = () => {};
 
 function Register({ ceilings, context }: { ceilings: PosStockCeilings; context: StockDecisionContext }) {
   const lines = usePosCartStore((s) => s.lines);
@@ -39,6 +42,17 @@ function Register({ ceilings, context }: { ceilings: PosStockCeilings; context: 
     guard.guardAdd({ menuItemId: LATTE.menuItemId, name: LATTE.name, quantity: 7, options: [] }, (units) =>
       usePosCartStore.getState().add({ ...LATTE, quantity: units, selections: [] }),
     );
+  addSevenAfterPicker = () =>
+    guard.guardAdd(
+      { menuItemId: LATTE.menuItemId, name: LATTE.name, quantity: 7, options: [] },
+      (units) => usePosCartStore.getState().add({ ...LATTE, quantity: units, selections: [] }),
+      { presentAfterMs: 350 },
+    );
+  addOne = () =>
+    guard.guardAdd({ menuItemId: LATTE.menuItemId, name: LATTE.name, quantity: 1, options: [] }, (units) =>
+      usePosCartStore.getState().add({ ...LATTE, quantity: units, selections: [] }),
+    );
+  leaveRegister = guard.cancel;
   pressCharge = () =>
     guard.guardCharge(onTender, (changes) =>
       changes.forEach(({ key, quantity }) => usePosCartStore.getState().setQty(key, quantity)),
@@ -98,21 +112,43 @@ describe("register stock journey: 5 in stock, cashier adds 7", () => {
     expect(screen.queryByText("Only 5 left")).toBeNull();
   });
 
-  it("warn: Sell anyway leaves 7, and Charge asks once more", () => {
+  it("warn: Sell anyway leaves 7, and Charge does not ask about it again", () => {
     addSevenAgainstFive(WARN);
     fireEvent.press(screen.getByText("Sell anyway"));
     expect(latteUnits()).toBe(7);
 
     act(() => pressCharge());
-    expect(screen.getByText("This sale has 7 × Iced Latte. Stock covers 5.")).toBeTruthy();
-    fireEvent.press(screen.getByText("Sell anyway"));
+    expect(screen.queryByText("This sale has 7 × Iced Latte. Stock covers 5.")).toBeNull();
     expect(onTender).toHaveBeenCalledTimes(1);
     expect(latteUnits()).toBe(7);
   });
 
-  it("warn: Sell 5 at Charge cuts the cart to 5 and goes on to tender", () => {
+  it("warn: Charge asks again once the quantity grew past what she accepted", () => {
     addSevenAgainstFive(WARN);
     fireEvent.press(screen.getByText("Sell anyway"));
+    act(() => addOne());
+    expect(latteUnits()).toBe(8);
+
+    act(() => pressCharge());
+    expect(screen.getByText("This sale has 8 × Iced Latte. Stock covers 5.")).toBeTruthy();
+    fireEvent.press(screen.getByText("Sell anyway"));
+    expect(onTender).toHaveBeenCalledTimes(1);
+
+    // Answered at Charge too: going back and charging again does not re-ask.
+    act(() => pressCharge());
+    expect(onTender).toHaveBeenCalledTimes(2);
+  });
+
+  it("block: Charge still checks a dish sold anyway when adding", () => {
+    addSevenAgainstFive(BLOCK_MANAGER);
+    fireEvent.press(screen.getByText("Sell anyway"));
+    act(() => pressCharge());
+    expect(screen.getByText("This sale has 7 × Iced Latte. Stock covers 5.")).toBeTruthy();
+  });
+
+  it("warn: Sell 5 at Charge cuts the cart to 5 and goes on to tender", () => {
+    act(() => usePosCartStore.getState().add({ ...LATTE, quantity: 7, selections: [] }));
+    render(<Register ceilings={ceilingsOf(5)} context={WARN} />);
     act(() => pressCharge());
     fireEvent.press(screen.getByText("Sell 5"));
     expect(latteUnits()).toBe(5);
@@ -156,5 +192,39 @@ describe("register stock journey: 5 in stock, cashier adds 7", () => {
     addSevenAgainstFive(BLOCK_OFFLINE);
     fireEvent.press(screen.getByText("Sell anyway"));
     expect(latteUnits()).toBe(7);
+  });
+});
+
+describe("the add question waiting for the picker to close", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("Charge tapped meanwhile cancels it: no question over the tender, nothing added under its total", () => {
+    render(<Register ceilings={ceilingsOf(5)} context={WARN} />);
+    act(() => addSevenAfterPicker());
+    act(() => pressCharge());
+    expect(onTender).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.queryByText("Only 5 left")).toBeNull();
+    expect(latteUnits()).toBe(0);
+  });
+
+  it("leaving the register drops a waiting question and an open one", () => {
+    render(<Register ceilings={ceilingsOf(5)} context={WARN} />);
+    act(() => addSevenAfterPicker());
+    act(() => leaveRegister());
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.queryByText("Only 5 left")).toBeNull();
+
+    fireEvent.press(screen.getByText("Add 7 lattes"));
+    expect(screen.getByText("Only 5 left")).toBeTruthy();
+    act(() => leaveRegister());
+    expect(screen.queryByText("Only 5 left")).toBeNull();
+    expect(latteUnits()).toBe(0);
   });
 });

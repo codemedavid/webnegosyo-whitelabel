@@ -461,6 +461,21 @@ export default function PosScreen() {
     },
   });
 
+  // The register never unmounts: leaving it (Charge → tender, another tab)
+  // drops a stock question still waiting on the picker's close, an open one,
+  // and the sold-out sheet, so none of them surfaces over another screen.
+  const { cancel: cancelStockQuestion } = stockGuard;
+  const { close: closeSoldOut } = soldOut;
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        cancelStockQuestion();
+        closeSoldOut();
+      },
+      [cancelStockQuestion, closeSoldOut],
+    ),
+  );
+
   const handleTap = (item: RegisterItem) => {
     // The merchant's switch: the tile explains itself and adds nothing.
     if (item.soldOutReason) {

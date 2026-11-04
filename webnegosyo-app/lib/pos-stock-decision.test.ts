@@ -4,7 +4,9 @@
  */
 
 import {
+  acceptShortfalls,
   canSellPastStock,
+  chargeShortfallsToAsk,
   clampLinesToStock,
   decideAddStock,
   decideChargeStock,
@@ -240,5 +242,34 @@ describe("clampLinesToStock", () => {
     const lines = [line("oat", "m-latte", 7, ["o-oat"])];
     const shortfalls = [short({ producible: 5 }), short({ optionId: "o-oat", optionName: "Oat", producible: 4 })];
     expect(clampLinesToStock(lines, shortfalls)).toEqual([{ key: "oat", quantity: 4 }]);
+  });
+});
+
+describe("chargeShortfallsToAsk (a warn store does not ask twice)", () => {
+  const accepted = acceptShortfalls(new Map(), [short({ wanted: 7 })]);
+
+  it("warn: skips a dish the cashier already said Sell anyway for, at that quantity or less", () => {
+    expect(chargeShortfallsToAsk([short({ wanted: 7 })], accepted, "warn")).toEqual([]);
+    expect(chargeShortfallsToAsk([short({ wanted: 6 })], accepted, "warn")).toEqual([]);
+  });
+
+  it("warn: asks again once the quantity grew beyond what she accepted", () => {
+    expect(chargeShortfallsToAsk([short({ wanted: 8 })], accepted, "warn")).toEqual([short({ wanted: 8 })]);
+  });
+
+  it("warn: a different shelf of the same dish (an option) is its own answer", () => {
+    const milk = short({ optionId: "oat", optionName: "Oat", producible: 2, wanted: 3 });
+    expect(chargeShortfallsToAsk([milk], accepted, "warn")).toEqual([milk]);
+  });
+
+  it("block: Charge always checks the whole sale", () => {
+    expect(chargeShortfallsToAsk([short({ wanted: 7 })], accepted, "block")).toEqual([short({ wanted: 7 })]);
+  });
+
+  it("acceptShortfalls keeps the largest quantity answered, without changing the map it was given", () => {
+    const first = acceptShortfalls(new Map(), [short({ wanted: 9 })]);
+    const second = acceptShortfalls(first, [short({ wanted: 7 })]);
+    expect(second.get("m-latte:")).toBe(9);
+    expect(first).not.toBe(second);
   });
 });

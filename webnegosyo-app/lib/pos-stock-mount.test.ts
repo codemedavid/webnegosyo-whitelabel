@@ -17,6 +17,11 @@ describe("register stock wiring (pos.tsx)", () => {
     expect(source).toMatch(/onCharge=\{handleCharge\}/);
   });
 
+  it("leaving the register drops the stock question, its timer and the sold-out sheet", () => {
+    expect(source).toMatch(/cancelStockQuestion\(\);\s*closeSoldOut\(\);/);
+    expect(source).toMatch(/const \{ cancel: cancelStockQuestion \} = stockGuard;/);
+  });
+
   it("checks each add through the guard", () => {
     expect(source).toMatch(/stockGuard\.guardAdd\(/);
   });

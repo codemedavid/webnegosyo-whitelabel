@@ -161,6 +161,46 @@ export function decideChargeStock(input: ChargeStockInput, context: StockDecisio
   };
 }
 
+/**
+ * What the cashier already answered "Sell anyway" for in this sale: one shelf
+ * (`shortfallKey`) → the most units she accepted on it.
+ */
+export type AcceptedShortfalls = ReadonlyMap<string, number>;
+
+/** The shelf a shortfall is about: the dish's own, or one of its options. */
+export function shortfallKey(shortfall: StockShortfall): string {
+  return `${shortfall.menuItemId}:${shortfall.optionId ?? ""}`;
+}
+
+/** `accepted` plus these answers (largest quantity wins); a new map. */
+export function acceptShortfalls(
+  accepted: AcceptedShortfalls,
+  shortfalls: readonly StockShortfall[],
+): AcceptedShortfalls {
+  return shortfalls.reduce<Map<string, number>>((next, shortfall) => {
+    const key = shortfallKey(shortfall);
+    next.set(key, Math.max(next.get(key) ?? 0, shortfall.wanted));
+    return next;
+  }, new Map(accepted));
+}
+
+/**
+ * The shortfalls Charge still asks about. A warn store does not ask twice
+ * about a shelf the cashier already sold anyway — unless the sale now holds
+ * more than she accepted. A block store always checks the whole sale.
+ */
+export function chargeShortfallsToAsk(
+  shortfalls: readonly StockShortfall[],
+  accepted: AcceptedShortfalls,
+  policy: PosStockPolicy,
+): StockShortfall[] {
+  if (policy !== "warn") return [...shortfalls];
+  return shortfalls.filter((shortfall) => {
+    const units = accepted.get(shortfallKey(shortfall));
+    return units === undefined || shortfall.wanted > units;
+  });
+}
+
 export interface LineQuantityChange {
   key: string;
   /** 0 = remove the line. */

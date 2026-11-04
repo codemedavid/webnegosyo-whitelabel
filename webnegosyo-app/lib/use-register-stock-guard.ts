@@ -6,8 +6,13 @@
  *
  * No ceilings (offline, a failed read, inventory off) means no question — the
  * till never waits on a guess. A dish the cashier already chose to "Sell
- * anyway" is not asked about again on the next tap in the same sale (Charge
- * still asks, once, over the whole sale).
+ * anyway" is not asked about again on the next tap in the same sale. Charge
+ * asks over the whole sale — on a warn store only about what she has not
+ * already answered (or what grew past her answer); a block store always.
+ *
+ * The register is a tab screen that never unmounts: `cancel` (called when it
+ * loses focus) drops a question still waiting on the picker's close, and an
+ * open one, so neither surfaces over the tender screen.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,9 +24,12 @@ import {
   type StockDemandLine,
 } from "./pos-stock-warning";
 import {
+  acceptShortfalls,
+  chargeShortfallsToAsk,
   clampLinesToStock,
   decideAddStock,
   decideChargeStock,
+  type AcceptedShortfalls,
   type LineQuantityChange,
   type StockDecisionContext,
   type StockQuestion,
@@ -64,17 +72,22 @@ export interface RegisterStockGuard {
   /** Go on to tender, or ask first. `applyChanges` cuts the cart for "Sell N". */
   guardCharge: (proceed: () => void, applyChanges: (changes: LineQuantityChange[]) => void) => void;
   sheet: StockSheetBindings;
+  /** Drop any waiting or open question (the register lost focus). */
+  cancel: () => void;
 }
 
 export function useRegisterStockGuard(input: RegisterStockGuardInput): RegisterStockGuard {
   const { lines, demand, ceilings, context, canClamp } = input;
   const [pending, setPending] = useState<PendingQuestion | null>(null);
   const acknowledgedRef = useRef<ReadonlySet<string>>(new Set());
+  const acceptedRef = useRef<AcceptedShortfalls>(new Map());
   const presentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // A new sale starts with nothing acknowledged.
   useEffect(() => {
-    if (lines.length === 0) acknowledgedRef.current = new Set();
+    if (lines.length > 0) return;
+    acknowledgedRef.current = new Set();
+    acceptedRef.current = new Map();
   }, [lines.length]);
 
   useEffect(
@@ -83,6 +96,16 @@ export function useRegisterStockGuard(input: RegisterStockGuardInput): RegisterS
     },
     [],
   );
+
+  const clearTimer = useCallback(() => {
+    if (presentTimerRef.current) clearTimeout(presentTimerRef.current);
+    presentTimerRef.current = null;
+  }, []);
+
+  const cancel = useCallback(() => {
+    clearTimer();
+    setPending(null);
+  }, [clearTimer]);
 
   const present = useCallback((next: PendingQuestion, delayMs: number) => {
     if (presentTimerRef.current) clearTimeout(presentTimerRef.current);
@@ -116,6 +139,7 @@ export function useRegisterStockGuard(input: RegisterStockGuardInput): RegisterS
           },
           sellAnyway: () => {
             acknowledgedRef.current = new Set([...acknowledgedRef.current, added.menuItemId]);
+            if (shortfall) acceptedRef.current = acceptShortfalls(acceptedRef.current, [shortfall]);
             commit(added.quantity);
           },
         },
@@ -127,7 +151,14 @@ export function useRegisterStockGuard(input: RegisterStockGuardInput): RegisterS
 
   const guardCharge = useCallback<RegisterStockGuard["guardCharge"]>(
     (proceed, applyChanges) => {
-      const shortfalls = findStockShortfalls(demand, ceilings);
+      // An add question still waiting on the picker's close must not open
+      // over the tender, nor add a line under its total.
+      cancel();
+      const shortfalls = chargeShortfallsToAsk(
+        findStockShortfalls(demand, ceilings),
+        acceptedRef.current,
+        context.policy,
+      );
       const decision = decideChargeStock({ shortfalls, canClamp }, context);
       if (decision.kind === "proceed") {
         proceed();
@@ -140,12 +171,15 @@ export function useRegisterStockGuard(input: RegisterStockGuardInput): RegisterS
             applyChanges(clampLinesToStock(lines, shortfalls));
             proceed();
           },
-          sellAnyway: proceed,
+          sellAnyway: () => {
+            acceptedRef.current = acceptShortfalls(acceptedRef.current, shortfalls);
+            proceed();
+          },
         },
         0,
       );
     },
-    [demand, ceilings, canClamp, context, lines, present],
+    [demand, ceilings, canClamp, context, lines, present, cancel],
   );
 
   const close = useCallback(() => setPending(null), []);
@@ -165,5 +199,5 @@ export function useRegisterStockGuard(input: RegisterStockGuardInput): RegisterS
     onCancel: close,
   };
 
-  return { guardAdd, guardCharge, sheet };
+  return { guardAdd, guardCharge, sheet, cancel };
 }
