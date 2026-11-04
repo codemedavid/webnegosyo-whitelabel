@@ -122,6 +122,75 @@ describe("note on a cart line", () => {
   });
 });
 
+describe("the kitchen note sheet and the keyboard", () => {
+  /** The note sheet's own scroll view: the cart behind it has one too. */
+  function sheetScroll() {
+    const { ScrollView } = jest.requireActual("react-native");
+    const all = screen.UNSAFE_getAllByType(ScrollView);
+    return all[all.length - 1];
+  }
+
+  function openSheet(note?: string) {
+    renderCart(cart(note), jest.fn());
+    fireEvent.press(
+      screen.getByLabelText(note ? `Latte, note ${note}. Change the note` : "Latte. Add a note for the kitchen"),
+    );
+  }
+
+  it("lifts with the keyboard only through its KeyboardAvoidingView", () => {
+    openSheet();
+    const { KeyboardAvoidingView } = jest.requireActual("react-native");
+    expect(screen.UNSAFE_getAllByType(KeyboardAvoidingView)).toHaveLength(1);
+    const scroll = sheetScroll();
+    expect(scroll.props.automaticallyAdjustKeyboardInsets).toBeFalsy();
+    expect(scroll.props.keyboardShouldPersistTaps).toBe("handled");
+  });
+
+  it("puts the text box first, so it sits right under the title above the keyboard", () => {
+    jest.useFakeTimers();
+    try {
+      openSheet();
+      const scroll = sheetScroll();
+      const scrollToEnd = jest.fn();
+      scroll.instance.scrollToEnd = scrollToEnd;
+
+      const rendered = JSON.stringify(screen.toJSON());
+      expect(rendered.indexOf("Type a note (optional)")).toBeGreaterThan(-1);
+      expect(rendered.indexOf("Type a note (optional)")).toBeLessThan(rendered.indexOf("No sugar"));
+
+      // No scroll-to-end in this sheet: it pushed the box up behind the header.
+      fireEvent(screen.getByLabelText("Note for the kitchen"), "focus");
+      jest.runAllTimers();
+      expect(scrollToEnd).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("focuses the text box once the sheet has finished opening, not during the slide", () => {
+    openSheet();
+    const { Modal, TextInput } = jest.requireActual("react-native");
+    const input = screen.UNSAFE_getByType(TextInput);
+    expect(input.props.autoFocus).toBeFalsy();
+    const focus = jest.fn();
+    input.instance.focus = focus;
+
+    fireEvent(screen.UNSAFE_getByType(Modal), "show");
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves an existing note alone on open (the cashier came to read or clear it)", () => {
+    openSheet("No onion");
+    const { Modal, TextInput } = jest.requireActual("react-native");
+    const input = screen.UNSAFE_getByType(TextInput);
+    const focus = jest.fn();
+    input.instance.focus = focus;
+
+    fireEvent(screen.UNSAFE_getByType(Modal), "show");
+    expect(focus).not.toHaveBeenCalled();
+  });
+});
+
 const SIZE: ModifierGroup = {
   id: "g-size",
   name: "Size",
@@ -167,15 +236,20 @@ describe("note in the option picker", () => {
     expect(screen.getByLabelText("Note for the kitchen")).toBeTruthy();
   });
 
-  it("keeps the note field above the iOS keyboard: insets adjust, and focusing scrolls it into view", () => {
+  it("lifts with the keyboard ONE way: the sheet's KeyboardAvoidingView, no scroll-view insets on top", () => {
     jest.useFakeTimers();
     try {
       renderPicker();
-      const { ScrollView } = jest.requireActual("react-native");
+      const { KeyboardAvoidingView, ScrollView } = jest.requireActual("react-native");
+      expect(screen.UNSAFE_getAllByType(KeyboardAvoidingView)).toHaveLength(1);
       const scroll = screen.UNSAFE_getByType(ScrollView);
-      expect(scroll.props.automaticallyAdjustKeyboardInsets).toBe(true);
+      // Insets on top of the lifted sheet doubled the offset: the content
+      // scrolled a keyboard-height of blank space up behind the header.
+      expect(scroll.props.automaticallyAdjustKeyboardInsets).toBeFalsy();
       expect(scroll.props.keyboardShouldPersistTaps).toBe("handled");
 
+      // The note is the last thing in a long list of options, so focusing it
+      // scrolls to the end of the REAL content inside the lifted sheet.
       const scrollToEnd = jest.fn();
       scroll.instance.scrollToEnd = scrollToEnd;
       fireEvent(screen.getByLabelText("Note for the kitchen"), "focus");

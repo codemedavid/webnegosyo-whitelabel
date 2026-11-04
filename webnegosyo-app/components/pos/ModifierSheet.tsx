@@ -179,7 +179,6 @@ export function ModifierSheet({
           <ScrollView
             ref={scrollRef}
             style={styles.body}
-            automaticallyAdjustKeyboardInsets
             keyboardShouldPersistTaps="handled"
           >
             {unfillable && (

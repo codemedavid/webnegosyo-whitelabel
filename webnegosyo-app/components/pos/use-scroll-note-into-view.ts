@@ -5,10 +5,12 @@ import type { ScrollView } from "react-native";
 const KEYBOARD_SETTLE_MS = 300;
 
 /**
- * The kitchen note sits at the bottom of a sheet's ScrollView; on a small
- * phone the keyboard covers it. Focusing it scrolls the sheet to the end once
- * the keyboard is up (the ScrollView also takes
- * `automaticallyAdjustKeyboardInsets`).
+ * The option picker's kitchen note is the LAST thing in a long ScrollView.
+ * The sheet's KeyboardAvoidingView lifts it (the one keyboard mechanism) and
+ * shrinks the scroll area, so focusing the note scrolls to the end of the real
+ * content once the keyboard is up. Never pair this with
+ * `automaticallyAdjustKeyboardInsets`: the extra inset made "the end" a
+ * keyboard-height of blank space and the note scrolled up behind the header.
  */
 export function useScrollNoteIntoView() {
   const scrollRef = useRef<ScrollView>(null);

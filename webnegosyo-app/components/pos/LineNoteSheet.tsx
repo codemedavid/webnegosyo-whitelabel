@@ -1,12 +1,19 @@
-import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useRef, useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type TextInput,
+} from "react-native";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { IconButton } from "../IconButton";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { KITCHEN_NOTE_LABEL, KitchenNoteField } from "./KitchenNoteField";
-import { useScrollNoteIntoView } from "./use-scroll-note-into-view";
 import { normalizeLineNote } from "../../lib/pos-cart";
 
 interface LineNoteSheetProps {
@@ -25,6 +32,13 @@ interface LineNoteSheetProps {
 /**
  * "Note for the kitchen" on one cart line: quick chips, free text, Save / Clear.
  * The note prints on the kitchen ticket, the chit and the receipt.
+ *
+ * Keyboard: ONE mechanism lifts the sheet — the KeyboardAvoidingView. The
+ * scroll view takes no keyboard insets and never scrolls itself; on top of the
+ * lift either one pushed the text box up behind the header. The box sits first,
+ * right under the title, so it and Save stay above the keyboard on a small
+ * phone. A new note focuses the box once the sheet has finished sliding in
+ * (`onShow`); `autoFocus` raised the keyboard mid-slide and sometimes not at all.
  */
 export function LineNoteSheet({
   visible,
@@ -37,10 +51,19 @@ export function LineNoteSheet({
   const [draft, setDraft] = useState(initialNote ?? "");
   const isCentered = useCenteredDialog();
   const hasNote = Boolean(initialNote);
-  const { scrollRef, onNoteFocus } = useScrollNoteIntoView();
+  const inputRef = useRef<TextInput>(null);
+  const focusNewNote = () => {
+    if (!hasNote) inputRef.current?.focus();
+  };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onCancel}
+      onShow={focusNewNote}
+    >
       <KeyboardAvoidingView
         style={[styles.backdrop, isCentered && centeredDialog.backdrop]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -57,18 +80,13 @@ export function LineNoteSheet({
             </View>
             <IconButton icon="close" onPress={onCancel} label="Close" />
           </View>
-          <ScrollView
-            ref={scrollRef}
-            contentContainerStyle={styles.body}
-            keyboardShouldPersistTaps="handled"
-            automaticallyAdjustKeyboardInsets
-          >
+          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
             <KitchenNoteField
               value={draft}
               onChange={setDraft}
-              autoFocus={!hasNote}
+              inputRef={inputRef}
+              isInputFirst
               showLabel={false}
-              onFocus={onNoteFocus}
             />
           </ScrollView>
           {error ? (
