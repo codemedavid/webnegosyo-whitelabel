@@ -81,6 +81,7 @@ function ThemedStack() {
           }}
         />
         <Stack.Screen name="sign-in" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="address-search" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="checkout" options={{ title: 'Review order' }} />
         <Stack.Screen name="order/[id]" options={{ title: 'Your order' }} />
         <Stack.Screen name="orders" options={{ title: 'Order history' }} />

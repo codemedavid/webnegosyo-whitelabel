@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router'
+import { useIsFocused, useLocalSearchParams } from 'expo-router'
 import { RefreshControl, ScrollView, View } from 'react-native'
 import { CheckoutSection } from '@/components/checkout/checkout-section'
 import { OrderAgainButton } from '@/components/orders/order-again-button'
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StepTracker } from '@/components/ui/step-tracker'
 import { useOrder } from '@/lib/data/hooks'
+import { useIsAppActive } from '@/lib/hooks/use-is-app-active'
+import { useRefetchOnReturn } from '@/lib/hooks/use-refetch-on-return'
 import { toCentavos } from '@/lib/money'
 import { paymentLine } from '@/lib/orders/payment-line'
 import { isTerminalStatus } from '@/lib/orders/status'
@@ -29,11 +31,15 @@ function TrackingSkeleton() {
 
 const PAYMENT_TONE = { success: 'success', muted: 'textMuted', danger: 'danger' } as const
 
-/** Live tracker: refreshes itself until the order is completed or cancelled. */
+/** Live tracker: re-reads every 15 s while on screen and in the foreground, until the order is completed or cancelled. */
 export default function OrderTrackingScreen() {
   const { colors, space, radius } = useTokens()
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { data: order, isPending, isError, refetch, isRefetching } = useOrder(id)
+  const isFocused = useIsFocused()
+  const isAppActive = useIsAppActive()
+  const { data: order, isPending, isError, refetch, isRefetching } = useOrder(id, { isFocused, isAppActive })
+  // Coming back to the screen or the app catches up at once instead of waiting for the next tick.
+  useRefetchOnReturn(refetch, order !== undefined && !isTerminalStatus(order.status))
 
   if (isPending) return <TrackingSkeleton />
   // A failed background refresh keeps the tracker on screen; only a first load with no order is an error.

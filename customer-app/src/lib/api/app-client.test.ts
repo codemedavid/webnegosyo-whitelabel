@@ -64,5 +64,29 @@ describe('createAppClient', () => {
     await api.send('PATCH', '/me', schema, { body: {} })
     expect(fetchImpl.mock.calls[1][1].headers['If-None-Match']).toBeUndefined()
   })
-})
 
+  it('sends extra headers such as Idempotency-Key, but never lets them replace its own', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(response(200, { success: true, data: { hello: 'placed' }, error: null }))
+    await client(fetchImpl).send('POST', '/api/app/v1/orders', schema, {
+      body: {},
+      token: 'cs1.abc',
+      headers: { 'Idempotency-Key': 'app-1234abcd', 'X-App-Id': 'com.someone.else', Authorization: 'Bearer forged' },
+    })
+    const [, init] = fetchImpl.mock.calls[0]
+    expect(init.headers['Idempotency-Key']).toBe('app-1234abcd')
+    expect(init.headers['X-App-Id']).toBe('com.webnegosyo.kapedemo')
+    expect(init.headers.Authorization).toBe('Bearer cs1.abc')
+  })
+
+  it('passes the server error code through, including refused and conflict', async () => {
+    for (const code of ['refused', 'conflict', 'rate_limited'] as const) {
+      const fetchImpl = jest.fn().mockResolvedValue(response(409, { success: false, data: null, error: { code, message: `Store says ${code}` } }))
+      await expect(client(fetchImpl).send('POST', '/x', schema, { body: {} })).rejects.toMatchObject({ code, message: `Store says ${code}` })
+    }
+  })
+
+  it('reads a 5xx without an envelope as internal', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ status: 502, ok: false, headers: { get: () => null }, json: async () => Promise.reject(new SyntaxError('html')) })
+    await expect(client(fetchImpl).send('POST', '/x', schema, { body: {} })).rejects.toMatchObject({ code: 'internal' })
+  })
+})

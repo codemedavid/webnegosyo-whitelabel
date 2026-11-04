@@ -45,11 +45,18 @@ interface SendOptions {
   body?: unknown
   /** The customer's session (`cs1.…`), sent as a bearer token. */
   token?: string | null
+  /** Extra request headers (e.g. `Idempotency-Key`). The client's own headers always win. */
+  headers?: Readonly<Record<string, string>>
+}
+
+interface GetOptions {
+  token?: string | null
+  headers?: Readonly<Record<string, string>>
 }
 
 export interface AppClient {
   /** A cacheable read (ETag/304), optionally as the signed-in customer. */
-  get<S extends z.ZodType>(path: string, schema: S, options?: { token?: string | null }): Promise<z.infer<S>>
+  get<S extends z.ZodType>(path: string, schema: S, options?: GetOptions): Promise<z.infer<S>>
   /** A write; never cached. */
   send<S extends z.ZodType>(method: SendMethod, path: string, schema: S, options?: SendOptions): Promise<z.infer<S>>
 }
@@ -59,6 +66,12 @@ interface Envelope {
   data?: unknown
   error?: { code?: unknown; message?: unknown } | null
 }
+
+/** Headers only the client sets: a caller's copy is dropped, whatever its case. */
+const RESERVED_HEADERS = new Set(['accept', 'authorization', 'content-type', 'if-none-match', 'x-app-id'])
+
+const extraHeaders = (extra: Readonly<Record<string, string>> | undefined): Record<string, string> =>
+  Object.fromEntries(Object.entries(extra ?? {}).filter(([name]) => !RESERVED_HEADERS.has(name.toLowerCase())))
 
 const isErrorCode = (value: unknown): value is AppErrorCode =>
   typeof value === 'string' && (APP_ERROR_CODES as readonly string[]).includes(value)
@@ -76,7 +89,7 @@ export function createAppClient({ baseUrl, applicationId, fetch: fetchImpl = fet
   const cache = new Map<string, { etag: string; data: unknown }>()
 
   async function request(method: string, path: string, options: SendOptions & { etag?: string }): Promise<FetchResponse> {
-    const headers: Record<string, string> = { Accept: 'application/json', 'X-App-Id': applicationId }
+    const headers: Record<string, string> = { ...extraHeaders(options.headers), Accept: 'application/json', 'X-App-Id': applicationId }
     if (options.etag) headers['If-None-Match'] = options.etag
     if (options.token) headers.Authorization = `Bearer ${options.token}`
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
@@ -106,11 +119,11 @@ export function createAppClient({ baseUrl, applicationId, fetch: fetchImpl = fet
   }
 
   return {
-    async get<S extends z.ZodType>(path: string, schema: S, options: { token?: string | null } = {}): Promise<z.infer<S>> {
+    async get<S extends z.ZodType>(path: string, schema: S, options: GetOptions = {}): Promise<z.infer<S>> {
       // Signed-in reads are per customer: never share the cached copy across sessions.
       const cacheKey = options.token ? null : path
       const cached = cacheKey ? cache.get(cacheKey) : undefined
-      const response = await request('GET', path, { token: options.token, etag: cached?.etag })
+      const response = await request('GET', path, { token: options.token, headers: options.headers, etag: cached?.etag })
       if (response.status === 304 && cached) return cached.data as z.infer<S>
       const data = await parse(response, schema)
       const etag = response.headers.get('etag')

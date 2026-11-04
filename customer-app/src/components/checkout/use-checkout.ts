@@ -1,18 +1,52 @@
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { checkoutBlockers, orderTypeForMode, type DeliveryFeeStatus } from '@/lib/checkout/blockers'
+import { AppApiError } from '@/lib/api/app-client'
+import { checkoutBlockers, orderTypeForMode } from '@/lib/checkout/blockers'
+import {
+  deliveryFeeStatus,
+  displayedDeliveryFeeCentavos,
+  isQuoteExpired,
+  quoteRequestFor,
+  quoteSummary,
+  requoteOutcome,
+  type PickedPlace,
+} from '@/lib/checkout/delivery-quote'
+import { buildOrderDraft, draftFingerprint, stableStringify } from '@/lib/checkout/draft'
+import { attemptAfterFailure, attemptFor, mintIdempotencyKey } from '@/lib/checkout/idempotency'
 import { availablePaymentMethods } from '@/lib/checkout/payments'
+import { placeOrderFailure, type PlaceOrderFailure } from '@/lib/checkout/place-order-outcome'
 import { rewardEstimateCentavos } from '@/lib/checkout/reward'
 import { checkoutTotals, minimumOrderShortfall } from '@/lib/checkout/totals'
-import { voucherDiscount, type VoucherTerms } from '@/lib/checkout/voucher'
-import type { AppOrderDelivery, AppOrderDraft } from '@/lib/contract'
-import { useAppConfig, useCatalog, useDeliveryQuote, useLoyalty, usePlaceOrder } from '@/lib/data/hooks'
-import { toCentavos } from '@/lib/money'
+import type { AppDeliveryQuote, AppOrderDelivery } from '@/lib/contract'
+import { isRewardAtCheckoutOffered, useAppConfig, useCatalog, useDeliveryQuote, useLoyalty, usePlaceOrder } from '@/lib/data/hooks'
+import { formatPeso, toCentavos } from '@/lib/money'
 import { useCart, useCartSummary } from '@/lib/stores/cart'
 import { useSession } from '@/lib/stores/session'
+import { useVoucher } from './use-voucher'
 
-/** A place picked from the address search; typed text alone never makes a delivery. */
-export type PickedPlace = Pick<AppOrderDelivery, 'address' | 'lat' | 'lng'>
+export type { PickedPlace }
+
+const REQUOTE_FAILED = 'We couldn’t refresh the delivery fee. Try again.'
+
+/** A failure on screen, and the checkout it was about (so a fixed bag stops showing it). */
+interface ShownFailure {
+  failure: PlaceOrderFailure
+  context: string
+}
+
+/** Refresh an expired courier quote right before placing; null = stop (the reason is returned). */
+async function freshQuote(
+  current: AppDeliveryQuote,
+  refetch: () => Promise<{ data?: AppDeliveryQuote; error: unknown; isError: boolean }>,
+): Promise<{ quote: AppDeliveryQuote } | { stop: string }> {
+  if (!isQuoteExpired(current, Date.now())) return { quote: current }
+  const fresh = await refetch()
+  if (fresh.isError || !fresh.data)
+    return { stop: fresh.error instanceof AppApiError && fresh.error.code === 'refused' ? fresh.error.message : REQUOTE_FAILED }
+  if (requoteOutcome(current, fresh.data) === 'fee_changed')
+    return { stop: `The delivery fee is now ${formatPeso(toCentavos(fresh.data.fee))}. Check your total, then place your order.` }
+  return { quote: fresh.data }
+}
 
 /** Everything the review screen decides, kept out of the screen so it stays layout. */
 export function useCheckout() {
@@ -20,17 +54,17 @@ export function useCheckout() {
   const { data: catalog } = useCatalog()
   const { data: loyalty } = useLoyalty()
   const isMember = useSession((state) => state.status === 'member')
-  const { lines, mode, outletId, clear } = useCart()
+  const { lines, mode, outletId, clear, deliveryPlace, setDeliveryPlace, setCheckoutAttempt } = useCart()
   const { itemCount, subtotalCentavos } = useCartSummary()
   const placeOrder = usePlaceOrder()
 
-  const [addressDraft, setAddressDraft] = useState('')
-  const [quotedAddress, setQuotedAddress] = useState('')
-  const [pickedPlace, setPickedPlace] = useState<PickedPlace | null>(null)
   const [notes, setNotes] = useState('')
   const [pickedPaymentId, setPickedPaymentId] = useState<string | null>(null)
-  const [voucher, setVoucher] = useState<VoucherTerms | null>(null)
+  const [paymentReference, setPaymentReference] = useState('')
   const [isUsingReward, setIsUsingReward] = useState(false)
+  const [shownFailure, setShownFailure] = useState<ShownFailure | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [isRequoting, setIsRequoting] = useState(false)
 
   const features = config?.features
   const isDelivery = mode === 'delivery'
@@ -41,22 +75,28 @@ export function useCheckout() {
     [catalog, features, orderType?.id],
   )
   const paymentMethod = paymentMethods.find((method) => method.id === pickedPaymentId) ?? paymentMethods[0]
-  const reward = isMember ? loyalty?.rewards[0] : undefined
-  const quote = useDeliveryQuote(outlet?.id ?? null, quotedAddress, isDelivery)
+  const needsPaymentReference = paymentMethod?.requiresProof ?? false
+  const reward = isMember && isRewardAtCheckoutOffered ? loyalty?.rewards[0] : undefined
+  const quote = useDeliveryQuote(isDelivery && deliveryPlace ? quoteRequestFor(outlet?.id ?? null, deliveryPlace) : null)
+  const voucher = useVoucher({ orderTypeId: orderType?.id, outletId: outlet?.id ?? null, lines, isEnabled: isMember })
 
   // The reward can only cover something in the bag; with nothing to cover it is off, whatever the switch said.
   const rewardEstimate = reward ? rewardEstimateCentavos(lines) : 0
   const canUseReward = rewardEstimate > 0
   const isRewardOn = isUsingReward && canUseReward
   const rewardCentavos = isRewardOn ? rewardEstimate : 0
-  const voucherResult = voucher ? voucherDiscount(voucher, subtotalCentavos - rewardCentavos) : null
+  const feeStatus = deliveryFeeStatus({
+    hasQuote: quote.data !== undefined,
+    isFetching: quote.isFetching,
+    errorCode: quote.isError ? (quote.error instanceof AppApiError ? quote.error.code : 'network') : null,
+  })
+  const deliveryRefusal = feeStatus === 'refused' && quote.error instanceof AppApiError ? quote.error.message : null
+  const isFeeReady = isDelivery && feeStatus === 'ready' && quote.data !== undefined
   const totals = checkoutTotals({
     subtotalCentavos,
-    discountCentavos: rewardCentavos + (voucherResult?.discountCentavos ?? 0),
-    deliveryFeeCentavos: isDelivery && quote.data ? toCentavos(quote.data.fee) : 0,
+    discountCentavos: rewardCentavos + voucher.discountCentavos,
+    deliveryFeeCentavos: isFeeReady && quote.data ? displayedDeliveryFeeCentavos(quote.data, subtotalCentavos) : 0,
   })
-  const deliveryFee: DeliveryFeeStatus =
-    quotedAddress === '' ? 'unconfirmed' : quote.isFetching ? 'quoting' : quote.isError || !quote.data ? 'failed' : 'ready'
   const shortfallCentavos = minimumOrderShortfall(subtotalCentavos, orderType?.minimumOrder)
   const blockers = checkoutBlockers({
     itemCount,
@@ -66,32 +106,66 @@ export function useCheckout() {
     outlet,
     needsOutlet: features?.multiBranch ?? false,
     paymentMethodId: paymentMethod?.id ?? null,
-    deliveryAddress: isDelivery ? addressDraft : '',
-    hasDeliveryPlace: pickedPlace !== null,
-    deliveryFee,
+    needsPaymentReference,
+    paymentReference,
+    hasDeliveryPlace: deliveryPlace !== null,
+    deliveryFee: feeStatus,
+    deliveryRefusal,
+    voucher: voucher.status,
     shortfallCentavos,
   })
 
-  const submit = () => {
+  // What a refusal was about: once the customer changes any of it, the old message no longer applies.
+  const context = stableStringify({ lines, mode, outletId: outlet?.id ?? null, paymentId: paymentMethod?.id ?? null, deliveryPlace, paymentReference })
+
+  const send = (delivery: AppOrderDelivery | null) => {
     if (!orderType || !paymentMethod) return
-    const draft: AppOrderDraft = {
+    const draft = buildOrderDraft({
       orderTypeId: orderType.id,
       outletId: outlet?.id ?? null,
-      lines: lines.map((line) => ({ itemId: line.itemId, quantity: line.quantity, selections: line.selections })),
+      lines,
       paymentMethodId: paymentMethod.id,
-      paymentReference: null,
-      voucherCode: voucherResult?.isApplied && voucher ? voucher.code : null,
+      paymentReference: needsPaymentReference ? paymentReference : null,
+      voucherCode: voucher.codeToSend,
       rewardId: rewardCentavos > 0 && reward ? reward.id : null,
-      delivery: isDelivery && pickedPlace ? { ...pickedPlace, quoteToken: null } : null,
-      notes: notes.trim(),
-    }
-    placeOrder.mutate(draft, {
-      onSuccess: (order) => {
-        router.replace({ pathname: '/order/[id]', params: { id: order.id } })
-        clear()
-      },
+      delivery,
+      notes,
     })
+    // Same bag as the last unanswered try → same key, so the store returns that order instead of a second one.
+    const attempt = attemptFor(useCart.getState().checkoutAttempt, draftFingerprint(draft), mintIdempotencyKey)
+    setCheckoutAttempt(attempt)
+    placeOrder.mutate(
+      { draft, idempotencyKey: attempt.key },
+      {
+        onSuccess: (order) => {
+          router.replace({ pathname: '/order/[id]', params: { id: order.id } })
+          clear()
+        },
+        onError: (error) => {
+          const failure = placeOrderFailure(error)
+          setShownFailure({ failure, context })
+          setCheckoutAttempt(attemptAfterFailure(attempt, failure.code))
+        },
+      },
+    )
   }
+
+  const submit = async () => {
+    if (blockers.length > 0 || placeOrder.isPending || isRequoting) return
+    setShownFailure(null)
+    setNotice(null)
+    if (!isDelivery) return send(null)
+    if (!deliveryPlace || !quote.data) return
+    setIsRequoting(true)
+    const result = await freshQuote(quote.data, () => quote.refetch())
+    setIsRequoting(false)
+    if ('stop' in result) return setNotice(result.stop)
+    send({ ...deliveryPlace, quoteToken: result.quote.quoteToken })
+  }
+
+  // "Check your orders" stays up whatever changes; a refusal only while it is still about this checkout.
+  const failure =
+    shownFailure && (shownFailure.failure.kind === 'unconfirmed' || shownFailure.context === context) ? shownFailure.failure : null
 
   return {
     isReady: config !== undefined && catalog !== undefined,
@@ -104,28 +178,13 @@ export function useCheckout() {
     outlet,
     isMember,
     address: {
-      draft: addressDraft,
-      // Any edit voids the quote: the fee shown must be for the address that is sent.
-      setDraft: (next: string) => {
-        setAddressDraft(next)
-        setQuotedAddress('')
-        setPickedPlace(null)
-      },
-      picked: pickedPlace,
-      pick: (place: PickedPlace) => {
-        setPickedPlace(place)
-        setAddressDraft(place.address)
-        setQuotedAddress(place.address)
-      },
-      commit: () => {
-        const next = addressDraft.trim()
-        // Re-confirming the same address after a failed quote asks again.
-        if (next === quotedAddress && quote.isError) void quote.refetch()
-        else setQuotedAddress(next)
-      },
-      quote: quote.data,
-      isQuoting: quote.isFetching,
-      hasQuoteFailed: quote.isError,
+      place: deliveryPlace,
+      open: () => router.push('/address-search'),
+      pick: (place: PickedPlace) => setDeliveryPlace(place),
+      feeStatus,
+      refusal: deliveryRefusal,
+      summary: isFeeReady && quote.data ? quoteSummary(quote.data, subtotalCentavos) : null,
+      retry: () => void quote.refetch(),
     },
     shortfallCentavos,
     notes,
@@ -133,19 +192,21 @@ export function useCheckout() {
     paymentMethods,
     paymentMethod,
     pickPayment: setPickedPaymentId,
+    paymentReference,
+    setPaymentReference,
     voucher,
-    voucherResult,
-    setVoucher,
     reward,
     rewardCentavos,
     canUseReward,
     isUsingReward: isRewardOn,
     setIsUsingReward,
     totals,
+    isFeeReady,
     blockers,
-    submit,
-    isPlacing: placeOrder.isPending,
-    placeError: placeOrder.error instanceof Error ? placeOrder.error.message : null,
+    submit: () => void submit(),
+    isPlacing: placeOrder.isPending || isRequoting,
+    failure,
+    notice,
   }
 }
 

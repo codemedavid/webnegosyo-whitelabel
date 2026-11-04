@@ -35,6 +35,17 @@ export default function CheckoutScreen() {
 
   const { totals } = model
   const isDelivery = model.mode === 'delivery'
+  const deliveryNote = !isDelivery
+    ? null
+    : !model.address.place
+      ? 'Add an address'
+      : model.address.feeStatus === 'quoting'
+        ? 'Checking…'
+        : !model.isFeeReady
+          ? '—'
+          : totals.deliveryFeeCentavos === 0
+            ? 'Free'
+            : null
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
       <ScrollView contentContainerStyle={{ paddingVertical: space.lg, gap: space.lg }} keyboardShouldPersistTaps="handled">
@@ -42,7 +53,13 @@ export default function CheckoutScreen() {
         <BagSection lines={model.lines} itemCount={model.itemCount} />
         <FulfillmentSection model={model} />
         <ContactSection />
-        <PaymentSection methods={model.paymentMethods} selected={model.paymentMethod} onSelect={model.pickPayment} />
+        <PaymentSection
+          methods={model.paymentMethods}
+          selected={model.paymentMethod}
+          onSelect={model.pickPayment}
+          reference={model.paymentReference}
+          onReferenceChange={model.setPaymentReference}
+        />
         {model.isMember ? <SavingsSection model={model} /> : null}
         <NotesSection value={model.notes} onChange={model.setNotes} />
         <CheckoutSection title="Summary">
@@ -52,14 +69,15 @@ export default function CheckoutScreen() {
             deliveryFeeCentavos={totals.deliveryFeeCentavos}
             totalCentavos={totals.totalCentavos}
             showDelivery={isDelivery}
-            deliveryNote={isDelivery && !model.address.quote ? 'Add an address' : null}
+            deliveryNote={deliveryNote}
           />
         </CheckoutSection>
       </ScrollView>
       <PlaceOrderBar
         totalCentavos={totals.totalCentavos}
         blocker={model.blockers[0] ?? null}
-        error={model.placeError}
+        failure={model.failure}
+        notice={model.notice}
         isPlacing={model.isPlacing}
         onPlace={model.submit}
         isGuest={!model.isMember}

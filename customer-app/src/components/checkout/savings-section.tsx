@@ -42,7 +42,7 @@ export function SavingsSection({ model }: { model: CheckoutModel }) {
       <View style={{ gap: space.md }}>
         <RewardToggle model={model} />
         {model.reward ? <View style={{ height: 1, backgroundColor: colors.border }} /> : null}
-        <VoucherRow voucher={model.voucher} result={model.voucherResult} onChange={model.setVoucher} />
+        <VoucherRow voucher={model.voucher} />
       </View>
     </CheckoutSection>
   )

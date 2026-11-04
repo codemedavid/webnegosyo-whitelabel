@@ -1,5 +1,5 @@
 import { Banknote, CreditCard, Smartphone, type LucideIcon } from 'lucide-react-native'
-import { View } from 'react-native'
+import { TextInput, View } from 'react-native'
 import { AppText } from '@/components/ui/app-text'
 import { PressableScale } from '@/components/ui/pressable-scale'
 import type { AppPaymentKind, AppPaymentMethod } from '@/lib/contract'
@@ -13,10 +13,43 @@ const HINTS: Record<AppPaymentKind, string> = {
   cash: 'Pay when you get your order',
 }
 
+/** The order route takes 1–80 characters. */
+const REFERENCE_MAX = 80
+
 interface PaymentSectionProps {
   methods: AppPaymentMethod[]
   selected: AppPaymentMethod | undefined
   onSelect: (id: string) => void
+  /** The typed proof for a method that requires it. */
+  reference: string
+  onReferenceChange: (reference: string) => void
+}
+
+function ReferenceField({ method, value, onChange }: { method: AppPaymentMethod; value: string; onChange: (next: string) => void }) {
+  const { colors, space, radius, type } = useTokens()
+  return (
+    <View style={{ gap: space.xs, marginTop: space.sm }}>
+      <AppText variant="label" color="textMuted">
+        REFERENCE NUMBER
+      </AppText>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        maxLength={REFERENCE_MAX}
+        placeholder="e.g. 1012 345 678901"
+        placeholderTextColor={colors.textMuted}
+        autoCapitalize="characters"
+        autoCorrect={false}
+        returnKeyType="done"
+        accessibilityLabel={`${method.name} reference number`}
+        accessibilityHint="Required to place the order"
+        style={[type.body, { color: colors.text, minHeight: 48, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: colors.surface }]}
+      />
+      <AppText variant="caption" color="textMuted">
+        Pay with {method.name} first, then type the reference number from your receipt so the store can match it.
+      </AppText>
+    </View>
+  )
 }
 
 function Radio({ isSelected }: { isSelected: boolean }) {
@@ -38,7 +71,7 @@ function Radio({ isSelected }: { isSelected: boolean }) {
   )
 }
 
-export function PaymentSection({ methods, selected, onSelect }: PaymentSectionProps) {
+export function PaymentSection({ methods, selected, onSelect, reference, onReferenceChange }: PaymentSectionProps) {
   const { colors, space, radius } = useTokens()
   if (methods.length === 0)
     return (
@@ -92,11 +125,7 @@ export function PaymentSection({ methods, selected, onSelect }: PaymentSectionPr
       {selected?.instructions || selected?.requiresProof ? (
         <View style={{ marginTop: space.md, padding: space.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted, gap: space.xs }}>
           {selected.instructions ? <AppText variant="callout">{selected.instructions}</AppText> : null}
-          {selected.requiresProof ? (
-            <AppText variant="caption" color="textMuted">
-              After you place the order, you’ll attach a screenshot or reference number so the store can confirm it.
-            </AppText>
-          ) : null}
+          {selected.requiresProof ? <ReferenceField method={selected} value={reference} onChange={onReferenceChange} /> : null}
         </View>
       ) : null}
     </CheckoutSection>

@@ -27,9 +27,12 @@ const ready = {
   outlet,
   needsOutlet: true,
   paymentMethodId: 'pm-cash',
-  deliveryAddress: '',
+  needsPaymentReference: false,
+  paymentReference: '',
   hasDeliveryPlace: false,
   deliveryFee: 'ready' as const,
+  deliveryRefusal: null,
+  voucher: 'none' as const,
   shortfallCentavos: 0,
 }
 
@@ -64,7 +67,6 @@ describe('checkoutBlockers', () => {
       mode: 'delivery',
       orderType: orderTypes[1],
       paymentMethodId: null,
-      deliveryAddress: '  ',
       shortfallCentavos: 6000,
     })
     expect(blockers).toEqual([
@@ -82,18 +84,35 @@ describe('checkoutBlockers', () => {
     expect(checkoutBlockers({ ...ready, orderType: undefined })).toEqual(['This store is not taking pick up orders'])
   })
 
+  const delivery = { ...ready, mode: 'delivery' as const, orderType: orderTypes[1], outlet: undefined, needsOutlet: false, hasDeliveryPlace: true }
+
   it('never lets a delivery order go out on an unconfirmed fee', () => {
-    const delivery = { ...ready, mode: 'delivery' as const, orderType: orderTypes[1], outlet: undefined, needsOutlet: false, deliveryAddress: '12 Rizal St', hasDeliveryPlace: true }
     expect(checkoutBlockers({ ...delivery, deliveryFee: 'ready' })).toEqual([])
-    expect(checkoutBlockers({ ...delivery, deliveryFee: 'unconfirmed' })).toEqual(['Confirm your address to see the delivery fee'])
     expect(checkoutBlockers({ ...delivery, deliveryFee: 'quoting' })).toEqual(['Getting the delivery fee…'])
     expect(checkoutBlockers({ ...delivery, deliveryFee: 'failed' })).toEqual(['We couldn’t price delivery to this address'])
   })
 
-  it('never delivers to typed text: the address must be picked from the search', () => {
-    const typed = { ...ready, mode: 'delivery' as const, orderType: orderTypes[1], outlet: undefined, needsOutlet: false, deliveryAddress: '12 Rizal St' }
-    expect(checkoutBlockers(typed)).toEqual(['Pick your address from the search results'])
-    expect(checkoutBlockers({ ...typed, deliveryFee: 'failed' })).toEqual(['Pick your address from the search results'])
+  it('says the store’s own words when it won’t deliver there', () => {
+    expect(checkoutBlockers({ ...delivery, deliveryFee: 'refused', deliveryRefusal: 'We only deliver within 5 km.' })).toEqual(['We only deliver within 5 km.'])
+    expect(checkoutBlockers({ ...delivery, deliveryFee: 'refused' })).toEqual(['This branch doesn’t deliver to that address'])
+  })
+
+  it('needs a picked place: no place, no delivery, whatever the fee says', () => {
+    expect(checkoutBlockers({ ...delivery, hasDeliveryPlace: false })).toEqual(['Add a delivery address'])
+    expect(checkoutBlockers({ ...delivery, hasDeliveryPlace: false, deliveryFee: 'failed' })).toEqual(['Add a delivery address'])
+  })
+
+  it('needs a reference number for a method that requires proof', () => {
+    const proof = { ...ready, paymentMethodId: 'pm-gcash', needsPaymentReference: true }
+    expect(checkoutBlockers({ ...proof, paymentReference: '   ' })).toEqual(['Add your payment reference number'])
+    expect(checkoutBlockers({ ...proof, paymentReference: '0123 4567 89' })).toEqual([])
+    expect(checkoutBlockers({ ...ready, paymentReference: '' })).toEqual([])
+  })
+
+  it('waits for the voucher’s answer and stops on one it could not get', () => {
+    expect(checkoutBlockers({ ...ready, voucher: 'checking' })).toEqual(['Checking your voucher…'])
+    expect(checkoutBlockers({ ...ready, voucher: 'failed' })).toEqual(['We couldn’t check your voucher. Try again or remove it'])
+    for (const voucher of ['none', 'applied', 'notApplied', 'invalid'] as const) expect(checkoutBlockers({ ...ready, voucher })).toEqual([])
   })
 
   it('ignores the fee for pick up and dine in', () => {

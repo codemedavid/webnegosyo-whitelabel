@@ -5,6 +5,7 @@ import { appClientFromEnv } from '@/lib/data/live-source'
 import { useCart } from '@/lib/stores/cart'
 import { useSession, type MemberProfile } from '@/lib/stores/session'
 import { createLiveAuth, createPrototypeAuth, type AuthSource } from './auth-source'
+import { setSessionRefusedHandler, withSession } from './session-guard'
 import { clearSessionToken, loadSessionToken, saveSessionToken } from './session-storage'
 
 /**
@@ -18,6 +19,10 @@ export const auth: AuthSource = client ? createLiveAuth(client) : createPrototyp
 function forgetCustomerData() {
   queryClient.removeQueries({ queryKey: queryKeys.loyalty })
   queryClient.removeQueries({ queryKey: queryKeys.orders })
+  // Addresses searched and quoted, and vouchers previewed, were this person's too.
+  queryClient.removeQueries({ queryKey: ['deliveryQuote'] })
+  queryClient.removeQueries({ queryKey: ['places'] })
+  queryClient.removeQueries({ queryKey: ['voucherPreview'] })
   useCart.getState().clear()
 }
 
@@ -48,17 +53,9 @@ export async function completeSignIn(result: AppOtpVerifyResult): Promise<boolea
   return result.isNewCustomer || result.profile.name === null
 }
 
-/** A refused session (expired, revoked elsewhere) ends here: signed out, quietly. */
-async function asMember<T>(run: (token: string) => Promise<T>): Promise<T> {
-  const { token } = useSession.getState()
-  if (!token) throw new AppApiError('unauthorized', 'Please sign in again.')
-  try {
-    return await run(token)
-  } catch (error) {
-    if (error instanceof AppApiError && error.code === 'unauthorized') await becomeGuest()
-    throw error
-  }
-}
+/** A refused session (expired, revoked elsewhere) ends here — from any per-customer call: signed out, quietly. */
+setSessionRefusedHandler(becomeGuest)
+const asMember = withSession
 
 export async function saveName(name: string | null): Promise<MemberProfile> {
   const profile = await asMember((token) => auth.updateName(token, name))

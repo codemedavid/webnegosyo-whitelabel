@@ -13,7 +13,10 @@ import {
   type AppOrderDetail,
   type AppOrderSummary,
 } from '@/lib/contract'
-import { PROTOTYPE_DELIVERY_FEE, PROTOTYPE_VOUCHERS, priceDraft, prototypeStatusAt } from './fixture-orders'
+import { AppApiError } from '@/lib/api/app-client'
+import { PROTOTYPE_DELIVERY_FEE, PROTOTYPE_FREE_DELIVERY_MINIMUM, priceDraft, prototypeStatusAt } from './fixture-orders'
+import { searchDemoPlaces } from './fixture-places'
+import { prototypeVoucherPreview } from './fixture-vouchers'
 import type { AppDataSource } from './source'
 
 /** Long enough that skeletons are visible and get designed, short enough not to annoy. */
@@ -70,7 +73,13 @@ const withLiveStatus = (order: AppOrderDetail): AppOrderDetail => ({
 
 const allOrders = () => [...placedOrders.map(withLiveStatus), ...pastOrders]
 
-/** The two reads that are live from Phase 2; everything else stays prototype until its phase. */
+/** Same page size as the real route, so "load more" gets exercised once the demo has enough orders. */
+const PAGE_SIZE = 20
+
+/** The demo's idempotency: a retried key returns the order it already placed. */
+const placedByKey = new Map<string, AppOrderDetail>()
+
+/** The store reads the prototype prices against (the real menu, once an API URL is set). */
 export type LiveReads = Pick<AppDataSource, 'getConfig' | 'getCatalog'>
 
 const fixtureReads: LiveReads = {
@@ -79,21 +88,29 @@ const fixtureReads: LiveReads = {
 }
 
 /**
- * The prototype data source. With `live` reads (the /api/app/v1 client) the
- * store, theme and menu are real, while sign-in, loyalty, orders, vouchers and
- * delivery stay simulated — orders are priced against whichever menu is shown.
+ * The prototype data source (demo builds: no EXPO_PUBLIC_APP_API_URL). It
+ * behaves like the order routes — idempotent placing, paged history,
+ * server-side voucher previews, free-delivery quotes — so the screens are
+ * exercised the same way as against the real store.
  */
 export function createPrototypeSource(live: LiveReads = fixtureReads): AppDataSource {
   return {
     getConfig: live.getConfig,
     getCatalog: live.getCatalog,
     getLoyalty: () => delay(loyalty),
-    getOrders: () => delay(allOrders().map(summarize)),
+    getOrders: (cursor) => {
+      const all = allOrders().map(summarize)
+      const offset = cursor ? Number.parseInt(cursor, 10) || 0 : 0
+      const next = offset + PAGE_SIZE
+      return delay({ orders: all.slice(offset, next), nextCursor: next < all.length ? String(next) : null })
+    },
     getOrder: (orderId) => {
       const order = allOrders().find((candidate) => candidate.id === orderId)
-      return order ? delay(order) : Promise.reject(new Error('Order not found'))
+      return order ? delay(order) : Promise.reject(new AppApiError('not_found', 'We couldn’t find that order.'))
     },
-    placeOrder: async (draft) => {
+    placeOrder: async (draft, idempotencyKey) => {
+      const existing = placedByKey.get(idempotencyKey)
+      if (existing) return delay(withLiveStatus(existing))
       const menu = await live.getCatalog(draft.outletId ?? null)
       await delay(null)
       const number = String(FIRST_NEW_NUMBER + placedOrders.length).padStart(2, '0')
@@ -103,11 +120,23 @@ export function createPrototypeSource(live: LiveReads = fixtureReads): AppDataSo
         placedAt: new Date().toISOString(),
       })
       placedOrders.unshift(order)
+      placedByKey.set(idempotencyKey, order)
       return order
     },
-    previewVoucher: (code) =>
-      delay(PROTOTYPE_VOUCHERS.find((voucher) => voucher.code === code.trim().toUpperCase()) ?? null),
-    quoteDelivery: () => delay({ fee: PROTOTYPE_DELIVERY_FEE, etaMinutes: 35 }),
+    previewVoucher: async (request) => {
+      const menu = await live.getCatalog(request.outletId)
+      return delay(prototypeVoucherPreview(request, menu))
+    },
+    quoteDelivery: () =>
+      delay({
+        fee: PROTOTYPE_DELIVERY_FEE,
+        freeDeliveryMinimum: PROTOTYPE_FREE_DELIVERY_MINIMUM,
+        etaMinutes: 35,
+        quoteToken: null,
+        expiresAt: null,
+        distanceKm: 3.2,
+      }),
+    searchPlaces: ({ q }) => delay(searchDemoPlaces(q)),
   }
 }
 

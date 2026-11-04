@@ -1,6 +1,6 @@
 import { router } from 'expo-router'
-import { ChevronRight, MapPin, TriangleAlert } from 'lucide-react-native'
-import { TextInput, View } from 'react-native'
+import { ChevronRight, MapPin, Navigation, TriangleAlert } from 'lucide-react-native'
+import { View } from 'react-native'
 import { AppText } from '@/components/ui/app-text'
 import { PressableScale } from '@/components/ui/pressable-scale'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -28,37 +28,64 @@ function Warning({ text }: { text: string }) {
   )
 }
 
+function feeLine(address: CheckoutModel['address']): { text: string; tone: 'textMuted' | 'danger' } | null {
+  if (!address.place) return null
+  if (address.feeStatus === 'quoting') return { text: 'Checking the delivery fee…', tone: 'textMuted' }
+  if (address.feeStatus === 'refused') return { text: address.refusal ?? 'This branch doesn’t deliver to that address.', tone: 'danger' }
+  if (address.feeStatus === 'failed') return { text: 'We couldn’t price delivery to this address. Tap to try again.', tone: 'danger' }
+  return address.summary ? { text: address.summary, tone: 'textMuted' } : null
+}
+
+/** The picked place and its fee; tapping opens the address search. Typed text never makes a delivery. */
 function DeliveryAddress({ model }: { model: CheckoutModel }) {
-  const { colors, space, radius, type } = useTokens()
+  const { colors, space, radius } = useTokens()
   const { address } = model
-  const quoteLine = address.isQuoting
-    ? 'Checking the delivery fee…'
-    : address.hasQuoteFailed
-      ? 'We couldn’t price delivery to this address. Try again.'
-      : address.quote
-        ? `${formatPeso(toCentavos(address.quote.fee))} delivery · about ${address.quote.etaMinutes} min`
-        : null
+  const line = feeLine(address)
   return (
-    <View style={{ gap: space.sm }}>
-      <TextInput
-        value={address.draft}
-        onChangeText={address.setDraft}
-        onBlur={address.commit}
-        onSubmitEditing={address.commit}
-        placeholder="House no., street, barangay, city"
-        placeholderTextColor={colors.textMuted}
-        accessibilityLabel="Delivery address"
-        returnKeyType="done"
-        multiline
-        blurOnSubmit
-        style={[
-          type.body,
-          { color: colors.text, minHeight: 64, padding: space.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted, textAlignVertical: 'top' },
-        ]}
-      />
-      {quoteLine ? (
-        <AppText variant="caption" color={address.hasQuoteFailed ? 'danger' : 'textMuted'}>
-          {quoteLine}
+    <View style={{ gap: space.xs }}>
+      <PressableScale
+        onPress={address.open}
+        scaleTo={0.99}
+        accessibilityLabel={address.place ? `Delivering to ${address.place.address}. Change address` : 'Add a delivery address'}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space.md,
+          minHeight: 64,
+          padding: space.md,
+          borderRadius: radius.md,
+          backgroundColor: colors.surfaceMuted,
+        }}
+      >
+        <Navigation size={20} color={colors.primary} />
+        <View style={{ flex: 1 }}>
+          <AppText variant="caption" color="textMuted">
+            {address.place ? 'Delivering to' : 'Delivery address'}
+          </AppText>
+          <AppText variant="bodyStrong" numberOfLines={2}>
+            {address.place ? address.place.address : 'Search for your street, building or landmark'}
+          </AppText>
+        </View>
+        <AppText variant="callout" color="primary">
+          {address.place ? 'Change' : 'Add'}
+        </AppText>
+      </PressableScale>
+      {line ? (
+        address.feeStatus === 'failed' ? (
+          <PressableScale onPress={address.retry} accessibilityRole="button" accessibilityLabel="Try pricing delivery again">
+            <AppText variant="caption" color={line.tone} accessibilityLiveRegion="polite">
+              {line.text}
+            </AppText>
+          </PressableScale>
+        ) : (
+          <AppText variant="caption" color={line.tone} accessibilityLiveRegion="polite">
+            {line.text}
+          </AppText>
+        )
+      ) : null}
+      {address.place ? (
+        <AppText variant="caption" color="textMuted">
+          Add your unit, floor or gate code in Notes.
         </AppText>
       ) : null}
     </View>

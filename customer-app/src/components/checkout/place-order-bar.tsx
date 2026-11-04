@@ -3,6 +3,7 @@ import { View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppText } from '@/components/ui/app-text'
 import { Button } from '@/components/ui/button'
+import type { PlaceOrderFailure } from '@/lib/checkout/place-order-outcome'
 import { formatPeso } from '@/lib/money'
 import { useTokens } from '@/theme/theme-context'
 
@@ -10,7 +11,10 @@ interface PlaceOrderBarProps {
   totalCentavos: number
   /** First reason the order can't go yet; null when it can. */
   blocker: string | null
-  error: string | null
+  /** The last try's failure, as the customer should read it. */
+  failure: PlaceOrderFailure | null
+  /** Something to look at before placing (e.g. the delivery fee changed). */
+  notice: string | null
   isPlacing: boolean
   onPlace: () => void
   /** Guests get a sign-in button instead; orders belong to a member's number. */
@@ -18,10 +22,12 @@ interface PlaceOrderBarProps {
 }
 
 /** Sticky footer: says what's missing, or places the order. */
-export function PlaceOrderBar({ totalCentavos, blocker, error, isPlacing, onPlace, isGuest }: PlaceOrderBarProps) {
+export function PlaceOrderBar({ totalCentavos, blocker, failure, notice, isPlacing, onPlace, isGuest }: PlaceOrderBarProps) {
   const { colors, space, elevation } = useTokens()
   const insets = useSafeAreaInsets()
-  const message = error ?? (isGuest ? null : blocker)
+  const isUnconfirmed = failure?.kind === 'unconfirmed'
+  const message = failure?.message ?? notice ?? (isGuest ? null : blocker)
+  const tone = failure ? 'danger' : notice ? 'text' : 'textMuted'
   return (
     <View
       style={{
@@ -36,10 +42,11 @@ export function PlaceOrderBar({ totalCentavos, blocker, error, isPlacing, onPlac
       }}
     >
       {message ? (
-        <AppText variant="callout" color={error ? 'danger' : 'textMuted'} align="center" accessibilityLiveRegion="polite">
+        <AppText variant="callout" color={tone} align="center" accessibilityLiveRegion="polite" accessibilityRole={failure ? 'alert' : undefined}>
           {message}
         </AppText>
       ) : null}
+      {isUnconfirmed ? <Button variant="secondary" label="Check your orders" onPress={() => router.push('/orders')} /> : null}
       {isGuest ? (
         <Button size="lg" label="Sign in to place your order" onPress={() => router.push('/sign-in')} />
       ) : (

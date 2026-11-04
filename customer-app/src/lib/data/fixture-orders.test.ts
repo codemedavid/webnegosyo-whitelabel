@@ -27,9 +27,14 @@ describe('priceDraft (prototype server)', () => {
     expect(order.paymentStatus).toBe('paid')
   })
 
-  it('refuses a sold-out dish', () => {
+  it('delivers free from the demo store’s minimum', () => {
+    const big = { ...draft, orderTypeId: 'ot-delivery', lines: [{ ...draft.lines[0], quantity: 3 }] }
+    expect(priceDraft(big, catalog, context).totals).toMatchObject({ subtotal: 585, deliveryFee: 0, total: 585 })
+  })
+
+  it('refuses a sold-out dish the way the order route does', () => {
     const soldOut = { ...draft, lines: [{ itemId: 'item-nitro', quantity: 1, selections: {} }] }
-    expect(() => priceDraft(soldOut, catalog, context)).toThrow('sold out')
+    expect(() => priceDraft(soldOut, catalog, context)).toThrow(expect.objectContaining({ code: 'refused', message: expect.stringContaining('sold out') }))
   })
 })
 

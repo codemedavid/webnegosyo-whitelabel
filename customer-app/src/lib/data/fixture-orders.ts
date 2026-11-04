@@ -1,7 +1,8 @@
+import { AppApiError } from '@/lib/api/app-client'
 import { describeSelections, unitPriceCentavos } from '@/lib/cart/pricing'
 import { rewardEstimateCentavos } from '@/lib/checkout/reward'
 import { checkoutTotals } from '@/lib/checkout/totals'
-import { voucherDiscount, type VoucherTerms } from '@/lib/checkout/voucher'
+import { findPrototypeVoucher, prototypeVoucherDiscount } from './fixture-vouchers'
 import type { AppCatalog, AppOrderDetail, AppOrderDraft, AppOrderStatus } from '@/lib/contract'
 import { fromCentavos } from '@/lib/money'
 
@@ -11,12 +12,9 @@ import { fromCentavos } from '@/lib/money'
  * and walk the order through the kitchen on a clock so the tracker moves.
  */
 
-export const PROTOTYPE_VOUCHERS: readonly VoucherTerms[] = [
-  { code: 'KAPE10', label: '10% off your order', kind: 'percent', value: 10, maxDiscount: 50, minSpend: 200 },
-  { code: 'LESS50', label: '₱50 off', kind: 'fixed', value: 50, maxDiscount: null, minSpend: 300 },
-]
-
 export const PROTOTYPE_DELIVERY_FEE = 49
+/** Items subtotal (pesos) from which the demo store delivers free. */
+export const PROTOTYPE_FREE_DELIVERY_MINIMUM = 500
 const PREP_MINUTES = 15
 const DELIVERY_MINUTES = 35
 
@@ -37,14 +35,14 @@ const minutesFrom = (iso: string, minutes: number) => new Date(new Date(iso).get
 
 export function priceDraft(draft: AppOrderDraft, catalog: AppCatalog, context: { id: string; number: string; placedAt: string }): AppOrderDetail {
   const orderType = catalog.orderTypes.find((candidate) => candidate.id === draft.orderTypeId)
-  if (!orderType) throw new Error('That order type is no longer offered')
+  if (!orderType) throw new AppApiError('refused', 'That order type is no longer offered')
   const method = catalog.paymentMethods.find((candidate) => candidate.id === draft.paymentMethodId)
   if (!method || (method.orderTypeIds.length > 0 && !method.orderTypeIds.includes(orderType.id)))
-    throw new Error('That payment method is not offered for this order')
+    throw new AppApiError('refused', 'That payment method is not offered for this order')
 
   const lines = draft.lines.map((line, index) => {
     const item = catalog.items.find((candidate) => candidate.id === line.itemId)
-    if (!item?.isAvailable) throw new Error('Something in your bag is sold out')
+    if (!item?.isAvailable) throw new AppApiError('refused', 'Something in your bag is sold out')
     const unitCentavos = unitPriceCentavos(item, line.selections)
     return {
       id: `${context.id}-l${index + 1}`,
@@ -60,13 +58,14 @@ export function priceDraft(draft: AppOrderDraft, catalog: AppCatalog, context: {
 
   const subtotalCentavos = lines.reduce((sum, line) => sum + line.lineCentavos, 0)
   const rewardCentavos = draft.rewardId ? rewardEstimateCentavos(lines) : 0
-  const voucher = PROTOTYPE_VOUCHERS.find((candidate) => candidate.code === draft.voucherCode?.toUpperCase())
-  const voucherCentavos = voucher ? voucherDiscount(voucher, subtotalCentavos - rewardCentavos).discountCentavos : 0
+  const voucher = findPrototypeVoucher(draft.voucherCode)
+  const voucherCentavos = voucher ? prototypeVoucherDiscount(voucher, subtotalCentavos - rewardCentavos).discountCentavos : 0
   const isDelivery = orderType.kind === 'delivery'
+  const isFreeDelivery = subtotalCentavos >= PROTOTYPE_FREE_DELIVERY_MINIMUM * 100
   const totals = checkoutTotals({
     subtotalCentavos,
     discountCentavos: rewardCentavos + voucherCentavos,
-    deliveryFeeCentavos: isDelivery ? PROTOTYPE_DELIVERY_FEE * 100 : 0,
+    deliveryFeeCentavos: isDelivery && !isFreeDelivery ? PROTOTYPE_DELIVERY_FEE * 100 : 0,
   })
   const outlet = catalog.outlets.find((candidate) => candidate.id === draft.outletId)
 

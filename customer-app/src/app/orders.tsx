@@ -1,13 +1,14 @@
 import { router } from 'expo-router'
 import { Receipt } from 'lucide-react-native'
 import { useState } from 'react'
-import { FlatList, RefreshControl, View } from 'react-native'
+import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native'
 import { SignInPrompt } from '@/components/auth/sign-in-prompt'
 import { OrderCard } from '@/components/orders/order-card'
 import { AppText } from '@/components/ui/app-text'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useOrders } from '@/lib/data/hooks'
+import { useRefetchOnReturn } from '@/lib/hooks/use-refetch-on-return'
 import { useSession } from '@/lib/stores/session'
 import { useTokens } from '@/theme/theme-context'
 
@@ -40,9 +41,14 @@ function EmptyHistory() {
 export default function OrderHistoryScreen() {
   const { colors, space } = useTokens()
   const isMember = useSession((state) => state.status === 'member')
-  const { data: orders, isPending, refetch, isRefetching } = useOrders()
+  const { data: orders, isPending, refetch, isRefetching, hasNextPage, fetchNextPage, isFetchingNextPage, isFetchNextPageError } = useOrders()
+  // Statuses move while the customer is elsewhere: re-read whenever they come back here.
+  useRefetchOnReturn(refetch, isMember)
   // One clock per screen visit, so every card says "Today" against the same day.
   const [now] = useState(() => new Date())
+  const loadMore = () => {
+    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage()
+  }
 
   if (!isMember)
     return (
@@ -60,6 +66,20 @@ export default function OrderHistoryScreen() {
       contentContainerStyle={{ paddingVertical: space.lg, gap: space.md }}
       renderItem={({ item }) => <OrderCard order={item} now={now} />}
       ListEmptyComponent={<EmptyHistory />}
+      onEndReached={loadMore}
+      onEndReachedThreshold={0.5}
+      ListFooterComponent={
+        isFetchingNextPage ? (
+          <ActivityIndicator color={colors.primary} accessibilityLabel="Loading older orders" style={{ paddingVertical: space.lg }} />
+        ) : isFetchNextPageError ? (
+          <View style={{ alignItems: 'center', paddingVertical: space.md, gap: space.sm }}>
+            <AppText variant="callout" color="textMuted">
+              We couldn’t load older orders.
+            </AppText>
+            <Button variant="secondary" label="Try again" onPress={() => void fetchNextPage()} />
+          </View>
+        ) : null
+      }
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={colors.primary} />}
     />
   )
