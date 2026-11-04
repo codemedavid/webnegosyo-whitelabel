@@ -17,6 +17,8 @@ interface VoucherFieldProps {
   lineNames?: Readonly<Record<string, string>>
   /** Moves a voucher that discounts N items to the lines the customer chose. */
   onChooseUnits?: (code: string, picks: Record<string, number>) => void | Promise<void>
+  /** The prompt; replaces the store's `checkout.voucher` label when given (Page Designer). */
+  label?: string
 }
 
 /**
@@ -35,6 +37,7 @@ export function VoucherField({
   formatPrice,
   lineNames = {},
   onChooseUnits,
+  label,
 }: VoucherFieldProps) {
   const [draft, setDraft] = useState('')
 
@@ -51,7 +54,7 @@ export function VoucherField({
   return (
     <div className="space-y-2">
       <label htmlFor="voucher-code-input" className="text-sm font-medium text-[color:var(--co-text)]">
-        <StoreLabel name="checkout.voucher" fallback="Have a voucher?" />
+        {label ?? <StoreLabel name="checkout.voucher" fallback="Have a voucher?" />}
       </label>
 
       <div className="flex gap-2">
