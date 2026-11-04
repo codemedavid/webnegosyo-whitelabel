@@ -49,6 +49,31 @@ describe("runOrdersExport", () => {
     expect(arg.csv).toContain("1x Burger");
   });
 
+  it("exports the days picked on the Orders tab instead of the sheet's preset", async () => {
+    // Arrange: yesterday is picked; an order from today must stay out.
+    const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
+    const yesterday = { startMs: TODAY_START - DAY_MS, endMs: TODAY_START };
+
+    // Act
+    const coverage = await runOrdersExport({
+      orders: [order({ _id: "today" }), order({ _id: "yesterday", _creationTime: TODAY_START - 60 * 60 * 1000 })],
+      items: [],
+      preset: "7d",
+      nowMs: NOW,
+      fetchLimit: 10000,
+      window: yesterday,
+      fileName: "orders_2026-08-17.csv",
+      share,
+    });
+
+    // Assert
+    expect(coverage).toEqual({ isComplete: true, effectiveStartMs: yesterday.startMs });
+    const arg = share.mock.calls[0][0];
+    expect(arg.fileName).toBe("orders_2026-08-17.csv");
+    expect(arg.csv).toContain("yesterday");
+    expect(arg.csv).not.toMatch(/\btoday\b/);
+  });
+
   it("narrows to one status when asked", async () => {
     const share = jest.fn(async (_input: { fileName: string; csv: string }) => "uri");
 
