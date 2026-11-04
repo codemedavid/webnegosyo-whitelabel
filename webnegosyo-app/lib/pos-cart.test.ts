@@ -443,6 +443,15 @@ describe("normalizeLineNote", () => {
     expect(normalizeLineNote(undefined)).toBeUndefined();
   });
 
+  it("strips printer control characters (ESC, GS, C1) out of a note", () => {
+    expect(normalizeLineNote("no\x1B@ onion\x1DV\x00\x9B")).toBe("no@ onionV");
+    expect(normalizeLineNote("\x1B\x1D")).toBeUndefined();
+  });
+
+  it("keeps line breaks in a note and turns tabs into spaces", () => {
+    expect(normalizeLineNote("less ice\r\nno sugar\tplease")).toBe("less ice\nno sugar please");
+  });
+
   it("caps a note at the checkout's limit", () => {
     expect(normalizeLineNote("x".repeat(MAX_LINE_NOTE_LENGTH + 50))).toHaveLength(
       MAX_LINE_NOTE_LENGTH,

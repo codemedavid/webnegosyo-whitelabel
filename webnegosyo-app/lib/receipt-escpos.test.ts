@@ -51,6 +51,22 @@ describe("receiptMarkupToEscPos", () => {
   it("leaves text without markup otherwise untouched, including angle brackets it does not own", () => {
     expect(receiptMarkupToEscPos("1 <chili> sauce")).toBe(`${ESC}a\x001 <chili> sauce`);
   });
+
+  it("strips control bytes from the text so a note or a name cannot send printer commands", () => {
+    // ESC @ (reset), GS V (cut), ESC p (open drawer), BEL, DEL and C1 bytes.
+    const hostile = `No onion\x1B@\x1DV\x00\x1Bp\x00\x19\xFA\x07\x7F\x9B\x85 please`;
+    expect(receiptMarkupToEscPos(hostile)).toBe(`${ESC}a\x00No onion@Vp\u00FA please`);
+  });
+
+  it("keeps line breaks, turns tabs and carriage returns into plain spacing", () => {
+    expect(receiptMarkupToEscPos("Ana\r\nB\tC\nD")).toBe(`${ESC}a\x00Ana\nB C\nD`);
+  });
+
+  it("sanitises text inside markup too, never the bytes it emits itself", () => {
+    expect(receiptMarkupToEscPos("<B>Lo\x1BEla</B>")).toBe(
+      `${ESC}a\x00${ESC}!\x08${ESC}E\x01LoEla${ESC}!\x00${ESC}E\x00`,
+    );
+  });
 });
 
 describe("paper width helpers", () => {

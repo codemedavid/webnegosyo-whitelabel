@@ -12,6 +12,7 @@
 
 import type { ModifierGroup } from "./modifier-groups";
 import type { OrderDiscountLine } from "./order-totals";
+import { toPrintableText } from "./printable-text";
 
 /** One chosen modifier option, flattened for the cart line. */
 export interface PosCartSelection {
@@ -222,9 +223,12 @@ export function updateQty(
  */
 export const MAX_LINE_NOTE_LENGTH = 1000;
 
-/** A note as a line stores it: trimmed, capped, and blank meaning none. */
+/**
+ * A note as a line stores it: printer control characters stripped
+ * (`toPrintableText`), trimmed, capped, and blank meaning none.
+ */
 export function normalizeLineNote(note: string | null | undefined): string | undefined {
-  const trimmed = (note ?? "").trim().slice(0, MAX_LINE_NOTE_LENGTH).trim();
+  const trimmed = toPrintableText(note ?? "").trim().slice(0, MAX_LINE_NOTE_LENGTH).trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
