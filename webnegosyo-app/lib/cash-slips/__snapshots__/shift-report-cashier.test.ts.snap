@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`cashier shift report at 32 columns blind and uncounted prints no money anywhere, says So far, keeps receipt range and void numbers 1`] = `
+exports[`cashier shift report at 32 columns blind and uncounted prints no money anywhere, says So far, keeps first/last receipt and void numbers 1`] = `
 "          LOLY'S CAFE
           Main branch
           SHIFT REPORT
@@ -19,7 +19,8 @@ drawer is counted.
 VOIDS
 #03  11:00 AM
 --------------------------------
-Receipts               #01 - #07
+First receipt                #01
+Last receipt                 #07
 Receipt count                  2
 --------------------------------
 Cashier signature:
@@ -88,7 +89,8 @@ Items total             1,170.50
 VOIDS
 #03  11:00 AM             210.00
 --------------------------------
-Receipts               #01 - #07
+First receipt                #01
+Last receipt                 #07
 Receipt count                  3
 --------------------------------
 Cashier signature:
@@ -159,7 +161,8 @@ listed.
 VOIDS
 #03  11:00 AM             210.00
 --------------------------------
-Receipts               #01 - #07
+First receipt                #01
+Last receipt                 #07
 Receipt count                  3
 --------------------------------
 Cashier signature:
@@ -205,7 +208,7 @@ Cash taken (net)         -155.00
 Paid in                   100.00
 Paid out                  -40.00
 Should be in drawer       405.00
-Counted                 1,660.00
+Counted                   355.00
 SHORT                      50.00
 Change given on other bills
                          -155.00
@@ -229,7 +232,8 @@ Items total             1,170.50
 VOIDS
 #03  11:00 AM             210.00
 --------------------------------
-Receipts               #01 - #07
+First receipt                #01
+Last receipt                 #07
 Receipt count                  3
 --------------------------------
 Cashier signature:
@@ -245,7 +249,7 @@ ______________________________
 "
 `;
 
-exports[`cashier shift report at 48 columns blind and uncounted prints no money anywhere, says So far, keeps receipt range and void numbers 1`] = `
+exports[`cashier shift report at 48 columns blind and uncounted prints no money anywhere, says So far, keeps first/last receipt and void numbers 1`] = `
 "                  LOLY'S CAFE
                   Main branch
                   SHIFT REPORT
@@ -263,7 +267,8 @@ Totals stay hidden until the drawer is counted.
 VOIDS
 #03  11:00 AM
 ------------------------------------------------
-Receipts                               #01 - #07
+First receipt                                #01
+Last receipt                                 #07
 Receipt count                                  2
 ------------------------------------------------
 Cashier signature:
@@ -326,7 +331,8 @@ Items total                             1,170.50
 VOIDS
 #03  11:00 AM                             210.00
 ------------------------------------------------
-Receipts                               #01 - #07
+First receipt                                #01
+Last receipt                                 #07
 Receipt count                                  3
 ------------------------------------------------
 Cashier signature:
@@ -390,7 +396,8 @@ Only the 500 most sold are listed.
 VOIDS
 #03  11:00 AM                             210.00
 ------------------------------------------------
-Receipts                               #01 - #07
+First receipt                                #01
+Last receipt                                 #07
 Receipt count                                  3
 ------------------------------------------------
 Cashier signature:
@@ -436,7 +443,7 @@ Cash taken (net)                         -155.00
 Paid in                                   100.00
 Paid out                                  -40.00
 Should be in drawer                       405.00
-Counted                                 1,660.00
+Counted                                   355.00
 SHORT                                      50.00
 Change given on other bills              -155.00
   Handed back on 1 bill rung earlier or by
@@ -453,7 +460,8 @@ Items total                             1,170.50
 VOIDS
 #03  11:00 AM                             210.00
 ------------------------------------------------
-Receipts                               #01 - #07
+First receipt                                #01
+Last receipt                                 #07
 Receipt count                                  3
 ------------------------------------------------
 Cashier signature:

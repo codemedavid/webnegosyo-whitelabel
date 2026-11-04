@@ -80,6 +80,14 @@ const MINE: ShiftSalesReport = {
   otherCollections: { count: 1, cents: 99900 },
 };
 
+/** She handed back ₱155 change on a colleague's bill that was edited down. */
+const CHANGE_GIVEN: ShiftSalesReport = {
+  ...MINE,
+  // 500 float − 155 + 100 paid in − 40 paid out = 405 expected; counted 355 → 50 short.
+  cash: MINE.cash ? { ...MINE.cash, cashSalesCents: -15500, expectedCents: 40500, countedCents: 35500, differenceCents: -5000 } : null,
+  otherCollections: { count: 1, cents: -15500 },
+};
+
 const OPEN_HIDDEN: ShiftSalesReport = {
   ...MINE,
   hidden: true,
@@ -132,22 +140,18 @@ describe.each(WIDTHS)("cashier shift report at %i columns", (width) => {
     expect(slipPlainText([{ type: "text", text }])).toMatchSnapshot();
   });
 
-  it("blind and uncounted prints no money anywhere, says So far, keeps receipt range and void numbers", () => {
+  it("blind and uncounted prints no money anywhere, says So far, keeps first/last receipt and void numbers", () => {
     const text = printable(OPEN_HIDDEN, width);
     expect(text).toContain("So far");
     expect(text).not.toMatch(/\d\.\d\d/);
-    expect(text).toContain("#01 - #07");
+    expect(text).toMatch(/First receipt +#01/);
+    expect(text).toMatch(/Last receipt +#07/);
     expect(text).toMatch(/#03/);
     expect(slipPlainText([{ type: "text", text }])).toMatchSnapshot();
   });
 
   it("words change handed back on a colleague's bill as change given, never as negative other bills", () => {
-    const report: ShiftSalesReport = {
-      ...MINE,
-      cash: MINE.cash ? { ...MINE.cash, cashSalesCents: -15500, expectedCents: 40500 } : null,
-      otherCollections: { count: 1, cents: -15500 },
-    };
-    const text = printable(report, width);
+    const text = printable(CHANGE_GIVEN, width);
     expect(text).toMatch(/Cash taken \(net\) +-155\.00/);
     expect(text.replace(/\s+/g, " ")).toMatch(/Change given on other bills -155\.00/);
     expect(text.replace(/\s+/g, " ")).toContain("Handed back on 1 bill rung earlier or by others.");
@@ -203,6 +207,27 @@ describe("cashier shift report details", () => {
     expect(text).toContain("So far");
     expect(text).toMatch(/Counted +not yet/);
     expect(text).not.toMatch(/SHORT|OVER|EXACT/);
+  });
+
+  it("her slip never prints a #range: daily numbers between hers belong to other cashiers", () => {
+    const text = printable(MINE, 32);
+    expect(text).not.toMatch(/#01 - #07/);
+    expect(text).toMatch(/First receipt +#01/);
+    expect(text).toMatch(/Last receipt +#07/);
+    expect(text).toMatch(/Receipt count +3/);
+    // One receipt: one line, no first/last pair.
+    const single = printable({ ...MINE, firstNumber: "#04", lastNumber: "#04" }, 32);
+    expect(single).toMatch(/Receipt +#04/);
+    expect(single).not.toMatch(/First receipt/);
+  });
+
+  it("every fixture's drawer adds up: start + cash taken + in − out − pickups = expected; counted − expected = difference", () => {
+    for (const cash of [MINE.cash, CHANGE_GIVEN.cash]) {
+      if (!cash) throw new Error("fixture without a drawer");
+      const expected = cash.expectedCents ?? 0;
+      expect(cash.floatCents + (cash.cashSalesCents ?? 0) + cash.payInCents - cash.payOutCents - cash.collectedCents).toBe(expected);
+      expect((cash.countedCents ?? 0) - expected).toBe(cash.differenceCents);
+    }
   });
 
   it("no voids says so", () => {

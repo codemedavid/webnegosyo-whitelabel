@@ -10,7 +10,7 @@
 // BIR-accredited).
 
 import type { ShiftSalesCash, ShiftSalesCollections, ShiftSalesItem, ShiftSalesReport, ShiftSalesVoid } from "../cash/shift-sales";
-import { HIDDEN_TOTALS_LINE, NO_TOTALS_LINE, paidByLines, receiptLines, totalsLines } from "./shift-report-parts";
+import { HIDDEN_TOTALS_LINE, NO_TOTALS_LINE, bareNumber, paidByLines, totalsLines } from "./shift-report-parts";
 import {
   DEVICE_SOURCE_LINE,
   center,
@@ -184,6 +184,25 @@ function moneyLines(report: ShiftSalesReport, w: SlipWidth): string[] {
   ];
 }
 
+/**
+ * Her first and last receipt numbers, and how many she rang. Never "#01 - #07":
+ * daily numbers are shared by the branch, so the numbers between hers belong
+ * to other cashiers, and a range beside "Receipt count 3" read as missing
+ * receipts. Works the same in hidden mode (no money in it).
+ */
+function cashierReceiptLines(report: ShiftSalesReport, w: SlipWidth): string[] {
+  const first = bareNumber(report.firstNumber ?? report.receipts[0]?.number ?? null);
+  const last = bareNumber(report.lastNumber ?? report.receipts[report.receipts.length - 1]?.number ?? null);
+  const count = report.summary?.orders ?? report.receipts.length;
+  const countText = report.summary || !report.receiptsTruncated ? String(count) : `${count}+`;
+  if (count === 0 || !first) return [divider(w), leftRight("Receipts", "none", w)];
+  const numbers =
+    first === last || !last
+      ? [leftRight("Receipt", first, w)]
+      : [leftRight("First receipt", first, w), leftRight("Last receipt", last, w)];
+  return [divider(w), ...numbers, leftRight("Receipt count", countText, w)];
+}
+
 function signatureLines(w: SlipWidth): string[] {
   const line = "_".repeat(w - 2);
   return [divider(w), "Cashier signature:", "", line, "", "Checked by:", "", line];
@@ -201,7 +220,7 @@ export function cashierShiftReportLines(report: ShiftSalesReport, opts: CashierS
     ...moneyLines(report, w),
     ...itemsSection(report, w),
     ...voidsSection(report, w),
-    ...receiptLines(report, w),
+    ...cashierReceiptLines(report, w),
     ...signatureLines(w),
     ...footerLines(w),
   ];
