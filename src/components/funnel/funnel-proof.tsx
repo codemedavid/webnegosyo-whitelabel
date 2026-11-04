@@ -2,7 +2,11 @@ import Image from 'next/image'
 import { PROOF } from './funnel-copy'
 import { SectionTitle } from './funnel-ui'
 
-const DEMO_VIDEO_URL = 'https://www.youtube.com/embed/q1GZEDwFLv8?rel=0'
+/** The SmartMenu product demo (v3, 2:12), served from the R2 media host. */
+const DEMO_VIDEO = {
+  src: 'https://media.webnegosyo.com/marketing/smartmenu-product-demo-v3.mp4',
+  poster: 'https://media.webnegosyo.com/marketing/smartmenu-product-demo-v3-poster.jpg',
+} as const
 
 /** Transcribed from /testimonial2.png, the merchant's real Facebook recommendation. */
 const FACEBOOK_REVIEW = {
@@ -23,16 +27,15 @@ export function FunnelProof() {
         <SectionTitle kicker={PROOF.eyebrow} title={PROOF.title} />
 
         <figure id="demo" className="mx-auto mt-12 max-w-[720px] scroll-mt-24">
-          <div className="fn-shot relative aspect-video">
-            <iframe
-              src={DEMO_VIDEO_URL}
-              title="SmartMenu demo"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              loading="lazy"
-              className="absolute inset-0 h-full w-full"
-            />
-          </div>
+          <video
+            src={DEMO_VIDEO.src}
+            poster={DEMO_VIDEO.poster}
+            controls
+            playsInline
+            preload="metadata"
+            className="fn-shot aspect-video w-full bg-black object-contain"
+            aria-label="SmartMenu product demo"
+          />
           <figcaption className="mt-3 text-center text-[13px] text-[#A99C8D]">{PROOF.demoTitle}</figcaption>
         </figure>
 

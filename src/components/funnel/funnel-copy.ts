@@ -73,7 +73,7 @@ export const FEATURES = {
 export const PROOF = {
   eyebrow: 'Hindi lang puro claims',
   title: 'Tingnan mo muna ang system in action',
-  demoTitle: 'Paano umo-order ang customer, from menu to checkout',
+  demoTitle: 'SmartMenu in 2 minutes: easier ordering, bigger orders, more repeat customers',
   videoLabel: 'Merchant video testimonial',
   messageAlt: 'Screenshot of a real merchant message praising the hero banner of their SmartMenu store',
   reviewAlt: 'Real Facebook recommendation from a SmartMenu merchant',
