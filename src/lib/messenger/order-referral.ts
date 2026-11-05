@@ -14,6 +14,10 @@
 
 export const ORDER_REFERRAL_WINDOW_MS = 24 * 60 * 60 * 1000
 
+/** Says nothing about the order; checkout can store a PSID from another store's page. */
+export const ORDER_REFERRAL_REFUSED_MESSAGE =
+  "We can't show this order's details here. Please check your order link, or message us your order number."
+
 export function mayAnswerOrderReferral(input: {
   senderId: string
   customerData: unknown

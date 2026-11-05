@@ -137,8 +137,9 @@ describe('createOrder — platform write round trips', () => {
     expect(result.order).not.toHaveProperty('order_token_expires_at')
   })
 
-  test('a retry of an order whose items never landed writes them and is not a dedupe, so the follow-ups run', async () => {
-    // Arrange: the first attempt saved the row, then failed on its items.
+  test('a retry of an order with no items fails instead of reporting an empty order as saved', async () => {
+    // Arrange: the first attempt saved the row and failed on its items, or is
+    // still writing them. Writing them here could double the lines.
     duplicateOrder = { id: 'order-0', tenant_id: 'tenant-1' }
     existingLines = []
     const { createOrder } = await import('@/lib/orders-service')
@@ -146,16 +147,15 @@ describe('createOrder — platform write round trips', () => {
     const noArg = undefined
 
     // Act
-    const result = await create(
+    const attempt = create(
       'tenant-1', [line], { name: 'Ana', contact: '09171234567' }, 'ot-1',
       noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg,
       { clientOrderId: 'client-1' },
     )
 
     // Assert
-    expect(result.deduped).toBeUndefined()
-    const itemInsert = adminOps.find((op) => op.table === 'order_items' && op.op === 'insert')
-    expect(itemInsert?.payload).toEqual([expect.objectContaining({ order_id: 'order-0', menu_item_id: 'mi-1' })])
+    await expect(attempt).rejects.toThrow(/without its items/)
+    expect(adminOps.filter((op) => op.table === 'order_items')).toEqual([])
   })
 
   test('a retry of a complete order does not write its items again', async () => {

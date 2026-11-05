@@ -7,7 +7,7 @@ import {
 } from '@/lib/facebook/page-tokens'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 import { createLogger } from '@/lib/logger'
-import { mayAnswerOrderReferral } from '@/lib/messenger/order-referral'
+import { mayAnswerOrderReferral, ORDER_REFERRAL_REFUSED_MESSAGE } from '@/lib/messenger/order-referral'
 
 // Tracing is opt-in (DEBUG_MESSENGER): these lines carry PSIDs and guest messages.
 const log = createLogger('[Webhook]', 'DEBUG_MESSENGER')
@@ -429,7 +429,10 @@ export async function POST(request: NextRequest) {
                 createdAt: order.created_at,
                 now: Date.now(),
               })) {
+                // Answer without details: a real customer on a mismatched or
+                // stale link should not meet silence.
                 log.debug('Referral refused for an order owned by another conversation or too old', { orderId })
+                await sendMessage(senderId, facebookPage.page_access_token, ORDER_REFERRAL_REFUSED_MESSAGE)
                 continue
               }
 

@@ -78,7 +78,8 @@ describe('Messenger webhook order referral', () => {
 
     await POST(referral('page-596'))
 
-    expect(sendMessage).not.toHaveBeenCalled()
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    expect(sendMessage).not.toHaveBeenCalledWith('psid-9', 'page-token', 'Order summary')
     expect(admin.updates).toEqual([])
   })
 
@@ -97,7 +98,8 @@ describe('Messenger webhook order referral', () => {
 
     await POST(referral('page-596'))
 
-    expect(sendMessage).not.toHaveBeenCalled()
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    expect(sendMessage).not.toHaveBeenCalledWith('psid-9', 'page-token', 'Order summary')
     expect(admin.updates).toEqual([])
   })
 
