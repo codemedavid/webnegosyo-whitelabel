@@ -65,10 +65,15 @@ export function useConfirmationValue(checkout: ConfirmationSource, grandTotal: n
     // it: the tenant has Messenger on AND a page resolved to redirect to.
     hasMessengerFallback: Boolean(messengerEnabled && order.messengerUrl),
     canTrack: Boolean(trackingOrderId && trackingToken),
+    // Leaving by hand stops the countdown, so it can't pull the customer to tracking after they chose.
     onTrack: () => {
+      countdown.stay?.()
       if (trackingOrderId && trackingToken) router.push(buildOrderTrackingPath(tenantSlug, trackingOrderId, trackingToken))
     },
-    onBackToMenu: () => router.push(`/${tenantSlug}/menu`),
+    onBackToMenu: () => {
+      countdown.stay?.()
+      router.push(`/${tenantSlug}/menu`)
+    },
     trackingCountdown: countdown.secondsLeft,
     onStayHere: countdown.stay,
   }

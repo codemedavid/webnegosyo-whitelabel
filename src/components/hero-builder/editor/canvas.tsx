@@ -7,8 +7,9 @@ import { CANVAS_WIDTH } from '@/lib/hero-builder/constants'
 import { WIDGET_DEFAULTS } from '@/lib/hero-builder/defaults'
 import { findNode } from '@/lib/hero-builder/tree-ops'
 import type { Section, Widget, WidgetKind } from '@/lib/hero-builder/types'
-import { blockDef } from '@/lib/page-designer/blocks'
-import { createPageBlock } from '@/lib/page-designer/design-blocks'
+import { pageBlockDef } from '@/lib/page-designer/blocks'
+import { blockIdsIn, createPageBlock } from '@/lib/page-designer/design-blocks'
+import { usePageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
 
 import type { HeroBuilderApi } from './use-hero-builder'
@@ -47,6 +48,7 @@ function labelFor(api: HeroBuilderApi, id: string): string {
 }
 
 export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
+  const page = usePageRuntime()?.page
   const viewportRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
@@ -162,9 +164,13 @@ export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
     const kind = event.dataTransfer.getData(DRAG_NEW)
     const moveId = event.dataTransfer.getData(DRAG_MOVE)
     const at = { columnId: target.columnId, index: target.index }
-    const block = kind.startsWith(DRAG_PAGE_BLOCK_PREFIX) ? blockDef(kind.slice(DRAG_PAGE_BLOCK_PREFIX.length)) : null
-    if (block) api.addPrebuilt(createPageBlock(block), at)
-    else if (kind && Object.prototype.hasOwnProperty.call(WIDGET_DEFAULTS, kind)) api.addWidget(kind as WidgetKind, at)
+    if (kind.startsWith(DRAG_PAGE_BLOCK_PREFIX)) {
+      // Only this page's blocks, and each once (the tile may still be mid-drag when it gets placed).
+      const block = page ? pageBlockDef(page, kind.slice(DRAG_PAGE_BLOCK_PREFIX.length)) : null
+      if (block && !blockIdsIn(api.design).includes(block.id)) api.addPrebuilt(createPageBlock(block), at)
+      return
+    }
+    if (kind && Object.prototype.hasOwnProperty.call(WIDGET_DEFAULTS, kind)) api.addWidget(kind as WidgetKind, at)
     else if (moveId) api.moveWidgetTo(moveId, target.columnId, target.index)
   }
 
@@ -252,8 +258,8 @@ export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
                     <Trash2 className="h-3.5 w-3.5" />
                   </ToolbarButton>
                 ) : (
-                  <span className="flex h-7 items-center px-1.5" title="Keeps the page working — can't be removed">
-                    <Lock className="h-3.5 w-3.5" aria-label="Locked" />
+                  <span className="flex h-7 items-center px-1.5" title="Keeps the page working — can't be removed" role="img" aria-label="Locked: keeps the page working">
+                    <Lock className="h-3.5 w-3.5" aria-hidden />
                   </span>
                 )}
               </div>

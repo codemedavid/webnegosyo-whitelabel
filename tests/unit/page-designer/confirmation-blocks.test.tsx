@@ -180,6 +180,14 @@ describe('the owner’s tracking countdown', () => {
     expect(screen.getByText('Track Your Order')).toBeInTheDocument()
   })
 
+  it('tapping Back to Menu mid-countdown stops it, so tracking never takes over', () => {
+    renderPage(checkoutWith(createStandardDesign('confirmation'), { confirmationHandoff: COUNTDOWN }))
+    fireEvent.click(screen.getByText('Back to Menu'))
+    act(() => { jest.advanceTimersByTime(10_000) })
+    expect(router.push).toHaveBeenCalledWith('/lolas/menu')
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
   it('stay and none never move on by themselves', () => {
     const replace = jest.fn()
     for (const handoff of [{ kind: 'stay', path: '/x' }, { kind: 'none' }, null] as const) {

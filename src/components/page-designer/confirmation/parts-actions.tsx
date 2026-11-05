@@ -60,7 +60,8 @@ function TrackingCountdownLine({ copy }: { copy: ActionsCopy }) {
   const b = useConfirmationBlocks()
   if (!b || b.trackingCountdown === null) return null
   return (
-    <div className="text-center space-y-1" aria-live="polite">
+    // Not a live region: the number ticks every second, and a screen reader would read each one.
+    <div className="text-center space-y-1">
       <p className="text-sm text-[color:var(--co-muted)]">
         <CountdownText text={copy.countdown ?? 'Opening your order tracking in {seconds}...'} seconds={b.trackingCountdown} />
       </p>
