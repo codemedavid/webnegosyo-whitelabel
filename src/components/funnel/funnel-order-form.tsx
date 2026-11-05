@@ -1,17 +1,17 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import { submitCheckoutForm, fetchActivePlatformPaymentMethods } from '@/app/actions/checkout-leads'
 import { createMetaEventId, getMetaBrowserData, trackMetaEvent } from '@/lib/meta-pixel'
-import { MONTHLY_SUBSCRIPTION_PRICE } from '@/lib/checkout-leads/payment-terms'
-import { SMARTMENU } from '@/components/landing/landing-theme'
+import type { FunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
+import { toCheckoutLeadConfirmation, type CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
+import { paymentBrandFor } from '@/lib/checkout-leads/payment-brand'
 import { ORDER, ORDER_FORM } from './funnel-copy'
-import { OFFER_NAME } from './funnel-offer'
-import { FUNNEL_LINE } from './funnel-ui'
+import { OFFER_NAME, dueTodayFor } from './funnel-offer'
+import { PaymentLogo } from './funnel-payment-ui'
 
 /** Philippine mobile number, local (09…) or international (639…) form. */
 const PH_MOBILE = /^(09\d{9}|639\d{9})$/
@@ -27,9 +27,19 @@ const orderSchema = z.object({
 type OrderFields = z.infer<typeof orderSchema>
 type FieldErrors = Partial<Record<keyof OrderFields, string>>
 
+/** A method as the payment step shows it, loaded with the form so that step needs no fetch. */
 interface PaymentOption {
   id: string
   name: string
+  details: string | null
+  qr_code_url: string | null
+}
+
+/** Warm the browser cache so the QR is already there when the payment step opens. */
+function preloadQrCodes(options: PaymentOption[]) {
+  for (const option of options) {
+    if (option.qr_code_url) new Image().src = option.qr_code_url
+  }
 }
 
 const EMPTY_FIELDS: OrderFields = { name: '', email: '', phone: '', businessName: '', paymentMethodId: '' }
@@ -65,8 +75,14 @@ function usePaymentOptions(onSingleOption: (id: string) => void) {
     fetchActivePlatformPaymentMethods()
       .then((methods) => {
         if (isCancelled) return
-        const loaded = methods.map((method) => ({ id: method.id, name: method.name }))
+        const loaded = methods.map((method) => ({
+          id: method.id,
+          name: method.name,
+          details: method.details ?? null,
+          qr_code_url: method.qr_code_url ?? null,
+        }))
         setOptions(loaded)
+        preloadQrCodes(loaded)
         if (loaded.length === 1) onSingleOption(loaded[0].id)
       })
       .catch((error: unknown) => {
@@ -86,13 +102,41 @@ function usePaymentOptions(onSingleOption: (id: string) => void) {
   return { options, isLoading, hasError }
 }
 
+interface FunnelOrderFormProps {
+  /** The plan the visitor picked above the form; the server prices it. */
+  term: FunnelPlanTerm
+  submitLabel: string
+  /** The lead is saved: open its payment step. */
+  onSaved: (confirmation: CheckoutLeadConfirmation) => void
+}
+
 /**
- * Brunson's order form. A "yes" becomes a checkout lead on the monthly term
- * (amount computed server-side), then the existing confirmation page shows
- * the reference number and payment instructions.
+ * The payment step's data, from the save's answer (reference, the amount the
+ * SERVER priced) plus the chosen method already on screen. Nothing personal:
+ * the same fields the public confirmation page reads.
  */
-export function FunnelOrderForm() {
-  const router = useRouter()
+function confirmationFor(
+  saved: { reference_number: string; amount: number | null },
+  term: FunnelPlanTerm,
+  method: PaymentOption | undefined
+): CheckoutLeadConfirmation | null {
+  return toCheckoutLeadConfirmation({
+    reference_number: saved.reference_number,
+    amount: saved.amount ?? dueTodayFor(term),
+    payment_term: term,
+    payment_proof_url: null,
+    platform_payment_methods: method
+      ? { name: method.name, details: method.details, qr_code_url: method.qr_code_url }
+      : null,
+  })
+}
+
+/**
+ * The order form. A "yes" becomes a checkout lead on the chosen plan's term
+ * (amount computed server-side), then the payment step opens in place: one
+ * round trip, no page load between the button and the QR.
+ */
+export function FunnelOrderForm({ term, submitLabel, onSaved }: FunnelOrderFormProps) {
   const isSubmittingRef = useRef(false)
   const [fields, setFields] = useState<OrderFields>(EMPTY_FIELDS)
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -116,8 +160,8 @@ export function FunnelOrderForm() {
 
     isSubmittingRef.current = true
     setIsSubmitting(true)
-    // Stays pending once the lead is saved: the button must not re-arm while
-    // the confirmation page loads, or a second tap files a duplicate lead.
+    // Stays pending once the lead is saved: the button must never re-arm
+    // under the payment step, or a second tap files a duplicate lead.
     let isSaved = false
     try {
       const eventId = createMetaEventId('lead')
@@ -127,7 +171,7 @@ export function FunnelOrderForm() {
         phone: parsed.data.phone,
         business_name: parsed.data.businessName,
         selected_payment_method_id: parsed.data.paymentMethodId,
-        payment_term: 'monthly_subscription',
+        payment_term: term,
         notes: `Funnel: ${OFFER_NAME}`,
         meta: { eventId, ...getMetaBrowserData() },
       })
@@ -138,11 +182,21 @@ export function FunnelOrderForm() {
       }
       trackMetaEvent(
         'Lead',
-        { content_name: OFFER_NAME, currency: 'PHP', value: result.data.amount ?? MONTHLY_SUBSCRIPTION_PRICE },
+        { content_name: OFFER_NAME, currency: 'PHP', value: result.data.amount ?? dueTodayFor(term) },
         eventId
       )
+      const confirmation = confirmationFor(
+        result.data,
+        term,
+        payments.options.find((option) => option.id === parsed.data.paymentMethodId)
+      )
+      if (!confirmation) {
+        toast.error(ORDER_FORM.saveFailed)
+        console.error('[funnel] checkout lead saved without a reference number')
+        return
+      }
       isSaved = true
-      router.push(`/checkout/confirmation?confirm=${encodeURIComponent(result.data.reference_number)}`)
+      onSaved(confirmation)
     } catch (error) {
       console.error('[funnel] checkout lead failed', error)
       toast.error(ORDER_FORM.connectionFailed)
@@ -158,7 +212,7 @@ export function FunnelOrderForm() {
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
       {TEXT_FIELDS.map((field) => (
         <div key={field.key}>
-          <label htmlFor={`funnel-${field.key}`} className="mb-1.5 block text-[14px] font-bold" style={{ color: SMARTMENU.ink }}>
+          <label htmlFor={`funnel-${field.key}`} className="mb-1.5 block text-[13.5px] font-medium text-[#EFE6D8]">
             {field.label}
           </label>
           <input
@@ -171,11 +225,10 @@ export function FunnelOrderForm() {
             onChange={(event) => updateField(field.key, event.target.value)}
             aria-invalid={Boolean(errors[field.key])}
             aria-describedby={errors[field.key] ? `funnel-${field.key}-error` : undefined}
-            className="block min-h-12 w-full rounded-xl border bg-white px-4 text-base outline-none transition-shadow focus:ring-2"
-            style={{ borderColor: errors[field.key] ? SMARTMENU.red : FUNNEL_LINE, color: SMARTMENU.ink }}
+            className="fn-input"
           />
           {errors[field.key] && (
-            <p id={`funnel-${field.key}-error`} className="mt-1 text-[13px]" style={{ color: SMARTMENU.red }}>
+            <p id={`funnel-${field.key}-error`} className="mt-1 text-[13px] text-[#FF8A73]">
               {errors[field.key]}
             </p>
           )}
@@ -194,11 +247,10 @@ export function FunnelOrderForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="flex min-h-14 w-full items-center justify-center gap-2 rounded-full px-6 text-base font-bold transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-70 sm:text-lg"
-        style={{ backgroundColor: SMARTMENU.red, color: '#FFF7EE' }}
+        className="fn-cta fn-cta--large"
       >
         {isSubmitting && <Loader2 aria-hidden className="h-5 w-5 animate-spin" />}
-        {isSubmitting ? ORDER.submitting : `${ORDER.submit} →`}
+        <span>{isSubmitting ? ORDER.submitting : `${submitLabel} →`}</span>
       </button>
     </form>
   )
@@ -223,39 +275,38 @@ function PaymentPicker({
   const isEmpty = !isLoading && !hasError && options.length === 0
   return (
     <fieldset>
-      <legend className="mb-1.5 text-[14px] font-bold" style={{ color: SMARTMENU.ink }}>
+      <legend className="mb-1.5 text-[13.5px] font-medium text-[#EFE6D8]">
         {ORDER_FORM.paymentLegend}
       </legend>
-      {isLoading && <p className="text-[13px]" style={{ color: SMARTMENU.cocoa }}>{ORDER_FORM.paymentLoading}</p>}
+      {isLoading && <p className="text-[13px] text-[#A99C8D]">{ORDER_FORM.paymentLoading}</p>}
       {(hasError || isEmpty) && (
-        <p className="text-[13px]" style={{ color: SMARTMENU.red }}>
+        <p className="text-[13px] text-[#FF8A73]">
           {ORDER_FORM.paymentLoadError}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         {options.map((option) => {
           const isSelected = option.id === selectedId
+          const hasLogo = paymentBrandFor(option.name) !== null
           return (
-            <label
-              key={option.id}
-              className="flex min-h-12 cursor-pointer items-center gap-2.5 rounded-xl border-2 bg-white px-4 text-[15px] font-bold"
-              style={{ borderColor: isSelected ? SMARTMENU.red : FUNNEL_LINE, color: SMARTMENU.ink }}
-            >
+            <label key={option.id} className="fn-choice text-[15px] font-semibold text-white">
               <input
                 type="radio"
                 name="funnel-payment"
                 value={option.id}
                 checked={isSelected}
                 onChange={() => onSelect(option.id)}
-                className="h-4 w-4 accent-current"
-                style={{ color: SMARTMENU.red }}
               />
-              {option.name}
+              <span className="fn-choice-logo">
+                {/* The logo says it; the name stays for screen readers. */}
+                <span className={hasLogo ? 'sr-only' : ''}>{option.name}</span>
+                {hasLogo && <PaymentLogo name={option.name} size="choice" isNameHidden />}
+              </span>
             </label>
           )
         })}
       </div>
-      {error && <p role="alert" className="mt-1 text-[13px]" style={{ color: SMARTMENU.red }}>{error}</p>}
+      {error && <p role="alert" className="mt-1 text-[13px] text-[#FF8A73]">{error}</p>}
     </fieldset>
   )
 }
