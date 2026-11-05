@@ -268,6 +268,13 @@ export type FormSaveInput = z.infer<typeof formSaveInputSchema>
 export interface FormSaveOutcome {
   fields: Record<string, FormQuestion[]>
   created: Record<string, string>
+  /**
+   * A write failed part-way: `fields` is what the database holds now and
+   * `created` the questions that did get a row. The editor takes both as
+   * saved and keeps the rest of its draft, so a retry finishes the job
+   * instead of creating the same question twice.
+   */
+  isPartial?: true
 }
 
 /** The save input for `draft` against `saved` (undefined = nothing changed). */

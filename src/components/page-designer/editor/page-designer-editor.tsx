@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { savePageLookAction } from '@/app/actions/page-designer'
@@ -138,7 +138,9 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
 
   // Publish reads the Look at the moment it runs, so the surface stays stable.
   const pending = useRef<PendingLook | null>(null)
-  pending.current = { input: look.input, onSaved: look.markSaved }
+  useLayoutEffect(() => {
+    pending.current = { input: look.input, onSaved: look.markSaved }
+  })
   const pendingForm = formSession.pending
   const surface = useMemo(
     () => withFormPublish(buildPageSurface(page, runtime, () => pending.current), page, () => pending.current, () => pendingForm.current),

@@ -79,11 +79,31 @@ function widgetProblem(widget: Widget, page: PageId, seen: Set<string>): string 
   return null
 }
 
+/**
+ * Step-by-step / folding layouts count every section as a step on every
+ * device, so a section hidden on one device would be an empty step there.
+ */
+function steppedSectionProblem(design: HeroDesignV5): string | null {
+  const layout = design.page?.layout
+  if (layout !== 'steps' && layout !== 'accordion') return null
+  for (const section of design.sections) {
+    if (section.pin === 'bottom') continue
+    const hiddenOn = DEVICES.filter((device) => resolveStyle(section, device).hidden)
+    if (hiddenOn.length) {
+      const where = hiddenOn.map((d) => DEVICE_NAMES[d]).join(' and ')
+      return `"${section.label || 'A section'}" is hidden on ${where}, so it would be an empty ${layout === 'steps' ? 'step' : 'panel'} there. Show it, or move its blocks and delete it.`
+    }
+  }
+  return null
+}
+
 /** A merchant-facing reason this design cannot be published on `page`, or null. */
 export function pageDesignProblem(design: HeroDesignV5, page: PageId): string | null {
   for (const [key, value] of Object.entries(design.page?.parts ?? {})) {
     if (!isValidPartValue(key, value)) return 'A page style has an invalid value. Reset the page style.'
   }
+  const stepped = steppedSectionProblem(design)
+  if (stepped) return stepped
   const seen = new Set<string>()
   for (const section of design.sections) {
     for (const column of section.columns) {
@@ -171,5 +191,11 @@ export function preparePageDesign(design: HeroDesignV5, page: PageId, needs: Pag
     mobile: { hidden: !missing.has('mobile'), padding: { top: 12, right: 12, bottom: 24, left: 12 } },
     columns: [{ ...base.columns[0], id: FALLBACK.column, widgets }],
   }
-  return { ...cleaned, sections: [...cleaned.sections, section] }
+  // On the checkout the essentials go BEFORE the section holding Place order,
+  // so a step-by-step page asks them before its last step, never after it.
+  const placeAt = page === 'checkout'
+    ? cleaned.sections.findIndex((s) => s.pin !== 'bottom' && s.columns.some((c) => c.widgets.some((w) => isPageBlockWidget(w) && w.content.block === 'checkout.place_order')))
+    : -1
+  const sections = placeAt >= 0 ? [...cleaned.sections.slice(0, placeAt), section, ...cleaned.sections.slice(placeAt)] : [...cleaned.sections, section]
+  return { ...cleaned, sections }
 }

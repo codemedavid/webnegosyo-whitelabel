@@ -156,6 +156,18 @@ describe('saveCheckoutFormAction', () => {
     expect(result.success).toBe(false)
     expect(mockCalls).toEqual(['create', 'update'])
   })
+
+  it('a part-way failure hands back what IS stored and the rows created, so a retry never creates them twice', async () => {
+    const partly = [row(question('f-plate', { field_name: 'car_plate', field_label: 'Car plate' }), 0), row(NAME, 1), row(NOTES, 2)]
+    mockFieldReads = [[row(NAME, 0), row(NOTES, 1)], partly]
+    mockUpdate.mockRejectedValueOnce(new Error('boom'))
+    const result = await (await load()).saveCheckoutFormAction('t1', FORM)
+    expect(result.success).toBe(false)
+    expect(result.form).toMatchObject({ created: { [NEW_ID]: 'f-plate' }, isPartial: true })
+    expect(result.form?.fields[PICKUP].map((q) => q.id)).toEqual(['f-plate', 'f-name', 'f-notes'])
+    // Something was written, so the checkout is refreshed.
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/island-silog/checkout')
+  })
 })
 
 describe('publishPageDesignAction with the form', () => {

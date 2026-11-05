@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 
 import { formatPrice } from '@/lib/cart-utils'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
@@ -35,7 +35,9 @@ export function DesignedCheckout({ design, checkout }: DesignedCheckoutProps) {
   const total = formatPrice(grandTotal)
   // Steps ask at tap time, so they read the latest checkout without re-creating the runtime.
   const latest = useRef(checkout)
-  latest.current = checkout
+  useLayoutEffect(() => {
+    latest.current = checkout
+  })
   const runtime = useMemo<PageRuntime>(
     () => ({
       page: 'checkout',

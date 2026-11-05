@@ -95,3 +95,19 @@ describe('needed-when blocks', () => {
     expect(needs).toEqual({ order_choice: true, scheduling: false, questions: true, payment: true, gov_claims: false })
   })
 })
+
+describe('stepped layouts', () => {
+  it('refuses a step hidden on one device (it would be an empty step there)', () => {
+    const base = createStandardDesign('checkout')
+    const design: HeroDesignV5 = { ...base, page: { layout: 'steps' }, sections: base.sections.map((s) => ({ ...s, mobile: { hidden: true } })) }
+    expect(pageDesignProblem(design, 'checkout')).toMatch(/hidden on phones/)
+    expect(pageDesignProblem({ ...design, page: undefined }, 'checkout')).not.toMatch(/empty step/)
+  })
+})
+
+it('puts the blocks it adds back before the section holding Place order', () => {
+  const base = createStandardDesign('checkout')
+  const lean = without(base, ['checkout.payment'])
+  const prepared = preparePageDesign(lean, 'checkout', { payment: true })
+  expect(prepared.sections.map((s) => s.id)).toEqual(['page-fallback', ...lean.sections.map((s) => s.id)])
+})

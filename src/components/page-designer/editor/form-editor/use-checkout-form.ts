@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 
 import {
@@ -20,16 +20,21 @@ import {
 
 export type { CheckoutFormSource, FormOrderType }
 
-const storedDraftSchema = z.record(z.string(), z.array(formQuestionSchema))
+const storedDraftSchema = z.record(z.string(), z.object({ base: z.array(formQuestionSchema), draft: z.array(formQuestionSchema) }))
 
-/** An unsent draft survives a reload; only order types the store still has are restored. */
+/**
+ * An unsent draft survives a reload. Each order type's draft is kept with
+ * the questions it started from, and restored only while the store still
+ * holds exactly those: a change made meanwhile (Order types, another tab)
+ * drops that draft instead of silently undoing the change on the next save.
+ */
 function readDraft(key: string, saved: FormDraft): FormDraft | null {
   try {
     const raw = window.localStorage.getItem(key)
     const parsed = storedDraftSchema.safeParse(raw ? JSON.parse(raw) : null)
     if (!parsed.success) return null
-    const known = Object.entries(parsed.data).filter(([id]) => id in saved)
-    return known.length ? { ...saved, ...Object.fromEntries(known) } : null
+    const known = Object.entries(parsed.data).filter(([id, entry]) => Object.hasOwn(saved, id) && sameQuestions(saved[id], entry.base))
+    return known.length ? { ...saved, ...Object.fromEntries(known.map(([id, entry]) => [id, entry.draft])) } : null
   } catch {
     return null
   }
@@ -38,8 +43,9 @@ function readDraft(key: string, saved: FormDraft): FormDraft | null {
 function writeDraft(key: string, saved: FormDraft, draft: FormDraft): void {
   try {
     const changed = Object.keys(draft).filter((id) => !sameQuestions(saved[id], draft[id]))
-    if (changed.length) window.localStorage.setItem(key, JSON.stringify(Object.fromEntries(changed.map((id) => [id, draft[id]]))))
-    else window.localStorage.removeItem(key)
+    if (changed.length) {
+      window.localStorage.setItem(key, JSON.stringify(Object.fromEntries(changed.map((id) => [id, { base: saved[id] ?? [], draft: draft[id] }]))))
+    } else window.localStorage.removeItem(key)
   } catch {
     // Storage full or blocked — the draft is a convenience, saving still works.
   }
@@ -60,18 +66,19 @@ export function useCheckoutForm(tenantId: string, source: CheckoutFormSource | n
   const [draft, setDraft] = useState<FormDraft>(initial)
   const tabs = useMemo(() => orderTypes.filter((t) => t.isEnabled), [orderTypes])
   const [activeId, setActiveId] = useState<string | null>(tabs[0]?.id ?? null)
-  const restored = useRef(false)
+  // State, not a ref: the draft is written only from the render that already holds the restored draft.
+  const [isRestored, setRestored] = useState(false)
 
   useEffect(() => {
-    if (restored.current || !source) return
-    restored.current = true
+    if (isRestored || !source) return
     const stored = readDraft(draftKey, initial)
     if (stored) setDraft(stored)
-  }, [draftKey, initial, source])
+    setRestored(true)
+  }, [draftKey, initial, source, isRestored])
 
   useEffect(() => {
-    if (restored.current) writeDraft(draftKey, saved, draft)
-  }, [draftKey, saved, draft])
+    if (isRestored) writeDraft(draftKey, saved, draft)
+  }, [draftKey, saved, draft, isRestored])
 
   const input = useMemo<FormSaveInput | undefined>(() => formSaveInput(saved, draft), [saved, draft])
   const names = useMemo(() => Object.fromEntries(orderTypes.map((t) => [t.id, t.name])), [orderTypes])
@@ -87,6 +94,8 @@ export function useCheckoutForm(tenantId: string, source: CheckoutFormSource | n
     setSaved((current) => ({ ...current, ...outcome.fields }))
     setDraft((current) => {
       const remapped = remapTempIds(current, outcome.created)
+      // Part-way: the stored rows are the new "saved"; the draft keeps every unsaved edit.
+      if (outcome.isPartial) return remapped
       const next: Record<string, readonly FormQuestion[]> = { ...remapped }
       for (const id of Object.keys(sent.orderTypes)) {
         const sentDraft = remapTempIds({ [id]: sent.orderTypes[id].draft }, outcome.created)[id]

@@ -30,7 +30,7 @@ import {
   type FormSaveOutcome,
 } from './form-changes'
 
-export type FormSaveResult = { success: true; outcome: FormSaveOutcome } | { success: false; error: string }
+export type FormSaveResult = { success: true; outcome: FormSaveOutcome } | { success: false; error: string; outcome?: FormSaveOutcome }
 
 const FIELD_COLUMNS = 'id, order_type_id, field_name, field_label, field_type, is_required, placeholder, options, validation_rules, order_index'
 
@@ -65,8 +65,7 @@ async function readQuestions(supabase: Client, tenantId: string, ids: string[]):
 }
 
 /** Run the writes in order; new questions' temp ids resolve to their rows before the reorders. */
-async function applyOps(tenantId: string, ops: readonly FormOp[]): Promise<Record<string, string>> {
-  const created: Record<string, string> = {}
+async function applyOps(tenantId: string, ops: readonly FormOp[], created: Record<string, string>): Promise<void> {
   for (const op of ops) {
     if (op.op === 'create') {
       const row = await createCustomerFormField(tenantId, op.orderTypeId, op.field)
@@ -79,8 +78,9 @@ async function applyOps(tenantId: string, ops: readonly FormOp[]): Promise<Recor
       await reorderCustomerFormFields(op.fieldIds.map((id) => created[id] ?? id), tenantId)
     }
   }
-  return created
 }
+
+const PARTIAL = 'Some questions could not be saved. The ones that were saved are kept — check them, then save again.'
 
 /** Whether every order type now holds exactly the draft's questions, in its order. */
 function landed(after: FormDraft, wanted: FormDraft): boolean {
@@ -124,19 +124,23 @@ export async function saveCheckoutForm(tenantId: string, input: unknown): Promis
   const { ops, problems } = diffFormFields(current, draft, { names })
   if (problems.length) return { success: false, error: problems[0] }
 
-  let created: Record<string, string> = {}
+  // Filled in as rows are created, so a failure part-way still reports them.
+  const created: Record<string, string> = {}
+  let hasFailed = false
   try {
-    created = await applyOps(tenantId, ops)
+    await applyOps(tenantId, ops, created)
   } catch (error) {
     console.error('[saveCheckoutForm] A write failed part-way:', error)
-    return { success: false, error: 'Some questions could not be saved. Reload the page to see what was saved, then try again.' }
+    hasFailed = true
   }
 
   // RLS refusals come back as "no error, no rows": compare what is stored now with what was asked for.
   const after = await readQuestions(supabase, tenantId, ids)
-  if (!after || !landed(after, remapTempIds(draft, created))) {
-    console.error('[saveCheckoutForm] The stored questions do not match the save', { tenantId, ids })
-    return { success: false, error: 'Some questions could not be saved. Reload the page to see what was saved, then try again.' }
+  const fields = after ? Object.fromEntries(ids.map((id) => [id, [...(after[id] ?? [])]])) : null
+  if (hasFailed || !after || !landed(after, remapTempIds(draft, created))) {
+    if (!hasFailed) console.error('[saveCheckoutForm] The stored questions do not match the save', { tenantId, ids })
+    // Hand back what IS stored, so the editor's next save starts from it (never a duplicate create).
+    return fields ? { success: false, error: PARTIAL, outcome: { fields, created, isPartial: true } } : { success: false, error: PARTIAL }
   }
-  return { success: true, outcome: { fields: Object.fromEntries(ids.map((id) => [id, [...(after[id] ?? [])]])), created } }
+  return { success: true, outcome: { fields: fields ?? {}, created } }
 }

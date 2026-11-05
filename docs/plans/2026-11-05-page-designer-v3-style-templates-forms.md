@@ -1,6 +1,6 @@
 # Page Designer v3: full styling, removable parts, page templates, form editor
 
-Status: PLAN — awaiting the owner's OK (2026-11-05). Builds on `2026-11-05-page-designer-block-designs-and-colours.md` (merged to local main c6ce12fe).
+Status: APPROVED (owner "go", all four defaults, 2026-11-05) + BUILT on feat/page-designer-v3. Migration 20261105130000 APPLIED + probed. Not yet checked in a real browser. Builds on `2026-11-05-page-designer-block-designs-and-colours.md` (merged to local main c6ce12fe).
 
 ## What the owner asked
 

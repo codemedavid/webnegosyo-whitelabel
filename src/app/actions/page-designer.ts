@@ -139,13 +139,14 @@ export async function savePageLookAction(tenantId: string, page: unknown, look: 
  */
 async function writeCheckoutForm(tenantId: string, input: unknown): Promise<PageDesignerFormResult> {
   const result = await saveCheckoutForm(tenantId, input)
-  if (!result.success) return { success: false, error: result.error }
+  // Nothing written at all: nothing to refresh.
+  if (!result.success && !result.outcome) return { success: false, error: result.error }
   const slug = await readTenantSlugById(await createClient(), tenantId)
   if (slug) {
     revalidatePath(`/${slug}/checkout`)
     revalidatePath(`/${slug}/admin/order-types`, 'layout')
   }
-  return { success: true, form: result.outcome }
+  return result.success ? { success: true, form: result.outcome } : { success: false, error: result.error, form: result.outcome }
 }
 
 /** Save only the checkout questions (they also show on the standard checkout and the register). */

@@ -159,10 +159,31 @@ it('Save form now and Undo changes; a question that can’t be saved holds the s
 it('keeps an unsent draft across a reload', () => {
   const first = render(<Harness />)
   fireEvent.click(screen.getByRole('button', { name: 'Move "Notes" up' }))
-  expect(JSON.parse(window.localStorage.getItem('pd-form:t1') ?? '{}')[PICKUP].map((q: FormQuestion) => q.id)).toEqual(['f-notes', 'f-name'])
+  expect(JSON.parse(window.localStorage.getItem('pd-form:t1') ?? '{}')[PICKUP].draft.map((q: FormQuestion) => q.id)).toEqual(['f-notes', 'f-name'])
   first.unmount()
   render(<Harness />)
   expect(labels()).toEqual(['Notes', 'Name'])
+})
+
+it('drops a stored draft whose questions changed elsewhere since (never undoes that change)', () => {
+  const stale = { [PICKUP]: { base: [ask('f-gone', { field_label: 'Old' })], draft: [ask('f-gone', { field_label: 'Older' })] } }
+  window.localStorage.setItem('pd-form:t1', JSON.stringify(stale))
+  render(<Harness />)
+  expect(labels()).toEqual(['Name', 'Notes'])
+})
+
+it('a part-way save keeps the stored rows as saved and every unsaved edit in the draft', () => {
+  const { result } = renderHook(() => useCheckoutForm('t3', SOURCE))
+  act(() => result.current.edit(PICKUP, (list) => [...list, ask('new-a', { field_name: '', field_label: 'Car plate' }), ask('new-b', { field_name: '', field_label: 'Landmark' })]))
+  const sent = result.current.input!
+  // Only "Car plate" got a row before the failure.
+  const stored = [...SOURCE.saved[PICKUP], ask('row-a', { field_name: 'car_plate', field_label: 'Car plate' })]
+  act(() => result.current.markSaved(sent, { fields: { [PICKUP]: stored }, created: { 'new-a': 'row-a' }, isPartial: true }))
+  expect(result.current.saved[PICKUP]).toEqual(stored)
+  expect(result.current.draft[PICKUP].map((q) => q.id)).toEqual([...SOURCE.saved[PICKUP].map((q) => q.id), 'row-a', 'new-b'])
+  // The retry only creates Landmark.
+  const ops = result.current.input!.orderTypes[PICKUP]
+  expect(ops.draft.filter((q) => q.id.startsWith('new-')).map((q) => q.field_label)).toEqual(['Landmark'])
 })
 
 describe('useCheckoutForm.markSaved', () => {

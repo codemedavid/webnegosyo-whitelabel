@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useTransition, type ComponentType } from 'react'
+import { type ComponentType, useLayoutEffect, useMemo, useRef, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { saveCheckoutFormAction } from '@/app/actions/page-designer'
@@ -25,7 +25,10 @@ export function useCheckoutFormSession(tenantId: string, source: CheckoutFormSou
   const form = useCheckoutForm(tenantId, source)
   const [isSaving, startSaving] = useTransition()
   const pending = useRef<PendingForm | null>(null)
-  pending.current = { input: form.input, onSaved: form.markSaved }
+  // Kept current after each commit (never during render), read when Publish runs.
+  useLayoutEffect(() => {
+    pending.current = { input: form.input, onSaved: form.markSaved }
+  })
 
   const { input, markSaved } = form
   const context = useMemo<CheckoutFormContextValue>(
@@ -37,11 +40,12 @@ export function useCheckoutFormSession(tenantId: string, source: CheckoutFormSou
           const sent = input
           if (!sent) return
           const result = await saveCheckoutFormAction(tenantId, sent)
+          // Part-way saves come back with what was stored: take it, so retrying never doubles a question.
+          if (result.form) markSaved(sent, result.form)
           if (!result.success || !result.form) {
             toast.error(result.error ?? 'Could not save the questions')
             return
           }
-          markSaved(sent, result.form)
           toast.success('Questions saved — your checkout asks them now')
         }),
     }),
