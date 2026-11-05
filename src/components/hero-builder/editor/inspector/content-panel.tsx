@@ -473,7 +473,7 @@ function PageSectionGroup({ section, api }: { section: Section; api: HeroBuilder
       ...design,
       sections: design.sections.map((s) => {
         if (s.id !== section.id) return s
-        const { pin: _pin, ...rest } = s
+        const rest = Object.fromEntries(Object.entries(s).filter(([key]) => key !== 'pin')) as unknown as Section
         return isPinned ? { ...rest, pin: 'bottom' as const } : rest
       }),
     }))
