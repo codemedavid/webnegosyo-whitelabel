@@ -20,6 +20,9 @@ import { ConfirmationMessageBox, ConfirmationMessengerCard, type MessengerCopy }
 import { ConfirmationCustomerCard, ConfirmationPaymentCard, type DetailsLook } from './parts-order'
 import { ConfirmationFailureNotice } from './parts-status'
 
+/** A switch is on unless the owner turned it off (unset = today's block). */
+const isOn = (option: PageBlockRenderProps['option'], key: string): boolean => option(key) !== false
+
 /** In the editor a block that doesn't apply right now says so instead of vanishing. */
 function NotNow({ isEditor, children }: { isEditor: boolean; children: ReactNode }) {
   if (!isEditor) return null
@@ -58,7 +61,7 @@ function messengerCopy(text: PageBlockRenderProps['text']): MessengerCopy {
 
 /** Messenger card + order message — only when Messenger is on for this order (never on a kiosk). */
 function MessengerBlock(block: PageBlockRenderProps) {
-  const { text, isEditor } = block
+  const { text, option, isEditor } = block
   const b = useConfirmationBlocks()
   if (!b) return null
   if (b.isKiosk || !b.isMessengerEnabled) {
@@ -66,11 +69,14 @@ function MessengerBlock(block: PageBlockRenderProps) {
   }
   const copy = messengerCopy(text)
   const shape = buttonShapeClass(block)
+  // A failed save makes the order message the store's only copy: its ways to send it always show.
+  const isRecovery = b.hasOrderSaveFailed
+  const show = { orLine: isOn(option, 'show_or_line'), copyLink: isRecovery || isOn(option, 'show_copy_link') }
   return (
     <BlockColors block={block}>
       <div className="space-y-6">
-        <ConfirmationMessengerCard copy={copy} shape={shape} />
-        <ConfirmationMessageBox copy={copy} shape={shape} />
+        <ConfirmationMessengerCard copy={copy} shape={shape} show={show} />
+        {(isRecovery || isOn(option, 'show_message_box')) && <ConfirmationMessageBox copy={copy} shape={shape} />}
       </div>
     </BlockColors>
   )
@@ -93,7 +99,8 @@ function ActionsBlock(block: PageBlockRenderProps) {
       ) : (
         <ConfirmationTrackButtons
           copy={copy}
-          showBack={option('show_back') !== false}
+          showBack={isOn(option, 'show_back')}
+          showTrack={isOn(option, 'show_track_button')}
           layout={designOf<ActionsLayout>(block, 'stacked')}
           shape={shape}
         />
@@ -108,7 +115,13 @@ function SummaryBlock(block: PageBlockRenderProps) {
     <BlockColors block={block}>
       <SummaryDesigned
         design={designOf<SummaryDesign>(block, 'standard')}
-        showOrderType={option('show_order_type') !== false}
+        showOrderType={isOn(option, 'show_order_type')}
+        show={{
+          scheduled: isOn(option, 'show_scheduled'),
+          addons: isOn(option, 'show_addons'),
+          notes: isOn(option, 'show_notes'),
+          fees: isOn(option, 'show_fees'),
+        }}
         copy={{
           title: text('title'), scheduled: text('scheduled'), addons: text('addons'), note: text('note'),
           subtotal: text('subtotal'), delivery: text('delivery'), service: text('service'), total: text('total'),

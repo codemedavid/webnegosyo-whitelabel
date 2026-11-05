@@ -22,6 +22,10 @@ interface TrackingHeaderProps {
   layout?: TrackingHeaderLayout
   /** Page Designer: hide the logo (or its initial). */
   showLogo?: boolean
+  /** Page Designer: hide the store's name. */
+  showStoreName?: boolean
+  /** Page Designer: hide the "Order #07" line. */
+  showOrderNumber?: boolean
 }
 
 /** Sticky top bar: the store's identity, the order number, and the live pulse. */
@@ -37,6 +41,8 @@ export function TrackingHeader({
   isSticky = true,
   layout = 'standard',
   showLogo = true,
+  showStoreName = true,
+  showOrderNumber = true,
 }: TrackingHeaderProps) {
   const order = orderLabel ?? <>Order #{shortId}</>
   const badge = isLive && showLiveBadge ? <LiveBadge label={liveLabel ?? 'Live'} /> : null
@@ -45,6 +51,7 @@ export function TrackingHeader({
   return (
     <header
       data-branding-scope="tracking/header"
+      data-part="banner"
       className={`${isSticky ? 'sticky top-0 z-50 ' : ''}border-b backdrop-blur-md`}
       style={{ backgroundColor: 'var(--trk-header-bg)', borderColor: 'var(--trk-card-border)' }}
     >
@@ -54,10 +61,12 @@ export function TrackingHeader({
           <div className="flex min-w-0 items-center justify-center gap-2">
             {logo}
             <div className="min-w-0 text-center">
-              <h1 className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
-                {storeName}
-              </h1>
-              <p className="truncate text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>
+              {showStoreName && (
+                <h1 data-part="title" className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
+                  {storeName}
+                </h1>
+              )}
+              {showOrderNumber && <p data-part="subtitle" className="truncate text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>}
             </div>
           </div>
           <div className="justify-self-end">{badge}</div>
@@ -67,10 +76,12 @@ export function TrackingHeader({
           <BackButton onBack={onBack} size="h-11 w-11" />
           {logo}
           <div className="flex min-w-0 flex-1 items-baseline gap-2">
-            <h1 className="truncate text-sm font-bold" style={{ color: 'var(--trk-header-text)' }}>
-              {storeName}
-            </h1>
-            <p className="shrink-0 text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>
+            {showStoreName && (
+              <h1 data-part="title" className="truncate text-sm font-bold" style={{ color: 'var(--trk-header-text)' }}>
+                {storeName}
+              </h1>
+            )}
+            {showOrderNumber && <p data-part="subtitle" className="shrink-0 text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>}
           </div>
           {badge}
         </div>
@@ -81,12 +92,16 @@ export function TrackingHeader({
           {logo}
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
-              {storeName}
-            </h1>
-            <p className="text-xs" style={{ color: 'var(--trk-header-muted)' }}>
-              {order}
-            </p>
+            {showStoreName && (
+              <h1 data-part="title" className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
+                {storeName}
+              </h1>
+            )}
+            {showOrderNumber && (
+              <p data-part="subtitle" className="text-xs" style={{ color: 'var(--trk-header-muted)' }}>
+                {order}
+              </p>
+            )}
           </div>
 
           {badge}
@@ -102,6 +117,7 @@ function BackButton({ onBack, size }: { onBack: () => void; size: string }) {
       type="button"
       onClick={onBack}
       aria-label="Back to menu"
+      data-part="icon"
       className={`flex ${size} shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[color-mix(in_srgb,var(--trk-header-text)_8%,transparent)]`}
       style={{ color: 'var(--trk-header-text)' }}
     >
@@ -139,6 +155,7 @@ function StoreLogo({ storeName, logoUrl, isSmall }: { storeName: string; logoUrl
 function LiveBadge({ label }: { label: string }) {
   return (
     <span
+      data-part="badge"
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
       style={{ backgroundColor: 'var(--trk-live-soft)', color: 'var(--trk-live)' }}
     >

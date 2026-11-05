@@ -199,7 +199,8 @@ describe('every design keeps the block working', () => {
     expect(screen.getByText('SAVE10')).toBeInTheDocument()
   })
 
-  it.each(designsOf('checkout.payment'))('payment %s: choosing calls the hook, the chosen method shows its details', (variant) => {
+  // The v3 designs (chosen, accordion, split) show the list differently: payment-designs.test.tsx.
+  it.each(designsOf('checkout.payment').slice(0, 3))('payment %s: choosing calls the hook, the chosen method shows its details', (variant) => {
     const checkout = makeCheckout()
     renderDesign(checkout, withOptions({ 'checkout.payment': { variant } }))
     expect(document.querySelector('[data-payment-methods]')).not.toBeNull()

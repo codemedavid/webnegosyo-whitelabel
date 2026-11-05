@@ -31,7 +31,7 @@ import { LayersPanel } from './panels/layers-panel'
 import { ThemePanel } from './panels/theme-panel'
 import { HERO_SURFACE, type BuilderSurface } from './surface'
 import { TemplateGallery } from './template-gallery'
-import { useHeroBuilder } from './use-hero-builder'
+import { useHeroBuilder, type HeroBuilderApi } from './use-hero-builder'
 
 const DRAFT_SAVE_DELAY_MS = 800
 
@@ -56,7 +56,8 @@ interface HeroBuilderEditorProps {
    * shown as the left "Look" tab above the theme. Look edits count as
    * unpublished changes and are saved by the surface's publish.
    */
-  look?: { panel: ReactNode; hasChanges: boolean }
+  /** Page Designer: the page's own Look tab (it can edit the design, e.g. the page style). */
+  look?: { panel: (api: HeroBuilderApi) => ReactNode; hasChanges: boolean }
 }
 
 type LeftTab = 'add' | 'layers' | 'theme'
@@ -110,7 +111,8 @@ export function HeroBuilderEditor({
   const draftKey = `${surface.draftPrefix}:${tenantId}`
 
   const designJson = useMemo(() => JSON.stringify(api.design), [api.design])
-  const hasDesignChanges = designJson !== (publishedJson ?? JSON.stringify(start))
+  const startJson = useMemo(() => JSON.stringify(start), [start])
+  const hasDesignChanges = designJson !== (publishedJson ?? startJson)
   const hasUnpublishedChanges = hasDesignChanges || !!look?.hasChanges
 
   // ── Crash-safe local draft ────────────────────────────────────────────────
@@ -360,7 +362,7 @@ export function HeroBuilderEditor({
             {leftTab === 'layers' && <LayersPanel api={api} />}
             {leftTab === 'theme' && (
               <>
-                {look?.panel}
+                {look?.panel(api)}
                 {look && <p className="px-4 pt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">Text, buttons &amp; images you add</p>}
                 <ThemePanel api={api} />
               </>
@@ -369,7 +371,14 @@ export function HeroBuilderEditor({
         </aside>
 
         {/* ── Canvas ──────────────────────────────────────────────────── */}
-        <main className="min-w-0 flex-1" onClick={() => setPanels({ left: false, right: false })}>
+        <main className="relative min-w-0 flex-1" onClick={() => setPanels({ left: false, right: false })}>
+          {surface.Banner && (
+            <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+              <div className="pointer-events-auto w-full max-w-xl">
+                <surface.Banner api={api} target={{ tenantId, tenantSlug }} isUnchanged={designJson === startJson} />
+              </div>
+            </div>
+          )}
           <Canvas
             api={api}
             onEditContent={() => setContentRequest((n) => n + 1)}
@@ -399,9 +408,11 @@ export function HeroBuilderEditor({
         hasContent={api.design.sections.length > 0}
         templates={surface.templates}
         categories={surface.templateCategories}
+        categoryLabels={surface.templateCategoryLabels}
         preview={surface.templatePreview}
-        onPick={(design) => {
+        onPick={(design, template) => {
           api.replaceDesign(design)
+          surface.onTemplatePicked?.(template.id, { tenantId, tenantSlug })
           setLeftTab('layers')
         }}
       />

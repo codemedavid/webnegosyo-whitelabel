@@ -7,6 +7,10 @@ import type { BlockOption, PageBlockDef } from './types'
 // looked before designs existed, so a stored design without them is unchanged.
 // Choice values are stored in designs: never rename one.
 
+/** An on/off setting that starts on (today's block), in the Settings group. */
+const toggle = (key: string, label: string, extra: Pick<BlockOption, 'hint'> = {}): BlockOption =>
+  ({ key, label, type: 'boolean', default: true, group: 'options', ...extra })
+
 /** Shows a setting only for some of the block's designs. */
 const forDesigns = (...values: string[]) => ({ showWhen: { key: 'variant', values } })
 
@@ -33,6 +37,9 @@ const STATUS_OPTIONS: readonly BlockOption[] = [
 const MESSENGER_OPTIONS: readonly BlockOption[] = [
   ...checkoutColorKnobs(['color_card', 'color_text', 'color_accent', 'color_button', 'color_button_text'], { color_accent: 'Links' }),
   BUTTON_SHAPE,
+  toggle('show_or_line', '"or" line', { hint: 'The divider between the Messenger button and the copy link.' }),
+  toggle('show_copy_link', 'Copy link', { hint: 'Always shown when the order did not go through.' }),
+  toggle('show_message_box', 'Order message box', { hint: 'Always shown when the order did not go through.' }),
 ]
 
 const ACTIONS_OPTIONS: readonly BlockOption[] = [
@@ -44,6 +51,9 @@ const ACTIONS_OPTIONS: readonly BlockOption[] = [
   ...checkoutColorKnobs(['color_button', 'color_button_text']),
   BUTTON_SHAPE,
   { key: 'show_back', label: 'Show "Back to Menu"', type: 'boolean', default: true },
+  toggle('show_track_button', 'Show "Track Your Order"', {
+    hint: 'Without it, customers reach tracking only through the countdown. A kiosk never shows it.',
+  }),
 ]
 
 const SUMMARY_OPTIONS: readonly BlockOption[] = [
@@ -54,6 +64,10 @@ const SUMMARY_OPTIONS: readonly BlockOption[] = [
   ]),
   ...checkoutColorKnobs(['color_card', 'color_text', 'color_accent'], { color_accent: 'Total' }),
   { key: 'show_order_type', label: 'Show the order type', type: 'boolean', default: true },
+  toggle('show_scheduled', 'Scheduled time', { hint: 'The "Scheduled for" line on advance orders.' }),
+  toggle('show_addons', 'Add-ons'),
+  toggle('show_notes', 'Dish notes'),
+  toggle('show_fees', 'Delivery fee and service charge'),
 ]
 
 /** Customer details + payment method share their designs. */
@@ -90,6 +104,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'contact_help', label: 'Help (contact the store)', fallback: 'Nothing has been sent yet — please contact the store directly to place this order.', maxLength: 200, multiline: true },
     ],
     options: STATUS_OPTIONS,
+    parts: ['banner', 'icon'],
   },
   {
     id: 'confirmation.messenger',
@@ -111,6 +126,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'message_hint', label: 'Message box hint', fallback: 'Paste this in Messenger or any chat app', maxLength: 120 },
     ],
     options: MESSENGER_OPTIONS,
+    parts: ['button', 'button_alt', 'link', 'divider', 'field'],
   },
   {
     id: 'confirmation.actions',
@@ -118,7 +134,8 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     label: 'Track order button',
     description: 'Track your order, back to menu — or on a kiosk, start a new order.',
     icon: 'MousePointerClick',
-    required: true,
+    required: false,
+    neededWhen: 'kiosk',
     texts: [
       { key: 'track', label: 'Track button', fallback: 'Track Your Order', maxLength: 40 },
       { key: 'back', label: 'Back button', fallback: 'Back to Menu', maxLength: 40 },
@@ -130,6 +147,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'kiosk_button', label: 'Kiosk: button', fallback: 'Start a New Order', maxLength: 40 },
     ],
     options: ACTIONS_OPTIONS,
+    parts: ['button', 'button_alt', 'link'],
   },
   {
     id: 'confirmation.summary',
@@ -149,6 +167,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'total', label: 'Total', fallback: 'Total', maxLength: 30 },
     ],
     options: SUMMARY_OPTIONS,
+    parts: ['badge', 'price', 'total', 'divider'],
   },
   {
     id: 'confirmation.customer',
@@ -159,6 +178,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Customer Information', labelKey: 'checkout.customer', maxLength: 60 }],
     options: DETAILS_OPTIONS,
+    parts: [],
   },
   {
     id: 'confirmation.payment',
@@ -169,6 +189,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Payment Method', labelKey: 'checkout.payment', maxLength: 60 }],
     options: DETAILS_OPTIONS,
+    parts: [],
   },
 ]
 

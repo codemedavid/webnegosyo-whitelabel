@@ -28,13 +28,15 @@ describe('Page Designer editor locks', () => {
     expect(blockIdsIn(result.current.design)).not.toContain('checkout.sms_opt_in')
   })
 
-  it('locks the voucher field, so a design can never stop customers entering a code', () => {
+  it('lets the owner remove the voucher field and the other blocks the page can do without (owner, 2026-11-05)', () => {
     const start = createStandardDesign('checkout')
     const { result } = renderHook(() => useHeroBuilder(start, PAGE_NODE_POLICY))
-    const voucher = widgetId(start, 'checkout.voucher')
-    expect(result.current.canRemove(voucher)).toBe(false)
-    act(() => result.current.remove(voucher))
-    expect(blockIdsIn(result.current.design)).toContain('checkout.voucher')
+    for (const id of ['checkout.voucher', 'checkout.summary', 'checkout.payment', 'checkout.customer', 'checkout.order_type']) {
+      expect(result.current.canRemove(widgetId(result.current.design, id))).toBe(true)
+      act(() => result.current.remove(widgetId(result.current.design, id)))
+      expect(blockIdsIn(result.current.design)).not.toContain(id)
+    }
+    expect(result.current.canRemove(widgetId(result.current.design, 'checkout.place_order'))).toBe(false)
   })
 
   it('lets the owner remove the thank-you Messenger block (most stores no longer use Messenger)', () => {

@@ -22,6 +22,25 @@ export interface SamplePalette {
   error: string
 }
 
+/**
+ * The editor's form draft for the sample: the store's own order types and
+ * the questions of the one open in the form editor (null = the sample's own).
+ */
+export interface SampleCheckoutForm {
+  orderTypes: { id: string; name: string; type: string; description: string | null; advance_order_enabled: boolean }[]
+  orderTypeId: string
+  fields: {
+    id: string
+    field_name: string
+    field_label: string
+    field_type: string
+    is_required: boolean
+    placeholder: string
+    options: string[]
+    validation_rules: Record<string, unknown>
+  }[]
+}
+
 const noop = (): void => undefined
 const asyncNoop = async (): Promise<void> => undefined
 
@@ -95,8 +114,10 @@ function sampleColours(palette: SamplePalette | null): { tenant: Record<string, 
 }
 
 /** The sample checkout, painted with the canvas palette when it is known. */
-export function buildSampleCheckout(palette: SamplePalette | null, storeName = 'Your store'): UseCheckoutReturn {
+export function buildSampleCheckout(palette: SamplePalette | null, storeName = 'Your store', form: SampleCheckoutForm | null = null): UseCheckoutReturn {
   const { tenant, branding } = sampleColours(palette)
+  const orderTypes = form?.orderTypes.length ? form.orderTypes : ORDER_TYPES
+  const orderType = form?.orderTypeId ?? PICKUP_ID
   const sample = {
     tenantSlug: 'sample',
     router: { push: noop, back: noop, replace: noop, refresh: noop, prefetch: noop, forward: noop },
@@ -105,17 +126,20 @@ export function buildSampleCheckout(palette: SamplePalette | null, storeName = '
     tenant: { ...tenant, name: storeName },
     isLoading: false,
     isProcessing: false,
-    orderTypes: ORDER_TYPES,
-    orderType: PICKUP_ID,
+    orderTypes,
+    orderType,
     setOrderType: noop,
     shouldAskFulfillment: true,
-    selectedOrderTypeData: ORDER_TYPES[0],
+    selectedOrderTypeData: orderTypes.find((t) => t.id === orderType) ?? orderTypes[0],
     messengerEnabled: false,
     isKiosk: false,
     outlet: { selectedOutletId: null, choices: [], isMissingRequiredSelection: false },
-    formFields: FORM_FIELDS,
+    formFields: form ? form.fields : FORM_FIELDS,
     customerData: { customer_name: 'Maria Santos', customer_phone: '+639171234567' },
     setCustomerData: noop,
+    fieldErrors: {},
+    fieldErrorAttempt: 0,
+    revealFieldErrors: noop,
     isSmsOptedIn: false,
     setIsSmsOptedIn: noop,
     paymentMethods: PAYMENT_METHODS,

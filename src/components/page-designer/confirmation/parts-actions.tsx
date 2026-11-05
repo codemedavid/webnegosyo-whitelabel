@@ -55,20 +55,20 @@ export function ConfirmationKioskCard({ copy = {}, shape = PILL }: { copy?: Acti
   const b = useConfirmationBlocks()
   if (!b) return null
   return (
-    <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+    <div data-branding-scope="checkout/card" data-part="card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
       <div className="space-y-4 text-center">
-        <p className="text-sm font-medium text-[color:var(--co-text)]">
+        <p data-part="text" className="text-sm font-medium text-[color:var(--co-text)]">
           {b.hasOrderSaveFailed
             ? copy.kioskFailed ?? `This order did not reach ${b.storeName}. Please tell a staff member.`
             : copy.kioskSent ?? `Your order has been sent to ${b.storeName}.`}
         </p>
         <div className="flex items-center justify-center gap-2">
           <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-[color:var(--co-accent)] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-[color:var(--co-muted)]" aria-live="polite">
+          <p data-part="muted" className="text-sm text-[color:var(--co-muted)]" aria-live="polite">
             <CountdownText text={copy.kioskReturning ?? 'Returning to the menu in {seconds}...'} seconds={b.kioskCountdown} />
           </p>
         </div>
-        <Button size="lg" className={primaryButton(shape)} onClick={b.onStartNewOrder}>
+        <Button size="lg" data-part="button" className={primaryButton(shape)} onClick={b.onStartNewOrder}>
           <ArrowLeft className="mr-2 h-5 w-5" />
           {copy.kioskButton ?? 'Start a New Order'}
         </Button>
@@ -84,11 +84,11 @@ function TrackingCountdownLine({ copy }: { copy: ActionsCopy }) {
   return (
     // Not a live region: the number ticks every second, and a screen reader would read each one.
     <div className="text-center space-y-1">
-      <p className="text-sm text-[color:var(--co-muted)]">
+      <p data-part="muted" className="text-sm text-[color:var(--co-muted)]">
         <CountdownText text={copy.countdown ?? 'Opening your order tracking in {seconds}...'} seconds={b.trackingCountdown} />
       </p>
       {b.onStayHere && (
-        <button type="button" className="text-sm text-[color:var(--co-accent)] hover:underline py-1" onClick={b.onStayHere}>
+        <button type="button" data-part="link" className="text-sm text-[color:var(--co-accent)] hover:underline py-1" onClick={b.onStayHere}>
           {copy.stay ?? 'Stay on this page'}
         </button>
       )}
@@ -99,21 +99,24 @@ function TrackingCountdownLine({ copy }: { copy: ActionsCopy }) {
 interface TrackButtonsProps {
   copy?: ActionsCopy
   showBack?: boolean
+  /** Page Designer: hide "Track Your Order" (never on a kiosk, which has its own card). */
+  showTrack?: boolean
   /** Page Designer only; the defaults are today's buttons. */
   layout?: ActionsLayout
   shape?: string
 }
 
 /** Track Order + Back to Menu. */
-export function ConfirmationTrackButtons({ copy = {}, showBack = true, layout = 'stacked', shape = PILL }: TrackButtonsProps) {
+export function ConfirmationTrackButtons({ copy = {}, showBack = true, showTrack = true, layout = 'stacked', shape = PILL }: TrackButtonsProps) {
   const b = useConfirmationBlocks()
   if (!b) return null
+  const hasTrack = showTrack && b.canTrack
   const isSide = layout === 'side'
   const back = BACK_BUTTON[layout]
   const buttons = (
     <>
-      {b.canTrack && (
-        <Button size="lg" className={isSide ? `${primaryButton(shape)} h-auto min-h-12 whitespace-normal` : primaryButton(shape)} onClick={b.onTrack}>
+      {hasTrack && (
+        <Button size="lg" data-part="button" className={isSide ? `${primaryButton(shape)} h-auto min-h-12 whitespace-normal` : primaryButton(shape)} onClick={b.onTrack}>
           <Package className="mr-2 h-5 w-5" />
           {copy.track ?? 'Track Your Order'}
         </Button>
@@ -122,6 +125,7 @@ export function ConfirmationTrackButtons({ copy = {}, showBack = true, layout = 
         <Button
           size="lg"
           variant={back.variant}
+          data-part="button-alt"
           className={back.className(shape)}
           onClick={b.onBackToMenu}
         >
@@ -135,7 +139,7 @@ export function ConfirmationTrackButtons({ copy = {}, showBack = true, layout = 
     <div className="pb-8 space-y-3">
       <TrackingCountdownLine copy={copy} />
       {isSide ? (
-        <div className={`grid gap-3 ${b.canTrack && showBack ? 'grid-cols-2' : 'grid-cols-1'}`}>{buttons}</div>
+        <div className={`grid gap-3 ${hasTrack && showBack ? 'grid-cols-2' : 'grid-cols-1'}`}>{buttons}</div>
       ) : buttons}
     </div>
   )

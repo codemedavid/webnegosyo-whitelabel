@@ -30,7 +30,13 @@ export function StatusStepsRow({ currentIndex, showDetails }: StatusStepsRowProp
                   aria-hidden="true"
                 />
               )}
-              <div className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all duration-500" style={stepBubbleStyle(isCompleted, isCurrent)}>
+              <div
+                data-part="step"
+                data-on={isCurrent ? '' : undefined}
+                data-done={isCompleted ? '' : undefined}
+                className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all duration-500"
+                style={stepBubbleStyle(isCompleted, isCurrent)}
+              >
                 {isCompleted ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden="true" /> : <Icon className="h-4 w-4" aria-hidden="true" />}
               </div>
               <p className={`mt-2 px-0.5 text-[11px] font-semibold leading-tight ${index > currentIndex ? 'opacity-50' : ''}`} style={{ color: stepTitleColor(isCompleted, isCurrent) }}>
@@ -41,7 +47,7 @@ export function StatusStepsRow({ currentIndex, showDetails }: StatusStepsRowProp
         })}
       </ol>
       {showDetails && current && (
-        <p className="mt-4 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+        <p data-part="muted" className="mt-4 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
           <StoreLabel name={current.descriptionLabel} fallback={current.description} />
         </p>
       )}

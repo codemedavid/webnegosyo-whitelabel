@@ -9,7 +9,7 @@
  * (src/lib/page-designer/blocks-tracking.ts).
  */
 
-import { useMemo, type CSSProperties, type ReactNode } from 'react'
+import { cloneElement, isValidElement, useMemo, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import type { PageBlockRenderer, PageBlockRenderProps } from '@/components/hero-builder/renderer/page-runtime'
 import { BackToMenuButton, type BackButtonLook } from '@/components/customer/order-tracking/back-to-menu-button'
 import { OrderSummaryCard, type OrderSummaryLayout } from '@/components/customer/order-tracking/order-summary-card'
@@ -68,6 +68,8 @@ function HeaderBlock({ text, option, isEditor }: PageBlockRenderProps) {
         isSticky={!isEditor}
         layout={pick(option, 'variant', HEADER_LAYOUTS)}
         showLogo={isOn(option, 'show_logo')}
+        showStoreName={isOn(option, 'show_store_name')}
+        showOrderNumber={isOn(option, 'show_order_number')}
       />
     </BlockLook>
   )
@@ -111,6 +113,8 @@ function StatusBlock({ text, option }: PageBlockRenderProps) {
           showGreeting: isOn(option, 'show_greeting'),
           showPlaced: isOn(option, 'show_placed'),
           showDecor: isOn(option, 'show_decor'),
+          showProgress: isOn(option, 'show_progress'),
+          showReadyTime: isOn(option, 'show_ready_time'),
         }}
       />
     </BlockLook>
@@ -130,6 +134,7 @@ function RingMeBlock({ text, option, isEditor }: PageBlockRenderProps) {
         onArm={b.onArmAlarm}
         wording={{ label: text('label'), armed: text('armed'), armedHint: text('armed_hint') }}
         layout={pick(option, 'variant', ['button', 'card'] as const)}
+        showHint={isOn(option, 'show_helper')}
       />
     </BlockLook>
   )
@@ -158,6 +163,22 @@ const PLAIN_PICKUP: CSSProperties = {
   '--trk-pickup-ready-bg': 'transparent',
 } as CSSProperties
 
+/** The switches the pickup card (PickupQrCard) reads. */
+interface PickupShow {
+  showTitle?: boolean
+  showHelper?: boolean
+}
+
+/**
+ * The page's pickup card with the block's switches. The page builds the card
+ * (it holds the order's token), so the switches are handed to it here; with
+ * both on the page's own card is returned untouched.
+ */
+function withPickupShow(pickup: ReactNode, show: Required<PickupShow>): ReactNode {
+  if (show.showTitle && show.showHelper) return pickup
+  return isValidElement(pickup) ? cloneElement(pickup as ReactElement<PickupShow>, show) : pickup
+}
+
 function PickupQrBlock({ option, isEditor }: PageBlockRenderProps) {
   const b = useTrackingBlocks()
   const look = useLook(option)
@@ -166,7 +187,7 @@ function PickupQrBlock({ option, isEditor }: PageBlockRenderProps) {
   const isPlain = pick(option, 'variant', ['card', 'plain'] as const) === 'plain'
   return (
     <BlockLook look={look} vars={isPlain ? PLAIN_PICKUP : undefined} className={isPlain ? '[&_section]:shadow-none' : undefined}>
-      {b.pickup}
+      {withPickupShow(b.pickup, { showTitle: isOn(option, 'show_title'), showHelper: isOn(option, 'show_helper') })}
     </BlockLook>
   )
 }
@@ -206,6 +227,7 @@ function SummaryBlock({ text, option }: PageBlockRenderProps) {
         serviceChargeAmount={b.data.serviceChargeAmount}
         wording={{ title: text('title'), deliveryFee: text('delivery_fee'), serviceCharge: text('service_charge'), total: text('total') }}
         layout={pick(option, 'variant', SUMMARY_LAYOUTS)}
+        show={{ title: isOn(option, 'show_title'), addons: isOn(option, 'show_addons'), fees: isOn(option, 'show_fees') }}
       />
     </BlockLook>
   )

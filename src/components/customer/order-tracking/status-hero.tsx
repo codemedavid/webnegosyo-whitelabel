@@ -28,6 +28,10 @@ export interface StatusHeroLook {
   showPlaced?: boolean
   /** The two soft circles behind the banner. */
   showDecor?: boolean
+  /** The short bar of steps under the status. */
+  showProgress?: boolean
+  /** The kitchen's promised ready time, when one is set. */
+  showReadyTime?: boolean
 }
 
 const NO_LOOK: StatusHeroLook = {}
@@ -71,7 +75,7 @@ export function StatusHero({
   const step = STATUS_STEPS[Math.max(0, currentIndex)] ?? STATUS_STEPS[0]
   const Icon = isCancelled ? XCircle : step.icon
   const greeting = wording.greeting ?? (customerName && customerName.toLowerCase() !== 'walk-in' ? `Hi ${customerName}!` : 'Hi there!')
-  const { layout = 'banner', isCentered = false, showGreeting = true, showPlaced = true, showDecor = true } = look
+  const { layout = 'banner', isCentered = false, showGreeting = true, showPlaced = true, showDecor = true, showProgress = true, showReadyTime = true } = look
   const size = SIZES[layout]
   const hasMetaRow = showPlaced || Boolean(orderTypeLabel) || Boolean(scheduledLabel)
 
@@ -79,6 +83,7 @@ export function StatusHero({
     <section
       aria-live="polite"
       data-branding-scope="tracking/hero"
+      data-part="banner"
       className={`relative overflow-hidden ${size.section}`}
       style={{
         borderRadius: 'var(--trk-radius)',
@@ -102,19 +107,20 @@ export function StatusHero({
           initial={reduceMotion ? false : { scale: 0.6, rotate: -15, opacity: 0 }}
           animate={{ scale: 1, rotate: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 260, damping: 16 }}
+          data-part="icon"
           className={`flex ${size.chip} shrink-0 items-center justify-center backdrop-blur`}
           style={{ borderRadius: 'var(--trk-radius-inner)', backgroundColor: 'var(--trk-hero-chip)' }}
         >
           <Icon className={size.icon} aria-hidden="true" />
         </motion.div>
         <div className="min-w-0 flex-1">
-          {showGreeting && <p className="text-sm font-medium opacity-85">{greeting}</p>}
-          <h2 className={`mt-0.5 ${size.headline} font-extrabold leading-tight`}>
+          {showGreeting && <p data-part="text" className="text-sm font-medium opacity-85">{greeting}</p>}
+          <h2 data-part="title" className={`mt-0.5 ${size.headline} font-extrabold leading-tight`}>
             {isCancelled
               ? wording.cancelledHeadline ?? <StoreLabel name="tracking.cancelled_headline" fallback="Order cancelled" />
               : <StoreLabel name={step.headlineLabel} fallback={step.headline} />}
           </h2>
-          <p className="mt-1 text-sm opacity-90">
+          <p data-part="subtitle" className="mt-1 text-sm opacity-90">
             {isCancelled
               ? wording.cancelledDetail ?? <StoreLabel name="tracking.cancelled_detail" fallback="This order has been cancelled." />
               : <StoreLabel name={step.descriptionLabel} fallback={step.description} />}
@@ -122,10 +128,15 @@ export function StatusHero({
         </div>
       </div>
 
-      {!isCancelled && (
+      {showProgress && !isCancelled && (
         <div className={`relative ${size.bars} flex gap-1.5`} aria-hidden="true">
           {STATUS_STEPS.map((s, index) => (
-            <div key={s.key} className={`${size.bar} flex-1 overflow-hidden rounded-full`} style={{ backgroundColor: 'var(--trk-hero-track)' }}>
+            <div
+              key={s.key}
+              data-part="step"
+              data-on={index === currentIndex ? '' : undefined}
+              data-done={index < currentIndex ? '' : undefined}
+              className={`${size.bar} flex-1 overflow-hidden rounded-full`} style={{ backgroundColor: 'var(--trk-hero-track)' }}>
               <motion.div
                 className="h-full rounded-full"
                 style={{ backgroundColor: 'var(--trk-hero-bar)' }}
@@ -138,15 +149,15 @@ export function StatusHero({
         </div>
       )}
 
-      {prepPromise && !isCancelled && (
-        <div className="relative mt-4 px-4 py-3 backdrop-blur" style={{ borderRadius: 'var(--trk-radius-inner)', backgroundColor: 'var(--trk-hero-chip-soft)' }}>
-          <p className="text-lg font-bold leading-tight">{prepPromise.headline}</p>
-          <p className="text-sm opacity-90">{prepPromise.detail}</p>
+      {showReadyTime && prepPromise && !isCancelled && (
+        <div data-part="card" className="relative mt-4 px-4 py-3 backdrop-blur" style={{ borderRadius: 'var(--trk-radius-inner)', backgroundColor: 'var(--trk-hero-chip-soft)' }}>
+          <p data-part="text" className="text-lg font-bold leading-tight">{prepPromise.headline}</p>
+          <p data-part="muted" className="text-sm opacity-90">{prepPromise.detail}</p>
         </div>
       )}
 
       {hasMetaRow && (
-        <div className={`relative mt-4 flex flex-wrap items-center gap-2 text-xs opacity-85${isCentered ? ' justify-center' : ''}`}>
+        <div data-part="muted" className={`relative mt-4 flex flex-wrap items-center gap-2 text-xs opacity-85${isCentered ? ' justify-center' : ''}`}>
           {showPlaced && <span>{wording.placed ?? 'Placed'} {placedLabel}</span>}
           {orderTypeLabel && (
             <>
@@ -155,7 +166,7 @@ export function StatusHero({
             </>
           )}
           {scheduledLabel && (
-            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold" style={{ backgroundColor: 'var(--trk-hero-chip)' }}>
+            <span data-part="badge" className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold" style={{ backgroundColor: 'var(--trk-hero-chip)' }}>
               <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
               {wording.scheduled ?? 'Scheduled for'} {scheduledLabel}
             </span>

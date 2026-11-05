@@ -21,6 +21,8 @@ const HEADER_OPTIONS: readonly BlockOption[] = [
   ...trackingColorKnobs(['color_header', 'color_header_text', 'color_live']),
   { key: 'show_live_badge', label: 'Show the live badge', type: 'boolean', default: true },
   toggle('show_logo', 'Show your logo'),
+  toggle('show_store_name', 'Store name'),
+  toggle('show_order_number', 'Order number'),
 ]
 
 const STATUS_OPTIONS: readonly BlockOption[] = [
@@ -43,6 +45,8 @@ const STATUS_OPTIONS: readonly BlockOption[] = [
   ]),
   toggle('show_greeting', 'Show the greeting'),
   toggle('show_placed', 'Show when it was placed'),
+  toggle('show_progress', 'Progress bar', { hint: 'The short bar of steps under the status.' }),
+  toggle('show_ready_time', 'Ready time', { hint: 'When the kitchen sets one: "Ready by 6:30 PM".' }),
   toggle('show_decor', 'Background circles', { group: 'advanced', ...when('variant', [FOLLOW_PAGE, 'gradient', 'solid', 'soft', 'outline']) }),
 ]
 
@@ -53,6 +57,7 @@ const RING_OPTIONS: readonly BlockOption[] = [
   ]),
   ...trackingColorKnobs(['color_ring', 'color_ring_text', 'color_ring_border', 'color_ring_armed']),
   TRACKING_CORNERS_KNOB,
+  toggle('show_helper', 'Tip after tapping', { hint: '"Keep this page open and your volume up."' }),
 ]
 
 const LOYALTY_OPTIONS: readonly BlockOption[] = [
@@ -93,6 +98,8 @@ const PICKUP_OPTIONS: readonly BlockOption[] = [
   trackingColorKnob('color_pickup_border', when('variant', ['card'])),
   ...trackingColorKnobs(['color_pickup_text', 'color_pickup_ready']),
   TRACKING_CORNERS_KNOB,
+  toggle('show_title', 'Title', { hint: '"Your collection code" above the code.' }),
+  toggle('show_helper', 'Help text', { hint: 'The line under the code saying staff will scan it.' }),
 ]
 
 const TIMELINE_OPTIONS: readonly BlockOption[] = [
@@ -117,6 +124,9 @@ const SUMMARY_OPTIONS: readonly BlockOption[] = [
   trackingColorKnob('color_badge', when('variant', ['standard'])),
   trackingColorKnob('color_border', { group: 'advanced' }),
   TRACKING_CORNERS_KNOB,
+  toggle('show_title', 'Title'),
+  toggle('show_addons', 'Add-ons'),
+  toggle('show_fees', 'Delivery fee and service charge'),
 ]
 
 const BACK_OPTIONS: readonly BlockOption[] = [
@@ -147,6 +157,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'live', label: 'Live badge', fallback: 'Live', maxLength: 16 },
     ],
     options: HEADER_OPTIONS,
+    parts: ['banner', 'icon', 'badge'],
   },
   {
     id: 'tracking.status',
@@ -164,6 +175,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'cancelled_detail', label: 'Cancelled — detail', fallback: 'This order has been cancelled.', labelKey: 'tracking.cancelled_detail', maxLength: 90, multiline: true },
     ],
     options: STATUS_OPTIONS,
+    parts: ['banner', 'icon', 'badge', 'step', 'step_on', 'step_done'],
   },
   {
     id: 'tracking.ring_me',
@@ -178,6 +190,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'armed_hint', label: 'Hint after tapping', fallback: 'Keep this page open and your volume up.', maxLength: 90 },
     ],
     options: RING_OPTIONS,
+    parts: ['button', 'icon'],
   },
   {
     id: 'tracking.loyalty',
@@ -188,6 +201,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [],
     options: LOYALTY_OPTIONS,
+    parts: ['banner', 'icon', 'field', 'label', 'error', 'button', 'link', 'badge'],
   },
   {
     id: 'tracking.pickup_qr',
@@ -198,6 +212,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [],
     options: PICKUP_OPTIONS,
+    parts: [],
   },
   {
     id: 'tracking.timeline',
@@ -208,6 +223,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Progress', labelKey: 'tracking.progress_title', maxLength: 24 }],
     options: TIMELINE_OPTIONS,
+    parts: ['step', 'step_on', 'step_done'],
   },
   {
     id: 'tracking.summary',
@@ -223,6 +239,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'total', label: 'Total', fallback: 'Total', maxLength: 24 },
     ],
     options: SUMMARY_OPTIONS,
+    parts: ['badge', 'price', 'total', 'divider'],
   },
   {
     id: 'tracking.back',
@@ -233,6 +250,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'label', label: 'Button text', fallback: 'Back to menu', labelKey: 'tracking.back', maxLength: 40 }],
     options: BACK_OPTIONS,
+    parts: ['button', 'button_alt'],
   },
 ]
 

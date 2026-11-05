@@ -62,10 +62,11 @@ export function OrderSaveFailedNotice({
   return (
     <div
       role="alert"
+      data-part="banner"
       className="rounded-2xl border border-[color:var(--co-warning-border)] bg-[var(--co-warning-soft)] p-4 text-left"
     >
-      <p className="text-sm font-semibold text-[color:var(--co-text)]">{headline}</p>
-      <p className="mt-1 text-sm text-[color:var(--co-muted)]">{recovery}</p>
+      <p data-part="text" className="text-sm font-semibold text-[color:var(--co-text)]">{headline}</p>
+      <p data-part="muted" className="mt-1 text-sm text-[color:var(--co-muted)]">{recovery}</p>
     </div>
   )
 }
@@ -90,6 +91,7 @@ export function ConfirmationHero({ copy = {}, showIcon = true }: { copy?: HeroCo
     <div className="text-center py-8">
       {showIcon && (
         <div
+          data-part="icon"
           className={`inline-flex items-center justify-center w-24 h-24 rounded-full mb-5 ${
             isFailed ? 'bg-[var(--co-warning-soft)]' : 'bg-[var(--co-success-soft)]'
           }`}
@@ -101,12 +103,12 @@ export function ConfirmationHero({ copy = {}, showIcon = true }: { copy?: HeroCo
           )}
         </div>
       )}
-      <h1 className="text-3xl font-bold text-[color:var(--co-text)] mb-2">
+      <h1 data-part="title" className="text-3xl font-bold text-[color:var(--co-text)] mb-2">
         {isFailed
           ? copy.failedTitle ?? 'Order Not Confirmed'
           : copy.title ?? 'Order Placed!'}
       </h1>
-      <p className="text-[color:var(--co-muted)] text-lg">
+      <p data-part="subtitle" className="text-[color:var(--co-muted)] text-lg">
         {isFailed
           ? copy.failedSubtitle ?? `We could not reach ${storeName} with this order.`
           : copy.subtitle ?? `Your order has been sent to ${storeName}`}

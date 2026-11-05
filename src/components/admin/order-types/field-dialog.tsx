@@ -26,6 +26,7 @@ import {
   resolvePresetIdForField,
 } from '@/lib/checkout-field-presets'
 import type { CustomerFormField } from '@/types/database'
+import { TYPES_WITH_CHOICES } from '@/lib/checkout-field-types'
 
 export interface FieldDialogProps {
   open: boolean
@@ -101,9 +102,10 @@ export function FieldDialog({
     setIsSaving(true)
 
     try {
-      const options = formData.field_type === 'select' && formData.options
+      const hasChoices = TYPES_WITH_CHOICES.includes(formData.field_type)
+      const options = hasChoices && formData.options
         ? formData.options.split(',').map(s => s.trim()).filter(s => s.length > 0)
-        : formData.field_type !== 'select' ? undefined : []
+        : hasChoices ? [] : undefined
 
       // `field` is the snapshot taken when the dialog opened; `existingFields` is
       // live. Reading the position from the live list means an edit submitted
@@ -199,7 +201,7 @@ export function FieldDialog({
             <p className="text-xs text-muted-foreground">Grey hint text shown inside the empty box.</p>
           </div>
 
-          {formData.field_type === 'select' && (
+          {TYPES_WITH_CHOICES.includes(formData.field_type) && (
             <div className="space-y-2">
               <Label htmlFor="options">Choices</Label>
               <Input

@@ -1,18 +1,18 @@
 'use client'
 
-import { Lock, RotateCcw } from 'lucide-react'
+import { Lock, Paintbrush, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
 
 import type { PageBlockContent, Widget } from '@/lib/hero-builder/types'
 import { PAGE_META } from '@/lib/page-designer/pages'
-import { pageBlockDef } from '@/lib/page-designer/blocks'
+import { NEED_REASONS, pageBlockDef } from '@/lib/page-designer/blocks'
 import { optionGroup } from '@/lib/page-designer/knobs'
 import { applyTokens, resolveBlockOption, resolveBlockText } from '@/lib/page-designer/text'
 import type { BlockOption, BlockOptionValue, BlockTextSlot, PageId } from '@/lib/page-designer/types'
 import { usePageRuntime, type PageBlockRenderProps } from '@/components/hero-builder/renderer/page-runtime'
 
 import { Field, Group, TextArea, TextInput } from '../controls'
-import { DesignGallery, isOptionShown, OptionField } from './page-block-knobs'
+import { isOptionShown, OptionField } from './page-block-knobs'
 import type { HeroBuilderApi } from '../use-hero-builder'
 
 /** "Type {name} for the customer's first name…" for this page. */
@@ -30,8 +30,8 @@ function SlotField({ slot, value, placeholder, onChange }: { slot: BlockTextSlot
   )
 }
 
-/** The inspector for a page block: what it is, its design, colours, wording and switches. */
-export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuilderApi }) {
+/** A page block's registry entry and the props the canvas renders it with (null outside its page). */
+export function usePageBlock(widget: Widget, api: HeroBuilderApi) {
   const runtime = usePageRuntime()
   const content = widget.content as PageBlockContent
   const def = runtime ? pageBlockDef(runtime.page, content.block) : null
@@ -47,6 +47,19 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
       isEditor: true,
     }
   }, [runtime, def, texts, options])
+  const setOption = (key: string, value: BlockOptionValue) => {
+    const next = { ...options, [key]: value }
+    // A blank colour, photo or style = follow the page / none: drop the key.
+    if (value === '') delete next[key]
+    api.editContent(widget.id, { options: next } as Partial<PageBlockContent>, `option:${key}`)
+  }
+  const setOptions = (next: Record<string, BlockOptionValue>) => api.editContent(widget.id, { options: next } as Partial<PageBlockContent>)
+  return { runtime, def, texts, options, props, setOption, setOptions }
+}
+
+/** The inspector's Content tab for a page block: what it is, its wording and switches (looks are on Style). */
+export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuilderApi }) {
+  const { runtime, def, texts, options, props, setOption } = usePageBlock(widget, api)
   if (!runtime || !def || !props) {
     return <p className="px-4 py-3 text-xs text-neutral-500">This block belongs to another page. Remove it.</p>
   }
@@ -55,23 +68,15 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
     if (!value) delete next[key]
     api.editContent(widget.id, { texts: next } as Partial<PageBlockContent>, `text:${key}`)
   }
-  const setOption = (key: string, value: BlockOptionValue) => {
-    const next = { ...options, [key]: value }
-    // A blank colour or photo = follow the page / none: drop the key.
-    if (value === '') delete next[key]
-    api.editContent(widget.id, { options: next } as Partial<PageBlockContent>, `option:${key}`)
-  }
-  const resetLook = () => api.editContent(widget.id, { options: {} } as Partial<PageBlockContent>)
 
   const shown = def.options.filter((o) => isOptionShown(def, o, props.option))
   const inGroup = (group: string) => shown.filter((o) => optionGroup(o) === group)
-  const designs = inGroup('design')
-  const colors = inGroup('colors')
   const switches = inGroup('options')
   const more = inGroup('advanced')
-  // Photos and colours are typed or picked in steps: show what is stored, not the fallback.
+  // Photos are typed or picked in steps: show what is stored, not the fallback.
   const valueOf = (option: BlockOption) => (option.type === 'image' ? (typeof options[option.key] === 'string' ? options[option.key] : '') : props.option(option.key))
-  const hasSettings = Object.keys(options).length > 0
+  // A page's own editor for this block (the checkout form's questions), under Settings.
+  const Panel = runtime.blockPanels?.[def.id]
 
   return (
     <div>
@@ -83,24 +88,15 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
             <Lock className="h-3 w-3" /> Keeps the page working — move, restyle or re-word it, but it can&apos;t be removed.
           </p>
         )}
+        {def.neededWhen && (
+          <p className="mt-1.5 flex items-start gap-1 font-medium text-amber-800">
+            <Undo2 className="mt-0.5 h-3 w-3 shrink-0" /> You can remove or hide it. It comes back by itself while {NEED_REASONS[def.neededWhen]}, so orders still go through.
+          </p>
+        )}
+        <p className="mt-1.5 flex items-center gap-1 font-medium text-sky-800">
+          <Paintbrush className="h-3 w-3" /> Designs, colours and every part&apos;s style are on the Style tab.
+        </p>
       </div>
-      {designs.map((option) =>
-        option.type === 'choice' ? (
-          <Group key={option.key} title={option.label}>
-            <DesignGallery option={option} value={String(props.option(option.key))} Renderer={runtime.blocks[def.id]} props={props} onPick={(v) => setOption(option.key, v)} />
-          </Group>
-        ) : null,
-      )}
-      {colors.length > 0 && (
-        <Group title="Colours">
-          <div className="space-y-1.5">
-            {colors.map((option) => (
-              <OptionField key={option.key} option={option} value={valueOf(option)} onChange={(v) => setOption(option.key, v)} />
-            ))}
-          </div>
-          <p className="mt-2 text-[11px] leading-snug text-neutral-500">Blank colours follow the page colours in the Look tab.</p>
-        </Group>
-      )}
       {def.texts.length > 0 && (
         <Group title="Words">
           <div className="space-y-3">
@@ -127,6 +123,7 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
           </div>
         </Group>
       )}
+      {Panel && <Panel widget={widget} />}
       {more.length > 0 && (
         <Group title="More" defaultOpen={false}>
           <div className="space-y-3">
@@ -135,16 +132,6 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
             ))}
           </div>
         </Group>
-      )}
-      {hasSettings && (
-        <div className="border-b border-neutral-200 px-4 py-3">
-          <button type="button" onClick={resetLook} className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-700 hover:underline">
-            <RotateCcw className="h-3 w-3" /> Use the standard look for this block
-          </button>
-        </div>
-      )}
-      {def.texts.length === 0 && def.options.length === 0 && (
-        <p className="px-4 pb-3 text-[11px] leading-snug text-neutral-500">Use the Style and Layout tabs to change how this block sits on the page.</p>
       )}
     </div>
   )

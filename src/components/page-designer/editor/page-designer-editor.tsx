@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { savePageLookAction } from '@/app/actions/page-designer'
@@ -16,8 +16,13 @@ import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtim
 
 import { SAMPLE_BLOCKS, sampleTokens } from '../samples'
 import { LookPanel } from './look-panel'
+import { PageStylePanel } from './page-style-panel'
 import { pageThemeStyle } from './page-theme'
 import { buildPageSurface, type PendingLook } from './page-surfaces'
+import { CheckoutFormProvider } from './form-editor/form-context'
+import { withFormPublish } from './form-editor/form-publish'
+import type { CheckoutFormSource } from './form-editor/use-checkout-form'
+import { CHECKOUT_BLOCK_PANELS, useCheckoutFormSession } from './form-editor/use-checkout-form-session'
 import { PageTabs } from './page-tabs'
 import { RedirectSetting } from './redirect-setting'
 
@@ -34,6 +39,8 @@ export interface PageDesignerEditorProps {
   initialDesign: HeroDesignV5 | null
   initialIsLive: boolean
   redirect: ConfirmationRedirectSetting
+  /** Checkout only: the store's order types and their questions (the customer block's form editor). */
+  checkoutForm?: CheckoutFormSource | null
 }
 
 const LIVE_PATH: Record<PageId, string> = { tracking: 'menu', confirmation: 'menu', checkout: 'checkout' }
@@ -107,8 +114,9 @@ function usePageLook(tenantId: string, page: PageId, storeRow: Readonly<Record<s
 }
 
 /** The Hero Builder editor running as the Page Designer for one page. */
-export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, storeRow, redirect, ...editor }: PageDesignerEditorProps) {
+export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, storeRow, redirect, checkoutForm = null, ...editor }: PageDesignerEditorProps) {
   const look = usePageLook(tenantId, page, storeRow)
+  const formSession = useCheckoutFormSession(tenantId, page === 'checkout' ? checkoutForm : null)
   const [isSavingLook, startSavingLook] = useTransition()
   const labels = useMemo(() => readStorefrontLabels(look.preview as Record<string, unknown>) as Record<string, string>, [look.preview])
   const brandStyle = useMemo(
@@ -123,14 +131,21 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
       labels,
       blocks: SAMPLE_BLOCKS[page],
       store: look.preview,
+      blockPanels: page === 'checkout' && formSession.isEnabled ? CHECKOUT_BLOCK_PANELS : undefined,
     }),
-    [page, storeName, labels, look.preview],
+    [page, storeName, labels, look.preview, formSession.isEnabled],
   )
 
   // Publish reads the Look at the moment it runs, so the surface stays stable.
   const pending = useRef<PendingLook | null>(null)
-  pending.current = { input: look.input, onSaved: look.markSaved }
-  const surface = useMemo(() => buildPageSurface(page, runtime, () => pending.current), [page, runtime])
+  useLayoutEffect(() => {
+    pending.current = { input: look.input, onSaved: look.markSaved }
+  })
+  const pendingForm = formSession.pending
+  const surface = useMemo(
+    () => withFormPublish(buildPageSurface(page, runtime, () => pending.current), page, () => pending.current, () => pendingForm.current),
+    [page, runtime, pendingForm],
+  )
 
   const saveLook = () =>
     startSavingLook(async () => {
@@ -146,6 +161,7 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
     })
 
   return (
+    <CheckoutFormProvider value={formSession.context}>
     <HeroBuilderEditor
       // Each page keeps its own undo history and draft.
       key={page}
@@ -157,8 +173,11 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
       surface={surface}
       liveHref={`/${tenantSlug}/${LIVE_PATH[page]}`}
       look={{
-        hasChanges: look.input !== undefined,
-        panel: (
+        // Unsaved checkout questions publish with the page too.
+        hasChanges: look.input !== undefined || formSession.form.hasChanges,
+        panel: (api) => (
+          <>
+          <PageStylePanel api={api} />
           <LookPanel
             page={page}
             saved={look.saved}
@@ -169,6 +188,7 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
             onSave={saveLook}
             isSaving={isSavingLook}
           />
+          </>
         ),
       }}
       toolbarSlot={
@@ -178,5 +198,6 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
         </>
       }
     />
+    </CheckoutFormProvider>
   )
 }

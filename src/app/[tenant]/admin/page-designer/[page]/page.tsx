@@ -5,6 +5,7 @@ import { hasPageDesign, readConfirmationRedirect, storedPageDesign } from '@/lib
 import { pageBySlug, PAGE_META } from '@/lib/page-designer/pages'
 import { createStandardDesign } from '@/lib/page-designer/standard-designs'
 import { lookStoreRow } from '@/lib/page-designer/look'
+import { loadCheckoutFormSource } from '@/lib/page-designer/load-checkout-form'
 import { PageDesignerEditor } from '@/components/page-designer/editor/page-designer-editor'
 
 export const dynamic = 'force-dynamic'
@@ -26,6 +27,8 @@ export default async function PageDesignerPage({ params }: PageProps) {
   if (!tenant) redirect('/')
 
   const row = tenant as unknown as Record<string, unknown>
+  // The customer block's form editor: the store's own questions (session read, RLS).
+  const checkoutForm = page === 'checkout' ? await loadCheckoutFormSource(tenant.id) : null
   return (
     <PageDesignerEditor
       tenantId={tenant.id}
@@ -37,6 +40,7 @@ export default async function PageDesignerPage({ params }: PageProps) {
       initialDesign={storedPageDesign(row, page) ?? createStandardDesign(page)}
       initialIsLive={hasPageDesign(row, page)}
       redirect={readConfirmationRedirect(row)}
+      checkoutForm={checkoutForm}
     />
   )
 }

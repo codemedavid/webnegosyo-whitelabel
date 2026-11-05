@@ -12,6 +12,7 @@ import { widgetLabel } from '../widget-label'
 import { ContentPanel } from './content-panel'
 import { LayoutPanel } from './layout-panel'
 import { bindNodeStyle } from './node-style'
+import { PageBlockStyle } from './page-block-style'
 import { StylePanel } from './style-panel'
 
 type Tab = 'content' | 'style' | 'layout'
@@ -107,7 +108,12 @@ export function Inspector({ api, contentRequest }: InspectorProps) {
         {tab === 'content' && (
           <ContentPanel api={api} node={found.kind === 'column' ? (node as unknown as Section) : (node as Section | Widget)} nodeKind={found.kind} />
         )}
-        {tab === 'style' && <StylePanel b={b} nodeKind={found.kind} widgetKind={widget?.kind} />}
+        {tab === 'style' &&
+          (widget?.kind === 'page-block' ? (
+            <PageBlockStyle widget={widget} api={api} b={b} />
+          ) : (
+            <StylePanel b={b} nodeKind={found.kind} widgetKind={widget?.kind} />
+          ))}
         {tab === 'layout' && (
           <LayoutPanel b={b} nodeKind={found.kind} widget={widget} device={api.device} onAnimation={(a) => api.editAnimation(node.id, a)} />
         )}

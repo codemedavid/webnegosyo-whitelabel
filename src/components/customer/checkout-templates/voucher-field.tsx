@@ -19,6 +19,8 @@ interface VoucherFieldProps {
   onChooseUnits?: (code: string, picks: Record<string, number>) => void | Promise<void>
   /** The prompt; replaces the store's `checkout.voucher` label when given (Page Designer). */
   label?: string
+  /** Off keeps the prompt for screen readers only (Page Designer); absent = shown. */
+  showLabel?: boolean
 }
 
 /**
@@ -38,6 +40,7 @@ export function VoucherField({
   lineNames = {},
   onChooseUnits,
   label,
+  showLabel = true,
 }: VoucherFieldProps) {
   const [draft, setDraft] = useState('')
 
@@ -53,7 +56,7 @@ export function VoucherField({
 
   return (
     <div className="space-y-2">
-      <label htmlFor="voucher-code-input" className="text-sm font-medium text-[color:var(--co-text)]">
+      <label htmlFor="voucher-code-input" data-part="label" className={showLabel ? 'text-sm font-medium text-[color:var(--co-text)]' : 'sr-only'}>
         {label ?? <StoreLabel name="checkout.voucher" fallback="Have a voucher?" />}
       </label>
 
@@ -72,6 +75,7 @@ export function VoucherField({
           autoCapitalize="characters"
           autoComplete="off"
           spellCheck={false}
+          data-part="field"
           className="min-w-0 flex-1 h-10 rounded-md border border-[color:var(--co-border)] bg-[var(--co-card)] px-3 font-mono text-sm uppercase text-[color:var(--co-text)] placeholder:text-[color:var(--co-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--co-accent)] focus:border-[color:var(--co-accent)]"
           disabled={isChecking}
         />
@@ -79,6 +83,7 @@ export function VoucherField({
           type="button"
           onClick={() => void submit()}
           disabled={isChecking || draft.trim() === ''}
+          data-part="button-alt"
           className="h-10 shrink-0 rounded-md border border-[color:var(--co-border)] bg-[var(--co-card)] px-4 text-sm font-medium text-[color:var(--co-text)] hover:bg-[var(--co-subtle)] disabled:opacity-50"
         >
           {isChecking ? 'Checking…' : 'Apply'}
@@ -95,9 +100,9 @@ export function VoucherField({
               <li key={code} className="text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono font-medium text-[color:var(--co-text)]">{code}</span>
+                    <span data-part="text" className="font-mono font-medium text-[color:var(--co-text)]">{code}</span>
                     {accepted && (
-                      <span className="text-[color:var(--co-success)]">−{formatPrice(accepted.amount)}</span>
+                      <span data-part="price" className="text-[color:var(--co-success)]">−{formatPrice(accepted.amount)}</span>
                     )}
                   </span>
                   <button
@@ -112,7 +117,7 @@ export function VoucherField({
                 {accepted?.unitLimit && onChooseUnits && (
                   <VoucherUnitChoice voucher={accepted} lineNames={lineNames} onChoose={onChooseUnits} />
                 )}
-                {rejected && <p className="text-[color:var(--co-error)]">{rejected.message}</p>}
+                {rejected && <p data-part="error" className="text-[color:var(--co-error)]">{rejected.message}</p>}
               </li>
             )
           })}

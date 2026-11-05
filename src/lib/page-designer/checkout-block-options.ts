@@ -23,6 +23,18 @@ export const CARD: BlockOption = { key: 'card', label: 'Show on a card', type: '
 export const SHOW_SUBTITLE: BlockOption = { key: 'show_subtitle', label: 'Show the line under the title', type: 'boolean', default: true }
 
 const whenVariant = (...values: string[]) => ({ showWhen: { key: 'variant', values } })
+
+/**
+ * A "show this part" switch. On by default = the block as it was; the few
+ * parts that were never drawn before (a store name, a lock line) start off.
+ */
+const showSwitch = (key: string, label: string, hint?: string, isOnByDefault = true): BlockOption => ({
+  key,
+  label,
+  type: 'boolean',
+  default: isOnByDefault,
+  ...(hint ? { hint } : {}),
+})
 /** Card corners only matter while the block sits on a card. */
 const CARD_CORNERS: BlockOption = { ...CORNERS_KNOB, label: 'Card corners', showWhen: { key: 'card', values: [true] } }
 
@@ -43,6 +55,8 @@ export const HEADER_OPTIONS: readonly BlockOption[] = [
     .map((knob) => ({ ...knob, ...whenVariant('banner') })),
   { key: 'show_back', label: 'Show the back button', type: 'boolean', default: true },
   SHOW_SUBTITLE,
+  showSwitch('show_store_name', 'Show your store name', 'A small line above the title.', false),
+  showSwitch('show_logo', 'Show your logo', 'Your Branding Studio logo beside the title.', false),
 ]
 
 // ── Store closed notice ────────────────────────────────────────────────────
@@ -83,6 +97,14 @@ export const FIELD_STYLES = [
   { value: 'outlined', label: 'Outlined', hint: 'Boxes with a border' },
   { value: 'filled', label: 'Filled', hint: 'Softly shaded boxes' },
   { value: 'underlined', label: 'Underlined', hint: 'A line under each answer' },
+  { value: 'floating', label: 'Floating label', hint: 'The question sits in the box and moves up' },
+  { value: 'floating_filled', label: 'Floating, filled', hint: 'Shaded boxes, the question moves up' },
+  { value: 'inset', label: 'Inset list', hint: 'Question left, answer right, one rounded group' },
+  { value: 'joined', label: 'Joined', hint: 'Stacked boxes sharing their borders' },
+  { value: 'pill', label: 'Pill', hint: 'Round boxes with an icon' },
+  { value: 'elevated', label: 'Elevated', hint: 'No border, a soft shadow that lifts' },
+  { value: 'chunky', label: 'Chunky', hint: 'Thick border with a bold shadow' },
+  { value: 'kiosk', label: 'Large', hint: 'Big boxes for a counter tablet' },
 ] as const satisfies readonly Choice<string>[]
 export type FieldStyle = (typeof FIELD_STYLES)[number]['value']
 
@@ -94,7 +116,7 @@ export const FIELD_COLUMNS = [
 export const CUSTOMER_OPTIONS: readonly BlockOption[] = [
   designKnob(FIELD_STYLES, 'Field style'),
   ...checkoutColorKnobs(['color_card', 'color_text', 'color_border', 'color_accent'], { color_border: 'Box borders', color_accent: 'While typing' }),
-  { ...CORNERS_KNOB, ...whenVariant('outlined', 'filled') },
+  { ...CORNERS_KNOB, ...whenVariant('outlined', 'filled', 'floating', 'floating_filled', 'inset', 'joined', 'elevated', 'chunky', 'kiosk') },
   choiceKnob('columns', 'Questions side by side (computers)', FIELD_COLUMNS, { hint: 'Phones always show one question per line.' }),
   CARD,
   SHOW_SUBTITLE,
@@ -122,6 +144,10 @@ export const SUMMARY_OPTIONS: readonly BlockOption[] = [
   CARD,
   SHOW_SUBTITLE,
   { key: 'show_items', label: 'List the dishes', type: 'boolean', default: true },
+  { ...showSwitch('show_addons', 'Show each dish’s add-ons'), showWhen: { key: 'show_items', values: [true] } },
+  { ...showSwitch('show_notes', 'Show each dish’s note'), showWhen: { key: 'show_items', values: [true] } },
+  showSwitch('show_fees', 'Show the delivery fee and service charge', 'The total still includes them.'),
+  showSwitch('show_free_hint', 'Show “Add ₱… more for free delivery”'),
 ]
 
 // ── Voucher code ───────────────────────────────────────────────────────────
@@ -137,6 +163,8 @@ export const VOUCHER_OPTIONS: readonly BlockOption[] = [
   ...checkoutColorKnobs(['color_card', 'color_text', 'color_border', 'color_accent']),
   CARD_CORNERS,
   CARD,
+  // Tucked away, the prompt IS the link that opens the box, so it always shows.
+  { ...showSwitch('show_title', 'Show the prompt above the box', 'Screen readers still hear it.'), ...whenVariant('field') },
 ]
 
 // ── Senior / PWD ───────────────────────────────────────────────────────────
@@ -153,6 +181,9 @@ export const PAYMENT_DESIGNS = [
   { value: 'wallet', label: 'Wallet', hint: 'Tiles in a row you can swipe' },
   { value: 'grid', label: 'Grid', hint: 'Every method in view' },
   { value: 'rows', label: 'List', hint: 'One method per row' },
+  { value: 'chosen', label: 'Chosen + Change', hint: 'Just the chosen method, tap to change' },
+  { value: 'accordion', label: 'Accordion', hint: 'The chosen row opens its QR and details' },
+  { value: 'split', label: 'Pay now / later', hint: 'Online or in person first, then the method' },
 ] as const satisfies readonly Choice<string>[]
 export type PaymentDesign = (typeof PAYMENT_DESIGNS)[number]['value']
 
@@ -162,6 +193,10 @@ export const PAYMENT_OPTIONS: readonly BlockOption[] = [
   CORNERS_KNOB,
   CARD,
   SHOW_SUBTITLE,
+  showSwitch('show_icons', 'Show each method’s QR or letter'),
+  showSwitch('show_descriptions', 'Show the account details', 'Customers still see them in the payment step after Place order.'),
+  showSwitch('show_qr_preview', 'Show the QR code', 'Customers still see it in the payment step after Place order.'),
+  showSwitch('show_proof_chip', 'Show “Proof required”'),
 ]
 
 // ── Text me offers ─────────────────────────────────────────────────────────
@@ -196,4 +231,7 @@ export const PLACE_ORDER_OPTIONS: readonly BlockOption[] = [
   choiceKnob('width', 'Button width', BUTTON_WIDTHS),
   { key: 'show_total', label: 'Show the total on the button', type: 'boolean', default: true },
   { ...CARD, default: false },
+  showSwitch('show_minimum_notice', 'Explain an unmet minimum order', 'Off: the button still waits for the minimum, without saying why.'),
+  showSwitch('show_footer_note', 'Show the note under the button'),
+  showSwitch('show_secure_line', 'Show a “Secure checkout” line', 'A small lock line under the button.', false),
 ]

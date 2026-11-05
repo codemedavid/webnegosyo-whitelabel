@@ -6,6 +6,7 @@ import { buildDesignCss } from '@/lib/hero-builder/css'
 import { safeAnchor, safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import type { Column, HeroDesignV5, Section, Widget } from '@/lib/hero-builder/types'
 
+import { PageLayout } from './page-layout'
 import { isShownInState, usePageRuntime } from './page-runtime'
 import { WidgetView } from './widget-view'
 
@@ -89,6 +90,7 @@ function SectionNode({ section, ctx, isPriority }: { section: Section; ctx: Node
       id={anchor ?? undefined}
       aria-label={section.label || undefined}
       className={`hb-section ${ctx.classes[section.id] ?? ''}`}
+      data-pin={section.pin === 'bottom' ? 'bottom' : undefined}
       {...editorAttrs(ctx, section.id, 'section')}
       {...state.attrs}
     >
@@ -126,18 +128,31 @@ export const HeroBuilderRenderer = memo(function HeroBuilderRenderer({
     () => buildDesignCss(design, { scope, showHidden: isEditor, viewportHeight }),
     [design, scope, isEditor, viewportHeight],
   )
-  const pageState = usePageRuntime()?.state ?? null
+  const runtime = usePageRuntime()
+  const pageState = runtime?.state ?? null
   const ctx: NodeContext = { classes: built.classes, isEditor, pageState }
 
   if (!design.sections.length && !isEditor) return null
+  // Page Designer: one step at a time / folding panels (only on a page, never a hero).
+  const layout = runtime ? design.page?.layout : undefined
+  const isStepped = layout === 'steps' || layout === 'accordion'
 
   return (
     <div className={`${scope}${className ? ` ${className}` : ''}`} data-branding-scope="storefront/hero">
       {built.fontsHref && <link rel="stylesheet" href={built.fontsHref} />}
       <style dangerouslySetInnerHTML={{ __html: built.css }} />
-      {design.sections.map((section, i) => (
-        <SectionNode key={section.id} section={section} ctx={ctx} isPriority={i === 0} />
-      ))}
+      {isStepped && design.page ? (
+        <PageLayout
+          settings={design.page}
+          isEditor={isEditor}
+          stepProblem={runtime?.stepProblem}
+          sections={design.sections
+            .filter((section) => isEditor || isShownInState(section.showWhen, pageState))
+            .map((section, i) => ({ section, node: <SectionNode section={section} ctx={ctx} isPriority={i === 0} /> }))}
+        />
+      ) : (
+        design.sections.map((section, i) => <SectionNode key={section.id} section={section} ctx={ctx} isPriority={i === 0} />)
+      )}
     </div>
   )
 })

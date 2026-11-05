@@ -7,6 +7,8 @@ export const HERO_BASE_CSS = [
   '.S{container-type:inline-size;container-name:hb;position:relative;width:100%;overflow-x:clip;color:var(--hb-text);font-family:var(--hb-body-font);line-height:1.5;-webkit-font-smoothing:antialiased}',
   '.S *,.S *::before,.S *::after{box-sizing:border-box}',
   '.S .hb-section{position:relative;display:flex;flex-direction:column;isolation:isolate;padding:64px 24px}',
+  // Page Designer: a section pinned to the bottom of the screen (sticky order bar).
+  '.S .hb-section[data-pin="bottom"]{position:sticky;bottom:0;z-index:30}',
   '.S .hb-row{position:relative;z-index:1;display:flex;flex-direction:row;width:100%;max-width:1200px;margin-inline:auto;gap:32px}',
   '.S .hb-col{position:relative;display:flex;flex-direction:column;gap:16px;min-width:0;flex:var(--hb-w, 1) 1 0%}',
   '.S .hb-w{position:relative;display:block;min-width:0;max-width:100%}',

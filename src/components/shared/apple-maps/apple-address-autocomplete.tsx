@@ -5,6 +5,7 @@ import { AlertTriangle, LocateFixed, Map as MapIcon, MapPin } from 'lucide-react
 import { Button } from '@/components/ui/button'
 import { haversineDistanceKm } from '@/lib/delivery-fee'
 import { parseCoordinateFallback, type LatLng } from '@/lib/maps/apple/mapkit-address'
+import { addressFieldPart, type AddressFieldTheme } from '../address-field-theme'
 import { AddressSuggestionList, suggestionOptionId, useSuggestionKeyboard } from './address-suggestion-list'
 import { PinConfirmDialog, type PinCheckView, type PinPurpose } from './pin-confirm-dialog'
 import { PinConfirmMap } from './pin-confirm-map'
@@ -42,6 +43,8 @@ export interface AppleAddressAutocompleteProps {
   check?: (point: LatLng) => PinCheckView | null
   /** Rendered instead when this deployment has no Apple Maps key. */
   fallback: ReactNode
+  /** Themed page colours (the checkout); absent = the standard gray field. */
+  theme?: AddressFieldTheme
 }
 
 interface PendingPin {
@@ -95,6 +98,7 @@ export function AppleAddressAutocomplete({
   purpose = 'delivery',
   check,
   fallback,
+  theme,
 }: AppleAddressAutocompleteProps) {
   const { status, suggest, resolveSuggestion, reverseGeocode } = useAppleAddressSearch()
   const { suggestions, search, clear: clearSuggestions } = useAddressSuggestions(suggest)
@@ -195,6 +199,7 @@ export function AppleAddressAutocomplete({
         placeholder={placeholder}
         required={required}
         className={className}
+        theme={theme}
       />
     )
   }
@@ -207,7 +212,7 @@ export function AppleAddressAutocomplete({
     <div className="space-y-2">
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <MapPin className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <MapPin className={`pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 ${theme?.icon ?? 'text-gray-400'}`} />
           <input
             name="address"
             type="text"
@@ -224,7 +229,8 @@ export function AppleAddressAutocomplete({
             placeholder={placeholder}
             required={required}
             autoComplete="address-line1"
-            className={`pl-10 ${className} w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500`}
+            data-part={addressFieldPart(theme, 'field')}
+            className={`pl-10 ${className} ${theme?.input ?? 'w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500'}`}
           />
           {isListOpen ? (
             <AddressSuggestionList
@@ -232,6 +238,7 @@ export function AppleAddressAutocomplete({
               suggestions={suggestions}
               activeIndex={activeIndex}
               onSelect={handleSuggestionPick}
+              theme={theme}
             />
           ) : null}
         </div>
@@ -244,7 +251,8 @@ export function AppleAddressAutocomplete({
           disabled={isLocating || status !== 'ready'}
           title="Use my current location"
           aria-label="Use my current location"
-          className="shrink-0"
+          data-part={addressFieldPart(theme, 'button-alt')}
+          className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
         >
           <LocateFixed className={`h-4 w-4 ${isLocating ? 'animate-pulse' : ''}`} />
         </Button>
@@ -256,13 +264,14 @@ export function AppleAddressAutocomplete({
           disabled={status !== 'ready'}
           title="Pick on the map"
           aria-label="Pick on the map"
-          className="shrink-0"
+          data-part={addressFieldPart(theme, 'button-alt')}
+          className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
         >
           <MapIcon className="h-4 w-4" />
         </Button>
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p data-part={addressFieldPart(theme, 'error')} className={`text-sm ${theme?.error ?? 'text-red-600'}`}>{error}</p> : null}
 
       {needsPin ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
@@ -276,12 +285,12 @@ export function AppleAddressAutocomplete({
       {pin ? (
         <section aria-label="Your location on the map" className="space-y-2">
           {previewError ? (
-            <p className="text-sm text-gray-500">{previewError}</p>
+            <p data-part={addressFieldPart(theme, 'muted')} className={`text-sm ${theme?.muted ?? 'text-gray-500'}`}>{previewError}</p>
           ) : (
             <PinConfirmMap center={pin} isInteractive={false} onError={setPreviewError} className={PREVIEW_SIZE_CLASS} />
           )}
           <div className="flex items-center justify-between gap-2 text-sm">
-            <span className="text-gray-600">{purpose === 'store' ? 'Entrance pinned' : 'Pin set — the rider goes here'}</span>
+            <span data-part={addressFieldPart(theme, 'muted')} className={theme?.muted ?? 'text-gray-600'}>{purpose === 'store' ? 'Entrance pinned' : 'Pin set — the rider goes here'}</span>
             <Button type="button" size="sm" variant="outline" onClick={() => setPending({ start: pin, label: null, accuracyM: null })}>
               Change pin
             </Button>

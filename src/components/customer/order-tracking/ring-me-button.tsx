@@ -17,19 +17,22 @@ interface RingMeButtonProps {
   wording?: RingMeWording
   /** Page Designer layout; unset = today's wide button. */
   layout?: 'button' | 'card'
+  /** Page Designer: hide the tip shown after tapping. */
+  showHint?: boolean
 }
 
 const NO_WORDING: RingMeWording = {}
 
 /** The ready-alert opt-in — audio needs a tap, so it can't be automatic. */
-export function RingMeButton({ isArmed, onArm, wording = NO_WORDING, layout = 'button' }: RingMeButtonProps) {
-  if (layout === 'card') return <RingMeCard isArmed={isArmed} onArm={onArm} wording={wording} />
+export function RingMeButton({ isArmed, onArm, wording = NO_WORDING, layout = 'button', showHint = true }: RingMeButtonProps) {
+  if (layout === 'card') return <RingMeCard isArmed={isArmed} onArm={onArm} wording={wording} showHint={showHint} />
   return (
     <div className="space-y-1.5" data-branding-scope="tracking/ring">
       <button
         type="button"
         onClick={onArm}
         disabled={isArmed}
+        data-part="button"
         className="flex h-12 w-full items-center justify-center gap-2 border-2 text-sm font-semibold transition-colors disabled:cursor-default"
         style={{
           borderRadius: 'var(--trk-radius-pill)',
@@ -40,18 +43,18 @@ export function RingMeButton({ isArmed, onArm, wording = NO_WORDING, layout = 'b
       >
         {isArmed ? (
           <>
-            <BellRing className="h-4 w-4" aria-hidden="true" />
+            <BellRing data-part="icon" className="h-4 w-4" aria-hidden="true" />
             {wording.armed ?? <StoreLabel name="tracking.ring_armed" fallback="We'll ring & vibrate when it's ready" />}
           </>
         ) : (
           <>
-            <Bell className="h-4 w-4" aria-hidden="true" />
+            <Bell data-part="icon" className="h-4 w-4" aria-hidden="true" />
             {wording.label ?? <StoreLabel name="tracking.ring_me" fallback="Ring me when my order is ready" />}
           </>
         )}
       </button>
-      {isArmed && (
-        <p className="text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+      {showHint && isArmed && (
+        <p data-part="muted" className="text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
           {wording.armedHint ?? 'Keep this page open and your volume up.'}
         </p>
       )}

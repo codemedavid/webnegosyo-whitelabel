@@ -31,6 +31,7 @@ export function MinimumOrderNotice({
 
   return (
     <p
+      data-part="error"
       className={`text-sm font-medium ${CO.error} ${className}`}
       style={checkoutThemeStyle(checkout)}
       role="alert"
@@ -74,6 +75,7 @@ export function CheckoutCTA({ checkout, className = '', showTotal = true, proces
   return (
     <button
       data-branding-scope="checkout/place-order"
+      data-part="button"
       type="button"
       onClick={handleProceedToPayment}
       disabled={isProcessing || orderMinimum?.meets === false}

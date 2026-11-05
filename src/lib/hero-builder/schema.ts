@@ -194,7 +194,7 @@ const content = z.discriminatedUnion('kind', [
     texts: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), blockText).refine((t) => Object.keys(t).length <= 40, 'Too many texts'),
     options: z
       .record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.union([z.string().max(LIMITS.blockOptionChars), z.boolean()]))
-      .refine((o) => Object.keys(o).length <= 24, 'Too many options'),
+      .refine((o) => Object.keys(o).length <= LIMITS.blockOptions, 'Too many options'),
   }),
 ])
 
@@ -221,8 +221,23 @@ const section = z.object({
   anchor: z.string().regex(/^[a-z0-9-]{0,48}$/, 'Anchors use lowercase letters, numbers and dashes').optional(),
   columns: z.array(column).min(1).max(LIMITS.columnsPerSection),
   showWhen,
+  /** Page Designer: pin the section to the bottom of the screen (a sticky order bar). */
+  pin: z.enum(['bottom']).optional(),
   ...responsive,
 })
+
+/** Page Designer: whole-page settings (part styles, layout). Hero/welcome designs leave it out. */
+const pageSettings = z
+  .object({
+    parts: z
+      .record(z.string().regex(/^p_[a-z0-9_]{1,40}$/), z.string().max(32))
+      .refine((p) => Object.keys(p).length <= LIMITS.pageParts, 'Too many page styles')
+      .optional(),
+    layout: z.enum(['scroll', 'steps', 'accordion']).optional(),
+    progress: z.enum(['bar', 'numbers', 'dots', 'none']).optional(),
+    nextLabel: z.string().max(40).optional(),
+  })
+  .optional()
 
 const theme = z.object({
   colors: z
@@ -245,6 +260,7 @@ export const heroDesignV5Schema = z
   .object({
     version: z.literal(5),
     theme,
+    page: pageSettings,
     sections: z.array(section).max(LIMITS.sections, `A hero can have at most ${LIMITS.sections} sections`),
   })
   .refine(

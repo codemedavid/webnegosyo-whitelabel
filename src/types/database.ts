@@ -878,7 +878,7 @@ export interface CustomerFormField {
   order_type_id: string;
   field_name: string;
   field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number';
+  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'choice' | 'checkbox' | 'date';
   is_required: boolean;
   placeholder?: string;
   validation_rules?: Record<string, unknown>;

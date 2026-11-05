@@ -123,3 +123,30 @@ describe('saving twice and saving while editing', () => {
     expect(remainingLookChanges(now, sent)).toEqual({ checkout_accent_color: '#444444', checkout_border_color: '#cccccc' })
   })
 })
+
+describe('whole-store settings and phone overrides', () => {
+  it('offers the status colours, main button and fonts on checkout and thank-you, never on tracking', () => {
+    for (const page of ['checkout', 'confirmation'] as const) {
+      expect(fieldIds(page)).toEqual(expect.arrayContaining(['success_color', 'warning_color', 'error_color', 'button_primary_color', 'font_pair']))
+    }
+    expect(fieldIds('tracking')).not.toContain('success_color')
+  })
+
+  it('reads a Studio phone override and lets the Look clear it, keeping the other phone settings', () => {
+    const row = { checkout_accent_color: '#111111', mobile_overrides: { checkout_accent_color: '#ff0000', menu_card_template: 'zen' } }
+    expect(lookValues(row)['mobile_overrides.checkout_accent_color']).toBe('#ff0000')
+    expect(isPageLookField('checkout', 'mobile_overrides.checkout_accent_color')).toBe(true)
+    // Only real Look fields, never JSON-column looks or unrelated columns.
+    expect(isPageLookField('checkout', 'mobile_overrides.menu_card_template')).toBe(false)
+    expect(isPageLookField('tracking', 'mobile_overrides.tracking_style.accent')).toBe(false)
+    const changes = { checkout_accent_color: '#00aa00', 'mobile_overrides.checkout_accent_color': '' }
+    expect(lookPatch(changes, row)).toEqual({ checkout_accent_color: '#00aa00', mobile_overrides: { menu_card_template: 'zen' } })
+    expect(previewLookRow(row, changes).mobile_overrides).toEqual({ menu_card_template: 'zen' })
+  })
+
+  it('a phone override set in the Studio meanwhile is a conflict', () => {
+    const base = { 'mobile_overrides.checkout_accent_color': null }
+    const now = { mobile_overrides: { checkout_accent_color: '#ff0000' } }
+    expect(lookConflicts({ 'mobile_overrides.checkout_accent_color': '' }, base, now)).toEqual(['mobile_overrides.checkout_accent_color'])
+  })
+})
