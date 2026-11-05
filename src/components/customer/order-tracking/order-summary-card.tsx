@@ -4,6 +4,9 @@ import { Receipt } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import type { TrackingData } from '@/lib/order-tracking-service'
+import { CompactOrderSummary, ReceiptOrderSummary } from './order-summary-variants'
+
+export type OrderSummaryLayout = 'standard' | 'receipt' | 'compact'
 
 interface OrderSummaryCardProps {
   items: TrackingData['items']
@@ -12,6 +15,8 @@ interface OrderSummaryCardProps {
   serviceChargeAmount?: number
   /** Page Designer wording; each unset line keeps today's words. */
   wording?: OrderSummaryWording
+  /** Page Designer layout; unset = today's card. */
+  layout?: OrderSummaryLayout
 }
 
 export interface OrderSummaryWording {
@@ -24,7 +29,9 @@ export interface OrderSummaryWording {
 const NO_WORDING: OrderSummaryWording = {}
 
 /** The receipt: what was ordered and what it cost, in the tenant's palette. */
-export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmount, wording = NO_WORDING }: OrderSummaryCardProps) {
+export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmount, wording = NO_WORDING, layout = 'standard' }: OrderSummaryCardProps) {
+  if (layout === 'receipt') return <ReceiptOrderSummary items={items} total={total} deliveryFee={deliveryFee} serviceChargeAmount={serviceChargeAmount} wording={wording} />
+  if (layout === 'compact') return <CompactOrderSummary items={items} total={total} deliveryFee={deliveryFee} serviceChargeAmount={serviceChargeAmount} wording={wording} />
   const hasDeliveryFee = deliveryFee != null && deliveryFee > 0
   const hasServiceCharge = serviceChargeAmount != null && serviceChargeAmount > 0
 

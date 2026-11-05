@@ -2,6 +2,7 @@
 
 import { Bell, BellRing } from 'lucide-react'
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
+import { RingMeCard } from './ring-me-card'
 
 /** Page Designer wording; each unset line keeps today's words (and the store's labels). */
 export interface RingMeWording {
@@ -14,12 +15,15 @@ interface RingMeButtonProps {
   isArmed: boolean
   onArm: () => void
   wording?: RingMeWording
+  /** Page Designer layout; unset = today's wide button. */
+  layout?: 'button' | 'card'
 }
 
 const NO_WORDING: RingMeWording = {}
 
 /** The ready-alert opt-in — audio needs a tap, so it can't be automatic. */
-export function RingMeButton({ isArmed, onArm, wording = NO_WORDING }: RingMeButtonProps) {
+export function RingMeButton({ isArmed, onArm, wording = NO_WORDING, layout = 'button' }: RingMeButtonProps) {
+  if (layout === 'card') return <RingMeCard isArmed={isArmed} onArm={onArm} wording={wording} />
   return (
     <div className="space-y-1.5" data-branding-scope="tracking/ring">
       <button

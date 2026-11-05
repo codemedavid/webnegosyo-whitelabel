@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react'
 
+import { cornersClass, type CornersChoice } from '@/lib/page-designer/knobs'
+
 interface BlockCardProps {
   /** Branding Studio click-to-inspect scope, as on the standard designs. */
   scope?: 'checkout/card' | 'checkout/summary'
   isCard: boolean
+  /** The card's corners (`auto` = standard). */
+  corners?: CornersChoice
   title?: string
   subtitle?: string
   children: ReactNode
@@ -19,9 +23,9 @@ const CARD_SURFACE: Record<NonNullable<BlockCardProps['scope']>, string> = {
  * under it, on a card (the owner can switch the card off and style the
  * widget instead). Colours are the checkout theme's (`--co-*`).
  */
-export function BlockCard({ scope = 'checkout/card', isCard, title, subtitle, children }: BlockCardProps) {
+export function BlockCard({ scope = 'checkout/card', isCard, corners, title, subtitle, children }: BlockCardProps) {
   const surface = isCard
-    ? `rounded-2xl border border-[color:var(--co-border)] p-5 shadow-sm sm:p-6 ${CARD_SURFACE[scope]}`
+    ? `${cornersClass(corners, 'rounded-2xl')} border border-[color:var(--co-border)] p-5 shadow-sm sm:p-6 ${CARD_SURFACE[scope]}`
     : ''
   return (
     <section data-branding-scope={scope} className={`text-[color:var(--co-text)] ${surface}`}>

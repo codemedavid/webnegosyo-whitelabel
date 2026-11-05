@@ -17,29 +17,29 @@
 
 import { useId } from 'react'
 import {
-  UtensilsCrossed, Package, Truck, Check, CalendarClock, CreditCard, Bike, ShoppingBag, Store,
+  UtensilsCrossed, Package, Truck, Check, CalendarClock, Bike, ShoppingBag, Store,
   type LucideIcon,
 } from 'lucide-react'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
-import { formatPrice } from '@/lib/cart-utils'
-import { resolvePlaceOrderLabel } from '@/lib/checkout/checkout-cta'
 import {
   phPhoneDigitCount,
   phPhoneDisplayDigits,
   toPhPhoneValue,
   PH_PHONE_MAX_DIGITS,
 } from '@/lib/checkout/customer-field-input'
-import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { getCheckoutPalette } from '@/lib/branding-utils'
+import { cornersClass, type CornersChoice } from '@/lib/page-designer/knobs'
 import { CO, checkoutThemeStyle } from './checkout-theme'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
 
 import { CheckoutAddressField } from './checkout-address-field'
+import { fieldInputClass, type CheckoutFieldsLook } from './field-styles'
 
 
-const orderTypeIconMap: Record<OrderTypeKind, LucideIcon> = {
+/** The icon for each kind of order type (shared by every order-type design). */
+export const ORDER_TYPE_ICONS: Record<OrderTypeKind, LucideIcon> = {
   dine_in: UtensilsCrossed,
   pickup: Package,
   delivery: Truck,
@@ -65,15 +65,17 @@ interface CheckoutFieldsProps {
   showLoyalty?: boolean
   /** Off when the texts tick box is placed on the page by itself (Page Designer). */
   showSmsOptIn?: boolean
+  /** The answer boxes' style (Page Designer); absent = today's boxes. */
+  look?: CheckoutFieldsLook
 }
 
-export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, showSmsOptIn = true }: CheckoutFieldsProps) {
+export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, showSmsOptIn = true, look }: CheckoutFieldsProps) {
   const { formFields, customerData, setCustomerData, tenant } = checkout
   const reactId = useId()
 
   if (!formFields.length) return null
 
-  const inputClass = `w-full px-3 py-2.5 rounded-lg transition-shadow ${CO.input}`
+  const inputClass = fieldInputClass(look)
 
   return (
     <div style={checkoutThemeStyle(checkout)}>
@@ -227,23 +229,41 @@ export function SmsOptInCheckbox({ checkout, label }: { checkout: UseCheckoutRet
   )
 }
 
+/** Page Designer settings for the tiles design; absent = the standard checkouts' tiles. */
+export interface OrderTypeTilesLook {
+  corners: CornersChoice
+  iconStyle: 'circle' | 'plain' | 'none'
+  showDescriptions: boolean
+  columns: 'auto' | '1' | '2' | '3'
+}
+
+const TILE_COLUMNS: Record<OrderTypeTilesLook['columns'], string> = {
+  auto: 'grid-cols-3',
+  '1': 'grid-cols-1',
+  '2': 'grid-cols-2',
+  '3': 'grid-cols-3',
+}
+
 /**
  * Order-type selector (dine-in / pickup / delivery). Branded card buttons.
- * `compact` renders smaller cards for tight layouts (express).
+ * `compact` renders smaller cards for tight layouts (express). `look` is set
+ * by a Page Designer checkout only; without it the tiles are unchanged.
  */
-export function OrderTypeSelector({ checkout, compact = false }: { checkout: UseCheckoutReturn; compact?: boolean }) {
+export function OrderTypeSelector({ checkout, compact = false, look }: { checkout: UseCheckoutReturn; compact?: boolean; look?: OrderTypeTilesLook }) {
   const { orderTypes, orderType, setOrderType } = checkout
   const { accent, accentText, accentSoft, accentBorder } = useAccent(checkout)
   // Unselected colours come from the theme variables set on this root.
   const tileBorder = 'var(--co-border)'
+  const iconStyle = look?.iconStyle ?? 'circle'
+  const showDescription = !compact && (look?.showDescriptions ?? true)
 
   if (!orderTypes.length) return null
 
   return (
-    <div className="grid grid-cols-3 gap-2.5 sm:gap-3" style={checkoutThemeStyle(checkout)}>
+    <div className={`grid ${TILE_COLUMNS[look?.columns ?? 'auto']} gap-2.5 sm:gap-3`} style={checkoutThemeStyle(checkout)}>
       {orderTypes.map((ot) => {
         const isSelected = orderType === ot.id
-        const Icon = orderTypeIconMap[ot.type] ?? Package
+        const Icon = ORDER_TYPE_ICONS[ot.type] ?? Package
         return (
           <button
             key={ot.id}
@@ -251,7 +271,7 @@ export function OrderTypeSelector({ checkout, compact = false }: { checkout: Use
             type="button"
             onClick={() => setOrderType(ot.id)}
             aria-pressed={isSelected}
-            className={`relative flex flex-col items-center justify-start text-center rounded-2xl border-2 transition-all ${compact ? 'p-2.5' : 'p-3 sm:p-4'} ${isSelected ? 'shadow-sm' : 'hover:shadow-sm'}`}
+            className={`relative flex flex-col items-center justify-start text-center ${cornersClass(look?.corners, 'rounded-2xl')} border-2 transition-all ${compact ? 'p-2.5' : 'p-3 sm:p-4'} ${isSelected ? 'shadow-sm' : 'hover:shadow-sm'}`}
             style={{
               borderColor: isSelected ? accent : tileBorder,
               backgroundColor: isSelected ? accentSoft : 'var(--co-card)',
@@ -267,14 +287,19 @@ export function OrderTypeSelector({ checkout, compact = false }: { checkout: Use
                 <Check className="h-3 w-3" />
               </span>
             )}
-            <span
-              className={`inline-flex items-center justify-center rounded-full mb-2 ${compact ? 'h-9 w-9' : 'h-10 w-10 sm:h-12 sm:w-12'}`}
-              style={isSelected ? { backgroundColor: accent, color: accentText } : { backgroundColor: 'var(--co-subtle-strong)', color: 'var(--co-muted)' }}
-            >
-              <Icon className={compact ? 'h-4.5 w-4.5' : 'h-5 w-5 sm:h-6 sm:w-6'} />
-            </span>
+            {iconStyle === 'circle' && (
+              <span
+                className={`inline-flex items-center justify-center rounded-full mb-2 ${compact ? 'h-9 w-9' : 'h-10 w-10 sm:h-12 sm:w-12'}`}
+                style={isSelected ? { backgroundColor: accent, color: accentText } : { backgroundColor: 'var(--co-subtle-strong)', color: 'var(--co-muted)' }}
+              >
+                <Icon className={compact ? 'h-4.5 w-4.5' : 'h-5 w-5 sm:h-6 sm:w-6'} />
+              </span>
+            )}
+            {iconStyle === 'plain' && (
+              <Icon className="mb-2 h-6 w-6 sm:h-7 sm:w-7" style={{ color: isSelected ? accent : 'var(--co-muted)' }} aria-hidden="true" />
+            )}
             <span className={`font-semibold text-xs sm:text-sm leading-tight ${CO.text}`}>{ot.name}</span>
-            {!compact && ot.description && (
+            {showDescription && ot.description && (
               <span className={`hidden sm:block text-[11px] mt-0.5 line-clamp-2 ${CO.muted}`}>{ot.description}</span>
             )}
             {ot.advance_order_enabled && (
@@ -307,70 +332,7 @@ export { PaymentMethodList } from './payment-method-list'
 
 /**
  * Primary checkout CTA button (branded). Reflects QR-handoff / payment / messenger
- * states exactly like the original and drives `handleProceedToPayment`.
+ * states exactly like the original and drives `handleProceedToPayment`. With the
+ * unmet-minimum notice that sits beside it.
  */
-/**
- * The unmet-minimum notice. Renders nothing when the cart clears its order type's
- * minimum, so designs can drop it in unconditionally beside the submit button.
- */
-export function MinimumOrderNotice({
-  checkout,
-  className = '',
-}: {
-  checkout: UseCheckoutReturn
-  className?: string
-}) {
-  const message = checkout.orderMinimum
-    ? formatOrderMinimumMessage(checkout.orderMinimum, checkout.selectedOrderTypeData?.name)
-    : null
-  if (!message) return null
-
-  return (
-    <p
-      className={`text-sm font-medium ${CO.error} ${className}`}
-      style={checkoutThemeStyle(checkout)}
-      role="alert"
-    >
-      {message}
-    </p>
-  )
-}
-
-interface CheckoutCTAProps {
-  checkout: UseCheckoutReturn
-  className?: string
-  /** Off hides the "· ₱total" after the label (Page Designer). */
-  showTotal?: boolean
-  processingLabel?: string
-}
-
-export function CheckoutCTA({ checkout, className = '', showTotal = true, processingLabel = 'Processing Order...' }: CheckoutCTAProps) {
-  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, orderMinimum } = checkout
-  const { accent, accentText, button } = useAccent(checkout)
-  const ctaLabel = resolvePlaceOrderLabel(checkout)
-
-  return (
-    <button
-      data-branding-scope="checkout/place-order"
-      type="button"
-      onClick={handleProceedToPayment}
-      disabled={isProcessing || orderMinimum?.meets === false}
-      className={`w-full h-14 inline-flex items-center justify-center gap-3 font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${className}`}
-      style={{ backgroundColor: button ?? accent, color: accentText }}
-    >
-      {isProcessing ? (
-        <>
-          <div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          {processingLabel}
-        </>
-      ) : paymentMethods.length > 0 ? (
-        <>
-          <CreditCard className="h-5 w-5" />
-          <span>{ctaLabel}{showTotal && ` · ${formatPrice(grandTotal)}`}</span>
-        </>
-      ) : (
-        <span>{ctaLabel}{showTotal && ` · ${formatPrice(grandTotal)}`}</span>
-      )}
-    </button>
-  )
-}
+export { CheckoutCTA, MinimumOrderNotice, type PlaceOrderLook } from './place-order-button'

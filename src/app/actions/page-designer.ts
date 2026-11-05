@@ -3,11 +3,16 @@
 import { z } from 'zod'
 
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { saveBrandingWithClient } from '@/lib/branding-write'
+import type { BrandingPatchInput } from '@/lib/branding-service'
 import { invalidateTenantCache } from '@/lib/cache'
 import { LIMITS } from '@/lib/hero-builder/constants'
 import { heroDesignV5Schema } from '@/lib/hero-builder/schema'
 import { PAGE_DESIGN_COLUMNS, REDIRECT_SECONDS } from '@/lib/page-designer/page-mode'
+import { isPageLookField, lookConflicts, lookPatch, PAGE_LOOK_SECTIONS } from '@/lib/page-designer/look'
 import { isPageId } from '@/lib/page-designer/pages'
+import type { PageId } from '@/lib/page-designer/types'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { pageDesignProblem } from '@/lib/page-designer/rules'
 import { createClient } from '@/lib/supabase/server'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
@@ -53,13 +58,79 @@ async function writeTenant(tenantId: string, update: Update, label: string): Pro
   return { success: true }
 }
 
+const LOOK_FIELD_ID = /^[a-z0-9_]{1,64}(\.[a-z0-9_]{1,64})?$/
+const lookValue = z.union([z.string().max(500), z.boolean()])
+
+const lookSchema = z
+  .object({
+    changes: z.record(z.string().regex(LOOK_FIELD_ID), lookValue),
+    /** The saved values the editor started from, for the changed fields only. */
+    base: z.record(z.string().regex(LOOK_FIELD_ID), z.union([lookValue, z.null()])),
+  })
+  .strict()
+  .refine((look) => Object.keys(look.changes).length <= 200, 'Too many changes')
+
+function lookFieldLabel(page: PageId, fieldId: string): string {
+  for (const section of PAGE_LOOK_SECTIONS[page]) {
+    const field = section.fields.find((f) => f.id === fieldId)
+    if (field) return `${section.title} → ${field.label}`
+  }
+  return fieldId
+}
+
+/**
+ * Save the page's Look (the Branding Studio colours and wording it uses)
+ * through the Studio's own validation. Only fields the page's Look tab shows
+ * may change. Refused when one of them was saved elsewhere (the Studio)
+ * since the editor opened, so neither editor silently overwrites the other.
+ * Caller has passed `store_setup`.
+ */
+async function writePageLook(tenantId: string, page: PageId, input: unknown): Promise<PageDesignerActionResult> {
+  const parsed = lookSchema.safeParse(input)
+  if (!parsed.success) return { success: false, error: 'Those colours could not be read. Reload the page and try again.' }
+  const { changes, base } = parsed.data
+  const ids = Object.keys(changes)
+  if (!ids.length) return { success: true }
+  if (ids.some((id) => !isPageLookField(page, id))) return { success: false, error: 'That setting is not part of this page. Reload and try again.' }
+
+  const supabase = await createClient()
+  // Column names come from the allowlist above, never straight from the browser.
+  const columns = [...new Set(ids.map((id) => id.split('.')[0]))]
+  const { data: current, error } = await supabase.from('tenants').select(['id', ...columns].join(', ')).eq('id', tenantId).maybeSingle()
+  if (error || !current) {
+    console.error('[writePageLook] Could not read the current look:', error)
+    return { success: false, error: 'Could not save the colours. Please try again.' }
+  }
+  const row = current as unknown as Record<string, unknown>
+  const moved = lookConflicts(changes, base, row)
+  if (moved.length) {
+    const names = moved.slice(0, 3).map((id) => `"${lookFieldLabel(page, id)}"`).join(', ')
+    return { success: false, error: `${names} changed in Branding Studio since you opened this page. Reload to see it, then make your change again.` }
+  }
+  const result = await saveBrandingWithClient(supabase, tenantId, lookPatch(changes, row) as BrandingPatchInput, createAdminClient())
+  return result.success ? { success: true } : { success: false, error: result.error ?? 'Could not save the colours.' }
+}
+
+/** Save only the page's Look (it also shows on the standard page and in Branding Studio). */
+export async function savePageLookAction(tenantId: string, page: unknown, look: unknown): Promise<PageDesignerActionResult> {
+  try {
+    if (!isPageId(page)) return { success: false, error: 'Unknown page' }
+    await verifyTenantPermission(tenantId, 'store_setup')
+    return await writePageLook(tenantId, page, look)
+  } catch (error) {
+    console.error('[savePageLookAction] Error:', error)
+    return { success: false, error: errorMessage(error) }
+  }
+}
+
 /**
  * Publish a Page Designer design for one page: the Hero Builder v5 schema,
  * then the page's own rules (known blocks only, each once, required blocks
- * visible on every device, only the elements this page offers), then store it
- * (TEXT) and switch the designed page on.
+ * visible on every device, only the elements this page offers), then the
+ * page's Look changes (if any), then store it (TEXT) and switch the designed
+ * page on.
  */
-export async function publishPageDesignAction(tenantId: string, page: unknown, design: unknown): Promise<PageDesignerActionResult> {
+export async function publishPageDesignAction(tenantId: string, page: unknown, design: unknown, look?: unknown): Promise<PageDesignerActionResult> {
   try {
     if (!isPageId(page)) return { success: false, error: 'Unknown page' }
     await verifyTenantPermission(tenantId, 'store_setup')
@@ -80,8 +151,18 @@ export async function publishPageDesignAction(tenantId: string, page: unknown, d
       return { success: false, error: 'This design is too large. Remove some elements or shorten custom code.' }
     }
 
+    // The design is checked first, so a refused design never saves half the change.
+    const hasLook = look !== undefined
+    if (hasLook) {
+      const saved = await writePageLook(tenantId, page, look)
+      if (!saved.success) return saved
+    }
+
     const columns = PAGE_DESIGN_COLUMNS[page]
-    return await writeTenant(tenantId, { [columns.design]: serialized, [columns.enabled]: true }, 'publishPageDesignAction')
+    const published = await writeTenant(tenantId, { [columns.design]: serialized, [columns.enabled]: true }, 'publishPageDesignAction')
+    // Publishing again is safe: a look already saved is not read as someone else's change.
+    if (!published.success && hasLook) return { success: false, error: 'Your look was saved, but the page did not publish. Please publish again.' }
+    return published
   } catch (error) {
     console.error('[publishPageDesignAction] Error:', error)
     return { success: false, error: errorMessage(error) }

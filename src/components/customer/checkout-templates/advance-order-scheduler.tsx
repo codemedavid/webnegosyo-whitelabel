@@ -14,7 +14,10 @@ import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import { describeScheduleDate, formatLeadTime, groupTimeSlotsByPeriod } from '@/lib/advance-order-utils'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { cornersClass, type CornersChoice } from '@/lib/page-designer/knobs'
 import { checkoutThemeStyle } from './checkout-theme'
+import type { ScheduleMode } from '@/hooks/checkout/use-checkout-schedule'
+import { ScheduleModeChoices } from './schedule-mode-choices'
 
 const RADIO_BASE =
   'transition-[background-color,border-color,box-shadow,transform] duration-150 touch-manipulation active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1'
@@ -27,17 +30,18 @@ interface ModeChoiceProps {
   accent: string
   accentText: string
   accentSoft: string
+  corners?: CornersChoice
   onSelect: () => void
 }
 
-function ModeChoice({ isActive, icon, title, subtitle, accent, accentText, accentSoft, onSelect }: ModeChoiceProps) {
+function ModeChoice({ isActive, icon, title, subtitle, accent, accentText, accentSoft, corners, onSelect }: ModeChoiceProps) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={isActive}
       onClick={onSelect}
-      className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left ${RADIO_BASE}`}
+      className={`flex items-start gap-3 ${cornersClass(corners, 'rounded-xl')} border-2 p-3.5 text-left ${RADIO_BASE}`}
       style={{ borderColor: isActive ? accent : 'var(--co-border)', backgroundColor: isActive ? accentSoft : 'var(--co-card)', ['--tw-ring-color' as string]: accent }}
     >
       <span
@@ -74,7 +78,19 @@ const DEFAULT_COPY: SchedulerCopy = {
   laterRequired: 'Advance order required',
 }
 
-export function AdvanceOrderScheduler({ checkout, copy: copyOverrides }: { checkout: UseCheckoutReturn; copy?: Partial<SchedulerCopy> }) {
+/** Page Designer settings for the now/later choice; absent = the standard cards. */
+export interface SchedulerLook {
+  design: 'cards' | 'pill' | 'list'
+  corners: CornersChoice
+}
+
+interface AdvanceOrderSchedulerProps {
+  checkout: UseCheckoutReturn
+  copy?: Partial<SchedulerCopy>
+  look?: SchedulerLook
+}
+
+export function AdvanceOrderScheduler({ checkout, copy: copyOverrides, look }: AdvanceOrderSchedulerProps) {
   const {
     advanceConfig, scheduleMode, setScheduleMode, scheduleDate, scheduleTime, setScheduleTime,
     scheduleDates, timeSlots, scheduledForLabel, selectedOrderTypeData, handleScheduleDateChange,
@@ -106,6 +122,17 @@ export function AdvanceOrderScheduler({ checkout, copy: copyOverrides }: { check
           </div>
           <Lock className="h-4 w-4 shrink-0 text-[color:var(--co-muted)]" aria-hidden="true" />
         </div>
+      ) : look && look.design !== 'cards' ? (
+        <ScheduleModeChoices
+          design={look.design}
+          corners={look.corners}
+          items={[
+            ...(advanceConfig.allowAsap ? [{ mode: 'asap' as ScheduleMode, title: copy.asapTitle, subtitle: copy.asapSubtitle }] : []),
+            { mode: 'scheduled', title: copy.laterTitle, subtitle: advanceConfig.allowAsap ? copy.laterSubtitle : copy.laterRequired },
+          ]}
+          value={scheduleMode}
+          onSelect={setScheduleMode}
+        />
       ) : (
         <div role="radiogroup" aria-label="When" className={`grid gap-2.5 sm:gap-3 ${advanceConfig.allowAsap ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {advanceConfig.allowAsap && (
@@ -114,7 +141,7 @@ export function AdvanceOrderScheduler({ checkout, copy: copyOverrides }: { check
               icon={<Zap className="h-5 w-5" />}
               title={copy.asapTitle}
               subtitle={copy.asapSubtitle}
-              accent={accent} accentText={accentText} accentSoft={accentSoft}
+              accent={accent} accentText={accentText} accentSoft={accentSoft} corners={look?.corners}
               onSelect={() => setScheduleMode('asap')}
             />
           )}
@@ -123,7 +150,7 @@ export function AdvanceOrderScheduler({ checkout, copy: copyOverrides }: { check
             icon={<CalendarClock className="h-5 w-5" />}
             title={copy.laterTitle}
             subtitle={advanceConfig.allowAsap ? copy.laterSubtitle : copy.laterRequired}
-            accent={accent} accentText={accentText} accentSoft={accentSoft}
+            accent={accent} accentText={accentText} accentSoft={accentSoft} corners={look?.corners}
             onSelect={() => setScheduleMode('scheduled')}
           />
         </div>

@@ -2,6 +2,7 @@
 // a string replace, never HTML.
 
 import { PAGE_BLOCKS } from './blocks'
+import { isValidOptionValue } from './knobs'
 import type { BlockOption, PageBlockDef } from './types'
 
 type Lookup = Readonly<Record<string, string | undefined>>
@@ -24,13 +25,16 @@ export function resolveBlockText(def: PageBlockDef, slotKey: string, texts: Look
   return slot.fallback
 }
 
-/** A block option, falling back to its default when missing or invalid. */
+/**
+ * A block option, falling back to its default when missing or invalid
+ * (stored designs are untrusted: an unknown design, a bad colour or an
+ * unsafe image URL reads as the default).
+ */
 export function resolveBlockOption(def: PageBlockDef, key: string, options: Readonly<Record<string, unknown>>): string | boolean | undefined {
   const option: BlockOption | undefined = def.options.find((o) => o.key === key)
   if (!option) return undefined
   const value = Object.prototype.hasOwnProperty.call(options, key) ? options[key] : undefined
-  if (option.type === 'boolean') return typeof value === 'boolean' ? value : option.default
-  return typeof value === 'string' && option.choices.some((c) => c.value === value) ? value : option.default
+  return isValidOptionValue(option, value) ? value : option.default
 }
 
 const TOKEN = /\{([a-z_]{1,32})\}/gi

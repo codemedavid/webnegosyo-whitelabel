@@ -1,4 +1,71 @@
-import type { PageBlockDef } from './types'
+import { checkoutColorKnobs } from './checkout-colors'
+import { choiceKnob, designKnob } from './knobs'
+import type { BlockOption, PageBlockDef } from './types'
+
+// ── Designs and colours ─────────────────────────────────────────────────────
+// Every block's first design (and every setting's default) is the block as it
+// looked before designs existed, so a stored design without them is unchanged.
+// Choice values are stored in designs: never rename one.
+
+/** Shows a setting only for some of the block's designs. */
+const forDesigns = (...values: string[]) => ({ showWhen: { key: 'variant', values } })
+
+const BUTTON_SHAPE: BlockOption = choiceKnob('button_shape', 'Button shape', [
+  { value: 'pill', label: 'Pill' },
+  { value: 'rounded', label: 'Rounded' },
+  { value: 'square', label: 'Square' },
+])
+
+const STATUS_OPTIONS: readonly BlockOption[] = [
+  designKnob([
+    { value: 'centered', label: 'Big tick', hint: 'Centred, with a large tick' },
+    { value: 'banner', label: 'Banner', hint: 'A coloured band across the top' },
+    { value: 'card', label: 'Card', hint: 'Left-aligned, on a card' },
+    { value: 'celebration', label: 'Celebration', hint: 'A big, happy picture' },
+  ]),
+  { ...checkoutColorKnobs(['color_accent'], { color_accent: 'Icon' })[0], ...forDesigns('card', 'celebration') },
+  ...checkoutColorKnobs(['color_button', 'color_button_text'], { color_button: 'Banner', color_button_text: 'Banner text' })
+    .map((knob) => ({ ...knob, ...forDesigns('banner') })),
+  ...checkoutColorKnobs(['color_text']),
+  { key: 'show_icon', label: 'Show the big tick', type: 'boolean', default: true, hint: 'The tick or picture above the title.' },
+]
+
+const MESSENGER_OPTIONS: readonly BlockOption[] = [
+  ...checkoutColorKnobs(['color_card', 'color_text', 'color_accent', 'color_button', 'color_button_text'], { color_accent: 'Links' }),
+  BUTTON_SHAPE,
+]
+
+const ACTIONS_OPTIONS: readonly BlockOption[] = [
+  designKnob([
+    { value: 'stacked', label: 'Stacked', hint: 'Full-width buttons, one under the other' },
+    { value: 'side', label: 'Side by side', hint: 'Both buttons on one row' },
+    { value: 'outline', label: 'Outlined', hint: 'Back to Menu gets an outline' },
+  ]),
+  ...checkoutColorKnobs(['color_button', 'color_button_text']),
+  BUTTON_SHAPE,
+  { key: 'show_back', label: 'Show "Back to Menu"', type: 'boolean', default: true },
+]
+
+const SUMMARY_OPTIONS: readonly BlockOption[] = [
+  designKnob([
+    { value: 'standard', label: 'Standard', hint: 'Every dish with its details' },
+    { value: 'receipt', label: 'Receipt', hint: 'Looks like a printed receipt' },
+    { value: 'compact', label: 'Compact', hint: 'Smaller, takes less room' },
+  ]),
+  ...checkoutColorKnobs(['color_card', 'color_text', 'color_accent'], { color_accent: 'Total' }),
+  { key: 'show_order_type', label: 'Show the order type', type: 'boolean', default: true },
+]
+
+/** Customer details + payment method share their designs. */
+const DETAILS_OPTIONS: readonly BlockOption[] = [
+  designKnob([
+    { value: 'card', label: 'Card', hint: 'On a card, like the rest of the page' },
+    { value: 'plain', label: 'Plain list', hint: 'No card, just the lines' },
+    { value: 'compact', label: 'Compact', hint: 'A smaller card' },
+  ]),
+  ...checkoutColorKnobs(['color_card']).map((knob) => ({ ...knob, ...forDesigns('card', 'compact') })),
+  ...checkoutColorKnobs(['color_text', 'color_border']),
+]
 
 /**
  * The thank-you page's working parts (shown right after an order is placed).
@@ -22,7 +89,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'messenger_help', label: 'Help (send on Messenger)', fallback: 'Please send the Messenger message below so they receive it.', maxLength: 200, multiline: true },
       { key: 'contact_help', label: 'Help (contact the store)', fallback: 'Nothing has been sent yet — please contact the store directly to place this order.', maxLength: 200, multiline: true },
     ],
-    options: [{ key: 'show_icon', label: 'Show the big tick', type: 'boolean', default: true }],
+    options: STATUS_OPTIONS,
   },
   {
     id: 'confirmation.messenger',
@@ -43,7 +110,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'message_title', label: 'Message box title', fallback: 'Order Message', maxLength: 60 },
       { key: 'message_hint', label: 'Message box hint', fallback: 'Paste this in Messenger or any chat app', maxLength: 120 },
     ],
-    options: [],
+    options: MESSENGER_OPTIONS,
   },
   {
     id: 'confirmation.actions',
@@ -62,7 +129,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'kiosk_returning', label: 'Kiosk: countdown', fallback: 'Returning to the menu in {seconds}...', maxLength: 120 },
       { key: 'kiosk_button', label: 'Kiosk: button', fallback: 'Start a New Order', maxLength: 40 },
     ],
-    options: [{ key: 'show_back', label: 'Show "Back to Menu"', type: 'boolean', default: true }],
+    options: ACTIONS_OPTIONS,
   },
   {
     id: 'confirmation.summary',
@@ -81,7 +148,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'service', label: 'Service charge', fallback: 'Service Charge', maxLength: 30 },
       { key: 'total', label: 'Total', fallback: 'Total', maxLength: 30 },
     ],
-    options: [{ key: 'show_order_type', label: 'Show the order type', type: 'boolean', default: true }],
+    options: SUMMARY_OPTIONS,
   },
   {
     id: 'confirmation.customer',
@@ -91,7 +158,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     icon: 'User',
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Customer Information', labelKey: 'checkout.customer', maxLength: 60 }],
-    options: [],
+    options: DETAILS_OPTIONS,
   },
   {
     id: 'confirmation.payment',
@@ -101,7 +168,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     icon: 'Wallet',
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Payment Method', labelKey: 'checkout.payment', maxLength: 60 }],
-    options: [],
+    options: DETAILS_OPTIONS,
   },
 ]
 

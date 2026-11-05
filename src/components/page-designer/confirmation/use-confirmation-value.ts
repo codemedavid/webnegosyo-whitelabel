@@ -26,7 +26,7 @@ type ConfirmationSource = Pick<
   | 'tenant' | 'completedOrderData' | 'redirectCountdown' | 'trackingOrderId' | 'trackingToken'
   | 'messageExpanded' | 'setMessageExpanded' | 'router' | 'tenantSlug' | 'messengerEnabled'
   | 'isKiosk' | 'kioskCountdown' | 'orderSaveFailed' | 'orderSaveNotice'
-> & Partial<Pick<UseCheckoutReturn, 'confirmationHandoff'>>
+> & Partial<Pick<UseCheckoutReturn, 'confirmationHandoff' | 'branding'>>
 
 /**
  * The thank-you page's context value from useCheckout, plus the owner's
@@ -36,7 +36,7 @@ export function useConfirmationValue(checkout: ConfirmationSource, grandTotal: n
   const {
     tenant, completedOrderData: order, redirectCountdown, trackingOrderId, trackingToken,
     messageExpanded, setMessageExpanded, router, tenantSlug, messengerEnabled,
-    isKiosk, kioskCountdown, orderSaveFailed, orderSaveNotice, confirmationHandoff,
+    isKiosk, kioskCountdown, orderSaveFailed, orderSaveNotice, confirmationHandoff, branding,
   } = checkout
 
   const replace = useCallback((path: string) => router.replace(path), [router])
@@ -76,5 +76,7 @@ export function useConfirmationValue(checkout: ConfirmationSource, grandTotal: n
     },
     trackingCountdown: countdown.secondsLeft,
     onStayHere: countdown.stay,
+    // The same source checkoutThemeStyle(checkout) paints the page root from.
+    themeSource: { tenant, branding },
   }
 }

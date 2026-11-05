@@ -65,6 +65,7 @@ export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName,
   const branding = useMemo(() => getTenantBranding(previewTenant), [previewTenant])
   const trackingStyle = useMemo(() => readTrackingStyle(previewTenant), [previewTenant])
   const theme = useMemo(() => buildTrackingTheme(branding, trackingStyle), [branding, trackingStyle])
+  const paint = useMemo(() => ({ branding, style: trackingStyle }), [branding, trackingStyle])
   const loyaltyPosition = trackingStyle.options.loyalty_position
   // A published Page Designer layout shows here too, so colour edits land on the page customers see.
   const design = useMemo(() => resolvePageDesign(previewTenant, 'tracking'), [previewTenant])
@@ -96,6 +97,7 @@ export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName,
         storeName={storeName}
         logoUrl={branding.logoUrl}
         theme={theme}
+        paint={design ? paint : undefined}
         options={trackingStyle.options}
         storefrontLabels={previewTenant.storefront_labels ?? null}
         data={data}

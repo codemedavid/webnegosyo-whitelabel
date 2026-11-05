@@ -51,6 +51,12 @@ interface HeroBuilderEditorProps {
   liveHref?: string
   /** Extra controls after the title (the Page Designer's page tabs). */
   toolbarSlot?: ReactNode
+  /**
+   * Page Designer: the page's Look (its Branding Studio colours and wording),
+   * shown as the left "Look" tab above the theme. Look edits count as
+   * unpublished changes and are saved by the surface's publish.
+   */
+  look?: { panel: ReactNode; hasChanges: boolean }
 }
 
 type LeftTab = 'add' | 'layers' | 'theme'
@@ -84,6 +90,7 @@ export function HeroBuilderEditor({
   surface = HERO_SURFACE,
   liveHref = `/${tenantSlug}/menu`,
   toolbarSlot,
+  look,
 }: HeroBuilderEditorProps) {
   const page = surface.page
   const start = useMemo(() => initialDesign ?? page?.standardDesign() ?? createBlankDesign(), [initialDesign, page])
@@ -103,7 +110,8 @@ export function HeroBuilderEditor({
   const draftKey = `${surface.draftPrefix}:${tenantId}`
 
   const designJson = useMemo(() => JSON.stringify(api.design), [api.design])
-  const hasUnpublishedChanges = designJson !== (publishedJson ?? JSON.stringify(start))
+  const hasDesignChanges = designJson !== (publishedJson ?? JSON.stringify(start))
+  const hasUnpublishedChanges = hasDesignChanges || !!look?.hasChanges
 
   // ── Crash-safe local draft ────────────────────────────────────────────────
   const offeredDraft = useRef(false)
@@ -125,7 +133,7 @@ export function HeroBuilderEditor({
   }, [api, draftKey, start])
 
   useEffect(() => {
-    if (!hasUnpublishedChanges) return
+    if (!hasDesignChanges) return
     const timer = window.setTimeout(() => {
       try {
         window.localStorage.setItem(draftKey, designJson)
@@ -134,7 +142,7 @@ export function HeroBuilderEditor({
       }
     }, DRAFT_SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [designJson, draftKey, hasUnpublishedChanges])
+  }, [designJson, draftKey, hasDesignChanges])
 
   useEffect(() => {
     if (!hasUnpublishedChanges) return
@@ -333,7 +341,7 @@ export function HeroBuilderEditor({
             {([
               { tab: 'add', label: 'Add', icon: Plus },
               { tab: 'layers', label: 'Layers', icon: Layers },
-              { tab: 'theme', label: 'Theme', icon: Palette },
+              { tab: 'theme', label: look ? 'Look' : 'Theme', icon: Palette },
             ] as const).map(({ tab, label, icon: Icon }) => (
               <button
                 key={tab}
@@ -350,7 +358,13 @@ export function HeroBuilderEditor({
           <div className="min-h-0 flex-1 overflow-y-auto">
             {leftTab === 'add' && <AddPanel api={api} groups={surface.addGroups} presets={surface.sectionPresets} />}
             {leftTab === 'layers' && <LayersPanel api={api} />}
-            {leftTab === 'theme' && <ThemePanel api={api} />}
+            {leftTab === 'theme' && (
+              <>
+                {look?.panel}
+                {look && <p className="px-4 pt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">Text, buttons &amp; images you add</p>}
+                <ThemePanel api={api} />
+              </>
+            )}
           </div>
         </aside>
 

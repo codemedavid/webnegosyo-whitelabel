@@ -16,7 +16,7 @@
 
 import { addonPriceList } from '@/lib/addon-quantity'
 import type { CSSProperties, ReactNode } from 'react'
-import { Separator } from '@/components/ui/separator'
+import { SKINS, type OrderSummaryVariant, type SummarySkin } from './order-summary-skins'
 import { formatPrice } from '@/lib/cart-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
 import { checkoutThemeStyle } from './checkout-theme'
@@ -26,7 +26,8 @@ import { GovClaimField } from './gov-claim-field'
 import { VoucherField } from './voucher-field'
 import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
-export type OrderSummaryVariant = 'default' | 'classic'
+
+export type { OrderSummaryVariant } from './order-summary-skins'
 
 /** Row wording a Page Designer checkout may change. Absent = today's wording. */
 export interface OrderSummaryLabels {
@@ -36,84 +37,6 @@ export interface OrderSummaryLabels {
   discount: string
   /** Replaces the store's `checkout.total` label when given. */
   total: string
-}
-
-interface SummarySkin {
-  container: string
-  /** Rule between two line items. */
-  itemBreak: ReactNode
-  /** Rule below the last line item. */
-  itemsBreak: ReactNode
-  /** Rule below each totals row (classic punctuates every row). */
-  rowTrailingBreak: ReactNode
-  /** Rule above the voucher field / discount / total (default punctuates groups). */
-  voucherLeadingBreak: ReactNode
-  discountLeadingBreak: ReactNode
-  totalLeadingBreak: ReactNode
-  itemName: string
-  itemMeta: string
-  itemAddons: string
-  itemNote: string
-  itemPrice: string
-  rowLabel: string
-  rowValue: string
-  discountValue: string
-  errorText: string
-  totalRow: string
-  totalLabel: string
-  totalValue: string
-}
-
-const RULE = 'border-t border-[color:var(--co-border)]'
-const SEPARATOR_COLOR = 'bg-[var(--co-border)]'
-
-const DEFAULT_SKIN: SummarySkin = {
-  container: 'space-y-3',
-  itemBreak: <div className={`my-3 ${RULE}`} />,
-  itemsBreak: <div className={`my-3 ${RULE}`} />,
-  rowTrailingBreak: null,
-  voucherLeadingBreak: <div className={`my-2 ${RULE}`} />,
-  discountLeadingBreak: null,
-  totalLeadingBreak: <div className={`my-2 ${RULE}`} />,
-  itemName: 'font-medium text-sm text-[color:var(--co-text)]',
-  itemMeta: 'text-xs text-[color:var(--co-muted)]',
-  itemAddons: 'text-xs text-[color:var(--co-muted)] mt-0.5',
-  itemNote: 'min-w-0 wrap-anywhere text-xs italic text-[color:var(--co-muted)] mt-0.5',
-  itemPrice: 'font-semibold text-sm text-[color:var(--co-text)] flex-shrink-0',
-  rowLabel: 'text-[color:var(--co-muted)]',
-  rowValue: 'font-medium text-[color:var(--co-text)]',
-  discountValue: 'font-medium text-[color:var(--co-success)]',
-  errorText: 'text-xs text-[color:var(--co-error)]',
-  totalRow: 'flex justify-between items-baseline',
-  totalLabel: 'text-base font-bold text-[color:var(--co-text)]',
-  totalValue: 'text-xl font-bold',
-}
-
-const CLASSIC_SKIN: SummarySkin = {
-  container: 'space-y-4',
-  itemBreak: <Separator className={`my-4 ${SEPARATOR_COLOR}`} />,
-  itemsBreak: <Separator className={`my-4 ${SEPARATOR_COLOR}`} />,
-  rowTrailingBreak: <Separator className={`my-2 ${SEPARATOR_COLOR}`} />,
-  voucherLeadingBreak: null,
-  discountLeadingBreak: <Separator className={`my-2 ${SEPARATOR_COLOR}`} />,
-  totalLeadingBreak: null,
-  itemName: 'font-medium text-[color:var(--co-text)]',
-  itemMeta: 'text-sm text-[color:var(--co-muted)]',
-  itemAddons: 'text-sm text-[color:var(--co-muted)]',
-  itemNote: 'min-w-0 wrap-anywhere text-sm italic text-[color:var(--co-muted)]',
-  itemPrice: 'font-semibold text-[color:var(--co-text)] flex-shrink-0',
-  rowLabel: 'text-[color:var(--co-muted)]',
-  rowValue: 'font-semibold text-[color:var(--co-text)]',
-  discountValue: 'font-semibold text-[color:var(--co-success)]',
-  errorText: 'text-sm text-[color:var(--co-error)]',
-  totalRow: `flex justify-between text-xl font-bold pt-4 ${RULE}`,
-  totalLabel: '',
-  totalValue: 'text-[color:var(--co-accent)]',
-}
-
-const SKINS: Record<OrderSummaryVariant, SummarySkin> = {
-  default: DEFAULT_SKIN,
-  classic: CLASSIC_SKIN,
 }
 
 /** The variation / quantity annotations that trail a line item's name. */
@@ -212,6 +135,7 @@ export function OrderSummaryLines({
   showVoucher = true,
   showGovClaim = true,
   labels = {},
+  totalTone = 'accent',
 }: {
   checkout: UseCheckoutReturn
   variant?: OrderSummaryVariant
@@ -225,6 +149,8 @@ export function OrderSummaryLines({
   /** Off when the Senior/PWD field is placed on the page by itself (Page Designer). The discount rows stay. */
   showGovClaim?: boolean
   labels?: Partial<OrderSummaryLabels>
+  /** The total's colour (Page Designer): the highlight colour (today) or the text colour. */
+  totalTone?: 'accent' | 'text'
 }) {
   const {
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, freeDeliveryRemaining,
@@ -382,7 +308,7 @@ export function OrderSummaryLines({
 
       <div className={skin.totalRow}>
         <span className={skin.totalLabel} style={{ color: text }}>{labels.total ?? <StoreLabel name="checkout.total" fallback="Total" />}</span>
-        <span className={skin.totalValue} style={{ color: accent }}>
+        <span className={skin.totalValue} style={{ color: totalTone === 'text' ? text : accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>
       </div>

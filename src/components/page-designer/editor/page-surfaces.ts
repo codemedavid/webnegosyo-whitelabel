@@ -6,6 +6,7 @@ import type { Widget } from '@/lib/hero-builder/types'
 import { PAGE_META } from '@/lib/page-designer/pages'
 import { createStandardDesign } from '@/lib/page-designer/standard-designs'
 import { PAGE_TEMPLATE_CATEGORIES, PAGE_TEMPLATES } from '@/lib/page-designer/templates'
+import type { PageLookInput } from '@/lib/page-designer/look'
 import type { PageId } from '@/lib/page-designer/types'
 import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { HERO_ADD_GROUPS, type AddGroup } from '@/components/hero-builder/editor/panels/add-panel'
@@ -31,7 +32,18 @@ function presetsFor(page: PageId) {
   )
 }
 
-export function buildPageSurface(page: PageId, runtime: (state: string | null) => PageRuntime): BuilderSurface {
+/** The page's unsaved Look, read at publish time; `onSaved` runs once it is stored. */
+export interface PendingLook {
+  input: PageLookInput | undefined
+  /** Called with exactly the changes that were stored. */
+  onSaved: (sent: PageLookInput['changes']) => void
+}
+
+export function buildPageSurface(
+  page: PageId,
+  runtime: (state: string | null) => PageRuntime,
+  pendingLook: () => PendingLook | null = () => null,
+): BuilderSurface {
   return {
     linkSurface: 'hero',
     title: 'Page Designer',
@@ -41,7 +53,13 @@ export function buildPageSurface(page: PageId, runtime: (state: string | null) =
     templatePreview: { width: 390, aspectClass: 'aspect-[9/16]', viewportHeight: 694, gridClass: 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4' },
     addGroups: addGroupsFor(page),
     sectionPresets: presetsFor(page),
-    publish: ({ tenantId }, design) => publishPageDesignAction(tenantId, page, design),
+    publish: async ({ tenantId }, design) => {
+      const look = pendingLook()
+      const sent = look?.input
+      const result = await publishPageDesignAction(tenantId, page, design, sent)
+      if (result.success && sent) look?.onSaved(sent.changes)
+      return result
+    },
     unpublish: ({ tenantId }) => unpublishPageDesignAction(tenantId, page),
     publishedToast: PUBLISHED[page],
     removedToast: 'Back to the standard page. Your design is kept here.',

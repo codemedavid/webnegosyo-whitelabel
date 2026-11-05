@@ -13,6 +13,7 @@ import { isPickupScanEnabled, shouldShowPickupQr } from '@/lib/pickup-qr-gating'
 import { PickupQrCard } from '@/components/customer/pickup-qr-card'
 import { LoyaltyStampCard } from '@/components/customer/loyalty-stamp-card'
 import { TrackingDashboard } from '@/components/customer/order-tracking/tracking-dashboard'
+import type { TrackingPaint } from '@/components/page-designer/tracking/tracking-blocks-context'
 import { getStatusIndex } from '@/components/customer/order-tracking/status-steps'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import { decideStampCardView } from '@/lib/loyalty/stamp-card-view'
@@ -38,6 +39,8 @@ export interface OrderTrackingBrand {
   loyaltyOffer: LoyaltyOffer | null
   /** The owner's published Page Designer layout (resolvePageDesign); null/absent = the standard page. */
   design?: HeroDesignV5 | null
+  /** What `theme` was built from (sent only with a design): blocks with their own colours re-resolve it. */
+  paint?: TrackingPaint
 }
 
 interface OrderTrackingClientProps {
@@ -223,6 +226,7 @@ export function OrderTrackingClient({
       storeName={brand.storeName}
       logoUrl={brand.logoUrl}
       theme={brand.theme}
+      paint={brand.paint}
       options={brand.options}
       storefrontLabels={brand.storefrontLabels}
       data={trackingData}

@@ -14,8 +14,10 @@ import { useConfirmationBlocks } from './confirmation-context'
 import { CountdownText } from './countdown-text'
 
 const CARD = 'rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]'
-const OUTLINE_BUTTON =
-  'w-full h-12 rounded-full border-[color:var(--co-accent-border)] bg-transparent text-[color:var(--co-accent)] hover:bg-[var(--co-accent-softer)] hover:text-[color:var(--co-accent)]'
+/** Today's button corners; a designed page may pass another shape. */
+const PILL = 'rounded-full'
+const outlineButton = (shape: string): string =>
+  `w-full h-12 ${shape} border-[color:var(--co-accent-border)] bg-transparent text-[color:var(--co-accent)] hover:bg-[var(--co-accent-softer)] hover:text-[color:var(--co-accent)]`
 const COPIED_TO_MESSENGER = 'Order message copied! Paste it in Messenger.'
 
 export interface MessengerCopy {
@@ -50,7 +52,7 @@ function NoMessengerBody() {
   )
 }
 
-function MessengerLinkBody({ copy }: { copy: MessengerCopy }) {
+function MessengerLinkBody({ copy, shape }: { copy: MessengerCopy; shape: string }) {
   const b = useConfirmationBlocks()
   if (!b) return null
   const isCounting = b.messengerCountdown !== null && b.messengerCountdown > 0
@@ -74,7 +76,7 @@ function MessengerLinkBody({ copy }: { copy: MessengerCopy }) {
 
       <Button
         size="lg"
-        className="w-full h-12 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold rounded-full"
+        className={`w-full h-12 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold ${shape}`}
         onClick={b.onOpenMessenger}
       >
         <ExternalLink className="mr-2 h-5 w-5" />
@@ -100,7 +102,7 @@ function MessengerLinkBody({ copy }: { copy: MessengerCopy }) {
   )
 }
 
-function CopyOnlyBody({ copy }: { copy: MessengerCopy }) {
+function CopyOnlyBody({ copy, shape }: { copy: MessengerCopy; shape: string }) {
   const b = useConfirmationBlocks()
   if (!b) return null
   return (
@@ -108,7 +110,7 @@ function CopyOnlyBody({ copy }: { copy: MessengerCopy }) {
       <p className="text-sm text-[color:var(--co-muted)]">
         {copy.noPage ?? 'Copy the order message and send it to the restaurant.'}
       </p>
-      <Button size="lg" variant="outline" className={OUTLINE_BUTTON} onClick={() => b.onCopyMessage(COPIED_TO_MESSENGER)}>
+      <Button size="lg" variant="outline" className={outlineButton(shape)} onClick={() => b.onCopyMessage(COPIED_TO_MESSENGER)}>
         <Copy className="mr-2 h-5 w-5" />
         {copy.copyButton ?? 'Copy Order Message'}
       </Button>
@@ -117,17 +119,17 @@ function CopyOnlyBody({ copy }: { copy: MessengerCopy }) {
 }
 
 /** Messenger Redirect Section — the "no Messenger" card when the order type has it off. */
-export function ConfirmationMessengerCard({ copy = {} }: { copy?: MessengerCopy }) {
+export function ConfirmationMessengerCard({ copy = {}, shape = PILL }: { copy?: MessengerCopy; shape?: string }) {
   const b = useConfirmationBlocks()
   if (!b) return null
   const body = !b.isMessengerEnabled
     ? <NoMessengerBody />
-    : b.order.messengerUrl ? <MessengerLinkBody copy={copy} /> : <CopyOnlyBody copy={copy} />
+    : b.order.messengerUrl ? <MessengerLinkBody copy={copy} shape={shape} /> : <CopyOnlyBody copy={copy} shape={shape} />
   return <div data-branding-scope="checkout/card" className={CARD}>{body}</div>
 }
 
 /** Order Message Box (collapsible). */
-export function ConfirmationMessageBox({ copy = {} }: { copy?: MessengerCopy }) {
+export function ConfirmationMessageBox({ copy = {}, shape = PILL }: { copy?: MessengerCopy; shape?: string }) {
   const b = useConfirmationBlocks()
   if (!b) return null
   const hint = b.isMessengerEnabled
@@ -152,7 +154,7 @@ export function ConfirmationMessageBox({ copy = {} }: { copy?: MessengerCopy }) 
             </pre>
           </div>
 
-          <Button size="lg" variant="outline" className={OUTLINE_BUTTON} onClick={() => b.onCopyMessage('Order message copied to clipboard!')}>
+          <Button size="lg" variant="outline" className={outlineButton(shape)} onClick={() => b.onCopyMessage('Order message copied to clipboard!')}>
             <Copy className="mr-2 h-5 w-5" />
             {copy.copyButton ?? 'Copy Order Message'}
           </Button>

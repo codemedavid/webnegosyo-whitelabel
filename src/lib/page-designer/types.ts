@@ -26,9 +26,52 @@ export interface BlockTextSlot {
   hint?: string
 }
 
+/**
+ * Where a setting sits in the block inspector, top to bottom: the block's
+ * design gallery, its colours, its switches, then the folded "More" group.
+ */
+export type BlockOptionGroup = 'design' | 'colors' | 'options' | 'advanced'
+
+interface BlockOptionBase {
+  key: string
+  label: string
+  hint?: string
+  /** Inspector group; boolean/choice default to `options`, colours to `colors`. */
+  group?: BlockOptionGroup
+  /** Show the setting only while another option of the block is one of `values` (e.g. columns for tiles only). */
+  showWhen?: { key: string; values: readonly (string | boolean)[] }
+}
+
+export interface BlockChoice {
+  value: string
+  label: string
+  /** One line under a design in the gallery ("Best for two choices"). */
+  hint?: string
+}
+
 export type BlockOption =
-  | { key: string; label: string; type: 'boolean'; default: boolean; hint?: string }
-  | { key: string; label: string; type: 'choice'; default: string; choices: readonly { value: string; label: string }[]; hint?: string }
+  | (BlockOptionBase & { type: 'boolean'; default: boolean })
+  | (BlockOptionBase & {
+      type: 'choice'
+      default: string
+      choices: readonly BlockChoice[]
+      /** `gallery` = picture tiles of the block in each choice (block designs). */
+      display?: 'segmented' | 'gallery'
+    })
+  | (BlockOptionBase & {
+      /** A hex colour, or '' = follow the page colours (Look tab / Branding Studio). */
+      type: 'color'
+      default: ''
+      /** The page colour it follows while blank, e.g. "Accent". */
+      follows: string
+    })
+  | (BlockOptionBase & {
+      /** An image URL (https), or '' = none. */
+      type: 'image'
+      default: ''
+    })
+
+export type BlockOptionValue = string | boolean
 
 export interface PageBlockDef {
   /** `<page>.<name>`, stable forever: stored in designs. */

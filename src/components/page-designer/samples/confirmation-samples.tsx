@@ -17,7 +17,8 @@ function withSampleOrder(Live: PageBlockRenderer): PageBlockRenderer {
     const runtime = usePageRuntime()
     const storeName = runtime?.tokens.store ?? ''
     const isFailed = runtime?.state === 'failed'
-    const value = useMemo(() => sampleConfirmationValue(storeName, isFailed), [storeName, isFailed])
+    const store = runtime?.store
+    const value = useMemo(() => sampleConfirmationValue(storeName, isFailed, store), [storeName, isFailed, store])
     return (
       <ConfirmationBlocksProvider value={value}>
         <Live {...props} />
