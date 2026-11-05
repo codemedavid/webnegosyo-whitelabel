@@ -9,6 +9,7 @@
 import { ArrowLeft, Clock, Sparkles } from 'lucide-react'
 import type { ComponentType } from 'react'
 
+import { safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import { cornersClass } from '@/lib/page-designer/knobs'
 import { HEADER_DESIGNS, STORE_CLOSED_DESIGNS, type HeaderDesign, type StoreClosedDesign } from '@/lib/page-designer/checkout-block-options'
 
@@ -21,6 +22,21 @@ interface HeaderParts {
   subtitle?: string
   /** null = the owner switched the back button off. */
   onBack: (() => void) | null
+  /** A small line above the title (off by default). */
+  storeName?: string
+  /** The store's logo beside the title (off by default). */
+  logoUrl?: string
+}
+
+function HeaderLogo({ url, className = '' }: { url?: string; className?: string }) {
+  if (!url) return null
+  // eslint-disable-next-line @next/next/no-img-element -- the store's own logo on any image host
+  return <img src={url} alt="" className={`h-10 w-10 shrink-0 rounded-full border border-[color:var(--co-border)] bg-[var(--co-card)] object-cover ${className}`} />
+}
+
+function StoreNameLine({ name, className = 'text-[color:var(--co-muted)]' }: { name?: string; className?: string }) {
+  if (!name) return null
+  return <p data-part="muted" className={`truncate text-xs font-semibold uppercase tracking-wide ${className}`}>{name}</p>
 }
 
 function BackButton({ onBack, className }: { onBack: () => void; className: string }) {
@@ -32,7 +48,7 @@ function BackButton({ onBack, className }: { onBack: () => void; className: stri
 }
 
 /** The standard header (unchanged markup). */
-function StandardHeader({ title, subtitle, onBack }: HeaderParts) {
+function StandardHeader({ title, subtitle, onBack, storeName, logoUrl }: HeaderParts) {
   return (
     // Senior mode has its own step bar with a back button.
     <header data-senior-hidden className="flex items-center gap-3 text-[color:var(--co-text)]">
@@ -42,7 +58,9 @@ function StandardHeader({ title, subtitle, onBack }: HeaderParts) {
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--co-subtle-strong)]"
         />
       )}
+      <HeaderLogo url={logoUrl} />
       <div className="min-w-0">
+        <StoreNameLine name={storeName} />
         <h1 data-part="title" className="text-2xl font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
         {subtitle && <p data-part="subtitle" className="text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
       </div>
@@ -53,11 +71,13 @@ function StandardHeader({ title, subtitle, onBack }: HeaderParts) {
 const ROUND_BACK =
   'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--co-accent)]'
 
-function CenteredHeader({ title, subtitle, onBack }: HeaderParts) {
+function CenteredHeader({ title, subtitle, onBack, storeName, logoUrl }: HeaderParts) {
   return (
     <header data-senior-hidden className="relative flex min-h-11 items-center justify-center px-12 text-center text-[color:var(--co-text)]">
       {onBack && <BackButton onBack={onBack} className={`absolute left-0 top-0 ${ROUND_BACK} hover:bg-[var(--co-subtle-strong)]`} />}
       <div className="min-w-0">
+        <HeaderLogo url={logoUrl} className="mx-auto mb-1 block" />
+        <StoreNameLine name={storeName} />
         <h1 data-part="title" className="text-2xl font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
         {subtitle && <p data-part="subtitle" className="text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
       </div>
@@ -66,7 +86,7 @@ function CenteredHeader({ title, subtitle, onBack }: HeaderParts) {
 }
 
 /** On the button colour, with its text colour: the pair the store already keeps readable. */
-function BannerHeader({ title, subtitle, onBack }: HeaderParts) {
+function BannerHeader({ title, subtitle, onBack, storeName, logoUrl }: HeaderParts) {
   return (
     <header
       data-senior-hidden
@@ -74,7 +94,9 @@ function BannerHeader({ title, subtitle, onBack }: HeaderParts) {
       className="flex items-center gap-3 rounded-2xl bg-[var(--co-button)] px-4 py-4 text-[color:var(--co-accent-text)] shadow-sm sm:px-5 sm:py-5"
     >
       {onBack && <BackButton onBack={onBack} className={`${ROUND_BACK} bg-black/10 hover:bg-black/20`} />}
+      <HeaderLogo url={logoUrl} />
       <div className="min-w-0">
+        <StoreNameLine name={storeName} className="opacity-85" />
         <h1 data-part="title" className="text-2xl font-bold leading-tight">{title}</h1>
         {subtitle && <p data-part="subtitle" className="text-sm opacity-85">{subtitle}</p>}
       </div>
@@ -82,11 +104,13 @@ function BannerHeader({ title, subtitle, onBack }: HeaderParts) {
   )
 }
 
-function CompactHeader({ title, subtitle, onBack }: HeaderParts) {
+function CompactHeader({ title, subtitle, onBack, storeName, logoUrl }: HeaderParts) {
   return (
     <header data-senior-hidden className="flex items-center gap-2 text-[color:var(--co-text)]">
       {onBack && <BackButton onBack={onBack} className={`-ml-2 ${ROUND_BACK} hover:bg-[var(--co-subtle-strong)]`} />}
+      <HeaderLogo url={logoUrl} />
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+        <StoreNameLine name={storeName} className="basis-full text-[color:var(--co-muted)]" />
         <h1 data-part="title" className="text-lg font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
         {subtitle && <p data-part="subtitle" className="text-xs text-[color:var(--co-muted)]">{subtitle}</p>}
       </div>
@@ -105,10 +129,12 @@ export function HeaderView({ checkout, block }: CheckoutBlockViewProps) {
   const Header = HEADERS[blockChoice(block, 'variant', HEADER_DESIGNS)]
   const subtitle = isOn(block, 'show_subtitle') ? block.text('subtitle') : undefined
   const onBack = isOn(block, 'show_back') ? () => checkout.router.push(`/${checkout.tenantSlug}/cart`) : null
+  const storeName = block.option('show_store_name') === true ? checkout.tenant?.name?.trim() || undefined : undefined
+  const logoUrl = block.option('show_logo') === true ? safeMediaUrl(checkout.tenant?.logo_url ?? '') ?? undefined : undefined
   const themed = blockCheckout(checkout, block)
   return (
     <BlockColors checkout={checkout} themed={themed}>
-      <Header title={block.text('title')} subtitle={subtitle} onBack={onBack} />
+      <Header title={block.text('title')} subtitle={subtitle} onBack={onBack} storeName={storeName} logoUrl={logoUrl} />
     </BlockColors>
   )
 }

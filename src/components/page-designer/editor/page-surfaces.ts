@@ -5,12 +5,14 @@ import { SECTION_PRESETS } from '@/lib/hero-builder/section-presets'
 import type { Widget } from '@/lib/hero-builder/types'
 import { PAGE_META } from '@/lib/page-designer/pages'
 import { createStandardDesign } from '@/lib/page-designer/standard-designs'
-import { PAGE_TEMPLATE_CATEGORIES, PAGE_TEMPLATES } from '@/lib/page-designer/templates'
+import { PAGE_TEMPLATE_CATEGORIES, PAGE_TEMPLATE_CATEGORY_LABELS, PAGE_TEMPLATES } from '@/lib/page-designer/templates'
 import type { PageLookInput } from '@/lib/page-designer/look'
 import type { PageId } from '@/lib/page-designer/types'
 import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { HERO_ADD_GROUPS, type AddGroup } from '@/components/hero-builder/editor/panels/add-panel'
 import type { BuilderSurface } from '@/components/hero-builder/editor/surface'
+
+import { FAMILY_BANNERS, rememberTemplatePick } from './family-banner'
 
 const PUBLISHED: Record<PageId, string> = {
   tracking: 'Published — customers now see your tracking page',
@@ -50,6 +52,10 @@ export function buildPageSurface(
     draftPrefix: `pd-draft-${page}`,
     templates: PAGE_TEMPLATES[page],
     templateCategories: PAGE_TEMPLATE_CATEGORIES,
+    templateCategoryLabels: PAGE_TEMPLATE_CATEGORY_LABELS,
+    // A family look picked here is offered on the other two pages.
+    onTemplatePicked: (templateId, { tenantId }) => rememberTemplatePick(tenantId, page, templateId),
+    Banner: FAMILY_BANNERS[page],
     templatePreview: { width: 390, aspectClass: 'aspect-[9/16]', viewportHeight: 694, gridClass: 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4' },
     addGroups: addGroupsFor(page),
     sectionPresets: presetsFor(page),

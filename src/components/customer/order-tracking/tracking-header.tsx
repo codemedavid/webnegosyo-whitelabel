@@ -22,6 +22,10 @@ interface TrackingHeaderProps {
   layout?: TrackingHeaderLayout
   /** Page Designer: hide the logo (or its initial). */
   showLogo?: boolean
+  /** Page Designer: hide the store's name. */
+  showStoreName?: boolean
+  /** Page Designer: hide the "Order #07" line. */
+  showOrderNumber?: boolean
 }
 
 /** Sticky top bar: the store's identity, the order number, and the live pulse. */
@@ -37,6 +41,8 @@ export function TrackingHeader({
   isSticky = true,
   layout = 'standard',
   showLogo = true,
+  showStoreName = true,
+  showOrderNumber = true,
 }: TrackingHeaderProps) {
   const order = orderLabel ?? <>Order #{shortId}</>
   const badge = isLive && showLiveBadge ? <LiveBadge label={liveLabel ?? 'Live'} /> : null
@@ -55,10 +61,12 @@ export function TrackingHeader({
           <div className="flex min-w-0 items-center justify-center gap-2">
             {logo}
             <div className="min-w-0 text-center">
-              <h1 data-part="title" className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
-                {storeName}
-              </h1>
-              <p data-part="subtitle" className="truncate text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>
+              {showStoreName && (
+                <h1 data-part="title" className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
+                  {storeName}
+                </h1>
+              )}
+              {showOrderNumber && <p data-part="subtitle" className="truncate text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>}
             </div>
           </div>
           <div className="justify-self-end">{badge}</div>
@@ -68,10 +76,12 @@ export function TrackingHeader({
           <BackButton onBack={onBack} size="h-11 w-11" />
           {logo}
           <div className="flex min-w-0 flex-1 items-baseline gap-2">
-            <h1 data-part="title" className="truncate text-sm font-bold" style={{ color: 'var(--trk-header-text)' }}>
-              {storeName}
-            </h1>
-            <p data-part="subtitle" className="shrink-0 text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>
+            {showStoreName && (
+              <h1 data-part="title" className="truncate text-sm font-bold" style={{ color: 'var(--trk-header-text)' }}>
+                {storeName}
+              </h1>
+            )}
+            {showOrderNumber && <p data-part="subtitle" className="shrink-0 text-xs" style={{ color: 'var(--trk-header-muted)' }}>{order}</p>}
           </div>
           {badge}
         </div>
@@ -82,12 +92,16 @@ export function TrackingHeader({
           {logo}
 
           <div className="min-w-0 flex-1">
-            <h1 data-part="title" className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
-              {storeName}
-            </h1>
-            <p data-part="subtitle" className="text-xs" style={{ color: 'var(--trk-header-muted)' }}>
-              {order}
-            </p>
+            {showStoreName && (
+              <h1 data-part="title" className="truncate text-base font-bold leading-tight" style={{ color: 'var(--trk-header-text)' }}>
+                {storeName}
+              </h1>
+            )}
+            {showOrderNumber && (
+              <p data-part="subtitle" className="text-xs" style={{ color: 'var(--trk-header-muted)' }}>
+                {order}
+              </p>
+            )}
           </div>
 
           {badge}

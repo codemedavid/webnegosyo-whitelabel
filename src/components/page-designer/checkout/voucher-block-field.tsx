@@ -20,9 +20,11 @@ interface VoucherBlockFieldProps {
   checkout: UseCheckoutReturn
   label: string
   design: VoucherDesign
+  /** Off hides the prompt above the open box (screen readers keep it). */
+  showTitle?: boolean
 }
 
-export function VoucherBlockField({ checkout, label, design }: VoucherBlockFieldProps) {
+export function VoucherBlockField({ checkout, label, design, showTitle = true }: VoucherBlockFieldProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [shouldFocus, setShouldFocus] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -64,6 +66,7 @@ export function VoucherBlockField({ checkout, label, design }: VoucherBlockField
       lineNames={checkout.voucherLineNames}
       onChooseUnits={checkout.setVoucherUnitPicks}
       label={label}
+      showLabel={showTitle || design !== 'field'}
     />
   )
   // The open design is today's markup, untouched.

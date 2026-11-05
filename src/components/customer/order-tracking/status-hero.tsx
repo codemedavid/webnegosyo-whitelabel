@@ -28,6 +28,10 @@ export interface StatusHeroLook {
   showPlaced?: boolean
   /** The two soft circles behind the banner. */
   showDecor?: boolean
+  /** The short bar of steps under the status. */
+  showProgress?: boolean
+  /** The kitchen's promised ready time, when one is set. */
+  showReadyTime?: boolean
 }
 
 const NO_LOOK: StatusHeroLook = {}
@@ -71,7 +75,7 @@ export function StatusHero({
   const step = STATUS_STEPS[Math.max(0, currentIndex)] ?? STATUS_STEPS[0]
   const Icon = isCancelled ? XCircle : step.icon
   const greeting = wording.greeting ?? (customerName && customerName.toLowerCase() !== 'walk-in' ? `Hi ${customerName}!` : 'Hi there!')
-  const { layout = 'banner', isCentered = false, showGreeting = true, showPlaced = true, showDecor = true } = look
+  const { layout = 'banner', isCentered = false, showGreeting = true, showPlaced = true, showDecor = true, showProgress = true, showReadyTime = true } = look
   const size = SIZES[layout]
   const hasMetaRow = showPlaced || Boolean(orderTypeLabel) || Boolean(scheduledLabel)
 
@@ -124,7 +128,7 @@ export function StatusHero({
         </div>
       </div>
 
-      {!isCancelled && (
+      {showProgress && !isCancelled && (
         <div className={`relative ${size.bars} flex gap-1.5`} aria-hidden="true">
           {STATUS_STEPS.map((s, index) => (
             <div
@@ -145,7 +149,7 @@ export function StatusHero({
         </div>
       )}
 
-      {prepPromise && !isCancelled && (
+      {showReadyTime && prepPromise && !isCancelled && (
         <div data-part="card" className="relative mt-4 px-4 py-3 backdrop-blur" style={{ borderRadius: 'var(--trk-radius-inner)', backgroundColor: 'var(--trk-hero-chip-soft)' }}>
           <p data-part="text" className="text-lg font-bold leading-tight">{prepPromise.headline}</p>
           <p data-part="muted" className="text-sm opacity-90">{prepPromise.detail}</p>

@@ -14,6 +14,7 @@ import {
 } from './checkout-block-options'
 import { checkoutColorKnobs } from './checkout-colors'
 import { choiceKnob, CORNERS_KNOB, designKnob } from './knobs'
+import { ORDER_TYPE_WORDING_TEXTS, orderTypeIconOptions } from './order-type-wording'
 import type { BlockOption, BlockTextSlot, PageBlockDef } from './types'
 
 /**
@@ -41,9 +42,17 @@ const ORDER_TYPE_DESIGN = designKnob([
   { value: 'buttons', label: 'Big buttons', hint: 'Easy to tap' },
   { value: 'chips', label: 'Chips', hint: 'Small, for kiosks and tables' },
   { value: 'photo', label: 'Photos', hint: 'A picture for each way' },
+  { value: 'tabs', label: 'Tabs', hint: 'Underlined, like app tabs' },
+  { value: 'switch', label: 'Switch', hint: 'For exactly two ways (else tiles)' },
+  { value: 'expanding', label: 'Expanding', hint: 'The chosen way opens its details' },
+  { value: 'swipe', label: 'Swipe cards', hint: 'Big cards to swipe through' },
+  { value: 'ticket', label: 'Tickets', hint: 'Ticket stubs, stamped when picked' },
+  { value: 'doors', label: 'Doors', hint: 'Tall halves, kiosk style' },
 ])
 
-const NOT_PHOTO = ['tiles', 'segmented', 'list', 'cards', 'buttons', 'chips'] as const
+/** The designs added in v3 (they draw icons and details like the first ones). */
+const V3_ORDER_TYPE_DESIGNS = ['tabs', 'switch', 'expanding', 'swipe', 'ticket', 'doors'] as const
+const NOT_PHOTO = ['tiles', 'segmented', 'list', 'cards', 'buttons', 'chips', ...V3_ORDER_TYPE_DESIGNS] as const
 const photoOnly = { showWhen: { key: 'variant', values: ['photo'] } }
 
 const image = (key: string, label: string): BlockOption => ({ key, label, type: 'image', default: '', ...photoOnly })
@@ -57,7 +66,7 @@ const ORDER_TYPE_OPTIONS: readonly BlockOption[] = [
     { value: 'plain', label: 'Plain' },
     { value: 'none', label: 'None' },
   ], { showWhen: { key: 'variant', values: NOT_PHOTO } }),
-  { key: 'show_descriptions', label: 'Show each way’s details', type: 'boolean', default: true, hint: 'The description you wrote for dine-in, pickup or delivery.', showWhen: { key: 'variant', values: ['tiles', 'segmented', 'list', 'cards', 'buttons', 'photo'] } },
+  { key: 'show_descriptions', label: 'Show each way’s details', type: 'boolean', default: true, hint: 'The description you wrote for dine-in, pickup or delivery.', showWhen: { key: 'variant', values: ['tiles', 'segmented', 'list', 'cards', 'buttons', 'photo', ...V3_ORDER_TYPE_DESIGNS] } },
   choiceKnob('columns', 'Across', [
     { value: 'auto', label: 'Auto' },
     { value: '1', label: '1' },
@@ -72,6 +81,7 @@ const ORDER_TYPE_OPTIONS: readonly BlockOption[] = [
   image('image_pickup', 'Pickup photo'),
   image('image_delivery', 'Delivery photo'),
   { ...image('image_other', 'Other photo'), hint: 'For Grab, foodpanda and your other ways.' },
+  ...orderTypeIconOptions(),
   CARD,
   SHOW_SUBTITLE,
 ]
@@ -119,13 +129,16 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     label: 'Order type',
     description: 'Dine-in, pickup or delivery (only when the customer has a choice).',
     icon: 'Utensils',
-    required: true,
+    required: false,
+    neededWhen: 'order_choice',
     texts: [
       title('How would you like to receive your order?', 'checkout.order_type'),
       subtitle('Choose a fulfillment method.'),
+      ...ORDER_TYPE_WORDING_TEXTS,
     ],
     options: ORDER_TYPE_OPTIONS,
-    parts: CHOICE_PARTS,
+    // `divider`: the tabs' track line and the tickets' perforation.
+    parts: [...CHOICE_PARTS, 'divider'],
   },
   {
     id: 'checkout.schedule',
@@ -133,7 +146,8 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     label: 'Schedule',
     description: 'As soon as possible or later (only when advance orders are on).',
     icon: 'CalendarClock',
-    required: true,
+    required: false,
+    neededWhen: 'scheduling',
     texts: [
       title('When would you like it?', undefined, 60),
       { key: 'asap_title', label: '"Now" choice', fallback: 'As soon as possible', maxLength: 40 },
@@ -151,7 +165,8 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     label: 'Customer details',
     description: 'Name, phone, address and your own checkout questions.',
     icon: 'User',
-    required: true,
+    required: false,
+    neededWhen: 'questions',
     texts: [
       title('Customer Information', 'checkout.customer', 48),
       subtitle('Please provide the following details'),
@@ -175,7 +190,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     label: 'Order summary',
     description: 'The dishes, fees, discounts and total.',
     icon: 'ReceiptText',
-    required: true,
+    required: false,
     texts: [
       title('Order Summary', 'checkout.summary', 48),
       subtitle('Review your order before checkout'),
@@ -192,9 +207,9 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     id: 'checkout.voucher',
     page: 'checkout',
     label: 'Voucher code',
-    description: 'Where customers type a voucher or promo code. Always on the page, so a design can never hide your codes.',
+    description: 'Where customers type a voucher or promo code. Remove it only if you never hand out codes — without it customers can’t enter one.',
     icon: 'TicketPercent',
-    required: true,
+    required: false,
     texts: [{ key: 'label', label: 'Prompt', fallback: 'Have a voucher?', labelKey: 'checkout.voucher', maxLength: 48 }],
     options: VOUCHER_OPTIONS,
     parts: ['field', 'label', 'button_alt', 'price', 'error', 'link'],
@@ -205,7 +220,8 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     label: 'Senior / PWD',
     description: 'The Senior Citizen / PWD discount or the "show your ID" note (only when you set it up).',
     icon: 'BadgePercent',
-    required: true,
+    required: false,
+    neededWhen: 'gov_claims',
     texts: [],
     options: GOV_DISCOUNT_OPTIONS,
     parts: ['option', 'option_on', 'option_hover', 'field', 'label', 'error', 'button', 'button_alt', 'link'],
@@ -216,13 +232,23 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     label: 'Payment methods',
     description: 'How the customer pays.',
     icon: 'Wallet',
-    required: true,
+    required: false,
+    neededWhen: 'payment',
     texts: [
       title('Payment', 'checkout.payment', 48),
       subtitle('Choose how you would like to pay'),
+      { key: 'split_now', label: '“Pay now” choice', fallback: 'Pay now', maxLength: 40, hint: 'The Pay now / later design only.' },
+      {
+        key: 'split_in_person',
+        label: '“Pay in person” choice',
+        fallback: '',
+        maxLength: 40,
+        hint: 'The Pay now / later design only. Blank says “Pay at the counter”, or “Pay on delivery” for delivery.',
+      },
     ],
     options: PAYMENT_OPTIONS,
-    parts: [...CHOICE_PARTS.filter((part) => part !== 'option_desc'), 'link'],
+    // `option_desc`: the methods listed under each Pay now / later choice.
+    parts: [...CHOICE_PARTS, 'link'],
   },
   {
     id: 'checkout.sms_opt_in',

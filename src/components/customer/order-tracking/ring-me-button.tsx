@@ -17,13 +17,15 @@ interface RingMeButtonProps {
   wording?: RingMeWording
   /** Page Designer layout; unset = today's wide button. */
   layout?: 'button' | 'card'
+  /** Page Designer: hide the tip shown after tapping. */
+  showHint?: boolean
 }
 
 const NO_WORDING: RingMeWording = {}
 
 /** The ready-alert opt-in — audio needs a tap, so it can't be automatic. */
-export function RingMeButton({ isArmed, onArm, wording = NO_WORDING, layout = 'button' }: RingMeButtonProps) {
-  if (layout === 'card') return <RingMeCard isArmed={isArmed} onArm={onArm} wording={wording} />
+export function RingMeButton({ isArmed, onArm, wording = NO_WORDING, layout = 'button', showHint = true }: RingMeButtonProps) {
+  if (layout === 'card') return <RingMeCard isArmed={isArmed} onArm={onArm} wording={wording} showHint={showHint} />
   return (
     <div className="space-y-1.5" data-branding-scope="tracking/ring">
       <button
@@ -51,7 +53,7 @@ export function RingMeButton({ isArmed, onArm, wording = NO_WORDING, layout = 'b
           </>
         )}
       </button>
-      {isArmed && (
+      {showHint && isArmed && (
         <p data-part="muted" className="text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
           {wording.armedHint ?? 'Keep this page open and your volume up.'}
         </p>

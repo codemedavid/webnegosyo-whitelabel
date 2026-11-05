@@ -53,14 +53,21 @@ export function DesignGallery({ option, value, Renderer, props, onPick }: Galler
       {option.choices.map((choice) => {
         const isPicked = choice.value === value
         return (
-          <button
+          // A div, not a <button>: the live thumbnail inside holds the block's own buttons.
+          <div
             key={choice.value}
-            type="button"
             role="radio"
+            tabIndex={0}
             aria-checked={isPicked}
             onClick={() => onPick(choice.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onPick(choice.value)
+              }
+            }}
             className={cn(
-              'relative rounded-lg border bg-white p-1 text-left transition',
+              'relative cursor-pointer rounded-lg border bg-white p-1 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
               isPicked ? 'border-neutral-900 ring-2 ring-neutral-900' : 'border-neutral-200 hover:border-neutral-400',
             )}
           >
@@ -72,7 +79,7 @@ export function DesignGallery({ option, value, Renderer, props, onPick }: Galler
                 <Check className="h-2.5 w-2.5" />
               </span>
             )}
-          </button>
+          </div>
         )
       })}
     </div>
@@ -116,7 +123,14 @@ export function ColorKnob({ option, value, onChange }: { option: ColorOption; va
 export function OptionField({ option, value, onChange }: { option: BlockOption; value: BlockOptionValue | undefined; onChange: (value: BlockOptionValue) => void }) {
   switch (option.type) {
     case 'boolean':
-      return <Toggle label={option.label} checked={value === true} onChange={onChange} />
+      return option.hint ? (
+        <div>
+          <Toggle label={option.label} checked={value === true} onChange={onChange} />
+          <p className="mt-1 text-[11px] leading-snug text-neutral-500">{option.hint}</p>
+        </div>
+      ) : (
+        <Toggle label={option.label} checked={value === true} onChange={onChange} />
+      )
     case 'choice':
       return (
         <Field label={option.label} hint={option.hint}>

@@ -22,6 +22,7 @@ import {
   type OrderTypeLook,
 } from '@/components/customer/checkout-templates/order-type-choices'
 import { FIELD_COLUMNS, FIELD_STYLES, SCHEDULE_DESIGNS } from '@/lib/page-designer/checkout-block-options'
+import { readOrderTypeWording } from '@/lib/page-designer/order-type-wording'
 
 import { BlockCard } from './block-card'
 import { blockChoice, cornersOf, isOn } from './block-looks'
@@ -59,6 +60,7 @@ export function orderTypeLook(block: PageBlockRenderProps): OrderTypeLook {
     columns: pick('columns', DEFAULT_ORDER_TYPE_LOOK.columns),
     align: pick('align', DEFAULT_ORDER_TYPE_LOOK.align),
     images,
+    wording: readOrderTypeWording(block.text, block.option),
   }
 }
 

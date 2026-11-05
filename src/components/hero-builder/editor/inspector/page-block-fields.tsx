@@ -1,11 +1,11 @@
 'use client'
 
-import { Lock, Paintbrush } from 'lucide-react'
+import { Lock, Paintbrush, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
 
 import type { PageBlockContent, Widget } from '@/lib/hero-builder/types'
 import { PAGE_META } from '@/lib/page-designer/pages'
-import { pageBlockDef } from '@/lib/page-designer/blocks'
+import { NEED_REASONS, pageBlockDef } from '@/lib/page-designer/blocks'
 import { optionGroup } from '@/lib/page-designer/knobs'
 import { applyTokens, resolveBlockOption, resolveBlockText } from '@/lib/page-designer/text'
 import type { BlockOption, BlockOptionValue, BlockTextSlot, PageId } from '@/lib/page-designer/types'
@@ -75,6 +75,8 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
   const more = inGroup('advanced')
   // Photos are typed or picked in steps: show what is stored, not the fallback.
   const valueOf = (option: BlockOption) => (option.type === 'image' ? (typeof options[option.key] === 'string' ? options[option.key] : '') : props.option(option.key))
+  // A page's own editor for this block (the checkout form's questions), under Settings.
+  const Panel = runtime.blockPanels?.[def.id]
 
   return (
     <div>
@@ -84,6 +86,11 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
         {def.required && (
           <p className="mt-1.5 flex items-center gap-1 font-medium text-amber-800">
             <Lock className="h-3 w-3" /> Keeps the page working — move, restyle or re-word it, but it can&apos;t be removed.
+          </p>
+        )}
+        {def.neededWhen && (
+          <p className="mt-1.5 flex items-start gap-1 font-medium text-amber-800">
+            <Undo2 className="mt-0.5 h-3 w-3 shrink-0" /> You can remove or hide it. It comes back by itself while {NEED_REASONS[def.neededWhen]}, so orders still go through.
           </p>
         )}
         <p className="mt-1.5 flex items-center gap-1 font-medium text-sky-800">
@@ -116,6 +123,7 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
           </div>
         </Group>
       )}
+      {Panel && <Panel widget={widget} />}
       {more.length > 0 && (
         <Group title="More" defaultOpen={false}>
           <div className="space-y-3">

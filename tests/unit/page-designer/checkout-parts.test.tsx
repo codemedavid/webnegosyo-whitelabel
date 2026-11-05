@@ -52,6 +52,20 @@ const ADDRESS = 'Blk 4 Lot 12, Mabini St'
 
 /** States that bring out each block's conditional parts (errors, chips, links). */
 const SCENARIOS: Record<string, readonly Scenario[]> = {
+  'checkout.order_type': [
+    { name: 'two ways' },
+    // Three ways: the switch stands down to tiles; every v3 design still marks its parts.
+    {
+      name: 'three ways',
+      checkout: {
+        orderTypes: [
+          { id: 'sample-dine-in', name: 'Dine-in', type: 'dine_in', description: 'Eat here', advance_order_enabled: false },
+          { id: 'sample-pickup', name: 'Pickup', type: 'pickup', description: 'Pick it up at the counter', advance_order_enabled: true },
+          { id: 'sample-delivery', name: 'Delivery', type: 'delivery', description: 'We bring it to you', advance_order_enabled: false },
+        ],
+      },
+    },
+  ],
   'checkout.store_closed': [
     { name: 'closed', checkout: { openStatus: { isOpen: false, isOrderingBlocked: true, reason: 'after_close', nextOpenLabel: 'tomorrow at 9:00 AM', closesAt: null } } },
   ],
@@ -132,6 +146,8 @@ const SCENARIOS: Record<string, readonly Scenario[]> = {
         ],
       },
     },
+    // Chosen + Change opens with the list; split asks when to pay first.
+    { name: 'nothing chosen yet', checkout: { selectedPaymentMethod: null } },
   ],
   'checkout.place_order': [{ name: 'under the minimum', checkout: { orderMinimum: { meets: false, minimum: 500, shortfall: 15 } } }],
 }

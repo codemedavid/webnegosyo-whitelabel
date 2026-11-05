@@ -32,6 +32,14 @@ export interface MessengerCopy {
   messageHint?: string
 }
 
+/** Page Designer switches for the Messenger card's fallback lines; unset = shown, as today. */
+export interface MessengerShow {
+  /** The "or" divider under the Messenger button. */
+  orLine?: boolean
+  /** "Copy order text and paste it directly on Messenger". */
+  copyLink?: boolean
+}
+
 /** Messenger off for this order: the "sent, nothing else to do" card. */
 function NoMessengerBody() {
   const b = useConfirmationBlocks()
@@ -52,9 +60,10 @@ function NoMessengerBody() {
   )
 }
 
-function MessengerLinkBody({ copy, shape }: { copy: MessengerCopy; shape: string }) {
+function MessengerLinkBody({ copy, shape, show = {} }: { copy: MessengerCopy; shape: string; show?: MessengerShow }) {
   const b = useConfirmationBlocks()
   if (!b) return null
+  const { orLine: showOrLine = true, copyLink: showCopyLink = true } = show
   const isCounting = b.messengerCountdown !== null && b.messengerCountdown > 0
   return (
     <div className="space-y-4">
@@ -85,21 +94,25 @@ function MessengerLinkBody({ copy, shape }: { copy: MessengerCopy; shape: string
       </Button>
 
       {/* Copy fallback */}
-      <div className="relative text-center">
-        <div className="absolute inset-0 flex items-center">
-          <span data-part="divider" className="w-full border-t border-[color:var(--co-border)]" />
+      {showOrLine && (
+        <div className="relative text-center">
+          <div className="absolute inset-0 flex items-center">
+            <span data-part="divider" className="w-full border-t border-[color:var(--co-border)]" />
+          </div>
+          <span data-part="muted" className="relative bg-[var(--co-card)] px-3 text-xs text-[color:var(--co-muted)]">{copy.or ?? 'or'}</span>
         </div>
-        <span data-part="muted" className="relative bg-[var(--co-card)] px-3 text-xs text-[color:var(--co-muted)]">{copy.or ?? 'or'}</span>
-      </div>
+      )}
 
-      <button
-        data-part="link"
-        className="w-full text-sm text-[color:var(--co-accent)] hover:underline py-1"
-        onClick={() => b.onCopyMessage(COPIED_TO_MESSENGER)}
-      >
-        <Copy className="inline mr-1.5 h-3.5 w-3.5" />
-        {copy.copyLink ?? 'Copy order text and paste it directly on Messenger'}
-      </button>
+      {showCopyLink && (
+        <button
+          data-part="link"
+          className="w-full text-sm text-[color:var(--co-accent)] hover:underline py-1"
+          onClick={() => b.onCopyMessage(COPIED_TO_MESSENGER)}
+        >
+          <Copy className="inline mr-1.5 h-3.5 w-3.5" />
+          {copy.copyLink ?? 'Copy order text and paste it directly on Messenger'}
+        </button>
+      )}
     </div>
   )
 }
@@ -121,12 +134,12 @@ function CopyOnlyBody({ copy, shape }: { copy: MessengerCopy; shape: string }) {
 }
 
 /** Messenger Redirect Section — the "no Messenger" card when the order type has it off. */
-export function ConfirmationMessengerCard({ copy = {}, shape = PILL }: { copy?: MessengerCopy; shape?: string }) {
+export function ConfirmationMessengerCard({ copy = {}, shape = PILL, show }: { copy?: MessengerCopy; shape?: string; show?: MessengerShow }) {
   const b = useConfirmationBlocks()
   if (!b) return null
   const body = !b.isMessengerEnabled
     ? <NoMessengerBody />
-    : b.order.messengerUrl ? <MessengerLinkBody copy={copy} shape={shape} /> : <CopyOnlyBody copy={copy} shape={shape} />
+    : b.order.messengerUrl ? <MessengerLinkBody copy={copy} shape={shape} show={show} /> : <CopyOnlyBody copy={copy} shape={shape} />
   return <div data-branding-scope="checkout/card" data-part="card" className={CARD}>{body}</div>
 }
 

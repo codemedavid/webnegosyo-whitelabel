@@ -1,81 +1,74 @@
 // ---------------------------------------------------------------------------
 // Checkout starting designs, after "Standard". Phone-first, coloured by the
 // builder theme (@text, @muted, @primary), which a designed checkout points at
-// its own --co-* palette. Every one holds every checkout block, required ones
-// visible on every device, so each is publishable as-is.
+// its own --co-* palette. Every one holds every checkout block, visible on
+// every device, so each is publishable as-is.
 // ---------------------------------------------------------------------------
 
-import { badge, box, design, heading, iconList, listItem, section, text, widget } from '@/lib/hero-builder/section-presets'
-import type { HeroDesignV5, NodeStyle, Section, Widget } from '@/lib/hero-builder/types'
+import { badge, box, heading, iconList, listItem, section, text, widget } from '@/lib/hero-builder/section-presets'
+import type { HeroDesignV5, NodeStyle, Widget } from '@/lib/hero-builder/types'
 
-import { blockDef } from './blocks'
-import { createPageBlock } from './design-blocks'
+import { block as kitBlock, blocks as kitBlocks, pageDesign, pageSection, type BlockSpec } from './template-kit'
 import type { PageTemplate } from './templates'
 
-const PAGE_WIDTH = 720
 const WIDE_WIDTH = 1080
 const NARROW_WIDTH = 560
-const PAGE_PADDING = box(24, 16, 40, 16)
-const PAGE_PADDING_MOBILE = box(16, 12, 32, 12)
 const GAP = 16
 
-type Options = Readonly<Record<string, string | boolean>>
+const block = (id: string, spec: BlockSpec = {}): Widget => kitBlock('checkout', id, spec)
+const blocks = (ids: readonly string[], spec: Omit<BlockSpec, 'texts'> = {}): Widget[] => kitBlocks('checkout', ids, spec)
 
-function block(id: string, options: Options = {}): Widget {
-  const def = blockDef(id)
-  if (!def || def.page !== 'checkout') throw new Error(`Unknown checkout block ${id}`)
-  const w = createPageBlock(def)
-  return { ...w, content: { ...w.content, options: { ...w.content.options, ...options } } }
-}
+export const CHECKOUT_DETAILS = ['checkout.order_type', 'checkout.schedule', 'checkout.customer', 'checkout.loyalty'] as const
+export const CHECKOUT_MONEY = ['checkout.summary', 'checkout.voucher', 'checkout.gov_discount'] as const
+export const CHECKOUT_PAY = ['checkout.payment', 'checkout.sms_opt_in'] as const
 
-/** Each block with the options it has (a block never carries a setting it doesn't use). */
-const blocks = (ids: readonly string[], options: Options = {}): Widget[] =>
-  ids.map((id) => {
-    const keys = new Set(blockDef(id)?.options.map((o) => o.key) ?? [])
-    return block(id, Object.fromEntries(Object.entries(options).filter(([key]) => keys.has(key))))
-  })
-
-function pageSection(label: string, widgets: Widget[], width = PAGE_WIDTH, gap = GAP): Section {
-  return section({
-    label,
-    widths: [100],
-    style: { padding: PAGE_PADDING, contentWidth: width, gap },
-    tablet: { padding: PAGE_PADDING },
-    mobile: { stack: true, gap, padding: PAGE_PADDING_MOBILE },
-    columns: [{ style: { gap }, widgets }],
-  })
-}
-
-const DETAILS = ['checkout.order_type', 'checkout.schedule', 'checkout.customer', 'checkout.loyalty'] as const
-const MONEY = ['checkout.summary', 'checkout.voucher', 'checkout.gov_discount'] as const
-const PAY = ['checkout.payment', 'checkout.sms_opt_in'] as const
-
-/** Details and payment on the left, the order and the button on the right; stacked on phones and tablets. */
+/**
+ * The Studio's Modern checkout: details and payment on the left, the order
+ * and the button on the right; stacked on phones and tablets.
+ */
 function buildTwoColumns(): HeroDesignV5 {
   const page = section({
     label: 'Checkout — two columns',
     widths: [58, 42],
     style: { padding: box(32, 24, 48, 24), contentWidth: WIDE_WIDTH, gap: 28 },
     tablet: { stack: true, gap: GAP, padding: box(24, 16, 40, 16) },
-    mobile: { stack: true, gap: GAP, padding: PAGE_PADDING_MOBILE },
+    mobile: { stack: true, gap: GAP, padding: box(16, 12, 32, 12) },
     columns: [
-      { style: { gap: GAP }, widgets: [block('checkout.header'), block('checkout.store_closed'), ...blocks([...DETAILS, ...PAY])] },
-      { style: { gap: GAP }, widgets: [...blocks(MONEY), block('checkout.place_order', { card: true })] },
+      {
+        style: { gap: GAP },
+        widgets: [
+          block('checkout.header'),
+          block('checkout.store_closed'),
+          block('checkout.order_type', { texts: { title: 'How would you like it?' } }),
+          block('checkout.schedule'),
+          block('checkout.customer', { texts: { title: 'Your details' } }),
+          block('checkout.loyalty'),
+          ...blocks(CHECKOUT_PAY),
+        ],
+      },
+      {
+        style: { gap: GAP },
+        widgets: [
+          block('checkout.summary', { texts: { title: 'Order summary' } }),
+          ...blocks(['checkout.voucher', 'checkout.gov_discount']),
+          block('checkout.place_order', { options: { card: true } }),
+        ],
+      },
     ],
   })
-  return design([page])
+  return pageDesign([page], { parts: { p_card_radius: 'lg', p_card_shadow: 'sm' } })
 }
 
 const REASSURANCE: NodeStyle = { fontSize: 15, gap: 10, color: '@text' }
 
 /** Today's order with a short list of reassurances right above the button. */
 function buildTrust(): HeroDesignV5 {
-  return design([
+  return pageDesign([
     pageSection('Checkout — trust', [
       block('checkout.header'),
       badge('Secure checkout', 'ShieldCheck', { fontSize: 13, fontWeight: 600, color: '@muted' }),
       block('checkout.store_closed'),
-      ...blocks([...DETAILS, ...MONEY, ...PAY]),
+      ...blocks([...CHECKOUT_DETAILS, ...CHECKOUT_MONEY, ...CHECKOUT_PAY]),
       iconList(
         [
           listItem('Store', 'Your order goes straight to {store}'),
@@ -92,38 +85,51 @@ function buildTrust(): HeroDesignV5 {
 
 const RULE = (): Widget => widget('divider', {}, { size: 1, accentColor: '@muted', margin: box(4, 0) })
 
-/** No cards: one quiet column with thin rules between the steps. */
+/** The Studio's Minimal checkout: no cards, one calm column with hairlines between the steps. */
 function buildMinimal(): HeroDesignV5 {
-  const plain = { card: false }
-  return design([
-    pageSection(
-      'Checkout — minimal',
-      [
-        block('checkout.header', { show_subtitle: false }),
-        block('checkout.store_closed'),
-        ...blocks(DETAILS, { ...plain, show_subtitle: false }),
-        RULE(),
-        ...blocks(MONEY, { ...plain, show_subtitle: false }),
-        RULE(),
-        ...blocks(PAY, { ...plain, show_subtitle: false }),
-        block('checkout.place_order', plain),
-      ],
-      NARROW_WIDTH,
-      20,
-    ),
-  ])
+  const plain = { card: false, show_subtitle: false }
+  return pageDesign(
+    [
+      pageSection(
+        'Checkout — minimal',
+        [
+          block('checkout.header', { options: { show_subtitle: false } }),
+          block('checkout.store_closed'),
+          ...blocks(['checkout.order_type', 'checkout.schedule'], { options: plain }),
+          block('checkout.customer', { options: { ...plain, variant: 'underlined' }, texts: { title: 'Your details' } }),
+          block('checkout.loyalty'),
+          RULE(),
+          ...blocks(CHECKOUT_PAY, { options: plain }),
+          RULE(),
+          ...blocks(CHECKOUT_MONEY, { options: plain }),
+          block('checkout.place_order', { options: { card: false } }),
+        ],
+        { width: NARROW_WIDTH, gap: 20 },
+      ),
+    ],
+    {
+      parts: {
+        p_title_size: 'xl',
+        p_title_weight: '700',
+        p_title_letter: 'tight',
+        p_option_shadow: 'none',
+        p_divider_bw: '1',
+        p_button_radius: 'pill',
+      },
+    },
+  )
 }
 
 /** The order up top, so the customer sees what they are paying for first. */
 function buildOrderFirst(): HeroDesignV5 {
-  return design([
+  return pageDesign([
     pageSection('Checkout — order first', [
       block('checkout.header'),
       heading('Almost there!', 'h2', { fontSize: 28, fontWeight: 800, lineHeight: 1.15, color: '@text' }, { fontSize: 24 }),
       text('Here’s your order from {store}. Add your details and choose how to pay.', { fontSize: 16, color: '@muted' }),
       block('checkout.store_closed'),
-      ...blocks(MONEY),
-      ...blocks([...DETAILS, ...PAY]),
+      ...blocks(CHECKOUT_MONEY),
+      ...blocks([...CHECKOUT_DETAILS, ...CHECKOUT_PAY]),
       block('checkout.place_order'),
     ]),
   ])
@@ -132,8 +138,8 @@ function buildOrderFirst(): HeroDesignV5 {
 export const CHECKOUT_TEMPLATES: readonly PageTemplate[] = [
   {
     id: 'two-columns',
-    name: 'Two columns',
-    description: 'Details on the left, the order and the button on the right on computers; one column on phones.',
+    name: 'Two columns (Modern)',
+    description: 'The Studio’s Modern checkout: details on the left, the order and the button on the right on computers; one column on phones.',
     category: 'simple',
     build: buildTwoColumns,
   },
@@ -147,7 +153,7 @@ export const CHECKOUT_TEMPLATES: readonly PageTemplate[] = [
   {
     id: 'minimal',
     name: 'Minimal',
-    description: 'No cards, just a quiet column with thin lines between the steps.',
+    description: 'The Studio’s Minimal checkout: no cards, underlined answers and thin lines between the steps.',
     category: 'simple',
     build: buildMinimal,
   },

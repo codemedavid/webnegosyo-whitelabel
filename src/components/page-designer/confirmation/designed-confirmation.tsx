@@ -11,6 +11,7 @@ import { useMemo } from 'react'
 
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import { blockIdsIn } from '@/lib/page-designer/design-blocks'
+import { preparePageDesign } from '@/lib/page-designer/rules'
 import type { StorefrontLabels } from '@/lib/storefront-labels'
 import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { DesignedPage } from '@/components/page-designer/storefront/designed-page'
@@ -44,10 +45,13 @@ export function DesignedConfirmation({ design, tenantSlug, labels }: DesignedCon
     () => (b && !hasMessengerBlock && b.hasMessengerFallback ? { ...b, hasMessengerFallback: false } : b),
     [b, hasMessengerBlock],
   )
+  // A kiosk needs its "Start a new order" card even when the owner removed the actions block.
+  const isKiosk = !!b?.isKiosk
+  const shown = useMemo(() => preparePageDesign(design, 'confirmation', { kiosk: isKiosk }), [design, isKiosk])
   if (!value) return null
   return (
     <ConfirmationBlocksProvider value={value}>
-      <DesignedPage design={design} runtime={runtime} tenantSlug={tenantSlug} />
+      <DesignedPage design={shown} runtime={runtime} tenantSlug={tenantSlug} />
     </ConfirmationBlocksProvider>
   )
 }

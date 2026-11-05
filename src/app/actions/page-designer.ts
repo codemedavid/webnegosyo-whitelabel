@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { verifyTenantPermission } from '@/lib/admin-service'
@@ -16,10 +17,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { pageDesignProblem } from '@/lib/page-designer/rules'
 import { createClient } from '@/lib/supabase/server'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
+import type { FormSaveOutcome } from '@/lib/page-designer/form-changes'
+import { saveCheckoutForm } from '@/lib/page-designer/form-save'
+import { readTenantSlugById } from '@/lib/tenant-revalidation'
 
 interface PageDesignerActionResult {
   success: boolean
   error?: string
+}
+
+/** A result that may carry the saved checkout questions (with the ids new ones were given). */
+interface PageDesignerFormResult extends PageDesignerActionResult {
+  form?: FormSaveOutcome
 }
 
 const ACCESS_REFUSED = /^(Unauthorized|Forbidden):/
@@ -124,13 +133,48 @@ export async function savePageLookAction(tenantId: string, page: unknown, look: 
 }
 
 /**
+ * Save the checkout questions (every order type's `customer_form_fields`):
+ * the same rows the standard checkout, the Order types page and the register
+ * read. Caller has passed `store_setup`; each write checks it again.
+ */
+async function writeCheckoutForm(tenantId: string, input: unknown): Promise<PageDesignerFormResult> {
+  const result = await saveCheckoutForm(tenantId, input)
+  if (!result.success) return { success: false, error: result.error }
+  const slug = await readTenantSlugById(await createClient(), tenantId)
+  if (slug) {
+    revalidatePath(`/${slug}/checkout`)
+    revalidatePath(`/${slug}/admin/order-types`, 'layout')
+  }
+  return { success: true, form: result.outcome }
+}
+
+/** Save only the checkout questions (they also show on the standard checkout and the register). */
+export async function saveCheckoutFormAction(tenantId: string, form: unknown): Promise<PageDesignerFormResult> {
+  try {
+    await verifyTenantPermission(tenantId, 'store_setup')
+    return await writeCheckoutForm(tenantId, form)
+  } catch (error) {
+    console.error('[saveCheckoutFormAction] Error:', error)
+    return { success: false, error: errorMessage(error) }
+  }
+}
+
+/**
  * Publish a Page Designer design for one page: the Hero Builder v5 schema,
  * then the page's own rules (known blocks only, each once, required blocks
  * visible on every device, only the elements this page offers), then the
- * page's Look changes (if any), then store it (TEXT) and switch the designed
- * page on.
+ * checkout questions (checkout only, if any), then the page's Look changes
+ * (if any), then store it (TEXT) and switch the designed page on. A result
+ * carrying `form` means the questions were stored, even when the publish
+ * itself then failed.
  */
-export async function publishPageDesignAction(tenantId: string, page: unknown, design: unknown, look?: unknown): Promise<PageDesignerActionResult> {
+export async function publishPageDesignAction(
+  tenantId: string,
+  page: unknown,
+  design: unknown,
+  look?: unknown,
+  form?: unknown,
+): Promise<PageDesignerFormResult> {
   try {
     if (!isPageId(page)) return { success: false, error: 'Unknown page' }
     await verifyTenantPermission(tenantId, 'store_setup')
@@ -152,17 +196,30 @@ export async function publishPageDesignAction(tenantId: string, page: unknown, d
     }
 
     // The design is checked first, so a refused design never saves half the change.
+    // The checkout questions belong to the checkout page only.
+    const hasForm = form !== undefined && form !== null && page === 'checkout'
+    let savedForm: FormSaveOutcome | undefined
+    if (hasForm) {
+      const saved = await writeCheckoutForm(tenantId, form)
+      if (!saved.success) return saved
+      savedForm = saved.form
+    }
     const hasLook = look !== undefined
     if (hasLook) {
       const saved = await writePageLook(tenantId, page, look)
-      if (!saved.success) return saved
+      if (!saved.success) {
+        return hasForm ? { success: false, error: `Your form was saved, but the page did not publish: ${saved.error}`, form: savedForm } : saved
+      }
     }
 
     const columns = PAGE_DESIGN_COLUMNS[page]
     const published = await writeTenant(tenantId, { [columns.design]: serialized, [columns.enabled]: true }, 'publishPageDesignAction')
-    // Publishing again is safe: a look already saved is not read as someone else's change.
-    if (!published.success && hasLook) return { success: false, error: 'Your look was saved, but the page did not publish. Please publish again.' }
-    return published
+    // Publishing again is safe: a look or form already saved is not read as someone else's change.
+    if (!published.success && (hasLook || hasForm)) {
+      const what = hasLook && hasForm ? 'form and look were' : hasForm ? 'form was' : 'look was'
+      return { success: false, error: `Your ${what} saved, but the page did not publish. Please publish again.`, form: savedForm }
+    }
+    return savedForm ? { ...published, form: savedForm } : published
   } catch (error) {
     console.error('[publishPageDesignAction] Error:', error)
     return { success: false, error: errorMessage(error) }

@@ -111,7 +111,8 @@ export function HeroBuilderEditor({
   const draftKey = `${surface.draftPrefix}:${tenantId}`
 
   const designJson = useMemo(() => JSON.stringify(api.design), [api.design])
-  const hasDesignChanges = designJson !== (publishedJson ?? JSON.stringify(start))
+  const startJson = useMemo(() => JSON.stringify(start), [start])
+  const hasDesignChanges = designJson !== (publishedJson ?? startJson)
   const hasUnpublishedChanges = hasDesignChanges || !!look?.hasChanges
 
   // ── Crash-safe local draft ────────────────────────────────────────────────
@@ -370,7 +371,14 @@ export function HeroBuilderEditor({
         </aside>
 
         {/* ── Canvas ──────────────────────────────────────────────────── */}
-        <main className="min-w-0 flex-1" onClick={() => setPanels({ left: false, right: false })}>
+        <main className="relative min-w-0 flex-1" onClick={() => setPanels({ left: false, right: false })}>
+          {surface.Banner && (
+            <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+              <div className="pointer-events-auto w-full max-w-xl">
+                <surface.Banner api={api} target={{ tenantId, tenantSlug }} isUnchanged={designJson === startJson} />
+              </div>
+            </div>
+          )}
           <Canvas
             api={api}
             onEditContent={() => setContentRequest((n) => n + 1)}
@@ -400,9 +408,11 @@ export function HeroBuilderEditor({
         hasContent={api.design.sections.length > 0}
         templates={surface.templates}
         categories={surface.templateCategories}
+        categoryLabels={surface.templateCategoryLabels}
         preview={surface.templatePreview}
-        onPick={(design) => {
+        onPick={(design, template) => {
           api.replaceDesign(design)
+          surface.onTemplatePicked?.(template.id, { tenantId, tenantSlug })
           setLeftTab('layers')
         }}
       />

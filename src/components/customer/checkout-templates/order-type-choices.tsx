@@ -7,37 +7,44 @@
  * descriptions — so changing the design can never change what is ordered.
  *
  * `tiles` is the shared OrderTypeSelector (the standard checkouts' look);
- * the others are drawn here from the checkout theme variables (`--co-*`)
- * only, so the store's colours and a block's own colours both apply.
+ * the others are drawn here (and the v3 six in order-type-choices-more)
+ * from the checkout theme variables (`--co-*`) only, so the store's colours
+ * and a block's own colours both apply. Names, details and icons come
+ * through the block's wording (order-type-wording.ts): display only.
  */
 
-import { CalendarClock, Check } from 'lucide-react'
+import { CalendarClock } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
-import { cornersClass, type CornersChoice } from '@/lib/page-designer/knobs'
+import { cornersClass } from '@/lib/page-designer/knobs'
+import { EMPTY_ORDER_TYPE_WORDING } from '@/lib/page-designer/order-type-wording'
 import type { OrderType } from '@/types/database'
 
 import { checkoutThemeStyle } from './checkout-theme'
-import { ORDER_TYPE_ICONS, OrderTypeSelector } from './checkout-primitives'
+import { OrderTypeSelector } from './checkout-primitives'
+import { MORE_ORDER_TYPE_DESIGNS, MoreOrderTypeChoices, isMoreOrderTypeDesign, switchFits } from './order-type-choices-more'
+import {
+  ChoiceIcon,
+  KindIcon,
+  PreorderChip,
+  SelectedTick,
+  choiceSurface,
+  descriptionOf,
+  iconOf,
+  nameOf,
+  type OrderTypeColumns,
+  type OrderTypeLookBase,
+  type OrderTypePhotoKind,
+} from './order-type-parts'
 
-export const ORDER_TYPE_DESIGNS = ['tiles', 'segmented', 'list', 'cards', 'buttons', 'chips', 'photo'] as const
+export type { OrderTypeColumns, OrderTypeIconStyle, OrderTypePhotoKind } from './order-type-parts'
+
+/** In gallery order: the first seven, then the v3 additions (append only — values are stored). */
+export const ORDER_TYPE_DESIGNS = ['tiles', 'segmented', 'list', 'cards', 'buttons', 'chips', 'photo', ...MORE_ORDER_TYPE_DESIGNS] as const
 export type OrderTypeDesign = (typeof ORDER_TYPE_DESIGNS)[number]
 
-export type OrderTypeIconStyle = 'circle' | 'plain' | 'none'
-export type OrderTypeColumns = 'auto' | '1' | '2' | '3'
-export type OrderTypePhotoKind = 'dine_in' | 'pickup' | 'delivery' | 'other'
-
-export interface OrderTypeLook {
-  design: OrderTypeDesign
-  corners: CornersChoice
-  iconStyle: OrderTypeIconStyle
-  showDescriptions: boolean
-  columns: OrderTypeColumns
-  align: 'left' | 'center'
-  /** Photo tiles: one picture per kind (blank = an illustrated tile). */
-  images: Partial<Record<OrderTypePhotoKind, string>>
-}
+export type OrderTypeLook = OrderTypeLookBase<OrderTypeDesign>
 
 export const DEFAULT_ORDER_TYPE_LOOK: OrderTypeLook = {
   design: 'tiles',
@@ -47,6 +54,7 @@ export const DEFAULT_ORDER_TYPE_LOOK: OrderTypeLook = {
   columns: 'auto',
   align: 'left',
   images: {},
+  wording: EMPTY_ORDER_TYPE_WORDING,
 }
 
 interface ChoiceProps {
@@ -55,56 +63,6 @@ interface ChoiceProps {
   look: OrderTypeLook
   onSelect: () => void
 }
-
-function PreorderChip({ ot }: { ot: OrderType }) {
-  if (!ot.advance_order_enabled) return null
-  return (
-    <span data-part="badge" className="inline-flex items-center gap-1 rounded-full bg-[var(--co-accent-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--co-accent)]">
-      <CalendarClock className="h-2.5 w-2.5" aria-hidden="true" /> Pre-order
-    </span>
-  )
-}
-
-function ChoiceIcon({ ot, isSelected, iconStyle, size = 'md' }: { ot: OrderType; isSelected: boolean; iconStyle: OrderTypeIconStyle; size?: 'sm' | 'md' | 'lg' }) {
-  if (iconStyle === 'none') return null
-  const Icon = ORDER_TYPE_ICONS[ot.type] ?? ORDER_TYPE_ICONS.other
-  const glyph = size === 'lg' ? 'h-6 w-6' : size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
-  if (iconStyle === 'plain') {
-    return <Icon aria-hidden="true" data-part="icon" data-on={isSelected ? '' : undefined} className={`${glyph} shrink-0 ${isSelected ? 'text-[color:var(--co-accent)]' : 'text-[color:var(--co-muted)]'}`} />
-  }
-  const circle = size === 'lg' ? 'h-12 w-12' : size === 'sm' ? 'h-7 w-7' : 'h-10 w-10'
-  return (
-    <span
-      aria-hidden="true"
-      data-part="icon"
-      data-on={isSelected ? '' : undefined}
-      className={`inline-flex ${circle} shrink-0 items-center justify-center rounded-full ${
-        isSelected ? 'bg-[var(--co-accent)] text-[color:var(--co-accent-text)]' : 'bg-[var(--co-subtle-strong)] text-[color:var(--co-muted)]'
-      }`}
-    >
-      <Icon className={glyph} />
-    </span>
-  )
-}
-
-function KindIcon({ ot, className }: { ot: OrderType; className: string }) {
-  const Icon = ORDER_TYPE_ICONS[ot.type] ?? ORDER_TYPE_ICONS.other
-  return <Icon aria-hidden="true" data-part="icon" className={className} />
-}
-
-function SelectedTick({ className = '' }: { className?: string }) {
-  return (
-    <span aria-hidden="true" data-part="tick" className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--co-accent)] text-[color:var(--co-accent-text)] ${className}`}>
-      <Check className="h-3 w-3" />
-    </span>
-  )
-}
-
-/** Unselected = card + border; selected = the accent's soft wash + accent border. */
-const choiceSurface = (isSelected: boolean) =>
-  isSelected
-    ? 'border-[color:var(--co-accent)] bg-[var(--co-accent-soft)] shadow-sm'
-    : 'border-[color:var(--co-border)] bg-[var(--co-card)] hover:border-[color:var(--co-accent-border)]'
 
 function ListRow({ ot, isSelected, look, onSelect }: ChoiceProps) {
   return (
@@ -116,13 +74,13 @@ function ListRow({ ot, isSelected, look, onSelect }: ChoiceProps) {
       data-on={isSelected ? '' : undefined}
       className={`flex w-full items-center gap-3 border-2 px-4 py-3 text-left transition ${cornersClass(look.corners, 'rounded-xl')} ${choiceSurface(isSelected)}`}
     >
-      <ChoiceIcon ot={ot} isSelected={isSelected} iconStyle={look.iconStyle} />
+      <ChoiceIcon ot={ot} isSelected={isSelected} iconStyle={look.iconStyle} wording={look.wording} />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-1.5">
-          <span data-part="option-label" className="font-semibold text-[color:var(--co-text)]">{ot.name}</span>
+          <span data-part="option-label" className="font-semibold text-[color:var(--co-text)]">{nameOf(ot, look.wording)}</span>
           <PreorderChip ot={ot} />
         </span>
-        {look.showDescriptions && ot.description && <span data-part="option-desc" className="mt-0.5 block text-sm text-[color:var(--co-muted)]">{ot.description}</span>}
+        {look.showDescriptions && descriptionOf(ot, look.wording) && <span data-part="option-desc" className="mt-0.5 block text-sm text-[color:var(--co-muted)]">{descriptionOf(ot, look.wording)}</span>}
       </span>
       <span
         aria-hidden="true"
@@ -147,10 +105,10 @@ function DetailCard({ ot, isSelected, look, onSelect }: ChoiceProps) {
       data-on={isSelected ? '' : undefined}
       className={`relative flex w-full items-start gap-4 border-2 p-4 text-left transition sm:p-5 ${cornersClass(look.corners, 'rounded-2xl')} ${choiceSurface(isSelected)}`}
     >
-      <ChoiceIcon ot={ot} isSelected={isSelected} iconStyle={look.iconStyle} size="lg" />
+      <ChoiceIcon ot={ot} isSelected={isSelected} iconStyle={look.iconStyle} wording={look.wording} size="lg" />
       <span className="min-w-0 flex-1 pr-6">
-        <span data-part="option-label" className="block text-base font-bold leading-tight text-[color:var(--co-text)]">{ot.name}</span>
-        {look.showDescriptions && ot.description && <span data-part="option-desc" className="mt-1 block text-sm leading-snug text-[color:var(--co-muted)]">{ot.description}</span>}
+        <span data-part="option-label" className="block text-base font-bold leading-tight text-[color:var(--co-text)]">{nameOf(ot, look.wording)}</span>
+        {look.showDescriptions && descriptionOf(ot, look.wording) && <span data-part="option-desc" className="mt-1 block text-sm leading-snug text-[color:var(--co-muted)]">{descriptionOf(ot, look.wording)}</span>}
         {ot.advance_order_enabled && <span className="mt-2 block"><PreorderChip ot={ot} /></span>}
       </span>
       {isSelected && <SelectedTick className="absolute right-3 top-3" />}
@@ -173,11 +131,11 @@ function BigButton({ ot, isSelected, look, onSelect }: ChoiceProps) {
           : 'border-[color:var(--co-border)] bg-[var(--co-card)] text-[color:var(--co-text)] hover:border-[color:var(--co-accent-border)]'
       }`}
     >
-      {look.iconStyle !== 'none' && <KindIcon ot={ot} className="h-6 w-6 shrink-0" />}
+      {look.iconStyle !== 'none' && <KindIcon ot={ot} wording={look.wording} className="h-6 w-6 shrink-0" />}
       <span className={`min-w-0 ${isCentered ? '' : 'flex-1'}`}>
-        <span data-part="option-label" className="block text-lg font-bold leading-tight">{ot.name}</span>
-        {look.showDescriptions && ot.description && (
-          <span data-part="option-desc" className={`mt-0.5 block text-sm ${isSelected ? 'opacity-90' : 'text-[color:var(--co-muted)]'}`}>{ot.description}</span>
+        <span data-part="option-label" className="block text-lg font-bold leading-tight">{nameOf(ot, look.wording)}</span>
+        {look.showDescriptions && descriptionOf(ot, look.wording) && (
+          <span data-part="option-desc" className={`mt-0.5 block text-sm ${isSelected ? 'opacity-90' : 'text-[color:var(--co-muted)]'}`}>{descriptionOf(ot, look.wording)}</span>
         )}
         {ot.advance_order_enabled && <span data-part="badge" className={`mt-1 block text-xs font-semibold ${isSelected ? 'opacity-90' : 'text-[color:var(--co-accent)]'}`}>Pre-order</span>}
       </span>
@@ -199,8 +157,8 @@ function Chip({ ot, isSelected, look, onSelect }: ChoiceProps) {
           : 'border-[color:var(--co-border)] bg-[var(--co-card)] text-[color:var(--co-text)] hover:border-[color:var(--co-accent-border)]'
       }`}
     >
-      {look.iconStyle !== 'none' && <KindIcon ot={ot} className="h-4 w-4 shrink-0" />}
-      {ot.name}
+      {look.iconStyle !== 'none' && <KindIcon ot={ot} wording={look.wording} className="h-4 w-4 shrink-0" />}
+      {nameOf(ot, look.wording)}
       {ot.advance_order_enabled && <CalendarClock aria-label="Pre-order" className="h-3.5 w-3.5 shrink-0 opacity-80" />}
     </button>
   )
@@ -210,7 +168,7 @@ const PHOTO_KINDS: Readonly<Record<string, OrderTypePhotoKind>> = { dine_in: 'di
 
 function PhotoTile({ ot, isSelected, look, onSelect }: ChoiceProps) {
   const photo = look.images[PHOTO_KINDS[ot.type] ?? 'other']
-  const Icon = ORDER_TYPE_ICONS[ot.type] ?? ORDER_TYPE_ICONS.other
+  const Icon = iconOf(ot, look.wording)
   return (
     <button
       type="button"
@@ -231,8 +189,8 @@ function PhotoTile({ ot, isSelected, look, onSelect }: ChoiceProps) {
         </span>
       )}
       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-3 pb-2.5 pt-8 text-white">
-        <span data-part="option-label" className="block text-base font-bold leading-tight">{ot.name}</span>
-        {look.showDescriptions && ot.description && <span data-part="option-desc" className="mt-0.5 line-clamp-2 block text-xs text-white/85">{ot.description}</span>}
+        <span data-part="option-label" className="block text-base font-bold leading-tight">{nameOf(ot, look.wording)}</span>
+        {look.showDescriptions && descriptionOf(ot, look.wording) && <span data-part="option-desc" className="mt-0.5 line-clamp-2 block text-xs text-white/85">{descriptionOf(ot, look.wording)}</span>}
         {ot.advance_order_enabled && <span data-part="badge" className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"><CalendarClock className="h-3 w-3" aria-hidden="true" /> Pre-order</span>}
       </span>
       {isSelected && <SelectedTick className="absolute right-2 top-2" />}
@@ -242,6 +200,7 @@ function PhotoTile({ ot, isSelected, look, onSelect }: ChoiceProps) {
 
 function Segmented({ checkout, look }: { checkout: UseCheckoutReturn; look: OrderTypeLook }) {
   const { orderTypes, orderType, setOrderType, selectedOrderTypeData } = checkout
+  const chosenDescription = selectedOrderTypeData ? descriptionOf(selectedOrderTypeData, look.wording) : undefined
   const track = cornersClass(look.corners, 'rounded-full')
   return (
     <div>
@@ -260,16 +219,16 @@ function Segmented({ checkout, look }: { checkout: UseCheckoutReturn; look: Orde
                 isSelected ? 'bg-[var(--co-accent)] text-[color:var(--co-accent-text)] shadow-sm' : 'text-[color:var(--co-text)] hover:bg-[var(--co-subtle)]'
               }`}
             >
-              {look.iconStyle !== 'none' && <KindIcon ot={ot} className="h-4 w-4 shrink-0" />}
-              <span data-part="option-label" className="truncate">{ot.name}</span>
+              {look.iconStyle !== 'none' && <KindIcon ot={ot} wording={look.wording} className="h-4 w-4 shrink-0" />}
+              <span data-part="option-label" className="truncate">{nameOf(ot, look.wording)}</span>
               {ot.advance_order_enabled && <CalendarClock aria-label="Pre-order" className="h-3.5 w-3.5 shrink-0 opacity-80" />}
             </button>
           )
         })}
       </div>
       {/* The chosen way's details, under the bar (never hidden on phones). */}
-      {look.showDescriptions && selectedOrderTypeData?.description && (
-        <p data-part="option-desc" className="mt-2 px-1 text-sm text-[color:var(--co-muted)]">{selectedOrderTypeData.description}</p>
+      {look.showDescriptions && chosenDescription && (
+        <p data-part="option-desc" className="mt-2 px-1 text-sm text-[color:var(--co-muted)]">{chosenDescription}</p>
       )}
     </div>
   )
@@ -283,7 +242,7 @@ function photoColumns(columns: OrderTypeColumns, count: number): string {
   return count === 1 ? GRID_COLUMNS['1'] : GRID_COLUMNS['2']
 }
 
-const LAYOUT: Record<Exclude<OrderTypeDesign, 'tiles' | 'segmented'>, { Choice: (props: ChoiceProps) => ReactNode; wrap: (look: OrderTypeLook, count: number) => string }> = {
+const LAYOUT: Record<'list' | 'cards' | 'buttons' | 'chips' | 'photo', { Choice: (props: ChoiceProps) => ReactNode; wrap: (look: OrderTypeLook, count: number) => string }> = {
   list: { Choice: ListRow, wrap: () => 'flex flex-col gap-2' },
   cards: { Choice: DetailCard, wrap: () => 'flex flex-col gap-3' },
   buttons: { Choice: BigButton, wrap: () => 'flex flex-col gap-3' },
@@ -295,7 +254,14 @@ const LAYOUT: Record<Exclude<OrderTypeDesign, 'tiles' | 'segmented'>, { Choice: 
 export function OrderTypeChoices({ checkout, look = DEFAULT_ORDER_TYPE_LOOK }: { checkout: UseCheckoutReturn; look?: OrderTypeLook }) {
   const { orderTypes, orderType, setOrderType } = checkout
   if (!orderTypes.length) return null
-  if (look.design === 'tiles') return <OrderTypeSelector checkout={checkout} look={look} />
+  if (look.design === 'tiles' || (look.design === 'switch' && !switchFits(checkout))) return <OrderTypeSelector checkout={checkout} look={look} />
+  if (isMoreOrderTypeDesign(look.design)) {
+    return (
+      <div style={checkoutThemeStyle(checkout)} data-branding-scope="checkout/choice">
+        <MoreOrderTypeChoices checkout={checkout} look={look} design={look.design} />
+      </div>
+    )
+  }
   if (look.design === 'segmented') {
     return (
       <div style={checkoutThemeStyle(checkout)} data-branding-scope="checkout/choice">

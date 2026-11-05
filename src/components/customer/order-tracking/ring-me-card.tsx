@@ -8,6 +8,7 @@ interface RingMeCardProps {
   isArmed: boolean
   onArm: () => void
   wording: RingMeWording
+  showHint?: boolean
 }
 
 /**
@@ -15,7 +16,7 @@ interface RingMeCardProps {
  * arms the alarm, exactly like the standard button), with the bell in a
  * circle and the after-tap hint inside.
  */
-export function RingMeCard({ isArmed, onArm, wording }: RingMeCardProps) {
+export function RingMeCard({ isArmed, onArm, wording, showHint = true }: RingMeCardProps) {
   const Icon = isArmed ? BellRing : Bell
   return (
     <div data-branding-scope="tracking/ring">
@@ -46,7 +47,7 @@ export function RingMeCard({ isArmed, onArm, wording }: RingMeCardProps) {
               ? wording.armed ?? <StoreLabel name="tracking.ring_armed" fallback="We'll ring & vibrate when it's ready" />
               : wording.label ?? <StoreLabel name="tracking.ring_me" fallback="Ring me when my order is ready" />}
           </span>
-          {isArmed && (
+          {showHint && isArmed && (
             <span data-part="muted" className="mt-0.5 block text-xs" style={{ color: 'var(--trk-text-muted)' }}>
               {wording.armedHint ?? 'Keep this page open and your volume up.'}
             </span>

@@ -17,6 +17,20 @@ interface OrderSummaryCardProps {
   wording?: OrderSummaryWording
   /** Page Designer layout; unset = today's card. */
   layout?: OrderSummaryLayout
+  /** Page Designer switches; each unset line shows, as today. */
+  show?: OrderSummaryShow
+}
+
+export interface OrderSummaryShow {
+  title?: boolean
+  addons?: boolean
+  /** Delivery fee and service charge rows. */
+  fees?: boolean
+}
+
+/** Every line on, filled in from what the block was given. */
+export function orderSummaryShow(show: OrderSummaryShow = {}): Required<OrderSummaryShow> {
+  return { title: true, addons: true, fees: true, ...show }
 }
 
 export interface OrderSummaryWording {
@@ -29,11 +43,13 @@ export interface OrderSummaryWording {
 const NO_WORDING: OrderSummaryWording = {}
 
 /** The receipt: what was ordered and what it cost, in the tenant's palette. */
-export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmount, wording = NO_WORDING, layout = 'standard' }: OrderSummaryCardProps) {
-  if (layout === 'receipt') return <ReceiptOrderSummary items={items} total={total} deliveryFee={deliveryFee} serviceChargeAmount={serviceChargeAmount} wording={wording} />
-  if (layout === 'compact') return <CompactOrderSummary items={items} total={total} deliveryFee={deliveryFee} serviceChargeAmount={serviceChargeAmount} wording={wording} />
-  const hasDeliveryFee = deliveryFee != null && deliveryFee > 0
-  const hasServiceCharge = serviceChargeAmount != null && serviceChargeAmount > 0
+export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmount, wording = NO_WORDING, layout = 'standard', show }: OrderSummaryCardProps) {
+  const lines = orderSummaryShow(show)
+  const variantProps = { items, total, deliveryFee, serviceChargeAmount, wording, lines }
+  if (layout === 'receipt') return <ReceiptOrderSummary {...variantProps} />
+  if (layout === 'compact') return <CompactOrderSummary {...variantProps} />
+  const hasDeliveryFee = lines.fees && deliveryFee != null && deliveryFee > 0
+  const hasServiceCharge = lines.fees && serviceChargeAmount != null && serviceChargeAmount > 0
 
   return (
     <section
@@ -43,10 +59,12 @@ export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmoun
       className="border p-5 shadow-sm"
       style={{ borderRadius: 'var(--trk-radius)', backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-card-border)' }}
     >
-      <h2 data-part="title" className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--trk-text-muted)' }}>
-        <Receipt className="h-4 w-4" aria-hidden="true" />
-        {wording.title ?? <StoreLabel name="tracking.summary_title" fallback="Your order" />}
-      </h2>
+      {lines.title && (
+        <h2 data-part="title" className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--trk-text-muted)' }}>
+          <Receipt className="h-4 w-4" aria-hidden="true" />
+          {wording.title ?? <StoreLabel name="tracking.summary_title" fallback="Your order" />}
+        </h2>
+      )}
 
       <ul className="divide-y" style={{ borderColor: 'var(--trk-card-border)' }}>
         {items.map((item, index) => (
@@ -65,7 +83,7 @@ export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmoun
                   <span data-part="muted" className="text-xs" style={{ color: 'var(--trk-text-muted)' }}> ({item.variation})</span>
                 )}
               </p>
-              {item.addons && item.addons.length > 0 && (
+              {lines.addons && item.addons && item.addons.length > 0 && (
                 <p data-part="muted" className="mt-0.5 pl-8 text-xs" style={{ color: 'var(--trk-text-faint)' }}>
                   + {item.addons.join(', ')}
                 </p>

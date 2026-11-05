@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useMemo, type ComponentType, type ReactNode } from 'react'
 
-import type { PageBlockContent } from '@/lib/hero-builder/types'
+import type { PageBlockContent, Widget } from '@/lib/hero-builder/types'
 import { pageBlockDef } from '@/lib/page-designer/blocks'
 import { applyTokens, resolveBlockOption, resolveBlockText } from '@/lib/page-designer/text'
 import type { PageBlockDef, PageId } from '@/lib/page-designer/types'
@@ -43,6 +43,11 @@ export interface PageRuntime {
    * without it let every step through (the final button still checks).
    */
   stepProblem?: (blockIds: readonly string[]) => string | null
+  /**
+   * Editor only: extra panels for a block's Content tab, by block id (the
+   * checkout's customer block → its form editor). Rendered under Settings.
+   */
+  blockPanels?: Readonly<Partial<Record<string, ComponentType<{ widget: Widget }>>>>
 }
 
 const PageRuntimeContext = createContext<PageRuntime | null>(null)

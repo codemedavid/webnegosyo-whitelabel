@@ -135,8 +135,11 @@ interface CheckoutFieldRow {
 export function toPosCheckoutField(row: CheckoutFieldRow): PosCheckoutField | null {
   const name = row.field_name ?? "";
   if (name.trim() === "") return null;
-  const type = FIELD_TYPES.includes(row.field_type as CheckoutFieldType)
-    ? (row.field_type as CheckoutFieldType)
+  // The web's "buttons" question picks one of its options, like a dropdown.
+  // Every other kind the register has no control for (tick box, date…) is asked as text.
+  const rawType = row.field_type === "choice" ? "select" : row.field_type;
+  const type = FIELD_TYPES.includes(rawType as CheckoutFieldType)
+    ? (rawType as CheckoutFieldType)
     : "text";
   const options = type === "select" ? toOptions(row.options) : [];
   return {

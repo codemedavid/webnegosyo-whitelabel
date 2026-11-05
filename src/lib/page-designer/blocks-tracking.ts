@@ -21,6 +21,8 @@ const HEADER_OPTIONS: readonly BlockOption[] = [
   ...trackingColorKnobs(['color_header', 'color_header_text', 'color_live']),
   { key: 'show_live_badge', label: 'Show the live badge', type: 'boolean', default: true },
   toggle('show_logo', 'Show your logo'),
+  toggle('show_store_name', 'Store name'),
+  toggle('show_order_number', 'Order number'),
 ]
 
 const STATUS_OPTIONS: readonly BlockOption[] = [
@@ -43,6 +45,8 @@ const STATUS_OPTIONS: readonly BlockOption[] = [
   ]),
   toggle('show_greeting', 'Show the greeting'),
   toggle('show_placed', 'Show when it was placed'),
+  toggle('show_progress', 'Progress bar', { hint: 'The short bar of steps under the status.' }),
+  toggle('show_ready_time', 'Ready time', { hint: 'When the kitchen sets one: "Ready by 6:30 PM".' }),
   toggle('show_decor', 'Background circles', { group: 'advanced', ...when('variant', [FOLLOW_PAGE, 'gradient', 'solid', 'soft', 'outline']) }),
 ]
 
@@ -53,6 +57,7 @@ const RING_OPTIONS: readonly BlockOption[] = [
   ]),
   ...trackingColorKnobs(['color_ring', 'color_ring_text', 'color_ring_border', 'color_ring_armed']),
   TRACKING_CORNERS_KNOB,
+  toggle('show_helper', 'Tip after tapping', { hint: '"Keep this page open and your volume up."' }),
 ]
 
 const LOYALTY_OPTIONS: readonly BlockOption[] = [
@@ -93,6 +98,8 @@ const PICKUP_OPTIONS: readonly BlockOption[] = [
   trackingColorKnob('color_pickup_border', when('variant', ['card'])),
   ...trackingColorKnobs(['color_pickup_text', 'color_pickup_ready']),
   TRACKING_CORNERS_KNOB,
+  toggle('show_title', 'Title', { hint: '"Your collection code" above the code.' }),
+  toggle('show_helper', 'Help text', { hint: 'The line under the code saying staff will scan it.' }),
 ]
 
 const TIMELINE_OPTIONS: readonly BlockOption[] = [
@@ -117,6 +124,9 @@ const SUMMARY_OPTIONS: readonly BlockOption[] = [
   trackingColorKnob('color_badge', when('variant', ['standard'])),
   trackingColorKnob('color_border', { group: 'advanced' }),
   TRACKING_CORNERS_KNOB,
+  toggle('show_title', 'Title'),
+  toggle('show_addons', 'Add-ons'),
+  toggle('show_fees', 'Delivery fee and service charge'),
 ]
 
 const BACK_OPTIONS: readonly BlockOption[] = [

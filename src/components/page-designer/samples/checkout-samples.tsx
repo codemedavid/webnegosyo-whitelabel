@@ -14,6 +14,7 @@ import { CHECKOUT_BLOCK_VIEWS } from '@/components/page-designer/checkout/checko
 import type { CheckoutBlockViewProps } from '@/components/page-designer/checkout/block-views-details'
 import { StoreClosedView } from '@/components/page-designer/checkout/block-views-top'
 import { buildSampleCheckout, type SamplePalette } from '@/components/page-designer/checkout/sample-checkout'
+import { useCheckoutFormPreview } from '@/components/page-designer/editor/form-editor/form-context'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
 /** The `--co-*` variable behind each palette entry (set on the canvas by page-theme-checkout). */
@@ -73,7 +74,9 @@ function useSampleCheckout(ref: RefObject<HTMLDivElement | null>): UseCheckoutRe
   }, [ref, store])
   // The editor hands the store row over (live Look edits); otherwise read the canvas variables.
   const palette = useMemo(() => (store ? storePalette(store) : canvasPalette), [store, canvasPalette])
-  return useMemo(() => buildSampleCheckout(palette), [palette])
+  // The form editor's draft questions (for the order type open there), when editing.
+  const form = useCheckoutFormPreview()
+  return useMemo(() => buildSampleCheckout(palette, undefined, form), [palette, form])
 }
 
 const SAMPLE_CARD: OrderStampCard = {

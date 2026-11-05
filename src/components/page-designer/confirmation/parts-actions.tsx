@@ -99,20 +99,23 @@ function TrackingCountdownLine({ copy }: { copy: ActionsCopy }) {
 interface TrackButtonsProps {
   copy?: ActionsCopy
   showBack?: boolean
+  /** Page Designer: hide "Track Your Order" (never on a kiosk, which has its own card). */
+  showTrack?: boolean
   /** Page Designer only; the defaults are today's buttons. */
   layout?: ActionsLayout
   shape?: string
 }
 
 /** Track Order + Back to Menu. */
-export function ConfirmationTrackButtons({ copy = {}, showBack = true, layout = 'stacked', shape = PILL }: TrackButtonsProps) {
+export function ConfirmationTrackButtons({ copy = {}, showBack = true, showTrack = true, layout = 'stacked', shape = PILL }: TrackButtonsProps) {
   const b = useConfirmationBlocks()
   if (!b) return null
+  const hasTrack = showTrack && b.canTrack
   const isSide = layout === 'side'
   const back = BACK_BUTTON[layout]
   const buttons = (
     <>
-      {b.canTrack && (
+      {hasTrack && (
         <Button size="lg" data-part="button" className={isSide ? `${primaryButton(shape)} h-auto min-h-12 whitespace-normal` : primaryButton(shape)} onClick={b.onTrack}>
           <Package className="mr-2 h-5 w-5" />
           {copy.track ?? 'Track Your Order'}
@@ -136,7 +139,7 @@ export function ConfirmationTrackButtons({ copy = {}, showBack = true, layout = 
     <div className="pb-8 space-y-3">
       <TrackingCountdownLine copy={copy} />
       {isSide ? (
-        <div className={`grid gap-3 ${b.canTrack && showBack ? 'grid-cols-2' : 'grid-cols-1'}`}>{buttons}</div>
+        <div className={`grid gap-3 ${hasTrack && showBack ? 'grid-cols-2' : 'grid-cols-1'}`}>{buttons}</div>
       ) : buttons}
     </div>
   )

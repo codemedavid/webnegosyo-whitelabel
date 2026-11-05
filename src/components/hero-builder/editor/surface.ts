@@ -1,5 +1,7 @@
 'use client'
 
+import type { ComponentType } from 'react'
+
 import { publishHeroDesignAction, unpublishHeroDesignAction } from '@/app/actions/hero-builder'
 import { publishWelcomeDesignAction, unpublishWelcomeDesignAction } from '@/app/actions/welcome-builder'
 import { SECTION_PRESETS, type SectionPreset } from '@/lib/hero-builder/section-presets'
@@ -13,6 +15,7 @@ import { WELCOME_TEMPLATE_CATEGORIES, WELCOME_TEMPLATES } from '@/lib/welcome-bu
 import type { LinkSurface } from './inspector/link-picker'
 import { HERO_ADD_GROUPS, WELCOME_ADD_GROUP, type AddGroup } from './panels/add-panel'
 import type { GalleryPreview, GalleryTemplate } from './template-gallery'
+import type { HeroBuilderApi } from './use-hero-builder'
 
 /**
  * Page Designer surfaces only: the page being designed, how its blocks look
@@ -35,6 +38,14 @@ export interface SurfaceTarget {
   tenantSlug: string
 }
 
+/** What a surface's notice above the canvas gets. */
+export interface SurfaceBannerProps {
+  api: HeroBuilderApi
+  target: SurfaceTarget
+  /** The design is still exactly what the editor opened with. */
+  isUnchanged: boolean
+}
+
 /**
  * Everything that differs between the builders that share this editor: what
  * the page is called, where it publishes, and which templates, blocks and
@@ -47,7 +58,13 @@ export interface BuilderSurface {
   draftPrefix: string
   templates: readonly GalleryTemplate[]
   templateCategories: readonly string[]
+  /** Filter names per category (default: the category, capitalised). */
+  templateCategoryLabels?: Readonly<Record<string, string>>
   templatePreview?: GalleryPreview
+  /** Called after the owner picks a gallery template. */
+  onTemplatePicked?: (templateId: string, target: SurfaceTarget) => void
+  /** A small notice over the canvas (Page Designer: "use the matching look?"). */
+  Banner?: ComponentType<SurfaceBannerProps>
   addGroups: readonly AddGroup[]
   sectionPresets: readonly SectionPreset[]
   publish: (target: SurfaceTarget, design: HeroDesignV5) => Promise<PublishResult>

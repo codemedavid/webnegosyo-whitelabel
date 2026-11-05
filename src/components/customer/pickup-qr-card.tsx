@@ -14,6 +14,10 @@ interface PickupQrCardProps {
   shortId: string
   /** True once the order is ready, which changes the copy only. */
   isReady: boolean
+  /** Page Designer: hide the line above the code. */
+  showTitle?: boolean
+  /** Page Designer: hide the line under the code that says staff will scan it. */
+  showHelper?: boolean
 }
 
 /**
@@ -30,6 +34,8 @@ export function PickupQrCard({
   trackingToken,
   shortId,
   isReady,
+  showTitle = true,
+  showHelper = true,
 }: PickupQrCardProps) {
   // `t` is a timestamp only, so the value is stable for a given order and the
   // code does not churn between renders or polls.
@@ -60,10 +66,12 @@ export function PickupQrCard({
         borderColor: isReady ? 'var(--trk-pickup-ready)' : 'var(--trk-pickup-border)',
       }}
     >
-      <div data-part="title" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--trk-pickup-text)' }}>
-        <ScanLine className="h-4 w-4" />
-        {isReady ? 'Ready — show this to collect' : 'Your collection code'}
-      </div>
+      {showTitle && (
+        <div data-part="title" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--trk-pickup-text)' }}>
+          <ScanLine className="h-4 w-4" />
+          {isReady ? 'Ready — show this to collect' : 'Your collection code'}
+        </div>
+      )}
 
       <div className="mx-auto w-fit bg-white p-4 shadow-sm" style={{ borderRadius: 'var(--trk-radius-inner)' }}>
         <QRCodeSVG value={encoded} size={180} level="M" marginSize={0} />
@@ -72,11 +80,13 @@ export function PickupQrCard({
       <p data-part="muted" className="mt-3 text-xs font-mono tracking-widest" style={{ color: 'var(--trk-pickup-muted)' }}>
         #{shortId}
       </p>
-      <p data-part="text" className="mt-2 text-xs" style={{ color: 'var(--trk-pickup-muted)' }}>
-        {isReady
-          ? 'Show this code at the counter and our staff will scan it to hand over your order.'
-          : 'Keep this handy — staff will scan it when your order is ready for collection.'}
-      </p>
+      {showHelper && (
+        <p data-part="text" className="mt-2 text-xs" style={{ color: 'var(--trk-pickup-muted)' }}>
+          {isReady
+            ? 'Show this code at the counter and our staff will scan it to hand over your order.'
+            : 'Keep this handy — staff will scan it when your order is ready for collection.'}
+        </p>
+      )}
     </section>
   )
 }

@@ -19,6 +19,8 @@ interface VoucherFieldProps {
   onChooseUnits?: (code: string, picks: Record<string, number>) => void | Promise<void>
   /** The prompt; replaces the store's `checkout.voucher` label when given (Page Designer). */
   label?: string
+  /** Off keeps the prompt for screen readers only (Page Designer); absent = shown. */
+  showLabel?: boolean
 }
 
 /**
@@ -38,6 +40,7 @@ export function VoucherField({
   lineNames = {},
   onChooseUnits,
   label,
+  showLabel = true,
 }: VoucherFieldProps) {
   const [draft, setDraft] = useState('')
 
@@ -53,7 +56,7 @@ export function VoucherField({
 
   return (
     <div className="space-y-2">
-      <label htmlFor="voucher-code-input" data-part="label" className="text-sm font-medium text-[color:var(--co-text)]">
+      <label htmlFor="voucher-code-input" data-part="label" className={showLabel ? 'text-sm font-medium text-[color:var(--co-text)]' : 'sr-only'}>
         {label ?? <StoreLabel name="checkout.voucher" fallback="Have a voucher?" />}
       </label>
 

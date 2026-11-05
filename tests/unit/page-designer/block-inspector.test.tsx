@@ -14,6 +14,7 @@ import { mapPageBlocks, PageBlockStyle } from '@/components/hero-builder/editor/
 import type { HeroBuilderApi } from '@/components/hero-builder/editor/use-hero-builder'
 import { PageRuntimeProvider, type PageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { CHECKOUT_SAMPLE_BLOCKS } from '@/components/page-designer/samples/checkout-samples'
+import { ORDER_TYPE_DESIGNS } from '@/components/customer/checkout-templates/order-type-choices'
 import { createPageBlock } from '@/lib/page-designer/design-blocks'
 import { pageBlockDef } from '@/lib/page-designer/blocks'
 import type { HeroDesignV5, PageBlockContent, Widget } from '@/lib/hero-builder/types'
@@ -48,8 +49,9 @@ describe('page block inspector', () => {
   it('shows one design tile per design with the current one picked, and picks another', () => {
     const { editContent } = renderInspector(orderTypeWidget())
     const gallery = screen.getByRole('radiogroup', { name: 'Design' })
-    const designs = gallery.querySelectorAll('[role="radio"]')
-    expect(designs).toHaveLength(7)
+    // Only the tiles themselves: a thumbnail of a radio-group design holds radios of its own.
+    const designs = [...gallery.children].filter((el) => el.getAttribute('role') === 'radio')
+    expect(designs).toHaveLength(ORDER_TYPE_DESIGNS.length)
     expect(screen.getByRole('radio', { name: /Tiles/ })).toHaveAttribute('aria-checked', 'true')
     fireEvent.click(screen.getByRole('radio', { name: /Big buttons/ }))
     expect(lastOptions(editContent)).toEqual({ variant: 'buttons' })

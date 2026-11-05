@@ -12,6 +12,7 @@
 
 import { BRANDING_SURFACES, type BrandingField, type BrandingSection, type BrandingSurface } from '@/lib/branding-registry'
 import { flattenJsonColumns, foldedJsonColumns, isJsonColumnFieldId, JSON_COLUMNS, withJsonColumnsPreview } from '@/lib/branding-studio/studio-columns'
+import { mergeMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import { STOREFRONT_LABELS, type LabelScreen } from '@/lib/storefront-labels'
 
 import type { PageId } from './types'
@@ -53,6 +54,16 @@ function labelSection(screens: readonly LabelScreen[]): BrandingSection {
 const prefixed = (prefix: string, sections: readonly BrandingSection[]): BrandingSection[] =>
   sections.map((section) => ({ ...section, title: `${prefix} · ${section.title}` }))
 
+/** Whole-store settings the checkout and thank-you pages also paint from (status colours, the main button, fonts). */
+const STORE_FIELD_IDS = ['button_primary_color', 'button_primary_text_color', 'success_color', 'warning_color', 'error_color', 'font_pair', 'card_roundness'] as const
+
+function storeSection(): BrandingSection {
+  const fields = surfaceSections('global')
+    .flatMap((section) => section.fields)
+    .filter((field) => (STORE_FIELD_IDS as readonly string[]).includes(field.id))
+  return { title: 'Whole store · also changes your menu', fields }
+}
+
 /**
  * What the Look tab shows for each page, in order. The checkout's layout
  * picker is left out: a designed checkout has its own layout.
@@ -62,8 +73,9 @@ export const PAGE_LOOK_SECTIONS: Readonly<Record<PageId, readonly BrandingSectio
     ...styleSections('checkout', ['Template']),
     ...prefixed('Loyalty card', styleSections('loyalty')),
     labelSection(['checkout', 'loyalty']),
+    storeSection(),
   ],
-  confirmation: [...styleSections('checkout', ['Template']), labelSection(['confirmation'])],
+  confirmation: [...styleSections('checkout', ['Template']), labelSection(['confirmation']), storeSection()],
   tracking: [...styleSections('tracking'), ...prefixed('Loyalty card', styleSections('loyalty')), labelSection(['tracking', 'loyalty'])],
 }
 
@@ -74,24 +86,61 @@ const FIELD_IDS: Readonly<Record<PageId, ReadonlySet<string>>> = Object.fromEntr
   ]),
 ) as unknown as Record<PageId, ReadonlySet<string>>
 
+/**
+ * A Branding Studio phone override of a Look field, as a field id. The Look
+ * tab only CLEARS one ("use this colour on phones too"): without that, a
+ * phone colour set in the Studio would silently beat the edit on phones.
+ */
+export const MOBILE_PREFIX = 'mobile_overrides.'
+
+/** The Look field a phone-override id clears (null for any other id). */
+export function mobileOverrideField(fieldId: string): string | null {
+  return fieldId.startsWith(MOBILE_PREFIX) ? fieldId.slice(MOBILE_PREFIX.length) : null
+}
+
 /** Whether the Look tab of `page` may change `fieldId`. */
 export function isPageLookField(page: PageId, fieldId: string): boolean {
+  const phone = mobileOverrideField(fieldId)
+  // Phone overrides exist for real columns only (JSON-column looks are one look on every device).
+  if (phone !== null) return FIELD_IDS[page].has(phone) && !isJsonColumnFieldId(phone)
   return FIELD_IDS[page].has(fieldId)
 }
 
 type Row = Readonly<Record<string, unknown>>
 
-/** The saved values the Look tab reads: real columns plus every JSON column flattened into field ids. */
+const overridesOf = (row: Row): OverrideMap => {
+  const value = row.mobile_overrides
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as OverrideMap) : {}
+}
+
+/** The saved values the Look tab reads: real columns, every JSON column flattened into field ids, and the phone overrides. */
 export function lookValues(row: Row): Record<string, unknown> {
-  return { ...row, ...flattenJsonColumns(row as Record<string, unknown>) }
+  const phone = Object.fromEntries(Object.entries(overridesOf(row)).map(([key, value]) => [`${MOBILE_PREFIX}${key}`, value]))
+  return { ...row, ...flattenJsonColumns(row as Record<string, unknown>), ...phone }
+}
+
+/** The phone overrides cleared by `changes` ({} when none). */
+function clearedPhoneOverrides(changes: LookChanges): OverrideMap {
+  return Object.fromEntries(
+    Object.keys(changes)
+      .map(mobileOverrideField)
+      .filter((field): field is string => field !== null)
+      .map((field) => [field, '']),
+  )
 }
 
 /** The store row as it will look with `changes` saved (for the live canvas). */
 export function previewLookRow(row: Row, changes: LookChanges): Record<string, unknown> {
-  const real = Object.fromEntries(Object.entries(changes).filter(([id]) => !isJsonColumnFieldId(id)).map(([id, v]) => [id, v === '' ? null : v]))
+  const real = Object.fromEntries(
+    Object.entries(changes)
+      .filter(([id]) => !isJsonColumnFieldId(id) && mobileOverrideField(id) === null)
+      .map(([id, v]) => [id, v === '' ? null : v]),
+  )
   const folded = withJsonColumnsPreview({ ...changes } as Record<string, unknown>, row as Record<string, unknown>)
   const jsonColumns = Object.fromEntries(JSON_COLUMNS.filter((c) => c.column in folded).map((c) => [c.column, folded[c.column]]))
-  return { ...row, ...real, ...jsonColumns }
+  const cleared = clearedPhoneOverrides(changes)
+  const phone = Object.keys(cleared).length ? { mobile_overrides: mergeMobileOverrides(overridesOf(row), cleared) } : {}
+  return { ...row, ...real, ...jsonColumns, ...phone }
 }
 
 const sameValue = (a: unknown, b: unknown) => (a ?? '') === (b ?? '')
@@ -118,8 +167,11 @@ export function remainingLookChanges(changes: LookChanges, sent: LookChanges): L
  */
 export function lookPatch(changes: LookChanges, current: Row): Record<string, unknown> {
   const ids = Object.keys(changes)
-  const real = Object.fromEntries(ids.filter((id) => !isJsonColumnFieldId(id)).map((id) => [id, changes[id]]))
-  return { ...real, ...foldedJsonColumns(ids, changes as Record<string, unknown>, current as Record<string, unknown>) }
+  const real = Object.fromEntries(ids.filter((id) => !isJsonColumnFieldId(id) && mobileOverrideField(id) === null).map((id) => [id, changes[id]]))
+  // Phone overrides are only ever cleared, folded over the CURRENT map so other phone settings stay.
+  const cleared = clearedPhoneOverrides(changes)
+  const phone = Object.keys(cleared).length ? { mobile_overrides: mergeMobileOverrides(overridesOf(current), cleared) } : {}
+  return { ...real, ...foldedJsonColumns(ids, changes as Record<string, unknown>, current as Record<string, unknown>), ...phone }
 }
 
 

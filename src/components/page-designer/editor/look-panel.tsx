@@ -8,13 +8,13 @@
  * "Save look now", which leaves the design as it is).
  */
 
-import { Loader2, RotateCcw } from 'lucide-react'
+import { Loader2, RotateCcw, Smartphone } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { getInheritSourceLabel, isFieldSet, isFieldVisible, resolveFieldValue, type BrandingField } from '@/lib/branding-registry'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { listTenantContrastIssues } from '@/lib/branding-studio/tenant-contrast'
-import { lookValues, PAGE_LOOK_SECTIONS, type LookChanges } from '@/lib/page-designer/look'
+import { lookValues, MOBILE_PREFIX, PAGE_LOOK_SECTIONS, type LookChanges } from '@/lib/page-designer/look'
 import type { PageId } from '@/lib/page-designer/types'
 import { toTrackingHex } from '@/lib/tracking-style/keys'
 import { cn } from '@/lib/utils'
@@ -96,10 +96,17 @@ export function LookPanel({ page, saved, changes, onChange, onClear, onDiscard, 
       return next
     })
 
+  const phoneOverride = (field: BrandingField): string | null => {
+    const id = `${MOBILE_PREFIX}${field.id}`
+    if (id in changes) return null
+    const value = savedValues[id]
+    return typeof value === 'string' && value.trim() ? value : null
+  }
+
   const row = (field: BrandingField) =>
     isFieldVisible(field, valueOf) ? (
+      <div key={field.id}>
       <FieldRow
-        key={field.id}
         field={field}
         value={valueOf(field.id)}
         isSet={isFieldSet(field.id, draft, savedValues)}
@@ -109,6 +116,19 @@ export function LookPanel({ page, saved, changes, onChange, onClear, onDiscard, 
         contrastIssue={contrastIssues.find((issue) => issue.fieldId === field.id) ?? null}
         storeColors={field.id.startsWith('tracking_style.') ? storeColors.hex : storeColors.colors}
       />
+      {phoneOverride(field) && (
+        <p className="mt-1 flex flex-wrap items-center gap-1.5 rounded-md bg-violet-50 px-2 py-1.5 text-[11px] leading-snug text-violet-900">
+          <Smartphone className="h-3 w-3 shrink-0" />
+          <span className="flex-1">
+            Phones use their own colour from Branding Studio
+            <span className="ml-1 inline-block h-2.5 w-2.5 rounded-sm align-middle ring-1 ring-black/10" style={{ background: phoneOverride(field) ?? undefined }} />.
+          </span>
+          <button type="button" onClick={() => onChange(`${MOBILE_PREFIX}${field.id}`, '')} className="font-semibold underline-offset-2 hover:underline">
+            Use this on phones too
+          </button>
+        </p>
+      )}
+      </div>
     ) : null
 
   return (

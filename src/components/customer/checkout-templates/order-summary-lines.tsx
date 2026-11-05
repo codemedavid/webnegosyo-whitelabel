@@ -39,6 +39,20 @@ export interface OrderSummaryLabels {
   total: string
 }
 
+/** Rows a Page Designer summary may leave out. Absent = every row (today). */
+export interface OrderSummaryShow {
+  /** "Add-ons: …" under a dish. */
+  addons: boolean
+  /** "Note: …" under a dish. */
+  notes: boolean
+  /** The delivery fee and service charge rows (the total still includes them). */
+  fees: boolean
+  /** "Add ₱… more for free delivery." */
+  freeHint: boolean
+}
+
+const SHOW_EVERY_ROW: OrderSummaryShow = { addons: true, notes: true, fees: true, freeHint: true }
+
 /** The variation / quantity annotations that trail a line item's name. */
 function ItemAnnotations({ item, className }: { item: CartItem; className: string }) {
   const groupedVariations = item.selected_variations
@@ -67,16 +81,18 @@ function SummaryItem({
   skin,
   isClassic,
   nameStyle,
+  show,
 }: {
   item: CartItem
   skin: SummarySkin
   isClassic: boolean
   nameStyle?: CSSProperties
+  show: OrderSummaryShow
 }) {
-  const addons = item.selected_addons.length > 0 && (
+  const addons = show.addons && item.selected_addons.length > 0 && (
     <p data-part="muted" className={skin.itemAddons}>Add-ons: {addonPriceList(item.selected_addons, formatPrice)}</p>
   )
-  const note = item.special_instructions && (
+  const note = show.notes && item.special_instructions && (
     <p data-part="muted" className={skin.itemNote}>Note: {item.special_instructions}</p>
   )
 
@@ -136,6 +152,7 @@ export function OrderSummaryLines({
   showGovClaim = true,
   labels = {},
   totalTone = 'accent',
+  show = SHOW_EVERY_ROW,
 }: {
   checkout: UseCheckoutReturn
   variant?: OrderSummaryVariant
@@ -151,6 +168,8 @@ export function OrderSummaryLines({
   labels?: Partial<OrderSummaryLabels>
   /** The total's colour (Page Designer): the highlight colour (today) or the text colour. */
   totalTone?: 'accent' | 'text'
+  /** Rows to leave out (Page Designer); absent = every row. */
+  show?: OrderSummaryShow
 }) {
   const {
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, freeDeliveryRemaining,
@@ -167,7 +186,7 @@ export function OrderSummaryLines({
   // A fee quoted against a different address is not what gets billed, so it is
   // not what gets shown.
   const feeMatches = deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address
-  const showDeliveryRow = deliveryFee !== null || isFetchingDeliveryFee
+  const showDeliveryRow = show.fees && (deliveryFee !== null || isFetchingDeliveryFee)
   const showDeliveryError = Boolean(deliveryFeeError) && !isFetchingDeliveryFee && deliveryFee === null
   // A Senior/PWD discount replaces the vouchers when it saves more (never both).
   const hasDiscount = !govLines && (voucherPreview?.accepted.length ?? 0) > 0
@@ -187,6 +206,7 @@ export function OrderSummaryLines({
             skin={skin}
             isClassic={isClassic}
             nameStyle={isClassic ? undefined : { color: text }}
+            show={show}
           />
         </div>
       ))}
@@ -226,7 +246,7 @@ export function OrderSummaryLines({
       )}
 
       {/* The free-delivery offer, while the cart is still short of it. */}
-      {freeDeliveryRemaining !== null && freeDeliveryRemaining > 0 && (
+      {show.freeHint && freeDeliveryRemaining !== null && freeDeliveryRemaining > 0 && (
         <p data-part="muted" className="text-xs" style={{ color: mutedText }}>
           Add <span className="font-semibold" style={{ color: accent }}>{formatPrice(freeDeliveryRemaining)}</span>
           {' '}more for free delivery.
@@ -250,7 +270,7 @@ export function OrderSummaryLines({
         </div>
       )}
 
-      {serviceChargeAmount > 0 && (
+      {show.fees && serviceChargeAmount > 0 && (
         <>
           <SummaryRow
             label={labels.serviceCharge ?? 'Service Charge'}
