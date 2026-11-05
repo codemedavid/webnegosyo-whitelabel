@@ -37,6 +37,15 @@ describe('Page Designer editor locks', () => {
     expect(blockIdsIn(result.current.design)).toContain('checkout.voucher')
   })
 
+  it('lets the owner remove the thank-you Messenger block (most stores no longer use Messenger)', () => {
+    const start = createStandardDesign('confirmation')
+    const { result } = renderHook(() => useHeroBuilder(start, PAGE_NODE_POLICY))
+    const messenger = widgetId(start, 'confirmation.messenger')
+    expect(result.current.canRemove(messenger)).toBe(true)
+    act(() => result.current.remove(messenger))
+    expect(blockIdsIn(result.current.design)).not.toContain('confirmation.messenger')
+  })
+
   it('keeps the plain Hero Builder unlocked', () => {
     const start = createStandardDesign('tracking')
     const { result } = renderHook(() => useHeroBuilder(start))

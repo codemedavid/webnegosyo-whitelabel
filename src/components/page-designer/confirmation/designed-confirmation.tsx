@@ -10,11 +10,12 @@
 import { useMemo } from 'react'
 
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
+import { blockIdsIn } from '@/lib/page-designer/design-blocks'
 import type { StorefrontLabels } from '@/lib/storefront-labels'
 import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { DesignedPage } from '@/components/page-designer/storefront/designed-page'
 
-import { useConfirmationBlocks } from './confirmation-context'
+import { ConfirmationBlocksProvider, useConfirmationBlocks } from './confirmation-context'
 import { confirmationState, confirmationTokens } from './confirmation-runtime'
 import { CONFIRMATION_LIVE_BLOCKS } from './live-blocks'
 
@@ -36,6 +37,17 @@ export function DesignedConfirmation({ design, tenantSlug, labels }: DesignedCon
     () => ({ page: 'confirmation', state, tokens, labels, blocks: CONFIRMATION_LIVE_BLOCKS }),
     [state, tokens, labels],
   )
-  if (!b) return null
-  return <DesignedPage design={design} runtime={runtime} tenantSlug={tenantSlug} />
+  // Without the Messenger block there is no message to send, so a failed save
+  // says "contact the store" instead of pointing at a message that isn't there.
+  const hasMessengerBlock = useMemo(() => blockIdsIn(design).includes('confirmation.messenger'), [design])
+  const value = useMemo(
+    () => (b && !hasMessengerBlock && b.hasMessengerFallback ? { ...b, hasMessengerFallback: false } : b),
+    [b, hasMessengerBlock],
+  )
+  if (!value) return null
+  return (
+    <ConfirmationBlocksProvider value={value}>
+      <DesignedPage design={design} runtime={runtime} tenantSlug={tenantSlug} />
+    </ConfirmationBlocksProvider>
+  )
 }

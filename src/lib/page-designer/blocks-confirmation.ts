@@ -28,9 +28,10 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     id: 'confirmation.messenger',
     page: 'confirmation',
     label: 'Messenger',
-    description: 'Sends the order to your Facebook page (only when Messenger ordering is on).',
+    description: 'Sends the order to your Facebook page (only when Messenger ordering is on). Optional: most stores no longer use Messenger.',
     icon: 'MessageCircle',
-    required: true,
+    // Optional (owner, 2026-11-05): most stores no longer take orders on Messenger.
+    required: false,
     texts: [
       { key: 'countdown', label: 'Countdown', fallback: 'Redirecting to Messenger in {seconds}...', maxLength: 120, hint: '{seconds} shows the seconds left.' },
       { key: 'opened', label: 'After opening', fallback: 'Messenger should have opened in a new tab.', maxLength: 120 },

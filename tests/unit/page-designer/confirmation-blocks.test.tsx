@@ -130,6 +130,30 @@ describe('designed thank-you page', () => {
     expect(screen.queryByText('Track Your Order')).not.toBeInTheDocument()
   })
 
+  it('Messenger is optional: removed, a failed save says contact the store, never "send the message below"', () => {
+    const start = createStandardDesign('confirmation')
+    const withoutMessenger: HeroDesignV5 = {
+      ...start,
+      sections: start.sections.map((s) => ({
+        ...s,
+        columns: s.columns.map((c) => ({ ...c, widgets: c.widgets.filter((w) => !(isPageBlockWidget(w) && w.content.block === 'confirmation.messenger')) })),
+      })),
+    }
+    const failed = {
+      messengerEnabled: true,
+      completedOrderData: { ...ORDER, messengerUrl: 'https://m.me/lolas' },
+      orderSaveFailed: true,
+      orderSaveNotice: { verdict: 'failed', message: 'We could not confirm your order with the store.', isMessengerRecoverable: true },
+      trackingOrderId: null,
+    }
+    const { unmount } = renderPage(checkoutWith(start, failed))
+    expect(screen.getByRole('alert')).toHaveTextContent(/send the Messenger message below/)
+    unmount()
+    renderPage(checkoutWith(withoutMessenger, failed))
+    expect(screen.getByRole('alert')).toHaveTextContent(/contact the store directly/)
+    expect(screen.queryByText('Go to Messenger')).not.toBeInTheDocument()
+  })
+
   it('hides "Show when: Order sent" sections on a failed order (Celebrate banner)', () => {
     const celebrate = PAGE_TEMPLATES.confirmation.find((t) => t.id === 'celebrate')!.build()
     const { unmount } = renderPage(checkoutWith(celebrate))
