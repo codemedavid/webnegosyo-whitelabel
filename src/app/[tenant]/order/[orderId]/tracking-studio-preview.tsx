@@ -18,6 +18,7 @@ import { getStatusIndex } from '@/components/customer/order-tracking/status-step
 import { stripPreviewMeta, useBrandingPreviewDraft } from '@/hooks/use-branding-preview'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { readTrackingStyle } from '@/lib/tracking-style/keys'
+import { resolvePageDesign } from '@/lib/page-designer/page-mode'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import type { TrackingData } from '@/lib/order-tracking-service'
 import { buildReadyNotice } from '@/lib/order-ready-alert'
@@ -65,6 +66,8 @@ export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName,
   const trackingStyle = useMemo(() => readTrackingStyle(previewTenant), [previewTenant])
   const theme = useMemo(() => buildTrackingTheme(branding, trackingStyle), [branding, trackingStyle])
   const loyaltyPosition = trackingStyle.options.loyalty_position
+  // A published Page Designer layout shows here too, so colour edits land on the page customers see.
+  const design = useMemo(() => resolvePageDesign(previewTenant, 'tracking'), [previewTenant])
 
   // On the Loyalty card screen the card is what's being edited: bring it into
   // view, again whenever it changes face or the owner moves it.
@@ -133,6 +136,7 @@ export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName,
         onAcknowledgeReady={() => setDismissedAlert(stateKey)}
         shouldFocusAlert={false}
         onBack={() => undefined}
+        designedPage={design ? { design, tenantSlug } : null}
       />
       <BrandingInspector />
     </>

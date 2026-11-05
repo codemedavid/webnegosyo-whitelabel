@@ -28,6 +28,16 @@ import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export type OrderSummaryVariant = 'default' | 'classic'
 
+/** Row wording a Page Designer checkout may change. Absent = today's wording. */
+export interface OrderSummaryLabels {
+  subtotal: string
+  deliveryFee: string
+  serviceCharge: string
+  discount: string
+  /** Replaces the store's `checkout.total` label when given. */
+  total: string
+}
+
 interface SummarySkin {
   container: string
   /** Rule between two line items. */
@@ -199,6 +209,9 @@ export function OrderSummaryLines({
   checkout,
   variant = 'default',
   showItems = true,
+  showVoucher = true,
+  showGovClaim = true,
+  labels = {},
 }: {
   checkout: UseCheckoutReturn
   variant?: OrderSummaryVariant
@@ -207,6 +220,11 @@ export function OrderSummaryLines({
    * "Your Order"), so the totals below are not preceded by the same lines twice.
    */
   showItems?: boolean
+  /** Off when the voucher field is placed on the page by itself (Page Designer). */
+  showVoucher?: boolean
+  /** Off when the Senior/PWD field is placed on the page by itself (Page Designer). The discount rows stay. */
+  showGovClaim?: boolean
+  labels?: Partial<OrderSummaryLabels>
 }) {
   const {
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, freeDeliveryRemaining,
@@ -250,7 +268,7 @@ export function OrderSummaryLines({
       {showItems && skin.itemsBreak}
 
       <SummaryRow
-        label="Subtotal"
+        label={labels.subtotal ?? 'Subtotal'}
         value={formatPrice(total)}
         skin={skin}
         labelStyle={{ color: mutedText }}
@@ -261,7 +279,7 @@ export function OrderSummaryLines({
       {showDeliveryRow && (
         <>
           <SummaryRow
-            label="Delivery Fee"
+            label={labels.deliveryFee ?? 'Delivery Fee'}
             skin={skin}
             labelStyle={rowLabelStyle}
             valueStyle={rowValueStyle}
@@ -308,7 +326,7 @@ export function OrderSummaryLines({
       {serviceChargeAmount > 0 && (
         <>
           <SummaryRow
-            label="Service Charge"
+            label={labels.serviceCharge ?? 'Service Charge'}
             value={formatPrice(serviceChargeAmount)}
             skin={skin}
             labelStyle={rowLabelStyle}
@@ -318,21 +336,23 @@ export function OrderSummaryLines({
         </>
       )}
 
-      {skin.voucherLeadingBreak}
+      {(showVoucher || showGovClaim) && skin.voucherLeadingBreak}
 
       {/* Shared by all five designs, so a voucher works the same everywhere. */}
-      <VoucherField
-        codes={voucherCodes}
-        preview={voucherPreview}
-        isChecking={isCheckingVoucher}
-        onApply={applyVoucherCode}
-        onRemove={removeVoucherCode}
-        formatPrice={formatPrice}
-        lineNames={voucherLineNames}
-        onChooseUnits={setVoucherUnitPicks}
-      />
+      {showVoucher && (
+        <VoucherField
+          codes={voucherCodes}
+          preview={voucherPreview}
+          isChecking={isCheckingVoucher}
+          onApply={applyVoucherCode}
+          onRemove={removeVoucherCode}
+          formatPrice={formatPrice}
+          lineNames={voucherLineNames}
+          onChooseUnits={setVoucherUnitPicks}
+        />
+      )}
 
-      <GovClaimField state={checkout} formatPrice={formatPrice} accent={accent} />
+      {showGovClaim && <GovClaimField state={checkout} formatPrice={formatPrice} accent={accent} />}
 
       {govLines && govLines.map((line, index) => (
         <SummaryRow
@@ -349,7 +369,7 @@ export function OrderSummaryLines({
         <>
           {skin.discountLeadingBreak}
           <SummaryRow
-            label="Discount"
+            label={labels.discount ?? 'Discount'}
             value={`−${formatPrice(voucherPreview?.discountTotal ?? 0)}`}
             skin={skin}
             valueClassName={skin.discountValue}
@@ -361,7 +381,7 @@ export function OrderSummaryLines({
       {skin.totalLeadingBreak}
 
       <div className={skin.totalRow}>
-        <span className={skin.totalLabel} style={{ color: text }}><StoreLabel name="checkout.total" fallback="Total" /></span>
+        <span className={skin.totalLabel} style={{ color: text }}>{labels.total ?? <StoreLabel name="checkout.total" fallback="Total" />}</span>
         <span className={skin.totalValue} style={{ color: accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>

@@ -86,6 +86,11 @@ export const HERO_BASE_CSS = [
   '.S .hb-dot{appearance:none;width:6px;height:6px;padding:0;border:0;border-radius:999px;background:var(--hb-dot,var(--hb-text));opacity:.25;cursor:pointer;transition:width .2s ease,opacity .2s ease}',
   '.S .hb-dot[aria-current="true"]{width:20px;opacity:.8}',
   '.S .hb-placeholder{display:flex;align-items:center;justify-content:center;min-height:120px;border:1px dashed rgba(100,116,139,.5);border-radius:12px;color:rgba(100,116,139,.9);font-size:13px;background:rgba(148,163,184,.08)}',
+  // Page Designer: a page's own working part (payment picker, order status)
+  // keeps the full column width whatever the column's alignment.
+  '.S .hb-w--page-block{width:100%}',
+  // Editor only: an element "Show when" leaves out of the state being previewed.
+  '.S [data-hb-state-off]{opacity:.35;outline:1px dashed rgba(100,116,139,.6);outline-offset:2px}',
   '@keyframes hb-fade{from{opacity:0}to{opacity:1}}',
   '@keyframes hb-entry-pulse{from{opacity:.45}to{opacity:.9}}',
   '@keyframes hb-slide-up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}',

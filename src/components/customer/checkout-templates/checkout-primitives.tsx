@@ -58,7 +58,16 @@ function useAccent(checkout: UseCheckoutReturn) {
  * (Mapbox / PH phone / textarea / select / text) in one place.
  * `columns` controls the desktop grid; address & textarea always span full width.
  */
-export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckoutReturn; columns?: 1 | 2 }) {
+interface CheckoutFieldsProps {
+  checkout: UseCheckoutReturn
+  columns?: 1 | 2
+  /** Off when the stamp card is placed on the page by itself (Page Designer). */
+  showLoyalty?: boolean
+  /** Off when the texts tick box is placed on the page by itself (Page Designer). */
+  showSmsOptIn?: boolean
+}
+
+export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, showSmsOptIn = true }: CheckoutFieldsProps) {
   const { formFields, customerData, setCustomerData, tenant } = checkout
   const reactId = useId()
 
@@ -164,13 +173,15 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
     </div>
       {/* The customer's own stamp card, the moment their number is complete.
           Above consent because it is feedback on the field they just filled. */}
-      <div className="mt-4">
-        <CheckoutLoyaltyProgress checkout={checkout} />
-      </div>
+      {showLoyalty && (
+        <div className="mt-4">
+          <CheckoutLoyaltyProgress checkout={checkout} />
+        </div>
+      )}
 
       {/* Consent sits below the fields, spanning both columns — it is a
           statement about all of them, not another field. */}
-      <SmsOptInCheckbox checkout={checkout} />
+      {showSmsOptIn && <SmsOptInCheckbox checkout={checkout} />}
     </div>
   )
 }
@@ -185,7 +196,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
  * read sites, so routing it through the normal field path would look like it
  * worked while quietly collecting nothing.
  */
-export function SmsOptInCheckbox({ checkout }: { checkout: UseCheckoutReturn }) {
+export function SmsOptInCheckbox({ checkout, label }: { checkout: UseCheckoutReturn; label?: string }) {
   const { isSmsOptedIn, setIsSmsOptedIn, tenant } = checkout
   const { accent } = useAccent(checkout)
   const id = useId()
@@ -204,10 +215,14 @@ export function SmsOptInCheckbox({ checkout }: { checkout: UseCheckoutReturn }) 
         className={`mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded ${CO.border}`}
         style={{ accentColor: accent }}
       />
-      <span>
-        Text me updates and offers from {tenant?.name ?? 'this store'}. Standard message rates apply,
-        and you can opt out any time.
-      </span>
+      {label ? (
+        <span>{label}</span>
+      ) : (
+        <span>
+          Text me updates and offers from {tenant?.name ?? 'this store'}. Standard message rates apply,
+          and you can opt out any time.
+        </span>
+      )}
     </label>
   )
 }
@@ -321,7 +336,15 @@ export function MinimumOrderNotice({
   )
 }
 
-export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckoutReturn; className?: string }) {
+interface CheckoutCTAProps {
+  checkout: UseCheckoutReturn
+  className?: string
+  /** Off hides the "· ₱total" after the label (Page Designer). */
+  showTotal?: boolean
+  processingLabel?: string
+}
+
+export function CheckoutCTA({ checkout, className = '', showTotal = true, processingLabel = 'Processing Order...' }: CheckoutCTAProps) {
   const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, orderMinimum } = checkout
   const { accent, accentText, button } = useAccent(checkout)
   const ctaLabel = resolvePlaceOrderLabel(checkout)
@@ -338,15 +361,15 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
       {isProcessing ? (
         <>
           <div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          Processing Order...
+          {processingLabel}
         </>
       ) : paymentMethods.length > 0 ? (
         <>
           <CreditCard className="h-5 w-5" />
-          <span>{ctaLabel} · {formatPrice(grandTotal)}</span>
+          <span>{ctaLabel}{showTotal && ` · ${formatPrice(grandTotal)}`}</span>
         </>
       ) : (
-        <span>{ctaLabel} · {formatPrice(grandTotal)}</span>
+        <span>{ctaLabel}{showTotal && ` · ${formatPrice(grandTotal)}`}</span>
       )}
     </button>
   )

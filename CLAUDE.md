@@ -360,6 +360,16 @@ Dev gotcha (fixed 2026-10-04): `next.config.ts` used to mark `/_next/static` `im
 - **Where it shows**: multi-branch stores with the branch picked BEFORE the menu → it replaces the classic first screen of `OutletSplash` (tiles carry the mode to the branch list; start = mode-less). Every other store (single location, or branch at checkout) → `WelcomeLanding` over the menu once per browser session (`sessionStorage wn-welcome-seen:<slug>`), skipped for `?table=` links; a tile sets the cart's order type. The server always renders it open; an inline pre-paint script (`hideIfSeenScript`) hides it for a returning visitor before hydration, and while order types load the tiles render as a non-tappable placeholder (`isLoadingModes`) so the start button never swaps to tiles under a thumb.
 - **Templates** `lib/welcome-builder/templates*.ts` (12, phone-first, every one publishable as-is — pinned by `tests/unit/welcome-builder/templates.test.ts`); section presets in `section-presets.ts`. Thumbnails render at 390px with `viewportHeight` so "fill the screen" sections don't use the real viewport.
 
+### Page Designer (checkout, thank-you, tracking)
+
+`/[tenant]/admin/page-designer/<tracking|thank-you|checkout>` (sidebar: Store Setup → "Page Designer", full-screen) is the SAME editor as the Hero/Welcome Builders with a `page` surface (`components/page-designer/editor/`). Plan: `docs/plans/2026-11-04-page-designer-checkout-thankyou-tracking.md`.
+
+- **Page blocks**: ONE widget kind `page-block` (`content.block` = registry id) carries a page's working parts (payment picker, order status, place order). Registries `src/lib/page-designer/blocks-<page>.ts` (ids are stored in designs — never rename); text slots fall back owner → `storefront_labels` (`labelKey`) → built-in. The engine never imports page code: each page passes renderers through `PageRuntimeProvider` (`renderer/page-runtime.tsx`), live on the storefront, samples in the editor (`components/page-designer/samples/`).
+- **Locks**: `required` blocks can't be removed or duplicated (`PAGE_NODE_POLICY`), publish refuses one missing/hidden/"Show when"-limited on any device (`pageDesignProblem`), and `preparePageDesign` appends any still missing at render, per device. Each block appears once. The checkout voucher field is required; the thank-you Messenger block is optional — without it a failed save tells the customer to contact the store (owner, 2026-11-05).
+- **Show when** (`showWhen` on sections/widgets) + `{tokens}` (`PAGE_META[page].tokens`, plain string replace) — tracking states are order statuses, thank-you `success|failed`.
+- **Stored** in `tenants.<page>_design` (TEXT v5 JSON, read via `resolvePageDesign`) + `<page>_design_enabled`; unpublished = today's page code path untouched. `confirmation_redirect` (`instant|countdown|stay`) + `_seconds` = what happens after the order saves (Messenger, kiosk and failed saves always stay). Tenant-admin writable (not privileged), `20261104120000_page_designer.sql`.
+- Never offered: `embed` (any page), `html` on checkout, `order-entry`/`store-logo`.
+
 ### Store onboarding (paid-first set-up link)
 
 `/onboarding/[token]` builds a paying merchant's store for them. The token (256-bit, only its sha256 stored in `store_onboardings`) is the buyer's only credential.

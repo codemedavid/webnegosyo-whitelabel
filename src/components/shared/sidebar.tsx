@@ -401,6 +401,7 @@ export const adminSidebarItems: SidebarEntry[] = [
       { label: 'QR Codes', href: '/admin/qr-codes' },
       { label: 'Hero Builder', href: '/admin/hero-designer' },
       { label: 'Welcome Builder', href: '/admin/welcome-designer' },
+      { label: 'Page Designer', href: '/admin/page-designer' },
       { label: 'Connect AI', href: '/admin/mcp' },
     ],
   },

@@ -136,6 +136,17 @@ export function updateSectionMeta(design: HeroDesignV5, id: string, meta: { labe
   return mapNode(design, id, (node) => ('columns' in node ? { ...node, ...meta } : node))
 }
 
+/** "Show when" on a section or widget; empty clears it (always shown). */
+export function setShowWhen(design: HeroDesignV5, id: string, showWhen: readonly string[]): HeroDesignV5 {
+  return mapNode(design, id, <T extends Section | Column | Widget>(node: T): T => {
+    if ('widgets' in node) return node
+    const next = { ...node } as T & { showWhen?: string[] }
+    if (showWhen.length) next.showWhen = [...showWhen]
+    else delete next.showWhen
+    return next
+  })
+}
+
 export function updateTheme(design: HeroDesignV5, patch: Partial<Theme>): HeroDesignV5 {
   return { ...design, theme: { ...design.theme, ...patch, colors: { ...design.theme.colors, ...(patch.colors ?? {}) } } }
 }

@@ -5,12 +5,25 @@ import { publishWelcomeDesignAction, unpublishWelcomeDesignAction } from '@/app/
 import { SECTION_PRESETS, type SectionPreset } from '@/lib/hero-builder/section-presets'
 import { HERO_TEMPLATE_CATEGORIES, HERO_TEMPLATES } from '@/lib/hero-builder/templates'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
+import type { PageId } from '@/lib/page-designer/types'
+import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { WELCOME_SECTION_PRESETS } from '@/lib/welcome-builder/section-presets'
 import { WELCOME_TEMPLATE_CATEGORIES, WELCOME_TEMPLATES } from '@/lib/welcome-builder/templates'
 
 import type { LinkSurface } from './inspector/link-picker'
 import { HERO_ADD_GROUPS, WELCOME_ADD_GROUP, type AddGroup } from './panels/add-panel'
 import type { GalleryPreview, GalleryTemplate } from './template-gallery'
+
+/**
+ * Page Designer surfaces only: the page being designed, how its blocks look
+ * while editing (sample data at a given state), and its standard layout.
+ */
+export interface PageSurfaceConfig {
+  id: PageId
+  /** Sample runtime for the canvas, preview and template thumbnails. */
+  runtime: (state: string | null) => PageRuntime
+  standardDesign: () => HeroDesignV5
+}
 
 export interface PublishResult {
   success: boolean
@@ -44,6 +57,8 @@ export interface BuilderSurface {
   removeLabel: string
   /** Placeholder under the full preview, or null when the page stands alone. */
   previewFooter: string | null
+  /** Set for the checkout / thank-you / tracking designer. */
+  page?: PageSurfaceConfig
 }
 
 export const HERO_SURFACE: BuilderSurface = {

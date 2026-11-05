@@ -10,10 +10,21 @@ interface OrderSummaryCardProps {
   total: number
   deliveryFee?: number
   serviceChargeAmount?: number
+  /** Page Designer wording; each unset line keeps today's words. */
+  wording?: OrderSummaryWording
 }
 
+export interface OrderSummaryWording {
+  title?: string
+  deliveryFee?: string
+  serviceCharge?: string
+  total?: string
+}
+
+const NO_WORDING: OrderSummaryWording = {}
+
 /** The receipt: what was ordered and what it cost, in the tenant's palette. */
-export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmount }: OrderSummaryCardProps) {
+export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmount, wording = NO_WORDING }: OrderSummaryCardProps) {
   const hasDeliveryFee = deliveryFee != null && deliveryFee > 0
   const hasServiceCharge = serviceChargeAmount != null && serviceChargeAmount > 0
 
@@ -26,7 +37,7 @@ export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmoun
     >
       <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--trk-text-muted)' }}>
         <Receipt className="h-4 w-4" aria-hidden="true" />
-        <StoreLabel name="tracking.summary_title" fallback="Your order" />
+        {wording.title ?? <StoreLabel name="tracking.summary_title" fallback="Your order" />}
       </h2>
 
       <ul className="divide-y" style={{ borderColor: 'var(--trk-card-border)' }}>
@@ -61,18 +72,18 @@ export function OrderSummaryCard({ items, total, deliveryFee, serviceChargeAmoun
       <div className="mt-3 space-y-1.5 border-t pt-3 text-sm" style={{ borderColor: 'var(--trk-card-border)' }}>
         {hasDeliveryFee && (
           <div className="flex justify-between" style={{ color: 'var(--trk-text-muted)' }}>
-            <span>Delivery fee</span>
+            <span>{wording.deliveryFee ?? 'Delivery fee'}</span>
             <span>{formatPrice(deliveryFee)}</span>
           </div>
         )}
         {hasServiceCharge && (
           <div className="flex justify-between" style={{ color: 'var(--trk-text-muted)' }}>
-            <span>Service charge</span>
+            <span>{wording.serviceCharge ?? 'Service charge'}</span>
             <span>{formatPrice(serviceChargeAmount)}</span>
           </div>
         )}
         <div className="flex items-baseline justify-between pt-1">
-          <span className="text-base font-bold" style={{ color: 'var(--trk-text)' }}>Total</span>
+          <span className="text-base font-bold" style={{ color: 'var(--trk-text)' }}>{wording.total ?? 'Total'}</span>
           <span className="text-xl font-extrabold" style={{ color: 'var(--trk-total)' }}>{formatPrice(total)}</span>
         </div>
       </div>

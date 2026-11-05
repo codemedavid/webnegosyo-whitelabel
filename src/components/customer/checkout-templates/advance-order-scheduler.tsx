@@ -54,7 +54,27 @@ function ModeChoice({ isActive, icon, title, subtitle, accent, accentText, accen
   )
 }
 
-export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutReturn }) {
+/** The scheduler's wording a Page Designer checkout may change. */
+export interface SchedulerCopy {
+  title: string
+  asapTitle: string
+  asapSubtitle: string
+  laterTitle: string
+  laterSubtitle: string
+  /** "Later" details when the order must be scheduled (no ASAP choice). */
+  laterRequired: string
+}
+
+const DEFAULT_COPY: SchedulerCopy = {
+  title: 'When would you like it?',
+  asapTitle: 'As soon as possible',
+  asapSubtitle: 'Prepare my order now',
+  laterTitle: 'Schedule for later',
+  laterSubtitle: 'Pick a date & time',
+  laterRequired: 'Advance order required',
+}
+
+export function AdvanceOrderScheduler({ checkout, copy: copyOverrides }: { checkout: UseCheckoutReturn; copy?: Partial<SchedulerCopy> }) {
   const {
     advanceConfig, scheduleMode, setScheduleMode, scheduleDate, scheduleTime, setScheduleTime,
     scheduleDates, timeSlots, scheduledForLabel, selectedOrderTypeData, handleScheduleDateChange,
@@ -63,6 +83,7 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
   const { accent, accentText, accentSoft } = getCheckoutPalette(checkout.tenant, checkout.branding)
 
   if (!advanceConfig.enabled) return null
+  const copy: SchedulerCopy = { ...DEFAULT_COPY, ...copyOverrides }
 
   const slotGroups = groupTimeSlotsByPeriod(timeSlots)
   const readyVerb = selectedOrderTypeData?.type === 'delivery' ? 'Arriving' : 'Ready'
@@ -71,7 +92,7 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
     <div data-advance-order style={checkoutThemeStyle(checkout)}>
       <div className="mb-3 flex items-center gap-2">
         <Clock className="h-5 w-5" style={{ color: accent }} />
-        <h3 className="text-base font-bold text-[color:var(--co-text)] sm:text-lg">When would you like it?</h3>
+        <h3 className="text-base font-bold text-[color:var(--co-text)] sm:text-lg">{copy.title}</h3>
       </div>
 
       {cartPresellDate ? (
@@ -91,8 +112,8 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
             <ModeChoice
               isActive={scheduleMode === 'asap'}
               icon={<Zap className="h-5 w-5" />}
-              title="As soon as possible"
-              subtitle="Prepare my order now"
+              title={copy.asapTitle}
+              subtitle={copy.asapSubtitle}
               accent={accent} accentText={accentText} accentSoft={accentSoft}
               onSelect={() => setScheduleMode('asap')}
             />
@@ -100,8 +121,8 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
           <ModeChoice
             isActive={scheduleMode === 'scheduled'}
             icon={<CalendarClock className="h-5 w-5" />}
-            title="Schedule for later"
-            subtitle={advanceConfig.allowAsap ? 'Pick a date & time' : 'Advance order required'}
+            title={copy.laterTitle}
+            subtitle={advanceConfig.allowAsap ? copy.laterSubtitle : copy.laterRequired}
             accent={accent} accentText={accentText} accentSoft={accentSoft}
             onSelect={() => setScheduleMode('scheduled')}
           />
