@@ -3,10 +3,11 @@
 import { Lock, Paintbrush, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
 
-import type { OrderKindChoice, PageBlockContent, Widget } from '@/lib/hero-builder/types'
+import type { OrderKindChoice, PageBlockContent, Section, Widget } from '@/lib/hero-builder/types'
 import { PAGE_META } from '@/lib/page-designer/pages'
 import { NEED_REASONS, pageBlockDef } from '@/lib/page-designer/blocks'
 import { optionGroup } from '@/lib/page-designer/knobs'
+import { holdsEssentialBlock } from '@/lib/page-designer/rules'
 import { applyTokens, resolveBlockOption, resolveBlockText } from '@/lib/page-designer/text'
 import type { BlockOption, BlockOptionValue, BlockTextSlot, PageId } from '@/lib/page-designer/types'
 import { usePageRuntime, type PageBlockRenderProps } from '@/components/hero-builder/renderer/page-runtime'
@@ -144,7 +145,7 @@ const ORDER_KINDS: readonly { id: OrderKindChoice; label: string }[] = [
 ]
 
 /** "Show for": limit a section or element to some order types (e.g. "book your own rider" for delivery). */
-export function ShowForGroup({ node, api }: { node: { id: string; showFor?: OrderKindChoice[] }; api: HeroBuilderApi }) {
+export function ShowForGroup({ node, api }: { node: Section | Widget; api: HeroBuilderApi }) {
   const runtime = usePageRuntime()
   if (!runtime) return null
   const current = node.showFor ?? []
@@ -154,8 +155,8 @@ export function ShowForGroup({ node, api }: { node: { id: string; showFor?: Orde
   }
   return (
     <Group title="Show for">
-      {!api.canRemove(node.id) ? (
-        <p className="text-[11px] leading-snug text-neutral-500">This holds a block that keeps the page working, so it shows on every order.</p>
+      {holdsEssentialBlock(node, runtime.page) ? (
+        <p className="text-[11px] leading-snug text-neutral-500">This holds what some orders need, so it shows on every order.</p>
       ) : (
         <>
           <p className="mb-2 text-[11px] leading-snug text-neutral-500">

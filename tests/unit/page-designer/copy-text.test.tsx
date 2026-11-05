@@ -7,7 +7,8 @@ import type { CopyTextContent, Section, Widget } from '@/lib/hero-builder/types'
 import { PAGE_IDS, PAGE_META } from '@/lib/page-designer/pages'
 import { blockDef } from '@/lib/page-designer/blocks'
 import { createPageBlock } from '@/lib/page-designer/design-blocks'
-import { pageDesignProblem } from '@/lib/page-designer/rules'
+import { holdsEssentialBlock, pageDesignProblem } from '@/lib/page-designer/rules'
+import { buildCompletedOrderSnapshot } from '@/lib/checkout/completed-order'
 import { storeAddressToken } from '@/lib/page-designer/store-address'
 import { HERO_ADD_GROUPS } from '@/components/hero-builder/editor/panels/add-panel'
 import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
@@ -158,7 +159,7 @@ describe('Show for: order type', () => {
 
   it('refuses to limit a required block: Place order must show for everyone', () => {
     const placeOrder = { ...createPageBlock(blockDef('checkout.place_order')!), showFor: ['delivery' as const] }
-    expect(pageDesignProblem(designOf([section('s', [column('c', [placeOrder])])]), 'checkout')).toMatch(/must show/)
+    expect(pageDesignProblem(designOf([section('s', [column('c', [placeOrder])])]), 'checkout')).toMatch(/Show for/)
   })
 })
 
@@ -174,3 +175,61 @@ describe('{store_address}', () => {
     for (const page of PAGE_IDS) expect(PAGE_META[page].tokens.map((t) => t.token)).toContain('store_address')
   })
 })
+
+describe('Show for: blocks some orders need', () => {
+  it.each(['checkout.customer', 'checkout.payment', 'checkout.schedule', 'checkout.order_type'])('%s can’t be limited: it would stop other orders going through', (id) => {
+    const place = createPageBlock(blockDef('checkout.place_order')!)
+    const limited = { ...createPageBlock(blockDef(id)!), showFor: ['delivery' as const] }
+    expect(pageDesignProblem(designOf([section('s', [column('c', [place, limited])])]), 'checkout')).toMatch(/Show for/)
+    expect(holdsEssentialBlock(limited, 'checkout')).toBe(true)
+  })
+
+  it('a section holding one can’t be limited either', () => {
+    const place = createPageBlock(blockDef('checkout.place_order')!)
+    const held = { ...section('held', [column('c', [createPageBlock(blockDef('checkout.payment')!)])]), showFor: ['delivery' as const] }
+    expect(pageDesignProblem(designOf([section('s', [column('c', [place])]), held]), 'checkout')).toMatch(/Show for/)
+    expect(holdsEssentialBlock(held, 'checkout')).toBe(true)
+  })
+
+  it('a block no order depends on, and the owner’s own elements, can', () => {
+    const place = createPageBlock(blockDef('checkout.place_order')!)
+    const voucher = { ...createPageBlock(blockDef('checkout.voucher')!), showFor: ['delivery' as const] }
+    const copy = copyWidget({}, { showFor: ['delivery'] })
+    expect(pageDesignProblem(designOf([section('s', [column('c', [place, voucher, copy])])]), 'checkout')).toBeNull()
+    expect(holdsEssentialBlock(copy, 'checkout')).toBe(false)
+  })
+})
+
+describe('Show for on the thank-you page', () => {
+  it('the snapshot keeps the order type and address, because clearing the cart wipes the live ones', () => {
+    const snapshot = buildCompletedOrderSnapshot({
+      items: [], total: 100, deliveryFee: null, serviceChargeAmount: 0, discounts: [], customerData: {},
+      orderTypeName: 'Delivery', orderTypeKind: 'delivery', storeAddress: '88 Mabini St', scheduledForLabel: null,
+      paymentMethod: null, messengerMessage: '', messengerUrl: null, formFields: [],
+    })
+    expect(snapshot).toMatchObject({ orderTypeKind: 'delivery', storeAddress: '88 Mabini St' })
+  })
+})
+
+describe('Show for in a step-by-step page', () => {
+  it('stays on the customer’s step when an earlier step drops out', () => {
+    const onlyDelivery = { ...section('a', [column('ca', [textStep('Rider step')])]), showFor: ['delivery' as const], label: 'Rider' }
+    const steps = [onlyDelivery, { ...section('b', [column('cb', [textStep('Second step')])]), label: 'Second' }, { ...section('c', [column('cc', [textStep('Third step')])]), label: 'Third' }]
+    const design = { ...designOf(steps), page: { layout: 'steps' as const } }
+    const page = (orderKind: string) => (
+      <PageRuntimeProvider value={runtime({ orderKind })}>
+        <HeroBuilderRenderer design={design} />
+      </PageRuntimeProvider>
+    )
+    const { rerender, container } = render(page('delivery'))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    const shownStep = () => container.querySelector('[data-step]:not([hidden])')?.textContent
+    expect(shownStep()).toContain('Second step')
+    rerender(page('pickup'))
+    expect(shownStep()).toContain('Second step')
+  })
+})
+
+function textStep(value: string): Widget {
+  return { ...createWidget('text'), id: value.replace(/\W/g, ''), content: { kind: 'text', text: value } }
+}
