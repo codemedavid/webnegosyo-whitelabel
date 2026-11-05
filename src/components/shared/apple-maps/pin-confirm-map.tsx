@@ -25,6 +25,8 @@ export interface PinConfirmMapProps {
   isInteractive?: boolean
   /** False = no pin drawn: the customer hasn't chosen a spot yet, so none is implied. */
   showsPin?: boolean
+  /** How far back the map starts, in metres; absent = close enough to see the gate. */
+  cameraDistanceM?: number
   className?: string
 }
 
@@ -53,6 +55,7 @@ export function PinConfirmMap({
   isSatellite = false,
   isInteractive = true,
   showsPin = true,
+  cameraDistanceM = DOOR_CAMERA_DISTANCE_M,
   className = 'h-[60vh] min-h-[320px]',
 }: PinConfirmMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -81,7 +84,7 @@ export function PinConfirmMap({
         const start = latestCenterRef.current
         const map = new mapkit.Map(container, {
           center: new mapkit.Coordinate(start.lat, start.lng),
-          cameraDistance: DOOR_CAMERA_DISTANCE_M,
+          cameraDistance: cameraDistanceM,
           mapType: mapTypeFor(mapkit, isSatelliteRef.current),
           showsMapTypeControl: false,
           showsZoomControl: isInteractive,

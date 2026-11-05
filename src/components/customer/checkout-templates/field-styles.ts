@@ -126,6 +126,7 @@ export function fieldStyleSpec(look: CheckoutFieldsLook | undefined): FieldStyle
         box: `w-full rounded-none border-0 border-b bg-transparent px-0 py-2.5 ${LINE} ${FIELD_TEXT} transition-[border-color,box-shadow] focus:outline-none focus:border-[color:var(--co-accent)] focus:shadow-[0_1px_0_0_var(--co-accent)]`,
         label: 'above',
         labelClass: 'block text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--co-muted)]',
+        isBare: true,
       }
     case 'tinted': {
       const box = `w-full min-h-12 border-0 border-b-2 px-3.5 py-3 ${cornersClass(look.corners, 'rounded-t-lg rounded-b-none')} ${SHADE} ${LINE} ${FIELD_TEXT} transition-colors focus:outline-none focus:border-[color:var(--co-accent)]`
@@ -189,7 +190,8 @@ export function fieldStyleSpec(look: CheckoutFieldsLook | undefined): FieldStyle
   }
 }
 
-/** The class for every answer box in `look` (absent = today's). The address field takes it too. */
+/** The delivery address's box in `look` (absent = today's): the answer box, unless the style frames its own. */
 export function fieldInputClass(look: CheckoutFieldsLook | undefined): string {
-  return fieldStyleSpec(look).box
+  const spec = fieldStyleSpec(look)
+  return spec.addressBox ?? spec.box
 }

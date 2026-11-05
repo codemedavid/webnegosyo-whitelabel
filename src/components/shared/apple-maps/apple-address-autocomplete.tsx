@@ -23,6 +23,8 @@ const GEOLOCATION_MAX_AGE_MS = 60_000
 const KEEP_PICKED_LABEL_KM = 0.04
 const PREVIEW_SIZE_CLASS = 'h-36 sm:h-44'
 const MAP_BELOW_SIZE_CLASS = 'h-44'
+/** Before there is a pin the map shows the area around the store: streets to recognise, not one gate. */
+const NEIGHBOURHOOD_CAMERA_M = 1500
 const LINK_CLASS = 'inline-flex min-h-10 items-center gap-1.5 text-sm font-medium disabled:opacity-50'
 
 export interface AddressChangeMeta {
@@ -239,7 +241,7 @@ export function AppleAddressAutocomplete({
             required={required}
             autoComplete="address-line1"
             data-part={addressFieldPart(theme, 'field')}
-            className={`pl-10 ${className} ${theme?.input ?? 'w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500'}`}
+            className={`pl-10 text-ellipsis ${className} ${theme?.input ?? 'w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500'}`}
           />
           {isListOpen ? (
             <AddressSuggestionList
@@ -304,11 +306,11 @@ export function AppleAddressAutocomplete({
           {previewError ? (
             <p data-part={addressFieldPart(theme, 'muted')} className={`text-sm ${theme?.muted ?? 'text-gray-500'}`}>{previewError}</p>
           ) : (
-            <PinConfirmMap center={startPoint} isInteractive={false} showsPin={false} onError={setPreviewError} className={MAP_BELOW_SIZE_CLASS} />
+            <PinConfirmMap center={startPoint} isInteractive={false} showsPin={false} cameraDistanceM={NEIGHBOURHOOD_CAMERA_M} onError={setPreviewError} className={MAP_BELOW_SIZE_CLASS} />
           )}
           {/* The whole map is the way in; scrolling past it must never move it (a phone's thumb would get stuck). */}
           {!previewError ? (
-            <button type="button" onClick={openPicker} disabled={status !== 'ready'} className="absolute inset-0 z-20 flex items-end justify-center p-3 focus-visible:outline-none">
+            <button type="button" onClick={openPicker} disabled={status !== 'ready'} className="absolute inset-0 z-20 flex items-center justify-center p-3 focus-visible:outline-none">
               <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold shadow-md ${theme?.mapStrip ?? 'bg-white text-gray-900'}`}>
                 <MapPin aria-hidden="true" className="h-4 w-4" />
                 Set your exact spot
