@@ -21,7 +21,7 @@ import {
   OrderTypeChoices,
   type OrderTypeLook,
 } from '@/components/customer/checkout-templates/order-type-choices'
-import { FIELD_COLUMNS, FIELD_STYLES, SCHEDULE_DESIGNS } from '@/lib/page-designer/checkout-block-options'
+import { ADDRESS_DETAIL_CHOICES, ADDRESS_MAP_CHOICES, FIELD_COLUMNS, FIELD_MARKS, FIELD_STYLES, SCHEDULE_DESIGNS } from '@/lib/page-designer/checkout-block-options'
 import { readOrderTypeWording } from '@/lib/page-designer/order-type-wording'
 
 import { BlockCard } from './block-card'
@@ -108,7 +108,13 @@ function asksForDetails(checkout: UseCheckoutReturn): boolean {
 export function CustomerView({ checkout, block }: CheckoutBlockViewProps) {
   if (!asksForDetails(checkout)) return null
   const themed = blockCheckout(checkout, block)
-  const look = { style: blockChoice(block, 'variant', FIELD_STYLES), corners: cornersOf(block) }
+  const look = {
+    style: blockChoice(block, 'variant', FIELD_STYLES),
+    corners: cornersOf(block),
+    addressMap: blockChoice(block, 'address_map', ADDRESS_MAP_CHOICES),
+    addressDetails: blockChoice(block, 'address_details', ADDRESS_DETAIL_CHOICES),
+    marks: blockChoice(block, 'field_marks', FIELD_MARKS),
+  }
   return (
     <BlockColors checkout={checkout} themed={themed}>
       <BlockCard isCard={cardOf(block)} title={block.text('title')} subtitle={subtitleOf(block)}>

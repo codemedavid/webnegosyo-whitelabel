@@ -76,11 +76,20 @@ function pillIcon(field: CheckoutFormField, type: CheckoutFieldType): LucideIcon
  * long answers and the address span the row). One column stays a one-column
  * grid unless some question is half width.
  */
-function spanClass(field: CheckoutFormField, type: CheckoutFieldType, columns: 1 | 2, hasHalf: boolean): string {
+function spanClass(field: CheckoutFormField, type: CheckoutFieldType, columns: 1 | 2, hasHalf: boolean, isContained: boolean): string {
+  const wide = isContained ? '@lg:col-span-2' : 'md:col-span-2'
   const width = readFieldRules(field.validation_rules).width
-  if (columns === 1) return hasHalf && width !== 'half' ? 'md:col-span-2' : ''
+  if (columns === 1) return hasHalf && width !== 'half' ? wide : ''
   const isWide = width ? width === 'full' : type === 'textarea' || isDeliveryAddressField(field)
-  return isWide ? 'md:col-span-2' : ''
+  return isWide ? wide : ''
+}
+
+/** A question's own frame and grid span. The address carries its own boxes, so it never sits in a cell. */
+function questionClass(field: CheckoutFormField, spec: FieldStyleSpec, isList: boolean, columns: 1 | 2, hasHalf: boolean, isContained: boolean): string {
+  if (isList) return spec.row ?? ''
+  const span = spanClass(field, renderableFieldType(field.field_type), columns, hasHalf, isContained)
+  const cell = spec.cell && !isDeliveryAddressField(field) ? spec.cell : ''
+  return [span, cell].filter(Boolean).join(' ')
 }
 
 interface QuestionProps {
@@ -90,13 +99,18 @@ interface QuestionProps {
   baseId: string
   error: string | undefined
   wrapperClass: string
+  look?: CheckoutFieldsLook
 }
 
 function Required() {
   return <span data-part="error" className={`ml-1 ${CO.error}`}>*</span>
 }
 
-function CheckoutQuestion({ checkout, field, spec, baseId, error, wrapperClass }: QuestionProps) {
+function Optional() {
+  return <span data-part="muted" className={`ml-1 font-normal normal-case tracking-normal ${CO.muted}`}>(optional)</span>
+}
+
+function CheckoutQuestion({ checkout, field, spec, baseId, error, wrapperClass, look }: QuestionProps) {
   const id = `${baseId}-${field.id}`
   const labelId = `${id}-label`
   const helpId = `${id}-help`
@@ -110,7 +124,10 @@ function CheckoutQuestion({ checkout, field, spec, baseId, error, wrapperClass }
   const canFloat = spec.label === 'floating' && !isAddress && !isPhPhoneField(checkout, field) && FLOATABLE.includes(type)
   const placement = spec.label === 'floating' ? (canFloat ? 'floating' : 'above') : spec.label
   const isInsetRow = placement === 'inset' && !STACKED.includes(type) && !isAddress && type !== 'checkbox'
-  const labelClass = placement === 'inset' && !isInsetRow ? STACKED_INSET_LABEL : LABEL_CLASS[placement === 'floating' ? 'above' : placement]
+  const labelClass =
+    (isAddress && spec.addressLabelClass) ||
+    spec.labelClass ||
+    (placement === 'inset' && !isInsetRow ? STACKED_INSET_LABEL : LABEL_CLASS[placement === 'floating' ? 'above' : placement])
   const icon = spec.hasIcon && !isAddress ? pillIcon(field, type) : undefined
   const boxClass = canFloat ? `peer ${spec.box} ${spec.floatBox ?? ''}` : spec.box
   const textareaClass = canFloat ? `peer ${spec.box} ${spec.floatBox ?? ''}` : spec.textareaBox
@@ -121,8 +138,14 @@ function CheckoutQuestion({ checkout, field, spec, baseId, error, wrapperClass }
       fieldName={field.field_name}
       placeholder={field.placeholder}
       isRequired={field.is_required}
-      inputClassName={spec.box}
+      inputClassName={spec.addressBox ?? spec.box}
       labelClassName={CO.text}
+      look={look ? {
+        addressMap: look.addressMap,
+        addressDetails: look.addressDetails,
+        detailLabelClass: spec.addressLabelClass ?? spec.labelClass,
+        isContained: true,
+      } : undefined}
     />
   ) : (
     <CheckoutFieldControl
@@ -135,13 +158,14 @@ function CheckoutQuestion({ checkout, field, spec, baseId, error, wrapperClass }
       describedBy={describedBy}
       isInvalid={!!error}
       icon={icon}
+      isBare={spec.isBare}
     />
   )
 
   const labelText = (
     <>
       {field.field_label}
-      {field.is_required && <Required />}
+      {look?.marks === 'optional' ? !field.is_required && <Optional /> : field.is_required && <Required />}
     </>
   )
 
@@ -265,10 +289,15 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
   const spec = fieldStyleSpec(look)
   const isList = !!spec.group
   const hasHalf = formFields.some((field) => readFieldRules(field.validation_rules).width === 'half')
-  const gridColumns = columns === 2 || hasHalf ? 'md:grid-cols-2' : 'grid-cols-1'
+  // A designed page lays out by the form's own width: phones get one column,
+  // and the editor's phone frame shows what a phone really gets. (Viewport
+  // breakpoints read the owner's desktop screen there.)
+  const isContained = !!look
+  const twoColumns = isContained ? '@lg:grid-cols-2' : 'md:grid-cols-2'
+  const gridColumns = columns === 2 || hasHalf ? twoColumns : 'grid-cols-1'
 
   return (
-    <div ref={rootRef} style={checkoutThemeStyle(checkout)}>
+    <div ref={rootRef} style={checkoutThemeStyle(checkout)} className={isContained ? '@container relative focus-within:z-20' : undefined}>
       <div className={isList ? spec.group : `grid gap-4 ${gridColumns}`}>
         {formFields.map((field) => (
           <CheckoutQuestion
@@ -278,7 +307,8 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
             spec={spec}
             baseId={reactId}
             error={fieldErrors[field.field_name]}
-            wrapperClass={isList ? (spec.row ?? '') : spanClass(field, renderableFieldType(field.field_type), columns, hasHalf)}
+            wrapperClass={questionClass(field, spec, isList, columns, hasHalf, isContained)}
+            look={look}
           />
         ))}
       </div>

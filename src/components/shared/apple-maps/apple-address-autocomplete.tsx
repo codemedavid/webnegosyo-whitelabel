@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, LocateFixed, Map as MapIcon, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import type { AddressMapDisplay } from '@/lib/checkout/address-map'
 import { haversineDistanceKm } from '@/lib/delivery-fee'
 import { parseCoordinateFallback, type LatLng } from '@/lib/maps/apple/mapkit-address'
 import { addressFieldPart, type AddressFieldTheme } from '../address-field-theme'
@@ -21,6 +22,8 @@ const GEOLOCATION_MAX_AGE_MS = 60_000
 /** A pin moved less than this from a searched place keeps the place's name as the address. */
 const KEEP_PICKED_LABEL_KM = 0.04
 const PREVIEW_SIZE_CLASS = 'h-36 sm:h-44'
+const MAP_BELOW_SIZE_CLASS = 'h-44'
+const LINK_CLASS = 'inline-flex min-h-10 items-center gap-1.5 text-sm font-medium disabled:opacity-50'
 
 export interface AddressChangeMeta {
   /** The spot was confirmed on the map, not just searched. */
@@ -45,6 +48,8 @@ export interface AppleAddressAutocompleteProps {
   fallback: ReactNode
   /** Themed page colours (the checkout); absent = the standard gray field. */
   theme?: AddressFieldTheme
+  /** How the map is offered: icon buttons beside the box, links under it, or a map shown below it. */
+  mapDisplay?: AddressMapDisplay
 }
 
 interface PendingPin {
@@ -99,6 +104,7 @@ export function AppleAddressAutocomplete({
   check,
   fallback,
   theme,
+  mapDisplay = 'buttons',
 }: AppleAddressAutocompleteProps) {
   const { status, suggest, resolveSuggestion, reverseGeocode } = useAppleAddressSearch()
   const { suggestions, search, clear: clearSuggestions } = useAddressSuggestions(suggest)
@@ -205,8 +211,11 @@ export function AppleAddressAutocomplete({
   }
 
   const pinView = pin ? check?.(pin) ?? null : null
+  const openPicker = () => setPending({ start: startPoint, label: null, accuracyM: null })
   // Not while they are still typing a search: only once they have left the field.
-  const needsPin = !pin && !isFocused && value.trim() !== '' && status === 'ready'
+  // A map already on screen asks for the spot itself.
+  const needsPin = !pin && !isFocused && value.trim() !== '' && status === 'ready' && mapDisplay !== 'map'
+  const linkClass = `${LINK_CLASS} ${theme?.link ?? 'text-gray-700 hover:underline'}`
 
   return (
     <div className="space-y-2">
@@ -243,40 +252,78 @@ export function AppleAddressAutocomplete({
           ) : null}
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={handleLocate}
-          disabled={isLocating || status !== 'ready'}
-          title="Use my current location"
-          aria-label="Use my current location"
-          data-part={addressFieldPart(theme, 'button-alt')}
-          className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
-        >
-          <LocateFixed className={`h-4 w-4 ${isLocating ? 'animate-pulse' : ''}`} />
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => setPending({ start: startPoint, label: null, accuracyM: null })}
-          disabled={status !== 'ready'}
-          title="Pick on the map"
-          aria-label="Pick on the map"
-          data-part={addressFieldPart(theme, 'button-alt')}
-          className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
-        >
-          <MapIcon className="h-4 w-4" />
-        </Button>
+        {mapDisplay === 'buttons' ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={handleLocate}
+              disabled={isLocating || status !== 'ready'}
+              title="Use my current location"
+              aria-label="Use my current location"
+              data-part={addressFieldPart(theme, 'button-alt')}
+              className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
+            >
+              <LocateFixed className={`h-4 w-4 ${isLocating ? 'animate-pulse' : ''}`} />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={openPicker}
+              disabled={status !== 'ready'}
+              title="Pick on the map"
+              aria-label="Pick on the map"
+              data-part={addressFieldPart(theme, 'button-alt')}
+              className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
+            >
+              <MapIcon className="h-4 w-4" />
+            </Button>
+          </>
+        ) : null}
       </div>
+
+      {mapDisplay !== 'buttons' ? (
+        <div className="flex flex-wrap gap-x-5">
+          <button type="button" onClick={handleLocate} disabled={isLocating || status !== 'ready'} data-part={addressFieldPart(theme, 'link')} className={linkClass}>
+            <LocateFixed aria-hidden="true" className={`h-4 w-4 ${isLocating ? 'animate-pulse' : ''}`} />
+            Use my location
+          </button>
+          {mapDisplay === 'links' && !pin ? (
+            <button type="button" onClick={openPicker} disabled={status !== 'ready'} data-part={addressFieldPart(theme, 'link')} className={linkClass}>
+              <MapIcon aria-hidden="true" className="h-4 w-4" />
+              Pick on the map
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {mapDisplay === 'map' && !pin ? (
+        <section aria-label="Your location on the map" className="relative">
+          {previewError ? (
+            <p data-part={addressFieldPart(theme, 'muted')} className={`text-sm ${theme?.muted ?? 'text-gray-500'}`}>{previewError}</p>
+          ) : (
+            <PinConfirmMap center={startPoint} isInteractive={false} showsPin={false} onError={setPreviewError} className={MAP_BELOW_SIZE_CLASS} />
+          )}
+          {/* The whole map is the way in; scrolling past it must never move it (a phone's thumb would get stuck). */}
+          {!previewError ? (
+            <button type="button" onClick={openPicker} disabled={status !== 'ready'} className="absolute inset-0 z-20 flex items-end justify-center p-3 focus-visible:outline-none">
+              <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold shadow-md ${theme?.mapStrip ?? 'bg-white text-gray-900'}`}>
+                <MapPin aria-hidden="true" className="h-4 w-4" />
+                Set your exact spot
+              </span>
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       {error ? <p data-part={addressFieldPart(theme, 'error')} className={`text-sm ${theme?.error ?? 'text-red-600'}`}>{error}</p> : null}
 
       {needsPin ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
           <span>{purpose === 'store' ? 'Pin your entrance on the map so riders find you.' : 'Set your exact spot on the map so the rider finds you.'}</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => setPending({ start: startPoint, label: null, accuracyM: null })}>
+          <Button type="button" size="sm" variant="outline" onClick={openPicker}>
             Set pin on map
           </Button>
         </div>
@@ -287,11 +334,18 @@ export function AppleAddressAutocomplete({
           {previewError ? (
             <p data-part={addressFieldPart(theme, 'muted')} className={`text-sm ${theme?.muted ?? 'text-gray-500'}`}>{previewError}</p>
           ) : (
-            <PinConfirmMap center={pin} isInteractive={false} onError={setPreviewError} className={PREVIEW_SIZE_CLASS} />
+            <PinConfirmMap center={pin} isInteractive={false} onError={setPreviewError} className={mapDisplay === 'map' ? MAP_BELOW_SIZE_CLASS : PREVIEW_SIZE_CLASS} />
           )}
           <div className="flex items-center justify-between gap-2 text-sm">
             <span data-part={addressFieldPart(theme, 'muted')} className={theme?.muted ?? 'text-gray-600'}>{purpose === 'store' ? 'Entrance pinned' : 'Pin set — the rider goes here'}</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => setPending({ start: pin, label: null, accuracyM: null })}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setPending({ start: pin, label: null, accuracyM: null })}
+              data-part={addressFieldPart(theme, 'button-alt')}
+              className={theme?.button}
+            >
               Change pin
             </Button>
           </div>

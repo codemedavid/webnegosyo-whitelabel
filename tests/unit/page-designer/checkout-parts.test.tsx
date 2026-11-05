@@ -251,9 +251,11 @@ describe.each(CHECKOUT_BLOCKS.map((def) => [def.id, def] as const))('%s', (block
     drawn = drawnByBlock(blockId)
   })
   const listed = (def.parts ?? []).filter((part) => !STATE_PARTS.has(part))
+  // The delivery address loads in the browser only (checkout-form-designs.test.tsx covers its marks).
+  const drawnHere = blockId === 'checkout.customer' ? listed.filter((part) => part !== 'button_alt' && part !== 'link') : listed
 
   it('draws every part it lists', () => {
-    const missing = listed.filter((part) => !drawn.attrs.has(attrOf(part)))
+    const missing = drawnHere.filter((part) => !drawn.attrs.has(attrOf(part)))
     expect(missing).toEqual([])
   })
 

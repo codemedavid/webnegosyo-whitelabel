@@ -7,6 +7,7 @@ import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import { createStandardDesign } from './standard-designs'
 import { CHECKOUT_TEMPLATES } from './templates-checkout'
 import { CHECKOUT_FAMILY_TEMPLATES } from './templates-checkout-families'
+import { CHECKOUT_FORM_TEMPLATES } from './templates-checkout-forms'
 import { CHECKOUT_STUDIO_TEMPLATES } from './templates-checkout-studio'
 import { CHECKOUT_STYLE_TEMPLATES } from './templates-checkout-styles'
 import { CONFIRMATION_TEMPLATES } from './templates-confirmation'
@@ -55,5 +56,5 @@ const standard = (page: PageId): PageTemplate => ({
 export const PAGE_TEMPLATES: Readonly<Record<PageId, readonly PageTemplate[]>> = {
   tracking: [standard('tracking'), ...TRACKING_TEMPLATES, ...TRACKING_FAMILY_TEMPLATES],
   confirmation: [standard('confirmation'), ...CONFIRMATION_TEMPLATES, ...CONFIRMATION_FAMILY_TEMPLATES],
-  checkout: [standard('checkout'), ...CHECKOUT_STUDIO_TEMPLATES, ...CHECKOUT_TEMPLATES, ...CHECKOUT_STYLE_TEMPLATES, ...CHECKOUT_FAMILY_TEMPLATES],
+  checkout: [standard('checkout'), ...CHECKOUT_FORM_TEMPLATES, ...CHECKOUT_STUDIO_TEMPLATES, ...CHECKOUT_TEMPLATES, ...CHECKOUT_STYLE_TEMPLATES, ...CHECKOUT_FAMILY_TEMPLATES],
 }

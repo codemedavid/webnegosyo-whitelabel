@@ -250,7 +250,7 @@ describe('editor samples and theme', () => {
   it('tokens: first name, order type and the grand total', () => {
     const withFee = { ...ORDER, deliveryFee: 50 }
     expect(confirmationGrandTotal(withFee)).toBe(250)
-    expect(confirmationTokens('Lola’s', withFee, 250)).toEqual({ store: 'Lola’s', name: 'Maria', order_type: 'Pickup', total: '₱250.00' })
+    expect(confirmationTokens('Lola’s', withFee, 250)).toEqual({ store: 'Lola’s', store_address: '', name: 'Maria', order_type: 'Pickup', total: '₱250.00' })
     expect(confirmationTokens('Lola’s', { ...ORDER, customerData: {}, orderTypeName: null }, 200)).toMatchObject({ name: '', order_type: '' })
   })
 })

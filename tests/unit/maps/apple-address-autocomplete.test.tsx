@@ -430,3 +430,49 @@ describe('what a confirmed pin writes into the address', () => {
     expect(onChange).toHaveBeenLastCalledWith('6764 Ayala Avenue, Makati', { lat: 14.56, lng: 121.03 }, { isConfirmed: true })
   })
 })
+
+describe('how the map is offered', () => {
+  async function renderDisplay(mapDisplay: 'buttons' | 'links' | 'map', coordinates: { lat: number; lng: number } | null = null) {
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
+    render(<AppleAddressAutocomplete value="" onChange={jest.fn()} coordinates={coordinates} biasCenter={{ lat: 15.7, lng: 120.5 }} fallback={null} mapDisplay={mapDisplay} />)
+    return maps
+  }
+
+  it('links: words under the box instead of icons beside it, and they open the map', async () => {
+    const maps = await renderDisplay('links')
+    const pick = await screen.findByRole('button', { name: 'Pick on the map' })
+    await waitFor(() => expect(pick).toBeEnabled())
+    expect(pick).toHaveTextContent('Pick on the map')
+    expect(screen.getByRole('button', { name: 'Use my location' })).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(pick)
+    })
+    await waitFor(() => expect(maps.length).toBe(1))
+    expect(screen.getByRole('button', { name: 'Confirm this spot' })).toBeInTheDocument()
+  })
+
+  it('map: shows the map from the start, with no pin implied, and a tap opens the picker', async () => {
+    const maps = await renderDisplay('map')
+    await waitFor(() => expect(maps.length).toBe(1))
+    // A preview: scrolling the page past it must not move it.
+    expect(maps[0].isScrollEnabled).toBe(false)
+    expect(maps[0].center).toMatchObject({ latitude: 15.7, longitude: 120.5 })
+    expect(document.querySelector('.fill-orange-500')).toBeNull()
+    const open = screen.getByRole('button', { name: 'Set your exact spot' })
+    await waitFor(() => expect(open).toBeEnabled())
+    await act(async () => {
+      fireEvent.click(open)
+    })
+    expect(screen.getByRole('button', { name: 'Confirm this spot' })).toBeInTheDocument()
+  })
+
+  it('map: once pinned it shows the pin and offers a change', async () => {
+    await renderDisplay('map', { lat: 15.71, lng: 120.51 })
+    expect(await screen.findByRole('button', { name: 'Change pin' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Set your exact spot' })).toBeNull()
+    expect(document.querySelector('.fill-orange-500')).not.toBeNull()
+  })
+})

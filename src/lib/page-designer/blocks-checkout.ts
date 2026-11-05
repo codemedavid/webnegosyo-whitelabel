@@ -172,7 +172,8 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       subtitle('Please provide the following details'),
     ],
     options: CUSTOMER_OPTIONS,
-    parts: ['field', 'label', 'error'],
+    // `button_alt` / `link`: the delivery address's map buttons and links.
+    parts: ['field', 'label', 'error', 'button_alt', 'link'],
   },
   {
     id: 'checkout.loyalty',

@@ -8,10 +8,12 @@
  * this, so the designs cannot drift.
  */
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { Plus } from 'lucide-react'
 import type { AddressFieldTheme, PinCheckView } from '@/components/shared/address-autocomplete'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { resolveAddressMap, type AddressMapChoice } from '@/lib/checkout/address-map'
 import { applyDeliveryAddressChange } from '@/lib/checkout/customer-field-input'
 import {
   DELIVERY_LANDMARK_KEY,
@@ -93,6 +95,8 @@ export function checkoutAddressTheme(inputClassName: string): AddressFieldTheme 
     optionText: 'text-[color:var(--co-text)]',
     icon: 'text-[color:var(--co-muted)]',
     button: 'border-[color:var(--co-border)] bg-[var(--co-card)] text-[color:var(--co-text)] hover:bg-[var(--co-subtle)] hover:text-[color:var(--co-text)]',
+    link: 'text-[color:var(--co-text)] hover:underline focus-visible:underline focus-visible:outline-none',
+    mapStrip: 'bg-[var(--co-card)] text-[color:var(--co-text)]',
     error: 'text-[color:var(--co-error)]',
     muted: 'text-[color:var(--co-muted)]',
   }
@@ -105,6 +109,17 @@ interface CheckoutAddressFieldProps {
   isRequired: boolean
   inputClassName: string
   labelClassName: string
+  /** Page Designer: how the map and the door details are offered; absent = as they always were. */
+  look?: AddressFieldLook
+}
+
+interface AddressFieldLook {
+  addressMap?: AddressMapChoice
+  addressDetails?: 'open' | 'tucked'
+  /** Replaces the detail labels' standard size. */
+  detailLabelClass?: string
+  /** Lay out by the form's own width (container), not the screen's. */
+  isContained?: boolean
 }
 
 export function CheckoutAddressField({
@@ -114,6 +129,7 @@ export function CheckoutAddressField({
   isRequired,
   inputClassName,
   labelClassName,
+  look,
 }: CheckoutAddressFieldProps) {
   const { customerData, setCustomerData, tenant, outlet, formFields } = checkout
 
@@ -145,6 +161,13 @@ export function CheckoutAddressField({
   const theme = useMemo(() => checkoutAddressTheme(inputClassName), [inputClassName])
   const fieldNames = formFields.map((field) => field.field_name)
   const detailFields = DETAIL_FIELDS.filter((spec) => !formAsksFor(spec.kind, fieldNames))
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  // An answer is never tucked out of sight.
+  const hasDetailAnswer = detailFields.some((spec) => (customerData[spec.key] || '').trim() !== '')
+  const areDetailsShown = look?.addressDetails !== 'tucked' || isDetailsOpen || hasDetailAnswer
+  const map = resolveAddressMap(look?.addressMap, tenant)
+  const detailGrid = look?.isContained ? '@lg:grid-cols-2 @lg:items-end' : 'sm:grid-cols-2'
+  const detailSpan = look?.isContained ? '@lg:col-span-2' : 'sm:col-span-2'
 
   return (
     <div className="space-y-3">
@@ -154,19 +177,32 @@ export function CheckoutAddressField({
         onChange={handleAddressChange}
         placeholder={placeholder || 'Search your street, building or landmark'}
         required={isRequired}
-        mapsEnabled={tenant?.mapbox_enabled ?? true}
+        mapsEnabled={(tenant?.mapbox_enabled ?? true) && map !== 'hidden'}
+        mapDisplay={map === 'hidden' ? undefined : map}
         biasCenter={biasCenter}
         purpose="delivery"
         check={check}
         theme={theme}
       />
-      {detailFields.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+      {detailFields.length > 0 && !areDetailsShown ? (
+        <button
+          type="button"
+          onClick={() => setIsDetailsOpen(true)}
+          aria-expanded={false}
+          data-part="link"
+          className={`inline-flex min-h-10 items-center gap-1.5 text-sm font-medium ${theme.link}`}
+        >
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          Add unit, landmark or a note
+        </button>
+      ) : null}
+      {detailFields.length > 0 && areDetailsShown ? (
+        <div className={`grid gap-3 ${detailGrid}`}>
           {detailFields.map((spec) => {
             const id = `checkout-${spec.key}`
             return (
-              <div key={spec.key} className={spec.kind === 'riderNote' ? 'sm:col-span-2' : ''}>
-                <label htmlFor={id} data-part="label" className={`mb-1 block text-sm ${labelClassName}`}>
+              <div key={spec.key} className={spec.kind === 'riderNote' ? detailSpan : ''}>
+                <label htmlFor={id} data-part="label" className={look?.detailLabelClass ?? `mb-1 block text-sm ${labelClassName}`}>
                   {spec.label} <span data-part="muted" className="opacity-60">(optional)</span>
                 </label>
                 <input
