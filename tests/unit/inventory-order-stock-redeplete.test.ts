@@ -14,6 +14,7 @@
  */
 
 import { redepleteOrderStockBestEffort, reverseOrderStockMovements } from '@/lib/inventory/order-stock-service'
+import { simulateOrderStockClaim, routeStockRpc, type SimClaim, type SimMovement } from '../fixtures/order-stock-claim-rpc'
 import {
   resolveRedepletionRevision,
   resolveVoidClaimRevision,
@@ -27,8 +28,9 @@ const FLOUR = 'item-flour'
 const GRAM = 'unit-gram'
 
 const from = jest.fn()
+const rpc = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
@@ -87,6 +89,22 @@ function stubPipeline(
     return []
   }
 
+  // Claim + rows are one call (apply_order_stock_claim): every claim the
+  // twin takes is recorded in claimInserts, every row in ledgerInserts.
+  const claims: SimClaim[] = [...((options.claims ?? []) as SimClaim[])]
+  rpc.mockImplementation(routeStockRpc((args) => {
+    const before = claims.length
+    const answer = simulateOrderStockClaim(
+      { claims, movements: [...((options.movements ?? []) as SimMovement[]), ...(ledgerInserts as unknown as SimMovement[])] },
+      args,
+    )
+    if (claims.length > before) {
+      claimInserts.push({ tenant_id: args.p_tenant_id, order_id: args.p_order_id, reason: args.p_reason, revision: args.p_revision, kind: args.p_kind })
+      ledgerInserts.push(...((answer.data as { rows: Record<string, unknown>[] }).rows))
+    }
+    return answer
+  }))
+
   return (table: string) => {
     if (table === 'orders') {
       const chain = {
@@ -138,6 +156,7 @@ function stubPipeline(
 
 beforeEach(() => {
   from.mockReset()
+  rpc.mockReset()
   jest.spyOn(console, 'warn').mockImplementation(() => {})
   jest.spyOn(console, 'error').mockImplementation(() => {})
 })

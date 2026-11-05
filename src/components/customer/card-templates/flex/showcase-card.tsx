@@ -6,6 +6,7 @@ import {
   AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, readableOn, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
+import { LowStockBadge } from '../card-stock'
 
 const SHOWCASE_DEFAULTS: CardStyle = {
   imageRatio: 'portrait',
@@ -45,6 +46,7 @@ export const ShowcaseCard = memo(function ShowcaseCard({
           className="rounded-[var(--brand-radius,14px)]"
           imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.035]"
         >
+          <LowStockBadge branding={branding} placement="bottom-left-clear" />
           {!isOrderable && <SoldOutVeil />}
         </CardMedia>
 

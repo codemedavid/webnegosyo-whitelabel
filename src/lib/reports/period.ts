@@ -27,26 +27,60 @@
 import { z } from 'zod'
 import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from '@/lib/business-day/trading-day'
 
-export const REPORT_PRESETS = ['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'custom'] as const
+export const REPORT_PRESETS = [
+  'today',
+  'yesterday',
+  'last_7_days',
+  'last_30_days',
+  'this_week',
+  'last_week',
+  'this_month',
+  'last_month',
+  'this_year',
+  'last_12_months',
+  'custom',
+] as const
 export type ReportPreset = (typeof REPORT_PRESETS)[number]
 
 export const REPORT_PRESET_LABELS: Readonly<Record<ReportPreset, string>> = {
   today: 'Today',
   yesterday: 'Yesterday',
+  last_7_days: 'Last 7 days',
+  last_30_days: 'Last 30 days',
   this_week: 'This week',
   last_week: 'Last week',
   this_month: 'This month',
   last_month: 'Last month',
+  this_year: 'This year',
+  last_12_months: 'Last 12 months',
   custom: 'Custom',
 }
 
 export const DEFAULT_REPORT_PRESET: ReportPreset = 'this_week'
 
-/** Interactive range cap, the same as the SQL report functions. */
-export const MAX_REPORT_DAYS = 93
+/**
+ * Longest range a report may show: a year plus a month, so "last 12 months"
+ * and a custom year both fit. The read layer splits anything longer than
+ * `SQL_REPORT_MAX_DAYS` into month chunks (`read/report-chunks.ts`).
+ */
+export const MAX_REPORT_DAYS = 400
+
+/** One call to a platform report function covers at most this many days (their own check). */
+export const SQL_REPORT_MAX_DAYS = 93
 
 /** Longest range that still reads well one bar per day. */
 const MAX_DAY_GRAIN_DAYS = 31
+
+/** Longest range that still reads well one bar per week; beyond it, months. */
+const MAX_WEEK_GRAIN_DAYS = 93
+
+/** A single day compared "last year" is the same weekday 52 weeks back. */
+const DAYS_IN_52_WEEKS = 364
+
+const ROLLING_DAYS: Readonly<Partial<Record<ReportPreset, number>>> = { last_7_days: 7, last_30_days: 30 }
+
+/** What a period is compared with: the period before it, or the same days a year earlier. */
+export type CompareTo = 'previous' | 'last_year'
 
 export type ReportGrain = 'hour' | 'day' | 'week' | 'month'
 
@@ -77,7 +111,7 @@ export interface ComparePeriod {
   label: string
   /** Reads after "up 12%": "on last week", "on the same day last week" … */
   phrase: string
-  kind: 'same_weekday_last_week' | 'previous_period'
+  kind: 'same_weekday_last_week' | 'previous_period' | 'same_period_last_year'
 }
 
 export interface ReportPeriodInput {
@@ -140,6 +174,20 @@ function firstOfPreviousMonth(dayKey: string): string {
   return firstOfMonth(addDays(firstOfMonth(dayKey), -1))
 }
 
+/** The same calendar day a year earlier; Feb 29 becomes Feb 28. */
+function sameDayLastYear(dayKey: string): string {
+  const year = String(Number(dayKey.slice(0, 4)) - 1).padStart(4, '0')
+  const monthDayPart = dayKey.slice(5)
+  return monthDayPart === '02-29' ? `${year}-02-28` : `${year}-${monthDayPart}`
+}
+
+/** The 1st of the month `months` months before `dayKey`'s month. */
+function firstOfMonthsBack(dayKey: string, months: number): string {
+  let key = firstOfMonth(dayKey)
+  for (let step = 0; step < months; step += 1) key = firstOfPreviousMonth(key)
+  return key
+}
+
 function dayStartMs(dayKey: string, schedule: CutoffSchedule): number {
   return Date.parse(tradingDayWindow(dayKey, schedule).startIso)
 }
@@ -177,10 +225,14 @@ function customPhrase(from: string, to: string): string {
 const PRESET_PHRASES: Readonly<Record<Exclude<ReportPreset, 'custom'>, string>> = {
   today: 'today',
   yesterday: 'yesterday',
+  last_7_days: 'in the last 7 days',
+  last_30_days: 'in the last 30 days',
   this_week: 'this week',
   last_week: 'last week',
   this_month: 'this month',
   last_month: 'last month',
+  this_year: 'this year',
+  last_12_months: 'in the last 12 months',
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +264,13 @@ function presetRange(preset: Exclude<ReportPreset, 'custom'>, today: string): Da
       const thisMonth = firstOfMonth(today)
       return { from: firstOfPreviousMonth(today), to: addDays(thisMonth, -1) }
     }
+    case 'last_7_days':
+    case 'last_30_days':
+      return { from: addDays(today, 1 - (ROLLING_DAYS[preset] ?? 1)), to: today }
+    case 'this_year':
+      return { from: `${today.slice(0, 4)}-01-01`, to: today }
+    case 'last_12_months':
+      return { from: firstOfMonthsBack(today, 11), to: today }
   }
 }
 
@@ -231,7 +290,8 @@ function validateCustomRange(input: ReportPeriodInput, today: string): { ok: tru
 
 export function grainFor(dayCount: number): ReportGrain {
   if (dayCount <= 1) return 'hour'
-  return dayCount <= MAX_DAY_GRAIN_DAYS ? 'day' : 'week'
+  if (dayCount <= MAX_DAY_GRAIN_DAYS) return 'day'
+  return dayCount <= MAX_WEEK_GRAIN_DAYS ? 'week' : 'month'
 }
 
 function buildPeriod(preset: ReportPreset, range: DayRange, now: number, schedule: CutoffSchedule): ReportPeriod {
@@ -310,8 +370,34 @@ function comparePreviousPeriod(period: ReportPeriod, schedule: CutoffSchedule): 
   return { ...window, label, phrase: `on ${label}`, kind: 'previous_period' }
 }
 
+function lastYearLabel(period: ReportPeriod): string {
+  if (period.from === period.to) return 'the same day last year'
+  if (period.preset === 'this_year') return 'last year'
+  if (period.preset === 'last_12_months') return 'the 12 months before'
+  return 'the same days last year'
+}
+
+function compareLastYear(period: ReportPeriod, schedule: CutoffSchedule): ComparePeriod {
+  const isOneDay = period.from === period.to
+  const from = isOneDay ? addDays(period.from, -DAYS_IN_52_WEEKS) : sameDayLastYear(period.from)
+  const to = isOneDay ? from : sameDayLastYear(period.to)
+  const previousStart = dayStartMs(from, schedule)
+  const previousLength = dayStartMs(addDays(to, 1), schedule) - previousStart
+  const window = compareWindow(previousStart, period.end - period.start, previousLength, period.isPartial)
+  const label = lastYearLabel(period)
+  return { ...window, label, phrase: `on ${label}`, kind: 'same_period_last_year' }
+}
+
+/** A year-long period's "previous" period is the year before it. */
+const YEAR_PRESETS: readonly ReportPreset[] = ['this_year', 'last_12_months']
+
 /** Pass the same `schedule` the period was resolved with. */
-export function resolveComparePeriod(period: ReportPeriod, schedule: CutoffSchedule = MIDNIGHT_SCHEDULE): ComparePeriod {
+export function resolveComparePeriod(
+  period: ReportPeriod,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE,
+  compareTo: CompareTo = 'previous',
+): ComparePeriod {
+  if (compareTo === 'last_year' || YEAR_PRESETS.includes(period.preset)) return compareLastYear(period, schedule)
   if (period.from === period.to) return compareSingleDay(period, schedule)
   if (period.preset === 'this_month' || period.preset === 'last_month') return compareMonth(period, schedule)
   return comparePreviousPeriod(period, schedule)
@@ -409,10 +495,14 @@ export interface ReportSearchParams {
   to: string | null
   branch: string | null
   compare: boolean
+  /** Meaningful only while `compare` is on; absent = the previous period. URL: `compare=year`. */
+  compareTo?: CompareTo
 }
 
 /** The URL's branch value for orders taken without a branch. */
 export const UNASSIGNED_BRANCH = 'unassigned'
+
+const COMPARE_YEAR_PARAM = 'year'
 
 const firstValue = (value: string | string[] | undefined): string | undefined => (Array.isArray(value) ? value[0] : value)
 
@@ -435,6 +525,7 @@ export function parseReportSearchParams(raw: Record<string, string | string[] | 
     to: isCustom ? realDayOrNull(firstValue(raw.to)) : null,
     branch: parsedBranch.success ? parsedBranch.data : null,
     compare: firstValue(raw.compare) !== '0',
+    compareTo: firstValue(raw.compare) === COMPARE_YEAR_PARAM ? 'last_year' : 'previous',
   }
 }
 
@@ -448,5 +539,6 @@ export function toReportSearchParams(params: ReportSearchParams): URLSearchParam
   }
   if (params.branch) query.set('branch', params.branch)
   if (!params.compare) query.set('compare', '0')
+  else if (params.compareTo === 'last_year') query.set('compare', COMPARE_YEAR_PARAM)
   return query
 }

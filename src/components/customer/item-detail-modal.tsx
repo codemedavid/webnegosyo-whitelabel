@@ -18,6 +18,7 @@ import { addonQuantity, setAddonQuantity } from '@/lib/addon-quantity'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { getDefaultSelection, mapCartFormatToSelection, mapSelectionToCartFormat, restoreLinkedOptionSnapshots, setOptionQuantity, toggleOption, validateAllGroups, type ModifierSelection } from '@/lib/modifier-groups-cart'
 import { toast } from 'sonner'
+import { ItemNoteField } from './item-note-field'
 
 interface ItemDetailModalProps {
   item: MenuItem | null
@@ -458,6 +459,14 @@ export function ItemDetailModal({
               </div>
             </div>
           )}
+
+          {/* Optional note for the kitchen — editable on every line, options or not. */}
+          <ItemNoteField
+            className={`px-4 sm:px-6 pb-6 ${hasCustomizations ? '' : 'pt-4 sm:pt-6'}`}
+            value={specialInstructions}
+            onChange={setSpecialInstructions}
+            colors={{ title: c.title, muted: c.muted, text: c.title, background: c.surface, border: c.border, focus: c.primary }}
+          />
         </div>
 
         {/* Footer - Always visible, sticky */}

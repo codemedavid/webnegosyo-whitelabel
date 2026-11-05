@@ -13,7 +13,7 @@ import type { Column, HeroDesignV5, NodeStyle, Section, Theme, Widget, WidgetKin
 const WIDGET_KINDS: readonly WidgetKind[] = [
   'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
   'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
-  'order-entry', 'store-logo', 'slideshow',
+  'order-entry', 'store-logo', 'slideshow', 'page-block',
 ]
 
 type Loose = Record<string, unknown>
@@ -51,6 +51,13 @@ function layers(node: Loose): Pick<Section, 'style' | 'tablet' | 'mobile'> {
   }
 }
 
+/** Known-shape page states only; anything else reads as "always shown". */
+function showWhen(value: unknown): { showWhen?: string[] } {
+  if (!Array.isArray(value)) return {}
+  const states = value.filter((v): v is string => typeof v === 'string' && /^[a-z_]{1,32}$/.test(v)).slice(0, 12)
+  return states.length ? { showWhen: states } : {}
+}
+
 function widget(value: unknown): Widget | null {
   if (!isObject(value)) return null
   const id = asId(value.id)
@@ -64,6 +71,7 @@ function widget(value: unknown): Widget | null {
     content: content as unknown as Widget['content'],
     ...layers(value),
     ...(isObject(value.animation) ? { animation: value.animation as unknown as Widget['animation'] } : {}),
+    ...showWhen(value.showWhen),
   }
 }
 
@@ -90,6 +98,7 @@ function section(value: unknown): Section | null {
     ...(typeof value.anchor === 'string' ? { anchor: value.anchor } : {}),
     columns,
     ...layers(value),
+    ...showWhen(value.showWhen),
   }
 }
 

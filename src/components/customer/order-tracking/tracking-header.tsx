@@ -11,14 +11,19 @@ interface TrackingHeaderProps {
   onBack: () => void
   /** The owner can hide the pulsing "Live" badge. */
   showLiveBadge?: boolean
+  /** Page Designer wording; unset = today's "Order #07" / "Live". */
+  orderLabel?: string
+  liveLabel?: string
+  /** Off in the Page Designer editor, where a sticky bar would ride over the canvas. */
+  isSticky?: boolean
 }
 
 /** Sticky top bar: the store's identity, the order number, and the live pulse. */
-export function TrackingHeader({ storeName, logoUrl, shortId, isLive, onBack, showLiveBadge = true }: TrackingHeaderProps) {
+export function TrackingHeader({ storeName, logoUrl, shortId, isLive, onBack, showLiveBadge = true, orderLabel, liveLabel, isSticky = true }: TrackingHeaderProps) {
   return (
     <header
       data-branding-scope="tracking/header"
-      className="sticky top-0 z-50 border-b backdrop-blur-md"
+      className={`${isSticky ? 'sticky top-0 z-50 ' : ''}border-b backdrop-blur-md`}
       style={{ backgroundColor: 'var(--trk-header-bg)', borderColor: 'var(--trk-card-border)' }}
     >
       <div className="container mx-auto flex h-16 max-w-lg items-center gap-3 px-4">
@@ -57,7 +62,7 @@ export function TrackingHeader({ storeName, logoUrl, shortId, isLive, onBack, sh
             {storeName}
           </h1>
           <p className="text-xs" style={{ color: 'var(--trk-header-muted)' }}>
-            Order #{shortId}
+            {orderLabel ?? <>Order #{shortId}</>}
           </p>
         </div>
 
@@ -70,7 +75,7 @@ export function TrackingHeader({ storeName, logoUrl, shortId, isLive, onBack, sh
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 motion-reduce:animate-none" style={{ backgroundColor: 'var(--trk-live)' }} />
               <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--trk-live)' }} />
             </span>
-            Live
+            {liveLabel ?? 'Live'}
           </span>
         )}
       </div>

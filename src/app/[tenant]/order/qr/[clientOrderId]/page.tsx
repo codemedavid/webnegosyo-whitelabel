@@ -344,7 +344,7 @@ export default function QrOrderPage() {
                 <div key={`${item.menuItemId}-${index}`}>
                   {index > 0 && <Separator className="my-3" />}
                   <div className="flex justify-between">
-                    <div className="flex-1 mr-4">
+                    <div className="flex-1 min-w-0 mr-4">
                       <span className="text-sm font-medium" style={{ color: branding.textPrimary }}>
                         {item.menuItemName}
                       </span>
@@ -360,7 +360,7 @@ export default function QrOrderPage() {
                         </p>
                       )}
                       {item.specialInstructions && (
-                        <p className="text-xs italic mt-0.5" style={{ color: branding.textSecondary }}>
+                        <p className="min-w-0 wrap-anywhere text-xs italic mt-0.5" style={{ color: branding.textSecondary }}>
                           Note: {item.specialInstructions}
                         </p>
                       )}

@@ -1,4 +1,5 @@
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
+import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
 import { getFooterConfig } from '@/lib/footer-utils'
 
 /**
@@ -173,5 +174,21 @@ describe('TENANT_STOREFRONT_SELECT card style knobs', () => {
     'card_image_ratio', 'card_image_fit', 'card_add_button', 'card_text_align', 'card_description', 'card_density',
   ])('projects %s (read by getTenantBranding for the flexible cards)', (column) => {
     expect(tokens).toContain(column)
+  })
+})
+
+/**
+ * Menu stock badges ("Sold out", "Only N left") and the item page / cart
+ * steppers only read stock ceilings when `inventory_enabled` is on. Without the
+ * column in the projections the flag read `undefined` on every store, so no
+ * inventory store ever showed a badge (browser QA, 2026-11-04).
+ */
+describe('inventory_enabled reaches every storefront stock reader', () => {
+  it('is projected by the menu / checkout storefront read', () => {
+    expect(TENANT_STOREFRONT_SELECT.split(/[\s,]+/)).toContain('inventory_enabled')
+  })
+
+  it('is projected by the product detail page read', () => {
+    expect(PRODUCT_DETAIL_TENANT_SELECT.split(/[\s,]+/)).toContain('inventory_enabled')
   })
 })

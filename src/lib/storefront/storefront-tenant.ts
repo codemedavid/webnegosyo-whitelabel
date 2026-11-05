@@ -2,7 +2,7 @@ import type { Tenant } from '@/types/database'
 import { createPublicClient, describePublicQueryError } from '@/lib/supabase/public'
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
 import { asTenantQueryClient, fetchActiveTenantBySlug } from '@/lib/queries/fetch-tenant-by-slug'
-import { createCachedRead, doNotCache, storefrontTag } from '@/lib/storefront/cached-read'
+import { createCachedRead, doNotCache, projectionCacheKey, storefrontTag } from '@/lib/storefront/cached-read'
 import { omitTenantSecrets } from '@/lib/tenant-public'
 
 export interface StorefrontTenantResult {
@@ -41,6 +41,8 @@ async function loadStorefrontTenant(slug: string) {
  * storefront projection). They now share this cached read; the projection
  * covers every column all three render.
  */
-export const getStorefrontTenant = createCachedRead(['storefront-tenant'], loadStorefrontTenant, {
-  tags: (slug) => [storefrontTag(slug)],
-})
+export const getStorefrontTenant = createCachedRead(
+  ['storefront-tenant', projectionCacheKey(TENANT_STOREFRONT_SELECT)],
+  loadStorefrontTenant,
+  { tags: (slug) => [storefrontTag(slug)] },
+)

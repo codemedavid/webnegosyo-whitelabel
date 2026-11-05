@@ -17,12 +17,10 @@ import { resolveMovementOutletId } from './stock-location'
 import { buildDepletionItemsFromOrderRows, type OrderItemRow } from './customer-order-items'
 import { reportStockFailure } from './stock-failure-report'
 import type { StockAuditContext } from './stock-audit'
+import { commitOrderStockClaim } from './order-stock-commit'
 import {
-  claimOrderStockApplication,
-  releaseOrderStockApplication,
   listOrderStockClaims,
   resolveRedepletionRevision,
-  hasBlockingVoidClaim,
   isLatestSaleReversed,
   latestCancellationRestored,
   type OrderStockClaimRow,
@@ -34,7 +32,7 @@ import {
   unwritten,
   soleOutletId,
   applySimpleOptionStockIsolated,
-  writeOrderLedgerRows,
+  commitOrderLedgerRows,
   type AdminClient,
   type OrderLedgerRow,
   type OrderStockResult,
@@ -213,7 +211,7 @@ async function markOrderReopened(
   orderId: string,
   revision: number,
 ): Promise<void> {
-  await claimOrderStockApplication(supabase, tenantId, orderId, 'sale', revision)
+  await commitOrderStockClaim(supabase, { tenantId, orderId, reason: 'sale', kind: 'order', revision }, [])
 }
 
 function toRespendRows(
@@ -241,9 +239,9 @@ function toRespendRows(
 /**
  * Write back, as a sale, exactly the ledger rows a cancellation returned.
  *
- * Same claim discipline as `applyOrderStockMovements`: claim first, stand down
- * if a newer cancellation has spoken, hand the claim back on any exit that
- * writes nothing.
+ * Claimed and written in one transaction, which also stands down
+ * (`cancelled_first`) if a newer cancellation has spoken. Nothing to re-spend
+ * takes no claim; the caller then marks the order re-opened.
  */
 async function respendRestoredMovements(
   supabase: AdminClient,
@@ -252,25 +250,7 @@ async function respendRestoredMovements(
   restored: readonly RestoredMovement[],
   revision: number,
 ): Promise<OrderStockResult> {
-  if (!(await claimOrderStockApplication(supabase, tenantId, orderId, 'sale', revision))) {
-    return unwritten('duplicate')
-  }
-  const release = () => releaseOrderStockApplication(supabase, tenantId, orderId, 'sale', revision)
-  try {
-    const claims = await listOrderStockClaims(supabase, tenantId, orderId)
-    if (hasBlockingVoidClaim(claims, revision)) {
-      await release()
-      return unwritten('cancelled_first')
-    }
-
-    const rows = toRespendRows(tenantId, orderId, restored)
-    if (rows.length === 0) {
-      await release()
-      return EMPTY_RESULT
-    }
-    return await writeOrderLedgerRows(supabase, tenantId, rows)
-  } catch (error) {
-    await release()
-    throw error
-  }
+  const rows = toRespendRows(tenantId, orderId, restored)
+  if (rows.length === 0) return EMPTY_RESULT
+  return commitOrderLedgerRows(supabase, { tenantId, orderId, reason: 'sale', kind: 'order', revision }, rows)
 }

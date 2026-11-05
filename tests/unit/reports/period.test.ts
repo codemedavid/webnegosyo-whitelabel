@@ -1,6 +1,7 @@
 import {
   DEFAULT_REPORT_PRESET,
   MAX_REPORT_DAYS,
+  SQL_REPORT_MAX_DAYS,
   REPORT_PRESETS,
   REPORT_PRESET_LABELS,
   bucketKey,
@@ -44,11 +45,25 @@ function error(from: string | null | undefined, to: string | null | undefined, n
 
 describe('constants', () => {
   it('lists the presets in filter-bar order with plain labels', () => {
-    expect(REPORT_PRESETS).toEqual(['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'custom'])
+    expect(REPORT_PRESETS).toEqual([
+      'today',
+      'yesterday',
+      'last_7_days',
+      'last_30_days',
+      'this_week',
+      'last_week',
+      'this_month',
+      'last_month',
+      'this_year',
+      'last_12_months',
+      'custom',
+    ])
     expect(REPORT_PRESET_LABELS.this_week).toBe('This week')
+    expect(REPORT_PRESET_LABELS.last_12_months).toBe('Last 12 months')
     expect(REPORT_PRESET_LABELS.custom).toBe('Custom')
     expect(DEFAULT_REPORT_PRESET).toBe('this_week')
-    expect(MAX_REPORT_DAYS).toBe(93)
+    expect(MAX_REPORT_DAYS).toBe(400)
+    expect(SQL_REPORT_MAX_DAYS).toBe(93)
   })
 })
 
@@ -130,6 +145,81 @@ describe('resolveReportPeriod presets', () => {
   })
 })
 
+describe('resolveReportPeriod long and rolling presets', () => {
+  it('last 7 days ends today (partial) and starts six days back', () => {
+    const p = period('last_7_days')
+    expect(p).toMatchObject({ from: '2026-10-08', to: '2026-10-14', isPartial: true, grain: 'day', label: 'Last 7 days', phrase: 'in the last 7 days' })
+    expect(p.start).toBe(manila('2026-10-08T00:00:00'))
+    expect(p.end).toBe(NOW)
+  })
+
+  it('last 30 days spans thirty days including today', () => {
+    const p = period('last_30_days')
+    expect(p).toMatchObject({ from: '2026-09-15', to: '2026-10-14', grain: 'day', phrase: 'in the last 30 days' })
+  })
+
+  it('this year runs from January 1 to now, by week until it passes 93 days, then by month', () => {
+    const p = period('this_year')
+    expect(p).toMatchObject({ from: '2026-01-01', to: '2026-10-14', isPartial: true, grain: 'month', label: 'This year', phrase: 'this year' })
+    expect(period('this_year', manila('2026-02-10T09:00:00')).grain).toBe('week')
+  })
+
+  it('last 12 months starts on the 1st, eleven months back, so every bar is a whole month but this one', () => {
+    const p = period('last_12_months')
+    expect(p).toMatchObject({ from: '2025-11-01', to: '2026-10-14', isPartial: true, grain: 'month', phrase: 'in the last 12 months' })
+  })
+})
+
+describe('resolveComparePeriod against last year', () => {
+  it('a range compares with the same calendar days a year earlier, cut at the same elapsed time', () => {
+    const c = resolveComparePeriod(period('this_month'), undefined, 'last_year')
+    expect(c.kind).toBe('same_period_last_year')
+    expect(c.start).toBe(manila('2025-10-01T00:00:00'))
+    expect(c.end).toBe(manila('2025-10-14T14:00:00'))
+    expect(c).toMatchObject({ label: 'the same days last year', phrase: 'on the same days last year' })
+  })
+
+  it('a single day compares with the same weekday 52 weeks earlier', () => {
+    const c = resolveComparePeriod(period('yesterday'), undefined, 'last_year')
+    expect(c.kind).toBe('same_period_last_year')
+    // Tue 13 Oct 2026 − 364 days = Tue 14 Oct 2025.
+    expect(c.start).toBe(manila('2025-10-14T00:00:00'))
+    expect(c.end).toBe(manila('2025-10-15T00:00:00'))
+    expect(c.label).toBe('the same day last year')
+  })
+
+  it('Feb 29 maps to Feb 28 the year before', () => {
+    const c = resolveComparePeriod(custom('2028-02-29', '2028-02-29', manila('2028-03-05T10:00:00')), undefined, 'last_year')
+    expect(c.start).toBe(manila('2027-03-02T00:00:00'))
+    const range = resolveComparePeriod(custom('2028-02-01', '2028-02-29', manila('2028-03-05T10:00:00')), undefined, 'last_year')
+    expect(range.start).toBe(manila('2027-02-01T00:00:00'))
+    expect(range.end).toBe(manila('2027-03-01T00:00:00'))
+  })
+
+  it("this year's previous period IS last year, labelled so", () => {
+    const c = resolveComparePeriod(period('this_year'))
+    expect(c.kind).toBe('same_period_last_year')
+    expect(c.start).toBe(manila('2025-01-01T00:00:00'))
+    expect(c.end).toBe(manila('2025-10-14T14:00:00'))
+    expect(c).toMatchObject({ label: 'last year', phrase: 'on last year' })
+  })
+
+  it('last 12 months compares with the 12 months before', () => {
+    const c = resolveComparePeriod(period('last_12_months'))
+    expect(c.start).toBe(manila('2024-11-01T00:00:00'))
+    expect(c.end).toBe(manila('2025-10-14T14:00:00'))
+    expect(c.label).toBe('the 12 months before')
+  })
+
+  it('last 7 days compares with the 7 days before', () => {
+    const c = resolveComparePeriod(period('last_7_days'))
+    expect(c.kind).toBe('previous_period')
+    expect(c.start).toBe(manila('2026-10-01T00:00:00'))
+    expect(c.end).toBe(manila('2026-10-07T14:00:00'))
+    expect(c.label).toBe('the previous 7 days')
+  })
+})
+
 describe('resolveReportPeriod custom', () => {
   it('accepts a past range and labels it compactly', () => {
     const p = custom('2026-10-01', '2026-10-10')
@@ -155,10 +245,11 @@ describe('resolveReportPeriod custom', () => {
     expect(p).toMatchObject({ grain: 'hour', label: 'Tue, Oct 13', phrase: 'on Oct 13' })
   })
 
-  it('picks the week grain beyond 31 days and allows exactly 93 days', () => {
+  it('picks the week grain beyond 31 days, the month grain beyond 93, and allows exactly 400 days', () => {
     expect(custom('2026-07-01', '2026-08-15').grain).toBe('week')
-    const ninetyThree = custom('2026-07-13', '2026-10-13')
-    expect(ninetyThree.to).toBe('2026-10-13')
+    expect(custom('2026-07-12', '2026-10-13').grain).toBe('month')
+    const longest = custom('2025-09-10', '2026-10-14')
+    expect(longest.to).toBe('2026-10-14')
   })
 
   it.each([
@@ -169,7 +260,7 @@ describe('resolveReportPeriod custom', () => {
     ['bad month', '2026-13-01', '2026-13-02', /date/i],
     ['reversed', '2026-10-10', '2026-10-01', /before/i],
     ['future end', '2026-10-10', '2026-10-15', /future/i],
-    ['too long', '2026-07-12', '2026-10-13', /93/],
+    ['too long', '2025-09-09', '2026-10-14', /400/],
   ])('rejects %s with a plain message', (_name, from, to, pattern) => {
     expect(error(from, to)).toMatch(pattern)
   })
@@ -263,6 +354,8 @@ describe('grainFor', () => {
     [31, 'day'],
     [32, 'week'],
     [93, 'week'],
+    [94, 'month'],
+    [366, 'month'],
   ])('%i days -> %s', (days, grain) => {
     expect(grainFor(days)).toBe(grain)
   })
@@ -358,7 +451,7 @@ describe('search params', () => {
   const UUID = '3f2b8c1e-5a4d-4e6f-8a9b-0c1d2e3f4a5b'
 
   it('defaults for empty, unknown and garbage input', () => {
-    const defaults = { preset: 'this_week', from: null, to: null, branch: null, compare: true }
+    const defaults = { preset: 'this_week', from: null, to: null, branch: null, compare: true, compareTo: 'previous' }
     expect(parseReportSearchParams({})).toEqual(defaults)
     expect(parseReportSearchParams({ period: 'forever', branch: 'x; drop table', compare: 'maybe' })).toEqual(defaults)
   })
@@ -366,7 +459,7 @@ describe('search params', () => {
   it('reads a custom range, a branch and compare=0', () => {
     expect(
       parseReportSearchParams({ period: 'custom', from: '2026-10-01', to: '2026-10-10', branch: UUID, compare: '0' }),
-    ).toEqual({ preset: 'custom', from: '2026-10-01', to: '2026-10-10', branch: UUID, compare: false })
+    ).toEqual({ preset: 'custom', from: '2026-10-01', to: '2026-10-10', branch: UUID, compare: false, compareTo: 'previous' })
   })
 
   it('takes the first value of a repeated param and accepts the unassigned branch', () => {
@@ -380,16 +473,21 @@ describe('search params', () => {
     expect(parseReportSearchParams({ period: 'custom', from: '2026-02-30', to: 'nope' })).toMatchObject({ preset: 'custom', from: null, to: null })
   })
 
+  it('reads compare=year as a comparison with last year', () => {
+    expect(parseReportSearchParams({ compare: 'year' })).toMatchObject({ compare: true, compareTo: 'last_year' })
+  })
+
   it('omits defaults when writing', () => {
-    const none = toReportSearchParams({ preset: 'this_week', from: null, to: null, branch: null, compare: true })
+    const none = toReportSearchParams({ preset: 'this_week', from: null, to: null, branch: null, compare: true, compareTo: 'previous' })
     expect(none.toString()).toBe('')
   })
 
   it.each<Parameters<typeof toReportSearchParams>[0]>([
-    { preset: 'yesterday', from: null, to: null, branch: null, compare: true },
-    { preset: 'last_month', from: null, to: null, branch: 'unassigned', compare: false },
-    { preset: 'custom', from: '2026-10-01', to: '2026-10-10', branch: UUID, compare: false },
-    { preset: 'this_week', from: null, to: null, branch: UUID, compare: true },
+    { preset: 'yesterday', from: null, to: null, branch: null, compare: true, compareTo: 'previous' },
+    { preset: 'last_month', from: null, to: null, branch: 'unassigned', compare: false, compareTo: 'previous' },
+    { preset: 'custom', from: '2026-10-01', to: '2026-10-10', branch: UUID, compare: false, compareTo: 'previous' },
+    { preset: 'this_week', from: null, to: null, branch: UUID, compare: true, compareTo: 'previous' },
+    { preset: 'this_year', from: null, to: null, branch: null, compare: true, compareTo: 'last_year' },
   ])('round-trips %j', (params) => {
     const written = toReportSearchParams(params)
     const raw = Object.fromEntries(written.entries())

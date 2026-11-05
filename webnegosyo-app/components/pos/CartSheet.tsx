@@ -1,11 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { LineNoteSheet } from "./LineNoteSheet";
+import { CartLineRow } from "./CartLineRow";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
-import { selectionLabel, type CartTotals, type PosCartLine } from "../../lib/pos-cart";
+import type { CartTotals, PosCartLine } from "../../lib/pos-cart";
 import type { PosOrderType } from "../../lib/pos-catalog";
 import { isDineInType } from "../../lib/pos-table";
 import type { OrderDiscountLine } from "../../lib/order-totals";
+import { lineNoteRefusalMessage, type LineNoteResult } from "../../lib/pos-line-rekey";
 
 interface CartSheetProps {
   lines: PosCartLine[];
@@ -16,6 +19,12 @@ interface CartSheetProps {
   onToggle: () => void;
   onSelectOrderType: (type: PosOrderType) => void;
   onChangeQty: (key: string, quantity: number) => void;
+  /**
+   * Writes (or, with "", clears) a line's kitchen note. Present = tapping a
+   * line opens "Note for the kitchen"; absent (e.g. the tutorial) = lines are
+   * read-only, as before.
+   */
+  onEditNote?: (key: string, note: string) => LineNoteResult | void;
   onClear: () => void;
   onCharge: () => void;
   /**
@@ -97,6 +106,7 @@ export function CartSheet({
   onToggle,
   onSelectOrderType,
   onChangeQty,
+  onEditNote,
   onClear,
   onCharge,
   chargeLabel,
@@ -123,6 +133,9 @@ export function CartSheet({
   // to send the food over.
   const isDeliveryType = activeType?.type === "delivery";
   const isDineIn = isDineInType(activeType);
+  const [noteKey, setNoteKey] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const noteLine = noteKey ? lines.find((line) => line.key === noteKey) : undefined;
 
   return (
     <View style={[styles.sheet, isPanel && styles.panel]}>
@@ -270,43 +283,13 @@ export function CartSheet({
             contentContainerStyle={styles.linesContent}
           >
             {lines.map((line) => (
-              <View key={line.key} style={styles.line}>
-                <View style={styles.lineText}>
-                  <Text style={styles.lineName} numberOfLines={1}>
-                    {line.name}
-                  </Text>
-                  {line.selections.length > 0 && (
-                    <Text style={styles.lineMeta} numberOfLines={1}>
-                      {line.selections.map(selectionLabel).join(", ")}
-                    </Text>
-                  )}
-                  {line.note ? (
-                    <Text style={styles.lineMeta} numberOfLines={1}>
-                      Note: {line.note}
-                    </Text>
-                  ) : null}
-                </View>
-
-                <View style={styles.stepper}>
-                  <TouchableOpacity
-                    style={styles.step}
-                    onPress={() => onChangeQty(line.key, line.quantity - 1)}
-                    accessibilityLabel={`Decrease ${line.name}`}
-                  >
-                    <Text style={styles.stepText}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.quantity}>{line.quantity}</Text>
-                  <TouchableOpacity
-                    style={styles.step}
-                    onPress={() => onChangeQty(line.key, line.quantity + 1)}
-                    accessibilityLabel={`Increase ${line.name}`}
-                  >
-                    <Text style={styles.stepText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.lineTotal}>{formatPeso(line.subtotal)}</Text>
-              </View>
+              <CartLineRow
+                key={line.key}
+                line={line}
+                isPanel={isPanel}
+                onChangeQty={onChangeQty}
+                onOpenNote={onEditNote ? setNoteKey : undefined}
+              />
             ))}
           </ScrollView>
 
@@ -470,6 +453,29 @@ export function CartSheet({
           </>
         )}
       </TouchableOpacity>
+
+      {noteLine && onEditNote ? (
+        <LineNoteSheet
+          key={noteLine.key}
+          visible
+          itemName={noteLine.name}
+          initialNote={noteLine.note}
+          error={noteError}
+          onCancel={() => {
+            setNoteError(null);
+            setNoteKey(null);
+          }}
+          onSave={(note) => {
+            const result = onEditNote(noteLine.key, note);
+            if (result && !result.ok) {
+              setNoteError(lineNoteRefusalMessage(result.reason, noteLine.name));
+              return;
+            }
+            setNoteError(null);
+            setNoteKey(null);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -527,44 +533,6 @@ const styles = StyleSheet.create({
   // scroll, instead of capping at the four rows a phone can spare.
   linesPanel: { maxHeight: undefined, flex: 1 },
   linesContent: { gap: spacing.sm, paddingBottom: spacing.sm },
-  line: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  lineText: { flex: 1 },
-  lineName: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
-  lineMeta: { ...typography.small, color: colors.textSecondary },
-  stepper: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  step: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.full,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepText: { fontSize: 17, lineHeight: 20, color: colors.textPrimary },
-  quantity: {
-    ...typography.body,
-    fontWeight: "800",
-    minWidth: 24,
-    textAlign: "center",
-    color: colors.textPrimary,
-  },
-  lineTotal: {
-    ...typography.caption,
-    fontWeight: "700",
-    minWidth: 68,
-    textAlign: "right",
-    color: colors.textPrimary,
-  },
   totals: {
     borderTopWidth: 1,
     borderTopColor: colors.separator,

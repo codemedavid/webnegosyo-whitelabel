@@ -1,11 +1,11 @@
 'use client'
 
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { LowStockBadge, UnavailableLabel } from './card-stock'
 
 interface ClassicCardProps {
   item: MenuItem
@@ -80,17 +80,18 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
           </div>
         )}
 
+        <LowStockBadge branding={branding} placement="bottom-left-clear" />
         {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-gray-900">
-              <StoreLabel name="menu.unavailable" fallback="Unavailable" />
+              <UnavailableLabel />
             </span>
           </div>
         )}
 
         {/* Add to Cart Button */}
         <button
-          className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full shadow-lg transition-all hover:scale-110 hover:opacity-90"
+          className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full shadow-lg transition-all hover:scale-110 hover:opacity-90 disabled:pointer-events-none disabled:invisible"
           style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
           onClick={(e) => {
             e.stopPropagation()

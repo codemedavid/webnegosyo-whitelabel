@@ -1,18 +1,24 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type MouseEvent } from 'react'
-import { ArrowDown, ArrowUp, Copy, CornerLeftUp, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, CornerLeftUp, GripVertical, Lock, Plus, Trash2 } from 'lucide-react'
 
 import { CANVAS_WIDTH } from '@/lib/hero-builder/constants'
 import { WIDGET_DEFAULTS } from '@/lib/hero-builder/defaults'
 import { findNode } from '@/lib/hero-builder/tree-ops'
 import type { Section, Widget, WidgetKind } from '@/lib/hero-builder/types'
+import { pageBlockDef } from '@/lib/page-designer/blocks'
+import { blockIdsIn, createPageBlock } from '@/lib/page-designer/design-blocks'
+import { usePageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
 
 import type { HeroBuilderApi } from './use-hero-builder'
+import { widgetLabel } from './widget-label'
 
 export const DRAG_NEW = 'application/x-hb-new'
 export const DRAG_MOVE = 'application/x-hb-move'
+/** Drag payload prefix for a page block tile: `page-block:<block id>`. */
+export const DRAG_PAGE_BLOCK_PREFIX = 'page-block:'
 
 interface Rect {
   top: number
@@ -38,10 +44,11 @@ function labelFor(api: HeroBuilderApi, id: string): string {
   if (!found) return ''
   if (found.kind === 'section') return (found.node as Section).label || 'Section'
   if (found.kind === 'column') return `Column ${found.index + 1}`
-  return WIDGET_DEFAULTS[(found.node as Widget).kind]?.label ?? 'Element'
+  return widgetLabel(found.node as Widget)
 }
 
 export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
+  const page = usePageRuntime()?.page
   const viewportRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
@@ -154,9 +161,16 @@ export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
     const target = computeDrop(event)
     setDrop(null)
     if (!target) return
-    const kind = event.dataTransfer.getData(DRAG_NEW) as WidgetKind
+    const kind = event.dataTransfer.getData(DRAG_NEW)
     const moveId = event.dataTransfer.getData(DRAG_MOVE)
-    if (kind && WIDGET_DEFAULTS[kind]) api.addWidget(kind, { columnId: target.columnId, index: target.index })
+    const at = { columnId: target.columnId, index: target.index }
+    if (kind.startsWith(DRAG_PAGE_BLOCK_PREFIX)) {
+      // Only this page's blocks, and each once (the tile may still be mid-drag when it gets placed).
+      const block = page ? pageBlockDef(page, kind.slice(DRAG_PAGE_BLOCK_PREFIX.length)) : null
+      if (block && !blockIdsIn(api.design).includes(block.id)) api.addPrebuilt(createPageBlock(block), at)
+      return
+    }
+    if (kind && Object.prototype.hasOwnProperty.call(WIDGET_DEFAULTS, kind)) api.addWidget(kind as WidgetKind, at)
     else if (moveId) api.moveWidgetTo(moveId, target.columnId, target.index)
   }
 
@@ -173,7 +187,7 @@ export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
         <div ref={stageRef} className="relative" style={{ width: frameWidth * scale, height: frameHeight * scale || undefined }}>
           <div
             ref={frameRef}
-            className="origin-top-left overflow-hidden rounded-xl bg-[var(--brand-background,#fff)] shadow-[0_1px_2px_rgba(0,0,0,.06),0_12px_40px_rgba(15,23,42,.12)] ring-1 ring-black/5 transition-[width] duration-300"
+            className="origin-top-left overflow-hidden rounded-xl bg-[var(--hb-canvas-bg,var(--brand-background,#fff))] shadow-[0_1px_2px_rgba(0,0,0,.06),0_12px_40px_rgba(15,23,42,.12)] ring-1 ring-black/5 transition-[width] duration-300"
             style={{ width: frameWidth, transform: scale < 1 ? `scale(${scale})` : undefined }}
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
@@ -234,12 +248,20 @@ export function Canvas({ api, onEditContent, onOpenAdd }: CanvasProps) {
                 <ToolbarButton title="Move down" onClick={() => api.moveBy(selected.node.id, 1)}>
                   <ArrowDown className="h-3.5 w-3.5" />
                 </ToolbarButton>
-                <ToolbarButton title="Duplicate (⌘D)" onClick={() => api.duplicate(selected.node.id)}>
-                  <Copy className="h-3.5 w-3.5" />
-                </ToolbarButton>
-                <ToolbarButton title="Delete (Del)" onClick={() => api.remove(selected.node.id)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </ToolbarButton>
+                {api.canDuplicate(selected.node.id) && (
+                  <ToolbarButton title="Duplicate (⌘D)" onClick={() => api.duplicate(selected.node.id)}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </ToolbarButton>
+                )}
+                {api.canRemove(selected.node.id) ? (
+                  <ToolbarButton title="Delete (Del)" onClick={() => api.remove(selected.node.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </ToolbarButton>
+                ) : (
+                  <span className="flex h-7 items-center px-1.5" title="Keeps the page working — can't be removed" role="img" aria-label="Locked: keeps the page working">
+                    <Lock className="h-3.5 w-3.5" aria-hidden />
+                  </span>
+                )}
               </div>
             </>
           )}

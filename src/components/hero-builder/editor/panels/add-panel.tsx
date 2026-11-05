@@ -9,9 +9,14 @@ import {
 import { COLUMN_LAYOUTS, createSection } from '@/lib/hero-builder/defaults'
 import { SECTION_PRESETS, type SectionPreset } from '@/lib/hero-builder/section-presets'
 import type { WidgetKind } from '@/lib/hero-builder/types'
+import { PAGE_BLOCKS } from '@/lib/page-designer/blocks'
+import { blockIdsIn, createPageBlock } from '@/lib/page-designer/design-blocks'
+import type { PageId } from '@/lib/page-designer/types'
+import { usePageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 
-import { DRAG_NEW } from '../canvas'
+import { DRAG_NEW, DRAG_PAGE_BLOCK_PREFIX } from '../canvas'
 import type { HeroBuilderApi } from '../use-hero-builder'
+import { pageBlockIcon } from './page-block-icons'
 
 export interface AddTile {
   kind: WidgetKind
@@ -73,12 +78,48 @@ interface AddPanelProps {
   presets?: readonly SectionPreset[]
 }
 
+/** The page's own blocks. Each can be placed once; a removed one can be added back here. */
+function PageBlocksGroup({ api, page }: { api: HeroBuilderApi; page: PageId }) {
+  const placed = new Set(blockIdsIn(api.design))
+  return (
+    <section>
+      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">Page blocks</h3>
+      <div className="grid grid-cols-3 gap-2">
+        {PAGE_BLOCKS[page].map((def) => {
+          const Icon = pageBlockIcon(def.icon)
+          const isPlaced = placed.has(def.id)
+          return (
+            <button
+              key={def.id}
+              type="button"
+              draggable={!isPlaced}
+              disabled={isPlaced}
+              title={isPlaced ? `${def.label} is already on the page` : def.description}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(DRAG_NEW, `${DRAG_PAGE_BLOCK_PREFIX}${def.id}`)
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => api.addPrebuilt(createPageBlock(def))}
+              className="group flex aspect-square cursor-grab flex-col items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-1 text-center text-neutral-600 transition hover:-translate-y-px hover:border-neutral-300 hover:text-neutral-900 hover:shadow-sm active:cursor-grabbing disabled:cursor-default disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-[11px] font-medium leading-tight">{def.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 export function AddPanel({ api, groups = HERO_ADD_GROUPS, presets = SECTION_PRESETS }: AddPanelProps) {
+  const page = usePageRuntime()?.page
   return (
     <div className="space-y-6 p-4">
       <p className="text-[11px] leading-relaxed text-neutral-500">
         Drag an element onto the canvas, or click to add it after the selection.
       </p>
+      {page && <PageBlocksGroup api={api} page={page} />}
       {groups.map((group) => (
         <section key={group.title}>
           <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">{group.title}</h3>

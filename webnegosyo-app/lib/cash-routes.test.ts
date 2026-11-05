@@ -12,6 +12,8 @@ import {
   CASH_SCREEN_DOORS,
   dayCloseHref,
   endShiftHref,
+  MY_SHIFTS_ROUTE,
+  myShiftSalesHref,
   pastShiftTarget,
   periodSalesHref,
   remittanceHref,
@@ -48,6 +50,8 @@ describe("cash screen registration", () => {
     }
     // A cashier's own shift report is decided by report_shift_sales on the server.
     expect(isTabAllowed(cashier, "shift-sales")).toBe(true);
+    // So are her own past shifts (report_shift_nets / the cashier scope).
+    expect(isTabAllowed(cashier, "my-shifts")).toBe(true);
   });
 });
 
@@ -59,6 +63,8 @@ describe("cash hrefs", () => {
     expect(dayCloseHref("2026-10-24")).toBe("/(main)/day-close?day=2026-10-24");
     expect(dayCloseHref("2026-10-24", "b1")).toBe("/(main)/day-close?day=2026-10-24&outlet=b1");
     expect(CASH_RULES_ROUTE).toBe("/(main)/cash-rules");
+    expect(myShiftSalesHref("s 1")).toBe("/(main)/shift-sales?shift=s%201&lens=mine");
+    expect(MY_SHIFTS_ROUTE).toBe("/(main)/my-shifts");
   });
 
   it("send a past window as from/to and the named shift as period", () => {
@@ -92,6 +98,19 @@ describe("pastShiftTarget", () => {
 });
 
 describe("cash doors", () => {
+  it("the Drawer's shift and clock-in cards open My shifts", () => {
+    expect(read("components", "drawer", "MyShiftCard.tsx")).toMatch(/MY_SHIFTS_ROUTE/);
+    expect(read("components", "drawer", "ClockInCard.tsx")).toMatch(/MY_SHIFTS_ROUTE/);
+  });
+
+  it("My shifts lists only the signed-in person's shifts and reads money through lib/cash", () => {
+    const screen = read("app", "(main)", "my-shifts.tsx");
+    expect(screen).toMatch(/staffUserId: userId/);
+    expect(screen).toMatch(/fetchShiftNets\(/);
+    expect(screen).toMatch(/myShiftSalesHref\(/);
+    expect(screen).not.toMatch(/\.from\(["']/);
+  });
+
   it("Cash drawers opens the rules for whoever may open them", () => {
     const drawers = read("app", "(main)", "cash-drawers.tsx");
     expect(drawers).toMatch(/cashRulesAccess\(/);

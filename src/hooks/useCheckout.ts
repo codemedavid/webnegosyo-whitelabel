@@ -34,7 +34,8 @@ import { isCheckoutCartEmpty } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-order-save'
 import { awaitSaveBeforeRedirect } from '@/lib/checkout/messenger-redirect-gate'
-import { resolveTrackingRedirect } from '@/lib/checkout/tracking-redirect'
+import { resolveConfirmationHandoff, resolveTrackingRedirect } from '@/lib/checkout/tracking-redirect'
+import { readConfirmationRedirect } from '@/lib/page-designer/page-mode'
 import { classifyOrderSave, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { useBrandingPreviewTenant, useIsBrandingPreview } from '@/hooks/use-branding-preview'
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
@@ -554,7 +555,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   // Once the thank-you screen has nothing left to do — Messenger was opened by
   // the countdown, or there is no Messenger handoff at all — a saved order goes
   // to live tracking. Replace, so Back doesn't land on an emptied checkout.
-  const trackingRedirectPath = resolveTrackingRedirect(tenantSlug, {
+  const trackingPath = resolveTrackingRedirect(tenantSlug, {
     isCheckoutComplete: checkoutComplete,
     isMessengerEnabled: messengerEnabled,
     messengerUrl: completedOrderData?.messengerUrl,
@@ -564,6 +565,14 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     trackingOrderId,
     trackingToken,
   })
+  // The owner may keep the thank-you page up (countdown / stay); the
+  // confirmation screen runs that countdown, this effect only the instant jump.
+  const confirmationHandoff = resolveConfirmationHandoff(
+    trackingPath,
+    { isMessengerEnabled: messengerEnabled, messengerUrl: completedOrderData?.messengerUrl },
+    readConfirmationRedirect(tenant),
+  )
+  const trackingRedirectPath = confirmationHandoff.kind === 'redirect' ? confirmationHandoff.path : null
   useEffect(() => {
     if (trackingRedirectPath) router.replace(trackingRedirectPath)
   }, [trackingRedirectPath, router])
@@ -766,7 +775,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       cartPresellDate
         ? preflightPresellAction(tenantId, toPresellPreflightLines(items))
         : Promise.resolve({ ok: true } as const),
-      preflightCheckoutStockAction(tenantId, toStockPreflightLines(items), outlet.selectedOutletId ?? null),
+      preflightCheckoutStockAction(tenantId, toStockPreflightLines(items, bundleItems), outlet.selectedOutletId ?? null),
     ])
     const refusal = [presellVerdict, stockVerdict].find(verdict => !verdict.ok)
     return refusal && !refusal.ok ? refusal.message : null
@@ -1125,6 +1134,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     checkoutComplete,
     completedOrderData,
     redirectCountdown,
+    confirmationHandoff,
     trackingOrderId,
     trackingToken,
     messageExpanded,

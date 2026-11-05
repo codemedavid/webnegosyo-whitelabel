@@ -29,6 +29,12 @@ export interface Product {
   /** Set when auto-86 hid this item; NULL means the merchant chose to. */
   auto_disabled_at?: string | null;
   /**
+   * Until when auto-86 leaves this dish on sale although its recipe can't be
+   * made — set by the web route when the owner taps "Sell anyway until …".
+   * NULL/absent = auto-86 behaves normally.
+   */
+  auto_86_snoozed_until?: string | null;
+  /**
    * Whether Senior/PWD discounts cover this item (default true). The register
    * also honours its category's switch — see `excludedMenuItemIds`.
    */
@@ -235,8 +241,9 @@ function toMenuItemRow(input: ProductInput): Record<string, unknown> {
  * single-location merchant has always seen. With it, the list is exactly what
  * that branch sells: dishes it does not carry are gone, its prices are its own,
  * and anything it has run out of comes back marked unavailable rather than
- * missing — so the cashier sees a greyed-out tile instead of wondering where a
- * dish went.
+ * missing. The register keeps such a dish as a greyed "Sold out" tile that
+ * cannot be added (`buildRegisterItems` in `query/use-pos-catalog.ts`), so the
+ * cashier can tell the customer instead of wondering where it went.
  */
 export async function listProducts(
   tenantId: string,
@@ -334,25 +341,9 @@ export async function deleteProduct(
   if (error) throw error;
 }
 
-export async function toggleProductAvailability(
-  productId: string,
-  tenantId: string,
-  isAvailable: boolean
-): Promise<Product> {
-  const { data, error } = await supabase
-    .from("menu_items")
-    // Clearing `auto_disabled_at` hands ownership back to the merchant: stock
-    // recovery re-enables only items still carrying the marker, so a dish the
-    // merchant has just decided about must no longer carry it.
-    .update({ is_available: isAvailable, auto_disabled_at: null })
-    .eq("id", productId)
-    .eq("tenant_id", tenantId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data as unknown as Product;
-}
+// The on/off switch is NOT a row write from here: it goes through the web
+// route (`lib/dish-availability.ts`), which checks whether a dish can be made
+// before putting it back on sale and owns the auto-86 marker and snooze.
 
 /**
  * The store's categories in menu order.

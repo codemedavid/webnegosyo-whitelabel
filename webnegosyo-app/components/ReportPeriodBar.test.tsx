@@ -109,3 +109,95 @@ describe("ReportPeriodBar — clearable", () => {
     expect(screen.queryByLabelText("Live")).toBeNull();
   });
 });
+
+/**
+ * Order History: one-tap Today · Yesterday · Last 7 days · This month, the
+ * calendar as "Custom", and the live queue as a chip of its own so the way
+ * back is always on screen.
+ */
+describe("ReportPeriodBar — quick picks", () => {
+  const QUICK_PICKS = [
+    { key: "today", label: "Today", selection: { kind: "day", dayKey: "2026-09-19" } },
+    { key: "yesterday", label: "Yesterday", selection: { kind: "day", dayKey: "2026-09-18" } },
+    { key: "month", label: "This month", selection: { kind: "range", fromKey: "2026-09-01", toKey: "2026-09-19" } },
+  ] as const;
+
+  function renderQuick(selection: ReportSelection, onChange = jest.fn(), onClear = jest.fn()) {
+    render(
+      <ReportPeriodBar
+        selection={selection}
+        presets={[]}
+        quickPicks={QUICK_PICKS}
+        customLabel="Custom"
+        nowMs={NOW}
+        onChange={onChange}
+        onClear={onClear}
+        clearLabel="Live queue"
+      />
+    );
+    return { onChange, onClear };
+  }
+
+  it("offers the live queue first, active while no dates are picked", () => {
+    renderQuick({ kind: "preset", days: 1 });
+
+    expect(screen.getByLabelText("Live queue").props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText("Today").props.accessibilityState.selected).toBe(false);
+    expect(screen.getByText("Custom")).toBeTruthy();
+  });
+
+  it("reports a quick pick as its bounded selection", () => {
+    const { onChange } = renderQuick({ kind: "preset", days: 1 });
+
+    fireEvent.press(screen.getByLabelText("Yesterday"));
+
+    expect(onChange).toHaveBeenCalledWith({ kind: "day", dayKey: "2026-09-18" });
+  });
+
+  it("marks the matching pick and leaves Custom unmarked", () => {
+    renderQuick({ kind: "range", fromKey: "2026-09-01", toKey: "2026-09-19" });
+
+    expect(screen.getByLabelText("This month").props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText("Live queue").props.accessibilityState.selected).toBe(false);
+    expect(screen.getByLabelText("Pick dates").props.accessibilityState.selected).toBe(false);
+    expect(screen.getByText("Custom")).toBeTruthy();
+  });
+
+  it("scrolls the row to its end when picked dates widen the last chip, so it is never cut off", () => {
+    renderQuick({ kind: "range", fromKey: "2026-09-02", toKey: "2026-09-05" });
+    const { ScrollView } = jest.requireActual("react-native");
+    const row = screen.UNSAFE_getByType(ScrollView);
+    expect(row.props.contentContainerStyle).toEqual(expect.objectContaining({ paddingRight: expect.any(Number) }));
+    const scrollToEnd = jest.fn();
+    row.instance.scrollToEnd = scrollToEnd;
+
+    fireEvent(row, "contentSizeChange", 600, 40);
+    expect(scrollToEnd).toHaveBeenCalled();
+  });
+
+  it("leaves the row where it is while a quick pick is chosen", () => {
+    renderQuick({ kind: "day", dayKey: "2026-09-18" });
+    const { ScrollView } = jest.requireActual("react-native");
+    const row = screen.UNSAFE_getByType(ScrollView);
+    const scrollToEnd = jest.fn();
+    row.instance.scrollToEnd = scrollToEnd;
+
+    fireEvent(row, "contentSizeChange", 600, 40);
+    expect(scrollToEnd).not.toHaveBeenCalled();
+  });
+
+  it("names custom dates on the Custom chip", () => {
+    renderQuick({ kind: "range", fromKey: "2026-09-02", toKey: "2026-09-05" });
+
+    expect(screen.getByText("Sep 2 – Sep 5")).toBeTruthy();
+    expect(screen.getByLabelText("Pick dates").props.accessibilityState.selected).toBe(true);
+  });
+
+  it("goes back to the live queue from its chip", () => {
+    const { onClear } = renderQuick({ kind: "day", dayKey: "2026-09-18" });
+
+    fireEvent.press(screen.getByLabelText("Live queue"));
+
+    expect(onClear).toHaveBeenCalled();
+  });
+});

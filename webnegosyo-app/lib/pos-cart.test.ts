@@ -3,7 +3,10 @@ import {
   cartTotals,
   clearCart,
   lineKey,
+  MAX_LINE_NOTE_LENGTH,
+  normalizeLineNote,
   quantityByItem,
+  setLineNote,
   removeLine,
   unitPrice,
   updateQty,
@@ -430,5 +433,95 @@ describe("cartTotals with discounts", () => {
       total: 0,
       itemCount: 0,
     });
+  });
+});
+
+describe("normalizeLineNote", () => {
+  it("trims a note and treats a blank one as no note", () => {
+    expect(normalizeLineNote("  no onion  ")).toBe("no onion");
+    expect(normalizeLineNote("   ")).toBeUndefined();
+    expect(normalizeLineNote(undefined)).toBeUndefined();
+  });
+
+  it("strips printer control characters (ESC, GS, C1) out of a note", () => {
+    expect(normalizeLineNote("no\x1B@ onion\x1DV\x00\x9B")).toBe("no@ onionV");
+    expect(normalizeLineNote("\x1B\x1D")).toBeUndefined();
+  });
+
+  it("keeps line breaks in a note and turns tabs into spaces", () => {
+    expect(normalizeLineNote("less ice\r\nno sugar\tplease")).toBe("less ice\nno sugar please");
+  });
+
+  it("caps a note at the checkout's limit", () => {
+    expect(normalizeLineNote("x".repeat(MAX_LINE_NOTE_LENGTH + 50))).toHaveLength(
+      MAX_LINE_NOTE_LENGTH,
+    );
+    expect(MAX_LINE_NOTE_LENGTH).toBe(1000);
+  });
+});
+
+describe("setLineNote", () => {
+  it("puts a trimmed note on the line and re-keys it", () => {
+    const cart = addLine([], { ...latte, quantity: 2 });
+    const next = setLineNote(cart, cart[0].key, "  less ice ");
+
+    expect(next).toHaveLength(1);
+    expect(next[0].note).toBe("less ice");
+    expect(next[0].key).toBe(lineKey("m-latte", [], "less ice"));
+    expect(next[0].quantity).toBe(2);
+    expect(next[0].subtotal).toBe(240);
+  });
+
+  it("clears the note when given a blank one, restoring the plain key", () => {
+    const cart = addLine([], { ...latte, note: "spicy" });
+    const next = setLineNote(cart, cart[0].key, "  ");
+
+    expect(next[0].note).toBeUndefined();
+    expect("note" in next[0]).toBe(false);
+    expect(next[0].key).toBe(lineKey("m-latte", []));
+  });
+
+  it("merges into an identical line that already has that note, adding quantities", () => {
+    const cart = addLine(addLine([], { ...latte, note: "no sugar" }), { ...latte, quantity: 2 });
+    const plain = cart.find((line) => !line.note) as PosCartLine;
+    const next = setLineNote(cart, plain.key, "no sugar");
+
+    expect(next).toHaveLength(1);
+    expect(next[0].quantity).toBe(3);
+    expect(next[0].subtotal).toBe(360);
+  });
+
+  it("keeps the edited line where it was in the cart", () => {
+    const mocha: PosLineInput = { ...latte, menuItemId: "m-mocha", name: "Mocha" };
+    const cart = addLine(addLine([], latte), mocha);
+    const next = setLineNote(cart, cart[0].key, "take-out");
+
+    expect(next.map((line) => line.name)).toEqual(["Latte", "Mocha"]);
+  });
+
+  it("leaves the cart untouched for an unknown line or an unchanged note", () => {
+    const cart = addLine([], { ...latte, note: "spicy" });
+    expect(setLineNote(cart, "nope", "x")).toBe(cart);
+    expect(setLineNote(cart, cart[0].key, " spicy ")).toBe(cart);
+  });
+
+  it("keeps options and carried metadata, so only the note changes", () => {
+    const cart = addLine([], {
+      ...latte,
+      selections: [large],
+      carryover: { variation: "Large", isBundleItem: true },
+    });
+    const next = setLineNote(cart, cart[0].key, "extra sauce");
+
+    expect(next[0].selections).toEqual([large]);
+    expect(next[0].carryover).toEqual({ variation: "Large", isBundleItem: true });
+    expect(next[0].unitPrice).toBe(140);
+  });
+
+  it("does not mutate the cart it was given", () => {
+    const cart = addLine([], latte);
+    const snapshot = JSON.stringify(cart);
+    setLineNote(cart, cart[0].key, "no onion");
+    expect(JSON.stringify(cart)).toBe(snapshot);
   });
 });

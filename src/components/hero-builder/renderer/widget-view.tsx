@@ -12,6 +12,9 @@ import { HeroIcon } from '../icons'
 import { useHeroLinkClick } from './link-context'
 import { CountdownBlock, EmbedBlock, HtmlBlock } from './live-blocks'
 import { OrderEntryBlock, SlideshowBlock, StoreLogoBlock } from './welcome-blocks'
+import { applyTokens } from '@/lib/page-designer/text'
+
+import { PageBlockView, usePageRuntime } from './page-runtime'
 import { useStoreNameToken } from './welcome-runtime'
 
 interface WidgetViewProps {
@@ -42,12 +45,20 @@ function Placeholder({ show, label }: { show: boolean; label: string }) {
 
 const STORE_TOKEN = /\{store\}/gi
 
-function Markup({ value }: { value: unknown }) {
-  const onLinkClick = useHeroLinkClick()
+/** `{store}`, plus a Page Designer page's own tokens (`{name}`, `{order_number}`…). */
+function useTokenText(value: unknown): unknown {
   const storeName = useStoreNameToken()
+  const page = usePageRuntime()
+  if (typeof value !== 'string') return value
+  if (page) return applyTokens(value, page.tokens)
   // `{store}` is only swapped where a store is known (the welcome page and its
   // editor); elsewhere it stays as typed rather than vanishing.
-  const source = storeName && typeof value === 'string' ? value.replace(STORE_TOKEN, storeName) : value
+  return storeName ? value.replace(STORE_TOKEN, storeName) : value
+}
+
+function Markup({ value }: { value: unknown }) {
+  const onLinkClick = useHeroLinkClick()
+  const source = useTokenText(value)
   return (
     <>
       {parseMarkup(source).map((token, i) => {
@@ -72,6 +83,12 @@ function Markup({ value }: { value: unknown }) {
       })}
     </>
   )
+}
+
+/** Plain text with `{tokens}` filled in (button labels, list rows) — no markup. */
+function TokenText({ value }: { value: string }) {
+  const source = useTokenText(value)
+  return <>{typeof source === 'string' ? source : value}</>
 }
 
 function Maybe({ link, children }: { link: LinkProps | null; children: ReactNode }) {
@@ -113,7 +130,9 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
             return (
               <a key={item.id} className={`hb-btn hb-btn--${variant}`} {...link} onClick={onLinkClick}>
                 {item.icon && <HeroIcon name={item.icon} />}
-                <span>{text(item.label) || 'Button'}</span>
+                <span>
+                  <TokenText value={text(item.label) || 'Button'} />
+                </span>
               </a>
             )
           })}
@@ -178,7 +197,9 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
           {items.map((item) => (
             <li key={item.id}>
               <HeroIcon name={item.icon} />
-              <span>{text(item.text)}</span>
+              <span>
+                <TokenText value={text(item.text)} />
+              </span>
             </li>
           ))}
         </ul>
@@ -188,7 +209,9 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
       return (
         <span className="hb-badge">
           {c.icon && <HeroIcon name={c.icon} />}
-          <span>{text(c.text)}</span>
+          <span>
+            <Markup value={text(c.text)} />
+          </span>
         </span>
       )
     case 'countdown':
@@ -225,6 +248,8 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
       return <StoreLogoBlock content={c} isEditor={isEditor} />
     case 'slideshow':
       return <SlideshowBlock content={c} isEditor={isEditor} />
+    case 'page-block':
+      return <PageBlockView content={c} isEditor={isEditor} />
     default:
       return null
   }

@@ -209,3 +209,40 @@ describe("deviceOrdersCover", () => {
     expect(deviceOrdersCover({ orders: full.slice(0, 10), isWindowRead: false, fromMs: FROM })).toBe(true);
   });
 });
+
+describe("countShiftSalesOnDevice — one cashier's own sales", () => {
+  const mine = { pos: { cashierId: "cara" } };
+  const theirs = { pos: { cashierId: "cy" } };
+
+  it("keeps only POS sales she rang, lists her cancelled ones as voids, and says items are unknown", () => {
+    const report = count(
+      [
+        order("a", { customerData: mine, total: 100 }),
+        order("b", { customerData: theirs, total: 999 }),
+        order("c", { customerData: mine, source: "web", total: 444 }),
+        order("d", { customerData: { pos: {} }, total: 123 }),
+        order("e", { customerData: mine, status: "cancelled", total: 210, dailyNumber: 5 }),
+      ],
+      [],
+      { cashierId: "cara" },
+    );
+    expect(report.scope).toBe("cashier");
+    expect(report.receipts.map((r) => r.orderId)).toEqual(["a", "e"]);
+    expect(report.summary?.netCents).toBe(10000);
+    expect(report.voids).toEqual([
+      { orderId: "e", number: "#05", placedAt: new Date(FROM + 60_000).toISOString(), totalCents: 21000, status: "void" },
+    ]);
+    expect([report.items, report.cash, report.otherCollections]).toEqual([null, null, null]);
+  });
+
+  it("hides void amounts on a blind shift", () => {
+    const report = count([order("e", { customerData: mine, status: "cancelled" })], [], { cashierId: "cara", hidden: true });
+    expect(report.voids?.[0].totalCents).toBeNull();
+  });
+
+  it("without a cashier the whole window is counted, as before", () => {
+    const report = count([order("a", { customerData: mine }), order("b", { customerData: theirs })]);
+    expect(report.receipts).toHaveLength(2);
+    expect(report.scope).toBeUndefined();
+  });
+});

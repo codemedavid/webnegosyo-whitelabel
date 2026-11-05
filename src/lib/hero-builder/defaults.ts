@@ -165,6 +165,12 @@ export const WIDGET_DEFAULTS: Record<WidgetKind, WidgetDefaults> = {
     content: () => ({ kind: 'slideshow', slides: [], autoplay: true, interval: 5, showDots: true }),
     style: { radius: 18, aspectRatio: '16/9', objectFit: 'cover', accentColor: '@text' },
   },
+  'page-block': {
+    label: 'Page block',
+    // Real blocks are made with createPageBlock (src/lib/page-designer/), which names one.
+    content: () => ({ kind: 'page-block', block: '', texts: {}, options: {} }),
+    style: {},
+  },
 }
 
 export function createWidget(kind: WidgetKind): Widget {

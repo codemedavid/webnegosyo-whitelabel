@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
 import { lalamoveStatusLabel } from "../lib/lalamove-status";
-import { KITCHEN_CONFIRMED_STATUS } from "../lib/kitchen-confirm";
+import { kitchenChipLabel } from "../lib/order-kitchen-chip";
 import {
   displayCustomerName,
   getInitials,
@@ -95,6 +95,7 @@ export const OrderCard = memo(function OrderCard({
   const status = getStatusMeta(order.status);
   const customerName = displayCustomerName(order.customerName);
   const tableNumber = getOrderTableNumber(order.customerData);
+  const kitchenChip = kitchenChipLabel(order.status);
   const typeMeta = getOrderTypeMeta(order.orderType);
   const isActive = order.status !== "delivered" && order.status !== "cancelled";
   const scheduledISO = getScheduledISO(order);
@@ -172,9 +173,9 @@ export const OrderCard = memo(function OrderCard({
             <Text style={styles.tableText}>Table {tableNumber}</Text>
           </View>
         ) : null}
-        {order.status === KITCHEN_CONFIRMED_STATUS ? (
+        {kitchenChip ? (
           <View style={styles.kitchenChip}>
-            <Text style={styles.kitchenText}>✓ Kitchen confirmed</Text>
+            <Text style={styles.kitchenText}>{kitchenChip}</Text>
           </View>
         ) : null}
         {scheduledLabel ? (

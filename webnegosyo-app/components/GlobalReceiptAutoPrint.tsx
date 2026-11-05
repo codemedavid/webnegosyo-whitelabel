@@ -10,6 +10,7 @@ import { useBranchScope } from "../lib/use-branch-scope";
 import { shouldPrintAt } from "../lib/print-trigger";
 import { scanNewTickets } from "../lib/kitchen-tickets";
 import { claimPrinted, usePrintedLedger } from "../lib/printed-ledger";
+import { printClaimed } from "../lib/claimed-print";
 import { selectConfirmedOrderIds, selectOrdersToAutoPrint } from "../lib/receipt-autoprint";
 import { splitOnLinesLoaded } from "../lib/autoprint-lines";
 import { useOrderPrint } from "../hooks/useOrderPrint";
@@ -134,8 +135,9 @@ function ReceiptAutoPrintWatcher() {
       isDemo: false, // and demo mode
     });
     if (candidates.length === 0) return;
-    // Claim BEFORE printing: a jammed receipt reprints from the order
-    // screen's button; a crash loop reprinting every confirmation is worse.
+    // Claim BEFORE printing: a crash loop reprinting every confirmation is
+    // worse than a missed receipt. A receipt that FAILED gives its claim back
+    // (printClaimed), so the order screen's print is not stamped REPRINT.
     void claimPrinted("receipt", candidates).then((toPrint) =>
       printReceiptsSequentially(
         toPrint
@@ -158,7 +160,7 @@ async function printReceiptsSequentially(
   print: PrintReceipt,
 ): Promise<void> {
   for (const order of orders) {
-    const printed = await print(order);
+    const printed = await printClaimed("receipt", order._id, () => print(order));
     if (!printed) {
       console.warn("[ReceiptAutoPrint] Receipt failed for order", order._id);
     }

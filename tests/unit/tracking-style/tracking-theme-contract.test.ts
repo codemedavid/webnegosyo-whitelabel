@@ -23,6 +23,9 @@ function sourceFiles(dir: string): string[] {
 /** Files that render the order page or the loyalty card. */
 const THEMED_FILES = [
     ...sourceFiles(join(SRC, 'components/customer/order-tracking')),
+    // The Page Designer's tracking blocks and their editor samples paint the same page.
+    ...sourceFiles(join(SRC, 'components/page-designer/tracking')),
+    join(SRC, 'components/page-designer/samples/tracking-samples.tsx'),
     join(SRC, 'components/customer/loyalty-stamp-card.tsx'),
     join(SRC, 'components/customer/loyalty-progress-panel.tsx'),
     join(SRC, 'components/customer/add-to-wallet-buttons.tsx'),

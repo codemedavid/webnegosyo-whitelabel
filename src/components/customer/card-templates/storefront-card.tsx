@@ -1,11 +1,11 @@
 'use client'
 
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { MenuItem } from '@/types/database'
+import { LowStockBadge, UnavailableLabel } from './card-stock'
 
 interface StorefrontCardProps {
   item: MenuItem
@@ -93,16 +93,17 @@ export const StorefrontCard = memo(function StorefrontCard({
             </div>
           )}
 
+          <LowStockBadge branding={branding} placement="bottom-left-clear" />
           {!isOrderable && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
               <span className="rounded-full bg-white/95 px-3 py-1.5 text-sm font-medium text-gray-900">
-                <StoreLabel name="menu.unavailable" fallback="Unavailable" />
+                <UnavailableLabel />
               </span>
             </div>
           )}
 
           <button
-            className="absolute bottom-3 right-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-900 shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition-transform duration-200 hover:scale-110 md:bottom-4 md:right-4 md:h-14 md:w-14"
+            className="absolute bottom-3 right-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-900 shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition-transform duration-200 hover:scale-110 md:bottom-4 md:right-4 md:h-14 md:w-14 disabled:pointer-events-none disabled:invisible"
             onClick={(event) => {
               event.stopPropagation()
               onSelect(item)

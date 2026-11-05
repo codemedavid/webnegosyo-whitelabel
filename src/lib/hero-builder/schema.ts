@@ -25,6 +25,8 @@ const font = z
   .refine((v) => v === '' || Object.prototype.hasOwnProperty.call(FONT_OPTIONS, v), 'Unknown font')
 const shortText = z.string().max(LIMITS.shortText)
 const iconName = z.string().regex(/^[A-Za-z0-9]{0,40}$/, 'Invalid icon')
+const showWhen = z.array(z.string().regex(/^[a-z_]{1,32}$/, 'Invalid page state')).max(12).optional()
+const blockText = z.string().max(LIMITS.textLength)
 const num = (min: number, max: number) => z.number().finite().min(min).max(max)
 /** One optional value per order type (dine-in, pickup, delivery). */
 const perMode = <T extends z.ZodTypeAny>(value: T) =>
@@ -185,6 +187,15 @@ const content = z.discriminatedUnion('kind', [
     interval: num(SLIDE_INTERVAL.min, SLIDE_INTERVAL.max),
     showDots: z.boolean(),
   }),
+  z.object({
+    kind: z.literal('page-block'),
+    block: z.string().regex(/^[a-z0-9._-]{0,64}$/, 'Invalid page block'),
+    // Keys and lengths are checked against the page's block registry on publish.
+    texts: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), blockText).refine((t) => Object.keys(t).length <= 40, 'Too many texts'),
+    options: z
+      .record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.union([z.string().max(64), z.boolean()]))
+      .refine((o) => Object.keys(o).length <= 24, 'Too many options'),
+  }),
 ])
 
 const widget = z
@@ -193,10 +204,11 @@ const widget = z
     kind: z.enum([
       'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
       'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
-      'order-entry', 'store-logo', 'slideshow',
+      'order-entry', 'store-logo', 'slideshow', 'page-block',
     ]),
     content,
     animation: animation.optional(),
+    showWhen,
     ...responsive,
   })
   .refine((w) => w.kind === w.content.kind, 'Widget kind does not match its content')
@@ -208,6 +220,7 @@ const section = z.object({
   label: z.string().max(80),
   anchor: z.string().regex(/^[a-z0-9-]{0,48}$/, 'Anchors use lowercase letters, numbers and dashes').optional(),
   columns: z.array(column).min(1).max(LIMITS.columnsPerSection),
+  showWhen,
   ...responsive,
 })
 

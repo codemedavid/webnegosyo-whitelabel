@@ -27,7 +27,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
     router, tenantSlug, tenant,
     items, bundleItems, total,
     updateQuantity, removeBundleFromCart, updateBundleQuantity,
-    setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor,
+    setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor, stockHintFor,
     isNavigating, requestCheckout, exitToMenu,
   } = cart
   // Senior mode's larger text gets a second line for long dish names.
@@ -70,7 +70,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
           </div>
         ) : (
           <div className="grid gap-8 lg:grid-cols-3">
-            <div className="space-y-6 lg:col-span-2">
+            <div className="min-w-0 space-y-6 lg:col-span-2">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl md:text-2xl font-bold" style={{ color: palette.text }}>Cart Items</h2>
                 <span className="text-sm" style={{ color: palette.muted }}>{items.length} item{items.length !== 1 ? 's' : ''}</span>
@@ -91,10 +91,10 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                       />
                     </div>
 
-                    <div className="flex flex-1 flex-col justify-between">
+                    <div className="flex min-w-0 flex-1 flex-col justify-between">
                       <div>
                         <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex-1">
+                          <div className="min-w-0 flex-1">
                             <h3 className={`text-lg font-bold ${isSeniorMode ? 'line-clamp-2' : 'line-clamp-1'}`} style={{ color: palette.text }}>
                               {item.menu_item.name}
                             </h3>
@@ -122,18 +122,17 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             )}
                           </div>
                           <div className="flex items-center">
-                            {((item.menu_item.variation_types?.length ?? 0) > 0 || item.menu_item.variations.length > 0 || item.menu_item.addons.length > 0) && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-10 w-10 hover:bg-[var(--cart-soft)] rounded-full touch-manipulation"
-                                style={{ color: palette.muted }}
-                                onClick={() => setItemToEdit(item)}
-                                aria-label="Edit item"
-                              >
-                                <Pencil className="h-4.5 w-4.5" />
-                              </Button>
-                            )}
+                            {/* Every line is editable: a plain dish still has its kitchen note. */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-10 w-10 hover:bg-[var(--cart-soft)] rounded-full touch-manipulation"
+                              style={{ color: palette.muted }}
+                              onClick={() => setItemToEdit(item)}
+                              aria-label="Edit item"
+                            >
+                              <Pencil className="h-4.5 w-4.5" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -154,7 +153,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                         )}
 
                         {item.special_instructions && (
-                          <p className="text-sm italic" style={{ color: palette.muted }}>
+                          <p className="min-w-0 wrap-anywhere text-sm italic" style={{ color: palette.muted }}>
                             <span className="font-medium">Note:</span> {item.special_instructions}
                           </p>
                         )}
@@ -163,6 +162,9 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             <span className="font-medium">Pre-order for:</span> {formatPresellDateLabel(item.presell_date)}
                             {presellHintFor(item) && <span className="ml-2 text-xs" style={{ color: palette.muted }}>{presellHintFor(item)}</span>}
                           </p>
+                        )}
+                        {stockHintFor(item) && (
+                          <p className="text-xs font-medium" role="status" style={{ color: palette.accent }}>{stockHintFor(item)}</p>
                         )}
                       </div>
 
@@ -174,6 +176,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             className="h-10 w-10 rounded-full bg-transparent hover:bg-[var(--cart-soft)] hover:!border-[var(--cart-accent-border)] touch-manipulation"
                             style={outlineControl}
                             onClick={() => handleDecreaseQuantity(item)}
+                            aria-label="Decrease quantity"
                           >
                             <Minus className="h-4 w-4" />
                           </Button>
@@ -187,6 +190,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             style={outlineControl}
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                             disabled={!canIncreaseItem(item)}
+                            aria-label="Increase quantity"
                           >
                             <Plus className="h-4 w-4" />
                           </Button>

@@ -14,7 +14,19 @@ interface StatusHeroProps {
   orderTypeLabel?: string
   scheduledLabel?: string | null
   prepPromise: PrepPromise | null
+  /** Page Designer wording; each unset line keeps today's words (and the store's labels). */
+  wording?: StatusHeroWording
 }
+
+export interface StatusHeroWording {
+  greeting?: string
+  placed?: string
+  scheduled?: string
+  cancelledHeadline?: string
+  cancelledDetail?: string
+}
+
+const NO_WORDING: StatusHeroWording = {}
 
 /**
  * The dashboard's headline: where the order is right now, as one big branded
@@ -32,12 +44,13 @@ export function StatusHero({
   orderTypeLabel,
   scheduledLabel,
   prepPromise,
+  wording = NO_WORDING,
 }: StatusHeroProps) {
   const reduceMotion = useReducedMotion()
   const isCancelled = status === 'cancelled'
   const step = STATUS_STEPS[Math.max(0, currentIndex)] ?? STATUS_STEPS[0]
   const Icon = isCancelled ? XCircle : step.icon
-  const greeting = customerName && customerName.toLowerCase() !== 'walk-in' ? `Hi ${customerName}!` : 'Hi there!'
+  const greeting = wording.greeting ?? (customerName && customerName.toLowerCase() !== 'walk-in' ? `Hi ${customerName}!` : 'Hi there!')
 
   return (
     <section
@@ -71,12 +84,12 @@ export function StatusHero({
           <p className="text-sm font-medium opacity-85">{greeting}</p>
           <h2 className="mt-0.5 text-2xl font-extrabold leading-tight">
             {isCancelled
-              ? <StoreLabel name="tracking.cancelled_headline" fallback="Order cancelled" />
+              ? wording.cancelledHeadline ?? <StoreLabel name="tracking.cancelled_headline" fallback="Order cancelled" />
               : <StoreLabel name={step.headlineLabel} fallback={step.headline} />}
           </h2>
           <p className="mt-1 text-sm opacity-90">
             {isCancelled
-              ? <StoreLabel name="tracking.cancelled_detail" fallback="This order has been cancelled." />
+              ? wording.cancelledDetail ?? <StoreLabel name="tracking.cancelled_detail" fallback="This order has been cancelled." />
               : <StoreLabel name={step.descriptionLabel} fallback={step.description} />}
           </p>
         </div>
@@ -106,7 +119,7 @@ export function StatusHero({
       )}
 
       <div className="relative mt-4 flex flex-wrap items-center gap-2 text-xs opacity-85">
-        <span>Placed {placedLabel}</span>
+        <span>{wording.placed ?? 'Placed'} {placedLabel}</span>
         {orderTypeLabel && (
           <>
             <span aria-hidden="true">·</span>
@@ -116,7 +129,7 @@ export function StatusHero({
         {scheduledLabel && (
           <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold" style={{ backgroundColor: 'var(--trk-hero-chip)' }}>
             <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
-            Scheduled for {scheduledLabel}
+            {wording.scheduled ?? 'Scheduled for'} {scheduledLabel}
           </span>
         )}
       </div>

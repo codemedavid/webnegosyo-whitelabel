@@ -23,6 +23,7 @@ import {
   claimPrinted,
   getPrintedLedger,
   hydratePrintedLedger,
+  releasePrinted,
   resetPrintedLedgers,
 } from "./printed-ledger";
 
@@ -63,6 +64,24 @@ describe("claimPrinted", () => {
       claimPrinted("kitchen", ["o1"]),
     ]);
     expect([...fromRegister, ...fromWatcher]).toEqual(["o1"]);
+  });
+});
+
+describe("releasePrinted", () => {
+  it("gives back a claim whose paper never came out, so the next print is a first print", async () => {
+    await claimPrinted("kitchen", ["o1", "o2"]);
+    await releasePrinted("kitchen", ["o1"]);
+    expect(getPrintedLedger("kitchen")).toEqual(["o2"]);
+    expect(storage.get("kitchen_printed_orders")).toBe(JSON.stringify(["o2"]));
+    expect(await claimPrinted("kitchen", ["o1"])).toEqual(["o1"]);
+  });
+
+  it("only touches its own kind, and is a no-op for an id never claimed", async () => {
+    await claimPrinted("kitchen", ["o1"]);
+    await claimPrinted("receipt", ["o1"]);
+    await releasePrinted("receipt", ["o1", "nope"]);
+    expect(getPrintedLedger("kitchen")).toEqual(["o1"]);
+    expect(getPrintedLedger("receipt")).toEqual([]);
   });
 });
 

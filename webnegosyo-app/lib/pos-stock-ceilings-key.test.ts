@@ -10,6 +10,9 @@ jest.mock("expo-constants", () => ({
   default: { expoConfig: { extra: { webAppUrl: "https://shop.test" } } },
 }));
 
+// The fetch also reads the cashier's session; none is needed for the key.
+jest.mock("./authorized-post", () => ({ getAccessTokenBounded: async () => null }));
+
 import { lineIdSetKey } from "./pos-stock-ceilings";
 
 describe("lineIdSetKey", () => {

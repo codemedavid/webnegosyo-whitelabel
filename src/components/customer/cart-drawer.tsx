@@ -76,10 +76,12 @@ export function CartDrawer({
   const cart = useCart()
   const { items, total, updateQuantity, bundleItems, updateBundleQuantity } = cart
   const {
-    canIncreaseItem, presellHintFor, itemToRemove, setItemToRemove, itemToEdit, setItemToEdit,
+    canIncreaseItem, presellHintFor, stockHintFor, itemToRemove, setItemToRemove, itemToEdit, setItemToEdit,
     bundleToRemove, setBundleToRemove, handleDecreaseQuantity, handleConfirmRemove,
     handleCancelRemove, handleUpdateItem, handleDecreaseBundleQuantity, handleConfirmBundleRemove,
-  } = useCartCommands({ tenantId: tenant?.id ?? tenantId, cart })
+  } = useCartCommands({
+    tenantId: tenant?.id ?? tenantId, tenantSlug, isInventoryEnabled: Boolean(tenant?.inventory_enabled), cart,
+  })
   const {
     showCartOffers, cartOfferItems, cartOfferMaxItems, requestCheckout: handleCheckoutClick,
   } = useCartCheckout({
@@ -211,6 +213,9 @@ export function CartDrawer({
                             {presellHintFor(item) && <span className="ml-2" style={{ color: palette.muted }}>{presellHintFor(item)}</span>}
                           </p>
                         )}
+                        {stockHintFor(item) && (
+                          <p className="text-xs font-medium" role="status" style={{ color: accent }}>{stockHintFor(item)}</p>
+                        )}
                         {(item.selected_addons.length > 0 || item.special_instructions) && (
                           <div className="text-xs mb-2 space-y-0.5" style={{ color: palette.muted }}>
                             {item.selected_addons.length > 0 && (
@@ -219,7 +224,7 @@ export function CartDrawer({
                               </p>
                             )}
                             {item.special_instructions && (
-                              <p className="italic line-clamp-1">
+                              <p className="min-w-0 wrap-anywhere italic line-clamp-1">
                                 <span className="font-medium">Note:</span> {item.special_instructions}
                               </p>
                             )}

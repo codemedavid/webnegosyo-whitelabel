@@ -12,7 +12,7 @@ const mockRefresh = jest.fn()
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mockRefresh }) }))
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }))
 jest.mock('@/app/actions/menu-items', () => ({
-  toggleAvailabilityAction: (...args: unknown[]) => mockToggle(...args),
+  setDishAvailabilityAction: (...args: unknown[]) => mockToggle(...args),
 }))
 
 const item = (overrides: Partial<MenuItem>): MenuItem => ({
@@ -56,15 +56,15 @@ describe('the menu list', () => {
   })
 
   it('flips the switch before the server answers', async () => {
-    let resolveToggle: (value: { success: boolean }) => void = () => {}
+    let resolveToggle: (value: unknown) => void = () => {}
     mockToggle.mockReturnValue(new Promise((resolve) => { resolveToggle = resolve }))
     render(<MenuItemsList items={[item({ id: 'a' })]} categories={CATEGORIES} tenantSlug="cafe" tenantId="t1" />)
 
     fireEvent.click(screen.getByRole('switch', { name: /adobo/i }))
 
     expect(screen.getByRole('switch', { name: /adobo/i })).not.toBeChecked()
-    expect(mockToggle).toHaveBeenCalledWith('a', 't1', 'cafe', false)
-    await act(async () => resolveToggle({ success: true }))
+    expect(mockToggle).toHaveBeenCalledWith('a', 't1', 'cafe', false, false)
+    await act(async () => resolveToggle({ success: true, data: { status: 'saved', isAvailable: false, snoozedUntil: null } }))
     // The action's own revalidatePath already ships this page's fresh render
     // with its response; a router.refresh() on top rendered the page twice.
     expect(mockRefresh).not.toHaveBeenCalled()
@@ -78,6 +78,37 @@ describe('the menu list', () => {
 
     await waitFor(() => expect(screen.getByRole('switch', { name: /adobo/i })).toBeChecked())
     expect(mockRefresh).not.toHaveBeenCalled()
+  })
+
+  it('asks before turning on a dish its stock cannot make, then sells it anyway on request', async () => {
+    // The Lolys incident (2026-11-03): auto-86 hid the egg dishes, a person
+    // turned them back on with no word about why, and Egg was sold below zero.
+    mockToggle.mockResolvedValueOnce({
+      success: true,
+      data: {
+        status: 'needs_confirmation',
+        blockers: [{ ingredientId: 'egg', name: 'Egg', onHand: 0, unit: 'pc' }],
+        sellAnywayUntil: '2026-11-03T16:00:00.000Z',
+      },
+    })
+    render(<MenuItemsList items={[item({ id: 'a', is_available: false })]} categories={CATEGORIES} tenantSlug="cafe" tenantId="t1" />)
+
+    fireEvent.click(screen.getByRole('switch', { name: /adobo/i }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/Egg: 0 pc/)).toBeInTheDocument()
+    // Nothing was saved: the switch is back off behind the modal.
+    expect(screen.getByRole('switch', { name: /adobo/i, hidden: true })).not.toBeChecked()
+    expect(within(dialog).getByRole('link', { name: 'Record a count' })).toHaveAttribute(
+      'href',
+      '/cafe/admin/inventory?tab=ingredients&stock=egg&reason=stocktake',
+    )
+
+    mockToggle.mockResolvedValueOnce({ success: true, data: { status: 'saved', isAvailable: true, snoozedUntil: '2026-11-03T16:00:00.000Z' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /sell anyway until 12:00/i }))
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mockToggle).toHaveBeenLastCalledWith('a', 't1', 'cafe', true, true)
   })
 
   it('invites the owner to add a first dish when the menu is empty', () => {

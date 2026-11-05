@@ -57,12 +57,16 @@ describe('buildReportContext', () => {
       start: Date.parse('2026-10-11T16:00:00Z'),
       end: NOW,
       branch: { p_outlet: null, p_unassigned: false },
+      now: NOW,
+      schedule: [],
     })
     expect(context.windows.previous).toEqual({
       tenantId: TENANT,
       start: Date.parse('2026-10-04T16:00:00Z'),
       end: NOW - 7 * 24 * 3600 * 1000,
       branch: { p_outlet: null, p_unassigned: false },
+      now: NOW,
+      schedule: [],
     })
     expect(context.today).toBe('2026-10-14')
   })
@@ -74,10 +78,10 @@ describe('buildReportContext', () => {
   })
 
   test('an impossible custom range shows the default and says why', () => {
-    const context = ready({ searchParams: { period: 'custom', from: '2026-01-01', to: '2026-10-01' } })
+    const context = ready({ searchParams: { period: 'custom', from: '2024-01-01', to: '2025-10-01' } })
     expect(context.period.preset).toBe('this_week')
     expect(context.filter).toMatchObject({ preset: 'this_week', from: null, to: null })
-    expect(context.periodError).toBe('Pick a range of 93 days or less.')
+    expect(context.periodError).toBe('Pick a range of 400 days or less.')
   })
 
   test('a store-wide account on a multi-branch store gets the active branches and Unassigned', () => {

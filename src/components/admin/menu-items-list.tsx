@@ -7,7 +7,7 @@ import { ArrowUpDown, Plus, SearchX } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Owl } from '@/components/mascot/owl'
-import { toggleAvailabilityAction } from '@/app/actions/menu-items'
+import { setDishAvailabilityAction } from '@/app/actions/menu-items'
 import { describeActionError } from '@/components/admin/server-action-safety'
 import type { Category, OutletMenuOverride } from '@/types/database'
 import type { AdminMenuListItem } from '@/lib/queries/admin-menu-list'
@@ -28,6 +28,7 @@ import {
 import { groupMenuItemsByCategory, OTHER_GROUP_KEY } from '@/lib/menu-list-groups'
 import { MenuListToolbar } from '@/components/admin/menu-list-toolbar'
 import { MenuItemRow } from '@/components/admin/menu-item-row'
+import { DishStockConfirmDialog, type DishStockQuestion } from '@/components/admin/dish-stock-confirm-dialog'
 
 // dnd-kit is only needed once the owner taps "Arrange order" — keep it out of
 // the bundle every menu visit downloads.
@@ -119,6 +120,8 @@ export function MenuItemsList({
    * dropped whenever fresh items arrive, which is when the refresh lands.
    */
   const [pendingAvailability, setPendingAvailability] = useState<Record<string, boolean>>({})
+  /** Set while asking "<ingredient> shows 0 — sell anyway until end of day?". */
+  const [stockQuestion, setStockQuestion] = useState<(DishStockQuestion & { item: AdminMenuListItem }) | null>(null)
   const [itemsSeen, setItemsSeen] = useState(items)
   if (itemsSeen !== items) {
     setItemsSeen(items)
@@ -150,7 +153,7 @@ export function MenuItemsList({
 
   // Stable across renders (only setters and stable props inside), so memoised
   // rows keep their props identity.
-  const handleToggleAvailability = useCallback(async (item: AdminMenuListItem, next: boolean) => {
+  const handleToggleAvailability = useCallback(async (item: AdminMenuListItem, next: boolean, sellAnyway = false) => {
     setTogglingIds((prev) => new Set(prev).add(item.id))
     setPendingAvailability((prev) => ({ ...prev, [item.id]: next }))
     const revert = () =>
@@ -160,12 +163,27 @@ export function MenuItemsList({
         return rest
       })
     try {
-      const result = await toggleAvailabilityAction(item.id, tenantId, tenantSlug, next)
-      if (result.success) {
+      const result = await setDishAvailabilityAction(item.id, tenantId, tenantSlug, next, sellAnyway)
+      if (result.success && result.data.status === 'needs_confirmation') {
+        // Its stock reads empty: ask before putting it back on sale.
+        revert()
+        setStockQuestion({
+          item,
+          dishName: item.name,
+          blockers: result.data.blockers,
+          sellAnywayUntil: result.data.sellAnywayUntil,
+        })
+      } else if (result.success) {
         // No router.refresh(): the action's revalidatePath already returns this
         // page's fresh render with its response (a refresh rendered it twice),
         // and the new `items` it brings clears the pending switch above.
-        toast.success(`${item.name} is now ${next ? 'available' : 'out of stock'}`)
+        setStockQuestion(null)
+        const isSoldAnyway = result.data.status === 'saved' && result.data.snoozedUntil !== null
+        toast.success(
+          isSoldAnyway
+            ? `${item.name} is on sale until the end of today`
+            : `${item.name} is now ${next ? 'available' : 'out of stock'}`
+        )
       } else {
         revert()
         toast.error(result.error || 'Could not update the dish. Please try again.')
@@ -184,6 +202,20 @@ export function MenuItemsList({
   const handleToggle = useCallback<ToggleAvailability>(
     (item, next) => void handleToggleAvailability(item, next),
     [handleToggleAvailability]
+  )
+  const stockQuestionItem = stockQuestion?.item ?? null
+  const handleSellAnyway = useCallback(() => {
+    if (stockQuestionItem) void handleToggleAvailability(stockQuestionItem, true, true)
+  }, [handleToggleAvailability, stockQuestionItem])
+  const handleCancelStockQuestion = useCallback(() => setStockQuestion(null), [])
+  const stockDialog = (
+    <DishStockConfirmDialog
+      question={stockQuestion}
+      tenantSlug={tenantSlug}
+      isSaving={stockQuestionItem !== null && togglingIds.has(stockQuestionItem.id)}
+      onSellAnyway={handleSellAnyway}
+      onCancel={handleCancelStockQuestion}
+    />
   )
 
   if (items.length === 0) {
@@ -222,6 +254,7 @@ export function MenuItemsList({
 
   return (
     <div className="space-y-5">
+      {stockDialog}
       <MenuListToolbar
         filters={filters}
         counts={counts}

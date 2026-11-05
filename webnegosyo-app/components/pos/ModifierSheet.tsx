@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,13 +11,22 @@ import {
 import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
+import { KitchenNoteField } from "./KitchenNoteField";
+import { useScrollNoteIntoView } from "./use-scroll-note-into-view";
 import { formatPeso } from "../../lib/format";
-import type { ModifierGroup, ModifierOption } from "../../lib/modifier-groups";
+import {
+  isOptionAvailable,
+  unfillableRequiredGroup,
+  type ModifierGroup,
+  type ModifierOption,
+} from "../../lib/modifier-groups";
+import { describeStockHint } from "../../lib/pos-stock-hint";
 import {
   resolveModifierPrice,
   type OrderTypePricing,
 } from "../../lib/order-type-pricing";
 import {
+  normalizeLineNote,
   unitPrice,
   validateSelection,
   type PosCartSelection,
@@ -32,8 +43,14 @@ interface ModifierSheetProps {
    * the cashier reads is the figure the cart will charge. Null = store prices.
    */
   pricing?: OrderTypePricing | null;
+  /**
+   * Option id → units of this dish producible with it (recipe estimate).
+   * Shown as a hint only — an estimate never blocks the register.
+   */
+  optionCeilings?: ReadonlyMap<string, number>;
   onCancel: () => void;
-  onConfirm: (selections: PosCartSelection[], quantity: number) => void;
+  /** `note` is the trimmed kitchen note, absent when none was written. */
+  onConfirm: (selections: PosCartSelection[], quantity: number, note?: string) => void;
 }
 
 function toSelection(
@@ -51,13 +68,17 @@ function toSelection(
   };
 }
 
-/** Options a group starts with — its defaults, clamped to the group's maximum. */
+/**
+ * Options a group starts with — its defaults, clamped to the group's maximum.
+ * A sold-out default is skipped: the cashier must never ring up a choice the
+ * kitchen switched off just because it was pre-ticked.
+ */
 function initialSelections(
   groups: ModifierGroup[],
   pricing: OrderTypePricing | null,
 ): PosCartSelection[] {
   return groups.flatMap((group) => {
-    const defaults = group.options.filter((o) => o.is_default);
+    const defaults = group.options.filter((o) => o.is_default && isOptionAvailable(o));
     const limit = group.max_select ?? defaults.length;
     return defaults.slice(0, limit).map((o) => toSelection(group, o, pricing));
   });
@@ -69,6 +90,9 @@ function initialSelections(
  * Single-select groups (max_select === 1) swap the chosen option; multi-select
  * groups toggle and are blocked at their maximum, so the cashier physically
  * cannot build an invalid line.
+ *
+ * A sold-out option (switched off, or simple stock at zero) is listed but
+ * cannot be picked; a required group with nothing left refuses the dish.
  */
 export function ModifierSheet({
   visible,
@@ -76,6 +100,7 @@ export function ModifierSheet({
   basePrice,
   groups,
   pricing = null,
+  optionCeilings,
   onCancel,
   onConfirm,
 }: ModifierSheetProps) {
@@ -83,6 +108,7 @@ export function ModifierSheet({
     initialSelections(groups, pricing),
   );
   const [quantity, setQuantity] = useState(1);
+  const [note, setNote] = useState("");
 
   // Remount-free reset: a new item reuses this sheet, so re-seed when it opens.
   const [seededFor, setSeededFor] = useState(itemName);
@@ -90,18 +116,22 @@ export function ModifierSheet({
     setSeededFor(itemName);
     setSelections(initialSelections(groups, pricing));
     setQuantity(1);
+    setNote("");
   }
 
   const validation = useMemo(
     () => validateSelection(groups, selections),
     [groups, selections],
   );
+  const unfillable = useMemo(() => unfillableRequiredGroup(groups), [groups]);
+  const canAdd = validation.valid && unfillable === null;
   const linePrice = unitPrice(basePrice, selections) * quantity;
 
   const isChosen = (option: ModifierOption) =>
     selections.some((s) => s.optionId === option.id);
 
   const toggle = (group: ModifierGroup, option: ModifierOption) => {
+    if (!isOptionAvailable(option)) return;
     setSelections((current) => {
       const inGroup = current.filter((s) => s.groupId === group.id);
       const others = current.filter((s) => s.groupId !== group.id);
@@ -118,12 +148,24 @@ export function ModifierSheet({
     });
   };
 
+  // The note goes along only when one was written, so a caller that never
+  // asked for one sees the call it always did.
+  const confirm = () => {
+    const kitchenNote = normalizeLineNote(note);
+    if (kitchenNote) onConfirm(selections, quantity, kitchenNote);
+    else onConfirm(selections, quantity);
+  };
+
   // A docked sheet becomes a centred dialog once the glass is a tablet's
   // (components/pos/dialog-layout.ts).
   const isCentered = useCenteredDialog();
+  const { scrollRef, onNoteFocus } = useScrollNoteIntoView();
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
-      <View style={[styles.backdrop, isCentered && centeredDialog.backdrop]}>
+      <KeyboardAvoidingView
+        style={[styles.backdrop, isCentered && centeredDialog.backdrop]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>
@@ -134,7 +176,16 @@ export function ModifierSheet({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+          >
+            {unfillable && (
+              <Text style={styles.soldOutNotice}>
+                Every {unfillable.name} choice is sold out, so this can&apos;t be added right now.
+              </Text>
+            )}
             {groups.map((group) => (
               <View key={group.id} style={styles.group}>
                 <Text style={styles.groupName}>
@@ -146,25 +197,47 @@ export function ModifierSheet({
 
                 {group.options.map((option) => {
                   const chosen = isChosen(option);
+                  const isSoldOut = !isOptionAvailable(option);
                   const modifier = resolveModifierPrice(option.price_modifier, pricing);
+                  const hint = isSoldOut ? null : describeStockHint(optionCeilings?.get(option.id), 0);
                   return (
                     <TouchableOpacity
                       key={option.id}
-                      style={[styles.option, chosen && styles.optionChosen]}
+                      style={[
+                        styles.option,
+                        chosen && styles.optionChosen,
+                        isSoldOut && styles.optionSoldOut,
+                      ]}
                       onPress={() => toggle(group, option)}
+                      disabled={isSoldOut}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: chosen }}
+                      accessibilityState={{ selected: chosen, disabled: isSoldOut }}
+                      accessibilityLabel={isSoldOut ? `${option.name}, sold out` : undefined}
                     >
-                      <Text style={[styles.optionName, chosen && styles.optionNameChosen]}>
+                      <Text
+                        style={[
+                          styles.optionName,
+                          chosen && styles.optionNameChosen,
+                          isSoldOut && styles.optionNameSoldOut,
+                        ]}
+                      >
                         {chosen ? "● " : "○ "}
                         {option.name}
                       </Text>
-                      {modifier !== 0 && (
-                        <Text style={styles.optionPrice}>
-                          {modifier > 0 ? "+" : ""}
-                          {formatPeso(modifier)}
-                        </Text>
-                      )}
+                      <View style={styles.optionMeta}>
+                        {isSoldOut && <Text style={styles.soldOutLabel}>Sold out</Text>}
+                        {hint && (
+                          <Text style={[styles.stockHint, hint.isOut && styles.stockHintOut]}>
+                            {hint.label}
+                          </Text>
+                        )}
+                        {modifier !== 0 && (
+                          <Text style={styles.optionPrice}>
+                            {modifier > 0 ? "+" : ""}
+                            {formatPeso(modifier)}
+                          </Text>
+                        )}
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -174,6 +247,9 @@ export function ModifierSheet({
                 )}
               </View>
             ))}
+            <View style={styles.note}>
+              <KitchenNoteField value={note} onChange={setNote} onFocus={onNoteFocus} />
+            </View>
           </ScrollView>
 
           <View style={styles.footer}>
@@ -196,15 +272,15 @@ export function ModifierSheet({
             </View>
 
             <TouchableOpacity
-              style={[styles.addButton, !validation.valid && styles.addButtonDisabled]}
-              disabled={!validation.valid}
-              onPress={() => onConfirm(selections, quantity)}
+              style={[styles.addButton, !canAdd && styles.addButtonDisabled]}
+              disabled={!canAdd}
+              onPress={confirm}
             >
               <Text style={styles.addText}>Add {formatPeso(linePrice)}</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -246,7 +322,20 @@ const styles = StyleSheet.create({
   optionName: { ...typography.body, color: colors.textPrimary },
   optionNameChosen: { fontWeight: "700" },
   optionPrice: { ...typography.caption, color: colors.textSecondary },
+  optionSoldOut: { backgroundColor: colors.surfaceSubtle, opacity: 0.6 },
+  optionNameSoldOut: { color: colors.textTertiary, textDecorationLine: "line-through" },
+  optionMeta: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  soldOutLabel: { ...typography.small, color: colors.textSecondary, fontWeight: "700" },
+  stockHint: { ...typography.small, color: colors.warning, fontWeight: "600" },
+  stockHintOut: { color: colors.danger },
+  soldOutNotice: {
+    ...typography.caption,
+    color: colors.danger,
+    fontWeight: "600",
+    marginTop: spacing.lg,
+  },
   error: { ...typography.small, color: colors.danger, marginTop: spacing.xs },
+  note: { marginTop: spacing.xl, marginBottom: spacing.lg },
   footer: {
     flexDirection: "row",
     alignItems: "center",

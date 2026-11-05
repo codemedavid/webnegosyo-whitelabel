@@ -28,6 +28,16 @@ import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export type OrderSummaryVariant = 'default' | 'classic'
 
+/** Row wording a Page Designer checkout may change. Absent = today's wording. */
+export interface OrderSummaryLabels {
+  subtotal: string
+  deliveryFee: string
+  serviceCharge: string
+  discount: string
+  /** Replaces the store's `checkout.total` label when given. */
+  total: string
+}
+
 interface SummarySkin {
   container: string
   /** Rule between two line items. */
@@ -68,7 +78,7 @@ const DEFAULT_SKIN: SummarySkin = {
   itemName: 'font-medium text-sm text-[color:var(--co-text)]',
   itemMeta: 'text-xs text-[color:var(--co-muted)]',
   itemAddons: 'text-xs text-[color:var(--co-muted)] mt-0.5',
-  itemNote: 'text-xs italic text-[color:var(--co-muted)] mt-0.5',
+  itemNote: 'min-w-0 wrap-anywhere text-xs italic text-[color:var(--co-muted)] mt-0.5',
   itemPrice: 'font-semibold text-sm text-[color:var(--co-text)] flex-shrink-0',
   rowLabel: 'text-[color:var(--co-muted)]',
   rowValue: 'font-medium text-[color:var(--co-text)]',
@@ -90,7 +100,7 @@ const CLASSIC_SKIN: SummarySkin = {
   itemName: 'font-medium text-[color:var(--co-text)]',
   itemMeta: 'text-sm text-[color:var(--co-muted)]',
   itemAddons: 'text-sm text-[color:var(--co-muted)]',
-  itemNote: 'text-sm italic text-[color:var(--co-muted)]',
+  itemNote: 'min-w-0 wrap-anywhere text-sm italic text-[color:var(--co-muted)]',
   itemPrice: 'font-semibold text-[color:var(--co-text)] flex-shrink-0',
   rowLabel: 'text-[color:var(--co-muted)]',
   rowValue: 'font-semibold text-[color:var(--co-text)]',
@@ -149,7 +159,7 @@ function SummaryItem({
 
   const priceRow = (
     <div className={isClassic ? 'flex justify-between' : 'flex justify-between gap-3'}>
-      <div className={isClassic ? 'flex-1 mr-4' : 'flex-1 min-w-0'}>
+      <div className={isClassic ? 'flex-1 min-w-0 mr-4' : 'flex-1 min-w-0'}>
         <span className={skin.itemName} style={nameStyle}>{item.menu_item.name}</span>
         <ItemAnnotations item={item} className={skin.itemMeta} />
         {!isClassic && addons}
@@ -199,6 +209,9 @@ export function OrderSummaryLines({
   checkout,
   variant = 'default',
   showItems = true,
+  showVoucher = true,
+  showGovClaim = true,
+  labels = {},
 }: {
   checkout: UseCheckoutReturn
   variant?: OrderSummaryVariant
@@ -207,6 +220,11 @@ export function OrderSummaryLines({
    * "Your Order"), so the totals below are not preceded by the same lines twice.
    */
   showItems?: boolean
+  /** Off when the voucher field is placed on the page by itself (Page Designer). */
+  showVoucher?: boolean
+  /** Off when the Senior/PWD field is placed on the page by itself (Page Designer). The discount rows stay. */
+  showGovClaim?: boolean
+  labels?: Partial<OrderSummaryLabels>
 }) {
   const {
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, freeDeliveryRemaining,
@@ -250,7 +268,7 @@ export function OrderSummaryLines({
       {showItems && skin.itemsBreak}
 
       <SummaryRow
-        label="Subtotal"
+        label={labels.subtotal ?? 'Subtotal'}
         value={formatPrice(total)}
         skin={skin}
         labelStyle={{ color: mutedText }}
@@ -261,7 +279,7 @@ export function OrderSummaryLines({
       {showDeliveryRow && (
         <>
           <SummaryRow
-            label="Delivery Fee"
+            label={labels.deliveryFee ?? 'Delivery Fee'}
             skin={skin}
             labelStyle={rowLabelStyle}
             valueStyle={rowValueStyle}
@@ -308,7 +326,7 @@ export function OrderSummaryLines({
       {serviceChargeAmount > 0 && (
         <>
           <SummaryRow
-            label="Service Charge"
+            label={labels.serviceCharge ?? 'Service Charge'}
             value={formatPrice(serviceChargeAmount)}
             skin={skin}
             labelStyle={rowLabelStyle}
@@ -318,21 +336,23 @@ export function OrderSummaryLines({
         </>
       )}
 
-      {skin.voucherLeadingBreak}
+      {(showVoucher || showGovClaim) && skin.voucherLeadingBreak}
 
       {/* Shared by all five designs, so a voucher works the same everywhere. */}
-      <VoucherField
-        codes={voucherCodes}
-        preview={voucherPreview}
-        isChecking={isCheckingVoucher}
-        onApply={applyVoucherCode}
-        onRemove={removeVoucherCode}
-        formatPrice={formatPrice}
-        lineNames={voucherLineNames}
-        onChooseUnits={setVoucherUnitPicks}
-      />
+      {showVoucher && (
+        <VoucherField
+          codes={voucherCodes}
+          preview={voucherPreview}
+          isChecking={isCheckingVoucher}
+          onApply={applyVoucherCode}
+          onRemove={removeVoucherCode}
+          formatPrice={formatPrice}
+          lineNames={voucherLineNames}
+          onChooseUnits={setVoucherUnitPicks}
+        />
+      )}
 
-      <GovClaimField state={checkout} formatPrice={formatPrice} accent={accent} />
+      {showGovClaim && <GovClaimField state={checkout} formatPrice={formatPrice} accent={accent} />}
 
       {govLines && govLines.map((line, index) => (
         <SummaryRow
@@ -349,7 +369,7 @@ export function OrderSummaryLines({
         <>
           {skin.discountLeadingBreak}
           <SummaryRow
-            label="Discount"
+            label={labels.discount ?? 'Discount'}
             value={`−${formatPrice(voucherPreview?.discountTotal ?? 0)}`}
             skin={skin}
             valueClassName={skin.discountValue}
@@ -361,7 +381,7 @@ export function OrderSummaryLines({
       {skin.totalLeadingBreak}
 
       <div className={skin.totalRow}>
-        <span className={skin.totalLabel} style={{ color: text }}><StoreLabel name="checkout.total" fallback="Total" /></span>
+        <span className={skin.totalLabel} style={{ color: text }}>{labels.total ?? <StoreLabel name="checkout.total" fallback="Total" />}</span>
         <span className={skin.totalValue} style={{ color: accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>
