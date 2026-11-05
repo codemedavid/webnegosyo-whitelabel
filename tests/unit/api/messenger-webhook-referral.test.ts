@@ -13,7 +13,7 @@ jest.mock('@/lib/facebook-api', () => ({
 }))
 jest.mock('@/lib/messenger-message-formatter', () => ({ formatOrderMessage: jest.fn(() => 'Order summary') }))
 
-const ORDER = { id: 'order-1', tenant_id: 'store-1', total: 198.99, status: 'pending', customer_data: {} }
+const ORDER = { id: 'order-1', tenant_id: 'store-1', total: 198.99, status: 'pending', customer_data: {}, created_at: new Date().toISOString() }
 const TENANT = { id: 'store-1', name: 'Sample Demo', facebook_page_id: 'fb-row-1' }
 
 function adminClientWith(rows: Record<string, unknown>) {
@@ -51,11 +51,11 @@ describe('Messenger webhook order referral', () => {
   })
   afterEach(() => { process.env = originalEnv })
 
-  async function setup(pageIdOnStore: string) {
+  async function setup(pageIdOnStore: string, order: Record<string, unknown> = ORDER) {
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const { getActivePageById } = await import('@/lib/facebook/page-tokens')
     const { sendMessage } = await import('@/lib/facebook-api')
-    const admin = adminClientWith({ orders: ORDER, tenants: TENANT })
+    const admin = adminClientWith({ orders: order, tenants: TENANT })
     jest.mocked(createAdminClient).mockReturnValue(admin.client as never)
     jest.mocked(getActivePageById).mockResolvedValue({ page_id: pageIdOnStore, page_access_token: 'page-token' } as never)
     const { POST } = await import('@/app/api/webhook/route')
@@ -70,6 +70,35 @@ describe('Messenger webhook order referral', () => {
     expect(response.status).toBe(200)
     expect(sendMessage).toHaveBeenCalledWith('psid-9', 'page-token', 'Order summary')
     expect(admin.updates).toContainEqual(expect.objectContaining({ table: 'orders' }))
+  })
+
+  it('refuses a second person once the order belongs to a Messenger conversation', async () => {
+    const claimed = { ...ORDER, customer_data: { messenger_psid: 'psid-owner' } }
+    const { POST, sendMessage, admin } = await setup('page-596', claimed)
+
+    await POST(referral('page-596'))
+
+    expect(sendMessage).not.toHaveBeenCalled()
+    expect(admin.updates).toEqual([])
+  })
+
+  it('still answers the conversation that already owns the order', async () => {
+    const claimed = { ...ORDER, customer_data: { messenger_psid: 'psid-9' } }
+    const { POST, sendMessage } = await setup('page-596', claimed)
+
+    await POST(referral('page-596'))
+
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a referral for an old order', async () => {
+    const old = { ...ORDER, created_at: '2020-01-01T00:00:00.000Z' }
+    const { POST, sendMessage, admin } = await setup('page-596', old)
+
+    await POST(referral('page-596'))
+
+    expect(sendMessage).not.toHaveBeenCalled()
+    expect(admin.updates).toEqual([])
   })
 
   it('never answers an order on a page that is not the store’s', async () => {

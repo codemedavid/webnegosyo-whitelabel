@@ -6,6 +6,11 @@ import {
   getActivePageById,
 } from '@/lib/facebook/page-tokens'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
+import { createLogger } from '@/lib/logger'
+import { mayAnswerOrderReferral } from '@/lib/messenger/order-referral'
+
+// Tracing is opt-in (DEBUG_MESSENGER): these lines carry PSIDs and guest messages.
+const log = createLogger('[Webhook]', 'DEBUG_MESSENGER')
 
 // Keywords related to order status/tracking - these BLOCK menu auto-reply
 const ORDER_STATUS_KEYWORDS = [
@@ -49,7 +54,7 @@ async function ensureMessengerSession(
       console.error('[Webhook] Failed to upsert messenger session:', error)
     } else {
       const maskedPsid = psid.length >= 4 ? `****${psid.slice(-4)}` : '****'
-      console.log(`[Webhook] ✅ Messenger session ensured for PSID ${maskedPsid}`)
+      log.debug(`✅ Messenger session ensured for PSID ${maskedPsid}`)
     }
   } catch (error) {
     console.error('[Webhook] Exception creating messenger session:', error)
@@ -77,7 +82,7 @@ export async function GET(request: NextRequest) {
 
   // Verify the webhook
   if (mode === 'subscribe' && token === verifyToken) {
-    console.log('[Webhook] Verification successful')
+    log.debug('Verification successful')
     return new NextResponse(challenge, { status: 200 })
   }
 
@@ -100,8 +105,8 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Empty body', { status: 400 })
     }
 
-    console.log('[Webhook] Received webhook POST request')
-    console.log('[Webhook] Body length:', bodyText.length)
+    log.debug('Received webhook POST request')
+    log.debug('Body received', { bytes: bodyText.length })
     // Note: Raw body preview removed to prevent PII exposure in production logs
 
     // Verify webhook signature - fail-closed: reject if secret or signature is missing
@@ -164,32 +169,32 @@ export async function POST(request: NextRequest) {
     }
 
     if (!body.entry || body.entry.length === 0) {
-      console.log('[Webhook] ⚠️ No entries in webhook payload - Facebook sent empty webhook')
-      console.log('[Webhook] Full body structure:', JSON.stringify(body, null, 2))
+      log.debug('⚠️ No entries in webhook payload - Facebook sent empty webhook')
+      log.debug('Full body structure', { body })
       return new NextResponse('OK', { status: 200 })
     }
 
-    console.log(`[Webhook] ✅ Received ${body.entry.length} entry/entries`)
+    log.debug(`✅ Received ${body.entry.length} entry/entries`)
 
     // Process each entry
     for (const entry of body.entry) {
       const pageId = entry.id
-      console.log(`[Webhook] Processing entry for page: ${pageId}`)
+      log.debug(`Processing entry for page: ${pageId}`)
 
       if (!entry.messaging || entry.messaging.length === 0) {
-        console.log(`[Webhook] No messaging events in entry for page: ${pageId}`)
+        log.debug(`No messaging events in entry for page: ${pageId}`)
         continue
       }
 
-      console.log(`[Webhook] Processing ${entry.messaging.length} messaging event(s) for page: ${pageId}`)
+      log.debug(`Processing ${entry.messaging.length} messaging event(s) for page: ${pageId}`)
 
       for (const event of entry.messaging) {
         const senderId = event.sender.id
         // Log full event structure for debugging (only first time to avoid spam)
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[Webhook] Full event structure:`, JSON.stringify(event, null, 2))
+          log.debug('Full event structure', { event })
         }
-        console.log(`[Webhook] Processing event from sender: ${senderId}`, {
+        log.debug(`Processing event from sender: ${senderId}`, {
           hasMessage: !!event.message,
           hasReferral: !!event.referral,
           hasPostback: !!event.postback,
@@ -209,7 +214,7 @@ export async function POST(request: NextRequest) {
           const lowerEchoText = echoText.toLowerCase()
 
           // Log echo event structure for debugging
-          console.log(`[Webhook] 📤 Echo message detected:`, {
+          log.debug(`📤 Echo message detected:`, {
             senderId: event.sender.id,  // This is the PAGE ID
             recipientId: event.recipient.id,  // This is the CUSTOMER PSID
             entryId: entry.id,  // This is the PAGE ID
@@ -222,7 +227,7 @@ export async function POST(request: NextRequest) {
           const hasMenuCommand = /^[\/!](menu|products?|catalog|order)/.test(lowerEchoText.trim())
 
           if (hasMenuKeyword || hasMenuCommand) {
-            console.log(`[Webhook] 🍽️ Admin triggered menu card via echo (keyword: ${hasMenuKeyword}, command: ${hasMenuCommand})`)
+            log.debug(`🍽️ Admin triggered menu card via echo (keyword: ${hasMenuKeyword}, command: ${hasMenuCommand})`)
 
             try {
               // Service role: Facebook calls this webhook with no session, so an
@@ -233,13 +238,13 @@ export async function POST(request: NextRequest) {
               // In echo messages, recipient.id is the customer's PSID
               const customerPsid = event.recipient.id
 
-              console.log(`[Webhook] Looking up Facebook page with page_id: ${pageId}`)
+              log.debug(`Looking up Facebook page with page_id: ${pageId}`)
 
               // Find tenant by page ID
               const page = await getActivePageByPageId(pageId)
 
               if (page) {
-                console.log(`[Webhook] Found Facebook page, tenant_id: ${page.tenant_id}`)
+                log.debug(`Found Facebook page, tenant_id: ${page.tenant_id}`)
 
                 // Get tenant details for the menu card
                 const { data: tenantData, error: tenantError } = await supabase
@@ -260,8 +265,8 @@ export async function POST(request: NextRequest) {
                     ? customerPsid
                     : (customerPsid.length > 4 ? '****' + customerPsid.slice(-4) : '****')
 
-                  console.log(`[Webhook] Sending menu card to customer ${maskedPsid} for tenant: ${tenant.name}`)
-                  console.log(`[Webhook] Tenant details:`, {
+                  log.debug(`Sending menu card to customer ${maskedPsid} for tenant: ${tenant.name}`)
+                  log.debug(`Tenant details:`, {
                     name: tenant.name,
                     slug: tenant.slug,
                     hasLogo: !!tenant.logo_url,
@@ -271,7 +276,7 @@ export async function POST(request: NextRequest) {
                   const sent = await sendMenuCard(customerPsid, page.page_access_token, tenant)
 
                   if (sent) {
-                    console.log(`[Webhook] ✅ Admin-triggered menu card sent successfully to ${maskedPsid}`)
+                    log.debug(`✅ Admin-triggered menu card sent successfully to ${maskedPsid}`)
                   } else {
                     console.error(`[Webhook] ❌ Failed to send admin-triggered menu card to ${maskedPsid}`)
                   }
@@ -286,7 +291,7 @@ export async function POST(request: NextRequest) {
               console.error(`[Webhook] Error in admin menu trigger:`, error)
             }
           } else {
-            console.log(`[Webhook] Skipping non-menu echo message (text: "${echoText.substring(0, 30)}...")`)
+            log.debug(`Skipping non-menu echo message (text: "${echoText.substring(0, 30)}...")`)
           }
 
           // Always continue after processing echo - don't fall through to customer message handling
@@ -307,7 +312,7 @@ export async function POST(request: NextRequest) {
 
         if (referralRef) {
           const ref = referralRef
-          console.log(`[Webhook] Received referral event with ref: ${ref}`, {
+          log.debug(`Received referral event with ref: ${ref}`, {
             fromEventReferral: !!event.referral?.ref,
             fromMessageReferral: !!event.message?.referral?.ref,
             fromPostbackReferral: !!event.postback?.referral?.ref,
@@ -320,7 +325,7 @@ export async function POST(request: NextRequest) {
             // Remove ORDER_ prefix and any timestamp suffix (format: ORDER_{id} or ORDER_{id}_{timestamp})
             const orderIdMatch = ref.match(/^ORDER_(.+?)(?:_\d+)?$/)
             const orderId = orderIdMatch ? orderIdMatch[1] : ref.replace('ORDER_', '').split('_')[0]
-            console.log(`[Webhook] Processing order referral for order ID: ${orderId}`)
+            log.debug(`Processing order referral for order ID: ${orderId}`)
 
             try {
               // Load order from database
@@ -416,6 +421,18 @@ export async function POST(request: NextRequest) {
                 continue
               }
 
+              // The order id alone proves nothing (it travels in the tracking
+              // link), and this answer carries the guest's name, phone and address.
+              if (!mayAnswerOrderReferral({
+                senderId,
+                customerData: order.customer_data,
+                createdAt: order.created_at,
+                now: Date.now(),
+              })) {
+                log.debug('Referral refused for an order owned by another conversation or too old', { orderId })
+                continue
+              }
+
               // Format order with items for message formatter
               const orderDataRecord = orderData as Record<string, unknown>
               const orderWithItems = {
@@ -448,7 +465,7 @@ export async function POST(request: NextRequest) {
               )
 
               if (sent) {
-                console.log(`[Webhook] ✅ Order message sent successfully for order: ${orderId} to sender: ${senderId}`)
+                log.debug(`✅ Order message sent successfully for order: ${orderId} to sender: ${senderId}`)
 
                 // Ensure messenger session exists for PSID-tenant validation
                 await ensureMessengerSession(senderId, tenant.id)
@@ -471,7 +488,7 @@ export async function POST(request: NextRequest) {
 
                   // Also store PSID in customer_data for future orders from same customer
                   // This enables proactive messaging for returning customers
-                  console.log(`[Webhook] Stored PSID ${senderId} for future proactive messaging`)
+                  log.debug(`Stored PSID ${senderId} for future proactive messaging`)
                 } catch (error) {
                   console.error(`[Webhook] Failed to store sender mapping:`, error)
                   // Non-critical, continue
@@ -483,27 +500,16 @@ export async function POST(request: NextRequest) {
               console.error(`[Webhook] ❌ Error processing referral for order: ${orderId}:`, error)
             }
           } else {
-            console.log(`[Webhook] Referral ref "${ref}" does not match ORDER_ pattern, ignoring`)
+            log.debug(`Referral ref "${ref}" does not match ORDER_ pattern, ignoring`)
           }
         } else {
           // Log full event for debugging - referral might be nested
           // Facebook referral events can be tricky - they only fire for NEW conversations
           // For existing conversations, Facebook often doesn't send referral events
-          console.log(`[Webhook] ⚠️ No referral ref found in event from sender ${senderId}`)
-          console.log(`[Webhook] Event from sender ${senderId} - Full event structure:`, JSON.stringify(event, null, 2))
-          console.log(`[Webhook] Event details:`, {
-            hasMessage: !!event.message,
-            hasPostback: !!event.postback,
-            hasReferral: !!event.referral,
-            messageText: event.message?.text?.substring(0, 100),
-            isEcho: event.message?.is_echo,
-            messageReferral: event.message?.referral,
-            eventReferral: event.referral,
-            postbackReferral: event.postback?.referral,
-          })
-          console.log(`[Webhook] ⚠️ NOTE: Referral events only fire when opening a NEW conversation.`)
-          console.log(`[Webhook] ⚠️ If conversation already exists, Facebook may not send referral event.`)
-          console.log(`[Webhook] ⚠️ This is a known Facebook limitation. Fallback will attempt to match recent orders.`)
+          log.debug(`⚠️ No referral ref found in event from sender ${senderId}`)
+          log.debug(`⚠️ NOTE: Referral events only fire when opening a NEW conversation.`)
+          log.debug(`⚠️ If conversation already exists, Facebook may not send referral event.`)
+          log.debug(`⚠️ This is a known Facebook limitation. Fallback will attempt to match recent orders.`)
 
           // ACTIVE FALLBACK: When referral event doesn't fire (common for existing conversations),
           // attempt to match with very recent orders. This is SAFE because:
@@ -516,7 +522,7 @@ export async function POST(request: NextRequest) {
 
           if (event.message && !event.message.is_echo) {
             const messageText = event.message.text || ''
-            console.log(`[Webhook] Received message from ${senderId}`, {
+            log.debug(`Received message from ${senderId}`, {
               hasText: !!messageText,
               textLength: messageText.length,
             })
@@ -528,7 +534,7 @@ export async function POST(request: NextRequest) {
             const hasMenuKeyword = MENU_KEYWORDS.some(keyword => lowerMessage.includes(keyword))
 
             if (hasMenuKeyword && !isOrderStatusQuery) {
-              console.log(`[Webhook] 🍽️ Menu keyword detected in message (length: ${messageText.length})`)
+              log.debug(`🍽️ Menu keyword detected in message (length: ${messageText.length})`)
 
               try {
                 // Service role (see above): the webhook has no session.
@@ -551,11 +557,11 @@ export async function POST(request: NextRequest) {
                   const tenant = tenantData as { id: string; name: string; slug: string; logo_url?: string | null; domain?: string | null } | null
 
                   if (tenant) {
-                    console.log(`[Webhook] Sending menu card for tenant: ${tenant.name}`)
+                    log.debug(`Sending menu card for tenant: ${tenant.name}`)
                     const sent = await sendMenuCard(senderId, page.page_access_token, tenant)
 
                     if (sent) {
-                      console.log(`[Webhook] ✅ Menu card sent successfully to ${senderId}`)
+                      log.debug(`✅ Menu card sent successfully to ${senderId}`)
                       // Ensure messenger session exists for PSID-tenant validation
                       await ensureMessengerSession(senderId, tenant.id)
                       // The menu reply completed this event
@@ -584,7 +590,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Always return 200 OK to acknowledge receipt
-    console.log('[Webhook] Webhook processing completed, returning 200 OK')
+    log.debug('Webhook processing completed, returning 200 OK')
     return new NextResponse('OK', { status: 200 })
   } catch (error) {
     console.error('[Webhook] ❌ Unhandled error in webhook handler:', error)

@@ -155,6 +155,21 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid or expired session." }, 401);
     }
 
+    // Any signed-in JWT is not enough: sign-up is open at the auth layer, so an
+    // arbitrary account could otherwise spend the platform's AI key. The caller
+    // reads their own row (app_users has self-read RLS).
+    const { data: appUser, error: appUserErr } = await callerClient
+      .from("app_users")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (appUserErr) {
+      return json({ error: "Could not confirm your account. Please try again." }, 503);
+    }
+    if (!appUser) {
+      return json({ error: "The AI coach is for store accounts." }, 403);
+    }
+
     const rawBody = await req.text();
     if (rawBody.length > MAX_FACTS_BYTES) {
       return json({ error: "Request payload too large." }, 413);
