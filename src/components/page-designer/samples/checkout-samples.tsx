@@ -4,12 +4,15 @@ import { useLayoutEffect, useMemo, useRef, useState, type ComponentType, type Re
 
 import { readTrackingStyle } from '@/lib/tracking-style/keys'
 import type { OrderStampCard } from '@/lib/loyalty/stamp-status'
-import type { PageBlockRenderer, PageBlockRenderProps } from '@/components/hero-builder/renderer/page-runtime'
+import { getTenantBranding } from '@/lib/branding-utils'
+import { usePageRuntime, type PageBlockRenderer, type PageBlockRenderProps } from '@/components/hero-builder/renderer/page-runtime'
+import { resolveCheckoutTheme } from '@/components/customer/checkout-templates/checkout-theme'
 import { LoyaltyProgressPanel } from '@/components/customer/loyalty-progress-panel'
 import { buildTrackingTheme } from '@/components/customer/order-tracking/tracking-theme'
 import { TrackingOptionsProvider } from '@/components/customer/order-tracking/tracking-options'
 import { CHECKOUT_BLOCK_VIEWS } from '@/components/page-designer/checkout/checkout-block-views'
 import type { CheckoutBlockViewProps } from '@/components/page-designer/checkout/block-views-details'
+import { StoreClosedView } from '@/components/page-designer/checkout/block-views-top'
 import { buildSampleCheckout, type SamplePalette } from '@/components/page-designer/checkout/sample-checkout'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
@@ -42,11 +45,34 @@ function readCanvasPalette(element: HTMLElement): SamplePalette | null {
   return Object.fromEntries(entries) as unknown as SamplePalette
 }
 
+/** The store's checkout palette from its row (with the Look tab's edits), as sample data. */
+function storePalette(store: Readonly<Record<string, unknown>>): SamplePalette {
+  const row = store as Record<string, unknown>
+  const theme = resolveCheckoutTheme(row, getTenantBranding(row))
+  return {
+    bg: theme.background,
+    card: theme.card,
+    summary: theme.summary,
+    text: theme.text,
+    muted: theme.muted,
+    border: theme.border,
+    accent: theme.accent,
+    accentText: theme.accentText,
+    button: theme.button,
+    success: theme.success,
+    warning: theme.warning,
+    error: theme.error,
+  }
+}
+
 function useSampleCheckout(ref: RefObject<HTMLDivElement | null>): UseCheckoutReturn {
-  const [palette, setPalette] = useState<SamplePalette | null>(null)
+  const store = usePageRuntime()?.store
+  const [canvasPalette, setCanvasPalette] = useState<SamplePalette | null>(null)
   useLayoutEffect(() => {
-    if (ref.current) setPalette(readCanvasPalette(ref.current))
-  }, [ref])
+    if (!store && ref.current) setCanvasPalette(readCanvasPalette(ref.current))
+  }, [ref, store])
+  // The editor hands the store row over (live Look edits); otherwise read the canvas variables.
+  const palette = useMemo(() => (store ? storePalette(store) : canvasPalette), [store, canvasPalette])
   return useMemo(() => buildSampleCheckout(palette), [palette])
 }
 
@@ -61,7 +87,9 @@ const SAMPLE_CARD: OrderStampCard = {
 
 /** The stamp card as a customer with a few stamps sees it (the live block reads the real card). */
 function LoyaltySample({ checkout }: CheckoutBlockViewProps) {
-  const style = useMemo(() => readTrackingStyle(null), [])
+  const store = usePageRuntime()?.store
+  // The store's Loyalty card look (with the Look tab's edits) when the editor gives it.
+  const style = useMemo(() => readTrackingStyle((store as Record<string, unknown> | undefined) ?? null), [store])
   return (
     <div style={buildTrackingTheme(checkout.branding, style)}>
       <TrackingOptionsProvider options={style.options}>
@@ -69,6 +97,22 @@ function LoyaltySample({ checkout }: CheckoutBlockViewProps) {
       </TrackingOptionsProvider>
     </div>
   )
+}
+
+/**
+ * The live notice shows only while the store is closed; the editor always
+ * shows it, so its wording and design can be set (and the gallery has
+ * something to picture).
+ */
+function StoreClosedSample({ checkout, block }: CheckoutBlockViewProps) {
+  const closed = useMemo(
+    (): UseCheckoutReturn => ({
+      ...checkout,
+      openStatus: { isOpen: false, isOrderingBlocked: true, reason: 'after_close', nextOpenLabel: 'tomorrow at 9:00 AM', closesAt: null },
+    }),
+    [checkout],
+  )
+  return <StoreClosedView checkout={closed} block={block} />
 }
 
 function sampleBlock(View: ComponentType<CheckoutBlockViewProps>, id: string): PageBlockRenderer {
@@ -89,6 +133,7 @@ function sampleBlock(View: ComponentType<CheckoutBlockViewProps>, id: string): P
 const SAMPLE_VIEWS: Readonly<Record<string, ComponentType<CheckoutBlockViewProps>>> = {
   ...CHECKOUT_BLOCK_VIEWS,
   'checkout.loyalty': LoyaltySample,
+  'checkout.store_closed': StoreClosedSample,
 }
 
 /**

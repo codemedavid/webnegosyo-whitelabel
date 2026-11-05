@@ -31,6 +31,12 @@ export interface PageRuntime {
   tokens: Readonly<Record<string, string>>
   labels: Readonly<Record<string, string | undefined>>
   blocks: Readonly<Partial<Record<string, PageBlockRenderer>>>
+  /**
+   * Editor only: the store row the page paints from, with the Look tab's
+   * unsaved edits in it, so sample blocks preview them. The storefront's
+   * live blocks read the real store and leave this unset.
+   */
+  store?: Readonly<Record<string, unknown>>
 }
 
 const PageRuntimeContext = createContext<PageRuntime | null>(null)

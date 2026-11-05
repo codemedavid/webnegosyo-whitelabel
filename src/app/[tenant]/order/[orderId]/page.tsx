@@ -72,6 +72,8 @@ async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
   const row = tenant as unknown as Record<string, unknown>
   const branding = getTenantBranding(row)
   const trackingStyle = readTrackingStyle(row)
+  // Null (the standard page) until a design is published — also while the columns don't exist yet.
+  const design = resolvePageDesign(row, 'tracking')
   return {
     storeName: tenant.name,
     logoUrl: branding.logoUrl,
@@ -79,8 +81,9 @@ async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
     options: trackingStyle.options,
     storefrontLabels: row.storefront_labels ?? null,
     loyaltyOffer: await resolveLoyaltyOffer(tenant),
-    // Null (the standard page) until a design is published — also while the columns don't exist yet.
-    design: resolvePageDesign(row, 'tracking'),
+    design,
+    // Only a designed page re-colours single blocks; the standard page never needs it.
+    ...(design ? { paint: { branding, style: trackingStyle } } : {}),
   }
 }
 

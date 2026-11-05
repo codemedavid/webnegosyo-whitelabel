@@ -39,6 +39,8 @@ export const LIMITS = {
   designBytes: 600_000,
   historyDepth: 80,
   embedMaxHeight: 4_000,
+  /** A page block option value (image URLs are the longest; designs and colours are short). */
+  blockOptionChars: 600,
 } as const
 
 export const THEME_COLOR_KEYS: readonly ThemeColorKey[] = [

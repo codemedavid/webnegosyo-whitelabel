@@ -475,9 +475,14 @@ export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
     const widget = node as Widget
     return (
       <>
-        <Group title="Content">
-          {widget.kind === 'page-block' ? <PageBlockFields widget={widget} api={api} /> : <WidgetContentFields widget={widget} api={api} />}
-        </Group>
+        {widget.kind === 'page-block' ? (
+          // A page block brings its own groups: design, colours, words, settings.
+          <PageBlockFields widget={widget} api={api} />
+        ) : (
+          <Group title="Content">
+            <WidgetContentFields widget={widget} api={api} />
+          </Group>
+        )}
         <ShowWhenGroup node={widget} api={api} />
       </>
     )

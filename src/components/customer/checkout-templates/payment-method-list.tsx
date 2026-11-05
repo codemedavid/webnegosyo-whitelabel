@@ -19,13 +19,15 @@ import { parsePaymentDetailLines } from '@/lib/payment-details-lines'
 import { isPaymentProofRequired } from '@/lib/payment-proof'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { PaymentMethod } from '@/types/database'
+import { cornersClass, type CornersChoice } from '@/lib/page-designer/knobs'
 import { PaymentDetailRows } from './payment-detail-rows'
 import { checkoutThemeStyle } from './checkout-theme'
 
 /** QR codes keep a white quiet zone on every theme so phone cameras can read them. */
-const QR_BACKDROP = 'bg-white'
+export const QR_BACKDROP = 'bg-white'
 
-export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn }) {
+/** `corners` rounds the tiles (Page Designer); absent = the standard tiles. */
+export function PaymentMethodList({ checkout, corners }: { checkout: UseCheckoutReturn; corners?: CornersChoice }) {
   const {
     paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog,
     handleCopyText, copiedText, orderType, tenant, branding,
@@ -59,6 +61,7 @@ export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn })
             accent={palette.accent}
             accentText={palette.accentText}
             accentSoft={palette.accentSoft}
+            corners={corners}
             onSelect={() => setSelectedPaymentMethod(method.id)}
           />
         ))}
@@ -84,14 +87,15 @@ interface PaymentMethodTileProps {
   accent: string
   accentText: string
   accentSoft: string
+  corners?: CornersChoice
   onSelect: () => void
 }
 
-function PaymentMethodTile({ method, isSelected, accent, accentText, accentSoft, onSelect }: PaymentMethodTileProps) {
+function PaymentMethodTile({ method, isSelected, accent, accentText, accentSoft, corners, onSelect }: PaymentMethodTileProps) {
   return (
     <label
       data-branding-scope="checkout/choice"
-      className="relative flex w-[7.25rem] shrink-0 snap-start cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 bg-[var(--co-card)] px-2 pb-3 pt-4 text-center transition-[border-color,background-color,transform] hover:border-[color:var(--co-accent-border)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-[color:var(--co-accent)] has-[:focus-visible]:ring-offset-[color:var(--co-card)] motion-safe:active:scale-[0.97]"
+      className={`relative flex w-[7.25rem] shrink-0 snap-start cursor-pointer flex-col items-center gap-2 ${cornersClass(corners, 'rounded-2xl')} border-2 bg-[var(--co-card)] px-2 pb-3 pt-4 text-center transition-[border-color,background-color,transform] hover:border-[color:var(--co-accent-border)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-[color:var(--co-accent)] has-[:focus-visible]:ring-offset-[color:var(--co-card)] motion-safe:active:scale-[0.97]`}
       style={{
         borderColor: isSelected ? accent : 'var(--co-border)',
         backgroundColor: isSelected ? accentSoft : 'var(--co-card)',
@@ -123,7 +127,7 @@ function PaymentMethodTile({ method, isSelected, accent, accentText, accentSoft,
 }
 
 /** 56px mark: the method's QR when it has one, otherwise a monogram. */
-function MethodMark({ method, accent, accentSoft }: { method: PaymentMethod; accent: string; accentSoft: string }) {
+export function MethodMark({ method, accent, accentSoft }: { method: PaymentMethod; accent: string; accentSoft: string }) {
   if (method.qr_code_url) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
@@ -146,7 +150,7 @@ function MethodMark({ method, accent, accentSoft }: { method: PaymentMethod; acc
   )
 }
 
-interface PaymentTicketProps {
+export interface PaymentTicketProps {
   method: PaymentMethod
   accent: string
   copiedText: string | null
@@ -154,7 +158,7 @@ interface PaymentTicketProps {
   onEnlargeQr: (url: string) => void
 }
 
-function PaymentTicket({ method, accent, copiedText, onCopy, onEnlargeQr }: PaymentTicketProps) {
+export function PaymentTicket({ method, accent, copiedText, onCopy, onEnlargeQr }: PaymentTicketProps) {
   const rows = parsePaymentDetailLines(method.details)
   const qrUrl = method.qr_code_url
   const needsProof = isPaymentProofRequired(method)
@@ -203,7 +207,7 @@ function PaymentTicket({ method, accent, copiedText, onCopy, onEnlargeQr }: Paym
   )
 }
 
-function NoPaymentMethods() {
+export function NoPaymentMethods() {
   return (
     <div className="flex items-start gap-3 rounded-2xl border border-[color:var(--co-warning-border)] bg-[var(--co-warning-soft)] p-4">
       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--co-warning)]" />

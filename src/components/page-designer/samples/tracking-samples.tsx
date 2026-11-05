@@ -17,8 +17,12 @@ import {
   sampleTrackingData,
   type TrackingPreviewStatus,
 } from '@/lib/branding-studio/tracking-preview'
+import { getTenantBranding } from '@/lib/branding-utils'
 import { formatOrderTrackingTime, ORDER_TRACKING_TIME_ZONE } from '@/lib/order-tracking-time'
 import { describePrepPromise } from '@/lib/prep-time'
+import { readTrackingStyle } from '@/lib/tracking-style/keys'
+import { TrackingOptionsProvider } from '@/components/customer/order-tracking/tracking-options'
+import type { TrackingPaint } from '@/components/page-designer/tracking/tracking-blocks-context'
 
 const SAMPLE_ID = 'page-designer-sample'
 const SAMPLE_SHORT_ID = '07'
@@ -74,17 +78,27 @@ export function sampleTrackingBlocks(state: string | null | undefined, storeName
   }
 }
 
-/** Sample values + the store's wording around one block, following the editor's state switcher. */
+/** The editor's store row (with the Look tab's unsaved edits) as the page's paint. */
+function samplePaint(store: Readonly<Record<string, unknown>> | undefined): TrackingPaint {
+  const row = (store as Record<string, unknown> | undefined) ?? null
+  return { branding: getTenantBranding(row), style: readTrackingStyle(row) }
+}
+
+/** Sample values + the store's wording and look around one block, following the editor's state switcher. */
 function SampleTracking({ children }: { children: ReactNode }) {
   const runtime = usePageRuntime()
   const state = runtime?.state
   const storeName = runtime?.tokens.store || 'Your store'
-  const value = useMemo(() => sampleTrackingBlocks(state, storeName), [state, storeName])
+  const store = runtime?.store
+  const paint = useMemo(() => samplePaint(store), [store])
+  const value = useMemo(() => ({ ...sampleTrackingBlocks(state, storeName), paint }), [state, storeName, paint])
   const labels = runtime?.labels
   const labelSource = useMemo(() => ({ storefront_labels: labels ?? {} }), [labels])
   return (
     <StorefrontLabelsProvider tenant={labelSource}>
-      <TrackingBlocksProvider value={value}>{children}</TrackingBlocksProvider>
+      <TrackingOptionsProvider options={paint.style.options}>
+        <TrackingBlocksProvider value={value}>{children}</TrackingBlocksProvider>
+      </TrackingOptionsProvider>
     </StorefrontLabelsProvider>
   )
 }

@@ -1,15 +1,18 @@
 'use client'
 
-import { Lock } from 'lucide-react'
+import { Lock, RotateCcw } from 'lucide-react'
+import { useMemo } from 'react'
 
 import type { PageBlockContent, Widget } from '@/lib/hero-builder/types'
 import { PAGE_META } from '@/lib/page-designer/pages'
 import { pageBlockDef } from '@/lib/page-designer/blocks'
-import { resolveBlockOption, resolveBlockText } from '@/lib/page-designer/text'
-import type { BlockTextSlot, PageId } from '@/lib/page-designer/types'
-import { usePageRuntime } from '@/components/hero-builder/renderer/page-runtime'
+import { optionGroup } from '@/lib/page-designer/knobs'
+import { applyTokens, resolveBlockOption, resolveBlockText } from '@/lib/page-designer/text'
+import type { BlockOption, BlockOptionValue, BlockTextSlot, PageId } from '@/lib/page-designer/types'
+import { usePageRuntime, type PageBlockRenderProps } from '@/components/hero-builder/renderer/page-runtime'
 
-import { Field, Group, Segmented, TextArea, TextInput, Toggle } from '../controls'
+import { Field, Group, TextArea, TextInput } from '../controls'
+import { DesignGallery, isOptionShown, OptionField } from './page-block-knobs'
 import type { HeroBuilderApi } from '../use-hero-builder'
 
 /** "Type {name} for the customer's first name…" for this page. */
@@ -27,27 +30,52 @@ function SlotField({ slot, value, placeholder, onChange }: { slot: BlockTextSlot
   )
 }
 
-/** The inspector for a page block: what it is, its wording and its switches. */
+/** The inspector for a page block: what it is, its design, colours, wording and switches. */
 export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuilderApi }) {
   const runtime = usePageRuntime()
   const content = widget.content as PageBlockContent
   const def = runtime ? pageBlockDef(runtime.page, content.block) : null
-  if (!runtime || !def) {
-    return <p className="text-xs text-neutral-500">This block belongs to another page. Remove it.</p>
+  const texts = useMemo(() => content.texts ?? {}, [content.texts])
+  const options = useMemo(() => content.options ?? {}, [content.options])
+  // The block's props as the canvas renders them: the design gallery redraws them per design.
+  const props = useMemo<PageBlockRenderProps | null>(() => {
+    if (!runtime || !def) return null
+    return {
+      def,
+      text: (slot) => applyTokens(resolveBlockText(def, slot, texts, runtime.labels), runtime.tokens),
+      option: (key) => resolveBlockOption(def, key, options),
+      isEditor: true,
+    }
+  }, [runtime, def, texts, options])
+  if (!runtime || !def || !props) {
+    return <p className="px-4 py-3 text-xs text-neutral-500">This block belongs to another page. Remove it.</p>
   }
-  const texts = content.texts ?? {}
-  const options = content.options ?? {}
   const setText = (key: string, value: string) => {
     const next = { ...texts, [key]: value }
     if (!value) delete next[key]
     api.editContent(widget.id, { texts: next } as Partial<PageBlockContent>, `text:${key}`)
   }
-  const setOption = (key: string, value: string | boolean) =>
-    api.editContent(widget.id, { options: { ...options, [key]: value } } as Partial<PageBlockContent>)
+  const setOption = (key: string, value: BlockOptionValue) => {
+    const next = { ...options, [key]: value }
+    // A blank colour or photo = follow the page / none: drop the key.
+    if (value === '') delete next[key]
+    api.editContent(widget.id, { options: next } as Partial<PageBlockContent>, `option:${key}`)
+  }
+  const resetLook = () => api.editContent(widget.id, { options: {} } as Partial<PageBlockContent>)
+
+  const shown = def.options.filter((o) => isOptionShown(def, o, props.option))
+  const inGroup = (group: string) => shown.filter((o) => optionGroup(o) === group)
+  const designs = inGroup('design')
+  const colors = inGroup('colors')
+  const switches = inGroup('options')
+  const more = inGroup('advanced')
+  // Photos and colours are typed or picked in steps: show what is stored, not the fallback.
+  const valueOf = (option: BlockOption) => (option.type === 'image' ? (typeof options[option.key] === 'string' ? options[option.key] : '') : props.option(option.key))
+  const hasSettings = Object.keys(options).length > 0
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg bg-neutral-50 p-2.5 text-[11px] leading-snug text-neutral-600">
+    <div>
+      <div className="mx-4 my-3 rounded-lg bg-neutral-50 p-2.5 text-[11px] leading-snug text-neutral-600">
         <p className="font-semibold text-neutral-800">{def.label}</p>
         <p>{def.description}</p>
         {def.required && (
@@ -56,41 +84,67 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
           </p>
         )}
       </div>
+      {designs.map((option) =>
+        option.type === 'choice' ? (
+          <Group key={option.key} title={option.label}>
+            <DesignGallery option={option} value={String(props.option(option.key))} Renderer={runtime.blocks[def.id]} props={props} onPick={(v) => setOption(option.key, v)} />
+          </Group>
+        ) : null,
+      )}
+      {colors.length > 0 && (
+        <Group title="Colours">
+          <div className="space-y-1.5">
+            {colors.map((option) => (
+              <OptionField key={option.key} option={option} value={valueOf(option)} onChange={(v) => setOption(option.key, v)} />
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-neutral-500">Blank colours follow the page colours in the Look tab.</p>
+        </Group>
+      )}
       {def.texts.length > 0 && (
-        <div className="space-y-3">
-          {def.texts.map((slot) => (
-            <SlotField
-              key={slot.key}
-              slot={slot}
-              value={texts[slot.key] ?? ''}
-              // What shows when blank: the store label, else the standard words.
-              placeholder={resolveBlockText(def, slot.key, {}, runtime.labels)}
-              onChange={(v) => setText(slot.key, v)}
-            />
-          ))}
-          <p className="text-[11px] leading-snug text-neutral-500">{tokenHint(runtime.page).trim()}</p>
+        <Group title="Words">
+          <div className="space-y-3">
+            {def.texts.map((slot) => (
+              <SlotField
+                key={slot.key}
+                slot={slot}
+                value={texts[slot.key] ?? ''}
+                // What shows when blank: the store label, else the standard words.
+                placeholder={resolveBlockText(def, slot.key, {}, runtime.labels)}
+                onChange={(v) => setText(slot.key, v)}
+              />
+            ))}
+            <p className="text-[11px] leading-snug text-neutral-500">{tokenHint(runtime.page).trim()}</p>
+          </div>
+        </Group>
+      )}
+      {switches.length > 0 && (
+        <Group title="Settings">
+          <div className="space-y-3">
+            {switches.map((option) => (
+              <OptionField key={option.key} option={option} value={valueOf(option)} onChange={(v) => setOption(option.key, v)} />
+            ))}
+          </div>
+        </Group>
+      )}
+      {more.length > 0 && (
+        <Group title="More" defaultOpen={false}>
+          <div className="space-y-3">
+            {more.map((option) => (
+              <OptionField key={option.key} option={option} value={valueOf(option)} onChange={(v) => setOption(option.key, v)} />
+            ))}
+          </div>
+        </Group>
+      )}
+      {hasSettings && (
+        <div className="border-b border-neutral-200 px-4 py-3">
+          <button type="button" onClick={resetLook} className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-700 hover:underline">
+            <RotateCcw className="h-3 w-3" /> Use the standard look for this block
+          </button>
         </div>
       )}
-      {def.options.map((option) =>
-        option.type === 'boolean' ? (
-          <Toggle
-            key={option.key}
-            label={option.label}
-            checked={resolveBlockOption(def, option.key, options) === true}
-            onChange={(v) => setOption(option.key, v)}
-          />
-        ) : (
-          <Field key={option.key} label={option.label} hint={option.hint}>
-            <Segmented
-              value={String(resolveBlockOption(def, option.key, options))}
-              onChange={(v) => setOption(option.key, v)}
-              options={option.choices.map((c) => ({ value: c.value, label: c.label }))}
-            />
-          </Field>
-        ),
-      )}
       {def.texts.length === 0 && def.options.length === 0 && (
-        <p className="text-[11px] leading-snug text-neutral-500">Use the Style and Layout tabs to change how this block sits on the page.</p>
+        <p className="px-4 pb-3 text-[11px] leading-snug text-neutral-500">Use the Style and Layout tabs to change how this block sits on the page.</p>
       )}
     </div>
   )

@@ -14,8 +14,30 @@ import { Button } from '@/components/ui/button'
 import { useConfirmationBlocks } from './confirmation-context'
 import { CountdownText } from './countdown-text'
 
-const PRIMARY_BUTTON =
-  'w-full h-12 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold rounded-full'
+const PRIMARY_BASE =
+  'w-full h-12 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold'
+/** Today's button corners; a designed page may pass another shape. */
+const PILL = 'rounded-full'
+
+const primaryButton = (shape: string): string => `${PRIMARY_BASE} ${shape}`
+
+/** Page Designer layouts of Track + Back; `stacked` is today's. */
+export type ActionsLayout = 'stacked' | 'side' | 'outline'
+
+const BACK_BUTTON: Record<ActionsLayout, { variant: 'ghost' | 'outline'; className: (shape: string) => string }> = {
+  stacked: {
+    variant: 'ghost',
+    className: (shape) => `w-full h-12 ${shape} text-[color:var(--co-muted)] hover:bg-[var(--co-subtle)] hover:text-[color:var(--co-text)]`,
+  },
+  side: {
+    variant: 'ghost',
+    className: (shape) => `w-full h-auto min-h-12 whitespace-normal ${shape} text-[color:var(--co-muted)] hover:bg-[var(--co-subtle)] hover:text-[color:var(--co-text)]`,
+  },
+  outline: {
+    variant: 'outline',
+    className: (shape) => `w-full h-12 ${shape} border-2 border-[color:var(--co-button)] bg-transparent font-semibold text-[color:var(--co-text)] hover:bg-[var(--co-subtle)] hover:text-[color:var(--co-text)]`,
+  },
+}
 
 export interface ActionsCopy {
   track?: string
@@ -29,7 +51,7 @@ export interface ActionsCopy {
 }
 
 /** Kiosk: say what is about to happen, and offer a way to skip the wait. */
-export function ConfirmationKioskCard({ copy = {} }: { copy?: ActionsCopy }) {
+export function ConfirmationKioskCard({ copy = {}, shape = PILL }: { copy?: ActionsCopy; shape?: string }) {
   const b = useConfirmationBlocks()
   if (!b) return null
   return (
@@ -46,7 +68,7 @@ export function ConfirmationKioskCard({ copy = {} }: { copy?: ActionsCopy }) {
             <CountdownText text={copy.kioskReturning ?? 'Returning to the menu in {seconds}...'} seconds={b.kioskCountdown} />
           </p>
         </div>
-        <Button size="lg" className={PRIMARY_BUTTON} onClick={b.onStartNewOrder}>
+        <Button size="lg" className={primaryButton(shape)} onClick={b.onStartNewOrder}>
           <ArrowLeft className="mr-2 h-5 w-5" />
           {copy.kioskButton ?? 'Start a New Order'}
         </Button>
@@ -74,15 +96,24 @@ function TrackingCountdownLine({ copy }: { copy: ActionsCopy }) {
   )
 }
 
+interface TrackButtonsProps {
+  copy?: ActionsCopy
+  showBack?: boolean
+  /** Page Designer only; the defaults are today's buttons. */
+  layout?: ActionsLayout
+  shape?: string
+}
+
 /** Track Order + Back to Menu. */
-export function ConfirmationTrackButtons({ copy = {}, showBack = true }: { copy?: ActionsCopy; showBack?: boolean }) {
+export function ConfirmationTrackButtons({ copy = {}, showBack = true, layout = 'stacked', shape = PILL }: TrackButtonsProps) {
   const b = useConfirmationBlocks()
   if (!b) return null
-  return (
-    <div className="pb-8 space-y-3">
-      <TrackingCountdownLine copy={copy} />
+  const isSide = layout === 'side'
+  const back = BACK_BUTTON[layout]
+  const buttons = (
+    <>
       {b.canTrack && (
-        <Button size="lg" className={PRIMARY_BUTTON} onClick={b.onTrack}>
+        <Button size="lg" className={isSide ? `${primaryButton(shape)} h-auto min-h-12 whitespace-normal` : primaryButton(shape)} onClick={b.onTrack}>
           <Package className="mr-2 h-5 w-5" />
           {copy.track ?? 'Track Your Order'}
         </Button>
@@ -90,14 +121,22 @@ export function ConfirmationTrackButtons({ copy = {}, showBack = true }: { copy?
       {showBack && (
         <Button
           size="lg"
-          variant="ghost"
-          className="w-full h-12 rounded-full text-[color:var(--co-muted)] hover:bg-[var(--co-subtle)] hover:text-[color:var(--co-text)]"
+          variant={back.variant}
+          className={back.className(shape)}
           onClick={b.onBackToMenu}
         >
           <ArrowLeft className="mr-2 h-5 w-5" />
           {copy.back ?? 'Back to Menu'}
         </Button>
       )}
+    </>
+  )
+  return (
+    <div className="pb-8 space-y-3">
+      <TrackingCountdownLine copy={copy} />
+      {isSide ? (
+        <div className={`grid gap-3 ${b.canTrack && showBack ? 'grid-cols-2' : 'grid-cols-1'}`}>{buttons}</div>
+      ) : buttons}
     </div>
   )
 }

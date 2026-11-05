@@ -9,6 +9,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 
+import type { BrandingColors } from '@/lib/branding-utils'
 import type { CompletedOrderData } from '@/lib/checkout/completed-order'
 import type { OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 
@@ -41,6 +42,17 @@ export interface ConfirmationBlocksValue {
   trackingCountdown: number | null
   /** Stops that countdown ("Stay on this page"); null when there is none. */
   onStayHere: (() => void) | null
+  /**
+   * The store row + branding the page's `--co-*` colours come from, so a
+   * designed block with its own colours can re-resolve them. Absent = the
+   * block keeps the page's colours.
+   */
+  themeSource?: ConfirmationThemeSource
+}
+
+export interface ConfirmationThemeSource {
+  tenant: Record<string, unknown> | null | undefined
+  branding: BrandingColors | null | undefined
 }
 
 const ConfirmationBlocksContext = createContext<ConfirmationBlocksValue | null>(null)

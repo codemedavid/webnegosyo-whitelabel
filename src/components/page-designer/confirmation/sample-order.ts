@@ -1,6 +1,7 @@
 // A sample order for the Page Designer's thank-you editor. Pure, no network:
 // every value is made up and nothing here is ever sent anywhere.
 
+import { getTenantBranding } from '@/lib/branding-utils'
 import type { CompletedOrderData } from '@/lib/checkout/completed-order'
 import type { OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import type { CartItem } from '@/types/database'
@@ -54,8 +55,17 @@ const SAMPLE_FAILED_NOTICE: OrderSaveNotice = {
 
 const inert = (): void => undefined
 
-/** The editor's context value: the sample order, every button inert. */
-export function sampleConfirmationValue(storeName: string, isFailed: boolean): ConfirmationBlocksValue {
+/**
+ * The editor's context value: the sample order, every button inert. `store`
+ * (the editor's store row, Look edits included) lets a block with its own
+ * colours preview them over the store's.
+ */
+export function sampleConfirmationValue(
+  storeName: string,
+  isFailed: boolean,
+  store?: Readonly<Record<string, unknown>>,
+): ConfirmationBlocksValue {
+  const row = store ? { ...store } : null
   return {
     storeName: storeName || 'Your store',
     order: SAMPLE_COMPLETED_ORDER,
@@ -77,5 +87,6 @@ export function sampleConfirmationValue(storeName: string, isFailed: boolean): C
     onBackToMenu: inert,
     trackingCountdown: null,
     onStayHere: null,
+    ...(row ? { themeSource: { tenant: row, branding: getTenantBranding(row) } } : {}),
   }
 }

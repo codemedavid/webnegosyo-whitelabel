@@ -15,6 +15,7 @@ import type { Device, HeroDesignV5, Section, Widget } from '@/lib/hero-builder/t
 
 import { pageBlockDef, requiredBlocks } from './blocks'
 import { createPageBlock, isPageBlockWidget } from './design-blocks'
+import { isValidOptionValue } from './knobs'
 import { PAGE_META } from './pages'
 import type { PageBlockDef, PageId } from './types'
 
@@ -65,8 +66,7 @@ function widgetProblem(widget: Widget, page: PageId, seen: Set<string>): string 
   for (const [key, value] of Object.entries(widget.content.options)) {
     const option = def.options.find((o) => o.key === key)
     if (!option) return `"${def.label}" has a setting it doesn't use. Reset the block.`
-    const ok = option.type === 'boolean' ? typeof value === 'boolean' : option.choices.some((c) => c.value === value)
-    if (!ok) return `"${def.label}" — ${option.label} has an invalid value.`
+    if (!isValidOptionValue(option, value)) return `"${def.label}" — ${option.label} has an invalid value.`
   }
   return null
 }

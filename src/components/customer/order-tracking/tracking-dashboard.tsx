@@ -15,7 +15,7 @@
 import { useMemo, type CSSProperties, type ReactNode } from 'react'
 import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { DesignedTracking } from '@/components/page-designer/tracking/designed-tracking'
-import type { TrackingBlocksValue } from '@/components/page-designer/tracking/tracking-blocks-context'
+import type { TrackingBlocksValue, TrackingPaint } from '@/components/page-designer/tracking/tracking-blocks-context'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import type { TrackingData } from '@/lib/order-tracking-service'
 import type { PrepPromiseView } from '@/lib/prep-time'
@@ -57,6 +57,8 @@ export interface TrackingDashboardProps {
   shouldFocusAlert?: boolean
   /** The owner's published tracking design (Page Designer); null/absent = the standard page. */
   designedPage?: { design: HeroDesignV5; tenantSlug: string } | null
+  /** What `theme` was built from; lets a designed page's blocks use their own colours. */
+  paint?: TrackingPaint
 }
 
 export function TrackingDashboard({
@@ -80,6 +82,7 @@ export function TrackingDashboard({
   onBack,
   shouldFocusAlert = true,
   designedPage = null,
+  paint,
 }: TrackingDashboardProps) {
   const labelSource = useMemo(() => ({ storefront_labels: storefrontLabels }), [storefrontLabels])
   const loyaltyBlock = (
@@ -102,6 +105,7 @@ export function TrackingDashboard({
     loyalty: loyaltyNotice || loyalty ? loyaltyBlock : null,
     pickup,
     onBack,
+    paint,
   }
 
   return (

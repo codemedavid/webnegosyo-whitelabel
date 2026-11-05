@@ -12,6 +12,14 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { TrackingData } from '@/lib/order-tracking-service'
 import type { PrepPromiseView } from '@/lib/prep-time'
+import type { BrandingColors } from '@/lib/branding-utils'
+import type { TrackingStyle } from '@/lib/tracking-style/keys'
+
+/** What the page's `--trk-*` variables were built from, so a block can re-resolve them with its own colours. */
+export interface TrackingPaint {
+  branding: BrandingColors
+  style: TrackingStyle
+}
 
 export interface TrackingBlocksValue {
   storeName: string
@@ -29,6 +37,8 @@ export interface TrackingBlocksValue {
   /** The pickup QR, or nothing. */
   pickup: ReactNode
   onBack: () => void
+  /** The store's branding + tracking look; absent = blocks keep the page's colours (their designs still apply). */
+  paint?: TrackingPaint
 }
 
 const TrackingBlocksContext = createContext<TrackingBlocksValue | null>(null)

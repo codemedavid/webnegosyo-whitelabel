@@ -2,14 +2,13 @@ import type { ComponentType } from 'react'
 
 import {
   CustomerView,
-  HeaderView,
   LoyaltyView,
   OrderTypeView,
   ScheduleView,
   SmsOptInView,
-  StoreClosedView,
   type CheckoutBlockViewProps,
 } from './block-views-details'
+import { HeaderView, StoreClosedView } from './block-views-top'
 import { GovDiscountView, PaymentView, PlaceOrderView, SummaryView, VoucherView } from './block-views-pay'
 
 /**

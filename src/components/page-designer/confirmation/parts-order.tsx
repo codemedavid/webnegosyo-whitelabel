@@ -19,6 +19,21 @@ import { useConfirmationBlocks } from './confirmation-context'
 const RULE_COLOR = 'bg-[var(--co-border)]'
 const CARD = 'rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]'
 
+/** Page Designer designs of the customer and payment cards; `card` is today's. */
+export type DetailsLook = 'card' | 'plain' | 'compact'
+
+const DETAILS_BOX: Record<DetailsLook, string> = {
+  card: CARD,
+  plain: 'border-t border-[color:var(--co-border)] pt-4',
+  compact: 'rounded-xl bg-[var(--co-card)] px-4 py-3 border border-[color:var(--co-border)]',
+}
+
+/** The card's heading: today's size on a card, smaller on the other designs. */
+const detailsTitle = (look: DetailsLook, spacing: string): string =>
+  look === 'card'
+    ? `text-lg font-bold text-[color:var(--co-text)] ${spacing}`
+    : 'text-base font-bold text-[color:var(--co-text)] mb-2'
+
 export interface SummaryCopy {
   title?: ReactNode
   scheduled?: string
@@ -127,16 +142,16 @@ export function ConfirmationSummaryCard({ copy = {}, showOrderType = true }: { c
 }
 
 /** What the customer filled in at checkout; nothing when the form had no fields. */
-export function ConfirmationCustomerCard({ title }: { title?: ReactNode }) {
+export function ConfirmationCustomerCard({ title, look = 'card' }: { title?: ReactNode; look?: DetailsLook }) {
   const b = useConfirmationBlocks()
   if (!b || b.order.formFields.length === 0) return null
   const { order } = b
   return (
-    <div data-branding-scope="checkout/card" className={CARD}>
-      <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-4">
+    <div data-branding-scope="checkout/card" className={DETAILS_BOX[look]}>
+      <h2 className={detailsTitle(look, 'mb-4')}>
         {title ?? 'Customer Information'}
       </h2>
-      <div className="space-y-2">
+      <div className={look === 'plain' ? 'divide-y divide-[color:var(--co-border)] [&>*]:py-2' : look === 'compact' ? 'space-y-1' : 'space-y-2'}>
         {order.formFields.map(field => {
           const value = order.customerData[field.field_name]
           if (!value) return null
@@ -153,13 +168,13 @@ export function ConfirmationCustomerCard({ title }: { title?: ReactNode }) {
 }
 
 /** The chosen payment method and the store's instructions; nothing without one. */
-export function ConfirmationPaymentCard({ title }: { title?: ReactNode }) {
+export function ConfirmationPaymentCard({ title, look = 'card' }: { title?: ReactNode; look?: DetailsLook }) {
   const b = useConfirmationBlocks()
   if (!b?.order.paymentMethodName) return null
   const { order } = b
   return (
-    <div data-branding-scope="checkout/card" className={CARD}>
-      <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-2">
+    <div data-branding-scope="checkout/card" className={DETAILS_BOX[look]}>
+      <h2 className={detailsTitle(look, 'mb-2')}>
         {title ?? 'Payment Method'}
       </h2>
       <p className="font-medium text-[color:var(--co-text)]">{order.paymentMethodName}</p>

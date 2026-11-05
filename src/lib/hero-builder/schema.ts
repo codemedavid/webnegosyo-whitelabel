@@ -193,7 +193,7 @@ const content = z.discriminatedUnion('kind', [
     // Keys and lengths are checked against the page's block registry on publish.
     texts: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), blockText).refine((t) => Object.keys(t).length <= 40, 'Too many texts'),
     options: z
-      .record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.union([z.string().max(64), z.boolean()]))
+      .record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.union([z.string().max(LIMITS.blockOptionChars), z.boolean()]))
       .refine((o) => Object.keys(o).length <= 24, 'Too many options'),
   }),
 ])
