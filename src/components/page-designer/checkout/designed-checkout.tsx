@@ -5,6 +5,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { formatPrice } from '@/lib/cart-utils'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import { preparePageDesign } from '@/lib/page-designer/rules'
+import { storeAddressToken } from '@/lib/page-designer/store-address'
 import type { PageNeeds } from '@/lib/page-designer/types'
 import { readStorefrontLabels } from '@/lib/storefront-labels'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
@@ -33,6 +34,9 @@ export function DesignedCheckout({ design, checkout }: DesignedCheckoutProps) {
   const labels = useMemo(() => readStorefrontLabels(tenant as unknown as Record<string, unknown> | null), [tenant])
   const storeName = tenant?.name ?? 'this store'
   const total = formatPrice(grandTotal)
+  const branch = checkout.outlet?.choices?.find((entry) => entry.outlet.id === checkout.outlet.selectedOutletId)?.outlet
+  const storeAddress = storeAddressToken(tenant, branch)
+  const orderKind = checkout.selectedOrderTypeData?.type ?? null
   // Steps ask at tap time, so they read the latest checkout without re-creating the runtime.
   const latest = useRef(checkout)
   useLayoutEffect(() => {
@@ -42,7 +46,8 @@ export function DesignedCheckout({ design, checkout }: DesignedCheckoutProps) {
     () => ({
       page: 'checkout',
       state: null,
-      tokens: { store: storeName, total },
+      orderKind,
+      tokens: { store: storeName, total, store_address: storeAddress },
       labels,
       blocks: CHECKOUT_LIVE_BLOCKS,
       stepProblem: (blockIds) => {
@@ -52,7 +57,7 @@ export function DesignedCheckout({ design, checkout }: DesignedCheckoutProps) {
         return problem
       },
     }),
-    [storeName, total, labels],
+    [storeName, total, storeAddress, orderKind, labels],
   )
   const blocks = useMemo(() => ({ checkout }), [checkout])
   // Blocks the owner removed come back when this store's order can't go through without them.

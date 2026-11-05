@@ -26,12 +26,12 @@ const DEVICE_NAMES: Record<Device, string> = { desktop: 'computers', tablet: 'ta
 function visibleBlockIds(design: HeroDesignV5, device: Device): Set<string> {
   const ids = new Set<string>()
   for (const section of design.sections) {
-    if (resolveStyle(section, device).hidden || section.showWhen?.length) continue
+    if (resolveStyle(section, device).hidden || section.showWhen?.length || section.showFor?.length) continue
     for (const column of section.columns) {
       if (resolveStyle(column, device).hidden) continue
       for (const widget of column.widgets) {
         // A required block limited to some states would vanish in the others.
-        if (resolveStyle(widget, device).hidden || widget.showWhen?.length) continue
+        if (resolveStyle(widget, device).hidden || widget.showWhen?.length || widget.showFor?.length) continue
         if (isPageBlockWidget(widget)) ids.add(widget.content.block)
       }
     }
@@ -117,7 +117,7 @@ export function pageDesignProblem(design: HeroDesignV5, page: PageId): string | 
   if (!missing.size) return null
   const names = [...new Set([...missing.values()].flat().map((d) => `"${d.label}"`))].join(', ')
   const where = missing.size === DEVICES.length ? '' : ` on ${[...missing.keys()].map((d) => DEVICE_NAMES[d]).join(' and ')}`
-  return `${names} must show${where} at all times — it keeps the page working. Unhide it or take it out of "Show when".`
+  return `${names} must show${where} at all times — it keeps the page working. Unhide it or take it out of "Show when" and "Show for".`
 }
 
 const FALLBACK = { section: 'page-fallback', column: 'page-fallback-col' }

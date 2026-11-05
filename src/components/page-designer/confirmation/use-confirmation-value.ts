@@ -7,6 +7,7 @@ import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { isOrderSaveFailed } from '@/lib/checkout/order-save-outcome'
 import { buildOrderTrackingPath } from '@/lib/checkout/tracking-redirect'
 import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
+import { storeAddressToken } from '@/lib/page-designer/store-address'
 
 import type { ConfirmationBlocksValue } from './confirmation-context'
 import { useTrackingCountdown } from './use-tracking-countdown'
@@ -26,7 +27,7 @@ type ConfirmationSource = Pick<
   | 'tenant' | 'completedOrderData' | 'redirectCountdown' | 'trackingOrderId' | 'trackingToken'
   | 'messageExpanded' | 'setMessageExpanded' | 'router' | 'tenantSlug' | 'messengerEnabled'
   | 'isKiosk' | 'kioskCountdown' | 'orderSaveFailed' | 'orderSaveNotice'
-> & Partial<Pick<UseCheckoutReturn, 'confirmationHandoff' | 'branding'>>
+> & Partial<Pick<UseCheckoutReturn, 'confirmationHandoff' | 'branding' | 'selectedOrderTypeData' | 'outlet'>>
 
 /**
  * The thank-you page's context value from useCheckout, plus the owner's
@@ -36,7 +37,7 @@ export function useConfirmationValue(checkout: ConfirmationSource, grandTotal: n
   const {
     tenant, completedOrderData: order, redirectCountdown, trackingOrderId, trackingToken,
     messageExpanded, setMessageExpanded, router, tenantSlug, messengerEnabled,
-    isKiosk, kioskCountdown, orderSaveFailed, orderSaveNotice, confirmationHandoff, branding,
+    isKiosk, kioskCountdown, orderSaveFailed, orderSaveNotice, confirmationHandoff, branding, selectedOrderTypeData, outlet,
   } = checkout
 
   const replace = useCallback((path: string) => router.replace(path), [router])
@@ -44,8 +45,12 @@ export function useConfirmationValue(checkout: ConfirmationSource, grandTotal: n
 
   if (!tenant || !order) return null
 
+  const branch = outlet?.choices?.find((entry) => entry.outlet.id === outlet.selectedOutletId)?.outlet
+
   return {
     storeName: tenant.name,
+    storeAddress: storeAddressToken(tenant, branch),
+    orderKind: selectedOrderTypeData?.type ?? null,
     order,
     grandTotal,
     isMessengerEnabled: messengerEnabled,

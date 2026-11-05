@@ -26,6 +26,7 @@ const font = z
 const shortText = z.string().max(LIMITS.shortText)
 const iconName = z.string().regex(/^[A-Za-z0-9]{0,40}$/, 'Invalid icon')
 const showWhen = z.array(z.string().regex(/^[a-z_]{1,32}$/, 'Invalid page state')).max(12).optional()
+const showFor = z.array(z.enum(['dine_in', 'pickup', 'delivery'])).max(3).optional()
 const blockText = z.string().max(LIMITS.textLength)
 const num = (min: number, max: number) => z.number().finite().min(min).max(max)
 /** One optional value per order type (dine-in, pickup, delivery). */
@@ -139,6 +140,14 @@ const content = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('badge'), text: shortText, icon: iconName.optional() }),
   z.object({
+    kind: z.literal('copy-text'),
+    title: shortText,
+    text: shortText,
+    design: z.enum(['icon', 'button', 'only']),
+    buttonLabel: z.string().max(40),
+    copiedLabel: z.string().max(40),
+  }),
+  z.object({
     kind: z.literal('countdown'),
     target: z.string().max(64).refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid countdown date'),
     showLabels: z.boolean(),
@@ -204,11 +213,12 @@ const widget = z
     kind: z.enum([
       'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
       'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
-      'order-entry', 'store-logo', 'slideshow', 'page-block',
+      'order-entry', 'store-logo', 'slideshow', 'page-block', 'copy-text',
     ]),
     content,
     animation: animation.optional(),
     showWhen,
+    showFor,
     ...responsive,
   })
   .refine((w) => w.kind === w.content.kind, 'Widget kind does not match its content')
@@ -221,6 +231,7 @@ const section = z.object({
   anchor: z.string().regex(/^[a-z0-9-]{0,48}$/, 'Anchors use lowercase letters, numbers and dashes').optional(),
   columns: z.array(column).min(1).max(LIMITS.columnsPerSection),
   showWhen,
+  showFor,
   /** Page Designer: pin the section to the bottom of the screen (a sticky order bar). */
   pin: z.enum(['bottom']).optional(),
   ...responsive,

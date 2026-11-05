@@ -8,12 +8,12 @@
 import { DEFAULT_THEME } from './defaults'
 import { LIMITS } from './constants'
 import { isV4Design, migrateV4Design } from './migrate-v4'
-import type { Column, HeroDesignV5, NodeStyle, PageLayout, PageSettings, Section, Theme, Widget, WidgetKind } from './types'
+import type { Column, HeroDesignV5, NodeStyle, OrderKindChoice, PageLayout, PageSettings, Section, Theme, Widget, WidgetKind } from './types'
 
 const WIDGET_KINDS: readonly WidgetKind[] = [
   'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
   'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
-  'order-entry', 'store-logo', 'slideshow', 'page-block',
+  'order-entry', 'store-logo', 'slideshow', 'page-block', 'copy-text',
 ]
 
 type Loose = Record<string, unknown>
@@ -58,6 +58,15 @@ function showWhen(value: unknown): { showWhen?: string[] } {
   return states.length ? { showWhen: states } : {}
 }
 
+const ORDER_KIND_CHOICES: readonly OrderKindChoice[] = ['dine_in', 'pickup', 'delivery']
+
+/** Known order types only; anything else reads as "every order". */
+function showFor(value: unknown): { showFor?: OrderKindChoice[] } {
+  if (!Array.isArray(value)) return {}
+  const kinds = ORDER_KIND_CHOICES.filter((kind) => value.includes(kind))
+  return kinds.length ? { showFor: kinds } : {}
+}
+
 function widget(value: unknown): Widget | null {
   if (!isObject(value)) return null
   const id = asId(value.id)
@@ -72,6 +81,7 @@ function widget(value: unknown): Widget | null {
     ...layers(value),
     ...(isObject(value.animation) ? { animation: value.animation as unknown as Widget['animation'] } : {}),
     ...showWhen(value.showWhen),
+    ...showFor(value.showFor),
   }
 }
 
@@ -99,6 +109,7 @@ function section(value: unknown): Section | null {
     columns,
     ...layers(value),
     ...showWhen(value.showWhen),
+    ...showFor(value.showFor),
     ...(value.pin === 'bottom' ? { pin: 'bottom' as const } : {}),
   }
 }

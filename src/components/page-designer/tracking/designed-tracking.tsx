@@ -22,15 +22,16 @@ interface DesignedTrackingProps {
   tenantSlug: string
   blocks: TrackingBlocksValue
   labels: StorefrontLabels
+  storeAddress?: string
 }
 
-export function DesignedTracking({ design, tenantSlug, blocks, labels }: DesignedTrackingProps) {
+export function DesignedTracking({ design, tenantSlug, blocks, labels, storeAddress }: DesignedTrackingProps) {
   const { storeName, data, shortId } = blocks
-  const tokens = useMemo(() => trackingTokens({ storeName, data, shortId }), [storeName, data, shortId])
+  const tokens = useMemo(() => trackingTokens({ storeName, data, shortId, storeAddress }), [storeName, data, shortId, storeAddress])
   // The order's status is the page state: each poll that moves it re-renders "Show when".
   const runtime = useMemo<PageRuntime>(
-    () => ({ page: 'tracking', state: data.status, tokens, labels, blocks: TRACKING_LIVE_BLOCKS }),
-    [data.status, tokens, labels],
+    () => ({ page: 'tracking', state: data.status, orderKind: data.orderTypeKind ?? null, tokens, labels, blocks: TRACKING_LIVE_BLOCKS }),
+    [data.status, data.orderTypeKind, tokens, labels],
   )
   return (
     <TrackingBlocksProvider value={blocks}>

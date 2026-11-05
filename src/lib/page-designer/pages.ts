@@ -9,10 +9,11 @@ import type { PageId, PageMeta } from './types'
  */
 const BASE_FREE_KINDS: readonly WidgetKind[] = [
   'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list', 'badge', 'countdown',
-  'divider', 'spacer', 'gallery', 'slideshow',
+  'divider', 'spacer', 'gallery', 'slideshow', 'copy-text',
 ]
 
 const STORE_TOKEN = { token: 'store', label: 'Store name' }
+const ADDRESS_TOKEN = { token: 'store_address', label: 'Store or branch address' }
 
 export const PAGE_META: Readonly<Record<PageId, PageMeta>> = {
   tracking: {
@@ -30,6 +31,7 @@ export const PAGE_META: Readonly<Record<PageId, PageMeta>> = {
     ],
     tokens: [
       STORE_TOKEN,
+      ADDRESS_TOKEN,
       { token: 'name', label: 'Customer first name' },
       { token: 'order_number', label: 'Order number' },
       { token: 'order_type', label: 'Order type' },
@@ -49,6 +51,7 @@ export const PAGE_META: Readonly<Record<PageId, PageMeta>> = {
     ],
     tokens: [
       STORE_TOKEN,
+      ADDRESS_TOKEN,
       { token: 'name', label: 'Customer first name' },
       { token: 'order_type', label: 'Order type' },
       { token: 'total', label: 'Order total' },
@@ -61,7 +64,7 @@ export const PAGE_META: Readonly<Record<PageId, PageMeta>> = {
     slug: 'checkout',
     description: 'Where customers enter their details and pay.',
     states: [],
-    tokens: [STORE_TOKEN, { token: 'total', label: 'Order total' }],
+    tokens: [STORE_TOKEN, ADDRESS_TOKEN, { token: 'total', label: 'Order total' }],
     freeKinds: BASE_FREE_KINDS,
   },
 }

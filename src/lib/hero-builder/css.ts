@@ -216,7 +216,7 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
   const { kind } = widget
   displayRules(rules, s, 'block', showHidden)
   const frameTarget = own(INNER_FRAME, kind) ?? ''
-  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery' || kind === 'order-entry' || kind === 'slideshow')
+  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery' || kind === 'order-entry' || kind === 'slideshow' || kind === 'copy-text')
   typographyRules(rules, '', s)
   set(rules, '', 'margin', boxValue(s.margin, -400, 400))
   const width = clampNumber(s.width, 1, 100)
@@ -269,6 +269,11 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
       break
     case 'badge':
       set(rules, ' .hb-badge svg', 'color', accent)
+      break
+    case 'copy-text':
+      set(rules, '', '--hb-copy-bg', accent)
+      set(rules, '', '--hb-copy-fg', accentText)
+      set(rules, '', '--hb-copy-radius', px(s.radius, 0, 999))
       break
     case 'countdown':
       set(rules, ' .hb-cd', 'justify-content', justify)

@@ -1,5 +1,7 @@
 'use client'
 
+import { Copy } from 'lucide-react'
+
 import { publishPageDesignAction, unpublishPageDesignAction } from '@/app/actions/page-designer'
 import { SECTION_PRESETS } from '@/lib/hero-builder/section-presets'
 import type { Widget } from '@/lib/hero-builder/types'
@@ -20,10 +22,16 @@ const PUBLISHED: Record<PageId, string> = {
   checkout: 'Published — customers now check out on your page',
 }
 
+/** Only pages have customers who need to take something away (an address, a number). */
+const COPY_TEXT_GROUP: AddGroup = {
+  title: 'For customers to copy',
+  tiles: [{ kind: 'copy-text', label: 'Copy text', icon: Copy }],
+}
+
 /** The builder's free elements, minus what this page never offers (embed, …). */
 function addGroupsFor(page: PageId): AddGroup[] {
   const allowed = new Set(PAGE_META[page].freeKinds)
-  return HERO_ADD_GROUPS.map((g) => ({ ...g, tiles: g.tiles.filter((t) => allowed.has(t.kind)) })).filter((g) => g.tiles.length)
+  return [COPY_TEXT_GROUP, ...HERO_ADD_GROUPS].map((g) => ({ ...g, tiles: g.tiles.filter((t) => allowed.has(t.kind)) })).filter((g) => g.tiles.length)
 }
 
 /** Ready-made sections whose every element this page offers. */

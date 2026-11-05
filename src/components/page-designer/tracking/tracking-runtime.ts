@@ -14,16 +14,19 @@ interface TokenSource {
   storeName: string
   data: Pick<TrackingData, 'customerName' | 'orderType' | 'total'>
   shortId: string
+  /** The order's branch address, else the store's (read once on the server). */
+  storeAddress?: string
 }
 
 /**
- * `{store}`, `{name}`, `{order_number}`, `{order_type}`, `{total}` — worded
+ * `{store}`, `{store_address}`, `{name}`, `{order_number}`, `{order_type}`, `{total}` — worded
  * exactly as the page prints them elsewhere ("#07" like the header, the peso
  * total like the receipt). A blank value drops the token.
  */
-export function trackingTokens({ storeName, data, shortId }: TokenSource): Record<string, string> {
+export function trackingTokens({ storeName, data, shortId, storeAddress = '' }: TokenSource): Record<string, string> {
   return {
     store: storeName,
+    store_address: storeAddress,
     name: hasRealCustomerName(data.customerName) ? firstNameToken(data.customerName) : '',
     order_number: shortId ? `#${shortId}` : '',
     order_type: data.orderType ?? '',
