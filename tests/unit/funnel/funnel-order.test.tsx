@@ -55,6 +55,8 @@ function dueToday(): string {
 
 describe('FunnelOrder', () => {
   beforeEach(() => {
+    // jsdom has no layout, so no scrollIntoView.
+    Element.prototype.scrollIntoView = jest.fn()
     push.mockReset()
     submitCheckoutForm.mockReset()
     submitCheckoutForm.mockResolvedValue({ data: { reference_number: 'SM-1', amount: 1 }, error: null })
@@ -109,5 +111,21 @@ describe('FunnelOrder', () => {
       '/checkout/confirmation?confirm=WN-20261105-ABCDEFGH'
     )
     replaceState.mockRestore()
+  })
+
+  it('takes the buyer to the form when they tap a plan, even the one already chosen', async () => {
+    const scrollIntoView = jest.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    await renderOrder()
+    const user = userEvent.setup()
+
+    // Six months starts chosen, so its radio never fires a change: the tap must still go somewhere.
+    await user.click(screen.getByText(/kunin ang 6 months/i))
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByTestId('funnel-order-form-card'))
+
+    await user.click(screen.getByText(/piliin ang monthly/i))
+    expect((screen.getByRole('radio', { name: /monthly/i }) as HTMLInputElement).checked).toBe(true)
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2))
   })
 })

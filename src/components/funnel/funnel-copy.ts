@@ -122,8 +122,8 @@ export const PLANS = {
   paymentLegend: 'Paano mo babayaran ang 6 months?',
   payFull: { label: 'Bayad nang buo', amount: SIX },
   payDown: { label: 'Downpayment muna', amount: DOWN, note: `${BALANCE} balance` },
-  choose: 'Piliin',
-  chosen: 'Napili',
+  sixMonthCta: 'Kunin ang 6 months',
+  monthlyCta: 'Piliin ang monthly',
 } as const
 
 export const ORDER = {

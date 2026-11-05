@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { ArrowRight, ShieldCheck } from 'lucide-react'
 import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
 import { getCheckoutBalanceDue } from '@/lib/checkout-leads/payment-terms'
 import { CountdownChip } from './funnel-countdown'
@@ -27,16 +27,26 @@ function PlanRadio({
   plan,
   isSelected,
   onSelect,
+  onChoose,
   children,
 }: {
   plan: FunnelPlanId
   isSelected: boolean
+  /** Arrow keys on the radio group: select only. */
   onSelect: (plan: FunnelPlanId) => void
+  /** A tap or click on the card: select it and go to the form. */
+  onChoose: (plan: FunnelPlanId) => void
   children: React.ReactNode
 }) {
   const surface = plan === 'six_month' ? 'fn-card fn-card--amber' : 'fn-card'
   return (
     <label
+      // Only a tap on the card itself. The radio's own click (the one the
+      // label forwards, or an arrow key) must not scroll a second time or
+      // yank a keyboard user down the page.
+      onClick={(event) => {
+        if (!(event.target instanceof HTMLInputElement)) onChoose(plan)
+      }}
       className={`${surface} relative block cursor-pointer p-6 transition-shadow sm:p-7 ${
         isSelected ? 'outline-2 outline-offset-4 outline-[#F5A623]/60 outline-solid' : 'opacity-90 hover:opacity-100'
       }`}
@@ -100,6 +110,11 @@ function SixMonthCard() {
       <div className="mt-6">
         <CountdownChip />
       </div>
+      {/* Looks like a button; the whole card is the click target. */}
+      <span aria-hidden className="fn-cta fn-cta--small mt-6 w-full !min-h-[48px] !text-[15px] sm:w-auto">
+        {PLANS.sixMonthCta}
+        <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
+      </span>
     </>
   )
 }
@@ -116,6 +131,10 @@ function MonthlyCard() {
         <span className="text-[15px] text-[#A99C8D]">{plan.unit}</span>
       </p>
       <PointList points={plan.points} missing={plan.missing} />
+      <span aria-hidden className="fn-ghost-btn mt-6 w-full sm:w-auto">
+        {PLANS.monthlyCta}
+        <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
+      </span>
     </>
   )
 }
@@ -203,6 +222,18 @@ function OrderSummary({ plan, payment }: { plan: FunnelPlanId; payment: SixMonth
   )
 }
 
+/**
+ * Scroll the form into view. On a mouse/keyboard device the name field gets
+ * focus too; on a phone that would pop the keyboard up mid-scroll.
+ */
+function goToForm(formCard: HTMLElement | null) {
+  if (!formCard) return
+  const isReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  formCard.scrollIntoView({ behavior: isReducedMotion ? 'auto' : 'smooth', block: 'start' })
+  const isFinePointer = window.matchMedia?.('(pointer: fine)').matches ?? false
+  if (isFinePointer) formCard.querySelector<HTMLInputElement>('input.fn-input')?.focus({ preventScroll: true })
+}
+
 function confirmationPath(referenceNumber: string): string {
   return `/checkout/confirmation?confirm=${encodeURIComponent(referenceNumber)}`
 }
@@ -242,6 +273,13 @@ export function FunnelOrder() {
   const [plan, setPlan] = useState<FunnelPlanId>(DEFAULT_PLAN)
   const [payment, setPayment] = useState<SixMonthPayment>(DEFAULT_PAYMENT)
   const [savedLead, setSavedLead] = useState<CheckoutLeadConfirmation | null>(null)
+  const formCardRef = useRef<HTMLDivElement>(null)
+
+  function choosePlan(next: FunnelPlanId) {
+    setPlan(next)
+    // After the render: the form card changes height with the plan.
+    requestAnimationFrame(() => goToForm(formCardRef.current))
+  }
   const term = termForPlan(plan, payment)
   const submitLabel = plan === 'six_month' ? ORDER.submitSixMonth : ORDER.submitMonthly
 
@@ -258,16 +296,16 @@ export function FunnelOrder() {
 
         <fieldset className="mt-12 grid min-w-0 gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-start">
           <legend className="sr-only">{PLANS.eyebrow}</legend>
-          <PlanRadio plan="six_month" isSelected={plan === 'six_month'} onSelect={setPlan}>
+          <PlanRadio plan="six_month" isSelected={plan === 'six_month'} onSelect={setPlan} onChoose={choosePlan}>
             <SixMonthCard />
           </PlanRadio>
-          <PlanRadio plan="monthly" isSelected={plan === 'monthly'} onSelect={setPlan}>
+          <PlanRadio plan="monthly" isSelected={plan === 'monthly'} onSelect={setPlan} onChoose={choosePlan}>
             <MonthlyCard />
           </PlanRadio>
         </fieldset>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-          <div className="fn-card space-y-7 p-6 sm:p-8">
+          <div ref={formCardRef} data-testid="funnel-order-form-card" className="fn-card scroll-mt-24 space-y-7 p-6 sm:p-8">
             {plan === 'six_month' && <PaymentChoice payment={payment} onChange={setPayment} />}
             <div>
               <h3 className="mb-4 text-[18px] font-semibold tracking-[-0.01em] text-white">{ORDER.formTitle}</h3>
