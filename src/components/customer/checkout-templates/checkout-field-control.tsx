@@ -32,6 +32,8 @@ export interface FieldControlProps {
   isInvalid: boolean
   /** Pill style: the leading icon. */
   icon?: LucideIcon
+  /** The box has no padding of its own (label inside, sheet): the +63 sits flush with the label. */
+  isBare?: boolean
 }
 
 /** True for a PH store's phone question (the +63 box). */
@@ -49,7 +51,7 @@ function a11yOf(isInvalid: boolean, describedBy: string | undefined) {
   }
 }
 
-export function CheckoutFieldControl({ checkout, field, id, boxClass, textareaClass, labelId, describedBy, isInvalid, icon: Icon }: FieldControlProps) {
+export function CheckoutFieldControl({ checkout, field, id, boxClass, textareaClass, labelId, describedBy, isInvalid, icon: Icon, isBare = false }: FieldControlProps) {
   const { customerData, setCustomerData } = checkout
   const value = customerData[field.field_name] || ''
   const setValue = (next: string) => setCustomerData((prev) => ({ ...prev, [field.field_name]: next }))
@@ -136,7 +138,7 @@ export function CheckoutFieldControl({ checkout, field, id, boxClass, textareaCl
   if (isPhPhoneField(checkout, field)) {
     return (
       <div className="relative">
-        <div data-part="muted" className={`absolute left-3 top-1/2 -translate-y-1/2 font-medium pointer-events-none ${CO.text}`}>
+        <div data-part="muted" className={`absolute ${isBare ? 'left-0' : 'left-3'} top-1/2 -translate-y-1/2 font-medium pointer-events-none ${CO.text}`}>
           +63
         </div>
         <input
@@ -147,10 +149,10 @@ export function CheckoutFieldControl({ checkout, field, id, boxClass, textareaCl
           placeholder="9XXXXXXXXX"
           maxLength={PH_PHONE_MAX_DIGITS}
           data-part="field"
-          className={`${boxClass} pl-12`}
+          className={`${boxClass} ${isBare ? 'pl-10 pr-12' : 'pl-12 pr-14'}`}
           {...a11y}
         />
-        <div data-part="muted" className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none ${CO.muted}`}>
+        <div data-part="muted" className={`absolute ${isBare ? 'right-0' : 'right-3'} top-1/2 -translate-y-1/2 text-xs pointer-events-none ${CO.muted}`}>
           {`${phPhoneDigitCount(value)}/${PH_PHONE_MAX_DIGITS}`}
         </div>
       </div>

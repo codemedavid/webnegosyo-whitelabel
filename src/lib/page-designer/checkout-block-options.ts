@@ -95,6 +95,12 @@ export const SCHEDULE_OPTIONS: readonly BlockOption[] = [
 
 export const FIELD_STYLES = [
   { value: 'outlined', label: 'Outlined', hint: 'Boxes with a border' },
+  { value: 'clean', label: 'Clean', hint: 'Fine neutral lines. Your colour shows only while typing' },
+  { value: 'label_inside', label: 'Label inside', hint: 'Each question sits inside its own box, like a booking app' },
+  { value: 'sheet', label: 'Sheet', hint: 'One soft panel with thin lines between questions, like a phone’s settings' },
+  { value: 'ruled', label: 'Ruled', hint: 'A hairline under each answer, small capitals above' },
+  { value: 'tinted', label: 'Tinted', hint: 'Soft shaded boxes with a line underneath' },
+  { value: 'roomy', label: 'Roomy', hint: 'Big boxes and big labels, easy for everyone to read and tap' },
   { value: 'filled', label: 'Filled', hint: 'Softly shaded boxes' },
   { value: 'underlined', label: 'Underlined', hint: 'A line under each answer' },
   { value: 'floating', label: 'Floating label', hint: 'The question sits in the box and moves up' },
@@ -113,10 +119,39 @@ export const FIELD_COLUMNS = [
   { value: '1', label: '1' },
 ] as const satisfies readonly Choice<string>[]
 
+/** How the delivery address offers the map. The first is the field as it was. */
+export const ADDRESS_MAP_CHOICES = [
+  { value: 'buttons', label: 'Buttons' },
+  { value: 'links', label: 'Links' },
+  { value: 'map', label: 'Map' },
+  { value: 'hidden', label: 'Hidden' },
+] as const satisfies readonly Choice<string>[]
+
+export const ADDRESS_DETAIL_CHOICES = [
+  { value: 'open', label: 'Always show' },
+  { value: 'tucked', label: 'Behind a link' },
+] as const satisfies readonly Choice<string>[]
+
+export const FIELD_MARKS = [
+  { value: 'stars', label: 'Star what’s required' },
+  { value: 'optional', label: 'Say what’s optional' },
+] as const satisfies readonly Choice<string>[]
+
+/** These draw their own neutral lines, so the store's border colour never paints every box. */
+const OWN_LINES = ['clean', 'label_inside', 'sheet', 'ruled', 'tinted', 'roomy']
+const STORE_BORDER_DESIGNS = FIELD_STYLES.map((style) => style.value as string).filter((style) => !OWN_LINES.includes(style))
+
+const CUSTOMER_COLOURS = checkoutColorKnobs(['color_card', 'color_text', 'color_border', 'color_accent'], { color_border: 'Box borders', color_accent: 'While typing' })
+
 export const CUSTOMER_OPTIONS: readonly BlockOption[] = [
-  designKnob(FIELD_STYLES, 'Field style'),
-  ...checkoutColorKnobs(['color_card', 'color_text', 'color_border', 'color_accent'], { color_border: 'Box borders', color_accent: 'While typing' }),
-  { ...CORNERS_KNOB, ...whenVariant('outlined', 'filled', 'floating', 'floating_filled', 'inset', 'joined', 'elevated', 'chunky', 'kiosk') },
+  designKnob(FIELD_STYLES, 'Form design'),
+  ...CUSTOMER_COLOURS.map((knob) => (knob.key === 'color_border' ? { ...knob, ...whenVariant(...STORE_BORDER_DESIGNS) } : knob)),
+  { ...CORNERS_KNOB, ...whenVariant(...FIELD_STYLES.map((style) => style.value as string).filter((style) => !['underlined', 'ruled', 'pill'].includes(style))) },
+  choiceKnob('address_map', 'Map on the delivery address', ADDRESS_MAP_CHOICES, {
+    hint: 'Buttons beside the box, links under it, a map shown right below it, or no map at all. Stores on Lalamove or charging per km keep the map: the fee needs the pin.',
+  }),
+  choiceKnob('address_details', 'Unit, landmark and rider note', ADDRESS_DETAIL_CHOICES),
+  choiceKnob('field_marks', 'Marking questions', FIELD_MARKS),
   choiceKnob('columns', 'Questions side by side (computers)', FIELD_COLUMNS, { hint: 'Phones always show one question per line.' }),
   CARD,
   SHOW_SUBTITLE,

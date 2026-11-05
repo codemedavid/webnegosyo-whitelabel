@@ -17,6 +17,7 @@ import {
   resetDeviceOverrides,
   setAnimation,
   setColumnLayout,
+  setShowFor,
   setShowWhen,
   updateContent,
   updateSectionMeta,
@@ -29,6 +30,7 @@ import type {
   Device,
   HeroDesignV5,
   NodeStyle,
+  OrderKindChoice,
   Section,
   Theme,
   Widget,
@@ -71,6 +73,7 @@ export interface HeroBuilderApi {
   /** Insert a ready-made widget (a page block) at the target or after the selection. */
   addPrebuilt: (widget: Widget, target?: { columnId: string; index: number }) => void
   editShowWhen: (id: string, showWhen: readonly string[]) => void
+  editShowFor: (id: string, showFor: readonly OrderKindChoice[]) => void
   canRemove: (id: string) => boolean
   canDuplicate: (id: string) => boolean
   addSection: (section?: Section, index?: number) => void
@@ -156,6 +159,10 @@ export function useHeroBuilder(initialDesign: HeroDesignV5, policy: NodePolicy =
     (kind: WidgetKind, target?: { columnId: string; index: number }) => addPrebuilt(createWidget(kind), target),
     [addPrebuilt],
   )
+  const editShowFor = useCallback(
+    (id: string, showFor: readonly OrderKindChoice[]) => apply((d) => setShowFor(d, id, showFor)),
+    [apply],
+  )
   const editShowWhen = useCallback(
     (id: string, showWhen: readonly string[]) => apply((d) => setShowWhen(d, id, showWhen)),
     [apply],
@@ -233,12 +240,12 @@ export function useHeroBuilder(initialDesign: HeroDesignV5, policy: NodePolicy =
       canUndo: state.past.length > 0,
       canRedo: state.future.length > 0,
       select, setDevice, undo, redo, replaceDesign, editStyle, resetOverrides, editContent, editAnimation,
-      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, canRemove, canDuplicate, addSection, setColumns,
+      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, editShowFor, canRemove, canDuplicate, addSection, setColumns,
       remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
     }),
     [
       state, select, setDevice, undo, redo, replaceDesign, editStyle, resetOverrides, editContent, editAnimation,
-      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, canRemove, canDuplicate, addSection, setColumns,
+      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, editShowFor, canRemove, canDuplicate, addSection, setColumns,
       remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
     ],
   )

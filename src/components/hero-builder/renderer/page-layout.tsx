@@ -124,15 +124,17 @@ function stepLabel(section: Section, index: number): string {
 }
 
 function Steps({ settings, sections, stepProblem }: Omit<PageLayoutProps, 'isEditor'>) {
-  const [current, setCurrent] = useState(0)
+  // By section, not position: "Show for" can add or drop an earlier step when
+  // the order type changes, and the customer must stay on the step they're on.
+  const [currentId, setCurrentId] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const top = useRef<HTMLDivElement>(null)
   const steps = sections.filter((s) => s.section.pin !== 'bottom')
   const pinned = sections.filter((s) => s.section.pin === 'bottom')
-  const index = Math.min(current, Math.max(steps.length - 1, 0))
+  const index = Math.max(steps.findIndex((s) => s.section.id === currentId), 0)
   const go = (to: number) => {
     setProblem(null)
-    setCurrent(to)
+    setCurrentId(steps[to]?.section.id ?? null)
     top.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
   }
   const next = () => {

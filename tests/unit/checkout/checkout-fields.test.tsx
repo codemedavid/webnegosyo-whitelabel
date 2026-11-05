@@ -190,9 +190,10 @@ describe('field styles', () => {
   ]
   const styles = FIELD_STYLES.map((s) => s.value)
 
-  it('appends the eight new styles after the three existing ones (stored values never renamed)', () => {
-    expect(styles.slice(0, 3)).toEqual(['outlined', 'filled', 'underlined'])
-    expect(styles.slice(3)).toEqual(['floating', 'floating_filled', 'inset', 'joined', 'pill', 'elevated', 'chunky', 'kiosk'])
+  it('keeps every stored style value, with the standard look first (never renamed)', () => {
+    // The first stays the standard look; the gallery may list the rest in any order.
+    expect(styles[0]).toBe('outlined')
+    expect(styles).toEqual(expect.arrayContaining(['filled', 'underlined', 'floating', 'floating_filled', 'inset', 'joined', 'pill', 'elevated', 'chunky', 'kiosk']))
   })
 
   it.each(styles)('%s: every box is a field, every question keeps a visible label, the address follows the style', (style) => {

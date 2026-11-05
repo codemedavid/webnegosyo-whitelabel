@@ -8,7 +8,7 @@
 import { badge, box, heading, iconList, listItem, section, text, widget } from '@/lib/hero-builder/section-presets'
 import type { HeroDesignV5, NodeStyle, Widget } from '@/lib/hero-builder/types'
 
-import { block as kitBlock, blocks as kitBlocks, pageDesign, pageSection, type BlockSpec } from './template-kit'
+import { block as kitBlock, blocks as kitBlocks, pageDesign, pageSection, type BlockSpec, TIDY_FORM } from './template-kit'
 import type { PageTemplate } from './templates'
 
 const WIDE_WIDTH = 1080
@@ -41,7 +41,7 @@ function buildTwoColumns(): HeroDesignV5 {
           block('checkout.store_closed'),
           block('checkout.order_type', { texts: { title: 'How would you like it?' } }),
           block('checkout.schedule'),
-          block('checkout.customer', { texts: { title: 'Your details' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'clean' }, texts: { title: 'Your details' } }),
           block('checkout.loyalty'),
           ...blocks(CHECKOUT_PAY),
         ],
@@ -96,7 +96,7 @@ function buildMinimal(): HeroDesignV5 {
           block('checkout.header', { options: { show_subtitle: false } }),
           block('checkout.store_closed'),
           ...blocks(['checkout.order_type', 'checkout.schedule'], { options: plain }),
-          block('checkout.customer', { options: { ...plain, variant: 'underlined' }, texts: { title: 'Your details' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, ...plain, variant: 'ruled' }, texts: { title: 'Your details' } }),
           block('checkout.loyalty'),
           RULE(),
           ...blocks(CHECKOUT_PAY, { options: plain }),

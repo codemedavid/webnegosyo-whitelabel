@@ -1,6 +1,7 @@
 'use client'
 
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import type { AddressMapDisplay } from '@/lib/checkout/address-map'
 import { getMapsProvider } from '@/lib/maps/provider'
 import { AppleAddressAutocomplete, type AddressChangeMeta } from './apple-maps/apple-address-autocomplete'
 import type { PinCheckView, PinPurpose } from './apple-maps/pin-confirm-dialog'
@@ -37,6 +38,8 @@ export interface AddressAutocompleteProps {
    * checkout passes its own). Absent = the standard gray field everywhere else.
    */
   theme?: AddressFieldTheme
+  /** How the map is offered (Apple Maps); absent = icon buttons beside the box. */
+  mapDisplay?: AddressMapDisplay
 }
 
 /**
@@ -49,6 +52,7 @@ export function AddressAutocomplete({
   biasCenter = null,
   purpose,
   check,
+  mapDisplay,
   ...props
 }: AddressAutocompleteProps) {
   const mapbox = <MapboxAddressAutocomplete {...props} mapboxEnabled biasCenter={biasCenter} />
@@ -64,6 +68,7 @@ export function AddressAutocomplete({
       biasCenter={biasCenter}
       purpose={purpose}
       check={check}
+      mapDisplay={mapDisplay}
       fallback={mapbox}
     />
   )

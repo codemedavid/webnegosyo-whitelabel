@@ -15,6 +15,10 @@ import type { OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 
 export interface ConfirmationBlocksValue {
   storeName: string
+  /** `{store_address}`: the order's branch, else the store. */
+  storeAddress?: string
+  /** The order's type, for "Show for". */
+  orderKind?: string | null
   order: CompletedOrderData
   /** The order's grand total (snapshot parts through computeOrderTotals) — summary and `{total}` agree. */
   grandTotal: number

@@ -8,6 +8,7 @@
  * bar picks the order's status, the card's face and the extras.
  */
 
+import { storeAddressToken } from '@/lib/page-designer/store-address'
 import { useEffect, useMemo, useState } from 'react'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { LoyaltyStampCard } from '@/components/customer/loyalty-stamp-card'
@@ -138,7 +139,7 @@ export function TrackingStudioPreview({ tenant, tenantSlug, tenantId, storeName,
         onAcknowledgeReady={() => setDismissedAlert(stateKey)}
         shouldFocusAlert={false}
         onBack={() => undefined}
-        designedPage={design ? { design, tenantSlug } : null}
+        designedPage={design ? { design, tenantSlug, storeAddress: storeAddressToken(tenant as { restaurant_address?: string | null }, null) } : null}
       />
       <BrandingInspector />
     </>

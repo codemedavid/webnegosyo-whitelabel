@@ -6,6 +6,7 @@
 import { LIMITS } from './constants'
 import { cloneWithNewIds, createColumn } from './defaults'
 import type {
+  OrderKindChoice,
   Animation,
   Column,
   Device,
@@ -143,6 +144,17 @@ export function setShowWhen(design: HeroDesignV5, id: string, showWhen: readonly
     const next = { ...node } as T & { showWhen?: string[] }
     if (showWhen.length) next.showWhen = [...showWhen]
     else delete next.showWhen
+    return next
+  })
+}
+
+/** "Show for" on a section or widget; empty clears it (every order). */
+export function setShowFor(design: HeroDesignV5, id: string, showFor: readonly OrderKindChoice[]): HeroDesignV5 {
+  return mapNode(design, id, <T extends Section | Column | Widget>(node: T): T => {
+    if ('widgets' in node) return node
+    const next = { ...node } as T & { showFor?: OrderKindChoice[] }
+    if (showFor.length) next.showFor = [...showFor]
+    else delete next.showFor
     return next
   })
 }

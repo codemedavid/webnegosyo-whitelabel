@@ -6,10 +6,11 @@ import { resolveVideo } from '@/lib/hero-builder/media'
 import { isInStoreTarget, MENU_ANCHOR, parseLinkTarget } from '@/lib/hero-builder/link-target'
 import { safeHref, safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import { parseMarkup } from '@/lib/hero-builder/text-markup'
-import type { Widget } from '@/lib/hero-builder/types'
+import type { CopyTextContent, Widget } from '@/lib/hero-builder/types'
 
 import { HeroIcon } from '../icons'
 import { useHeroLinkClick } from './link-context'
+import { CopyTextBlock } from './copy-text-block'
 import { CountdownBlock, EmbedBlock, HtmlBlock } from './live-blocks'
 import { OrderEntryBlock, SlideshowBlock, StoreLogoBlock } from './welcome-blocks'
 import { applyTokens } from '@/lib/page-designer/text'
@@ -89,6 +90,24 @@ function Markup({ value }: { value: unknown }) {
 function TokenText({ value }: { value: string }) {
   const source = useTokenText(value)
   return <>{typeof source === 'string' ? source : value}</>
+}
+
+function CopyTextView({ content, isEditor }: { content: CopyTextContent; isEditor: boolean }) {
+  const words = useTokenText(text(content.text))
+  const title = useTokenText(text(content.title))
+  const filled = text(words).trim()
+  if (!filled) return <Placeholder show={isEditor} label="Add the text customers can copy" />
+  const design = content.design === 'button' || content.design === 'only' ? content.design : 'icon'
+  return (
+    <CopyTextBlock
+      title={text(title)}
+      text={filled}
+      design={design}
+      buttonLabel={text(content.buttonLabel)}
+      copiedLabel={text(content.copiedLabel)}
+      isEditor={isEditor}
+    />
+  )
 }
 
 function Maybe({ link, children }: { link: LinkProps | null; children: ReactNode }) {
@@ -214,6 +233,8 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
           </span>
         </span>
       )
+    case 'copy-text':
+      return <CopyTextView content={c} isEditor={isEditor} />
     case 'countdown':
       return <CountdownBlock target={text(c.target)} showLabels={c.showLabels !== false} expiredText={text(c.expiredText)} />
     case 'divider': {

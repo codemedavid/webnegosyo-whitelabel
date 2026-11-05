@@ -26,12 +26,12 @@ const DEVICE_NAMES: Record<Device, string> = { desktop: 'computers', tablet: 'ta
 function visibleBlockIds(design: HeroDesignV5, device: Device): Set<string> {
   const ids = new Set<string>()
   for (const section of design.sections) {
-    if (resolveStyle(section, device).hidden || section.showWhen?.length) continue
+    if (resolveStyle(section, device).hidden || section.showWhen?.length || section.showFor?.length) continue
     for (const column of section.columns) {
       if (resolveStyle(column, device).hidden) continue
       for (const widget of column.widgets) {
         // A required block limited to some states would vanish in the others.
-        if (resolveStyle(widget, device).hidden || widget.showWhen?.length) continue
+        if (resolveStyle(widget, device).hidden || widget.showWhen?.length || widget.showFor?.length) continue
         if (isPageBlockWidget(widget)) ids.add(widget.content.block)
       }
     }
@@ -97,6 +97,30 @@ function steppedSectionProblem(design: HeroDesignV5): string | null {
   return null
 }
 
+/**
+ * A block some orders can't go through without (the customer's details, the
+ * payment methods…), or a section or column holding one. "Show for" can't limit
+ * these: another order type would lose it, and the page would add a plain copy
+ * back in for those it does show to, or ask for an answer it never showed.
+ */
+export function holdsEssentialBlock(node: Section | Widget, page: PageId): boolean {
+  const widgets = 'columns' in node ? node.columns.flatMap((column) => column.widgets) : [node]
+  return widgets.some((widget) => {
+    if (!isPageBlockWidget(widget)) return false
+    const def = pageBlockDef(page, widget.content.block)
+    return !!def && (def.required || !!def.neededWhen)
+  })
+}
+
+/** "Show for" on something that must show for every order, named for the owner. */
+function showForProblem(design: HeroDesignV5, page: PageId): string | null {
+  const nodes = design.sections.flatMap((section) => [section, ...section.columns.flatMap((column) => column.widgets)])
+  const limited = nodes.find((node) => node.showFor?.length && holdsEssentialBlock(node, page))
+  if (!limited) return null
+  const name = 'columns' in limited ? `"${limited.label || 'A section'}"` : 'A block'
+  return `${name} holds what some orders need, so it can't be limited to an order type. Take it out of "Show for".`
+}
+
 /** A merchant-facing reason this design cannot be published on `page`, or null. */
 export function pageDesignProblem(design: HeroDesignV5, page: PageId): string | null {
   for (const [key, value] of Object.entries(design.page?.parts ?? {})) {
@@ -104,6 +128,8 @@ export function pageDesignProblem(design: HeroDesignV5, page: PageId): string | 
   }
   const stepped = steppedSectionProblem(design)
   if (stepped) return stepped
+  const limited = showForProblem(design, page)
+  if (limited) return limited
   const seen = new Set<string>()
   for (const section of design.sections) {
     for (const column of section.columns) {

@@ -292,6 +292,22 @@ export interface SlideshowContent {
 }
 
 /**
+ * Page Designer only: words a customer copies with one tap (the store's address
+ * to book their own rider, a GCash number, a reference). `{tokens}` are filled
+ * in before copying. Blank after tokens = nothing on the storefront.
+ */
+export interface CopyTextContent {
+  kind: 'copy-text'
+  /** Small line above; blank = none. */
+  title: string
+  text: string
+  /** `icon` = box + copy icon, `button` = box + labelled button, `only` = just a button. */
+  design: 'icon' | 'button' | 'only'
+  buttonLabel: string
+  copiedLabel: string
+}
+
+/**
  * Page Designer only (checkout, thank-you, order tracking): one of the page's
  * own working parts — the payment picker, the order status, the place-order
  * button. `block` names it in the page's block registry
@@ -318,6 +334,7 @@ export type WidgetContent =
   | IconContent
   | IconListContent
   | BadgeContent
+  | CopyTextContent
   | CountdownContent
   | DividerContent
   | SpacerContent
@@ -340,12 +357,20 @@ export type WidgetKind = WidgetContent['kind']
  */
 export type ShowWhen = string[]
 
+/**
+ * Page Designer: show this node only for these order types, e.g. `['delivery']`.
+ * Absent or empty = every order. Unknown order type = shown, like "Show when".
+ */
+export type OrderKindChoice = 'dine_in' | 'pickup' | 'delivery'
+export type ShowFor = OrderKindChoice[]
+
 export interface Widget extends Responsive {
   id: string
   kind: WidgetKind
   content: WidgetContent
   animation?: Animation
   showWhen?: ShowWhen
+  showFor?: ShowFor
 }
 
 export interface Column extends Responsive {
@@ -360,6 +385,7 @@ export interface Section extends Responsive {
   anchor?: string
   columns: Column[]
   showWhen?: ShowWhen
+  showFor?: ShowFor
   /** Page Designer: pinned to the bottom of the screen (sticky order bar). */
   pin?: 'bottom'
 }

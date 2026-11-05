@@ -51,6 +51,7 @@ import { useCart } from '@/hooks/useCart'
 import { useKioskMode } from '@/hooks/use-kiosk-mode'
 import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
+import { storeAddressToken } from '@/lib/page-designer/store-address'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
@@ -1019,6 +1020,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         discounts: appliedDiscounts,
         customerData: normalizedCustomerData,
         orderTypeName: selectedOrderTypeData?.name ?? null,
+        orderTypeKind: selectedOrderTypeData?.type ?? null,
+        storeAddress: storeAddressToken(tenant, outlet.choices.find((entry) => entry.outlet.id === outlet.selectedOutletId)?.outlet),
         scheduledForLabel,
         paymentMethod: selectedPaymentMethodData,
         messengerMessage: message,

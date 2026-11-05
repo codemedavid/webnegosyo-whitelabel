@@ -24,6 +24,13 @@ export interface CompletedOrderData {
   discounts: OrderDiscountLine[]
   customerData: Record<string, string>
   orderTypeName: string | null
+  /**
+   * The order's type and its `{store_address}`, for the designed thank-you
+   * page. Taken here because clearing the cart wipes the live order type, and
+   * the branch that follows it, the moment this snapshot is made.
+   */
+  orderTypeKind?: string | null
+  storeAddress?: string
   scheduledForLabel: string | null
   paymentMethodName: string | null
   paymentMethodDetails: string | null
@@ -47,6 +54,8 @@ export interface CompletedOrderSnapshotInput {
   /** Already normalized — the same values the message and the order carry. */
   customerData: Readonly<Record<string, string>>
   orderTypeName: string | null
+  orderTypeKind?: string | null
+  storeAddress?: string
   scheduledForLabel: string | null
   paymentMethod: Pick<PaymentMethod, 'name' | 'details'> | null
   messengerMessage: string
@@ -63,6 +72,8 @@ export function buildCompletedOrderSnapshot(input: CompletedOrderSnapshotInput):
     discounts: [...input.discounts],
     customerData: { ...input.customerData },
     orderTypeName: input.orderTypeName,
+    orderTypeKind: input.orderTypeKind,
+    storeAddress: input.storeAddress,
     scheduledForLabel: input.scheduledForLabel,
     paymentMethodName: input.paymentMethod?.name ?? null,
     paymentMethodDetails: input.paymentMethod?.details ?? null,

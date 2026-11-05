@@ -7,7 +7,7 @@ import { safeAnchor, safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import type { Column, HeroDesignV5, Section, Widget } from '@/lib/hero-builder/types'
 
 import { PageLayout } from './page-layout'
-import { isShownInState, usePageRuntime } from './page-runtime'
+import { isShownForOrder, isShownInState, usePageRuntime } from './page-runtime'
 import { WidgetView } from './widget-view'
 
 export interface HeroBuilderRendererProps {
@@ -24,6 +24,13 @@ interface NodeContext {
   isEditor: boolean
   /** Page Designer state ("preparing"…) for "Show when"; null = no states. */
   pageState: string | null
+  /** The order's type for "Show for"; null = unknown. */
+  orderKind: string | null
+}
+
+/** Both page conditions a section or widget can carry. */
+function isNodeShown(node: Pick<Widget, 'showWhen' | 'showFor'>, pageState: string | null, orderKind: string | null): boolean {
+  return isShownInState(node.showWhen, pageState) && isShownForOrder(node.showFor, orderKind)
 }
 
 function editorAttrs(ctx: NodeContext, id: string, kind: 'section' | 'column' | 'widget') {
@@ -34,8 +41,8 @@ function editorAttrs(ctx: NodeContext, id: string, kind: 'section' | 'column' | 
  * "Show when": off-state nodes are left out of the storefront; the editor
  * keeps them (faded) so they stay selectable.
  */
-function stateAttrs(ctx: NodeContext, showWhen: readonly string[] | undefined): { skip: boolean; attrs: Record<string, string> } {
-  if (isShownInState(showWhen, ctx.pageState)) return { skip: false, attrs: {} }
+function stateAttrs(ctx: NodeContext, node: Pick<Widget, 'showWhen' | 'showFor'>): { skip: boolean; attrs: Record<string, string> } {
+  if (isNodeShown(node, ctx.pageState, ctx.orderKind)) return { skip: false, attrs: {} }
   return ctx.isEditor ? { skip: false, attrs: { 'data-hb-state-off': 'true' } } : { skip: true, attrs: {} }
 }
 
@@ -52,7 +59,7 @@ function sectionVideo(section: Section): string | null {
 }
 
 function WidgetNode({ widget, ctx, isPriority }: { widget: Widget; ctx: NodeContext; isPriority: boolean }) {
-  const state = stateAttrs(ctx, widget.showWhen)
+  const state = stateAttrs(ctx, widget)
   if (state.skip) return null
   return (
     // `hb-w--<kind>`, not `hb-<kind>`: the inner elements already use
@@ -83,7 +90,7 @@ function ColumnNode({ column, ctx, isPriority }: { column: Column; ctx: NodeCont
 function SectionNode({ section, ctx, isPriority }: { section: Section; ctx: NodeContext; isPriority: boolean }) {
   const video = sectionVideo(section)
   const anchor = safeAnchor(section.anchor)
-  const state = stateAttrs(ctx, section.showWhen)
+  const state = stateAttrs(ctx, section)
   if (state.skip) return null
   return (
     <section
@@ -130,7 +137,8 @@ export const HeroBuilderRenderer = memo(function HeroBuilderRenderer({
   )
   const runtime = usePageRuntime()
   const pageState = runtime?.state ?? null
-  const ctx: NodeContext = { classes: built.classes, isEditor, pageState }
+  const orderKind = runtime?.orderKind ?? null
+  const ctx: NodeContext = { classes: built.classes, isEditor, pageState, orderKind }
 
   if (!design.sections.length && !isEditor) return null
   // Page Designer: one step at a time / folding panels (only on a page, never a hero).
@@ -147,7 +155,7 @@ export const HeroBuilderRenderer = memo(function HeroBuilderRenderer({
           isEditor={isEditor}
           stepProblem={runtime?.stepProblem}
           sections={design.sections
-            .filter((section) => isEditor || isShownInState(section.showWhen, pageState))
+            .filter((section) => isEditor || isNodeShown(section, pageState, orderKind))
             .map((section, i) => ({ section, node: <SectionNode section={section} ctx={ctx} isPriority={i === 0} /> }))}
         />
       ) : (

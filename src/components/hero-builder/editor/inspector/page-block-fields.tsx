@@ -3,10 +3,11 @@
 import { Lock, Paintbrush, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
 
-import type { PageBlockContent, Widget } from '@/lib/hero-builder/types'
+import type { OrderKindChoice, PageBlockContent, Section, Widget } from '@/lib/hero-builder/types'
 import { PAGE_META } from '@/lib/page-designer/pages'
 import { NEED_REASONS, pageBlockDef } from '@/lib/page-designer/blocks'
 import { optionGroup } from '@/lib/page-designer/knobs'
+import { holdsEssentialBlock } from '@/lib/page-designer/rules'
 import { applyTokens, resolveBlockOption, resolveBlockText } from '@/lib/page-designer/text'
 import type { BlockOption, BlockOptionValue, BlockTextSlot, PageId } from '@/lib/page-designer/types'
 import { usePageRuntime, type PageBlockRenderProps } from '@/components/hero-builder/renderer/page-runtime'
@@ -134,6 +135,52 @@ export function PageBlockFields({ widget, api }: { widget: Widget; api: HeroBuil
         </Group>
       )}
     </div>
+  )
+}
+
+const ORDER_KINDS: readonly { id: OrderKindChoice; label: string }[] = [
+  { id: 'dine_in', label: 'Dine-in' },
+  { id: 'pickup', label: 'Pickup' },
+  { id: 'delivery', label: 'Delivery' },
+]
+
+/** "Show for": limit a section or element to some order types (e.g. "book your own rider" for delivery). */
+export function ShowForGroup({ node, api }: { node: Section | Widget; api: HeroBuilderApi }) {
+  const runtime = usePageRuntime()
+  if (!runtime) return null
+  const current = node.showFor ?? []
+  const toggle = (id: OrderKindChoice) => {
+    const next = current.includes(id) ? current.filter((kind) => kind !== id) : [...current, id]
+    api.editShowFor(node.id, ORDER_KINDS.map((kind) => kind.id).filter((kind) => next.includes(kind)))
+  }
+  return (
+    <Group title="Show for">
+      {holdsEssentialBlock(node, runtime.page) ? (
+        <p className="text-[11px] leading-snug text-neutral-500">This holds what some orders need, so it shows on every order.</p>
+      ) : (
+        <>
+          <p className="mb-2 text-[11px] leading-snug text-neutral-500">
+            {current.length ? 'Only shows on these orders. The preview here always shows it.' : 'Shows on every order. Pick order types to show it only for them.'}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {ORDER_KINDS.map((kind) => {
+              const isOn = current.includes(kind.id)
+              return (
+                <button
+                  key={kind.id}
+                  type="button"
+                  aria-pressed={isOn}
+                  onClick={() => toggle(kind.id)}
+                  className={isOn ? 'rounded-full bg-neutral-900 px-2.5 py-1 text-[11px] font-semibold text-white' : 'rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] font-medium text-neutral-600 hover:border-neutral-400'}
+                >
+                  {kind.label}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </Group>
   )
 }
 

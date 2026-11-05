@@ -10,6 +10,8 @@ import { readLoyaltyTenantFlags } from '@/lib/loyalty/tenant-flags'
 import { readWalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 import { readTrackingStyle } from '@/lib/tracking-style/keys'
 import { publishedDesignColumns, resolvePageDesign } from '@/lib/page-designer/page-mode'
+import { storeAddressToken } from '@/lib/page-designer/store-address'
+import { designUsesStoreAddress, readOrderStoreAddress } from '@/lib/page-designer/order-store-address'
 import type { Tenant } from '@/types/database'
 import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { OrderTrackingFallback } from './order-tracking-fallback'
@@ -82,6 +84,7 @@ async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
     storefrontLabels: row.storefront_labels ?? null,
     loyaltyOffer: await resolveLoyaltyOffer(tenant),
     design,
+    storeAddress: design ? storeAddressToken(tenant, null) : undefined,
     // Only a designed page re-colours single blocks; the standard page never needs it.
     ...(design ? { paint: { branding, style: trackingStyle } } : {}),
   }
@@ -120,6 +123,10 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
   ])
 
   if (trackingToken && tracking?.data) {
+    // Only a design that prints the address pays for reading the order's branch.
+    const storeAddress = brand.design && designUsesStoreAddress(brand.design)
+      ? await readOrderStoreAddress(tenant, orderId, trackingToken)
+      : brand.storeAddress
     return (
       <OrderTrackingClient
         orderId={orderId}
@@ -131,7 +138,7 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
           // Same shape as /api/orders/stamps, so the wallet buttons are there on first paint.
           ? { ...stamps.status, wallets: readWalletAvailability() }
           : null}
-        brand={brand}
+        brand={{ ...brand, storeAddress }}
       />
     )
   }

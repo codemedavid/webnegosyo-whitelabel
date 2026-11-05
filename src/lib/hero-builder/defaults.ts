@@ -102,6 +102,12 @@ export const WIDGET_DEFAULTS: Record<WidgetKind, WidgetDefaults> = {
       radius: 999,
     },
   },
+  'copy-text': {
+    label: 'Copy text',
+    content: () => ({ kind: 'copy-text', title: '', text: '', design: 'icon', buttonLabel: 'Copy', copiedLabel: 'Copied!' }),
+    // Colours stay blank: the box follows the page's text, the button its primary.
+    style: { fontSize: 15, radius: 12 },
+  },
   countdown: {
     label: 'Countdown',
     content: () => ({ kind: 'countdown', target: inFuture(3), showLabels: true, expiredText: 'This offer has ended' }),
