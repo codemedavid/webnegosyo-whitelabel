@@ -214,10 +214,16 @@ export async function POST(request: NextRequest) {
         const page = pageData as { page_access_token: string }
 
         // Get order items
-        const { data: orderItemsData } = await supabase
+        const { data: orderItemsData, error: orderItemsError } = await supabase
             .from('order_items')
             .select('*')
             .eq('order_id', orderId)
+
+        // Never hand the merchant an order message with no dishes on it.
+        if (orderItemsError) {
+            console.error('[Send Order Public] Could not read order items', { orderId, code: orderItemsError.code })
+            return NextResponse.json({ success: false, message: 'Could not read the order items' })
+        }
 
         const orderItems = (orderItemsData || []) as Array<{
             menu_item_name: string

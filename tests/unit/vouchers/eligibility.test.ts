@@ -163,6 +163,16 @@ describe('evaluateVoucherEligibility', () => {
       expect(evaluateVoucherEligibility(voucher, context).isEligible).toBe(true)
     })
 
+    it('accepts a cart that reaches the minimum exactly despite float drift in the lines', () => {
+      // 353.34 + 98.26 + 48.4 = 499.99999999999994 in floats.
+      const voucher = makeVoucher({ minOrderAmount: 500 })
+      const lines = [353.34, 98.26, 48.4].map((subtotal, index) => makeLine({ id: `line-${index}`, subtotal }))
+
+      const result = evaluateVoucherEligibility(voucher, makeContext({ lines }))
+
+      expect(result.isEligible).toBe(true)
+    })
+
     it('accepts a cart exactly at the minimum', () => {
       const voucher = makeVoucher({ minOrderAmount: 200 })
 

@@ -38,7 +38,7 @@ import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
 import { posReceiptOrder } from "../../lib/pos-receipt";
 import { staleBackendMessage } from "../../lib/stale-backend";
-import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
+import { serviceChargeArgFor } from "../../lib/convex-service-charge-arg";
 import { resolveRegisterOutlet } from "../../lib/register-outlet";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { buildPosStockItems } from "../../lib/pos-stock";
@@ -133,19 +133,9 @@ export default function PosTenderScreen() {
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
 
-  /**
-   * The `serviceCharge` argument to send with an order write, if any.
-   *
-   * The platform backend has a real column and takes it whatever the version;
-   * only Convex validates its arguments strictly, so only Convex is gated.
-   */
+  /** The `serviceCharge` argument to send with an order write, if any. */
   const serviceChargeArg = useCallback(
-    (amount: number | undefined) =>
-      orderBackend === "supabase"
-        ? amount && amount > 0
-          ? { serviceCharge: amount }
-          : {}
-        : convexServiceChargeArg(amount, convexSchemaVersion),
+    (amount: number | undefined) => serviceChargeArgFor(orderBackend, amount, convexSchemaVersion),
     [orderBackend, convexSchemaVersion],
   );
   const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });

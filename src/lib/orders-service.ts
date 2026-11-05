@@ -723,6 +723,21 @@ export async function createOrder(
   const { generateOrderTokenPair } = await import('@/lib/order-token')
   const orderTokenPair = generateOrderTokenPair()
 
+  const buildItemRows = (orderId: string) => verifiedItems.map(item => ({
+    order_id: orderId,
+    menu_item_id: item.menu_item_id,
+    menu_item_name: item.menu_item_name,
+    variation: item.variation,
+    addons: item.addons,
+    // Lets every order view print what each add-on cost (20261029121000).
+    ...(item.addon_details ? { addon_details: item.addon_details } : {}),
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.subtotal,
+    special_instructions: item.special_instructions,
+    ...buildOrderItemParityColumns(item),
+  }))
+
   const { data: order, error: orderError } = await orderWriter
     .from('orders')
     .insert({
@@ -771,6 +786,25 @@ export async function createOrder(
         .eq('client_order_id', parityOptions!.clientOrderId!.trim())
         .maybeSingle()
       if (existing) {
+        // The first attempt may have written the row and then failed on its
+        // items. Without them this "success" is an order with nothing on it, and
+        // that attempt never spent its vouchers or stock, so the caller must run
+        // the follow-ups: only a complete replay counts as `deduped`.
+        const { data: existingItems, error: existingItemsError } = await orderWriter
+          .from('order_items')
+          .select('id')
+          .eq('order_id', (existing as { id: string }).id)
+          .limit(1)
+        if (existingItemsError) throw existingItemsError
+        const wasMissingItems = !existingItems || existingItems.length === 0
+        if (wasMissingItems) {
+          const { error: repairError } = await orderWriter
+            .from('order_items')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .insert(buildItemRows((existing as { id: string }).id) as any)
+          if (repairError) throw repairError
+        }
+
         let dedupedToken: string | undefined
         try {
           const { createOrderToken } = await import('@/lib/order-token')
@@ -790,7 +824,7 @@ export async function createOrder(
         return {
           order: publicExisting as unknown as Order,
           orderToken: dedupedToken,
-          deduped: true as const,
+          ...(wasMissingItems ? {} : { deduped: true as const }),
         }
       }
     }
@@ -801,25 +835,10 @@ export async function createOrder(
   const orderData = order as any
 
   // Create order items
-  const orderItems = verifiedItems.map(item => ({
-    order_id: orderData.id,
-    menu_item_id: item.menu_item_id,
-    menu_item_name: item.menu_item_name,
-    variation: item.variation,
-    addons: item.addons,
-    // Lets every order view print what each add-on cost (20261029121000).
-    ...(item.addon_details ? { addon_details: item.addon_details } : {}),
-    quantity: item.quantity,
-    price: item.price,
-    subtotal: item.subtotal,
-    special_instructions: item.special_instructions,
-    ...buildOrderItemParityColumns(item),
-  }))
-
   const { error: itemsError } = await orderWriter
     .from('order_items')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .insert(orderItems as any)
+    .insert(buildItemRows(orderData.id) as any)
 
   if (itemsError) throw itemsError
 

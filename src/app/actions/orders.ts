@@ -273,7 +273,11 @@ export async function createOrderAction(
     const paymentMethodRead = readOrderPaymentMethod(supabaseAdmin, tenantId, paymentMethodId)
     const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
     if (!tenantContext.ok) {
-      return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
+      // A database hiccup is not a verdict on the store: unmarked, so the
+      // checkout retries and the customer keeps the Messenger fallback.
+      return tenantContext.reason === 'unavailable'
+        ? { success: false, error: 'We could not reach the store just now. Please try again.' }
+        : { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
     }
     const { tenantConfig, tenantSecrets } = tenantContext
 
@@ -711,6 +715,7 @@ export async function createOrderAction(
     const checkoutGovernment = await applyCheckoutGovernment({
       db: supabaseAdmin,
       tenantId,
+      outletId: resolvedOutlet?.id ?? null,
       claim: governmentClaim,
       items,
       serviceCharge,
@@ -773,6 +778,7 @@ export async function createOrderAction(
         orderTypeName: orderTypeRow?.name ?? null,
         deliveryFee: effectiveDeliveryFee,
         serviceCharge,
+        orderTotal: pricing.totals.grandTotal,
         paymentMethodName: trustedPaymentMethodName,
         customerData: effectiveCustomerData,
       },

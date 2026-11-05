@@ -110,11 +110,16 @@ export async function deleteUnit(unitId: string, tenantId: string): Promise<void
   await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
-  const { error } = await supabase
+  const { data: deleted, error } = await supabase
     .from('inventory_units')
     .delete()
     .eq('id', unitId)
     .eq('tenant_id', tenantId)
+    .select('id')
 
   if (error) throw error
+  // RLS refuses a delete with zero rows, not an error.
+  if (!deleted || deleted.length === 0) {
+    throw new Error('This unit could not be removed. Only a store-wide account with Menu access can remove units.')
+  }
 }

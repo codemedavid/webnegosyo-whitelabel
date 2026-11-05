@@ -1,5 +1,6 @@
 'use client'
 
+import { toDatetimeLocalValue } from '@/lib/datetime-local'
 import { ArrowDown, ArrowUp, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -285,7 +286,7 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
         </>
       )
     case 'countdown': {
-      const local = toLocalInput(c.target)
+      const local = toDatetimeLocalValue(c.target)
       return (
         <>
           <Field label="Ends at" hint="Shown in each visitor's own time zone.">
@@ -430,13 +431,6 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
     default:
       return null
   }
-}
-
-function toLocalInput(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function ColumnLayoutPicker({ section, api }: { section: Section; api: HeroBuilderApi }) {

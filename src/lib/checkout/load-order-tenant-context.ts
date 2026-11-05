@@ -8,7 +8,9 @@
  *
  * The answers are still judged in the original order, so no refusal changes:
  *  1. an inactive (or unknown) store is refused first — a secrets failure
- *     arriving alongside must not turn that refusal into a "lost order";
+ *     arriving alongside must not turn that refusal into a "lost order". A
+ *     failed read of the store is NOT that refusal: it reports `unavailable`, so
+ *     the checkout retries and keeps its Messenger fallback;
  *  2. a secrets failure for an active store throws, as before (the caller's
  *     catch reports the order lost — it cannot be routed);
  *  3. the order type is handed back as a settled-later promise, because the
@@ -22,6 +24,8 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { OPERATING_HOURS_ENFORCEMENT_COLUMNS } from '@/lib/store-open-status'
 
 type AdminClient = ReturnType<typeof createAdminClient>
+
+const NO_ROW_CODE = 'PGRST116'
 
 /** Every tenant column the order action consults. Credentials live in tenant_secrets. */
 export const ORDER_TENANT_CONFIG_SELECT = [
@@ -39,7 +43,7 @@ export const ORDER_TENANT_CONFIG_SELECT = [
 export type OrderTypeRead = { ok: true; row: CheckoutOrderTypeRow | null } | { ok: false }
 
 export type OrderTenantContext =
-  | { ok: false }
+  | { ok: false; reason: 'inactive' | 'unavailable' }
   | {
       ok: true
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,8 +88,13 @@ export async function loadOrderTenantContext(
   const secretsRead = deferRejection(getTenantSecrets(client, tenantId))
   const orderType = deferRejection(readOrderType(client, tenantId, orderTypeId))
 
-  const { data: configData } = await configRead
-  if (!configData) return { ok: false }
+  const { data: configData, error: configError } = await configRead
+  if (!configData) {
+    // PostgREST reports "no row" as PGRST116: the store really is unknown/inactive.
+    const isReadFailure = !!configError && configError.code !== NO_ROW_CODE
+    if (isReadFailure) console.error('[checkout] tenant read failed', { tenantId, code: configError.code })
+    return { ok: false, reason: isReadFailure ? 'unavailable' : 'inactive' }
+  }
 
   const tenantSecrets = await secretsRead
   return {

@@ -189,6 +189,34 @@ describe('getStoreOpenStatus — overnight windows', () => {
   })
 })
 
+describe('getStoreOpenStatus — tonight\'s overnight window has not started yet', () => {
+  // Saturday 01:00 Manila: Friday is closed, and Saturday's own 18:00–02:00 only
+  // starts tonight. The early-morning hours belong to the window that began
+  // yesterday, and there was none.
+  const SAT_0100 = new Date('2026-07-24T17:00:00Z')
+
+  it('stays closed when yesterday did not carry over', () => {
+    const hours = week({
+      '5': { closed: true, open: '09:00', close: '21:00' },
+      '6': { closed: false, open: '18:00', close: '02:00' },
+    })
+
+    const status = getStoreOpenStatus(source({ operating_hours: hours }), SAT_0100)
+
+    expect(status.isOpen).toBe(false)
+    expect(status.isOrderingBlocked).toBe(true)
+  })
+
+  it('stays open when yesterday\'s own overnight window is still running', () => {
+    const hours = week({
+      '5': { closed: false, open: '18:00', close: '02:00' },
+      '6': { closed: false, open: '18:00', close: '02:00' },
+    })
+
+    expect(getStoreOpenStatus(source({ operating_hours: hours }), SAT_0100).isOpen).toBe(true)
+  })
+})
+
 describe('OPERATING_HOURS_ENFORCEMENT_COLUMNS', () => {
   it('lists every tenant column the storefront needs to decide open/closed', () => {
     expect([...OPERATING_HOURS_ENFORCEMENT_COLUMNS]).toEqual([

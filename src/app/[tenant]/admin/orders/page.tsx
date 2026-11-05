@@ -26,15 +26,6 @@ interface OrdersPageProps {
   }>
 }
 
-const EMPTY_PAGE = {
-  orders: [],
-  totalCount: 0,
-  currentPage: 1,
-  totalPages: 0,
-  hasNextPage: false,
-  hasPreviousPage: false,
-}
-
 /**
  * Queue for a tenant whose orders live in their own Supabase project. Reads go
  * through the service-role client server side; only the anon key reaches the
@@ -58,7 +49,7 @@ async function TenantSupabaseOrdersContent({
     limit: 20,
     status,
     orderType,
-  }).catch(() => EMPTY_PAGE)
+  })
 
   // Resolved on the server from the request-cached admin row, so the browser is
   // never trusted to say which branch it is allowed to hear about. A null row
@@ -103,7 +94,7 @@ async function OrdersContent({
     limit: 20,
     status,
     orderType,
-  }).catch(() => ({ orders: [], totalCount: 0, currentPage: 1, totalPages: 0, hasNextPage: false, hasPreviousPage: false }))
+  })
 
   const paginatedResult = result as PaginatedOrdersResult
   const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
