@@ -1,15 +1,17 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import { submitCheckoutForm, fetchActivePlatformPaymentMethods } from '@/app/actions/checkout-leads'
 import { createMetaEventId, getMetaBrowserData, trackMetaEvent } from '@/lib/meta-pixel'
 import type { FunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
+import { toCheckoutLeadConfirmation, type CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
+import { paymentBrandFor } from '@/lib/checkout-leads/payment-brand'
 import { ORDER, ORDER_FORM } from './funnel-copy'
 import { OFFER_NAME, dueTodayFor } from './funnel-offer'
+import { PaymentLogo } from './funnel-payment-ui'
 
 /** Philippine mobile number, local (09…) or international (639…) form. */
 const PH_MOBILE = /^(09\d{9}|639\d{9})$/
@@ -25,9 +27,19 @@ const orderSchema = z.object({
 type OrderFields = z.infer<typeof orderSchema>
 type FieldErrors = Partial<Record<keyof OrderFields, string>>
 
+/** A method as the payment step shows it, loaded with the form so that step needs no fetch. */
 interface PaymentOption {
   id: string
   name: string
+  details: string | null
+  qr_code_url: string | null
+}
+
+/** Warm the browser cache so the QR is already there when the payment step opens. */
+function preloadQrCodes(options: PaymentOption[]) {
+  for (const option of options) {
+    if (option.qr_code_url) new Image().src = option.qr_code_url
+  }
 }
 
 const EMPTY_FIELDS: OrderFields = { name: '', email: '', phone: '', businessName: '', paymentMethodId: '' }
@@ -63,8 +75,14 @@ function usePaymentOptions(onSingleOption: (id: string) => void) {
     fetchActivePlatformPaymentMethods()
       .then((methods) => {
         if (isCancelled) return
-        const loaded = methods.map((method) => ({ id: method.id, name: method.name }))
+        const loaded = methods.map((method) => ({
+          id: method.id,
+          name: method.name,
+          details: method.details ?? null,
+          qr_code_url: method.qr_code_url ?? null,
+        }))
         setOptions(loaded)
+        preloadQrCodes(loaded)
         if (loaded.length === 1) onSingleOption(loaded[0].id)
       })
       .catch((error: unknown) => {
@@ -88,15 +106,37 @@ interface FunnelOrderFormProps {
   /** The plan the visitor picked above the form; the server prices it. */
   term: FunnelPlanTerm
   submitLabel: string
+  /** The lead is saved: open its payment step. */
+  onSaved: (confirmation: CheckoutLeadConfirmation) => void
+}
+
+/**
+ * The payment step's data, from the save's answer (reference, the amount the
+ * SERVER priced) plus the chosen method already on screen. Nothing personal:
+ * the same fields the public confirmation page reads.
+ */
+function confirmationFor(
+  saved: { reference_number: string; amount: number | null },
+  term: FunnelPlanTerm,
+  method: PaymentOption | undefined
+): CheckoutLeadConfirmation | null {
+  return toCheckoutLeadConfirmation({
+    reference_number: saved.reference_number,
+    amount: saved.amount ?? dueTodayFor(term),
+    payment_term: term,
+    payment_proof_url: null,
+    platform_payment_methods: method
+      ? { name: method.name, details: method.details, qr_code_url: method.qr_code_url }
+      : null,
+  })
 }
 
 /**
  * The order form. A "yes" becomes a checkout lead on the chosen plan's term
- * (amount computed server-side), then the existing confirmation page shows
- * the reference number and payment instructions.
+ * (amount computed server-side), then the payment step opens in place: one
+ * round trip, no page load between the button and the QR.
  */
-export function FunnelOrderForm({ term, submitLabel }: FunnelOrderFormProps) {
-  const router = useRouter()
+export function FunnelOrderForm({ term, submitLabel, onSaved }: FunnelOrderFormProps) {
   const isSubmittingRef = useRef(false)
   const [fields, setFields] = useState<OrderFields>(EMPTY_FIELDS)
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -120,8 +160,8 @@ export function FunnelOrderForm({ term, submitLabel }: FunnelOrderFormProps) {
 
     isSubmittingRef.current = true
     setIsSubmitting(true)
-    // Stays pending once the lead is saved: the button must not re-arm while
-    // the confirmation page loads, or a second tap files a duplicate lead.
+    // Stays pending once the lead is saved: the button must never re-arm
+    // under the payment step, or a second tap files a duplicate lead.
     let isSaved = false
     try {
       const eventId = createMetaEventId('lead')
@@ -145,8 +185,18 @@ export function FunnelOrderForm({ term, submitLabel }: FunnelOrderFormProps) {
         { content_name: OFFER_NAME, currency: 'PHP', value: result.data.amount ?? dueTodayFor(term) },
         eventId
       )
+      const confirmation = confirmationFor(
+        result.data,
+        term,
+        payments.options.find((option) => option.id === parsed.data.paymentMethodId)
+      )
+      if (!confirmation) {
+        toast.error(ORDER_FORM.saveFailed)
+        console.error('[funnel] checkout lead saved without a reference number')
+        return
+      }
       isSaved = true
-      router.push(`/checkout/confirmation?confirm=${encodeURIComponent(result.data.reference_number)}`)
+      onSaved(confirmation)
     } catch (error) {
       console.error('[funnel] checkout lead failed', error)
       toast.error(ORDER_FORM.connectionFailed)
@@ -237,6 +287,7 @@ function PaymentPicker({
       <div className="grid grid-cols-2 gap-2.5">
         {options.map((option) => {
           const isSelected = option.id === selectedId
+          const hasLogo = paymentBrandFor(option.name) !== null
           return (
             <label key={option.id} className="fn-choice text-[15px] font-semibold text-white">
               <input
@@ -246,7 +297,11 @@ function PaymentPicker({
                 checked={isSelected}
                 onChange={() => onSelect(option.id)}
               />
-              {option.name}
+              <span className="fn-choice-logo">
+                {/* The logo says it; the name stays for screen readers. */}
+                <span className={hasLogo ? 'sr-only' : ''}>{option.name}</span>
+                {hasLogo && <PaymentLogo name={option.name} size="choice" isNameHidden />}
+              </span>
             </label>
           )
         })}

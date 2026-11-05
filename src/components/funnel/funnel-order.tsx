@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
+import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
 import { getCheckoutBalanceDue } from '@/lib/checkout-leads/payment-terms'
 import { CountdownChip } from './funnel-countdown'
 import { GUARANTEE, ORDER, PLANS } from './funnel-copy'
@@ -15,7 +16,8 @@ import {
   type SixMonthPayment,
 } from './funnel-offer'
 import { FunnelOrderForm } from './funnel-order-form'
-import { CheckMark, CrossMark, Kicker, Marker } from './funnel-ui'
+import { FunnelPayment } from './funnel-payment'
+import { CheckMark, CrossMark, FN, Kicker, Marker } from './funnel-ui'
 
 /** The six-month plan is the one the page sells, so it starts chosen. */
 const DEFAULT_PLAN: FunnelPlanId = 'six_month'
@@ -201,6 +203,36 @@ function OrderSummary({ plan, payment }: { plan: FunnelPlanId; payment: SixMonth
   )
 }
 
+function confirmationPath(referenceNumber: string): string {
+  return `/checkout/confirmation?confirm=${encodeURIComponent(referenceNumber)}`
+}
+
+/**
+ * The payment step, laid over the whole funnel the moment the lead is saved.
+ * It looks exactly like /checkout/confirmation, and the address bar is moved
+ * there (no navigation), so a reload or a shared link opens the same page.
+ */
+function PaymentTakeover({ lead }: { lead: CheckoutLeadConfirmation }) {
+  const layerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    window.history.replaceState(null, '', confirmationPath(lead.reference_number))
+    const root = document.documentElement
+    const previousOverflow = root.style.overflow
+    root.style.overflow = 'hidden'
+    layerRef.current?.focus()
+    return () => {
+      root.style.overflow = previousOverflow
+    }
+  }, [lead.reference_number])
+
+  return (
+    <div ref={layerRef} tabIndex={-1} className="fixed inset-0 z-[70] overflow-y-auto outline-none" style={{ backgroundColor: FN.bg }}>
+      <FunnelPayment lead={lead} />
+    </div>
+  )
+}
+
 /**
  * Plans and the order form in one section: the six-month plan starts chosen,
  * its payment (in full or a downpayment) sits right under the cards, and the
@@ -209,6 +241,7 @@ function OrderSummary({ plan, payment }: { plan: FunnelPlanId; payment: SixMonth
 export function FunnelOrder() {
   const [plan, setPlan] = useState<FunnelPlanId>(DEFAULT_PLAN)
   const [payment, setPayment] = useState<SixMonthPayment>(DEFAULT_PAYMENT)
+  const [savedLead, setSavedLead] = useState<CheckoutLeadConfirmation | null>(null)
   const term = termForPlan(plan, payment)
   const submitLabel = plan === 'six_month' ? ORDER.submitSixMonth : ORDER.submitMonthly
 
@@ -238,13 +271,14 @@ export function FunnelOrder() {
             {plan === 'six_month' && <PaymentChoice payment={payment} onChange={setPayment} />}
             <div>
               <h3 className="mb-4 text-[18px] font-semibold tracking-[-0.01em] text-white">{ORDER.formTitle}</h3>
-              <FunnelOrderForm term={term} submitLabel={submitLabel} />
+              <FunnelOrderForm term={term} submitLabel={submitLabel} onSaved={setSavedLead} />
             </div>
             <p className="text-center text-[12.5px] leading-relaxed text-[#A99C8D]">{ORDER.afterSubmit}</p>
           </div>
           <OrderSummary plan={plan} payment={payment} />
         </div>
       </div>
+      {savedLead && <PaymentTakeover lead={savedLead} />}
     </section>
   )
 }

@@ -19,7 +19,17 @@ jest.mock('@/lib/meta-pixel', () => ({
 }))
 jest.mock('@/app/actions/checkout-leads', () => ({
   submitCheckoutForm: (...args: unknown[]) => submitCheckoutForm(...args),
-  fetchActivePlatformPaymentMethods: () => Promise.resolve([{ id: 'pm-gcash', name: 'GCash', type: 'qr_code' }]),
+  fetchActivePlatformPaymentMethods: () =>
+    Promise.resolve([
+      {
+        id: 'pm-gcash',
+        name: 'GCash',
+        type: 'qr_code',
+        details: 'John Angelo David\n09928214519',
+        qr_code_url: 'https://media.webnegosyo.com/platform-payment-qr/gcash.png',
+      },
+    ]),
+  submitPaymentProof: jest.fn(),
 }))
 
 async function renderOrder() {
@@ -77,5 +87,27 @@ describe('FunnelOrder', () => {
     expect(screen.queryByRole('radio', { name: /downpayment muna/i })).toBeNull()
 
     expect(await fillAndSubmit(user, /start monthly/i)).toBe('monthly_subscription')
+  })
+
+  it('opens the payment step on the same page as soon as the lead is saved', async () => {
+    submitCheckoutForm.mockResolvedValue({ data: { reference_number: 'WN-20261105-ABCDEFGH', amount: 5499 }, error: null })
+    const replaceState = jest.spyOn(window.history, 'replaceState')
+    await renderOrder()
+
+    await fillAndSubmit(userEvent.setup(), /kunin ang 6-month plan/i)
+
+    expect(await screen.findByText('WN-20261105-ABCDEFGH')).toBeTruthy()
+    expect(screen.getByAltText(/gcash qr code/i).getAttribute('src')).toBe(
+      'https://media.webnegosyo.com/platform-payment-qr/gcash.png'
+    )
+    expect(screen.getByText('09928214519')).toBeTruthy()
+    expect(push).not.toHaveBeenCalled()
+    // A reload or a shared link lands on the same payment page.
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      '',
+      '/checkout/confirmation?confirm=WN-20261105-ABCDEFGH'
+    )
+    replaceState.mockRestore()
   })
 })
