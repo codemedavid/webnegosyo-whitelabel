@@ -299,3 +299,35 @@ export function splitGroupsToLegacyColumns(
 
   return { variation_types, variations: [], addons };
 }
+
+/**
+ * Whether an option can be picked right now — the ONE "sold out" switch.
+ *
+ * Mirror of the web's `isOptionAvailable` (`src/lib/modifier-groups.ts`,
+ * pinned by `modifier-availability.test.ts`): an explicit `is_available:
+ * false` refuses it, and so does a simple-stock count at or below zero. A
+ * recipe-tracked option is left to the stock ESTIMATE, which warns the cashier
+ * rather than refusing — see `pos-stock-warning.ts`.
+ */
+export function isOptionAvailable(option: ModifierOption): boolean {
+  if (option.is_available === false) return false;
+  if (option.stock_mode === "simple") return (option.stock_qty ?? 0) > 0;
+  return true;
+}
+
+/**
+ * The first required group that can no longer be filled because too many of
+ * its choices are sold out, or null. Such a dish cannot be sold at all: there
+ * is no valid line to build.
+ */
+export function unfillableRequiredGroup(
+  groups: readonly ModifierGroup[]
+): ModifierGroup | null {
+  return (
+    groups.find(
+      (group) =>
+        group.min_select > 0 &&
+        group.options.filter(isOptionAvailable).length < group.min_select
+    ) ?? null
+  );
+}

@@ -182,7 +182,7 @@ export default function MainLayout() {
         <Tabs.Screen name="pos-sales" options={{ href: show("pos-sales"), title: "Drawer" }} />
 
         {/* ── Reports ─────────────────────────────────────────────────── */}
-        <Tabs.Screen name="analytics" options={{ href: show("analytics"), title: "Analytics" }} />
+        <Tabs.Screen name="analytics" options={{ href: show("analytics"), title: "Sales" }} />
         <Tabs.Screen name="trends" options={{ href: show("trends"), title: "Trends" }} />
         <Tabs.Screen name="growth" options={{ href: show("growth"), title: "Growth" }} />
         <Tabs.Screen name="customers" options={{ href: show("customers"), title: "Guest list" }} />
@@ -262,6 +262,7 @@ export default function MainLayout() {
             lands, expo-router only warns in development and nothing links to it. */}
         <Tabs.Screen name="cash-rules" options={{ href: null, title: "Shift & remit rules" }} />
         <Tabs.Screen name="shift-sales" options={{ href: null, title: "Shift sales" }} />
+        <Tabs.Screen name="my-shifts" options={{ href: null, title: "My shifts" }} />
         {/* The 4-step count and remit needs the whole screen; ExpenseUndoHost lists it too. */}
         <Tabs.Screen name="end-shift" options={{ href: null, title: "End shift", tabBarStyle: { display: "none" } }} />
         <Tabs.Screen name="remittance" options={{ href: null, title: "Remittance" }} />

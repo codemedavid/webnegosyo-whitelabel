@@ -146,16 +146,14 @@ export function CartEmptyPanel({
 
 /** A single cart line item with image, variations, addons, quantity stepper. */
 export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; item: CartItem; index: number }) {
-  const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor } = cart
+  const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor, stockHintFor } = cart
   const p = useCartColors(cart)
   // Senior mode enlarges the page, so a long dish name gets a second line
   // instead of being cut to "Skinles…".
   const isSeniorMode = useSeniorMode()
-  const mi = item.menu_item
   const canIncrease = canIncreaseItem(item)
   const presellHint = presellHintFor(item)
-  const canEdit =
-    (mi.variation_types?.length ?? 0) > 0 || mi.variations.length > 0 || mi.addons.length > 0
+  const stockHint = stockHintFor(item)
 
   return (
     <div
@@ -181,16 +179,15 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
             <div className="flex items-start justify-between gap-3 mb-1.5">
               <h3 className={`text-base md:text-lg font-bold ${isSeniorMode ? 'line-clamp-2' : 'line-clamp-1'}`} style={{ color: p.text }}>{item.menu_item.name}</h3>
               <div className="flex items-center -mt-1 -mr-1 flex-shrink-0">
-                {canEdit && (
-                  <button
-                    className="h-9 w-9 inline-flex items-center justify-center hover:bg-[var(--cart-soft)] rounded-full touch-manipulation transition-colors"
-                    style={{ color: p.muted }}
-                    onClick={() => setItemToEdit(item)}
-                    aria-label="Edit item"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                )}
+                {/* Every line is editable: a plain dish still has its kitchen note. */}
+                <button
+                  className="h-9 w-9 inline-flex items-center justify-center hover:bg-[var(--cart-soft)] rounded-full touch-manipulation transition-colors"
+                  style={{ color: p.muted }}
+                  onClick={() => setItemToEdit(item)}
+                  aria-label="Edit item"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
                 <button
                   className="h-9 w-9 inline-flex items-center justify-center hover:bg-[var(--cart-danger-soft)] rounded-full touch-manipulation transition-colors"
                   style={{ color: p.danger }}
@@ -220,7 +217,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
               <p className="text-sm mt-1" style={{ color: p.muted }}><span className="font-medium">Add-ons:</span> {addonPriceList(item.selected_addons, formatPrice)}</p>
             )}
             {item.special_instructions && (
-              <p className="text-sm italic mt-0.5" style={{ color: p.muted }}><span className="font-medium">Note:</span> {item.special_instructions}</p>
+              <p className="min-w-0 wrap-anywhere text-sm italic mt-0.5" style={{ color: p.muted }}><span className="font-medium">Note:</span> {item.special_instructions}</p>
             )}
             {item.presell_date && (
               <p className="text-sm mt-0.5" style={{ color: p.accent }}>
@@ -257,6 +254,9 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
                 <p className="text-xs" style={{ color: p.muted }}>{formatPrice(item.subtotal / item.quantity)} each</p>
               )}
             </div>
+            {stockHint && (
+              <p className="basis-full text-xs font-medium" role="status" style={{ color: p.accent }}>{stockHint}</p>
+            )}
           </div>
         </div>
       </div>

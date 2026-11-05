@@ -11,7 +11,7 @@ import React, { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Icon } from "../Icon";
-import { usePosLastSaleStore } from "../../stores/pos-last-sale-store";
+import { usePosLastSaleStore, type LastSale } from "../../stores/pos-last-sale-store";
 
 /** Long enough to count out change; short enough not to be furniture. */
 export const SALE_NOTICE_MS = 10_000;
@@ -23,9 +23,20 @@ interface SaleCompleteBannerProps {
    * screen would read "not found" for that second, so the link waits.
    */
   isSaving?: (orderId: string) => boolean;
+  /**
+   * Print the sale's receipt again (marked REPRINT when it already printed).
+   * Offered only for a paid sale with a receipt, on a device with a receipt
+   * printer — the caller decides by passing it or not.
+   */
+  onReprint?: (sale: LastSale) => void;
 }
 
-export function SaleCompleteBanner({ onOpenOrder, isSaving }: SaleCompleteBannerProps) {
+/** "Reprint" when the register already printed it, "Print receipt" when it never did. */
+export function saleReceiptLabel(sale: Pick<LastSale, "isReceiptPrinted">): string {
+  return sale.isReceiptPrinted ? "Reprint" : "Print receipt";
+}
+
+export function SaleCompleteBanner({ onOpenOrder, isSaving, onReprint }: SaleCompleteBannerProps) {
   const lastSale = usePosLastSaleStore((s) => s.lastSale);
   const dismiss = usePosLastSaleStore((s) => s.dismiss);
 
@@ -72,6 +83,20 @@ export function SaleCompleteBanner({ onOpenOrder, isSaving }: SaleCompleteBanner
           <Text style={styles.linkText}>View order</Text>
         </TouchableOpacity>
       )}
+      {onReprint && lastSale.receipt ? (
+        <TouchableOpacity
+          style={styles.link}
+          onPress={() => onReprint(lastSale)}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          accessibilityRole="button"
+          accessibilityLabel={lastSale.isReceiptPrinted ? "Reprint receipt" : "Print receipt"}
+        >
+          <View style={styles.linkInner}>
+            <Icon name="printer" size={14} color={colors.textPrimary} />
+            <Text style={styles.linkText}>{saleReceiptLabel(lastSale)}</Text>
+          </View>
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity
         onPress={dismiss}
         accessibilityRole="button"
@@ -117,6 +142,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.separator,
   },
+  linkInner: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   linkText: { ...typography.caption, fontWeight: "700", color: colors.textPrimary },
   saving: { ...typography.caption, color: colors.textSecondary },
 });

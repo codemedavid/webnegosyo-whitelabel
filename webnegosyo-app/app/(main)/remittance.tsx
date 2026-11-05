@@ -10,6 +10,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
 import { LoadingState } from "../../components/LoadingState";
 import { PinPad, PIN_MIN_LENGTH } from "../../components/cash/PinPad";
+import { ShiftReportCard } from "../../components/shift-sales/ShiftReportCard";
 import { MONO_FONT } from "../../components/receipt/studio-theme";
 import { buildRemittanceSlip } from "../../lib/cash-slips/remittance-slip";
 import { printRemittanceSlip, shareRemittanceSlip } from "../../lib/cash-slips/slip-print";
@@ -104,6 +105,7 @@ function SlipBody({ remittance, shift, moves, recountText, expectedSource, count
   const branchName = useAuthStore((s) => s.outletName) ?? undefined;
   const isTablet = isTabletScreen(useWindowDimensions());
   const [isPrinting, setIsPrinting] = useState(false);
+  const shiftId = remittance.shiftId;
 
   const input = remittanceSlipInput({ remittance, shift: shift ?? null, moves, expectedSource, counts });
   const store = { storeName, branchName };
@@ -156,6 +158,8 @@ function SlipBody({ remittance, shift, moves, recountText, expectedSource, count
           <Button label="Print" icon="printer" tone="secondary" size="lg" fullWidth={false} style={styles.action} isLoading={isPrinting} onPress={() => void print()} />
           <Button label="Share" icon="export" tone="secondary" size="lg" fullWidth={false} style={styles.action} onPress={() => void shareRemittanceSlip(input, store)} />
         </View>
+        {/* The end of End shift: her own sales (items sold, voids) on paper, next to the slip. */}
+        {shiftId ? <ShiftReportCard shiftId={shiftId} tone="primary" /> : null}
         <Button label="Done" size="lg" onPress={() => (router.canGoBack() ? router.back() : router.replace(DRAWER_ROUTE as never))} />
         {thanks ? <Text style={styles.thanks}>{thanks}</Text> : null}
       </ScrollView>

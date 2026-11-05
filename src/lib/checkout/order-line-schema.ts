@@ -14,6 +14,7 @@
 import { z } from 'zod'
 import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import { MAX_LINE_QUANTITY } from '@/lib/order-line-price-floor'
+import { stripControlChars } from '@/lib/item-note'
 
 /**
  * Matches the platform write path's own cap (`MAX_ITEMS` in orders-service),
@@ -31,6 +32,17 @@ const MAX_SELECTIONS = 100
 
 const INVALID_LINE_MESSAGE =
   'We couldn’t read one of the items in your cart. Please remove it, add it again, and retry.'
+
+/**
+ * A diner's note as it is stored and printed: no control bytes (ESC/GS would
+ * reach the thermal printer as commands), single-spaced, capped; blank = none.
+ * Longer than the storefront box allows, so a typed note is never cut here.
+ */
+function cleanInstructions(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  const tidy = stripControlChars(value).replace(/\s+/g, ' ').trim().slice(0, MAX_SPECIAL_INSTRUCTIONS_LENGTH).trim()
+  return tidy === '' ? undefined : tidy
+}
 
 const id = z.string().min(1).max(MAX_ID_LENGTH)
 const optionalText = (max: number) =>
@@ -53,7 +65,7 @@ const orderLineSchema = z
       .string()
       .max(MAX_RAW_INSTRUCTIONS_LENGTH)
       .nullish()
-      .transform((value) => (value ? value.slice(0, MAX_SPECIAL_INSTRUCTIONS_LENGTH) : undefined)),
+      .transform(cleanInstructions),
     option_ids: z.array(id).max(MAX_SELECTIONS).optional(),
     addon_ids: z.array(id).max(MAX_SELECTIONS).optional(),
     addon_quantities: z.unknown().optional(),

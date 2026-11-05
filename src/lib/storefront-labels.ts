@@ -27,12 +27,16 @@ export const STOREFRONT_LABELS = {
     'menu.add': { screen: 'menu', label: 'Add button', example: 'Add', maxLength: SHORT },
     'menu.sold_out': { screen: 'menu', label: 'Sold out', example: 'Sold out', maxLength: SHORT },
     'menu.unavailable': { screen: 'menu', label: 'Unavailable', example: 'Unavailable', maxLength: SHORT },
+    // `{count}` becomes the number (fillLabelCount).
+    'menu.only_left': { screen: 'menu', label: 'Only a few left ({count} = how many)', example: 'Only {count} left', maxLength: SHORT },
     'menu.search_placeholder': { screen: 'menu', label: 'Search box hint', example: 'Search the menu…', maxLength: MEDIUM },
     'menu.no_results': { screen: 'menu', label: 'Nothing found', example: 'No items found', maxLength: MEDIUM },
     'item.sale': { screen: 'item', label: 'Sale badge', example: 'Sale', maxLength: SHORT },
     'item.related_title': { screen: 'item', label: '"You might also like" title', example: 'You might also like', maxLength: MEDIUM },
     'item.unavailable': { screen: 'item', label: 'Unavailable notice', example: 'This item is currently unavailable.', maxLength: LONG },
     'item.pickup_date': { screen: 'item', label: 'Pickup date title', example: 'Choose a pickup date', maxLength: MEDIUM },
+    'item.note_title': { screen: 'item', label: 'Kitchen note title', example: 'Note for the kitchen', maxLength: MEDIUM },
+    'item.note_placeholder': { screen: 'item', label: 'Kitchen note hint', example: 'e.g. no onions, less ice', maxLength: MEDIUM },
     'item.added_title': { screen: 'item', label: 'After adding — title', example: 'Added to your order', maxLength: MEDIUM },
     'item.added_pairings': { screen: 'item', label: 'After adding — suggestions', example: 'Goes well with it', maxLength: MEDIUM },
     'item.view_cart': { screen: 'item', label: 'View cart button', example: 'View cart', maxLength: SHORT },
@@ -111,6 +115,11 @@ export function readStorefrontLabels(tenant: Record<string, unknown> | null | un
         return trimmed && trimmed.length <= STOREFRONT_LABELS[key].maxLength ? [[key, trimmed] as const] : []
     })
     return Object.fromEntries(entries)
+}
+
+/** A label's words with every `{count}` replaced by the number; words without one stay as typed. */
+export function fillLabelCount(text: string, count: number): string {
+    return text.replaceAll('{count}', String(count))
 }
 
 /** The words typed into a label: one line, trimmed, at most the label's length. */

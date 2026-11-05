@@ -41,7 +41,7 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   // Under POS
   "pos-sales": { label: "Drawer", icon: "drawer", hint: "Open or close your shift and count the till" },
   // Reports
-  analytics: { label: "Analytics", icon: "analytics", hint: "Sales by type and payment method" },
+  analytics: { label: "Sales", icon: "analytics", hint: "Sales, orders and what sold, by day or month" },
   trends: { label: "Trends", icon: "trends", hint: "Daily revenue and order trends" },
   growth: { label: "Growth", icon: "growth", hint: "A growth plan built from your numbers" },
   customers: { label: "Guest list", icon: "customers", hint: "Every guest, and follow-up campaigns" },

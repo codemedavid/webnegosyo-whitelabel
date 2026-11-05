@@ -103,6 +103,37 @@ describe("ticket content", () => {
     expect(screen.getByText("✱ no onions")).toBeTruthy();
   });
 
+  it("boxes the item note so it reads from across the line", () => {
+    renderCard();
+    expect(screen.getByTestId("ticket-item-note-0")).toBeTruthy();
+    expect(screen.queryByTestId("ticket-item-note-1")).toBeNull();
+  });
+
+  it("shows the order's own checkout note as a NOTE banner", () => {
+    renderCard({
+      ticket: {
+        ...ticket(),
+        order: {
+          ...ticket().order,
+          customerData: { "Special Instructions ": "birthday — add a candle", table_number: "4" },
+        },
+      },
+    });
+    expect(screen.getByText("NOTE")).toBeTruthy();
+    expect(screen.getByText("birthday — add a candle")).toBeTruthy();
+  });
+
+  it("shows no banner without an order note, nor for the rider's note", () => {
+    renderCard({
+      ticket: {
+        ...ticket(),
+        order: { ...ticket().order, customerData: { delivery_rider_note: "call at the gate" } },
+      },
+    });
+    expect(screen.queryByText("NOTE")).toBeNull();
+    expect(screen.queryByText("call at the gate")).toBeNull();
+  });
+
   it("shows the cook time elapsed, not a wall clock", () => {
     renderCard();
     expect(screen.getByText("4m")).toBeTruthy();

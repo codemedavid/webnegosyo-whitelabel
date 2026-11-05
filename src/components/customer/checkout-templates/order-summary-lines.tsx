@@ -78,7 +78,7 @@ const DEFAULT_SKIN: SummarySkin = {
   itemName: 'font-medium text-sm text-[color:var(--co-text)]',
   itemMeta: 'text-xs text-[color:var(--co-muted)]',
   itemAddons: 'text-xs text-[color:var(--co-muted)] mt-0.5',
-  itemNote: 'text-xs italic text-[color:var(--co-muted)] mt-0.5',
+  itemNote: 'min-w-0 wrap-anywhere text-xs italic text-[color:var(--co-muted)] mt-0.5',
   itemPrice: 'font-semibold text-sm text-[color:var(--co-text)] flex-shrink-0',
   rowLabel: 'text-[color:var(--co-muted)]',
   rowValue: 'font-medium text-[color:var(--co-text)]',
@@ -100,7 +100,7 @@ const CLASSIC_SKIN: SummarySkin = {
   itemName: 'font-medium text-[color:var(--co-text)]',
   itemMeta: 'text-sm text-[color:var(--co-muted)]',
   itemAddons: 'text-sm text-[color:var(--co-muted)]',
-  itemNote: 'text-sm italic text-[color:var(--co-muted)]',
+  itemNote: 'min-w-0 wrap-anywhere text-sm italic text-[color:var(--co-muted)]',
   itemPrice: 'font-semibold text-[color:var(--co-text)] flex-shrink-0',
   rowLabel: 'text-[color:var(--co-muted)]',
   rowValue: 'font-semibold text-[color:var(--co-text)]',
@@ -159,7 +159,7 @@ function SummaryItem({
 
   const priceRow = (
     <div className={isClassic ? 'flex justify-between' : 'flex justify-between gap-3'}>
-      <div className={isClassic ? 'flex-1 mr-4' : 'flex-1 min-w-0'}>
+      <div className={isClassic ? 'flex-1 min-w-0 mr-4' : 'flex-1 min-w-0'}>
         <span className={skin.itemName} style={nameStyle}>{item.menu_item.name}</span>
         <ItemAnnotations item={item} className={skin.itemMeta} />
         {!isClassic && addons}

@@ -10,7 +10,7 @@
  * ever drawn as ₱0. Pure.
  */
 
-import type { ShiftSalesFetch, ShiftSalesReport } from "./shift-sales";
+import type { ShiftSalesFetch, ShiftSalesReport, ShiftSalesScope } from "./shift-sales";
 
 export type ServerSalesRead =
   /** Not asked: the store's orders are not on the platform, or a demo. */
@@ -77,7 +77,8 @@ export function resolveShiftSalesState(input: {
 
 /** What the screen was opened for: one clocked-in shift, or a past window (a named service period). */
 export type ShiftSalesTarget =
-  | { kind: "shift"; shiftId: string }
+  /** `scope` absent = the store window, as before; `cashier` = the holder's own sales. */
+  | { kind: "shift"; shiftId: string; scope?: ShiftSalesScope }
   | {
       kind: "period";
       fromMs: number;

@@ -1,6 +1,6 @@
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { SALE_NOTICE_MS, SaleCompleteBanner } from "./SaleCompleteBanner";
+import { SALE_NOTICE_MS, SaleCompleteBanner, saleReceiptLabel } from "./SaleCompleteBanner";
 import { usePosLastSaleStore } from "../../stores/pos-last-sale-store";
 
 const paid = {
@@ -63,5 +63,33 @@ describe("SaleCompleteBanner", () => {
 
     rerender(<SaleCompleteBanner onOpenOrder={jest.fn()} isSaving={() => false} />);
     expect(screen.getByText("View order")).toBeTruthy();
+  });
+
+  describe("Reprint", () => {
+    const receipt = { _id: "order-1", _creationTime: 1, customerName: "Walk-in", customerContact: "", total: 450 };
+
+    it("reprints the receipt the register just printed", () => {
+      const onReprint = jest.fn();
+      act(() => usePosLastSaleStore.getState().show({ ...paid, receipt, isReceiptPrinted: true }));
+      render(<SaleCompleteBanner onOpenOrder={jest.fn()} onReprint={onReprint} />);
+      fireEvent.press(screen.getByLabelText("Reprint receipt"));
+      expect(onReprint).toHaveBeenCalledWith(expect.objectContaining({ orderId: "order-1", receipt }));
+    });
+
+    it("says Print receipt when the register never printed it", () => {
+      act(() => usePosLastSaleStore.getState().show({ ...paid, receipt, isReceiptPrinted: false }));
+      render(<SaleCompleteBanner onOpenOrder={jest.fn()} onReprint={jest.fn()} />);
+      expect(screen.getByText("Print receipt")).toBeTruthy();
+      expect(saleReceiptLabel({ isReceiptPrinted: true })).toBe("Reprint");
+    });
+
+    it("offers nothing for a pay-later sale (no receipt) or without a receipt printer", () => {
+      act(() => usePosLastSaleStore.getState().show(paid));
+      const { rerender } = render(<SaleCompleteBanner onOpenOrder={jest.fn()} onReprint={jest.fn()} />);
+      expect(screen.queryByLabelText("Reprint receipt")).toBeNull();
+      act(() => usePosLastSaleStore.getState().show({ ...paid, receipt, isReceiptPrinted: true }));
+      rerender(<SaleCompleteBanner onOpenOrder={jest.fn()} />);
+      expect(screen.queryByLabelText("Reprint receipt")).toBeNull();
+    });
   });
 });

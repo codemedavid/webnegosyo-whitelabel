@@ -19,6 +19,7 @@ import { buildKitchenChitSegments } from "../lib/kitchen-chit";
 import { selectTicketsToAutoPrint } from "../lib/kitchen-autoprint";
 import { splitOnLinesLoaded } from "../lib/autoprint-lines";
 import { claimPrinted, usePrintedLedger } from "../lib/printed-ledger";
+import { printClaimed } from "../lib/claimed-print";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
@@ -122,9 +123,11 @@ function KitchenAutoPrintWatcher() {
       isDemo: false, // and demo mode
     });
     if (candidates.length === 0) return;
-    // Claim BEFORE printing: a chit that jams reprints from the ticket's
-    // manual button; a crash loop reprinting every new order is worse. The
-    // claim also loses, correctly, to a register that already printed it.
+    // Claim BEFORE printing: a crash loop reprinting every new order is worse
+    // than a missed chit. The claim also loses, correctly, to a register that
+    // already printed it. A chit that FAILED gives its claim back
+    // (printClaimed), so the ticket's manual button prints a first chit, not
+    // a REPRINT; this watcher does not retry it (the id is already seen).
     void claimPrinted("kitchen", candidates).then((toPrint) =>
       printTicketsSequentially(
         toPrint
@@ -150,18 +153,21 @@ async function printTicketsSequentially(
   isPrintingRef.current = true;
   try {
     for (const ticket of tickets) {
-      const outcome = await printForRole(
-        "kitchen",
-        buildKitchenChitSegments({ ...ticket.order, items: ticket.items }),
-      );
-      if (!outcome.anySuccess) {
-        const firstError = outcome.results[0]?.result.error;
-        console.warn(
-          "[KitchenAutoPrint] Chit failed for order",
-          ticket.order._id,
-          firstError ?? "no kitchen printer",
+      await printClaimed("kitchen", ticket.order._id, async () => {
+        const outcome = await printForRole(
+          "kitchen",
+          buildKitchenChitSegments({ ...ticket.order, items: ticket.items }),
         );
-      }
+        if (!outcome.anySuccess) {
+          const firstError = outcome.results[0]?.result.error;
+          console.warn(
+            "[KitchenAutoPrint] Chit failed for order",
+            ticket.order._id,
+            firstError ?? "no kitchen printer",
+          );
+        }
+        return outcome.anySuccess;
+      });
     }
   } finally {
     isPrintingRef.current = false;

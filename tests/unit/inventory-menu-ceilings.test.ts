@@ -36,7 +36,7 @@ const PIZZA_COMPONENT = {
   recipe_id: 'r-pizza', inventory_item_id: 'ing-flour', quantity: 200, unit_id: 'unit-gram',
 }
 const FLOUR = {
-  id: 'ing-flour', name: 'Flour', stock_unit_id: 'unit-gram', current_qty: 1000, is_active: true,
+  id: 'ing-flour', name: 'Flour', stock_unit_id: 'unit-gram', current_qty: 1000, is_active: true, counted_at: '2026-10-01T00:00:00Z',
 }
 
 interface WireOptions {
@@ -130,7 +130,7 @@ describe('getMenuStockCeilings', () => {
   it('uses the branch’s own shelf when a branch is named', async () => {
     wire({
       branchStock: [
-        { inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400 },
+        { inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400, counted_at: '2026-10-01T00:00:00Z' },
       ],
     })
 
@@ -142,7 +142,7 @@ describe('getMenuStockCeilings', () => {
 
 describe('getMenuStockAvailability — per-option ceilings', () => {
   // Pizza 200 g flour; "Extra cheese" option 100 g cheese; "Truffle" simple-stock option with a leftover recipe.
-  const CHEESE = { id: 'ing-cheese', name: 'Cheese', stock_unit_id: 'unit-gram', current_qty: 250, is_active: true }
+  const CHEESE = { id: 'ing-cheese', name: 'Cheese', stock_unit_id: 'unit-gram', current_qty: 250, is_active: true, counted_at: '2026-10-01T00:00:00Z' }
   const OPTION_RECIPES = [
     PIZZA_RECIPE,
     { id: 'r-cheese', target_type: 'modifier_option', menu_item_id: 'm-pizza', modifier_option_id: 'opt-cheese' },
@@ -195,7 +195,7 @@ describe('getMenuStockAvailability — per-option ceilings', () => {
   })
 
   it('treats a branch with no row for the option ingredient as unknown, not sold out', async () => {
-    wireOptions(0, [{ inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400 }])
+    wireOptions(0, [{ inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400, counted_at: '2026-10-01T00:00:00Z' }])
 
     const { options } = await getMenuStockAvailability('t1', 'branch-1')
 

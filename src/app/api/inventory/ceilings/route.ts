@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getMenuStockAvailability, type OptionStockCeilings } from '@/lib/inventory/menu-ceilings'
+import { DEFAULT_POS_STOCK_POLICY, readPosStockPolicy } from '@/lib/inventory/pos-stock-policy'
 import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
+import { readBearerToken } from '@/lib/supabase/bearer-session'
 
 /**
  * GET /api/inventory/ceilings?tenantId=…&outletId=…
@@ -28,13 +30,25 @@ import { getClientIP } from '@/lib/rate-limit'
  * a per-store allowance counted in Redis (a cold lambda must not reset it; a
  * Redis outage falls back to the per-instance count, never to no limit). The
  * allowance is far above what a diner's menu (30-second refresh) or a register
- * (one read per change of dishes in the sale) ever needs.
+ * (one read per change of dishes in the sale) ever needs. A busy shop's diners
+ * and its register share one Wi-Fi address, so a register that sends its
+ * signed-in member's Bearer token is counted per PERSON instead; a token that
+ * is not a member of this store is counted by address, like any diner.
+ * Verifying a token costs a GoTrue round trip and an app_users read, so a
+ * request carrying one is first counted by ADDRESS in its own, store-agnostic
+ * bucket (`stock-ceilings:verify:<ip>` — apart from the diners' allowance, so
+ * a busy dining room never starves the register) and only then verified.
  *
  * A failed read is never an error response. A stepper that cannot load its cap
  * falls back to uncapped — exactly how it behaved before this existed — and
  * checkout remains the authoritative refusal either way. A broken menu would be
  * a far worse outcome than an uncapped one. Callers treat any non-OK answer,
  * a 400 or 429 included, the same way.
+ *
+ * `stockPolicy` ('warn' | 'block', `tenants.pos_stock_policy`) tells the
+ * register what to do when a sale asks for more than a ceiling: warn the
+ * cashier (default) or only let a manager/owner sign-in sell past it. It is 'warn' whenever the
+ * ceilings could not be read — there is nothing to hold a sale against.
  */
 
 const querySchema = z.object({
@@ -43,6 +57,12 @@ const querySchema = z.object({
 })
 
 const RATE_LIMIT: RateLimitOptions = { limit: 120, windowSec: 60, onRedisFailure: 'instance' }
+/** Token verifications per address per minute: several registers on one Wi-Fi, each one read per change. */
+const VERIFY_RATE_LIMIT: RateLimitOptions = { limit: 600, windowSec: 60, onRedisFailure: 'instance' }
+
+function tooMany(retryAfterSec: number): NextResponse {
+  return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(retryAfterSec) } })
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const parsed = querySchema.safeParse({
@@ -55,28 +75,49 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { tenantId, outletId } = parsed.data
 
   const ip = getClientIP(request) ?? 'unknown'
-  const rate = await checkRateLimit(`stock-ceilings:${ip}:${tenantId}`, RATE_LIMIT)
-  if (!rate.allowed) {
-    return NextResponse.json(
-      { error: 'Too many requests' },
-      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
-    )
+  const hasToken = readBearerToken(request.headers.get('authorization')) !== null
+  if (hasToken) {
+    const verify = await checkRateLimit(`stock-ceilings:verify:${ip}`, VERIFY_RATE_LIMIT)
+    if (!verify.allowed) return tooMany(verify.retryAfterSec)
   }
+
+  const key = (hasToken ? await memberKey(request, tenantId) : null) ?? `stock-ceilings:${ip}:${tenantId}`
+  const rate = await checkRateLimit(key, RATE_LIMIT)
+  if (!rate.allowed) return tooMany(rate.retryAfterSec)
 
   // A ceiling is stale the moment the next order lands, so nothing may hold
   // onto one. A cached "3 left" outliving its stock is the exact failure this
   // whole feature exists to prevent.
   const headers = { 'Cache-Control': 'no-store' }
 
+  // Read alongside the graph; readPosStockPolicy never throws (warn on failure).
+  const policyRead = readPosStockPolicy(tenantId)
   try {
     const { dishes, options } = await getMenuStockAvailability(tenantId, outletId)
     return NextResponse.json(
-      { ceilings: Object.fromEntries(dishes), optionCeilings: toJsonOptionCeilings(options) },
+      {
+        ceilings: Object.fromEntries(dishes),
+        optionCeilings: toJsonOptionCeilings(options),
+        stockPolicy: await policyRead,
+      },
       { headers },
     )
   } catch (error) {
     console.error('[inventory] Ceilings read failed', tenantId, error)
-    return NextResponse.json({ ceilings: {}, optionCeilings: {} }, { headers })
+    return NextResponse.json({ ceilings: {}, optionCeilings: {}, stockPolicy: DEFAULT_POS_STOCK_POLICY }, { headers })
+  }
+}
+
+/** The per-person key when the token proves a member of this store; null = count by address. */
+async function memberKey(request: NextRequest, tenantId: string): Promise<string | null> {
+  try {
+    const { requireBearerStoreCaller } = await import('@/lib/auth/bearer-caller')
+    const caller = await requireBearerStoreCaller(request, tenantId, 'view')
+    return caller.ok ? `stock-ceilings:user:${caller.user.id}:${tenantId}` : null
+  } catch (error) {
+    // Unverifiable = anonymous: counted by address, never refused for it.
+    console.warn('[inventory] Ceilings bearer check failed', tenantId, error instanceof Error ? error.message : error)
+    return null
   }
 }
 

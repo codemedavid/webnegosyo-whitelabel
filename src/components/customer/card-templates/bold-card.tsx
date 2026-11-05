@@ -5,6 +5,7 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { LowStockBadge, UnavailableLabel } from './card-stock'
 
 interface BoldCardProps {
   item: MenuItem
@@ -101,6 +102,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
 
         {/* Content overlaid on image - bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-2.5 space-y-1.5 md:p-4 md:space-y-3">
+          <LowStockBadge branding={branding} placement="inline" />
           <div>
             <h3
               className="text-base md:text-xl font-black line-clamp-1"
@@ -146,7 +148,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
 
       {/* Large prominent CTA button */}
       <button
-        className="w-full py-2.5 md:py-4 text-sm md:text-base font-black uppercase tracking-wide transition-all"
+        className="w-full py-2.5 md:py-4 text-sm md:text-base font-black uppercase tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-40"
         style={{
           backgroundColor: branding.buttonPrimary,
           color: branding.buttonPrimaryText
@@ -171,7 +173,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
             Add to Cart
           </>
         ) : (
-          'Unavailable'
+          <UnavailableLabel />
         )}
       </button>
     </div>

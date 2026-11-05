@@ -1,11 +1,11 @@
 'use client'
 
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { LowStockBadge, UnavailableLabel } from './card-stock'
 
 interface MagazineCardProps {
     item: MenuItem
@@ -85,13 +85,14 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                 {!isOrderable && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-20">
                         <span className="text-sm font-semibold text-white/90 uppercase tracking-wider">
-                            <StoreLabel name="menu.unavailable" fallback="Unavailable" />
+                            <UnavailableLabel />
                         </span>
                     </div>
                 )}
 
                 {/* Editorial content overlay — bottom */}
                 <div className="absolute bottom-0 left-0 right-0 p-3 space-y-1.5 md:p-5 md:space-y-3 z-10">
+                    <LowStockBadge branding={branding} placement="inline" />
                     {/* Category-like label */}
                     {item.variations.length > 0 && (
                         <span
@@ -127,7 +128,7 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                         </div>
 
                         <button
-                            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+                            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
                             style={{
                                 backgroundColor: branding.buttonPrimary,
                                 color: branding.buttonPrimaryText,

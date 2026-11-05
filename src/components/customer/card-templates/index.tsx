@@ -10,7 +10,8 @@ import { memo } from 'react'
 import { CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE, type CardTemplate } from '@/lib/card-templates'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
-import { isMenuItemOrderable } from '@/lib/menu-item-availability'
+import { isMenuItemOrderable, resolveMenuCardStock } from '@/lib/menu-item-availability'
+import { CardStockProvider, useMenuItemCeiling } from './card-stock'
 import { pickDesignId } from '@/lib/design-ids'
 
 // Minimal inline skeleton used as the loading fallback for all card templates.
@@ -152,12 +153,20 @@ export function getCardTemplateComponent(template: CardTemplate = DEFAULT_CARD_T
  * `isMenuItemOrderable` is the single home for that rule, and thirteen copies
  * of an `is_available` field read is exactly how a template drifts out of step
  * with it — reading an unset flag as out of stock, and missing every refusal
- * the helper makes for any other reason.
+ * the helper makes for any other reason. Stock ("Sold out" / "Only N left")
+ * is resolved here too and reaches every design through `CardStockProvider`.
  */
 export const CardTemplateRenderer = memo(function CardTemplateRenderer({
   template = 'classic',
   ...props
 }: CardTemplateProps & { template?: CardTemplate }) {
   const CardComponent = getCardTemplateComponent(template)
-  return <CardComponent {...props} isOrderable={isMenuItemOrderable(props.item)} />
+  // Stock joins the same decision: a dish the kitchen can make 0 times is not
+  // orderable even while it is switched on (card-stock.tsx).
+  const stock = resolveMenuCardStock(isMenuItemOrderable(props.item), useMenuItemCeiling(props.item.id))
+  return (
+    <CardStockProvider stock={stock}>
+      <CardComponent {...props} isOrderable={stock.isOrderable} />
+    </CardStockProvider>
+  )
 })

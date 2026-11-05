@@ -12,7 +12,7 @@
 
 import { cache } from 'react'
 import { createPublicClient } from '@/lib/supabase/public'
-import { createCachedRead, doNotCache, storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
+import { createCachedRead, doNotCache, projectionCacheKey, storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
 import { omitTenantSecrets } from '@/lib/tenant-public'
 import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
 import { MENU_ITEM_DETAIL_SELECT } from '@/lib/queries/menu-item-select'
@@ -79,6 +79,8 @@ export interface SelectedTenant {
     pairing_rules_enabled?: boolean
     /** Per-date presell stock (see src/lib/presell). */
     presell_enabled?: boolean
+    /** Ingredient stock tracking; off = no stock ceilings are read. */
+    inventory_enabled?: boolean | null
     /** Unified modifier groups (multi-select with min/max picks) on the storefront. */
     modifier_groups_enabled?: boolean
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)
@@ -109,7 +111,7 @@ export interface SelectedTenant {
 
 /** Minimal tenant data for page rendering. Cached across requests by slug. */
 export const getCachedTenantBySlug = cache(
-    createCachedRead(['product-detail-tenant'], async (slug: string) => {
+    createCachedRead(['product-detail-tenant', projectionCacheKey(PRODUCT_DETAIL_TENANT_SELECT)], async (slug: string) => {
         const { tenant, error, isDegraded } = await fetchActiveTenantBySlug<SelectedTenant>(
             asTenantQueryClient(createPublicClient()),
             slug,

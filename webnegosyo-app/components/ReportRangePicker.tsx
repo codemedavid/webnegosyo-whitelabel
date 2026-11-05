@@ -100,8 +100,14 @@ export function ReportRangePicker({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title}>Pick dates</Text>
-            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-              <Text style={styles.close}>Done</Text>
+            {/* "Cancel", not "Done": it closes WITHOUT applying, next to Apply. */}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
+              <Text style={styles.close}>Cancel</Text>
             </TouchableOpacity>
           </View>
 
@@ -225,6 +231,7 @@ const styles = StyleSheet.create({
   },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { ...typography.heading, color: colors.textPrimary },
+  closeButton: { minHeight: 44, minWidth: 44, justifyContent: "center", alignItems: "flex-end" },
   close: { ...typography.body, color: colors.primary, fontWeight: "600" },
   modeRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg },
   modePill: {

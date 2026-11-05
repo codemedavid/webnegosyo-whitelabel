@@ -2,9 +2,14 @@
  * What happens after stock moves: raising low-stock alerts and taking items off
  * the menu when an ingredient runs out.
  *
- * Both behaviours read the same crossings, so they share one entry point rather
- * than each re-deriving which ingredients changed level. The decisions are pure
- * (`low-stock.ts`, `auto-86.ts`); this module only persists them.
+ * They answer different questions, so they read differently. An ALERT is news:
+ * only the movement that carries an ingredient across a line raises one
+ * (`low-stock.ts`), or a low ingredient would alert once per sale. AUTO-86 is
+ * a state: after every movement, any dish that cannot be made is off
+ * (`auto-86-service.ts`, decided on the shelf as it stands — the crossing-only
+ * version never re-hid a dish turned back on over an empty shelf). The
+ * decisions are pure (`low-stock.ts`, `auto-86.ts`); this module persists the
+ * alerts and hands auto-86 the ingredients that moved.
  *
  * Both are per-tenant opt-in and default off. Auto-86 especially: silently
  * hiding a bestseller is a worse failure than selling one portion short, so a
@@ -16,14 +21,14 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { InventoryItem, Recipe, RecipeComponent } from '@/types/database'
+import type { InventoryItem } from '@/types/database'
 import {
   detectStockCrossings,
   evaluateStockLevel,
   type StockCrossing,
   type StockLevelInput,
 } from '@/lib/inventory/low-stock'
-import { resolveMenuItemsToDisable, resolveMenuItemsToReEnable } from '@/lib/inventory/auto-86'
+import { reconcileAuto86 } from '@/lib/inventory/auto-86-service'
 import { branchLevelInputs } from '@/lib/inventory/branch-stock-levels'
 import { indexStockRows, type BranchStockIndex, type BranchStockRow } from '@/lib/inventory/stock-location'
 
@@ -61,13 +66,19 @@ async function readBranchStock(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,
   itemIds: readonly string[],
-): Promise<BranchStockIndex> {
-  const { data } = await supabase
+): Promise<BranchStockIndex | null> {
+  const { data, error } = await supabase
     .from('inventory_stock')
     .select('inventory_item_id, outlet_id, current_qty, reorder_level')
     .eq('tenant_id', tenantId)
     .in('inventory_item_id', itemIds)
 
+  // Unreadable is NOT an empty shelf: read as zero, every ingredient in the
+  // batch would "cross" to out and alert over stock nobody looked at.
+  if (error) {
+    console.error('[inventory] Branch stock read failed; skipping branch alerts', tenantId, error.message)
+    return null
+  }
   return indexStockRows((data ?? []) as unknown as BranchStockRow[])
 }
 
@@ -85,6 +96,14 @@ const NOTHING_HAPPENED: StockLevelChangeResult = {
   menuItemsReEnabled: [],
 }
 
+/** Postgres unique_violation: a concurrent writer raised the same open alert. */
+const UNIQUE_VIOLATION = '23505'
+
+/** Alert writes never fail an order; they are logged where Vercel can see them. */
+function logAlertWriteFailure(step: string, tenantId: string, error: { message: string; code?: string }): void {
+  console.error(`[inventory] Stock alert ${step} failed`, tenantId, error.code ?? '', error.message)
+}
+
 interface TenantAlertFlags {
   lowStockAlertsEnabled: boolean
   auto86Enabled: boolean
@@ -95,11 +114,12 @@ async function readTenantFlags(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,
 ): Promise<TenantAlertFlags> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('tenants')
     .select('low_stock_alerts_enabled, auto_86_enabled')
     .eq('id', tenantId)
     .single()
+  if (error) console.error('[inventory] Tenant alert flags unreadable; treating both as off', tenantId, error.message)
 
   const row = (data ?? {}) as { low_stock_alerts_enabled?: boolean; auto_86_enabled?: boolean }
   return {
@@ -131,33 +151,6 @@ function resolveRecoveredIds(
 }
 
 /**
- * Ingredients this batch pushed back above empty.
- *
- * Deliberately a different question from `resolveRecoveredIds`, because the two
- * answers serve opposite decisions. Availability asks "can this be made?" and
- * auto-86 only ever fires on `out`, so anything above empty can be cooked and
- * the dish belongs back on the menu. The alert asks "should more be ordered?",
- * which a delivery landing below the reorder level has not answered.
- *
- * Gating both on `ok` was the bug: a partial delivery returned the flour and
- * left the dish hidden, with the banner saying only "low".
- */
-function resolveRestockedIds(
-  items: readonly StockLevelInput[],
-  deltas: ReadonlyMap<string, number>,
-): string[] {
-  const restocked: string[] = []
-  for (const item of items) {
-    const delta = deltas.get(item.id)
-    if (delta === undefined) continue
-    if (evaluateStockLevel(item) !== 'out') continue
-    const after = { current_qty: item.current_qty + delta, reorder_level: item.reorder_level }
-    if (evaluateStockLevel(after) !== 'out') restocked.push(item.id)
-  }
-  return restocked
-}
-
-/**
  * The branch shelf as it stood BEFORE this batch.
  *
  * Everything downstream takes pre-movement figures plus the deltas just
@@ -177,20 +170,6 @@ function rewindToPreMovement<T extends StockLevelInput>(
     ...item,
     current_qty: item.current_qty - (deltas.get(item.id) ?? 0),
   }))
-}
-
-/** On-hand quantities after this batch, for the ingredients it moved. */
-function postMovementQty(
-  items: readonly StockLevelInput[],
-  deltas: ReadonlyMap<string, number>,
-): Map<string, number> {
-  const quantities = new Map<string, number>()
-  for (const item of items) {
-    const delta = deltas.get(item.id)
-    if (delta === undefined) continue
-    quantities.set(item.id, item.current_qty + delta)
-  }
-  return quantities
 }
 
 interface OpenAlertRow {
@@ -237,15 +216,21 @@ async function escalateOpenAlerts(
     idsByQuantity.set(quantity, [...(idsByQuantity.get(quantity) ?? []), row.id])
   }
 
+  let escalated = 0
   for (const [quantity, ids] of idsByQuantity) {
-    await supabase
+    const { error } = await supabase
       .from('stock_alerts')
       .update({ level: 'out', quantity } as never)
       .eq('tenant_id', tenantId)
       .in('id', ids)
       .is('resolved_at', null)
+    if (error) {
+      logAlertWriteFailure('escalate', tenantId, error)
+      continue
+    }
+    escalated += ids.length
   }
-  return targets.length
+  return escalated
 }
 
 async function raiseAlerts(
@@ -260,7 +245,7 @@ async function raiseAlerts(
   // cycle re-alerts for something the merchant already knows about — and
   // without the branch in the key, North's open alert would suppress South's,
   // which is the blindness branch-aware alerting exists to remove.
-  const { data: openRows } = await scopeToOutlet(
+  const { data: openRows, error: openError } = await scopeToOutlet(
     supabase
       .from('stock_alerts')
       .select('id, inventory_item_id, level, outlet_id')
@@ -272,6 +257,12 @@ async function raiseAlerts(
       ),
     outletId,
   )
+  // Without the open rows the dedup guard is blind: raising now would stack a
+  // second alert (and a second push) on one the merchant already has.
+  if (openError) {
+    logAlertWriteFailure('read open alerts', tenantId, openError)
+    return 0
+  }
 
   const open = (openRows ?? []) as unknown as OpenAlertRow[]
   const alreadyOpen = new Set(open.map((r) => r.inventory_item_id))
@@ -297,8 +288,23 @@ async function raiseAlerts(
   // now fully typed, and letting TypeScript check them is the only thing that
   // catches a row that forgot the branch — which would raise the alert against
   // the whole store instead of the one shop that is short.
-  await supabase.from('stock_alerts').insert(rows)
-  return rows.length + escalated
+  const { error } = await supabase.from('stock_alerts').insert(rows)
+  if (!error) return rows.length + escalated
+  if (error.code !== UNIQUE_VIOLATION) {
+    logAlertWriteFailure('raise', tenantId, error)
+    return escalated
+  }
+
+  // A concurrent order raised one of these first (one open alert per
+  // ingredient per branch is a unique index). The batch insert is all or
+  // nothing, so retry row by row: the others are still news.
+  let raised = 0
+  for (const row of rows) {
+    const { error: rowError } = await supabase.from('stock_alerts').insert([row])
+    if (!rowError) raised += 1
+    else if (rowError.code !== UNIQUE_VIOLATION) logAlertWriteFailure('raise', tenantId, rowError)
+  }
+  return raised + escalated
 }
 
 async function resolveAlerts(
@@ -309,7 +315,7 @@ async function resolveAlerts(
 ): Promise<number> {
   if (recoveredIds.length === 0) return 0
 
-  const { data: openRows } = await scopeToOutlet(
+  const { data: openRows, error: openError } = await scopeToOutlet(
     supabase
       .from('stock_alerts')
       .select('id, inventory_item_id')
@@ -318,13 +324,17 @@ async function resolveAlerts(
       .in('inventory_item_id', recoveredIds),
     outletId,
   )
+  if (openError) {
+    logAlertWriteFailure('read open alerts', tenantId, openError)
+    return 0
+  }
 
   const open = (openRows ?? []) as unknown as Array<{ inventory_item_id: string }>
   if (open.length === 0) return 0
 
   // Scoped for the same reason the raise is: a delivery at North must not close
   // South's alert, which is still true.
-  await scopeToOutlet(
+  const { error } = await scopeToOutlet(
     supabase
       .from('stock_alerts')
       .update({ resolved_at: new Date().toISOString() } as never)
@@ -333,6 +343,10 @@ async function resolveAlerts(
       .in('inventory_item_id', recoveredIds),
     outletId,
   )
+  if (error) {
+    logAlertWriteFailure('resolve', tenantId, error)
+    return 0
+  }
 
   return open.length
 }
@@ -367,7 +381,7 @@ async function refreshOpenAlerts(
       continue
     }
 
-    await scopeToOutlet(
+    const { error } = await scopeToOutlet(
       supabase
         .from('stock_alerts')
         .update({ level: 'low', quantity } as never)
@@ -376,142 +390,14 @@ async function refreshOpenAlerts(
         .is('resolved_at', null),
       outletId,
     )
+    if (error) logAlertWriteFailure('refresh', tenantId, error)
   }
-}
-
-/** Base recipes touched by these ingredients, with their full component lists. */
-async function loadBaseRecipes(
-  supabase: ReturnType<typeof createAdminClient>,
-  tenantId: string,
-  ingredientIds: readonly string[],
-): Promise<{ recipes: Recipe[]; components: RecipeComponent[] }> {
-  // Narrowed to the recipes that actually mention one of these ingredients, so
-  // this never loads a tenant's whole recipe book to decide about one item.
-  const { data: touchedRows } = await supabase
-    .from('recipe_components')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .in('inventory_item_id', ingredientIds)
-
-  const touched = (touchedRows ?? []) as unknown as RecipeComponent[]
-  if (touched.length === 0) return { recipes: [], components: [] }
-
-  const { data: recipeRows } = await supabase
-    .from('recipes')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .in('id', [...new Set(touched.map((c) => c.recipe_id))])
-
-  return { recipes: (recipeRows ?? []) as unknown as Recipe[], components: touched }
-}
-
-/**
- * Take off the menu every item whose base recipe needs an ingredient that just
- * ran out, stamping each one as auto-disabled.
- *
- * The stamp is what makes recovery safe: without it there is no way to tell an
- * item this system hid from one the merchant deliberately turned off, and the
- * next delivery would put the merchant's hidden item back on the menu. For the
- * same reason the update only claims items that are currently available.
- */
-async function applyAuto86(
-  supabase: ReturnType<typeof createAdminClient>,
-  tenantId: string,
-  crossings: readonly StockCrossing[],
-): Promise<string[]> {
-  const outIds = crossings.filter((c) => c.to === 'out').map((c) => c.itemId)
-  if (outIds.length === 0) return []
-
-  const { recipes, components } = await loadBaseRecipes(supabase, tenantId, outIds)
-  if (components.length === 0) return []
-
-  const menuItemIds = resolveMenuItemsToDisable(outIds, recipes, components)
-  if (menuItemIds.length === 0) return []
-
-  await supabase
-    .from('menu_items')
-    .update({ is_available: false, auto_disabled_at: new Date().toISOString() } as never)
-    .eq('tenant_id', tenantId)
-    .eq('is_available', true)
-    .in('id', menuItemIds)
-
-  return menuItemIds
-}
-
-/**
- * Put back on the menu the items this system took off, once every ingredient
- * their base recipe needs is stocked again.
- *
- * Ownership is enforced in the UPDATE itself rather than by reading first and
- * writing after: a merchant toggling availability between the two statements
- * would otherwise have their choice overwritten. What the statement actually
- * matched is what gets reported.
- */
-async function applyAuto86Recovery(
-  supabase: ReturnType<typeof createAdminClient>,
-  tenantId: string,
-  restockedIds: readonly string[],
-  postMovementQty: ReadonlyMap<string, number>,
-): Promise<string[]> {
-  if (restockedIds.length === 0) return []
-
-  const { recipes, components } = await loadBaseRecipes(supabase, tenantId, restockedIds)
-  if (components.length === 0) return []
-
-  const outOfStockIds = await resolveOutOfStockIds(
-    supabase,
-    tenantId,
-    components,
-    postMovementQty,
-  )
-
-  const menuItemIds = resolveMenuItemsToReEnable(restockedIds, recipes, components, outOfStockIds)
-  if (menuItemIds.length === 0) return []
-
-  const { data } = await supabase
-    .from('menu_items')
-    .update({ is_available: true, auto_disabled_at: null } as never)
-    .eq('tenant_id', tenantId)
-    .in('id', menuItemIds)
-    .not('auto_disabled_at', 'is', null)
-    .select('id')
-
-  return ((data ?? []) as unknown as Array<{ id: string }>).map((row) => row.id)
-}
-
-/**
- * Which of these recipes' ingredients are empty right now.
- *
- * Quantities for the ingredients that just moved come from the applied deltas,
- * not from the database: re-reading a row the ledger trigger is still updating
- * races it and reads a stale total. Everything else is read normally.
- */
-async function resolveOutOfStockIds(
-  supabase: ReturnType<typeof createAdminClient>,
-  tenantId: string,
-  components: readonly RecipeComponent[],
-  postMovementQty: ReadonlyMap<string, number>,
-): Promise<string[]> {
-  const ingredientIds = [...new Set(components.map((c) => c.inventory_item_id))]
-
-  const { data } = await supabase
-    .from('inventory_items')
-    .select('id, current_qty, reorder_level')
-    .eq('tenant_id', tenantId)
-    .in('id', ingredientIds)
-
-  const rows = (data ?? []) as unknown as Array<{ id: string; current_qty: number }>
-
-  return rows
-    .map((row) => ({ id: row.id, current_qty: postMovementQty.get(row.id) ?? row.current_qty }))
-    .filter((row) => evaluateStockLevel({ current_qty: row.current_qty, reorder_level: 0 }) === 'out')
-    .map((row) => row.id)
 }
 
 /**
  * React to a batch of stock movements: alert on ingredients that crossed a
- * line, close alerts on ingredients that recovered, and 86 what can no longer
- * be made.
+ * line, close alerts on ingredients that recovered, and 86 — or restore — what
+ * can or can't be made now.
  *
  * Never throws. This runs behind an order that is already placed and paid for —
  * a failed alert must not surface to a customer as a failed sale.
@@ -523,6 +409,9 @@ async function resolveOutOfStockIds(
  * shop ran out would hide a bestseller everywhere, which is a worse failure
  * than the blindness it would be fixing. It stays on the roll-up until
  * availability itself is per-branch.
+ *
+ * Auto-86 runs on EVERY batch for a store that has it on, crossing or not:
+ * it decides on the level (`auto-86-service.ts`).
  */
 export async function processStockLevelChanges(
   tenantId: string,
@@ -530,64 +419,61 @@ export async function processStockLevelChanges(
   deltas: ReadonlyMap<string, number>,
   outletId?: string | null,
 ): Promise<StockLevelChangeResult> {
+  if (deltas.size === 0) return NOTHING_HAPPENED
   try {
-    // The roll-up questions, which auto-86 and its recovery answer from.
-    const storeCrossings = detectStockCrossings(items, deltas)
-    const restockedIds = resolveRestockedIds(items, deltas)
-
     const supabase = createAdminClient()
-
-    // Only when a branch was actually named. A store-wide caller never touches
-    // the branch table and behaves exactly as it did before branches existed.
-    const branchItems =
-      outletId === undefined
-        ? items
-        : rewindToPreMovement(
-            branchLevelInputs(
-              items,
-              await readBranchStock(
-                supabase,
-                tenantId,
-                items.map((item) => item.id),
-              ),
-              outletId,
-            ),
-            deltas,
-          )
-
-    const crossings = detectStockCrossings(branchItems, deltas)
-    const recoveredIds = resolveRecoveredIds(branchItems, deltas)
-
-    if (
-      crossings.length === 0 &&
-      recoveredIds.length === 0 &&
-      storeCrossings.length === 0 &&
-      restockedIds.length === 0
-    ) {
-      return NOTHING_HAPPENED
-    }
-
     const flags = await readTenantFlags(supabase, tenantId)
+    if (!flags.lowStockAlertsEnabled && !flags.auto86Enabled) return NOTHING_HAPPENED
 
-    const alertsRaised = flags.lowStockAlertsEnabled
-      ? await raiseAlerts(supabase, tenantId, crossings, outletId)
-      : 0
-    const alertsResolved = flags.lowStockAlertsEnabled
-      ? await resolveAlerts(supabase, tenantId, recoveredIds, outletId)
-      : 0
-    if (flags.lowStockAlertsEnabled) {
-      await refreshOpenAlerts(supabase, tenantId, branchItems, deltas, outletId)
-    }
-    const menuItemsDisabled = flags.auto86Enabled
-      ? await applyAuto86(supabase, tenantId, storeCrossings)
-      : []
-    const menuItemsReEnabled = flags.auto86Enabled
-      ? await applyAuto86Recovery(supabase, tenantId, restockedIds, postMovementQty(items, deltas))
-      : []
+    const alerts = flags.lowStockAlertsEnabled
+      ? await processAlerts(supabase, tenantId, items, deltas, outletId)
+      : { alertsRaised: 0, alertsResolved: 0 }
+    const auto86 = flags.auto86Enabled
+      ? await runAuto86(supabase, tenantId, [...deltas.keys()])
+      : { disabled: [], reEnabled: [] }
 
-    return { alertsRaised, alertsResolved, menuItemsDisabled, menuItemsReEnabled }
+    return { ...alerts, menuItemsDisabled: auto86.disabled, menuItemsReEnabled: auto86.reEnabled }
   } catch (error) {
     console.error('[inventory] Failed to process stock level changes', tenantId, error)
     return NOTHING_HAPPENED
+  }
+}
+
+async function processAlerts(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  items: readonly InventoryItem[],
+  deltas: ReadonlyMap<string, number>,
+  outletId: AlertOutlet,
+): Promise<{ alertsRaised: number; alertsResolved: number }> {
+  // Only when a branch was actually named. A store-wide caller never touches
+  // the branch table and behaves exactly as it did before branches existed.
+  let branchItems: readonly StockLevelInput[] = items
+  if (outletId !== undefined) {
+    const branchStock = await readBranchStock(supabase, tenantId, items.map((item) => item.id))
+    if (!branchStock) return { alertsRaised: 0, alertsResolved: 0 }
+    branchItems = rewindToPreMovement(branchLevelInputs(items, branchStock, outletId), deltas)
+  }
+
+  const crossings = detectStockCrossings(branchItems, deltas)
+  const recoveredIds = resolveRecoveredIds(branchItems, deltas)
+
+  const alertsRaised = await raiseAlerts(supabase, tenantId, crossings, outletId)
+  const alertsResolved = await resolveAlerts(supabase, tenantId, recoveredIds, outletId)
+  await refreshOpenAlerts(supabase, tenantId, branchItems, deltas, outletId)
+  return { alertsRaised, alertsResolved }
+}
+
+/** Auto-86 failing must not cost the alerts (or the order): logged, reported as nothing. */
+async function runAuto86(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  ingredientIds: readonly string[],
+): Promise<{ disabled: string[]; reEnabled: string[] }> {
+  try {
+    return await reconcileAuto86(supabase, tenantId, ingredientIds)
+  } catch (error) {
+    console.error('[inventory] Auto-86 failed', tenantId, error)
+    return { disabled: [], reEnabled: [] }
   }
 }
