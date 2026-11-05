@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 
 import { formatPrice } from '@/lib/cart-utils'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
@@ -12,6 +12,7 @@ import { DesignedPage } from '@/components/page-designer/storefront/designed-pag
 import { CHECKOUT_BUILDER_BRIDGE } from './checkout-builder-theme'
 import { CheckoutBlocksProvider } from './checkout-blocks-context'
 import { CHECKOUT_LIVE_BLOCKS } from './checkout-live-blocks'
+import { checkoutStepProblem } from './checkout-step-problem'
 
 interface DesignedCheckoutProps {
   /** Already prepared for checkout (resolvePageDesign): every required block is in it. */
@@ -30,8 +31,18 @@ export function DesignedCheckout({ design, checkout }: DesignedCheckoutProps) {
   const labels = useMemo(() => readStorefrontLabels(tenant as unknown as Record<string, unknown> | null), [tenant])
   const storeName = tenant?.name ?? 'this store'
   const total = formatPrice(grandTotal)
+  // Steps ask at tap time, so they read the latest checkout without re-creating the runtime.
+  const latest = useRef(checkout)
+  latest.current = checkout
   const runtime = useMemo<PageRuntime>(
-    () => ({ page: 'checkout', state: null, tokens: { store: storeName, total }, labels, blocks: CHECKOUT_LIVE_BLOCKS }),
+    () => ({
+      page: 'checkout',
+      state: null,
+      tokens: { store: storeName, total },
+      labels,
+      blocks: CHECKOUT_LIVE_BLOCKS,
+      stepProblem: (blockIds) => checkoutStepProblem(latest.current, blockIds),
+    }),
     [storeName, total, labels],
   )
   const blocks = useMemo(() => ({ checkout }), [checkout])

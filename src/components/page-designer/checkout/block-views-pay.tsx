@@ -128,7 +128,7 @@ export function PlaceOrderView({ checkout, block }: CheckoutBlockViewProps) {
       <BlockCard isCard={cardOf(block)}>
         {/* A button that fits its words sits in the middle. */}
         {look.width === 'auto' ? <div className="flex flex-col items-center">{cta}</div> : cta}
-        {footer && <p className="mt-3 text-center text-sm text-[color:var(--co-muted)]">{footer}</p>}
+        {footer && <p data-part="muted" className="mt-3 text-center text-sm text-[color:var(--co-muted)]">{footer}</p>}
       </BlockCard>
     </BlockColors>
   )

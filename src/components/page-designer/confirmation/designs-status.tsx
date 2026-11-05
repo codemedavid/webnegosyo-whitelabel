@@ -49,14 +49,14 @@ function BannerHero({ words, showIcon }: { words: HeroWords; showIcon: boolean }
     ? 'bg-[var(--co-warning-soft)] border border-[color:var(--co-warning-border)] text-[color:var(--co-text)]'
     : 'bg-[var(--co-button)] text-[color:var(--co-accent-text)]'
   return (
-    <div className={`rounded-2xl px-6 py-8 text-center ${band}`}>
+    <div data-part="banner" className={`rounded-2xl px-6 py-8 text-center ${band}`}>
       {showIcon && (
         isFailed
-          ? <AlertTriangle aria-hidden className="mx-auto mb-3 h-12 w-12 text-[color:var(--co-warning)]" />
-          : <CheckCircle2 aria-hidden className="mx-auto mb-3 h-12 w-12 animate-[scale-in_0.4s_ease-out]" />
+          ? <AlertTriangle aria-hidden data-part="icon" className="mx-auto mb-3 h-12 w-12 text-[color:var(--co-warning)]" />
+          : <CheckCircle2 aria-hidden data-part="icon" className="mx-auto mb-3 h-12 w-12 animate-[scale-in_0.4s_ease-out]" />
       )}
-      <h1 className="mb-2 text-3xl font-bold">{words.title}</h1>
-      <p className={`text-lg ${isFailed ? 'text-[color:var(--co-muted)]' : 'opacity-90'}`}>{words.subtitle}</p>
+      <h1 data-part="title" className="mb-2 text-3xl font-bold">{words.title}</h1>
+      <p data-part="subtitle" className={`text-lg ${isFailed ? 'text-[color:var(--co-muted)]' : 'opacity-90'}`}>{words.subtitle}</p>
     </div>
   )
 }
@@ -66,10 +66,12 @@ function CardHero({ words, showIcon }: { words: HeroWords; showIcon: boolean }) 
   return (
     <div
       data-branding-scope="checkout/card"
+      data-part="card"
       className="flex items-start gap-4 rounded-2xl border border-[color:var(--co-border)] bg-[var(--co-card)] p-5 text-left shadow-sm"
     >
       {showIcon && (
         <div
+          data-part="icon"
           className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
             isFailed ? 'bg-[var(--co-warning-soft)]' : 'bg-[var(--co-accent-soft)]'
           }`}
@@ -80,8 +82,8 @@ function CardHero({ words, showIcon }: { words: HeroWords; showIcon: boolean }) 
         </div>
       )}
       <div className="min-w-0">
-        <h1 className="mb-1 text-2xl font-bold text-[color:var(--co-text)]">{words.title}</h1>
-        <p className="text-base text-[color:var(--co-muted)]">{words.subtitle}</p>
+        <h1 data-part="title" className="mb-1 text-2xl font-bold text-[color:var(--co-text)]">{words.title}</h1>
+        <p data-part="subtitle" className="text-base text-[color:var(--co-muted)]">{words.subtitle}</p>
       </div>
     </div>
   )
@@ -95,15 +97,15 @@ function CelebrationHero({ words, showIcon }: { words: HeroWords; showIcon: bool
     <div className="py-8 text-center">
       {showIcon && (
         <div className={`mx-auto mb-6 flex h-40 w-40 items-center justify-center rounded-full ${outer}`}>
-          <div className={`flex h-28 w-28 items-center justify-center rounded-full ${inner}`}>
+          <div data-part="icon" className={`flex h-28 w-28 items-center justify-center rounded-full ${inner}`}>
             {isFailed
               ? <AlertTriangle aria-hidden className="h-16 w-16 text-[color:var(--co-warning)]" />
               : <PartyPopper aria-hidden className="h-16 w-16 text-[color:var(--co-accent)] animate-[scale-in_0.4s_ease-out]" />}
           </div>
         </div>
       )}
-      <h1 className="mb-3 text-4xl font-extrabold tracking-tight text-[color:var(--co-text)]">{words.title}</h1>
-      <p className="text-lg text-[color:var(--co-muted)]">{words.subtitle}</p>
+      <h1 data-part="title" className="mb-3 text-4xl font-extrabold tracking-tight text-[color:var(--co-text)]">{words.title}</h1>
+      <p data-part="subtitle" className="text-lg text-[color:var(--co-muted)]">{words.subtitle}</p>
     </div>
   )
 }

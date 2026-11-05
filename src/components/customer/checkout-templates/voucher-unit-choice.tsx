@@ -52,7 +52,7 @@ export function VoucherUnitChoice({ voucher, lineNames, onChoose }: VoucherUnitC
           Applies to: <span className="font-medium">{appliesTo(voucher, lineNames)}</span>
         </span>
         {!isEditing && lineIds.length > 1 && (
-          <button type="button" onClick={open} className="shrink-0 font-semibold underline underline-offset-2">
+          <button type="button" onClick={open} data-part="link" className="shrink-0 font-semibold underline underline-offset-2">
             Change
           </button>
         )}

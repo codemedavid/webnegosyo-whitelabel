@@ -52,6 +52,7 @@ export function PickupQrCard({
   return (
     <section
       data-branding-scope="tracking/pickup"
+      data-part="card"
       className="border p-6 text-center shadow-sm"
       style={{
         borderRadius: 'var(--trk-radius)',
@@ -59,7 +60,7 @@ export function PickupQrCard({
         borderColor: isReady ? 'var(--trk-pickup-ready)' : 'var(--trk-pickup-border)',
       }}
     >
-      <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--trk-pickup-text)' }}>
+      <div data-part="title" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--trk-pickup-text)' }}>
         <ScanLine className="h-4 w-4" />
         {isReady ? 'Ready — show this to collect' : 'Your collection code'}
       </div>
@@ -68,10 +69,10 @@ export function PickupQrCard({
         <QRCodeSVG value={encoded} size={180} level="M" marginSize={0} />
       </div>
 
-      <p className="mt-3 text-xs font-mono tracking-widest" style={{ color: 'var(--trk-pickup-muted)' }}>
+      <p data-part="muted" className="mt-3 text-xs font-mono tracking-widest" style={{ color: 'var(--trk-pickup-muted)' }}>
         #{shortId}
       </p>
-      <p className="mt-2 text-xs" style={{ color: 'var(--trk-pickup-muted)' }}>
+      <p data-part="text" className="mt-2 text-xs" style={{ color: 'var(--trk-pickup-muted)' }}>
         {isReady
           ? 'Show this code at the counter and our staff will scan it to hand over your order.'
           : 'Keep this handy — staff will scan it when your order is ready for collection.'}

@@ -48,12 +48,12 @@ function ItemAnnotations({ item, className }: { item: CartItem; className: strin
   return (
     <>
       {item.selected_variation && (
-        <span className={className}> ({item.selected_variation.name})</span>
+        <span data-part="muted" className={className}> ({item.selected_variation.name})</span>
       )}
       {groupedVariations.length > 0 && (
-        <span className={className}> ({groupedVariations.join(', ')})</span>
+        <span data-part="muted" className={className}> ({groupedVariations.join(', ')})</span>
       )}
-      <span className={className}> x{item.quantity}</span>
+      <span data-part="muted" className={className}> x{item.quantity}</span>
     </>
   )
 }
@@ -74,21 +74,21 @@ function SummaryItem({
   nameStyle?: CSSProperties
 }) {
   const addons = item.selected_addons.length > 0 && (
-    <p className={skin.itemAddons}>Add-ons: {addonPriceList(item.selected_addons, formatPrice)}</p>
+    <p data-part="muted" className={skin.itemAddons}>Add-ons: {addonPriceList(item.selected_addons, formatPrice)}</p>
   )
   const note = item.special_instructions && (
-    <p className={skin.itemNote}>Note: {item.special_instructions}</p>
+    <p data-part="muted" className={skin.itemNote}>Note: {item.special_instructions}</p>
   )
 
   const priceRow = (
     <div className={isClassic ? 'flex justify-between' : 'flex justify-between gap-3'}>
       <div className={isClassic ? 'flex-1 min-w-0 mr-4' : 'flex-1 min-w-0'}>
-        <span className={skin.itemName} style={nameStyle}>{item.menu_item.name}</span>
+        <span data-part="text" className={skin.itemName} style={nameStyle}>{item.menu_item.name}</span>
         <ItemAnnotations item={item} className={skin.itemMeta} />
         {!isClassic && addons}
         {!isClassic && note}
       </div>
-      <span className={skin.itemPrice}>{formatPrice(item.subtotal)}</span>
+      <span data-part="price" className={skin.itemPrice}>{formatPrice(item.subtotal)}</span>
     </div>
   )
 
@@ -121,8 +121,8 @@ function SummaryRow({
 }) {
   return (
     <div className="flex justify-between text-sm">
-      <span className={skin.rowLabel} style={labelStyle}>{label}</span>
-      <span className={valueClassName ?? skin.rowValue} style={valueStyle}>{value}</span>
+      <span data-part="text" className={skin.rowLabel} style={labelStyle}>{label}</span>
+      <span data-part="price" className={valueClassName ?? skin.rowValue} style={valueStyle}>{value}</span>
     </div>
   )
 }
@@ -213,7 +213,7 @@ export function OrderSummaryLines({
               isFetchingDeliveryFee ? (
                 <span className="animate-pulse" style={{ color: accent }}>Calculating...</span>
               ) : feeMatches && checkout.isDeliveryFeeWaived ? (
-                <span className="font-semibold" style={{ color: accent }}>Free</span>
+                <span data-part="badge" className="font-semibold" style={{ color: accent }}>Free</span>
               ) : feeMatches ? (
                 formatPrice(deliveryFee!)
               ) : (
@@ -227,7 +227,7 @@ export function OrderSummaryLines({
 
       {/* The free-delivery offer, while the cart is still short of it. */}
       {freeDeliveryRemaining !== null && freeDeliveryRemaining > 0 && (
-        <p className="text-xs" style={{ color: mutedText }}>
+        <p data-part="muted" className="text-xs" style={{ color: mutedText }}>
           Add <span className="font-semibold" style={{ color: accent }}>{formatPrice(freeDeliveryRemaining)}</span>
           {' '}more for free delivery.
         </p>
@@ -237,9 +237,10 @@ export function OrderSummaryLines({
           "—" and no reason their address was turned down. */}
       {showDeliveryError && (
         <div>
-          <p className={skin.errorText} role="alert">{deliveryFeeError}</p>
+          <p data-part="error" className={skin.errorText} role="alert">{deliveryFeeError}</p>
           <button
             type="button"
+            data-part="link"
             className="mt-2 min-h-11 text-sm font-medium underline underline-offset-4"
             style={{ color: accent }}
             onClick={checkout.retryDeliveryQuote}
@@ -307,8 +308,8 @@ export function OrderSummaryLines({
       {skin.totalLeadingBreak}
 
       <div className={skin.totalRow}>
-        <span className={skin.totalLabel} style={{ color: text }}>{labels.total ?? <StoreLabel name="checkout.total" fallback="Total" />}</span>
-        <span className={skin.totalValue} style={{ color: totalTone === 'text' ? text : accent }}>
+        <span data-part="total" className={skin.totalLabel} style={{ color: text }}>{labels.total ?? <StoreLabel name="checkout.total" fallback="Total" />}</span>
+        <span data-part="total" className={skin.totalValue} style={{ color: totalTone === 'text' ? text : accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>
       </div>

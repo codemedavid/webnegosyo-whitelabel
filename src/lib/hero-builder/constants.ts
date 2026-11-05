@@ -41,6 +41,10 @@ export const LIMITS = {
   embedMaxHeight: 4_000,
   /** A page block option value (image URLs are the longest; designs and colours are short). */
   blockOptionChars: 600,
+  /** Settings + part styles one page block may store. */
+  blockOptions: 200,
+  /** Whole-page part styles (Page Designer). */
+  pageParts: 400,
 } as const
 
 export const THEME_COLOR_KEYS: readonly ThemeColorKey[] = [
@@ -95,6 +99,7 @@ export const FONT_OPTIONS: Record<string, FontOption> = {
     css: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
     google: null,
   },
+  mono: { label: 'Typewriter (mono)', css: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', google: null },
   inter: { label: 'Inter', css: "'Inter', sans-serif", google: { family: 'Inter', weights: [400, 500, 600, 700, 800] } },
   poppins: { label: 'Poppins', css: "'Poppins', sans-serif", google: { family: 'Poppins', weights: [400, 500, 600, 700, 800] } },
   montserrat: { label: 'Montserrat', css: "'Montserrat', sans-serif", google: { family: 'Montserrat', weights: [400, 500, 600, 700, 800] } },

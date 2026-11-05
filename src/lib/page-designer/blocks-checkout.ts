@@ -76,6 +76,13 @@ const ORDER_TYPE_OPTIONS: readonly BlockOption[] = [
   SHOW_SUBTITLE,
 ]
 
+/**
+ * The parts a choice block marks (see parts.ts) beyond the shared card and
+ * wording: its options (with the chosen and hovered states), their names and
+ * details, icons, the chosen tick and small chips.
+ */
+const CHOICE_PARTS = ['option', 'option_on', 'option_hover', 'option_label', 'option_desc', 'icon', 'icon_on', 'tick', 'badge'] as const
+
 export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
   {
     id: 'checkout.header',
@@ -89,6 +96,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       subtitle('Complete your order', 90),
     ],
     options: HEADER_OPTIONS,
+    parts: ['banner', 'button_alt'],
   },
   {
     id: 'checkout.store_closed',
@@ -103,6 +111,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       { key: 'prelaunch_detail', label: 'Before launch, details', fallback: "This store isn't taking orders yet", maxLength: 120 },
     ],
     options: STORE_CLOSED_OPTIONS,
+    parts: ['icon'],
   },
   {
     id: 'checkout.order_type',
@@ -116,6 +125,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       subtitle('Choose a fulfillment method.'),
     ],
     options: ORDER_TYPE_OPTIONS,
+    parts: CHOICE_PARTS,
   },
   {
     id: 'checkout.schedule',
@@ -133,6 +143,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       { key: 'later_required', label: '"Later" details when it must be scheduled', fallback: 'Advance order required', maxLength: 60 },
     ],
     options: SCHEDULE_OPTIONS,
+    parts: [...CHOICE_PARTS.filter((part) => part !== 'badge'), 'label', 'banner'],
   },
   {
     id: 'checkout.customer',
@@ -146,6 +157,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       subtitle('Please provide the following details'),
     ],
     options: CUSTOMER_OPTIONS,
+    parts: ['field', 'label', 'error'],
   },
   {
     id: 'checkout.loyalty',
@@ -174,6 +186,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       { key: 'total', label: 'Total', fallback: 'Total', labelKey: 'checkout.total', maxLength: 24 },
     ],
     options: SUMMARY_OPTIONS,
+    parts: ['price', 'divider', 'total', 'badge', 'error', 'link'],
   },
   {
     id: 'checkout.voucher',
@@ -184,6 +197,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     required: true,
     texts: [{ key: 'label', label: 'Prompt', fallback: 'Have a voucher?', labelKey: 'checkout.voucher', maxLength: 48 }],
     options: VOUCHER_OPTIONS,
+    parts: ['field', 'label', 'button_alt', 'price', 'error', 'link'],
   },
   {
     id: 'checkout.gov_discount',
@@ -194,6 +208,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     required: true,
     texts: [],
     options: GOV_DISCOUNT_OPTIONS,
+    parts: ['option', 'option_on', 'option_hover', 'field', 'label', 'error', 'button', 'button_alt', 'link'],
   },
   {
     id: 'checkout.payment',
@@ -207,6 +222,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       subtitle('Choose how you would like to pay'),
     ],
     options: PAYMENT_OPTIONS,
+    parts: [...CHOICE_PARTS.filter((part) => part !== 'option_desc'), 'link'],
   },
   {
     id: 'checkout.sms_opt_in',
@@ -239,6 +255,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       { key: 'processing', label: 'While sending', fallback: 'Processing Order...', maxLength: 40 },
     ],
     options: PLACE_ORDER_OPTIONS,
+    parts: ['button', 'error'],
   },
 ]
 

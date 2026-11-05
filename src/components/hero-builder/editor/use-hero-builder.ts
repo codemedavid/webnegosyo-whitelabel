@@ -65,6 +65,8 @@ export interface HeroBuilderApi {
   editAnimation: (id: string, animation: Animation | undefined) => void
   editSectionMeta: (id: string, meta: { label?: string; anchor?: string }, key?: string) => void
   editTheme: (patch: Partial<Theme>, key?: string) => void
+  /** Any immutable change to the whole design (page settings, many blocks at once). `key` coalesces undo. */
+  editDesign: (update: (design: HeroDesignV5) => HeroDesignV5, key?: string) => void
   addWidget: (kind: WidgetKind, target?: { columnId: string; index: number }) => void
   /** Insert a ready-made widget (a page block) at the target or after the selection. */
   addPrebuilt: (widget: Widget, target?: { columnId: string; index: number }) => void
@@ -126,6 +128,11 @@ export function useHeroBuilder(initialDesign: HeroDesignV5, policy: NodePolicy =
   )
   const editTheme = useCallback(
     (patch: Partial<Theme>, key?: string) => apply((d) => updateTheme(d, patch), { key: key ? `theme:${key}` : undefined }),
+    [apply],
+  )
+
+  const editDesign = useCallback(
+    (update: (design: HeroDesignV5) => HeroDesignV5, key?: string) => apply(update, { key: key ? `design:${key}` : undefined }),
     [apply],
   )
 
@@ -226,12 +233,12 @@ export function useHeroBuilder(initialDesign: HeroDesignV5, policy: NodePolicy =
       canUndo: state.past.length > 0,
       canRedo: state.future.length > 0,
       select, setDevice, undo, redo, replaceDesign, editStyle, resetOverrides, editContent, editAnimation,
-      editSectionMeta, editTheme, addWidget, addPrebuilt, editShowWhen, canRemove, canDuplicate, addSection, setColumns,
+      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, canRemove, canDuplicate, addSection, setColumns,
       remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
     }),
     [
       state, select, setDevice, undo, redo, replaceDesign, editStyle, resetOverrides, editContent, editAnimation,
-      editSectionMeta, editTheme, addWidget, addPrebuilt, editShowWhen, canRemove, canDuplicate, addSection, setColumns,
+      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, canRemove, canDuplicate, addSection, setColumns,
       remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
     ],
   )

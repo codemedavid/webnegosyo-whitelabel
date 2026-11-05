@@ -66,12 +66,12 @@ function ItemDetails({ item, copy }: { item: CartItem; copy: SummaryCopy }) {
   return (
     <>
       {item.selected_addons.length > 0 && (
-        <p className="text-xs text-[color:var(--co-muted)]">
+        <p data-part="muted" className="text-xs text-[color:var(--co-muted)]">
           {copy.addons ?? 'Add-ons'}: {addonPriceList(item.selected_addons, formatPrice)}
         </p>
       )}
       {item.special_instructions && (
-        <p className="min-w-0 wrap-anywhere text-xs italic text-[color:var(--co-muted)]">
+        <p data-part="muted" className="min-w-0 wrap-anywhere text-xs italic text-[color:var(--co-muted)]">
           {copy.note ?? 'Note'}: {item.special_instructions}
         </p>
       )}
@@ -84,8 +84,8 @@ function MoneyRows({ lines }: { lines: MoneyLine[] }) {
     <>
       {lines.map((line) => (
         <div key={line.key} className="flex justify-between gap-4 text-sm">
-          <span className="text-[color:var(--co-muted)]">{line.label}</span>
-          <span className={`font-medium ${line.isDiscount ? 'text-[color:var(--co-success)]' : ''}`}>{line.amount}</span>
+          <span data-part="muted" className="text-[color:var(--co-muted)]">{line.label}</span>
+          <span data-part="price" className={`font-medium ${line.isDiscount ? 'text-[color:var(--co-success)]' : ''}`}>{line.amount}</span>
         </div>
       ))}
     </>
@@ -94,7 +94,7 @@ function MoneyRows({ lines }: { lines: MoneyLine[] }) {
 
 function Scheduled({ label, copy }: { label: string; copy: SummaryCopy }) {
   return (
-    <p className="inline-flex items-center gap-1.5 text-xs font-medium text-[color:var(--co-accent)]">
+    <p data-part="badge" className="inline-flex items-center gap-1.5 text-xs font-medium text-[color:var(--co-accent)]">
       <CalendarClock aria-hidden className="h-3.5 w-3.5" />
       {copy.scheduled ?? 'Scheduled for'} {label}
     </p>
@@ -106,33 +106,33 @@ const DASHED = 'border-t border-dashed border-[color:var(--co-border)]'
 function ReceiptSummary({ b, copy, orderTypeName }: { b: ConfirmationBlocksValue; copy: SummaryCopy; orderTypeName: string | null }) {
   const { order } = b
   return (
-    <div data-branding-scope="checkout/card" className="rounded-md bg-[var(--co-card)] px-5 py-6 font-mono shadow-sm border border-[color:var(--co-border)]">
+    <div data-branding-scope="checkout/card" data-part="card" className="rounded-md bg-[var(--co-card)] px-5 py-6 font-mono shadow-sm border border-[color:var(--co-border)]">
       <div className="text-center space-y-1">
-        <h2 className="text-base font-bold uppercase tracking-widest text-[color:var(--co-text)]">{copy.title ?? 'Order Summary'}</h2>
-        {orderTypeName && <p className="text-sm text-[color:var(--co-muted)]">{orderTypeName}</p>}
+        <h2 data-part="title" className="text-base font-bold uppercase tracking-widest text-[color:var(--co-text)]">{copy.title ?? 'Order Summary'}</h2>
+        {orderTypeName && <p data-part="subtitle" className="text-sm text-[color:var(--co-muted)]">{orderTypeName}</p>}
         {order.scheduledForLabel && <Scheduled label={order.scheduledForLabel} copy={copy} />}
       </div>
-      <div className={`my-4 ${DASHED}`} />
+      <div data-part="divider" className={`my-4 ${DASHED}`} />
       <ul className="space-y-3">
         {order.items.map((item) => {
           const choices = itemChoices(item)
           return (
             <li key={item.id}>
               <div className="flex justify-between gap-4 text-sm">
-                <span className="min-w-0 font-medium">
+                <span data-part="text" className="min-w-0 font-medium">
                   {item.quantity}x {item.menu_item.name}
-                  {choices && <span className="font-normal text-[color:var(--co-muted)]"> ({choices})</span>}
+                  {choices && <span data-part="muted" className="font-normal text-[color:var(--co-muted)]"> ({choices})</span>}
                 </span>
-                <span className="shrink-0 font-semibold">{formatPrice(item.subtotal)}</span>
+                <span data-part="price" className="shrink-0 font-semibold">{formatPrice(item.subtotal)}</span>
               </div>
               <div className="pl-4"><ItemDetails item={item} copy={copy} /></div>
             </li>
           )
         })}
       </ul>
-      <div className={`my-4 ${DASHED}`} />
+      <div data-part="divider" className={`my-4 ${DASHED}`} />
       <div className="space-y-2"><MoneyRows lines={moneyLines(b, copy)} /></div>
-      <div className={`my-4 ${DASHED}`} />
+      <div data-part="divider" className={`my-4 ${DASHED}`} />
       <TotalRow label={copy.total ?? 'Total'} amount={formatPrice(b.grandTotal)} className="text-lg font-bold uppercase" />
     </div>
   )
@@ -140,9 +140,9 @@ function ReceiptSummary({ b, copy, orderTypeName }: { b: ConfirmationBlocksValue
 
 function TotalRow({ label, amount, className }: { label: ReactNode; amount: string; className: string }) {
   return (
-    <div className={`flex justify-between gap-4 ${className}`}>
+    <div data-part="total" className={`flex justify-between gap-4 ${className}`}>
       <span>{label}</span>
-      <span className="text-[color:var(--co-accent)]">{amount}</span>
+      <span data-part="total" className="text-[color:var(--co-accent)]">{amount}</span>
     </div>
   )
 }
@@ -150,10 +150,10 @@ function TotalRow({ label, amount, className }: { label: ReactNode; amount: stri
 function CompactSummary({ b, copy, orderTypeName }: { b: ConfirmationBlocksValue; copy: SummaryCopy; orderTypeName: string | null }) {
   const { order } = b
   return (
-    <div data-branding-scope="checkout/card" className="rounded-xl bg-[var(--co-card)] px-4 py-3 border border-[color:var(--co-border)]">
+    <div data-branding-scope="checkout/card" data-part="card" className="rounded-xl bg-[var(--co-card)] px-4 py-3 border border-[color:var(--co-border)]">
       <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
-        <h2 className="text-base font-bold text-[color:var(--co-text)]">{copy.title ?? 'Order Summary'}</h2>
-        {orderTypeName && <span className="text-sm text-[color:var(--co-muted)]">· {orderTypeName}</span>}
+        <h2 data-part="title" className="text-base font-bold text-[color:var(--co-text)]">{copy.title ?? 'Order Summary'}</h2>
+        {orderTypeName && <span data-part="subtitle" className="text-sm text-[color:var(--co-muted)]">· {orderTypeName}</span>}
       </div>
       {order.scheduledForLabel && <div className="mb-2"><Scheduled label={order.scheduledForLabel} copy={copy} /></div>}
       <ul className="space-y-1.5">
@@ -162,18 +162,18 @@ function CompactSummary({ b, copy, orderTypeName }: { b: ConfirmationBlocksValue
           return (
             <li key={item.id} className="text-sm">
               <div className="flex justify-between gap-3">
-                <span className="min-w-0">
+                <span data-part="text" className="min-w-0">
                   <span className="text-[color:var(--co-muted)]">{item.quantity}×</span> {item.menu_item.name}
-                  {choices && <span className="text-xs text-[color:var(--co-muted)]"> ({choices})</span>}
+                  {choices && <span data-part="muted" className="text-xs text-[color:var(--co-muted)]"> ({choices})</span>}
                 </span>
-                <span className="shrink-0 font-medium">{formatPrice(item.subtotal)}</span>
+                <span data-part="price" className="shrink-0 font-medium">{formatPrice(item.subtotal)}</span>
               </div>
               <ItemDetails item={item} copy={copy} />
             </li>
           )
         })}
       </ul>
-      <div className="my-2 border-t border-[color:var(--co-border)]" />
+      <div data-part="divider" className="my-2 border-t border-[color:var(--co-border)]" />
       <div className="space-y-1"><MoneyRows lines={moneyLines(b, copy)} /></div>
       <TotalRow label={copy.total ?? 'Total'} amount={formatPrice(b.grandTotal)} className="mt-2 text-base font-bold" />
     </div>

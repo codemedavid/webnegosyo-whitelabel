@@ -147,6 +147,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'live', label: 'Live badge', fallback: 'Live', maxLength: 16 },
     ],
     options: HEADER_OPTIONS,
+    parts: ['banner', 'icon', 'badge'],
   },
   {
     id: 'tracking.status',
@@ -164,6 +165,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'cancelled_detail', label: 'Cancelled — detail', fallback: 'This order has been cancelled.', labelKey: 'tracking.cancelled_detail', maxLength: 90, multiline: true },
     ],
     options: STATUS_OPTIONS,
+    parts: ['banner', 'icon', 'badge', 'step', 'step_on', 'step_done'],
   },
   {
     id: 'tracking.ring_me',
@@ -178,6 +180,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'armed_hint', label: 'Hint after tapping', fallback: 'Keep this page open and your volume up.', maxLength: 90 },
     ],
     options: RING_OPTIONS,
+    parts: ['button', 'icon'],
   },
   {
     id: 'tracking.loyalty',
@@ -188,6 +191,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [],
     options: LOYALTY_OPTIONS,
+    parts: ['banner', 'icon', 'field', 'label', 'error', 'button', 'link', 'badge'],
   },
   {
     id: 'tracking.pickup_qr',
@@ -198,6 +202,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [],
     options: PICKUP_OPTIONS,
+    parts: [],
   },
   {
     id: 'tracking.timeline',
@@ -208,6 +213,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Progress', labelKey: 'tracking.progress_title', maxLength: 24 }],
     options: TIMELINE_OPTIONS,
+    parts: ['step', 'step_on', 'step_done'],
   },
   {
     id: 'tracking.summary',
@@ -223,6 +229,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
       { key: 'total', label: 'Total', fallback: 'Total', maxLength: 24 },
     ],
     options: SUMMARY_OPTIONS,
+    parts: ['badge', 'price', 'total', 'divider'],
   },
   {
     id: 'tracking.back',
@@ -233,6 +240,7 @@ export const TRACKING_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'label', label: 'Button text', fallback: 'Back to menu', labelKey: 'tracking.back', maxLength: 40 }],
     options: BACK_OPTIONS,
+    parts: ['button', 'button_alt'],
   },
 ]
 

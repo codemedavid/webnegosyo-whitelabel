@@ -16,8 +16,9 @@ import type { Device, HeroDesignV5, Section, Widget } from '@/lib/hero-builder/t
 import { pageBlockDef, requiredBlocks } from './blocks'
 import { createPageBlock, isPageBlockWidget } from './design-blocks'
 import { isValidOptionValue } from './knobs'
+import { blockParts, isValidPartValue, partOfKey } from './parts'
 import { PAGE_META } from './pages'
-import type { PageBlockDef, PageId } from './types'
+import type { PageBlockDef, PageId, PageNeeds } from './types'
 
 const DEVICE_NAMES: Record<Device, string> = { desktop: 'computers', tablet: 'tablets', mobile: 'phones' }
 
@@ -38,12 +39,13 @@ function visibleBlockIds(design: HeroDesignV5, device: Device): Set<string> {
   return ids
 }
 
-/** Required blocks a customer would not see, per device. */
-export function missingRequiredBlocks(design: HeroDesignV5, page: PageId): Map<Device, PageBlockDef[]> {
+/** Required blocks (and needed ones, given `needs`) a customer would not see, per device. */
+export function missingRequiredBlocks(design: HeroDesignV5, page: PageId, needs: PageNeeds = {}): Map<Device, PageBlockDef[]> {
   const missing = new Map<Device, PageBlockDef[]>()
+  const required = requiredBlocks(page, needs)
   for (const device of DEVICES) {
     const visible = visibleBlockIds(design, device)
-    const absent = requiredBlocks(page).filter((def) => !visible.has(def.id))
+    const absent = required.filter((def) => !visible.has(def.id))
     if (absent.length) missing.set(device, absent)
   }
   return missing
@@ -63,7 +65,13 @@ function widgetProblem(widget: Widget, page: PageId, seen: Set<string>): string 
     if (!slot) return `"${def.label}" has wording it doesn't use. Reset the block's text.`
     if (value.length > slot.maxLength) return `"${def.label}" — ${slot.label} is too long (${slot.maxLength} characters max).`
   }
+  const parts = new Set(blockParts(def).map((part) => part.id))
   for (const [key, value] of Object.entries(widget.content.options)) {
+    const part = partOfKey(key)
+    if (part) {
+      if (!parts.has(part) || !isValidPartValue(key, value)) return `"${def.label}" has a style it can't use. Reset the block's style.`
+      continue
+    }
     const option = def.options.find((o) => o.key === key)
     if (!option) return `"${def.label}" has a setting it doesn't use. Reset the block.`
     if (!isValidOptionValue(option, value)) return `"${def.label}" — ${option.label} has an invalid value.`
@@ -73,6 +81,9 @@ function widgetProblem(widget: Widget, page: PageId, seen: Set<string>): string 
 
 /** A merchant-facing reason this design cannot be published on `page`, or null. */
 export function pageDesignProblem(design: HeroDesignV5, page: PageId): string | null {
+  for (const [key, value] of Object.entries(design.page?.parts ?? {})) {
+    if (!isValidPartValue(key, value)) return 'A page style has an invalid value. Reset the page style.'
+  }
   const seen = new Set<string>()
   for (const section of design.sections) {
     for (const column of section.columns) {
@@ -105,14 +116,37 @@ function cleanSections(sections: readonly Section[], page: PageId): Section[] {
   return sections.map((s) => ({ ...s, columns: s.columns.map((c) => ({ ...c, widgets: c.widgets.filter(keep) })) }))
 }
 
+const hasBlock = (design: HeroDesignV5, id: string) =>
+  design.sections.some((s) => s.columns.some((c) => c.widgets.some((w) => isPageBlockWidget(w) && w.content.block === id)))
+
+/** Without an order summary on the page, the place-order button always shows the total. */
+function withTotalOnButton(design: HeroDesignV5, page: PageId): HeroDesignV5 {
+  if (page !== 'checkout' || hasBlock(design, 'checkout.summary')) return design
+  return {
+    ...design,
+    sections: design.sections.map((s) => ({
+      ...s,
+      columns: s.columns.map((c) => ({
+        ...c,
+        widgets: c.widgets.map((w) =>
+          isPageBlockWidget(w) && w.content.block === 'checkout.place_order' ? { ...w, content: { ...w.content, options: { ...w.content.options, show_total: true } } } : w,
+        ),
+      })),
+    })),
+  }
+}
+
 /**
  * The stored design made safe to render on `page`: cleaned, plus a section
  * holding every required block a device would otherwise miss (shown only on
- * the devices that need it).
+ * the devices that need it). `needs` (known in the browser, from the live
+ * store) brings back removable blocks the order can't go without. Running it
+ * again with more needs rebuilds that section, never doubles it.
  */
-export function preparePageDesign(design: HeroDesignV5, page: PageId): HeroDesignV5 {
-  const cleaned: HeroDesignV5 = { ...design, sections: cleanSections(design.sections, page) }
-  const missing = missingRequiredBlocks(cleaned, page)
+export function preparePageDesign(design: HeroDesignV5, page: PageId, needs: PageNeeds = {}): HeroDesignV5 {
+  const own = design.sections.filter((s) => s.id !== FALLBACK.section)
+  const cleaned: HeroDesignV5 = withTotalOnButton({ ...design, sections: cleanSections(own, page) }, page)
+  const missing = missingRequiredBlocks(cleaned, page, needs)
   if (!missing.size) return cleaned
   const defs = [...new Map([...missing.values()].flat().map((d) => [d.id, d])).values()]
   const missingOn = (def: PageBlockDef, device: Device) => !!missing.get(device)?.some((d) => d.id === def.id)

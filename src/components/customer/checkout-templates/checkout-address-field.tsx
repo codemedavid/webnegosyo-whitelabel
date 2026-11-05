@@ -10,7 +10,7 @@
 
 import { useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import type { PinCheckView } from '@/components/shared/address-autocomplete'
+import type { AddressFieldTheme, PinCheckView } from '@/components/shared/address-autocomplete'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { applyDeliveryAddressChange } from '@/lib/checkout/customer-field-input'
 import {
@@ -23,6 +23,8 @@ import {
 import { resolveDeliveryOrigin } from '@/lib/delivery/delivery-origin'
 import { assessDeliveryPin, type PinWarning } from '@/lib/delivery/pin-assessment'
 import { parseLatLng, type LatLng } from '@/lib/maps/apple/mapkit-address'
+
+import { STANDARD_INPUT_CLASS } from './field-styles'
 
 const AddressAutocomplete = dynamic(
   () => import('@/components/shared/address-autocomplete').then((mod) => ({ default: mod.AddressAutocomplete })),
@@ -77,6 +79,25 @@ export function buildDeliveryPinCheck(input: {
   }
 }
 
+/**
+ * The address box in the checkout's own colours (`--co-*`), shaped like the
+ * other answer boxes (`inputClassName`, from the chosen field style), so it
+ * never shows the app's gray-and-orange admin field on a store's checkout.
+ */
+export function checkoutAddressTheme(inputClassName: string): AddressFieldTheme {
+  return {
+    input: inputClassName || STANDARD_INPUT_CLASS,
+    dropdown: 'border border-[color:var(--co-border)] bg-[var(--co-card)] text-[color:var(--co-text)]',
+    option: 'hover:bg-[var(--co-subtle)] focus:bg-[var(--co-subtle)]',
+    optionActive: 'bg-[var(--co-subtle-strong)]',
+    optionText: 'text-[color:var(--co-text)]',
+    icon: 'text-[color:var(--co-muted)]',
+    button: 'border-[color:var(--co-border)] bg-[var(--co-card)] text-[color:var(--co-text)] hover:bg-[var(--co-subtle)] hover:text-[color:var(--co-text)]',
+    error: 'text-[color:var(--co-error)]',
+    muted: 'text-[color:var(--co-muted)]',
+  }
+}
+
 interface CheckoutAddressFieldProps {
   checkout: UseCheckoutReturn
   fieldName: string
@@ -121,6 +142,7 @@ export function CheckoutAddressField({
     [fieldName, setCustomerData],
   )
 
+  const theme = useMemo(() => checkoutAddressTheme(inputClassName), [inputClassName])
   const fieldNames = formFields.map((field) => field.field_name)
   const detailFields = DETAIL_FIELDS.filter((spec) => !formAsksFor(spec.kind, fieldNames))
 
@@ -136,6 +158,7 @@ export function CheckoutAddressField({
         biasCenter={biasCenter}
         purpose="delivery"
         check={check}
+        theme={theme}
       />
       {detailFields.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -143,8 +166,8 @@ export function CheckoutAddressField({
             const id = `checkout-${spec.key}`
             return (
               <div key={spec.key} className={spec.kind === 'riderNote' ? 'sm:col-span-2' : ''}>
-                <label htmlFor={id} className={`mb-1 block text-sm ${labelClassName}`}>
-                  {spec.label} <span className="opacity-60">(optional)</span>
+                <label htmlFor={id} data-part="label" className={`mb-1 block text-sm ${labelClassName}`}>
+                  {spec.label} <span data-part="muted" className="opacity-60">(optional)</span>
                 </label>
                 <input
                   id={id}
@@ -153,6 +176,7 @@ export function CheckoutAddressField({
                   onChange={(event) => setCustomerData((previous) => ({ ...previous, [spec.key]: event.target.value }))}
                   placeholder={spec.placeholder}
                   maxLength={DETAIL_MAX_LENGTH}
+                  data-part="field"
                   className={inputClassName}
                 />
               </div>

@@ -360,6 +360,8 @@ export interface Section extends Responsive {
   anchor?: string
   columns: Column[]
   showWhen?: ShowWhen
+  /** Page Designer: pinned to the bottom of the screen (sticky order bar). */
+  pin?: 'bottom'
 }
 
 export type ThemeColorKey = 'primary' | 'secondary' | 'accent' | 'text' | 'muted' | 'background' | 'surface'
@@ -373,10 +375,24 @@ export interface Theme {
   buttonRadius: number
 }
 
+export type PageLayout = 'scroll' | 'steps' | 'accordion'
+
+/** Page Designer whole-page settings; hero and welcome designs have none. */
+export interface PageSettings {
+  /** Part styles every page block follows (`p_<part>_<prop>`, see page-designer/parts.ts). */
+  parts?: Record<string, string>
+  /** How the sections are shown: one scrolling page, one step at a time, or folding panels. */
+  layout?: PageLayout
+  progress?: 'bar' | 'numbers' | 'dots' | 'none'
+  /** Steps: the Next button's words. */
+  nextLabel?: string
+}
+
 export interface HeroDesignV5 {
   version: 5
   theme: Theme
   sections: Section[]
+  page?: PageSettings
 }
 
 export type NodeKind = 'section' | 'column' | 'widget'

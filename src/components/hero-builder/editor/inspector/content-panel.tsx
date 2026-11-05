@@ -463,6 +463,33 @@ function ColumnLayoutPicker({ section, api }: { section: Section; api: HeroBuild
   )
 }
 
+/** Page Designer only: the section as a step, and pinning it as a sticky bar. */
+function PageSectionGroup({ section, api }: { section: Section; api: HeroBuilderApi }) {
+  const runtime = usePageRuntime()
+  if (!runtime) return null
+  const layout = api.design.page?.layout ?? 'scroll'
+  const setPin = (isPinned: boolean) =>
+    api.editDesign((design) => ({
+      ...design,
+      sections: design.sections.map((s) => {
+        if (s.id !== section.id) return s
+        const { pin: _pin, ...rest } = s
+        return isPinned ? { ...rest, pin: 'bottom' as const } : rest
+      }),
+    }))
+  return (
+    <Group title="On the page">
+      {layout !== 'scroll' && (
+        <p className="text-[11px] leading-snug text-neutral-500">
+          This section is one {layout === 'steps' ? 'step' : 'panel'}; its name above is the {layout === 'steps' ? 'step' : 'panel'} title customers see.
+        </p>
+      )}
+      <Toggle label="Pin to the bottom of the screen" checked={section.pin === 'bottom'} onChange={setPin} />
+      <p className="text-[11px] leading-snug text-neutral-500">A sticky bar that stays in view while customers scroll — e.g. the total and the place-order button. It shows on every step.</p>
+    </Group>
+  )
+}
+
 interface ContentPanelProps {
   api: HeroBuilderApi
   node: Section | Widget | null
@@ -506,6 +533,7 @@ export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
           />
         </Field>
       </Group>
+      <PageSectionGroup section={section} api={api} />
       <ShowWhenGroup node={section} api={api} />
       </>
     )

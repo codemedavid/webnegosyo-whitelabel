@@ -50,16 +50,18 @@ function GridTile({ method, isSelected, corners, onSelect }: ChoiceProps) {
   return (
     <label
       data-branding-scope="checkout/choice"
+      data-part="option"
+      data-on={isSelected ? '' : undefined}
       className={`relative flex min-h-28 w-full cursor-pointer flex-col items-center justify-center gap-2 border-2 px-2 py-3 text-center transition-[border-color,background-color] ${cornersClass(corners, 'rounded-2xl')} ${FOCUS_RING} ${surface(isSelected)}`}
     >
       <Radio method={method} isSelected={isSelected} onSelect={onSelect} />
       {isSelected && (
-        <span aria-hidden="true" className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--co-accent)] text-[color:var(--co-accent-text)]">
+        <span aria-hidden="true" data-part="tick" className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--co-accent)] text-[color:var(--co-accent-text)]">
           <Check className="h-3 w-3" strokeWidth={3} />
         </span>
       )}
       <MethodMark method={method} accent="var(--co-accent)" accentSoft="var(--co-accent-soft)" />
-      <span className="line-clamp-2 w-full text-[13px] font-semibold leading-tight text-[color:var(--co-text)]">{method.name}</span>
+      <span data-part="option-label" className="line-clamp-2 w-full text-[13px] font-semibold leading-tight text-[color:var(--co-text)]">{method.name}</span>
     </label>
   )
 }
@@ -71,7 +73,7 @@ function SmallMark({ method }: { method: PaymentMethod }) {
     return <img src={method.qr_code_url} alt="" className={`h-10 w-10 shrink-0 rounded-lg border border-[color:var(--co-border)] object-cover ${QR_BACKDROP}`} />
   }
   return (
-    <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--co-accent-soft)] text-base font-bold text-[color:var(--co-accent)]">
+    <span aria-hidden="true" data-part="icon" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--co-accent-soft)] text-base font-bold text-[color:var(--co-accent)]">
       {method.name.trim().charAt(0).toUpperCase() || '?'}
     </span>
   )
@@ -81,20 +83,23 @@ function Row({ method, isSelected, corners, onSelect }: ChoiceProps) {
   return (
     <label
       data-branding-scope="checkout/choice"
+      data-part="option"
+      data-on={isSelected ? '' : undefined}
       className={`flex min-h-14 w-full cursor-pointer items-center gap-3 border-2 px-3 py-2.5 transition-[border-color,background-color] ${cornersClass(corners, 'rounded-xl')} ${FOCUS_RING} ${surface(isSelected)}`}
     >
       <Radio method={method} isSelected={isSelected} onSelect={onSelect} />
       <SmallMark method={method} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-[color:var(--co-text)]">{method.name}</span>
+        <span data-part="option-label" className="block truncate text-sm font-semibold text-[color:var(--co-text)]">{method.name}</span>
         {isPaymentProofRequired(method) && (
-          <span className="mt-0.5 flex items-center gap-1 text-xs text-[color:var(--co-muted)]">
+          <span data-part="badge" className="mt-0.5 flex items-center gap-1 text-xs text-[color:var(--co-muted)]">
             <Receipt className="h-3 w-3" aria-hidden="true" /> Proof required
           </span>
         )}
       </span>
       <span
         aria-hidden="true"
+        data-part="tick"
         className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
           isSelected ? 'border-[color:var(--co-accent)]' : 'border-[color:var(--co-border)]'
         }`}

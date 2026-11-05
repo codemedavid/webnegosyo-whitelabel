@@ -23,6 +23,7 @@ export function RingMeCard({ isArmed, onArm, wording }: RingMeCardProps) {
         type="button"
         onClick={onArm}
         disabled={isArmed}
+        data-part="button"
         className="flex min-h-16 w-full items-center gap-3 border-2 p-4 text-left transition-colors disabled:cursor-default"
         style={{
           borderRadius: 'var(--trk-radius)',
@@ -32,6 +33,7 @@ export function RingMeCard({ isArmed, onArm, wording }: RingMeCardProps) {
         }}
       >
         <span
+          data-part="icon"
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: isArmed ? 'var(--trk-ring-armed-soft)' : 'var(--trk-accent-soft)' }}
           aria-hidden="true"
@@ -45,7 +47,7 @@ export function RingMeCard({ isArmed, onArm, wording }: RingMeCardProps) {
               : wording.label ?? <StoreLabel name="tracking.ring_me" fallback="Ring me when my order is ready" />}
           </span>
           {isArmed && (
-            <span className="mt-0.5 block text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+            <span data-part="muted" className="mt-0.5 block text-xs" style={{ color: 'var(--trk-text-muted)' }}>
               {wording.armedHint ?? 'Keep this page open and your volume up.'}
             </span>
           )}

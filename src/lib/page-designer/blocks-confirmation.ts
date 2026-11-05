@@ -90,6 +90,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'contact_help', label: 'Help (contact the store)', fallback: 'Nothing has been sent yet — please contact the store directly to place this order.', maxLength: 200, multiline: true },
     ],
     options: STATUS_OPTIONS,
+    parts: ['banner', 'icon'],
   },
   {
     id: 'confirmation.messenger',
@@ -111,6 +112,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'message_hint', label: 'Message box hint', fallback: 'Paste this in Messenger or any chat app', maxLength: 120 },
     ],
     options: MESSENGER_OPTIONS,
+    parts: ['button', 'button_alt', 'link', 'divider', 'field'],
   },
   {
     id: 'confirmation.actions',
@@ -130,6 +132,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'kiosk_button', label: 'Kiosk: button', fallback: 'Start a New Order', maxLength: 40 },
     ],
     options: ACTIONS_OPTIONS,
+    parts: ['button', 'button_alt', 'link'],
   },
   {
     id: 'confirmation.summary',
@@ -149,6 +152,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
       { key: 'total', label: 'Total', fallback: 'Total', maxLength: 30 },
     ],
     options: SUMMARY_OPTIONS,
+    parts: ['badge', 'price', 'total', 'divider'],
   },
   {
     id: 'confirmation.customer',
@@ -159,6 +163,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Customer Information', labelKey: 'checkout.customer', maxLength: 60 }],
     options: DETAILS_OPTIONS,
+    parts: [],
   },
   {
     id: 'confirmation.payment',
@@ -169,6 +174,7 @@ export const CONFIRMATION_BLOCKS: readonly PageBlockDef[] = [
     required: false,
     texts: [{ key: 'title', label: 'Title', fallback: 'Payment Method', labelKey: 'checkout.payment', maxLength: 60 }],
     options: DETAILS_OPTIONS,
+    parts: [],
   },
 ]
 

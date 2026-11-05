@@ -87,9 +87,9 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
         const fullWidth = field.field_type === 'textarea' || isDeliveryAddressField(field)
         return (
           <div key={field.id} className={fullWidth && columns === 2 ? 'md:col-span-2' : ''}>
-            <label htmlFor={fieldId} className={`block text-sm font-medium mb-1.5 ${CO.text}`}>
+            <label htmlFor={fieldId} data-part="label" className={`block text-sm font-medium mb-1.5 ${CO.text}`}>
               {field.field_label}
-              {field.is_required && <span className={`ml-1 ${CO.error}`}>*</span>}
+              {field.is_required && <span data-part="error" className={`ml-1 ${CO.error}`}>*</span>}
             </label>
 
             {isDeliveryAddressField(field) ? (
@@ -107,6 +107,7 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
                 value={customerData[field.field_name] || ''}
                 onChange={(e) => setCustomerData(prev => ({ ...prev, [field.field_name]: e.target.value }))}
                 placeholder={field.placeholder}
+                data-part="field"
                 className={inputClass}
                 rows={3}
               />
@@ -115,6 +116,7 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
                 id={fieldId}
                 value={customerData[field.field_name] || ''}
                 onChange={(e) => setCustomerData(prev => ({ ...prev, [field.field_name]: e.target.value }))}
+                data-part="field"
                 className={inputClass}
               >
                 <option value="">Select {field.field_label}</option>
@@ -124,7 +126,7 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
               </select>
             ) : field.field_type === 'phone' && (tenant?.lalamove_market || '').toUpperCase() === 'PH' ? (
               <div className="relative">
-                <div className={`absolute left-3 top-1/2 -translate-y-1/2 font-medium pointer-events-none ${CO.text}`}>
+                <div data-part="muted" className={`absolute left-3 top-1/2 -translate-y-1/2 font-medium pointer-events-none ${CO.text}`}>
                   +63
                 </div>
                 <input
@@ -137,9 +139,10 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
                   }}
                   placeholder="9XXXXXXXXX"
                   maxLength={PH_PHONE_MAX_DIGITS}
+                  data-part="field"
                   className={`${inputClass} pl-12`}
                 />
-                <div className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none ${CO.muted}`}>
+                <div data-part="muted" className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none ${CO.muted}`}>
                   {`${phPhoneDigitCount(customerData[field.field_name] || '')}/${PH_PHONE_MAX_DIGITS}`}
                 </div>
               </div>
@@ -150,12 +153,13 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
                 value={customerData[field.field_name] || ''}
                 onChange={(e) => setCustomerData(prev => ({ ...prev, [field.field_name]: e.target.value }))}
                 placeholder={field.placeholder}
+                data-part="field"
                 className={inputClass}
               />
             )}
 
             {isDeliveryAddressField(field) && checkout.deliveryOutOfRange && (
-              <p className={`mt-1.5 text-sm font-medium ${CO.error}`}>
+              <p data-part="error" className={`mt-1.5 text-sm font-medium ${CO.error}`}>
                 This address is outside the delivery area
                 {checkout.tenant?.delivery_radius_km ? ` (${checkout.tenant.delivery_radius_km} km)` : ''}.
                 {' '}Please choose a closer address or switch to pickup.
@@ -165,7 +169,7 @@ export function CheckoutFields({ checkout, columns = 2, showLoyalty = true, show
               !checkout.deliveryOutOfRange &&
               checkout.deliveryFee !== null &&
               checkout.deliveryDistanceKm !== null && (
-                <p className={`mt-1.5 text-xs ${CO.muted}`}>
+                <p data-part="muted" className={`mt-1.5 text-xs ${CO.muted}`}>
                   {checkout.deliveryDistanceKm.toFixed(1)} km away
                 </p>
               )}
@@ -218,9 +222,9 @@ export function SmsOptInCheckbox({ checkout, label }: { checkout: UseCheckoutRet
         style={{ accentColor: accent }}
       />
       {label ? (
-        <span>{label}</span>
+        <span data-part="text">{label}</span>
       ) : (
-        <span>
+        <span data-part="text">
           Text me updates and offers from {tenant?.name ?? 'this store'}. Standard message rates apply,
           and you can opt out any time.
         </span>
@@ -271,6 +275,8 @@ export function OrderTypeSelector({ checkout, compact = false, look }: { checkou
             type="button"
             onClick={() => setOrderType(ot.id)}
             aria-pressed={isSelected}
+            data-part="option"
+            data-on={isSelected ? '' : undefined}
             className={`relative flex flex-col items-center justify-start text-center ${cornersClass(look?.corners, 'rounded-2xl')} border-2 transition-all ${compact ? 'p-2.5' : 'p-3 sm:p-4'} ${isSelected ? 'shadow-sm' : 'hover:shadow-sm'}`}
             style={{
               borderColor: isSelected ? accent : tileBorder,
@@ -281,6 +287,7 @@ export function OrderTypeSelector({ checkout, compact = false, look }: { checkou
           >
             {isSelected && (
               <span
+                data-part="tick"
                 className="absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full"
                 style={{ backgroundColor: accent, color: accentText }}
               >
@@ -289,6 +296,8 @@ export function OrderTypeSelector({ checkout, compact = false, look }: { checkou
             )}
             {iconStyle === 'circle' && (
               <span
+                data-part="icon"
+                data-on={isSelected ? '' : undefined}
                 className={`inline-flex items-center justify-center rounded-full mb-2 ${compact ? 'h-9 w-9' : 'h-10 w-10 sm:h-12 sm:w-12'}`}
                 style={isSelected ? { backgroundColor: accent, color: accentText } : { backgroundColor: 'var(--co-subtle-strong)', color: 'var(--co-muted)' }}
               >
@@ -296,14 +305,15 @@ export function OrderTypeSelector({ checkout, compact = false, look }: { checkou
               </span>
             )}
             {iconStyle === 'plain' && (
-              <Icon className="mb-2 h-6 w-6 sm:h-7 sm:w-7" style={{ color: isSelected ? accent : 'var(--co-muted)' }} aria-hidden="true" />
+              <Icon data-part="icon" data-on={isSelected ? '' : undefined} className="mb-2 h-6 w-6 sm:h-7 sm:w-7" style={{ color: isSelected ? accent : 'var(--co-muted)' }} aria-hidden="true" />
             )}
-            <span className={`font-semibold text-xs sm:text-sm leading-tight ${CO.text}`}>{ot.name}</span>
+            <span data-part="option-label" className={`font-semibold text-xs sm:text-sm leading-tight ${CO.text}`}>{ot.name}</span>
             {showDescription && ot.description && (
-              <span className={`hidden sm:block text-[11px] mt-0.5 line-clamp-2 ${CO.muted}`}>{ot.description}</span>
+              <span data-part="option-desc" className={`hidden sm:block text-[11px] mt-0.5 line-clamp-2 ${CO.muted}`}>{ot.description}</span>
             )}
             {ot.advance_order_enabled && (
               <span
+                data-part="badge"
                 className="mt-1.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
                 style={{ backgroundColor: accentSoft, color: accent }}
               >

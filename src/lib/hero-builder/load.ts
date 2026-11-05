@@ -8,7 +8,7 @@
 import { DEFAULT_THEME } from './defaults'
 import { LIMITS } from './constants'
 import { isV4Design, migrateV4Design } from './migrate-v4'
-import type { Column, HeroDesignV5, NodeStyle, Section, Theme, Widget, WidgetKind } from './types'
+import type { Column, HeroDesignV5, NodeStyle, PageLayout, PageSettings, Section, Theme, Widget, WidgetKind } from './types'
 
 const WIDGET_KINDS: readonly WidgetKind[] = [
   'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
@@ -99,7 +99,27 @@ function section(value: unknown): Section | null {
     columns,
     ...layers(value),
     ...showWhen(value.showWhen),
+    ...(value.pin === 'bottom' ? { pin: 'bottom' as const } : {}),
   }
+}
+
+const PAGE_LAYOUTS: readonly PageLayout[] = ['scroll', 'steps', 'accordion']
+const PAGE_PROGRESS = ['bar', 'numbers', 'dots', 'none'] as const
+
+/** Page Designer whole-page settings, shape-checked (values are re-validated where they are used). */
+function pageSettings(value: unknown): { page?: PageSettings } {
+  if (!isObject(value)) return {}
+  const page: PageSettings = {}
+  if (isObject(value.parts)) {
+    const parts = Object.entries(value.parts)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+      .slice(0, LIMITS.pageParts)
+    if (parts.length) page.parts = Object.fromEntries(parts)
+  }
+  if (PAGE_LAYOUTS.includes(value.layout as PageLayout)) page.layout = value.layout as PageLayout
+  if ((PAGE_PROGRESS as readonly unknown[]).includes(value.progress)) page.progress = value.progress as PageSettings['progress']
+  if (typeof value.nextLabel === 'string') page.nextLabel = value.nextLabel.slice(0, 40)
+  return Object.keys(page).length ? { page } : {}
 }
 
 function theme(value: unknown): Theme {
@@ -134,5 +154,5 @@ export function loadHeroDesign(raw: unknown): HeroDesignV5 | null {
     .slice(0, LIMITS.sections)
     .map(section)
     .filter((s): s is Section => !!s)
-  return { version: 5, theme: theme(parsed.theme), sections }
+  return { version: 5, theme: theme(parsed.theme), sections, ...pageSettings(parsed.page) }
 }

@@ -28,11 +28,11 @@ export function BlockCard({ scope = 'checkout/card', isCard, corners, title, sub
     ? `${cornersClass(corners, 'rounded-2xl')} border border-[color:var(--co-border)] p-5 shadow-sm sm:p-6 ${CARD_SURFACE[scope]}`
     : ''
   return (
-    <section data-branding-scope={scope} className={`text-[color:var(--co-text)] ${surface}`}>
+    <section data-branding-scope={scope} data-part="card" className={`text-[color:var(--co-text)] ${surface}`}>
       {(title || subtitle) && (
         <div className="mb-4 sm:mb-5">
-          {title && <h2 className="text-lg font-bold leading-tight text-[color:var(--co-text)] sm:text-xl">{title}</h2>}
-          {subtitle && <p className="mt-1 text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
+          {title && <h2 data-part="title" className="text-lg font-bold leading-tight text-[color:var(--co-text)] sm:text-xl">{title}</h2>}
+          {subtitle && <p data-part="subtitle" className="mt-1 text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
         </div>
       )}
       {children}

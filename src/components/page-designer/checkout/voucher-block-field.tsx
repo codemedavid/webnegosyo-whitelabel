@@ -40,6 +40,7 @@ export function VoucherBlockField({ checkout, label, design }: VoucherBlockField
       <button
         type="button"
         aria-expanded={false}
+        data-part="link"
         onClick={() => {
           setIsOpen(true)
           setShouldFocus(true)

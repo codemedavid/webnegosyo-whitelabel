@@ -59,7 +59,7 @@ interface ChoiceProps {
 function PreorderChip({ ot }: { ot: OrderType }) {
   if (!ot.advance_order_enabled) return null
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--co-accent-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--co-accent)]">
+    <span data-part="badge" className="inline-flex items-center gap-1 rounded-full bg-[var(--co-accent-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--co-accent)]">
       <CalendarClock className="h-2.5 w-2.5" aria-hidden="true" /> Pre-order
     </span>
   )
@@ -70,12 +70,14 @@ function ChoiceIcon({ ot, isSelected, iconStyle, size = 'md' }: { ot: OrderType;
   const Icon = ORDER_TYPE_ICONS[ot.type] ?? ORDER_TYPE_ICONS.other
   const glyph = size === 'lg' ? 'h-6 w-6' : size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
   if (iconStyle === 'plain') {
-    return <Icon aria-hidden="true" className={`${glyph} shrink-0 ${isSelected ? 'text-[color:var(--co-accent)]' : 'text-[color:var(--co-muted)]'}`} />
+    return <Icon aria-hidden="true" data-part="icon" data-on={isSelected ? '' : undefined} className={`${glyph} shrink-0 ${isSelected ? 'text-[color:var(--co-accent)]' : 'text-[color:var(--co-muted)]'}`} />
   }
   const circle = size === 'lg' ? 'h-12 w-12' : size === 'sm' ? 'h-7 w-7' : 'h-10 w-10'
   return (
     <span
       aria-hidden="true"
+      data-part="icon"
+      data-on={isSelected ? '' : undefined}
       className={`inline-flex ${circle} shrink-0 items-center justify-center rounded-full ${
         isSelected ? 'bg-[var(--co-accent)] text-[color:var(--co-accent-text)]' : 'bg-[var(--co-subtle-strong)] text-[color:var(--co-muted)]'
       }`}
@@ -87,12 +89,12 @@ function ChoiceIcon({ ot, isSelected, iconStyle, size = 'md' }: { ot: OrderType;
 
 function KindIcon({ ot, className }: { ot: OrderType; className: string }) {
   const Icon = ORDER_TYPE_ICONS[ot.type] ?? ORDER_TYPE_ICONS.other
-  return <Icon aria-hidden="true" className={className} />
+  return <Icon aria-hidden="true" data-part="icon" className={className} />
 }
 
 function SelectedTick({ className = '' }: { className?: string }) {
   return (
-    <span aria-hidden="true" className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--co-accent)] text-[color:var(--co-accent-text)] ${className}`}>
+    <span aria-hidden="true" data-part="tick" className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--co-accent)] text-[color:var(--co-accent-text)] ${className}`}>
       <Check className="h-3 w-3" />
     </span>
   )
@@ -110,18 +112,21 @@ function ListRow({ ot, isSelected, look, onSelect }: ChoiceProps) {
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
+      data-part="option"
+      data-on={isSelected ? '' : undefined}
       className={`flex w-full items-center gap-3 border-2 px-4 py-3 text-left transition ${cornersClass(look.corners, 'rounded-xl')} ${choiceSurface(isSelected)}`}
     >
       <ChoiceIcon ot={ot} isSelected={isSelected} iconStyle={look.iconStyle} />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-1.5">
-          <span className="font-semibold text-[color:var(--co-text)]">{ot.name}</span>
+          <span data-part="option-label" className="font-semibold text-[color:var(--co-text)]">{ot.name}</span>
           <PreorderChip ot={ot} />
         </span>
-        {look.showDescriptions && ot.description && <span className="mt-0.5 block text-sm text-[color:var(--co-muted)]">{ot.description}</span>}
+        {look.showDescriptions && ot.description && <span data-part="option-desc" className="mt-0.5 block text-sm text-[color:var(--co-muted)]">{ot.description}</span>}
       </span>
       <span
         aria-hidden="true"
+        data-part="tick"
         className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
           isSelected ? 'border-[color:var(--co-accent)]' : 'border-[color:var(--co-border)]'
         }`}
@@ -138,12 +143,14 @@ function DetailCard({ ot, isSelected, look, onSelect }: ChoiceProps) {
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
+      data-part="option"
+      data-on={isSelected ? '' : undefined}
       className={`relative flex w-full items-start gap-4 border-2 p-4 text-left transition sm:p-5 ${cornersClass(look.corners, 'rounded-2xl')} ${choiceSurface(isSelected)}`}
     >
       <ChoiceIcon ot={ot} isSelected={isSelected} iconStyle={look.iconStyle} size="lg" />
       <span className="min-w-0 flex-1 pr-6">
-        <span className="block text-base font-bold leading-tight text-[color:var(--co-text)]">{ot.name}</span>
-        {look.showDescriptions && ot.description && <span className="mt-1 block text-sm leading-snug text-[color:var(--co-muted)]">{ot.description}</span>}
+        <span data-part="option-label" className="block text-base font-bold leading-tight text-[color:var(--co-text)]">{ot.name}</span>
+        {look.showDescriptions && ot.description && <span data-part="option-desc" className="mt-1 block text-sm leading-snug text-[color:var(--co-muted)]">{ot.description}</span>}
         {ot.advance_order_enabled && <span className="mt-2 block"><PreorderChip ot={ot} /></span>}
       </span>
       {isSelected && <SelectedTick className="absolute right-3 top-3" />}
@@ -158,6 +165,8 @@ function BigButton({ ot, isSelected, look, onSelect }: ChoiceProps) {
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
+      data-part="option"
+      data-on={isSelected ? '' : undefined}
       className={`flex min-h-16 w-full items-center gap-3 border-2 px-5 py-3 transition ${isCentered ? 'justify-center text-center' : 'text-left'} ${cornersClass(look.corners, 'rounded-2xl')} ${
         isSelected
           ? 'border-[color:var(--co-accent)] bg-[var(--co-accent)] text-[color:var(--co-accent-text)] shadow-md'
@@ -166,11 +175,11 @@ function BigButton({ ot, isSelected, look, onSelect }: ChoiceProps) {
     >
       {look.iconStyle !== 'none' && <KindIcon ot={ot} className="h-6 w-6 shrink-0" />}
       <span className={`min-w-0 ${isCentered ? '' : 'flex-1'}`}>
-        <span className="block text-lg font-bold leading-tight">{ot.name}</span>
+        <span data-part="option-label" className="block text-lg font-bold leading-tight">{ot.name}</span>
         {look.showDescriptions && ot.description && (
-          <span className={`mt-0.5 block text-sm ${isSelected ? 'opacity-90' : 'text-[color:var(--co-muted)]'}`}>{ot.description}</span>
+          <span data-part="option-desc" className={`mt-0.5 block text-sm ${isSelected ? 'opacity-90' : 'text-[color:var(--co-muted)]'}`}>{ot.description}</span>
         )}
-        {ot.advance_order_enabled && <span className={`mt-1 block text-xs font-semibold ${isSelected ? 'opacity-90' : 'text-[color:var(--co-accent)]'}`}>Pre-order</span>}
+        {ot.advance_order_enabled && <span data-part="badge" className={`mt-1 block text-xs font-semibold ${isSelected ? 'opacity-90' : 'text-[color:var(--co-accent)]'}`}>Pre-order</span>}
       </span>
     </button>
   )
@@ -182,6 +191,8 @@ function Chip({ ot, isSelected, look, onSelect }: ChoiceProps) {
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
+      data-part="option"
+      data-on={isSelected ? '' : undefined}
       className={`inline-flex items-center gap-1.5 border px-3.5 py-2 text-sm font-semibold transition ${cornersClass(look.corners, 'rounded-full')} ${
         isSelected
           ? 'border-[color:var(--co-accent)] bg-[var(--co-accent)] text-[color:var(--co-accent-text)]'
@@ -205,6 +216,8 @@ function PhotoTile({ ot, isSelected, look, onSelect }: ChoiceProps) {
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
+      data-part="option"
+      data-on={isSelected ? '' : undefined}
       className={`relative aspect-[4/3] w-full overflow-hidden text-left transition ${cornersClass(look.corners, 'rounded-2xl')} ${
         isSelected ? 'ring-[3px] ring-[color:var(--co-accent)] ring-offset-2 ring-offset-[color:var(--co-card)]' : 'ring-1 ring-[color:var(--co-border)]'
       }`}
@@ -213,14 +226,14 @@ function PhotoTile({ ot, isSelected, look, onSelect }: ChoiceProps) {
         // eslint-disable-next-line @next/next/no-img-element -- owner-uploaded photo on any image host
         <img src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" />
       ) : (
-        <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center bg-[var(--co-accent-soft)] text-[color:var(--co-accent)]">
+        <span aria-hidden="true" data-part="icon" className="absolute inset-0 flex items-center justify-center bg-[var(--co-accent-soft)] text-[color:var(--co-accent)]">
           <Icon className="h-12 w-12 opacity-70" />
         </span>
       )}
       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-3 pb-2.5 pt-8 text-white">
-        <span className="block text-base font-bold leading-tight">{ot.name}</span>
-        {look.showDescriptions && ot.description && <span className="mt-0.5 line-clamp-2 block text-xs text-white/85">{ot.description}</span>}
-        {ot.advance_order_enabled && <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"><CalendarClock className="h-3 w-3" aria-hidden="true" /> Pre-order</span>}
+        <span data-part="option-label" className="block text-base font-bold leading-tight">{ot.name}</span>
+        {look.showDescriptions && ot.description && <span data-part="option-desc" className="mt-0.5 line-clamp-2 block text-xs text-white/85">{ot.description}</span>}
+        {ot.advance_order_enabled && <span data-part="badge" className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"><CalendarClock className="h-3 w-3" aria-hidden="true" /> Pre-order</span>}
       </span>
       {isSelected && <SelectedTick className="absolute right-2 top-2" />}
     </button>
@@ -241,12 +254,14 @@ function Segmented({ checkout, look }: { checkout: UseCheckoutReturn; look: Orde
               type="button"
               onClick={() => setOrderType(ot.id)}
               aria-pressed={isSelected}
+              data-part="option"
+              data-on={isSelected ? '' : undefined}
               className={`flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 px-2 py-2 text-sm font-semibold transition ${track} ${
                 isSelected ? 'bg-[var(--co-accent)] text-[color:var(--co-accent-text)] shadow-sm' : 'text-[color:var(--co-text)] hover:bg-[var(--co-subtle)]'
               }`}
             >
               {look.iconStyle !== 'none' && <KindIcon ot={ot} className="h-4 w-4 shrink-0" />}
-              <span className="truncate">{ot.name}</span>
+              <span data-part="option-label" className="truncate">{ot.name}</span>
               {ot.advance_order_enabled && <CalendarClock aria-label="Pre-order" className="h-3.5 w-3.5 shrink-0 opacity-80" />}
             </button>
           )
@@ -254,7 +269,7 @@ function Segmented({ checkout, look }: { checkout: UseCheckoutReturn; look: Orde
       </div>
       {/* The chosen way's details, under the bar (never hidden on phones). */}
       {look.showDescriptions && selectedOrderTypeData?.description && (
-        <p className="mt-2 px-1 text-sm text-[color:var(--co-muted)]">{selectedOrderTypeData.description}</p>
+        <p data-part="option-desc" className="mt-2 px-1 text-sm text-[color:var(--co-muted)]">{selectedOrderTypeData.description}</p>
       )}
     </div>
   )

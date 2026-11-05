@@ -37,6 +37,7 @@ export function BackToMenuButton({ onBack, label, look = 'quiet' }: BackToMenuBu
       <button
         type="button"
         onClick={onBack}
+        data-part={look === 'solid' ? 'button' : 'button-alt'}
         className={`flex h-12 w-full items-center justify-center gap-2 ${className}`}
         style={style}
       >

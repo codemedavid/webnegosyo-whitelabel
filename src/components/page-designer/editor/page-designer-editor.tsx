@@ -16,6 +16,7 @@ import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtim
 
 import { SAMPLE_BLOCKS, sampleTokens } from '../samples'
 import { LookPanel } from './look-panel'
+import { PageStylePanel } from './page-style-panel'
 import { pageThemeStyle } from './page-theme'
 import { buildPageSurface, type PendingLook } from './page-surfaces'
 import { PageTabs } from './page-tabs'
@@ -158,7 +159,9 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
       liveHref={`/${tenantSlug}/${LIVE_PATH[page]}`}
       look={{
         hasChanges: look.input !== undefined,
-        panel: (
+        panel: (api) => (
+          <>
+          <PageStylePanel api={api} />
           <LookPanel
             page={page}
             saved={look.saved}
@@ -169,6 +172,7 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
             onSave={saveLook}
             isSaving={isSavingLook}
           />
+          </>
         ),
       }}
       toolbarSlot={

@@ -37,6 +37,12 @@ export interface PageRuntime {
    * live blocks read the real store and leave this unset.
    */
   store?: Readonly<Record<string, unknown>>
+  /**
+   * Step-by-step / accordion layouts: why the customer can't leave a step
+   * holding these blocks yet ("Please fill in: Phone"), or null. Pages
+   * without it let every step through (the final button still checks).
+   */
+  stepProblem?: (blockIds: readonly string[]) => string | null
 }
 
 const PageRuntimeContext = createContext<PageRuntime | null>(null)

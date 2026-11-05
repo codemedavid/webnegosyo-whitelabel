@@ -30,11 +30,12 @@ export function StatusTimeline({ currentIndex, title, layout = 'list', showTitle
     <section
       aria-label="Order progress"
       data-branding-scope="tracking/timeline"
+      data-part="card"
       className="border p-5 shadow-sm"
       style={{ borderRadius: 'var(--trk-radius)', backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-card-border)' }}
     >
       {showTitle && (
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--trk-text-muted)' }}>
+        <h2 data-part="title" className="mb-4 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--trk-text-muted)' }}>
           {title ?? <StoreLabel name="tracking.progress_title" fallback="Progress" />}
         </h2>
       )}
@@ -61,6 +62,9 @@ function StepList({ currentIndex, size, showDetails }: { currentIndex: number; s
           <li key={step.key} className="flex gap-4" aria-current={isCurrent ? 'step' : undefined}>
             <div className="flex flex-col items-center">
               <div
+                data-part="step"
+                data-on={isCurrent ? '' : undefined}
+                data-done={isCompleted ? '' : undefined}
                 className={`flex ${size.bubble} items-center justify-center rounded-full border-2 transition-all duration-500 ${
                   isCurrent ? 'animate-pulse motion-reduce:animate-none' : ''
                 }`}
@@ -80,7 +84,7 @@ function StepList({ currentIndex, size, showDetails }: { currentIndex: number; s
                 <StoreLabel name={step.titleLabel} fallback={step.label} />
               </p>
               {showDetails && (
-                <p className="mt-0.5 text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+                <p data-part="muted" className="mt-0.5 text-xs" style={{ color: 'var(--trk-text-muted)' }}>
                   <StoreLabel name={step.descriptionLabel} fallback={step.description} />
                 </p>
               )}

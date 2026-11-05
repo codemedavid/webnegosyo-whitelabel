@@ -25,7 +25,7 @@ interface HeaderParts {
 
 function BackButton({ onBack, className }: { onBack: () => void; className: string }) {
   return (
-    <button type="button" onClick={onBack} aria-label="Back to cart" className={className}>
+    <button type="button" onClick={onBack} aria-label="Back to cart" data-part="button-alt" className={className}>
       <ArrowLeft className="h-5 w-5" />
     </button>
   )
@@ -43,8 +43,8 @@ function StandardHeader({ title, subtitle, onBack }: HeaderParts) {
         />
       )}
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
-        {subtitle && <p className="text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
+        <h1 data-part="title" className="text-2xl font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
+        {subtitle && <p data-part="subtitle" className="text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
       </div>
     </header>
   )
@@ -58,8 +58,8 @@ function CenteredHeader({ title, subtitle, onBack }: HeaderParts) {
     <header data-senior-hidden className="relative flex min-h-11 items-center justify-center px-12 text-center text-[color:var(--co-text)]">
       {onBack && <BackButton onBack={onBack} className={`absolute left-0 top-0 ${ROUND_BACK} hover:bg-[var(--co-subtle-strong)]`} />}
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
-        {subtitle && <p className="text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
+        <h1 data-part="title" className="text-2xl font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
+        {subtitle && <p data-part="subtitle" className="text-sm text-[color:var(--co-muted)]">{subtitle}</p>}
       </div>
     </header>
   )
@@ -70,12 +70,13 @@ function BannerHeader({ title, subtitle, onBack }: HeaderParts) {
   return (
     <header
       data-senior-hidden
+      data-part="banner"
       className="flex items-center gap-3 rounded-2xl bg-[var(--co-button)] px-4 py-4 text-[color:var(--co-accent-text)] shadow-sm sm:px-5 sm:py-5"
     >
       {onBack && <BackButton onBack={onBack} className={`${ROUND_BACK} bg-black/10 hover:bg-black/20`} />}
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold leading-tight">{title}</h1>
-        {subtitle && <p className="text-sm opacity-85">{subtitle}</p>}
+        <h1 data-part="title" className="text-2xl font-bold leading-tight">{title}</h1>
+        {subtitle && <p data-part="subtitle" className="text-sm opacity-85">{subtitle}</p>}
       </div>
     </header>
   )
@@ -86,8 +87,8 @@ function CompactHeader({ title, subtitle, onBack }: HeaderParts) {
     <header data-senior-hidden className="flex items-center gap-2 text-[color:var(--co-text)]">
       {onBack && <BackButton onBack={onBack} className={`-ml-2 ${ROUND_BACK} hover:bg-[var(--co-subtle-strong)]`} />}
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-        <h1 className="text-lg font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
-        {subtitle && <p className="text-xs text-[color:var(--co-muted)]">{subtitle}</p>}
+        <h1 data-part="title" className="text-lg font-bold leading-tight text-[color:var(--co-text)]">{title}</h1>
+        {subtitle && <p data-part="subtitle" className="text-xs text-[color:var(--co-muted)]">{subtitle}</p>}
       </div>
     </header>
   )
@@ -129,19 +130,20 @@ export function StoreClosedView({ checkout, block }: CheckoutBlockViewProps) {
     <BlockColors checkout={checkout} themed={themed}>
       <div
         role="status"
+        data-part="card"
         className={`flex items-start gap-3 ${cornersClass(cornersOf(block), 'rounded-2xl')} ${CLOSED_SURFACE[design]} p-4 text-sm text-[color:var(--co-text)]`}
       >
         {design === 'card' ? (
-          <span aria-hidden="true" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--co-warning-soft)] text-[color:var(--co-warning)]">
+          <span aria-hidden="true" data-part="icon" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--co-warning-soft)] text-[color:var(--co-warning)]">
             <Icon className="h-5 w-5" />
           </span>
         ) : (
           <Icon className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--co-warning)]" aria-hidden="true" />
         )}
         <div className="min-w-0">
-          <p className="font-semibold">{isPrelaunch ? block.text('prelaunch') : block.text('closed')}</p>
-          {isPrelaunch && <p className="text-[color:var(--co-muted)]">{block.text('prelaunch_detail')}</p>}
-          {!isPrelaunch && status.nextOpenLabel && <p className="text-[color:var(--co-muted)]">Opens {status.nextOpenLabel}</p>}
+          <p data-part="text" className="font-semibold">{isPrelaunch ? block.text('prelaunch') : block.text('closed')}</p>
+          {isPrelaunch && <p data-part="muted" className="text-[color:var(--co-muted)]">{block.text('prelaunch_detail')}</p>}
+          {!isPrelaunch && status.nextOpenLabel && <p data-part="muted" className="text-[color:var(--co-muted)]">Opens {status.nextOpenLabel}</p>}
         </div>
       </div>
     </BlockColors>

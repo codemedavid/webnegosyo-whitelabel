@@ -73,6 +73,15 @@ export type BlockOption =
 
 export type BlockOptionValue = string | boolean
 
+/**
+ * Store set-ups that make a removable block essential: without it the order
+ * could not go through. The page adds a plain copy back when its need holds.
+ */
+export type PageNeed = 'order_choice' | 'scheduling' | 'questions' | 'payment' | 'gov_claims' | 'kiosk'
+
+/** Which needs hold for the store right now (absent = no). */
+export type PageNeeds = Readonly<Partial<Record<PageNeed, boolean>>>
+
 export interface PageBlockDef {
   /** `<page>.<name>`, stable forever: stored in designs. */
   id: string
@@ -89,8 +98,18 @@ export interface PageBlockDef {
    * simply renders nothing.
    */
   required: boolean
+  /**
+   * A removable block the page still needs in some stores: when the need
+   * holds and the owner removed or hid the block, the page adds it back.
+   */
+  neededWhen?: PageNeed
   texts: readonly BlockTextSlot[]
   options: readonly BlockOption[]
+  /**
+   * The parts the block marks with `data-part` beyond the shared card / title /
+   * subtitle / body text (see parts.ts), so its Style tab offers exactly them.
+   */
+  parts?: readonly string[]
 }
 
 export interface PageState {
