@@ -63,6 +63,8 @@ export interface AppleAddressAutocompleteProps {
   theme?: AddressFieldTheme
   /** How the map is offered: icon buttons beside the box, links under it, or a map shown below it. */
   mapDisplay?: AddressMapDisplay
+  /** The customer already chose to go without a pin: stop asking for one. */
+  hidesPinNudge?: boolean
 }
 
 interface PendingPin {
@@ -128,6 +130,7 @@ export function AppleAddressAutocomplete({
   fallback,
   theme,
   mapDisplay = 'buttons',
+  hidesPinNudge = false,
 }: AppleAddressAutocompleteProps) {
   const { status, suggest, resolveSuggestion, reverseGeocode } = useAppleAddressSearch()
   const { suggestions, search, clear: clearSuggestions, missCountRef } = useAddressSuggestions(suggest)
@@ -302,7 +305,7 @@ export function AppleAddressAutocomplete({
   }
   // Not while they are still typing a search: only once they have left the field.
   // A map already on screen asks for the spot itself.
-  const needsPin = !pin && !isFocused && value.trim() !== '' && status === 'ready' && mapDisplay !== 'map'
+  const needsPin = !pin && !isFocused && value.trim() !== '' && status === 'ready' && mapDisplay !== 'map' && !hidesPinNudge
   const linkClass = `${LINK_CLASS} ${theme?.link ?? 'text-gray-700 hover:underline'}`
 
   return (

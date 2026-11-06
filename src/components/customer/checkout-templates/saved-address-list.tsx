@@ -27,7 +27,7 @@ export function SavedAddressList({ addresses, onUse, onForget, linkClassName, mu
             className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left text-sm ${STANDARD_INPUT_CLASS} ${linkClassName}`}
           >
             <MapPin aria-hidden="true" className="h-4 w-4 shrink-0" />
-            <span className="truncate">{address.unit ? `${address.unit}, ${address.address}` : address.address}</span>
+            <span className="line-clamp-2 min-w-0 break-words">{address.unit ? `${address.unit}, ${address.address}` : address.address}</span>
           </button>
           <button
             type="button"

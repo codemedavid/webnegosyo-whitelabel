@@ -227,6 +227,7 @@ export function CheckoutAddressField({
         required={isRequired}
         mapsEnabled={(tenant?.mapbox_enabled ?? true) && map !== 'hidden'}
         mapDisplay={map === 'hidden' ? undefined : map}
+        hidesPinNudge={isPinSkipped}
         biasCenter={biasCenter}
         purpose="delivery"
         check={check}
