@@ -50,6 +50,11 @@ function fit(text: string, budget: number): string {
   return `${text.slice(0, budget - ELLIPSIS.length).trimEnd()}${ELLIPSIS}`
 }
 
+/** One line of the rider's text: a customer's line break must not start a fake "Pin:" or "Store note:" line. */
+function oneLine(value: string): string {
+  return value.replace(/\s*[\r\n]+\s*/g, ' ').trim()
+}
+
 export function buildRiderRemarks(
   customerData: Record<string, unknown> | null | undefined,
   addressFieldName: string = DELIVERY_ADDRESS_FIELD_NAME,
@@ -63,11 +68,11 @@ export function buildRiderRemarks(
   // Listed by priority (what survives a cut); `order` is where it prints.
   const candidates: RemarkLine[] = [
     { order: 6, text: link ? `Pin: ${link}` : '' },
-    { order: 2, text: details.landmark ? `Landmark: ${details.landmark}` : '' },
-    { order: 1, text: details.unit ? `House/Unit: ${details.unit}` : '' },
-    { order: 4, text: storeNote ? `Store note: ${storeNote}` : '' },
-    { order: 3, text: details.riderNote ? `Note: ${details.riderNote}` : '' },
-    { order: 5, text: address ? `Address: ${address}` : '' },
+    { order: 2, text: details.landmark ? `Landmark: ${oneLine(details.landmark)}` : '' },
+    { order: 1, text: details.unit ? `House/Unit: ${oneLine(details.unit)}` : '' },
+    { order: 4, text: storeNote ? `Store note: ${oneLine(storeNote)}` : '' },
+    { order: 3, text: details.riderNote ? `Note: ${oneLine(details.riderNote)}` : '' },
+    { order: 5, text: address ? `Address: ${oneLine(address)}` : '' },
   ].filter((line) => line.text)
 
   let remaining = RIDER_REMARKS_MAX_LENGTH

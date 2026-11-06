@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { isPinSkipped, unpinnedDeliveryProblem, UNPINNED_NEEDS_ADDRESS_MESSAGE, UNPINNED_NEEDS_CONTACT_MESSAGE } from '@/lib/delivery/unpinned-delivery'
+import { isPinSkipped, isUnpinnedDeliveryOrder, unpinnedDeliveryProblem, UNPINNED_NEEDS_ADDRESS_MESSAGE, UNPINNED_NEEDS_CONTACT_MESSAGE } from '@/lib/delivery/unpinned-delivery'
 
 describe('isPinSkipped', () => {
   it('is true only with the mark and no pin', () => {
@@ -30,5 +30,21 @@ describe('unpinnedDeliveryProblem', () => {
     [{ delivery_address: 'Purok 3' }, '0917'],
   ])('accepts %j', (answers, contact) => {
     expect(unpinnedDeliveryProblem(answers, contact)).toBeNull()
+  })
+})
+
+describe('isUnpinnedDeliveryOrder', () => {
+  const answers = { delivery_pin_skipped: 'true' }
+  const delivery = { answers, isDeliveryOrder: true, lalamoveEnabled: false, hasDistancePricing: false }
+
+  it('honours the mark only where the store cannot price without a pin', () => {
+    expect(isUnpinnedDeliveryOrder({ ...delivery, lalamoveEnabled: true })).toBe(true)
+    expect(isUnpinnedDeliveryOrder({ ...delivery, hasDistancePricing: true })).toBe(true)
+  })
+
+  it('ignores a forged mark on a store with no such need, on a non-delivery order, and on a pinned one', () => {
+    expect(isUnpinnedDeliveryOrder(delivery)).toBe(false)
+    expect(isUnpinnedDeliveryOrder({ ...delivery, lalamoveEnabled: true, isDeliveryOrder: false })).toBe(false)
+    expect(isUnpinnedDeliveryOrder({ ...delivery, lalamoveEnabled: true, answers: { ...answers, delivery_lat: '14.5', delivery_lng: '121' } })).toBe(false)
   })
 })

@@ -177,6 +177,8 @@ export function AppleAddressAutocomplete({
   const handleType = (text: string) => {
     noteFirstTouch()
     editGenerationRef.current += 1
+    // New words end the last pick: its door must not come back on a later pin.
+    typedAtPickRef.current = ''
     const generation = editGenerationRef.current
     onChange(text)
     void readPastedLocation(text).then((pasted) => {

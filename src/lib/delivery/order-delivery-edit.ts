@@ -132,5 +132,20 @@ export function applyDeliveryPatch({ current, patch, editor, now, origin }: Appl
     }
   }
 
+  // New words with no pin sent: the old pin is for the old address, and a rider would still be sent there.
+  if (isAddressChanged && patch.pin === undefined) {
+    /* eslint-disable @typescript-eslint/no-unused-vars */
+    const {
+      delivery_lat: _lat,
+      delivery_lng: _lng,
+      [DELIVERY_PIN_ADDRESS_KEY]: _label,
+      [DELIVERY_PIN_CONFIRMED_KEY]: _confirmed,
+      [DELIVERY_PIN_KM_KEY]: _km,
+      ...withoutPin
+    } = answers
+    /* eslint-enable @typescript-eslint/no-unused-vars */
+    answers = withoutPin
+  }
+
   return { answers, isDestinationChanged: isPinChanged || isAddressChanged }
 }

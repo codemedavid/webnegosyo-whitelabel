@@ -70,6 +70,20 @@ describe('applyDeliveryPatch', () => {
     expect(apply({ delivery_address: 'Old' }, { address: 'New' }).isDestinationChanged).toBe(true)
   })
 
+  it('drops the old pin when the address changes and no pin was sent, so no rider goes to the old spot', () => {
+    const { answers, isDestinationChanged } = apply(
+      { delivery_address: 'Old', delivery_lat: '14.5', delivery_lng: '121', delivery_pin_address: 'Old', delivery_pin_confirmed: 'true', delivery_pin_km: '3', Phone: '0917' },
+      { address: 'New street' },
+    )
+    expect(answers).toEqual({ delivery_address: 'New street', Phone: '0917' })
+    expect(isDestinationChanged).toBe(true)
+  })
+
+  it('keeps the pin when the address grows and the pin is sent with it', () => {
+    const { answers } = apply({ delivery_address: 'Old', delivery_lat: '14.5', delivery_lng: '121' }, { address: 'Old, Unit 5B', pin: { lat: 14.5, lng: 121 } })
+    expect(answers).toEqual({ delivery_address: 'Old, Unit 5B', delivery_lat: '14.5', delivery_lng: '121' })
+  })
+
   it('does not mutate what it was given', () => {
     const current = Object.freeze({ delivery_unit: 'Old' })
     expect(() => apply(current, { unit: 'New', pin: { lat: 1, lng: 2 } })).not.toThrow()

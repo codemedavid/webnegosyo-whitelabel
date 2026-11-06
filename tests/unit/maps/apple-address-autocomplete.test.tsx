@@ -533,6 +533,39 @@ describe('words the customer typed before a search pick', () => {
     )
   })
 
+  it('forgets that door once the customer types again', async () => {
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const React = await import('react')
+    const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
+    const onChange = jest.fn()
+    function Controlled() {
+      const [value, setValue] = React.useState('')
+      return <AppleAddressAutocomplete value={value} onChange={(address, coordinates, meta) => { setValue(address); onChange(address, coordinates, meta) }} fallback={null} />
+    }
+    render(<Controlled />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+    fireEvent.focus(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Blk 4 Lot 12 greenbelt' } })
+    const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+    await act(async () => {
+      fireEvent.mouseDown(option)
+    })
+    await screen.findByRole('dialog', { name: 'Is this the exact spot?' })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } })
+    fireEvent.blur(screen.getByRole('combobox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Pick on the map' }))
+    await screen.findByRole('dialog', { name: 'Is this the exact spot?' })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    expect(onChange.mock.lastCall?.[0]).not.toContain('Blk 4')
+  })
+
   it('opens the confirm map from pasted coordinates and clears the box', async () => {
     const maps: FakeMap[] = []
     const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')

@@ -149,7 +149,12 @@ export function DeliverySheet({
   }
 
   const hasExisting =
-    delivery.fee !== null || delivery.address !== "" || delivery.phone !== "";
+    delivery.fee !== null ||
+    delivery.address !== "" ||
+    delivery.phone !== "" ||
+    !!delivery.unit ||
+    !!delivery.landmark ||
+    !!delivery.riderNote;
   const canHintPin = canSuggestDeliveryFee(setup.delivery);
 
   // A docked sheet becomes a centred dialog once the glass is a tablet's

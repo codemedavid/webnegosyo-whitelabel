@@ -26,6 +26,20 @@ export function isPinSkipped(answers: Answers | null | undefined): boolean {
   return data[DELIVERY_PIN_SKIPPED_KEY] === 'true' && toLatLng(data.delivery_lat, data.delivery_lng) === null
 }
 
+/**
+ * Whether the server honours the mark on this order. Only a store that can't
+ * price without a pin offers "I can't find my place", so a forged mark elsewhere
+ * is ignored and the order is priced as usual.
+ */
+export function isUnpinnedDeliveryOrder(input: {
+  answers: Answers | null | undefined
+  isDeliveryOrder: boolean
+  lalamoveEnabled: boolean
+  hasDistancePricing: boolean
+}): boolean {
+  return input.isDeliveryOrder && (input.lalamoveEnabled || input.hasDistancePricing) && isPinSkipped(input.answers)
+}
+
 /** Why an order without a pin can't go through yet, or null. The store must be able to reach this customer. */
 export function unpinnedDeliveryProblem(answers: Answers | null | undefined, contact?: string | null): string | null {
   const data = answers ?? {}

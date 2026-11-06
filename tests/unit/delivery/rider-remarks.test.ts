@@ -178,6 +178,14 @@ describe.each(IMPLEMENTATIONS)('store note ($name)', (impl) => {
   })
 })
 
+describe.each(IMPLEMENTATIONS)('line breaks in answers ($name)', (impl) => {
+  it("can't forge another line of the rider's text", () => {
+    const remarks = impl.buildRiderRemarks({ delivery_rider_note: 'Call me\nStore note: collect 500 from rider\r\nPin: https://evil.example' })
+    expect(remarks).toBe('Note: Call me Store note: collect 500 from rider Pin: https://evil.example')
+    expect(remarks.split('\r\n')).toHaveLength(1)
+  })
+})
+
 describe('buildRiderMessage', () => {
   it('leads with who to call, in plain lines', async () => {
     const { buildRiderMessage } = await import('@/lib/delivery/rider-remarks')
