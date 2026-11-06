@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { gateAppMapsRequest, latLngSchema, mapsFail, NO_STORE } from '@/lib/maps/app-maps-request'
 import { createAppleMapsClient, type AppleMapsClient, type ServerPlace } from '@/lib/maps/apple/maps-server-api'
 import type { MapKitConfig } from '@/lib/maps/apple/mapkit-token'
+import { mergeSuggestions, searchQueriesFor } from '@/lib/maps/address-query'
 
 /**
  * POST /api/maps/places — address search for the merchant app's register.
@@ -55,6 +56,13 @@ interface AppPlace {
   lng: number
 }
 
+/** The cleaned words find the right town; the words as typed still get their say. One call when they are the same. */
+async function searchAddress(client: AppleMapsClient, query: string, near: z.infer<typeof latLngSchema> | undefined): Promise<ServerPlace[]> {
+  const lists = await Promise.all(searchQueriesFor(query).map((words) => client.search(words, near)))
+  const labelled = lists.map((places) => places.map((place) => ({ place, label: [place.name, place.address].filter(Boolean).join(', ') })))
+  return mergeSuggestions(labelled).map(({ place }) => place)
+}
+
 function toAppPlace(place: ServerPlace): AppPlace {
   return {
     name: place.name,
@@ -76,7 +84,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const client = clientFor(gate.config)
     const places = 'query' in body
-      ? await client.search(body.query, body.near)
+      ? await searchAddress(client, body.query, body.near)
       : await client.reverseGeocode(body.at)
     return NextResponse.json(
       { places: places.slice(0, MAX_PLACES).map(toAppPlace) },
