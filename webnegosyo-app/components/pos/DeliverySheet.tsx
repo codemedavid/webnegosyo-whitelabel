@@ -136,9 +136,9 @@ export function DeliverySheet({
       address: trimmedAddress,
       phone: phone.trim(),
       location: trimmedAddress ? location : null,
-      unit: unit.trim(),
-      landmark: landmark.trim(),
-      riderNote: riderNote.trim(),
+      ...(unit.trim() ? { unit: unit.trim() } : {}),
+      ...(landmark.trim() ? { landmark: landmark.trim() } : {}),
+      ...(riderNote.trim() ? { riderNote: riderNote.trim() } : {}),
     });
     onClose();
   }
