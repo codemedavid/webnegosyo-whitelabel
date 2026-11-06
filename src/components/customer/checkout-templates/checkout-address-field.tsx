@@ -8,13 +8,14 @@
  * this, so the designs cannot drift.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { Plus } from 'lucide-react'
 import type { AddressFieldTheme, PinCheckView } from '@/components/shared/address-autocomplete'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { resolveAddressMap, type AddressMapChoice } from '@/lib/checkout/address-map'
-import { applyDeliveryAddressChange } from '@/lib/checkout/customer-field-input'
+import { applyDeliveryAddressChange, DELIVERY_PIN_SKIPPED_KEY } from '@/lib/checkout/customer-field-input'
+import { readSavedAddresses, withoutSavedAddress, writeSavedAddresses, type SavedAddress } from '@/lib/checkout/saved-addresses'
 import {
   DELIVERY_LANDMARK_KEY,
   DELIVERY_RIDER_NOTE_KEY,
@@ -27,6 +28,7 @@ import { assessDeliveryPin, type PinWarning } from '@/lib/delivery/pin-assessmen
 import { parseLatLng, type LatLng } from '@/lib/maps/apple/mapkit-address'
 
 import { STANDARD_INPUT_CLASS } from './field-styles'
+import { SavedAddressList } from './saved-address-list'
 
 const AddressAutocomplete = dynamic(
   () => import('@/components/shared/address-autocomplete').then((mod) => ({ default: mod.AddressAutocomplete })),
@@ -47,7 +49,7 @@ interface DetailFieldSpec {
 }
 
 const DETAIL_FIELDS: DetailFieldSpec[] = [
-  { kind: 'unit', key: DELIVERY_UNIT_KEY, label: 'Unit / Floor / Building', placeholder: 'e.g. Unit 5B, 3rd floor' },
+  { kind: 'unit', key: DELIVERY_UNIT_KEY, label: 'House / Blk / Lot / Unit', placeholder: 'e.g. Blk 4 Lot 12, or Unit 5B' },
   { kind: 'landmark', key: DELIVERY_LANDMARK_KEY, label: 'Landmark', placeholder: 'e.g. Blue gate beside 7-Eleven' },
   { kind: 'riderNote', key: DELIVERY_RIDER_NOTE_KEY, label: 'Note to rider', placeholder: 'e.g. Call me when you arrive' },
 ]
@@ -131,7 +133,15 @@ export function CheckoutAddressField({
   labelClassName,
   look,
 }: CheckoutAddressFieldProps) {
-  const { customerData, setCustomerData, tenant, outlet, formFields } = checkout
+  const { customerData, setCustomerData, tenant, outlet, formFields, isKiosk } = checkout
+  const slug = tenant?.slug
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
+
+  // In an effect: the server has no storage, and a counter tablet never remembers a customer.
+  useEffect(() => {
+    if (!slug || isKiosk) return
+    setSavedAddresses(readSavedAddresses(window.localStorage, slug))
+  }, [slug, isKiosk])
 
   const branch = outlet.choices.find((entry) => entry.outlet.id === outlet.selectedOutletId)?.outlet ?? null
   const origin = resolveDeliveryOrigin(tenant ?? {}, branch)
@@ -165,15 +175,53 @@ export function CheckoutAddressField({
   // An answer is never tucked out of sight.
   const hasDetailAnswer = detailFields.some((spec) => (customerData[spec.key] || '').trim() !== '')
   const areDetailsShown = look?.addressDetails !== 'tucked' || isDetailsOpen || hasDetailAnswer
-  const map = resolveAddressMap(look?.addressMap, tenant)
+  // Words beat icons for a customer in a hurry: the plain default is the two text links.
+  const map = resolveAddressMap(look?.addressMap ?? 'links', tenant)
   const detailGrid = look?.isContained ? '@lg:grid-cols-2 @lg:items-end' : 'sm:grid-cols-2'
   const detailSpan = look?.isContained ? '@lg:col-span-2' : 'sm:col-span-2'
 
+  const addressText = customerData[fieldName] || ''
+  const pinPoint = parseLatLng(customerData.delivery_lat, customerData.delivery_lng)
+  const isPinSkipped = customerData[DELIVERY_PIN_SKIPPED_KEY] === 'true' && !pinPoint
+  const mustPin = Boolean(tenant?.lalamove_enabled || tenant?.distance_delivery_enabled)
+  const canSkipPin = mustPin && !pinPoint && addressText.trim() !== ''
+  const hasNoAddressYet = addressText.trim() === '' && !pinPoint
+
+  const useSavedAddress = (saved: SavedAddress) => {
+    setCustomerData((previous) => ({
+      ...applyDeliveryAddressChange(previous, fieldName, saved.address, { lat: saved.lat, lng: saved.lng }, { isConfirmed: true, source: 'saved', seconds: 0 }),
+      ...(saved.unit ? { [DELIVERY_UNIT_KEY]: saved.unit } : {}),
+      ...(saved.landmark ? { [DELIVERY_LANDMARK_KEY]: saved.landmark } : {}),
+      ...(saved.riderNote ? { [DELIVERY_RIDER_NOTE_KEY]: saved.riderNote } : {}),
+    }))
+  }
+  const forgetSavedAddress = (saved: SavedAddress) => {
+    const next = withoutSavedAddress(savedAddresses, saved)
+    setSavedAddresses(next)
+    if (slug) writeSavedAddresses(window.localStorage, slug, next)
+  }
+  const setPinSkipped = (isSkipped: boolean) => {
+    setCustomerData((previous) => {
+      /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+      const { [DELIVERY_PIN_SKIPPED_KEY]: _skipped, ...rest } = previous
+      return isSkipped ? { ...rest, [DELIVERY_PIN_SKIPPED_KEY]: 'true' } : rest
+    })
+  }
+
   return (
     <div className="space-y-3">
+      {hasNoAddressYet ? (
+        <SavedAddressList
+          addresses={savedAddresses}
+          onUse={useSavedAddress}
+          onForget={forgetSavedAddress}
+          linkClassName={theme.button}
+          mutedClassName={theme.muted}
+        />
+      ) : null}
       <AddressAutocomplete
-        value={customerData[fieldName] || ''}
-        coordinates={parseLatLng(customerData.delivery_lat, customerData.delivery_lng)}
+        value={addressText}
+        coordinates={pinPoint}
         onChange={handleAddressChange}
         placeholder={placeholder || 'Search your street, building or landmark'}
         required={isRequired}
@@ -184,6 +232,24 @@ export function CheckoutAddressField({
         check={check}
         theme={theme}
       />
+      {canSkipPin && !isPinSkipped ? (
+        <button
+          type="button"
+          onClick={() => setPinSkipped(true)}
+          data-part="link"
+          className={`inline-flex min-h-10 items-center text-sm font-medium underline-offset-2 hover:underline ${theme.link}`}
+        >
+          I can&apos;t find my place on the map
+        </button>
+      ) : null}
+      {canSkipPin && isPinSkipped ? (
+        <div role="status" data-part="muted" className={`space-y-1 text-sm ${theme.muted}`}>
+          <p>No problem. We&apos;ll send your order without a pin. The store will call you to confirm the spot and the delivery fee.</p>
+          <button type="button" onClick={() => setPinSkipped(false)} data-part="link" className={`inline-flex min-h-10 items-center font-medium ${theme.link}`}>
+            Try the map again
+          </button>
+        </div>
+      ) : null}
       {detailFields.length > 0 && !areDetailsShown ? (
         <button
           type="button"

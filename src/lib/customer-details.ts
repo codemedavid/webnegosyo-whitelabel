@@ -30,6 +30,14 @@ const HIDDEN_FIELDS = new Set([
   // picked under, and whether the customer confirmed it on the map.
   'delivery_pin_address',
   'delivery_pin_confirmed',
+  // Measures and bookkeeping for the pin (how it was found, who moved it last).
+  'delivery_pin_source',
+  'delivery_pin_seconds',
+  'delivery_search_misses',
+  'delivery_pin_skipped',
+  'delivery_pin_km',
+  'delivery_pin_updated_by',
+  'delivery_pin_updated_at',
   'customer_name',
   'customer_phone',
   'customer_contact',
@@ -59,9 +67,10 @@ const LABEL_OVERRIDES: Record<string, string> = {
   outlet_name: 'Branch',
   scheduled_for_label: 'Scheduled For',
   // The address field's built-in details (src/lib/delivery/delivery-details.ts).
-  delivery_unit: 'Unit / Floor',
+  delivery_unit: 'House / Unit',
   delivery_landmark: 'Landmark',
   delivery_rider_note: 'Note to rider',
+  delivery_store_note: 'Store note to rider',
 };
 
 export interface CustomerDetailRow {

@@ -13,6 +13,7 @@ interface FakeMap {
   isScrollEnabled?: boolean
   mapType: string
   listeners: Record<string, (event: unknown) => void>
+  setCenterAnimated: jest.Mock
   annotations: Array<{ coordinate: { latitude: number; longitude: number } }>
 }
 

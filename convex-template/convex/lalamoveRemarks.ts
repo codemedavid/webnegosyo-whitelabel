@@ -8,10 +8,12 @@
 // address text first and never the pin link.
 
 const DELIVERY_ADDRESS_FIELD_NAME = 'delivery_address'
+const LINE_BREAK = '\r\n'
 
 export const DELIVERY_UNIT_KEY = 'delivery_unit'
 export const DELIVERY_LANDMARK_KEY = 'delivery_landmark'
 export const DELIVERY_RIDER_NOTE_KEY = 'delivery_rider_note'
+export const DELIVERY_STORE_NOTE_KEY = 'delivery_store_note'
 
 export interface DeliveryDetails {
   unit: string
@@ -34,6 +36,14 @@ const NEVER_DETAIL_KEYS = new Set([
   'delivery_lng',
   'delivery_pin_address',
   'delivery_pin_confirmed',
+  'delivery_pin_source',
+  'delivery_pin_seconds',
+  'delivery_search_misses',
+  'delivery_pin_skipped',
+  'delivery_pin_km',
+  'delivery_pin_updated_by',
+  'delivery_pin_updated_at',
+  'delivery_store_note',
   'outlet_id',
   'outlet_name',
 ])
@@ -161,20 +171,22 @@ export function buildRiderRemarks(
   const details = findDeliveryDetails(data)
   const address = typeof data[addressFieldName] === 'string' ? (data[addressFieldName] as string).trim() : ''
   const link = pinLink(data.delivery_lat, data.delivery_lng)
+  const storeNote = typeof data[DELIVERY_STORE_NOTE_KEY] === 'string' ? (data[DELIVERY_STORE_NOTE_KEY] as string).trim() : ''
 
   // Listed by priority (what survives a cut); `order` is where it prints.
   const candidates: RemarkLine[] = [
-    { order: 5, text: link ? `Pin: ${link}` : '' },
+    { order: 6, text: link ? `Pin: ${link}` : '' },
     { order: 2, text: details.landmark ? `Landmark: ${details.landmark}` : '' },
-    { order: 1, text: details.unit ? `Unit/Floor: ${details.unit}` : '' },
+    { order: 1, text: details.unit ? `House/Unit: ${details.unit}` : '' },
+    { order: 4, text: storeNote ? `Store note: ${storeNote}` : '' },
     { order: 3, text: details.riderNote ? `Note: ${details.riderNote}` : '' },
-    { order: 4, text: address ? `Address: ${address}` : '' },
+    { order: 5, text: address ? `Address: ${address}` : '' },
   ].filter((line) => line.text)
 
   let remaining = RIDER_REMARKS_MAX_LENGTH
   const kept: RemarkLine[] = []
   for (const line of candidates) {
-    const separator = kept.length > 0 ? 1 : 0
+    const separator = kept.length > 0 ? LINE_BREAK.length : 0
     const text = fit(line.text, remaining - separator)
     if (!text) continue
     kept.push({ order: line.order, text })
@@ -184,5 +196,5 @@ export function buildRiderRemarks(
   return kept
     .sort((a, b) => a.order - b.order)
     .map((line) => line.text)
-    .join('\n')
+    .join(LINE_BREAK)
 }
