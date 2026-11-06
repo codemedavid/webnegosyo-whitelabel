@@ -41,6 +41,12 @@ export const SERVER_OWNED_CUSTOMER_DATA_KEYS = [
   'messenger_message_sent_at',
   // POS tender snapshot written by the register.
   'pos',
+  // The store's own line to the rider: forged, a customer could tell a rider to collect cash "from the store".
+  'delivery_store_note',
+  // Who moved a pin and how far it is: only the delivery edit writer knows (order-delivery-edit.ts).
+  'delivery_pin_km',
+  'delivery_pin_updated_by',
+  'delivery_pin_updated_at',
 ] as const
 
 export const MAX_CUSTOMER_DATA_KEYS = 100

@@ -17,6 +17,7 @@ import {
   placeAddressText,
   type AddressPlace,
 } from "../../../lib/maps/address-search";
+import { addressAfterPick } from "../../../lib/maps/address-query";
 import { MIN_QUERY_CHARS, useAddressSearch } from "../../../lib/maps/use-address-search";
 import type { LatLng } from "../../../lib/pos-checkout-fields";
 
@@ -64,7 +65,8 @@ export function AddressField({ tenantId, address, location, near, onChange }: Ad
   }
 
   function handlePick(place: AddressPlace) {
-    const text = placeAddressText(place);
+    // The cashier's "Blk 4 Lot 12" stays: a pick only finds the place, never the door.
+    const text = addressAfterPick(address, placeAddressText(place));
     setQuery("");
     setPickedText(text);
     Keyboard.dismiss();

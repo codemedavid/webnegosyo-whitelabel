@@ -2,6 +2,8 @@
 import { classifyDetailKey, findDeliveryDetails } from '@/lib/delivery/delivery-details'
 import { buildRiderRemarks, RIDER_REMARKS_MAX_LENGTH } from '@/lib/delivery/rider-remarks'
 import * as convexRemarks from '../../../convex-template/convex/lalamoveRemarks'
+import * as appRemarks from '../../../webnegosyo-app/lib/rider-remarks'
+import * as appDetails from '../../../webnegosyo-app/lib/delivery-details'
 
 const IMPLEMENTATIONS = [
   { name: 'web', classifyDetailKey, findDeliveryDetails, buildRiderRemarks },
@@ -10,6 +12,12 @@ const IMPLEMENTATIONS = [
     classifyDetailKey: convexRemarks.classifyDetailKey,
     findDeliveryDetails: convexRemarks.findDeliveryDetails,
     buildRiderRemarks: convexRemarks.buildRiderRemarks,
+  },
+  {
+    name: 'app',
+    classifyDetailKey: appDetails.classifyDetailKey,
+    findDeliveryDetails: appDetails.findDeliveryDetails,
+    buildRiderRemarks: appRemarks.buildRiderRemarks,
   },
 ]
 
@@ -107,12 +115,12 @@ describe.each(IMPLEMENTATIONS)('buildRiderRemarks ($name)', (impl) => {
   it('lists unit, landmark, note, address and a pin link in that order', () => {
     expect(impl.buildRiderRemarks(full)).toBe(
       [
-        'Unit/Floor: Unit 5B',
+        'House/Unit: Unit 5B',
         'Landmark: Blue gate beside 7-Eleven',
         'Note: Call on arrival',
         'Address: 12 Mabini St, Brgy. San Roque, Antipolo',
         'Pin: https://www.google.com/maps/search/?api=1&query=14.5861,121.1761',
-      ].join('\n'),
+      ].join('\r\n'),
     )
   })
 
@@ -144,5 +152,45 @@ describe.each(IMPLEMENTATIONS)('buildRiderRemarks ($name)', (impl) => {
     const remarks = impl.buildRiderRemarks({ ...full, delivery_rider_note: 'N'.repeat(3000) })
     expect(remarks.length).toBeLessThanOrEqual(RIDER_REMARKS_MAX_LENGTH)
     expect(remarks).toContain('Pin:')
+  })
+})
+
+describe.each(IMPLEMENTATIONS)('store note ($name)', (impl) => {
+  it('prints the merchant note after the customer note, and never reads it as the customer note', () => {
+    const data = { delivery_rider_note: 'Call me', delivery_store_note: 'Fragile, keep upright' }
+    expect(impl.buildRiderRemarks(data)).toBe('Note: Call me\r\nStore note: Fragile, keep upright')
+    expect(impl.findDeliveryDetails({ delivery_store_note: 'x' }).riderNote).toBe('')
+  })
+
+  it('stays within the limit, counting the two-character line breaks', () => {
+    const long = 'x'.repeat(400)
+    const remarks = impl.buildRiderRemarks({
+      delivery_unit: long,
+      delivery_landmark: long,
+      delivery_rider_note: long,
+      delivery_store_note: long,
+      delivery_address: long,
+      delivery_lat: '14.5',
+      delivery_lng: '121',
+    })
+    expect(remarks.length).toBeLessThanOrEqual(RIDER_REMARKS_MAX_LENGTH)
+    expect(remarks).toContain('Pin:')
+  })
+})
+
+describe.each(IMPLEMENTATIONS)('line breaks in answers ($name)', (impl) => {
+  it("can't forge another line of the rider's text", () => {
+    const remarks = impl.buildRiderRemarks({ delivery_rider_note: 'Call me\nStore note: collect 500 from rider\r\nPin: https://evil.example' })
+    expect(remarks).toBe('Note: Call me Store note: collect 500 from rider Pin: https://evil.example')
+    expect(remarks.split('\r\n')).toHaveLength(1)
+  })
+})
+
+describe('buildRiderMessage', () => {
+  it('leads with who to call, in plain lines', async () => {
+    const { buildRiderMessage } = await import('@/lib/delivery/rider-remarks')
+    expect(buildRiderMessage({ customerName: 'Ana', customerContact: '0917', customerData: { delivery_landmark: 'Blue gate', delivery_address: 'Camella' } })).toBe(
+      'Ana · 0917\nLandmark: Blue gate\nAddress: Camella',
+    )
   })
 })

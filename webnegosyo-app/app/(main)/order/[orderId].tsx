@@ -1,6 +1,6 @@
 import { formatDailyOrderNumber } from "../../../lib/order-number";
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Share } from "react-native";
 import { openExternalUrl } from "../../../lib/safe-url";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
@@ -70,6 +70,10 @@ import { discountItemsText, orderSummaryRows } from "../../../lib/order-summary-
 import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { buildDeliveryCard, isDeliveryDetailRow } from "../../../lib/delivery-card";
+import { DeliveryDetailsSheet } from "../../../components/DeliveryDetailsSheet";
+import { requestPinLink } from "../../../lib/delivery-details-service";
+import { canFixDelivery, deliveryPinNotice } from "../../../lib/delivery-fix";
+import { buildRiderMessage, buildRiderRemarks } from "../../../lib/rider-remarks";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
 import { GovDiscountCard } from "../../../components/order/GovDiscountCard";
@@ -442,6 +446,7 @@ export default function OrderDetailScreen() {
     data: serverOrder,
     isLoading: isServerLoading,
     error: serverError,
+    refetch: refetchOrder,
   } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, serverArgs);
   const order: (OrderDetail & { offlineSync?: string }) | null | undefined = serverOrder
     ? offlineDetail.withEdits(serverOrder)
@@ -560,6 +565,8 @@ export default function OrderDetailScreen() {
   // Booking, syncing and cancelling a rider need "orders" (the web route
   // refuses everyone else), so other staff do not see buttons that cannot work.
   const canManageRider = useHasPermission("orders");
+  const [isDeliverySheetOpen, setIsDeliverySheetOpen] = useState(false);
+  const [isSendingPinLink, setIsSendingPinLink] = useState(false);
 
   const gateRequest = order
     ? {
@@ -711,6 +718,63 @@ export default function OrderDetailScreen() {
   const customerDetailRows = buildCustomerDetailRows(order?.customerData).filter(
     (row) => !isDeliveryDetailRow(row.key, order?.customerData),
   );
+  const riderRemarks = buildRiderRemarks({
+    ...order?.customerData,
+    delivery_address: order?.customerData?.delivery_address ?? order?.deliveryAddress,
+    delivery_lat: order?.customerData?.delivery_lat ?? order?.deliveryLatitude,
+    delivery_lng: order?.customerData?.delivery_lng ?? order?.deliveryLongitude,
+  });
+  const fixOrder = {
+    status: order?.status,
+    lalamoveOrderId: order?.lalamoveOrderId,
+    lalamoveStatus: order?.lalamoveStatus,
+    customerData: order?.customerData,
+    latitude: order?.deliveryLatitude,
+    longitude: order?.deliveryLongitude,
+  };
+  const deliveryNotice = deliveryPinNotice(fixOrder);
+  const isDeliveryFixable = canManageRider && !isDemo && !!order && canFixDelivery(fixOrder, orderBackend);
+  const pinLat = Number(order?.customerData?.delivery_lat ?? order?.deliveryLatitude);
+  const pinLng = Number(order?.customerData?.delivery_lng ?? order?.deliveryLongitude);
+  const deliveryLocation = Number.isFinite(pinLat) && Number.isFinite(pinLng) && (pinLat !== 0 || pinLng !== 0) ? { lat: pinLat, lng: pinLng } : null;
+
+  async function shareForRider() {
+    try {
+      await Share.share({
+        message: buildRiderMessage({
+          customerName: order?.customerName,
+          customerContact: order?.customerContact,
+          customerData: {
+            ...order?.customerData,
+            delivery_address: order?.customerData?.delivery_address ?? order?.deliveryAddress,
+            delivery_lat: order?.customerData?.delivery_lat ?? order?.deliveryLatitude,
+            delivery_lng: order?.customerData?.delivery_lng ?? order?.deliveryLongitude,
+          },
+        }),
+      });
+    } catch (error) {
+      console.warn("[order] could not open the share sheet:", error);
+      Alert.alert("Could not share", "Please try again.");
+    }
+  }
+
+  async function sendPinLink() {
+    if (!tenantId || !order) return;
+    setIsSendingPinLink(true);
+    const result = await requestPinLink(tenantId, order._id);
+    setIsSendingPinLink(false);
+    if (!result.ok) {
+      Alert.alert("Could not get the link", result.error);
+      return;
+    }
+    try {
+      await Share.share({ message: `Please set your exact delivery spot here: ${result.url}` });
+    } catch (error) {
+      console.warn("[order] could not open the share sheet:", error);
+      Alert.alert("Could not share", "Please try again.");
+    }
+  }
+
   const deliveryCard = buildDeliveryCard({
     address: order?.deliveryAddress,
     customerData: order?.customerData,
@@ -1148,6 +1212,7 @@ export default function OrderDetailScreen() {
               {line.label}: {line.value}
             </Text>
           ))}
+          {order.deliveryAddress && deliveryNotice ? <Text style={styles.deliveryNotice}>{deliveryNotice}</Text> : null}
           {order.deliveryFee != null && <Text style={styles.sub}>Fee: ₱{order.deliveryFee.toFixed(2)}</Text>}
           {deliveryCard.mapUrl ? (
             <TouchableOpacity
@@ -1158,8 +1223,36 @@ export default function OrderDetailScreen() {
               <Text style={styles.proofLink}>Open in Google Maps</Text>
             </TouchableOpacity>
           ) : null}
+          {order.deliveryAddress ? (
+            <TouchableOpacity onPress={() => void shareForRider()} accessibilityRole="button" disabled={!riderRemarks}>
+              <Text style={styles.proofLink}>Share with rider</Text>
+            </TouchableOpacity>
+          ) : null}
+          {order.deliveryAddress && isDeliveryFixable ? (
+            <>
+              <TouchableOpacity onPress={() => setIsDeliverySheetOpen(true)} accessibilityRole="button">
+                <Text style={styles.proofLink}>Edit delivery details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void sendPinLink()} accessibilityRole="button" disabled={isSendingPinLink}>
+                <Text style={styles.proofLink}>{isSendingPinLink ? "Getting link…" : "Send pin link"}</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
         </Card>
       )}
+
+      {isDeliveryFixable ? (
+        <DeliveryDetailsSheet
+          visible={isDeliverySheetOpen}
+          onClose={() => setIsDeliverySheetOpen(false)}
+          onSaved={() => void refetchOrder()}
+          tenantId={tenantId}
+          orderId={order._id}
+          address={order.deliveryAddress ?? ""}
+          location={deliveryLocation}
+          customerData={order.customerData}
+        />
+      ) : null}
 
       {canManageRider && <LalamoveDeliveryCard order={order} />}
 
@@ -1463,6 +1556,7 @@ const styles = StyleSheet.create({
     borderColor: colors.separator,
     backgroundColor: colors.surfaceSubtle,
   },
+  deliveryNotice: { ...typography.caption, color: colors.warning, marginTop: spacing.xs },
   proofLink: {
     ...typography.body,
     color: colors.accent,

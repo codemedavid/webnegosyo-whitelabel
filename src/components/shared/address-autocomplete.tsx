@@ -40,6 +40,8 @@ export interface AddressAutocompleteProps {
   theme?: AddressFieldTheme
   /** How the map is offered (Apple Maps); absent = icon buttons beside the box. */
   mapDisplay?: AddressMapDisplay
+  /** The customer already chose to go without a pin: stop asking for one (Apple Maps). */
+  hidesPinNudge?: boolean
 }
 
 /**
@@ -53,6 +55,7 @@ export function AddressAutocomplete({
   purpose,
   check,
   mapDisplay,
+  hidesPinNudge,
   ...props
 }: AddressAutocompleteProps) {
   const mapbox = <MapboxAddressAutocomplete {...props} mapboxEnabled biasCenter={biasCenter} />
@@ -69,6 +72,7 @@ export function AddressAutocomplete({
       purpose={purpose}
       check={check}
       mapDisplay={mapDisplay}
+      hidesPinNudge={hidesPinNudge}
       fallback={mapbox}
     />
   )

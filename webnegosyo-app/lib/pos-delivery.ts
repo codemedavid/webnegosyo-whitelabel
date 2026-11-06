@@ -32,6 +32,10 @@ export interface PosDeliveryDetails {
    * search. Absent/null for a typed address — the pin is never guessed.
    */
   location?: LatLng | null;
+  /** The words that find the door. Same keys as the web checkout, so the rider gets them either way. */
+  unit?: string;
+  landmark?: string;
+  riderNote?: string;
 }
 
 /** The delivery slice of the store, as a finished sale leaves it. */
@@ -99,6 +103,9 @@ export function deliveryCustomerData(
   const address = delivery?.address.trim() ?? "";
   const phone = delivery?.phone.trim() ?? "";
   const location = address ? validLocation(delivery?.location) : null;
+  const unit = delivery?.unit?.trim() ?? "";
+  const landmark = delivery?.landmark?.trim() ?? "";
+  const riderNote = delivery?.riderNote?.trim() ?? "";
 
   return {
     ...(address ? { delivery_address: address } : {}),
@@ -108,5 +115,8 @@ export function deliveryCustomerData(
       ? { delivery_lat: String(location.lat), delivery_lng: String(location.lng) }
       : {}),
     ...(phone ? { customer_phone: phone } : {}),
+    ...(unit ? { delivery_unit: unit } : {}),
+    ...(landmark ? { delivery_landmark: landmark } : {}),
+    ...(riderNote ? { delivery_rider_note: riderNote } : {}),
   };
 }

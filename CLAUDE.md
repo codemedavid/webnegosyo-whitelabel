@@ -260,6 +260,19 @@ The register asks the storefront's own checkout questions (`customer_form_fields
 - **Fee**: `/api/maps/delivery-quote` runs the checkout's own ROAD-distance pricing; the app applies the free-delivery minimum and fills the box ("Auto") only when it is empty or still holds a suggestion — a typed fee always wins. Offline → straight line × 1.3, labelled "estimate". Lalamove stores get no suggestion.
 - All three routes: bearer member of the store (`gateAppMapsRequest`), per-person burst + daily limits (shared Apple quota).
 
+### Delivery address & rider notes
+
+Search reaches the neighbourhood, the map the door, the words the gate: no provider we use has house-level data for most of the Philippines. Plan + evidence: `docs/plans/2026-11-06-delivery-address-and-rider-notes.md`.
+
+- **Search** (`src/lib/maps/address-query.ts`, byte-identical in the app): door and direction words ("Blk 4 Lot 12", "likod ng") are stripped before searching, door-shaped results (other customers' entries) rank last, and `addressAfterPick` keeps the customer's own door on the picked place. No regex lookbehind in it: older iPhones' Safari refuses to parse one and the whole checkout would fail. `/api/maps/places` runs the same cleaner for the POS.
+- **Map step** (`pin-confirm-dialog.tsx`, `pin-map-search.tsx`): opens on satellite, full screen on phones, with search on the map and a "Near …" label that never claims a house number (maps guess it: `withoutHouseNumber`). Pasted coordinates and map links work everywhere (`pasted-location.ts`); short links go through `POST /api/maps/resolve-link`, which only ever fetches Google's short-link hosts and stops at the first full map URL.
+- **Answers** live in `customer_data`: `delivery_unit` / `_landmark` / `_rider_note` (customer), `delivery_store_note` (merchant), hidden measures `delivery_pin_source` / `_seconds` / `delivery_search_misses`, hidden `delivery_pin_skipped` / `_km` / `_updated_by` / `_updated_at`. A new key must join the hidden list in `customer-details.ts` and `NEVER_DETAIL_KEYS` (web, app, Convex mirrors).
+- **Rider text**: `buildRiderRemarks` (`src/lib/delivery/rider-remarks.ts`, mirrored in the app and Convex; `rider-remarks.test.ts` runs all three) is `recipients[].remarks`, ≤1,500 characters, CRLF between lines as Lalamove asks. `buildRiderMessage` is the same text for a store's own rider.
+- **"I can't find my place"** (`unpinned-delivery.ts`): where a pin is needed, the order goes through with no fee and the store calls. A pin always ends the mark, and `createOrderAction` re-checks it, so it can't dodge a fee on a pinned order.
+- **Fixing a placed order** (`order-delivery-edit.ts` pure, `-server.ts` writer; web `OrderDeliveryCard` + `actions/delivery-details.ts`, app `DeliveryDetailsSheet` + `POST /api/orders/delivery-details`): platform stores only, refused once a rider is booked or the order is finished. The write is conditional on `updated_at` and asserts the row changed. A new destination clears `lalamove_quotation_id`, so the old spot can never be booked. The fee never changes automatically; the merchant sees the new distance (`delivery_pin_km`).
+- **Send pin link** (`pin-link-token.ts`, `POST /api/orders/pin-link`, page `/[tenant]/pin/[orderId]`, write `POST /api/orders/pin`): a token signed for this purpose, this order and 24 hours, deliberately NOT the permanent tracking token printed on receipts. The page shows only the store and order number, never the name, phone, items or current pin. A customer can change the pin and rider words, never the fee or the store note.
+- **Saved addresses** (`saved-addresses.ts`): last 3 confirmed pins per store, on the device only, never on a kiosk.
+
 ### Convex (Real-Time Backend)
 
 Convex serves as a secondary real-time backend alongside Supabase. Each tenant optionally has a `convex_deployment_url`.

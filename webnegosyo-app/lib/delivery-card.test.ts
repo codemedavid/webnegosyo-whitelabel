@@ -20,7 +20,7 @@ describe("buildDeliveryCard", () => {
     ).toEqual({
       mapUrl: "https://www.google.com/maps/search/?api=1&query=14.5861%2C121.1761",
       lines: [
-        { label: "Unit / Floor", value: "Unit 5B" },
+        { label: "House / Unit", value: "Unit 5B" },
         { label: "Landmark", value: "Blue gate" },
         { label: "Note to rider", value: "Call on arrival" },
       ],
