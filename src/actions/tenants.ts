@@ -323,7 +323,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   // saving an unrelated field would demote a `supabase` tenant to `platform`.
   const { data: currentBackendRow } = await supabase
     .from('tenants')
-    .select('order_backend, slug, convex_deployment_url')
+    .select('order_backend, slug, convex_deployment_url, auto_86_enabled')
     .eq('id', id)
     .maybeSingle()
 
@@ -483,6 +483,13 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   // gates features, so without this a saved change appears to do nothing until
   // the TTL expires.
   await invalidateTenantCache(parsed.slug, id, previousSlug)
+
+  // Auto-86 only ever ran on a stock movement, so switching it on hid nothing
+  // until each dish's ingredients next moved.
+  if (parsed.auto_86_enabled && !(currentBackendRow as { auto_86_enabled?: boolean | null } | null)?.auto_86_enabled) {
+    const { recheckMenuAvailability } = await import('@/lib/inventory/stock-alerts-service')
+    await recheckMenuAvailability(id)
+  }
 
   revalidatePath('/superadmin')
   revalidatePath('/superadmin/tenants')

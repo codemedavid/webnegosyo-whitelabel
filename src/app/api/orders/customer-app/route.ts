@@ -27,7 +27,7 @@ import {
 /** Per client address, across every store (a phone has one address). */
 const IP_LIMIT = { limit: 30, windowSec: 60, onRedisFailure: 'instance' as const }
 /** Per store, across every address: a flood guard, far above any real rush. */
-const TENANT_LIMIT = { limit: 300, windowSec: 60, onRedisFailure: 'instance' as const }
+const TENANT_LIMIT = { limit: 1000, windowSec: 60, onRedisFailure: 'instance' as const }
 
 const RATE_LIMITED_MESSAGE = 'You’re placing orders very quickly. Please wait a minute, then try again.'
 

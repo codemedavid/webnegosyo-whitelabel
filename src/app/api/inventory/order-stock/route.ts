@@ -366,7 +366,10 @@ async function revise(context: ActionContext): Promise<NextResponse> {
   const evidence = await lineEvidenceFor(context, [...spend, ...giveBack])
   if (evidence instanceof NextResponse) return evidence
   const checked = evidence ? checkReviseLines(revision, spend, giveBack, evidence) : null
-  if (checked && !checked.ok) return refuse(409, checked.code)
+  // An edit call can beat its own order write (an offline flush), and the app's
+  // queue drops any plain 4xx for good. Nothing moves on a 503, so a forged
+  // revision gains nothing from being retried.
+  if (checked && !checked.ok) return refuse(checked.code === 'revision_not_on_order' ? 503 : 409, checked.code)
 
   const { applyOrderRevisionStockBestEffort } = await import('@/lib/inventory/order-stock-service')
   const outcome = await applyOrderRevisionStockBestEffort(

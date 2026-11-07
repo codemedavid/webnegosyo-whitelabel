@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 import { describe, test, expect } from '@jest/globals'
-import { pickOrdersToSweep, SWEEP_MAX_FAILED_ATTEMPTS } from '@/lib/inventory/order-stock-sweep'
+import { pickOrdersToSweep, rotateStores, SWEEP_MAX_FAILED_ATTEMPTS } from '@/lib/inventory/order-stock-sweep'
 
 const NOW = Date.parse('2026-11-07T12:00:00.000Z')
 const minutesAgo = (m: number) => new Date(NOW - m * 60_000).toISOString()
@@ -33,6 +33,18 @@ describe('pickOrdersToSweep', () => {
 
   test('never takes cancelled orders', () => {
     expect(pickOrdersToSweep({ ...base, orders: [order('a', minutesAgo(30), { status: 'cancelled' })] })).toEqual([])
+  })
+
+  test.each(['canceled', 'voided', 'refunded'])('never takes a %s order', (status) => {
+    expect(pickOrdersToSweep({ ...base, orders: [order('a', minutesAgo(30), { status })] })).toEqual([])
+  })
+
+  test('never takes an order whose payment was refunded', () => {
+    expect(pickOrdersToSweep({ ...base, orders: [order('a', minutesAgo(30), { payment_status: 'refunded' })] })).toEqual([])
+  })
+
+  test('never takes an edited order: its difference is already booked', () => {
+    expect(pickOrdersToSweep({ ...base, orders: [order('a', minutesAgo(30), { revision_number: 1 })] })).toEqual([])
   })
 
   test('never takes POS orders: the register has its own durable queue and sends the real lines', () => {
@@ -82,7 +94,7 @@ describe('runOrderStockSweep', () => {
     return {
       from: (table: string) => {
         const b: Record<string, unknown> = {}
-        for (const m of ['select', 'eq', 'gte', 'lte', 'neq', 'or', 'order', 'limit', 'in']) b[m] = () => b
+        for (const m of ['select', 'eq', 'gte', 'lte', 'neq', 'not', 'or', 'order', 'limit', 'in']) b[m] = () => b
         b.insert = (row: unknown) => { inserts.push({ table, row }); return Promise.resolve({ error: null }) }
         b.then = (resolve: (v: unknown) => unknown) => resolve({ data: tables[table] ?? [], error: null })
         return b
@@ -110,5 +122,20 @@ describe('runOrderStockSweep', () => {
     expect(summary.stores).toBe(1)
     expect(summary.nothingToDeduct).toBe(1)
     expect(inserts).toHaveLength(1)
+  })
+})
+
+describe('rotateStores', () => {
+  const stores = [{ id: 'c' }, { id: 'a' }, { id: 'b' }]
+  const TEN_MINUTES = 10 * 60 * 1000
+
+  test('gives each store a turn at the front, one per run', () => {
+    const fronts = [0, 1, 2].map((run) => rotateStores(stores, run * TEN_MINUTES)[0].id)
+    expect(fronts).toEqual(['a', 'b', 'c'])
+  })
+
+  test('keeps every store and handles none', () => {
+    expect(rotateStores(stores, TEN_MINUTES).map((store) => store.id).sort()).toEqual(['a', 'b', 'c'])
+    expect(rotateStores([], 0)).toEqual([])
   })
 })

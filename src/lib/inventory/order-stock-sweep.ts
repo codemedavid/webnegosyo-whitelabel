@@ -15,6 +15,9 @@
  *   call into a refused duplicate and lose the options' stock for good.
  * - Orders older than 24 hours, or from before the store's first recorded sale
  *   deduction (inventory switched on after them).
+ * - Orders that were edited (`revision_number` above 0): the edit's difference is
+ *   already booked, so spending today's lines at revision 0 would double-count.
+ * - Cancelled, voided or refunded orders: nothing would ever return their stock.
  * - Orders with nothing to deduct: the sweep records the same
  *   `nothing_to_deduct` audit checkout would, and that audit is what stops them
  *   being read again.
@@ -27,6 +30,7 @@ import { readInventorySelectionSnapshot } from '@/lib/inventory-selection-snapsh
 import { applyOrderStockBestEffort } from '@/lib/inventory/order-stock-service'
 import { recordStockAudit } from '@/lib/inventory/stock-audit-service'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
+import { TERMINAL_ORDER_STATES } from '@/lib/inventory/order-stock-repair'
 
 /** Checkout deducts on the request; give it time before the sweep steps in. */
 export const SWEEP_MIN_AGE_MS = 5 * 60 * 1000
@@ -37,6 +41,10 @@ export const SWEEP_MAX_FAILED_ATTEMPTS = 5
 const ORDERS_PER_STORE = 200
 /** Bounds one cron run. */
 const MAX_ORDERS_PER_RUN = 150
+/** Stop starting stores before the route's 60 s limit cuts the run off mid-store. */
+const SWEEP_TIME_BUDGET_MS = 50_000
+/** The cron's cadence: each run starts one store further along. */
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000
 
 const SETTLED_AUDIT_OUTCOMES: ReadonlySet<string> = new Set(['applied', 'duplicate', 'cancelled_first', 'nothing_to_deduct'])
 
@@ -44,6 +52,8 @@ export interface SweepOrderRow {
   id: string
   created_at: string
   status: string
+  payment_status?: string | null
+  revision_number?: number | null
   source?: string | null
   outlet_id?: string | null
   customer_data?: unknown
@@ -67,7 +77,8 @@ export function pickOrdersToSweep(input: {
     const age = input.now - createdAt
     if (age < SWEEP_MIN_AGE_MS || age > SWEEP_MAX_AGE_MS) return false
     if (createdAt < firstSaleAt) return false
-    if (order.status === 'cancelled' || order.source === 'pos') return false
+    if (order.source === 'pos' || (order.revision_number ?? 0) > 0) return false
+    if (TERMINAL_ORDER_STATES.has(order.status) || TERMINAL_ORDER_STATES.has(order.payment_status ?? '')) return false
     if (input.claimedOrderIds.has(order.id)) return false
 
     const outcomes = input.auditsByOrder.get(order.id) ?? []
@@ -88,11 +99,11 @@ export interface SweepSummary {
 async function readCandidates(db: Admin, tenantId: string, now: number): Promise<SweepOrderRow[]> {
   const { data, error } = await db
     .from('orders')
-    .select('id, created_at, status, source, outlet_id, customer_data')
+    .select('id, created_at, status, payment_status, revision_number, source, outlet_id, customer_data')
     .eq('tenant_id', tenantId)
     .gte('created_at', new Date(now - SWEEP_MAX_AGE_MS).toISOString())
     .lte('created_at', new Date(now - SWEEP_MIN_AGE_MS).toISOString())
-    .neq('status', 'cancelled')
+    .not('status', 'in', `(${[...TERMINAL_ORDER_STATES].join(',')})`)
     .or('source.is.null,source.neq.pos')
     .order('created_at', { ascending: false })
     .limit(ORDERS_PER_STORE)
@@ -143,7 +154,23 @@ async function sweepOrder(db: Admin, tenantId: string, order: SweepOrderRow): Pr
   return outcome === 'failed' ? 'failed' : 'swept'
 }
 
-export async function runOrderStockSweep(db: Admin, now: number = Date.now()): Promise<SweepSummary> {
+/**
+ * Every store takes a turn at the front, with no state to keep. Without this
+ * the per-run budget and time limit always favour the same stores.
+ */
+export function rotateStores<T extends { id: string }>(stores: readonly T[], now: number): T[] {
+  if (stores.length === 0) return []
+  const sorted = [...stores].sort((a, b) => a.id.localeCompare(b.id))
+  const start = Math.floor(now / SWEEP_INTERVAL_MS) % sorted.length
+  return [...sorted.slice(start), ...sorted.slice(0, start)]
+}
+
+export async function runOrderStockSweep(
+  db: Admin,
+  now: number = Date.now(),
+  clock: () => number = Date.now,
+): Promise<SweepSummary> {
+  const startedAt = clock()
   const summary = { stores: 0, swept: 0, nothingToDeduct: 0, failed: 0 }
   const { data: tenants, error } = await db
     .from('tenants')
@@ -152,9 +179,10 @@ export async function runOrderStockSweep(db: Admin, now: number = Date.now()): P
   if (error) throw error
 
   let budget = MAX_ORDERS_PER_RUN
-  for (const tenant of (tenants ?? []) as Array<OrderBackendTenantFields & { id: string }>) {
+  for (const tenant of rotateStores((tenants ?? []) as Array<OrderBackendTenantFields & { id: string }>, now)) {
+    if (budget <= 0 || clock() - startedAt > SWEEP_TIME_BUDGET_MS) break
     // Only the platform backend keeps orders where this reads; never route on the URL alone.
-    if (budget <= 0 || resolveOrderBackend(tenant) !== 'platform') continue
+    if (resolveOrderBackend(tenant) !== 'platform') continue
     summary.stores += 1
     try {
       const candidates = await readCandidates(db, tenant.id, now)

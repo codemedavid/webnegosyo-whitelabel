@@ -979,7 +979,8 @@ describe('POST /api/inventory/order-stock', () => {
       const { POST } = await import('@/app/api/inventory/order-stock/route')
       const body = { tenantId: 't1', orderId: PLATFORM_ORDER, action: 'revise', revision: 7, deplete: [{ menuItemId: 'm-latte', quantity: 1 }], restore: [] }
       const res = await POST(makeRequest(body, 'Bearer token-1'))
-      expect(res.status).toBe(409)
+      // Retried, not dropped: an offline edit call can beat its own order write.
+      expect(res.status).toBe(503)
       expect(await res.json()).toEqual({ error: 'revision_not_on_order' })
     })
   })
