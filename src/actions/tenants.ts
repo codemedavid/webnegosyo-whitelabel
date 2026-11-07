@@ -19,7 +19,7 @@ import { normalizeMessengerUsername } from '@/lib/messenger-username'
 import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
 import { invalidateTenantCache } from '@/lib/cache'
-import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-backend'
+import { orderBackendForSave, type OrderBackendPreference, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 import { syncTenantConvexConfig, convexConfigSyncWarning } from '@/lib/convex-config-sync'
 import { requirePlatformPermission } from '@/lib/platform-staff/guard'
@@ -332,6 +332,19 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   const backendChanges = superadminOnlyTenantChanges(currentBackendRow, parsed)
   if (!isSuperadmin && backendChanges.length > 0) {
     return { error: superadminOnlyRefusal(backendChanges) }
+  }
+
+  // A save that moves the resolved order backend leaves existing orders behind.
+  if (currentBackendRow) {
+    const { refuseUnconfirmedBackendChange } = await import('@/lib/order-backend-change-guard')
+    const refusal = await refuseUnconfirmedBackendChange({
+      supabase,
+      tenantId: id,
+      current: currentBackendRow as OrderBackendTenantFields,
+      input: parsed,
+      confirmed: parsed.confirm_backend_change,
+    })
+    if (refusal) return { error: refusal }
   }
 
   const previousSlug = (currentBackendRow as { slug?: string } | null)?.slug ?? null
