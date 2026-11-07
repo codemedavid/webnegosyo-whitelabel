@@ -62,6 +62,10 @@ export async function setPosStockPolicyAction(
     return { success: false, error: NOT_SAVED }
   }
 
+  // The policy decides which shelves are judged, so the menu is re-judged now.
+  const { recheckMenuAvailability } = await import('@/lib/inventory/stock-alerts-service')
+  await recheckMenuAvailability(parsed.data.tenantId)
+
   revalidatePath(`/${parsed.data.tenantSlug}/admin/inventory`)
   return { success: true, policy: parsed.data.policy }
 }

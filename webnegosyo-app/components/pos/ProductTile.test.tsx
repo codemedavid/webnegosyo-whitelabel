@@ -33,6 +33,21 @@ describe("ProductTile", () => {
     expect(screen.queryByText("Sold out")).toBeNull();
   });
 
+  it("dims a tile at 0 left and keeps it tappable", () => {
+    const onPress = jest.fn();
+    render(<ProductTile {...base} stockHint={{ label: "0 left", isOut: true }} onPress={onPress} />);
+
+    expect(screen.getByRole("button")).toHaveStyle({ opacity: 0.55 });
+    fireEvent.press(screen.getByRole("button"));
+    expect(onPress).toHaveBeenCalled();
+  });
+
+  it("does not dim a tile with stock left", () => {
+    render(<ProductTile {...base} stockHint={{ label: "3 left", isOut: false }} onPress={() => {}} />);
+
+    expect(screen.getByRole("button")).not.toHaveStyle({ opacity: 0.55 });
+  });
+
   it("labels a switched-off dish sold out and says so to a screen reader", () => {
     render(<ProductTile {...base} isSoldOut stockHint={{ label: "2 left", isOut: false }} onPress={() => {}} />);
 

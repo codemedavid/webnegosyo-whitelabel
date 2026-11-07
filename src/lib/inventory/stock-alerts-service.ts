@@ -23,12 +23,14 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { InventoryItem } from '@/types/database'
 import {
+  detectOutAgain,
   detectStockCrossings,
   evaluateStockLevel,
   type StockCrossing,
   type StockLevelInput,
 } from '@/lib/inventory/low-stock'
-import { reconcileAuto86 } from '@/lib/inventory/auto-86-service'
+import { reconcileAuto86, reconcileWholeMenu, type Auto86Result } from '@/lib/inventory/auto-86-service'
+import { judgesUncounted } from '@/lib/inventory/judged-shelf'
 import { branchLevelInputs } from '@/lib/inventory/branch-stock-levels'
 import { indexStockRows, type BranchStockIndex, type BranchStockRow } from '@/lib/inventory/stock-location'
 
@@ -107,6 +109,8 @@ function logAlertWriteFailure(step: string, tenantId: string, error: { message: 
 interface TenantAlertFlags {
   lowStockAlertsEnabled: boolean
   auto86Enabled: boolean
+  judgeUncounted: boolean
+  slug: string | null
 }
 
 /** Unreadable or absent flags mean off — never switch a feature on by accident. */
@@ -116,15 +120,22 @@ async function readTenantFlags(
 ): Promise<TenantAlertFlags> {
   const { data, error } = await supabase
     .from('tenants')
-    .select('low_stock_alerts_enabled, auto_86_enabled')
+    .select('low_stock_alerts_enabled, auto_86_enabled, pos_stock_policy, slug')
     .eq('id', tenantId)
     .single()
   if (error) console.error('[inventory] Tenant alert flags unreadable; treating both as off', tenantId, error.message)
 
-  const row = (data ?? {}) as { low_stock_alerts_enabled?: boolean; auto_86_enabled?: boolean }
+  const row = (data ?? {}) as {
+    low_stock_alerts_enabled?: boolean
+    auto_86_enabled?: boolean
+    pos_stock_policy?: string | null
+    slug?: string | null
+  }
   return {
     lowStockAlertsEnabled: row.low_stock_alerts_enabled === true,
     auto86Enabled: row.auto_86_enabled === true,
+    judgeUncounted: judgesUncounted(row.pos_stock_policy),
+    slug: row.slug ?? null,
   }
 }
 
@@ -426,11 +437,12 @@ export async function processStockLevelChanges(
     if (!flags.lowStockAlertsEnabled && !flags.auto86Enabled) return NOTHING_HAPPENED
 
     const alerts = flags.lowStockAlertsEnabled
-      ? await processAlerts(supabase, tenantId, items, deltas, outletId)
+      ? await processAlerts(supabase, tenantId, items, deltas, outletId, flags.judgeUncounted)
       : { alertsRaised: 0, alertsResolved: 0 }
     const auto86 = flags.auto86Enabled
-      ? await runAuto86(supabase, tenantId, [...deltas.keys()])
+      ? await runAuto86(supabase, tenantId, [...deltas.keys()], flags.judgeUncounted)
       : { disabled: [], reEnabled: [] }
+    await refreshStorefront(flags.slug, auto86)
 
     return { ...alerts, menuItemsDisabled: auto86.disabled, menuItemsReEnabled: auto86.reEnabled }
   } catch (error) {
@@ -445,6 +457,7 @@ async function processAlerts(
   items: readonly InventoryItem[],
   deltas: ReadonlyMap<string, number>,
   outletId: AlertOutlet,
+  judgeUncounted: boolean,
 ): Promise<{ alertsRaised: number; alertsResolved: number }> {
   // Only when a branch was actually named. A store-wide caller never touches
   // the branch table and behaves exactly as it did before branches existed.
@@ -455,7 +468,10 @@ async function processAlerts(
     branchItems = rewindToPreMovement(branchLevelInputs(items, branchStock, outletId), deltas)
   }
 
-  const crossings = detectStockCrossings(branchItems, deltas)
+  const crossings = [
+    ...detectStockCrossings(branchItems, deltas),
+    ...(judgeUncounted ? detectOutAgain(branchItems, deltas) : []),
+  ]
   const recoveredIds = resolveRecoveredIds(branchItems, deltas)
 
   const alertsRaised = await raiseAlerts(supabase, tenantId, crossings, outletId)
@@ -469,11 +485,46 @@ async function runAuto86(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,
   ingredientIds: readonly string[],
+  judgeUncounted: boolean,
 ): Promise<{ disabled: string[]; reEnabled: string[] }> {
   try {
-    return await reconcileAuto86(supabase, tenantId, ingredientIds)
+    return await reconcileAuto86(supabase, tenantId, ingredientIds, undefined, { judgeUncounted })
   } catch (error) {
     console.error('[inventory] Auto-86 failed', tenantId, error)
     return { disabled: [], reEnabled: [] }
+  }
+}
+
+/**
+ * A dish auto-86 just hid or restored must not sit stale in the storefront
+ * cache. A failed purge costs freshness, never the sale behind it.
+ */
+async function refreshStorefront(slug: string | null, result: Auto86Result): Promise<void> {
+  if (!slug || (result.disabled.length === 0 && result.reEnabled.length === 0)) return
+  try {
+    const { revalidateStorefrontMenu } = await import('@/lib/storefront/revalidate')
+    revalidateStorefrontMenu(slug)
+  } catch (error) {
+    console.warn('[inventory] Storefront refresh after auto-86 failed', slug, error)
+  }
+}
+
+/**
+ * Re-judge the whole menu after the rule itself changed: auto-86 switched on,
+ * or the store's stock policy changed. Without this nothing happens until each
+ * dish's ingredients next move. Never throws: the setting is already saved.
+ */
+export async function recheckMenuAvailability(tenantId: string): Promise<Auto86Result> {
+  const none: Auto86Result = { disabled: [], reEnabled: [] }
+  try {
+    const supabase = createAdminClient()
+    const flags = await readTenantFlags(supabase, tenantId)
+    if (!flags.auto86Enabled) return none
+    const result = await reconcileWholeMenu(supabase, tenantId, undefined, { judgeUncounted: flags.judgeUncounted })
+    await refreshStorefront(flags.slug, result)
+    return result
+  } catch (error) {
+    console.error('[inventory] Menu re-check failed', tenantId, error)
+    return none
   }
 }

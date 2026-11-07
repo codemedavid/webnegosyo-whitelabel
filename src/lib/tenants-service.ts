@@ -518,7 +518,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   // edit that does not mention order routing at all.
   const { data: oldTenantData } = await supabase
     .from('tenants')
-    .select('domain, order_backend, slug')
+    .select('domain, order_backend, slug, auto_86_enabled')
     .eq('id', id)
     .maybeSingle()
 
@@ -526,6 +526,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     domain: string | null
     slug?: string | null
     order_backend?: OrderBackendPreference | null
+    auto_86_enabled?: boolean | null
   } | null
 
   const parsed = tenantSchema.parse({ ...input, id })
@@ -658,6 +659,13 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   // TTL expired.
   const { invalidateTenantCache } = await import('@/lib/cache')
   await invalidateTenantCache(parsed.slug, id, oldTenant?.slug ?? null)
+
+  // Auto-86 only ever ran on a stock movement, so switching it on hid nothing
+  // until each dish's ingredients next moved.
+  if (parsed.auto_86_enabled && !oldTenant?.auto_86_enabled) {
+    const { recheckMenuAvailability } = await import('@/lib/inventory/stock-alerts-service')
+    await recheckMenuAvailability(id)
+  }
 
   return data as unknown as TenantRow
 }
