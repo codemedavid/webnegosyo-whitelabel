@@ -182,11 +182,11 @@ describe('describeOrderOutcome — what the confirmation screen may claim', () =
 describe('mobile checkout screen — every error is bound and carried', () => {
   const checkoutSource = () => readMobile('app/(main)/checkout.tsx')
 
-  it('binds the order_items insert error instead of dropping it on the floor', () => {
+  it('reads the platform outcome from the order API instead of inserting rows itself', () => {
     const source = checkoutSource()
 
-    expect(source).toContain('error: itemsError')
-    expect(source).toContain('classifyOrderLinesWriteError')
+    expect(source).toContain('outcome = await submitPlatformOrder')
+    expect(source).not.toContain("from('order_items')")
   })
 
   it('checks the Convex HTTP response before reading a body out of it', () => {
@@ -197,7 +197,6 @@ describe('mobile checkout screen — every error is bound and carried', () => {
     const source = checkoutSource()
 
     expect(source).toContain('classifyConvexOrderResponse')
-    expect(source).toContain('classifyOrderWriteError')
     expect(source).toContain('untrackedOrder()')
     expect(source).not.toContain('proceeding to Messenger')
   })
