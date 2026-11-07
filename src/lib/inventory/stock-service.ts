@@ -24,7 +24,6 @@ import {
   canSeeCosts,
   movementInputForCaller,
   movementResultForCaller,
-  withoutUnitCost,
 } from '@/lib/inventory/cost-visibility'
 import type { InventoryItem, InventoryUnitRow, StockMovement } from '@/types/database'
 import {
@@ -112,7 +111,9 @@ export async function getStockMovements(
   if (error) throw error
   const rows = (data ?? []) as unknown as Array<Omit<StockMovement, 'unit_cost'>>
   // The delivery price is `costs`: read only for a holder, through the gated reader.
-  return canSeeCosts(userRole) ? withMovementCosts(supabase, tenantId, rows) : withoutUnitCost(rows)
+  if (canSeeCosts(userRole)) return withMovementCosts(supabase, tenantId, rows)
+  // Never selected, so there is nothing to strip: the rows are history without a price.
+  return rows as StockMovement[]
 }
 
 /**
