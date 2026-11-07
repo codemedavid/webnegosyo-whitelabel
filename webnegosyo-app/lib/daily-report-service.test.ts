@@ -11,7 +11,7 @@
  */
 // The real client pulls in expo-constants, which this jest setup cannot
 // transform. Every test injects its own db, so the module only needs to load.
-jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
+jest.mock("./supabase", () => ({ supabase: { from: jest.fn(), rpc: jest.fn() } }));
 
 import { loadDailyReport, countDishesWithRecipe } from "./daily-report-service";
 
@@ -26,6 +26,15 @@ function fakeSupabase(byTable: Record<string, Result>) {
 
   return {
     calls,
+    // The `costs`-gated price reader (inventory_costs_for_tenant): the stub's
+    // inventory_items rows, as {inventory_item_id, unit_cost}.
+    rpc() {
+      const rows = (byTable.inventory_items?.data ?? []) as Array<{ id: string; unit_cost?: number | null }>;
+      return Promise.resolve({
+        data: rows.map((row) => ({ inventory_item_id: row.id, unit_cost: row.unit_cost ?? 0 })),
+        error: null,
+      });
+    },
     from(table: string) {
       const builder: Record<string, unknown> = {
         then: (resolve: (value: unknown) => unknown) =>

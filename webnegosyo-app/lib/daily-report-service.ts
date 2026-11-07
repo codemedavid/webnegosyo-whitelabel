@@ -17,6 +17,7 @@
  */
 
 import { supabase } from "./supabase";
+import { loadItemCosts, type RpcClient } from "./inventory-costs";
 import {
   buildDailyInventoryReport,
   type DailyInventoryReport,
@@ -33,7 +34,7 @@ import type { StockMovementReason } from "./daily-report/movement-reason";
 
 const MOVEMENT_COLUMNS =
   "inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id, outlet_id";
-const ITEM_COLUMNS = "id, name, unit_cost, stock_unit_id";
+const ITEM_COLUMNS = "id, name, stock_unit_id";
 
 export interface DailyReportForDay extends DailyInventoryReport {
   /** The Manila day this covers, `YYYY-MM-DD`. */
@@ -141,7 +142,7 @@ export async function loadDailyReport(
       .eq("tenant_id", tenantId)
       .eq("business_day", dayKey);
 
-    const [movementResult, itemResult, unitResult, countResult] = await Promise.all([
+    const [movementResult, itemResult, unitResult, countResult, itemCosts] = await Promise.all([
       readAllMovementPages((from, to) =>
         (outletId ? movementQuery.eq("outlet_id", outletId) : movementQuery)
           // `id` breaks created_at ties so consecutive pages never overlap.
@@ -162,6 +163,10 @@ export async function loadDailyReport(
       (outletId ? countQuery.eq("outlet_id", outletId) : countQuery)
         .order("started_at", { ascending: false })
         .limit(MAX_DAY_COUNTS),
+      // The prices come from the `costs`-gated reader (the column is not
+      // selectable). The report is a money report: an account without the key
+      // gets an empty map and the report counts everything as uncosted.
+      loadItemCosts(tenantId, undefined, db as unknown as RpcClient),
     ]);
 
     if (movementResult.error) throw movementResult.error;
@@ -179,7 +184,7 @@ export async function loadDailyReport(
       name: row.name,
       // A null cost is "never priced", which the report counts and reports
       // rather than quietly treating as free.
-      unitCost: row.unit_cost ?? 0,
+      unitCost: itemCosts.get(row.id) ?? 0,
       stockUnitAbbreviation: abbreviationById.get(row.stock_unit_id) ?? "",
     }));
 

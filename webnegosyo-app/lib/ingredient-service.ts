@@ -15,6 +15,7 @@
  */
 
 import { supabase } from "./supabase";
+import { loadItemCosts } from "./inventory-costs";
 import { stockUnitChangeProblem, type RuleUnit } from "./recipe-line-rules";
 import {
   buildDefaultUnitInserts,
@@ -26,7 +27,7 @@ import {
 import type { MovementRow } from "./stock-history";
 
 const RECORD_COLUMNS =
-  "id, name, sku, category, stock_unit_id, unit_cost, reorder_level, is_prep, is_active, current_qty";
+  "id, name, sku, category, stock_unit_id, reorder_level, is_prep, is_active, current_qty";
 const UNIT_COLUMNS = "id, name, abbreviation, dimension, to_base_factor, is_active";
 const MOVEMENT_COLUMNS =
   "id, reason, quantity_delta, balance_after, note, order_id, created_at, outlet_id";
@@ -137,7 +138,16 @@ export async function loadIngredientRecord(
     .eq("id", ingredientId)
     .maybeSingle();
   if (error) throw new Error("Could not load this ingredient. Try again.");
-  return data ? toRecord(data as Record<string, unknown>) : null;
+  if (!data) return null;
+  // The price is `costs`: through the gated reader, 0 for an account without it
+  // (the editor hides the field for them and sends no price).
+  let costs: Map<string, number>;
+  try {
+    costs = await loadItemCosts(tenantId, [ingredientId]);
+  } catch {
+    throw new Error("Could not load this ingredient. Try again.");
+  }
+  return toRecord({ ...(data as Record<string, unknown>), unit_cost: costs.get(ingredientId) ?? 0 });
 }
 
 /** Insert a new ingredient. Resolves with its id. */
