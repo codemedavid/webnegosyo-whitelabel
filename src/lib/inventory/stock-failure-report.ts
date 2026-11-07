@@ -26,6 +26,7 @@ export type StockFailureOperation =
   | 'stock_level_alerting'
   | 'auto_86_update'
   | 'sweep_order_stock'
+  | 'stock_transfer_step'
 
 export interface StockFailureContext {
   tenantId: string
