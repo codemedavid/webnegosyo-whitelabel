@@ -48,6 +48,31 @@ export interface DailyReportForDay extends DailyInventoryReport {
   countSession: CountSessionProgress | null;
 }
 
+/** PostgREST caps a response at 1000 rows; a busy day has more movements. */
+const MOVEMENT_PAGE_SIZE = 1000;
+/** Bounds memory: a day this large is refused (the report then reads unavailable), never shown short. */
+const MAX_MOVEMENT_ROWS = 100_000;
+
+type MovementPage = (
+  from: number,
+  to: number,
+) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+
+/** Every movement of the day, or an error: a truncated ledger must never reconcile as a whole day. */
+async function readAllMovementPages(
+  page: MovementPage,
+): Promise<{ data: unknown[]; error: { message: string } | null }> {
+  const rows: unknown[] = [];
+  for (let from = 0; from < MAX_MOVEMENT_ROWS; from += MOVEMENT_PAGE_SIZE) {
+    const result = await page(from, from + MOVEMENT_PAGE_SIZE - 1);
+    if (result.error) return { data: [], error: result.error };
+    const batch = (result.data ?? []) as unknown[];
+    rows.push(...batch);
+    if (batch.length < MOVEMENT_PAGE_SIZE) return { data: rows, error: null };
+  }
+  return { data: [], error: { message: "Too many stock movements in one day to reconcile." } };
+}
+
 interface MovementRow {
   inventory_item_id: string;
   reason: StockMovementReason;
@@ -117,9 +142,13 @@ export async function loadDailyReport(
       .eq("business_day", dayKey);
 
     const [movementResult, itemResult, unitResult, countResult] = await Promise.all([
-      (outletId ? movementQuery.eq("outlet_id", outletId) : movementQuery).order("created_at", {
-        ascending: true,
-      }),
+      readAllMovementPages((from, to) =>
+        (outletId ? movementQuery.eq("outlet_id", outletId) : movementQuery)
+          // `id` breaks created_at ties so consecutive pages never overlap.
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
       db.from("inventory_items").select(ITEM_COLUMNS).eq("tenant_id", tenantId),
       db.from("inventory_units").select("id, abbreviation").eq("tenant_id", tenantId),
       // Every count the day had, latest first: a store-wide report spans
