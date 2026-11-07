@@ -45,6 +45,7 @@ export interface OpenCountInput {
 
 interface CountRow {
   id: string;
+  business_day: string;
   expected_item_count: number;
   closed_at: string | null;
 }
@@ -164,13 +165,22 @@ async function countIngredientsInScope(db: Db, tenantId: string): Promise<number
  * Throws on failure, unlike the read: the merchant is watching, and a silent
  * failure would have them counting a shelf into a session that does not exist.
  */
+/** True when the count was opened on a Manila business day before today. */
+export function isFromEarlierBusinessDay(businessDay: string, now: Date = new Date()): boolean {
+  return businessDay < toBusinessDayKey(now.toISOString());
+}
+
 export async function openCount(
   tenantId: string,
   input: OpenCountInput,
   db: Db = supabase,
 ): Promise<OpenCountSession> {
   const existing = await findOpenCount(db, tenantId, input.outletId);
-  if (existing) return progressOf(db, existing);
+  if (existing && !isFromEarlierBusinessDay(existing.business_day)) return progressOf(db, existing);
+  // A count left open overnight would be joined forever with its business day
+  // frozen, so later lines would miss the daily report of the day they were
+  // counted. Close it and start today's.
+  if (existing) await closeCount(tenantId, existing.id, input.startedBy, db);
 
   const { data, error } = await db
     .from("inventory_counts")

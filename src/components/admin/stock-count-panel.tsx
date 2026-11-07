@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { describeCountPanel } from '@/lib/inventory/count-panel'
+import { isFromEarlierBusinessDay } from '@/lib/inventory/business-day'
 import {
   movementOutletLabel,
   resolveDefaultMovementOutlet,
@@ -43,6 +44,8 @@ interface StockCountPanelProps {
   outletId: string | null
   /** The running count's id, or `null` when none is. */
   countId: string | null
+  /** The Manila business day the running count opened on, when known. */
+  countBusinessDay?: string | null
   /** How far the running count has got, or `null` when none is running. */
   progress: CountSessionProgress | null
   /**
@@ -57,6 +60,7 @@ export function StockCountPanel({
   tenantSlug,
   outletId,
   countId,
+  countBusinessDay = null,
   progress,
   branches = [],
 }: StockCountPanelProps) {
@@ -73,6 +77,8 @@ export function StockCountPanel({
 
   const copy = describeCountPanel(progress)
   const isCounting = countId !== null
+  const staleDay =
+    isCounting && countBusinessDay && isFromEarlierBusinessDay(countBusinessDay) ? countBusinessDay : null
 
   /**
    * A refusal is shown, never swallowed. A silent failure is the worst outcome
@@ -132,6 +138,12 @@ export function StockCountPanel({
             <p data-testid="stock-count-detail" className="text-sm text-muted-foreground">
               {copy.detail}
             </p>
+            {staleDay && (
+              <p data-testid="stock-count-stale" className="text-sm text-amber-700 dark:text-amber-300">
+                This count was started on {staleDay}. Entries since then are filed under that day, not today.
+                Finish it, then start a new count.
+              </p>
+            )}
           </div>
         </div>
 

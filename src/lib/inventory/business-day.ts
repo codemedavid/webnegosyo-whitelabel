@@ -152,3 +152,9 @@ export function resolveReportDay(
     latestDayKey,
   }
 }
+
+/** True when `businessDay` (`YYYY-MM-DD`) is a Manila day before today's. */
+export function isFromEarlierBusinessDay(businessDay: string, now: Date = new Date()): boolean {
+  // `YYYY-MM-DD` keys order the same way the days do.
+  return businessDay < toBusinessDayKey(now.toISOString())
+}
