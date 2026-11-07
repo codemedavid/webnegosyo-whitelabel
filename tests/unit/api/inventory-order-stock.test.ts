@@ -45,6 +45,25 @@ jest.mock('@/lib/order-lifecycle-read', () => ({
   },
 }))
 
+/**
+ * The server's read of the order's LINES. Default: this order's backend cannot
+ * be read back, so lines stay on trust — the behaviour every case written
+ * before lines were checked relies on. The line-check cases set their own.
+ */
+type LineRead =
+  | { kind: 'evidence'; evidence: Record<string, unknown> }
+  | { kind: 'unverifiable'; reason: string }
+  | { kind: 'unreadable' }
+let storedLineRead: LineRead | 'throw' = { kind: 'unverifiable', reason: 'test_default' }
+const lineReads: unknown[][] = []
+jest.mock('@/lib/inventory/order-stock-lines-read', () => ({
+  readOrderLineEvidence: async (...args: unknown[]) => {
+    lineReads.push(args)
+    if (storedLineRead === 'throw') throw new Error('db down')
+    return storedLineRead
+  },
+}))
+
 const rateLimitMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 jest.mock('@/lib/distributed-rate-limit', () => ({
   checkRateLimit: (...args: unknown[]) => rateLimitMock(...args),
@@ -83,6 +102,8 @@ describe('POST /api/inventory/order-stock', () => {
     jest.clearAllMocks()
     storedLifecycle = null
     storedBackend = 'convex'
+    storedLineRead = { kind: 'unverifiable', reason: 'test_default' }
+    lineReads.length = 0
     lifecycleReads.length = 0
     rateLimitMock.mockResolvedValue({ allowed: true, remaining: 100, retryAfterSec: 30 })
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
@@ -783,6 +804,122 @@ describe('POST /api/inventory/order-stock', () => {
       expect(res.status).toBe(429)
       expect(rateLimitMock).toHaveBeenCalledWith('order-stock:u1', expect.anything())
       expect(applyMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('lines are checked against the order the server reads', () => {
+    const PLATFORM_ORDER = '11111111-1111-4111-8111-111111111111'
+    const evidence = (overrides: Record<string, unknown> = {}) => ({
+      current: new Map([['m-latte', 2]]),
+      revisionNumber: 1,
+      revisions: new Map([[1, { before: new Map([['m-latte', 1]]), after: new Map([['m-latte', 2]]) }]]),
+      hasRevisionHistory: true,
+      selectionIds: new Map(),
+      menuOptionIds: new Map([['m-latte', new Set(['o-large'])]]),
+      ...overrides,
+    })
+    const onPlatform = () => {
+      storedBackend = 'platform'
+      storedLifecycle = { status: 'pending', customerData: null, outletId: null }
+    }
+
+    test('spends a sale whose lines the order holds', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'evidence', evidence: evidence() }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ ...VALID_BODY, orderId: PLATFORM_ORDER }, 'Bearer token-1'))
+      expect(res.status).toBe(200)
+      expect(applyMock).toHaveBeenCalledTimes(1)
+      expect(lineReads[0]).toEqual(['platform', 't1', PLATFORM_ORDER, ['m-latte']])
+    })
+
+    test('refuses more of a dish than the order holds with 409 and writes nothing', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'evidence', evidence: evidence() }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const body = { ...VALID_BODY, orderId: PLATFORM_ORDER, items: [{ menuItemId: 'm-latte', quantity: 50 }] }
+      const res = await POST(makeRequest(body, 'Bearer token-1'))
+      expect(res.status).toBe(409)
+      expect(await res.json()).toEqual({ error: 'lines_do_not_match_order' })
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('refuses a dish that is not on the order', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'evidence', evidence: evidence() }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const body = { ...VALID_BODY, orderId: PLATFORM_ORDER, items: [{ menuItemId: 'm-steak', quantity: 1 }] }
+      expect((await POST(makeRequest(body, 'Bearer token-1'))).status).toBe(409)
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('spends only the option ids the dish owns', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'evidence', evidence: evidence() }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const body = { ...VALID_BODY, orderId: PLATFORM_ORDER, items: [{ menuItemId: 'm-latte', quantity: 1, optionIds: ['o-large', 'o-forged'] }] }
+      await POST(makeRequest(body, 'Bearer token-1'))
+      expect(applyMock.mock.calls[0][2]).toEqual([expect.objectContaining({ optionIds: ['o-large'], modifierOptionIds: ['o-large'] })])
+    })
+
+    test('asks the register to retry while the order lines are not readable yet', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'unreadable' }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ ...VALID_BODY, orderId: PLATFORM_ORDER }, 'Bearer token-1'))
+      expect(res.status).toBe(503)
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('asks the register to retry when the line read throws', async () => {
+      onPlatform()
+      storedLineRead = 'throw'
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ ...VALID_BODY, orderId: PLATFORM_ORDER }, 'Bearer token-1'))
+      expect(res.status).toBe(503)
+    })
+
+    test('keeps lines on trust where the backend cannot be read back', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'unverifiable', reason: 'convex_unconfigured' }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ ...VALID_BODY, orderId: PLATFORM_ORDER }, 'Bearer token-1'))
+      expect(res.status).toBe(200)
+      expect(applyMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('accepts an edit whose net matches the revision it names', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'evidence', evidence: evidence() }
+      const service = await import('@/lib/inventory/order-stock-service')
+      const reviseMock = service.applyOrderRevisionStockBestEffort as unknown as jest.Mock
+      reviseMock.mockResolvedValue('settled' as never)
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const body = { tenantId: 't1', orderId: PLATFORM_ORDER, action: 'revise', revision: 1, deplete: [{ menuItemId: 'm-latte', quantity: 1 }], restore: [] }
+      expect((await POST(makeRequest(body, 'Bearer token-1'))).status).toBe(200)
+      expect(reviseMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('refuses an edit that invents stock the revision did not add', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'evidence', evidence: evidence() }
+      const service = await import('@/lib/inventory/order-stock-service')
+      const reviseMock = service.applyOrderRevisionStockBestEffort as unknown as jest.Mock
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const body = { tenantId: 't1', orderId: PLATFORM_ORDER, action: 'revise', revision: 1, deplete: [], restore: [{ menuItemId: 'm-latte', quantity: 9 }] }
+      const res = await POST(makeRequest(body, 'Bearer token-1'))
+      expect(res.status).toBe(409)
+      expect(reviseMock).not.toHaveBeenCalled()
+    })
+
+    test('refuses an edit naming a revision the order has not reached', async () => {
+      onPlatform()
+      storedLineRead = { kind: 'evidence', evidence: evidence() }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const body = { tenantId: 't1', orderId: PLATFORM_ORDER, action: 'revise', revision: 7, deplete: [{ menuItemId: 'm-latte', quantity: 1 }], restore: [] }
+      const res = await POST(makeRequest(body, 'Bearer token-1'))
+      expect(res.status).toBe(409)
+      expect(await res.json()).toEqual({ error: 'revision_not_on_order' })
     })
   })
 })
