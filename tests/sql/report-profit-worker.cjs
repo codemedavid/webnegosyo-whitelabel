@@ -113,6 +113,9 @@ const PROFIT_STUBS = `
   revoke all on stock_movements from anon, authenticated;
   grant select on stock_movements to authenticated;
 
+  -- Only so the cost-reader migration (20261107130000) can create its helpers.
+  create table inventory_items (id uuid primary key, tenant_id uuid not null, unit_cost numeric(12,4) not null default 0);
+
   create table order_item_costs (
     order_item_id uuid primary key,
     tenant_id uuid not null,
@@ -200,6 +203,12 @@ async function build(scenario) {
   await db.exec(readMigration('20261027120000_business_day_cutoffs.sql'))
   await db.exec(readMigration('20261027140000_business_day_reports.sql'))
   await db.exec(readMigration('20261027180000_profit_business_day.sql'))
+  // Movement costs through the definer reader (profit_facts no longer selects
+  // stock_movements.unit_cost as the caller)...
+  await db.exec(readMigration('20261107130000_inventory_cost_reader.sql'))
+  await db.exec(readMigration('20261107130050_profit_facts_cost_reader.sql'))
+  // ...and, when asked, with the cost column revoked, as it will be live.
+  if (scenario.revokeCostColumns) await db.exec(readMigration('20261107130100_revoke_inventory_cost_columns.sql'))
 
   const seed = scenario.seed
   await insertRows(db, 'tenants', seed.tenants)

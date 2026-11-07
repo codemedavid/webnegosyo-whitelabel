@@ -108,11 +108,11 @@ const summary = (as: As, extra: Record<string, unknown> = {}, tenant = T_A): Cal
   as,
 })
 
-function run(calls: Call[]): Result[] {
+function run(calls: Call[], options: { revokeCostColumns?: boolean } = {}): Result[] {
   const dir = mkdtempSync(path.join(tmpdir(), 'report-profit-access-'))
   try {
     const file = path.join(dir, 'scenario.json')
-    writeFileSync(file, JSON.stringify({ seed: SEED, calls }))
+    writeFileSync(file, JSON.stringify({ seed: SEED, calls, revokeCostColumns: options.revokeCostColumns === true }))
     const output = execFileSync(process.execPath, [WORKER, file], { cwd: process.cwd(), encoding: 'utf8' })
     return (JSON.parse(output) as { results: Result[] }).results
   } finally {
@@ -218,4 +218,30 @@ describe('profit report functions — who may call them, and what they see', () 
     expect(own.rows?.map((row) => Number(row.cents))).toEqual([100_000])
     expect(other.rows).toEqual([])
   })
+})
+
+describe('profit report functions after stock_movements.unit_cost is revoked', () => {
+  // 20261107130100 takes SELECT on the cost column away from client roles; the
+  // report must read the ledger cost through the definer reader and answer the
+  // same figures to every caller (a branch account its branch's, a superadmin the
+  // whole ledger, no costs key nothing).
+  test('every caller sees exactly the figures they saw before the revoke', () => {
+    const calls = CASES.map(([, call]) => call)
+    const before = run(calls)
+    const after = run(calls, { revokeCostColumns: true })
+    expect(after.map((result) => outcome(result))).toEqual(before.map((result) => outcome(result)))
+    expect(after.map((result) => outcome(result))).toEqual(CASES.map(([, , want]) => want))
+  }, 120_000)
+
+  test('the period report also reads the ledger cost after the revoke', () => {
+    const call: Call = {
+      fn: 'report_profit_by_period',
+      args: { p_tenant: T_A, p_from: FROM, p_to: TO, p_grain: 'day' },
+      as: staff(U.owner),
+    }
+    const [before] = run([call])
+    const [after] = run([call], { revokeCostColumns: true })
+    expect(after).toEqual(before)
+    expect(after.rows?.length).toBeGreaterThan(0)
+  }, 120_000)
 })
