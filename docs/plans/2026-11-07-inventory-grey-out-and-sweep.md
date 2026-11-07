@@ -67,3 +67,18 @@ Migrations change policies, grants and triggers only and touch no existing rows.
 - New rule covered in `tests/unit/` and the existing suites that pin it: `inventory-stock-graph-counted`, `inventory-dish-availability`, `inventory-auto-86-service`, `inventory-menu-ceilings`, `inventory-checkout-stock-guard`, `inventory-alerts-integration`.
 - Live check on SofiasKitchen after deploy: count one ingredient to confirm a dish returns, then sell a below-zero dish on the POS and the site as owner and as a cashier.
 - Rollout: migrations, web deploy, app OTA. The menu re-check on SofiasKitchen runs at a time the owner picks, not during service.
+
+## Built (2026-11-07, branch `fix/inventory-sweep`, not deployed)
+
+Phase 1 grey-out, phase 2 security (#7, #8, #10, #11, #12), phase 3 (#13 web already used the service role; customer app moved to `POST /api/orders/customer-app`; #14 cost readers + staged revoke), phase 4 (#16, #18, #19, #20, #21) and transfer send/receive in one transaction. Review findings fixed: late edit calls answer 503, sweeper skips terminal and edited orders and rotates stores, superadmin form re-judges the menu when auto-86 turns on.
+
+Not built: deleting a live order returning its stock (owner decision); `product_costs.cost_price` readable without `costs`; SofiasKitchen reset (owner confirming scope).
+
+## Rollout order
+
+1. Apply `20261107120000_inventory_flags_and_policies.sql`, `20261107120100_anon_order_line_limits.sql`, `20261107130000_inventory_cost_reader.sql`, `20261107130050_profit_facts_cost_reader.sql`, `20261107130200_stock_transfer_atomic_steps.sql`; probe each object as anon, authenticated and service role; regenerate `src/types/database.ts`.
+2. Web deploy (includes the sweeper cron in `vercel.json`; needs `CRON_SECRET`, already set for SMS).
+3. Merchant app OTA (1.0.18+ channel): tile dimming, QR stock rule, explicit-column reads, count fixes.
+4. Customer app builds per store that uses one, then apply `20261107120200_drop_anon_order_inserts.sql` only after re-checking that no anon-inserted orders arrived in the last 24 hours.
+5. Apply `20261107130100_revoke_inventory_cost_columns.sql` only once nearly every merchant device runs the OTA from step 3; older builds' `select('*')` on `inventory_items` will fail.
+6. On SofiasKitchen, re-save the stock policy (or let the next sale run) so the whole menu is re-judged, at a quiet time.
