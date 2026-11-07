@@ -33,6 +33,11 @@ jest.mock('@/lib/inventory/stock-service', () => ({
   recordStockMovementWith: (...args: unknown[]) => recordStockMovementWith(...(args as [])),
 }))
 
+const rateLimit = jest.fn()
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: (...args: unknown[]) => rateLimit(...args),
+}))
+
 const TENANT = 'tenant-1'
 
 interface AppUserRow {
@@ -80,6 +85,8 @@ function movementRequest(extra: Record<string, unknown> = {}): NextRequest {
 async function post(user: AppUserRow | null, extra: Record<string, unknown> = {}) {
   appUser = user
   recordStockMovementWith.mockClear()
+  rateLimit.mockReset()
+  rateLimit.mockResolvedValue({ allowed: true, remaining: 10, retryAfterSec: 30 })
   return POST(movementRequest(extra))
 }
 
@@ -400,3 +407,48 @@ describe('POST /api/inventory/movement — a delivery price needs costs (Phase 0
   })
 })
 
+
+describe('POST /api/inventory/movement — what a failure tells the caller', () => {
+  const OWNER = { role: 'admin', tenant_id: TENANT, permissions: null, is_owner: true }
+  const secret = 'duplicate key value violates unique constraint "stock_movements_pkey" (db-host-7)'
+
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => jest.restoreAllMocks())
+
+  test('never echoes a database error, and logs it server-side', async () => {
+    recordStockMovementWith.mockRejectedValueOnce({ message: secret, code: '23505' } as never)
+    const response = await post(OWNER as never)
+    const body = await response.json()
+    expect(response.status).toBe(500)
+    expect(JSON.stringify(body)).not.toContain('stock_movements_pkey')
+    expect(body.error).toMatch(/could not be recorded/i)
+    expect(console.error).toHaveBeenCalled()
+  })
+
+  test('never echoes the text of an unexpected Error', async () => {
+    recordStockMovementWith.mockRejectedValueOnce(new Error(secret) as never)
+    const response = await post(OWNER as never)
+    expect(JSON.stringify(await response.json())).not.toContain('db-host-7')
+  })
+
+  test('still tells the merchant the two refusals written for them', async () => {
+    recordStockMovementWith.mockRejectedValueOnce(new Error('The movement unit could not be resolved for this ingredient') as never)
+    const response = await post(OWNER as never)
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toBe('The movement unit could not be resolved for this ingredient')
+  })
+
+  test('answers 429 per person once the allowance is spent, before any write', async () => {
+    appUser = OWNER as never
+    recordStockMovementWith.mockClear()
+    rateLimit.mockReset()
+    rateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 9 })
+    const response = await POST(movementRequest())
+    expect(response.status).toBe(429)
+    expect(response.headers.get('Retry-After')).toBe('9')
+    expect(rateLimit.mock.calls[0][0]).toBe('inventory-movement:u1')
+    expect(recordStockMovementWith).not.toHaveBeenCalled()
+  })
+})

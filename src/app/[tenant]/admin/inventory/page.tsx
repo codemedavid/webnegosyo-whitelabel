@@ -95,10 +95,11 @@ async function readDailyReport(
 interface OpenCountState {
   openCountId: string | null
   openCountOutletId: string | null
+  openCountBusinessDay: string | null
   countProgress: CountSessionProgress | null
 }
 
-const NO_OPEN_COUNT: OpenCountState = { openCountId: null, openCountOutletId: null, countProgress: null }
+const NO_OPEN_COUNT: OpenCountState = { openCountId: null, openCountOutletId: null, openCountBusinessDay: null, countProgress: null }
 
 /**
  * The count running on this shelf, if one is. A failure here costs the count
@@ -122,6 +123,7 @@ async function readOpenCount(
     return {
       openCountId: openCount.id,
       openCountOutletId: openCount.outletId,
+      openCountBusinessDay: openCount.businessDay,
       countProgress: await getCountProgress(tenantId, openCount.id),
     }
   } catch (error) {
@@ -332,6 +334,7 @@ export default async function AdminInventoryPage({
         openCountId={openCount.openCountId}
         countProgress={openCount.countProgress}
         openCountOutletId={openCount.openCountOutletId}
+        openCountBusinessDay={openCount.openCountBusinessDay}
         branches={branches}
         access={access}
       />

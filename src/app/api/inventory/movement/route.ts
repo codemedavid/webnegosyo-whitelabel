@@ -6,6 +6,8 @@ import { movementInputForCaller, movementResultForCaller } from '@/lib/inventory
 import { PERMISSION_REFUSALS } from '@/lib/inventory/permission-refusals'
 import { resolveBranchScope, type BranchScopedUser } from '@/lib/outlets/branch-scope'
 import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
+import { ZodError } from 'zod'
 import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
@@ -35,6 +37,34 @@ import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app
 
 const MANUAL_REASONS = ['receive', 'stocktake', 'waste'] as const
 type ManualReason = (typeof MANUAL_REASONS)[number]
+
+/**
+ * Per signed-in person. A receiving clerk or a stocktake sends one call per
+ * line and each one costs several reads on the database every store shares, so
+ * a leaked token must not be able to loop it.
+ */
+const RATE_LIMIT: RateLimitOptions = { limit: 120, windowSec: 60, onRedisFailure: 'instance' }
+
+/**
+ * The refusals this route's own service writes for a person to read. Anything
+ * else — a database error, a driver message, a stack — stays in the server log.
+ */
+const MERCHANT_FACING_REFUSALS: readonly string[] = [
+  'That branch does not belong to this store',
+  'The movement unit could not be resolved for this ingredient',
+]
+
+const UNEXPECTED_FAILURE = 'The movement could not be recorded. Please try again.'
+
+function describeFailure(error: unknown): { status: number; message: string } {
+  if (error instanceof ZodError) {
+    return { status: 400, message: 'The movement details are not valid. Check the amount and unit.' }
+  }
+  if (error instanceof Error && MERCHANT_FACING_REFUSALS.includes(error.message)) {
+    return { status: 400, message: error.message }
+  }
+  return { status: 500, message: UNEXPECTED_FAILURE }
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json().catch(() => null)
@@ -109,6 +139,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   if (!hasPermission(appUser as PermissionHolder, 'inventory')) {
     return NextResponse.json({ error: PERMISSION_REFUSALS.recordStock }, { status: 403 })
+  }
+
+  const rate = await checkRateLimit(`inventory-movement:${user.id}`, RATE_LIMIT)
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
+    )
   }
 
   // A tenant who has not turned inventory on must never accumulate a ledger
@@ -191,12 +229,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { movement, item, alreadyRecorded } = movementResultForCaller(recorded, caller)
     return NextResponse.json({ success: true, movement, item, alreadyRecorded: alreadyRecorded === true })
   } catch (error) {
-    // The merchant is waiting on this. Return the reason rather than a generic
-    // failure — "the movement unit could not be resolved" is actionable and a
-    // bare 500 is not.
-    const message =
-      error instanceof Error ? error.message : 'The movement could not be recorded'
+    // The merchant is waiting on this, so the two refusals the service wrote
+    // for them are passed on; everything else is logged here and answered with
+    // a sentence that reveals nothing about the database behind it.
     console.error('[inventory] Manual movement failed', tenantId, error)
-    return NextResponse.json({ error: message }, { status: 400 })
+    const { status, message } = describeFailure(error)
+    return NextResponse.json({ error: message }, { status })
   }
 }

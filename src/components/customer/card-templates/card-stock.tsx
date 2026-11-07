@@ -17,7 +17,8 @@
  *     (branding vars only).
  *
  * Untracked dishes, a branch with no shelf row and never-counted stock have
- * no ceiling, so their cards look exactly as before. Checkout
+ * no ceiling (unless the store is set to block: `judged-shelf.ts`), so their
+ * cards look exactly as before. Checkout
  * (`checkout-stock-guard.ts`) stays the hard refusal.
  */
 
@@ -51,6 +52,11 @@ export function MenuStockProvider({ tenantId, outletId, isInventoryEnabled, chil
 function FetchedMenuStock({ tenantId, outletId, children }: { tenantId: string; outletId: string | null; children: ReactNode }) {
   const ceilings = useStockCeilings(tenantId, outletId)
   return <MenuStockContext.Provider value={ceilings}>{children}</MenuStockContext.Provider>
+}
+
+/** Every dish's ceiling; empty outside a menu. */
+export function useMenuStockCeilings(): MenuStockCeilings {
+  return useContext(MenuStockContext)
 }
 
 /** One dish's ceiling, or null (untracked / unknown / outside a menu). */

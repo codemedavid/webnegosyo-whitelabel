@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { formatPrice } from '@/lib/cart-utils'
 import { MAX_POST_ADD_OFFERS, needsChoices, offerableItems } from '@/lib/boost/offer-items'
+import { useMenuStockCeilings } from '@/components/customer/card-templates/card-stock'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import type { MenuItem } from '@/types/database'
 import { STOREFRONT_LAYERS } from '../overlay-layers'
@@ -50,7 +51,8 @@ export function AddedSheet({
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   const [isMounted, setMounted] = useState(false)
   const trackedRef = useRef(false)
-  const shown = offerableItems(suggestions, { excludeIds: new Set([addedItem.id]), limit: MAX_POST_ADD_OFFERS })
+  const ceilings = useMenuStockCeilings()
+  const shown = offerableItems(suggestions, { excludeIds: new Set([addedItem.id]), limit: MAX_POST_ADD_OFFERS, ceilings })
 
   useBodyScrollLock(open)
   useEffect(() => setMounted(true), [])

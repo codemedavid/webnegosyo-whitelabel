@@ -11,7 +11,7 @@
  */
 // The real client pulls in expo-constants, which this jest setup cannot
 // transform. Every test injects its own db, so the module only needs to load.
-jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
+jest.mock("./supabase", () => ({ supabase: { from: jest.fn(), rpc: jest.fn() } }));
 
 import { loadDailyReport, countDishesWithRecipe } from "./daily-report-service";
 
@@ -26,6 +26,15 @@ function fakeSupabase(byTable: Record<string, Result>) {
 
   return {
     calls,
+    // The `costs`-gated price reader (inventory_costs_for_tenant): the stub's
+    // inventory_items rows, as {inventory_item_id, unit_cost}.
+    rpc() {
+      const rows = (byTable.inventory_items?.data ?? []) as Array<{ id: string; unit_cost?: number | null }>;
+      return Promise.resolve({
+        data: rows.map((row) => ({ inventory_item_id: row.id, unit_cost: row.unit_cost ?? 0 })),
+        error: null,
+      });
+    },
     from(table: string) {
       const builder: Record<string, unknown> = {
         then: (resolve: (value: unknown) => unknown) =>
@@ -42,7 +51,7 @@ function fakeSupabase(byTable: Record<string, Result>) {
           error: result.error,
         });
       };
-      for (const method of ["select", "eq", "gte", "lt", "order", "limit"]) {
+      for (const method of ["select", "eq", "gte", "lt", "order", "limit", "range"]) {
         builder[method] = (...args: unknown[]) => {
           calls.push({ table, method, args });
           return builder;
@@ -397,5 +406,34 @@ describe("loadDailyReport — reading one branch's shelf", () => {
       );
       expect(branchFilters).toHaveLength(0);
     });
+  });
+});
+
+describe("a day with more movements than one response holds", () => {
+  test("reads every page instead of reconciling a truncated ledger", async () => {
+    const movement = (n: number) => ({
+      inventory_item_id: "i1", reason: "sale", quantity_delta: -1, balance_after: 100 - n,
+      created_at: "2026-07-29T02:00:00.000Z", inventory_count_id: null, outlet_id: null,
+    });
+    const pages = [
+      Array.from({ length: 1000 }, (_, n) => movement(n)),
+      Array.from({ length: 5 }, (_, n) => movement(n)),
+    ];
+    let pageIndex = 0;
+    const db = client({ stock_movements: { data: [], error: null } });
+    const base = db.from.bind(db);
+    (db as { from: unknown }).from = (table: string) => {
+      const builder = base(table) as Record<string, unknown>;
+      if (table === "stock_movements") {
+        builder.then = (resolve: (value: unknown) => unknown) =>
+          resolve({ data: pages[pageIndex++] ?? [], error: null });
+      }
+      return builder;
+    };
+
+    const report = await loadDailyReport("t1", "2026-07-29", db as never);
+
+    expect(pageIndex).toBe(2);
+    expect(report).not.toBeNull();
   });
 });

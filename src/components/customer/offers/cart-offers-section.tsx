@@ -6,6 +6,7 @@ import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { needsChoices, offerableItems, oneTapSelection } from '@/lib/boost/offer-items'
+import { useMenuStockCeilings } from '@/components/customer/card-templates/card-stock'
 import type { MenuItem } from '@/types/database'
 import { CartOfferRow } from './cart-offer-row'
 import type { OfferTheme } from './offer-theme'
@@ -58,9 +59,10 @@ export function CartOffersSection({
   }, [suggestions])
   const pool = suggestions ?? lastSuggestions
 
+  const ceilings = useMenuStockCeilings()
   const shown = useMemo(
-    () => offerableItems(pool, { excludeIds: new Set(cartItemIds), limit: maxItems }),
-    [pool, cartItemIds, maxItems]
+    () => offerableItems(pool, { excludeIds: new Set(cartItemIds), limit: maxItems, ceilings }),
+    [pool, cartItemIds, maxItems, ceilings]
   )
   // An added item stays in place, marked Added, rather than disappearing mid-tap.
   const visible = useMemo(() => {

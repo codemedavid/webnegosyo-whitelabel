@@ -22,6 +22,8 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { INVENTORY_ITEM_COLUMNS } from '@/lib/inventory/cost-columns'
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import type { InventoryItem } from '@/types/database'
 import {
   resolveActingBranchScope,
@@ -54,7 +56,6 @@ interface TransferLineRow {
   inventory_item_id: string
   sent_quantity: number
   received_quantity: number | null
-  unit_cost: number | null
 }
 
 export interface CreateTransferInput {
@@ -64,26 +65,11 @@ export interface CreateTransferInput {
   note?: string
 }
 
+/** Permission, lifecycle and not-found refusals from the transfer functions. */
+const EXPECTED_REFUSAL_CODES = new Set(['42501', '23514', 'P0002', '40001'])
+
 /** The message both refusals share, because from the merchant's side it is one rule. */
 const NOT_YOUR_BRANCH = 'You can only move stock in and out of your own branch'
-
-/**
- * Who performed this step, or nobody.
- *
- * Never throws, and that is load-bearing rather than defensive: by the time
- * this is called the ledger legs are already written, so an identity lookup
- * that threw would leave the stock moved and the document still saying it had
- * not been. An unattributed transfer is a much smaller problem than a transfer
- * whose paperwork disagrees with the shelf.
- */
-async function actingUserId(supabase: StockActorClient): Promise<string | null> {
-  try {
-    const { data } = await supabase.auth.getUser()
-    return data?.user?.id ?? null
-  } catch {
-    return null
-  }
-}
 
 async function loadTransfer(
   supabase: StockActorClient,
@@ -108,7 +94,7 @@ async function loadLines(
 ): Promise<TransferLineRow[]> {
   const { data, error } = await supabase
     .from('stock_transfer_lines')
-    .select('inventory_item_id, sent_quantity, received_quantity, unit_cost')
+    .select('inventory_item_id, sent_quantity, received_quantity')
     .eq('tenant_id', tenantId)
     .eq('transfer_id', transferId)
   if (error) throw error
@@ -121,46 +107,53 @@ function toReceipts(lines: readonly TransferLineRow[]): TransferLineReceipt[] {
     inventoryItemId: line.inventory_item_id,
     sentQuantity: Number(line.sent_quantity),
     receivedQuantity: 0,
-    unitCost: line.unit_cost === null ? undefined : Number(line.unit_cost),
   }))
 }
 
 /**
- * Write the legs.
- *
- * `entered_quantity` is the magnitude and `entered_unit_id` is left null: a
- * transfer is between two shelves of the same store, so both figures are
- * already in the item's stock unit and there is no unit the merchant typed.
- *
+ * The legs in the shape the transfer functions take. `entered_quantity`,
+ * the transfer id and (on a send) the reason are set by the function itself;
  * `unit_cost` is advisory only: the ledger trigger sets every transfer leg's
- * cost itself (the departure at today's average, the arrival and any shortfall
- * at the departure's), whatever is sent here.
+ * cost whatever is sent here.
  */
-async function writeMovements(
+function toLegPayload(movements: readonly TransferMovement[]) {
+  return movements.map((movement) => ({
+    inventory_item_id: movement.inventoryItemId,
+    outlet_id: movement.outletId,
+    reason: movement.reason,
+    quantity_delta: movement.quantityDelta,
+    unit_cost: movement.unitCost ?? null,
+    note: movement.note ?? null,
+  }))
+}
+
+/**
+ * Run a transfer step (legs + document) as one database transaction.
+ *
+ * The ledger only accepts a send's legs while the transfer is a draft and a
+ * receipt's while it is sent, so the status cannot be claimed first; the
+ * functions (20261107130200) lock the transfer row, write the legs through the
+ * normal guards and flip the status together. A refusal anywhere leaves the
+ * stock and the document exactly as they were, so a retry works, and a second
+ * tab waits on the lock and then finds the transfer already moved on.
+ */
+async function applyTransferStep(
   supabase: StockActorClient,
   tenantId: string,
-  transferId: string,
   movements: readonly TransferMovement[],
+  call: () => PromiseLike<{ error: { message: string; code?: string } | null }>,
 ): Promise<void> {
-  if (movements.length === 0) return
-
   const before = await readItemsBeforeLegs(supabase, tenantId, movements)
-
-  const { error } = await supabase.from('stock_movements').insert(
-    movements.map((movement) => ({
-      tenant_id: tenantId,
-      inventory_item_id: movement.inventoryItemId,
-      outlet_id: movement.outletId,
-      reason: movement.reason,
-      quantity_delta: movement.quantityDelta,
-      entered_quantity: Math.abs(movement.quantityDelta),
-      unit_cost: movement.unitCost ?? null,
-      note: movement.note ?? null,
-      stock_transfer_id: transferId,
-    })) as never,
-  )
-  if (error) throw error
-
+  const { error } = await call()
+  if (error) {
+    // A refusal the merchant can act on (not your branch, already sent) is
+    // not an incident; anything else is.
+    const code = (error as { code?: string }).code
+    if (!code || !EXPECTED_REFUSAL_CODES.has(code)) {
+      reportStockFailure({ tenantId, operation: 'stock_transfer_step' }, error)
+    }
+    throw error
+  }
   await notifyLegs(tenantId, before, movements)
 }
 
@@ -175,14 +168,14 @@ async function readItemsBeforeLegs(
 ): Promise<InventoryItem[] | null> {
   const { data, error } = await supabase
     .from('inventory_items')
-    .select('*')
+    .select(INVENTORY_ITEM_COLUMNS)
     .eq('tenant_id', tenantId)
     .in('id', [...new Set(movements.map((movement) => movement.inventoryItemId))])
   if (error) {
     console.error('[inventory] Transfer legs: ingredient read failed; skipping alerts', tenantId, error.message)
     return null
   }
-  return (data ?? []) as unknown as InventoryItem[]
+  return ((data ?? []) as unknown as Array<Omit<InventoryItem, 'unit_cost'>>).map((item) => ({ ...item, unit_cost: 0 }))
 }
 
 /**
@@ -218,9 +211,12 @@ async function notifyLegs(
  * Draft a transfer. Nothing moves — the stock is still on the sender's shelf
  * and the document only says what is intended to leave it.
  *
- * The source branch's unit cost is frozen onto each line here rather than read
- * again at receipt, so a price change between sending and arriving cannot
- * revalue stock that is already on a van.
+ * No price is written on the lines. The ledger freezes every leg's cost itself
+ * (the departure at the sender's average, the arrival and any shortfall at the
+ * departure's), so a price change between sending and arriving cannot revalue
+ * stock on a van, and a draft needs no read of what the ingredient costs
+ * (`unit_cost` is not selectable by the session role, only `costs` holders may
+ * ask for it). `stock_transfer_lines.unit_cost` stays NULL on new lines.
  */
 export async function createTransfer(
   tenantId: string,
@@ -252,20 +248,6 @@ export async function createTransferWith(
   if (!canSendTransfer(scope, input.fromOutletId)) throw new Error(NOT_YOUR_BRANCH)
   validateTransferDraft(input)
 
-  const itemIds = input.lines.map((line) => line.inventoryItemId)
-  const { data: itemRows, error: itemError } = await supabase
-    .from('inventory_items')
-    .select('id, unit_cost')
-    .eq('tenant_id', tenantId)
-    .in('id', itemIds)
-  if (itemError) throw itemError
-
-  const costByItemId = new Map(
-    ((itemRows ?? []) as unknown as Array<{ id: string; unit_cost: number | null }>).map(
-      (row) => [row.id, row.unit_cost],
-    ),
-  )
-
   const { data: created, error: createError } = await supabase
     .from('stock_transfers')
     .insert({
@@ -287,7 +269,6 @@ export async function createTransferWith(
       transfer_id: transferId,
       inventory_item_id: line.inventoryItemId,
       sent_quantity: line.quantity,
-      unit_cost: costByItemId.get(line.inventoryItemId) ?? null,
     })) as never,
   )
   if (lineError) throw lineError
@@ -318,23 +299,17 @@ export async function sendTransferWith(
   }
 
   const lines = await loadLines(supabase, tenantId, transferId)
-  await writeMovements(
-    supabase,
-    tenantId,
-    transferId,
-    buildSendMovements({ fromOutletId: transfer.from_outlet_id, lines: toReceipts(lines) }),
-  )
+  const movements = buildSendMovements({
+    fromOutletId: transfer.from_outlet_id,
+    lines: toReceipts(lines),
+  })
 
-  const { error } = await supabase
-    .from('stock_transfers')
-    .update({
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-      sent_by: await actingUserId(supabase),
-    } as never)
-    .eq('tenant_id', tenantId)
-    .eq('id', transferId)
-  if (error) throw error
+  await applyTransferStep(supabase, tenantId, movements, () =>
+    supabase.rpc('send_stock_transfer' as never, {
+      p_transfer_id: transferId,
+      p_legs: toLegPayload(movements),
+    } as never),
+  )
 }
 
 /**
@@ -377,31 +352,18 @@ export async function receiveTransferWith(
     lines: counted,
   })
 
-  await writeMovements(supabase, tenantId, transferId, movements)
-
-  // Per line, because each one carries its own count. This is the record of
-  // what arrived; without it the ledger says stock went missing and nothing
-  // says at which step it was noticed.
-  for (const line of counted) {
-    const { error } = await supabase
-      .from('stock_transfer_lines')
-      .update({ received_quantity: line.receivedQuantity } as never)
-      .eq('tenant_id', tenantId)
-      .eq('transfer_id', transferId)
-      .eq('inventory_item_id', line.inventoryItemId)
-    if (error) throw error
-  }
-
-  const { error } = await supabase
-    .from('stock_transfers')
-    .update({
-      status: 'received',
-      received_at: new Date().toISOString(),
-      received_by: await actingUserId(supabase),
-    } as never)
-    .eq('tenant_id', tenantId)
-    .eq('id', transferId)
-  if (error) throw error
+  // The legs, what arrived per line and the status change are one step: a
+  // failure between them used to strand a half-received transfer.
+  const receivedByItem = Object.fromEntries(
+    counted.map((line) => [line.inventoryItemId, line.receivedQuantity]),
+  )
+  await applyTransferStep(supabase, tenantId, movements, () =>
+    supabase.rpc('receive_stock_transfer' as never, {
+      p_transfer_id: transferId,
+      p_legs: toLegPayload(movements),
+      p_counts: receivedByItem,
+    } as never),
+  )
 }
 
 /**

@@ -13,6 +13,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toBusinessDayKey } from '@/lib/inventory/business-day'
 import { StockCountPanel } from '@/components/admin/stock-count-panel'
 import type { CountSessionProgress } from '@/lib/inventory/count-session'
 
@@ -42,7 +43,7 @@ function running(overrides: Partial<CountSessionProgress> = {}): CountSessionPro
 }
 
 function renderPanel(
-  props: { countId?: string | null; progress?: CountSessionProgress | null } = {},
+  props: { countId?: string | null; progress?: CountSessionProgress | null; countBusinessDay?: string | null } = {},
 ) {
   return render(
     <StockCountPanel
@@ -50,6 +51,7 @@ function renderPanel(
       tenantSlug={SLUG}
       outletId={null}
       countId={props.countId ?? null}
+      countBusinessDay={props.countBusinessDay ?? null}
       progress={props.progress ?? null}
     />,
   )
@@ -157,5 +159,17 @@ describe('while a count is running', () => {
     await user.click(screen.getByRole('button', { name: /finish count/i }))
 
     expect(await screen.findByText(/already closed/i)).toBeInTheDocument()
+  })
+})
+
+describe('a count left open from an earlier day', () => {
+  it('shows the day it was started on', () => {
+    renderPanel({ countId: 'count-1', progress: running(), countBusinessDay: '2026-07-31' })
+    expect(screen.getByTestId('stock-count-stale')).toHaveTextContent('2026-07-31')
+  })
+
+  it('says nothing for a count started today', () => {
+    renderPanel({ countId: 'count-1', progress: running(), countBusinessDay: toBusinessDayKey(new Date().toISOString()) })
+    expect(screen.queryByTestId('stock-count-stale')).not.toBeInTheDocument()
   })
 })

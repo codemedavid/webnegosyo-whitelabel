@@ -64,7 +64,18 @@ const from = jest.fn((table: string) => {
 })
 
 jest.mock('@/lib/supabase/server', () => ({
-  createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...(a as [string])) }),
+  createClient: () =>
+    Promise.resolve({
+      from: (...a: unknown[]) => from(...(a as [string])),
+      // The ingredient prices come through the `costs`-gated reader, not the table.
+      rpc: async () => ({
+        data: ((tableData['inventory_items'] ?? []) as Array<{ id: string; unit_cost: number }>).map((row) => ({
+          inventory_item_id: row.id,
+          unit_cost: row.unit_cost,
+        })),
+        error: null,
+      }),
+    }),
 }))
 
 // The service-role client must never be reachable from this path. Importing it

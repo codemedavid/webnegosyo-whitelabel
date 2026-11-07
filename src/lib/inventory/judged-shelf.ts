@@ -12,6 +12,11 @@
  * One rule for every reader that turns stock into "can this be sold": the
  * checkout guard and the storefront/register ceilings (`stock-graph-read.ts`)
  * and auto-86 (`auto-86-service.ts`), so they can never disagree.
+ *
+ * A store set to block (`tenants.pos_stock_policy`) has asked for the strict
+ * reading: every shelf is judged, so an ingredient at or below zero is out
+ * whether or not anyone counted it (owner, 2026-11-07, after dishes at -5 sold
+ * with no prompt). Such a store must count or receive to sell.
  */
 
 import type { ProducibleStock } from '@/lib/inventory/producible'
@@ -26,22 +31,34 @@ export interface JudgedShelfRow {
   counted_at?: string | null
 }
 
+export interface JudgeOptions {
+  /** Judge never-counted shelves too: see `judgesUncounted`. */
+  judgeUncounted?: boolean
+}
+
+/** Whether this store's stock policy judges never-counted shelves. */
+export function judgesUncounted(posStockPolicy: unknown): boolean {
+  return posStockPolicy === 'block'
+}
+
 /** True once a delivery, count or transfer arrival was ever recorded. */
 export function isCounted(row: { counted_at?: string | null }): boolean {
   return Boolean(row.counted_at)
 }
 
 /**
- * The shelf a limit may be judged on: counted ingredients whose stock unit is
- * known and whose quantity is a number. Everything else is left off — absent
- * means "no opinion" to `producible.ts` and `auto-86.ts`, never zero.
+ * The shelf a limit may be judged on: counted ingredients (or all of them with
+ * `judgeUncounted`) whose stock unit is known and whose quantity is a number.
+ * Everything else is left off — absent means "no opinion" to `producible.ts`
+ * and `auto-86.ts`, never zero.
  */
 export function toJudgedShelf(
   rows: readonly JudgedShelfRow[],
   unitsById: ReadonlyMap<string, InventoryUnit>,
+  { judgeUncounted = false }: JudgeOptions = {},
 ): ProducibleStock[] {
   return rows.flatMap((row) => {
-    if (!isCounted(row)) return []
+    if (!judgeUncounted && !isCounted(row)) return []
     const stockUnit = unitsById.get(row.stock_unit_id)
     const onHand = Number(row.current_qty)
     if (!stockUnit || !Number.isFinite(onHand)) return []
