@@ -50,7 +50,7 @@ describe('readItemCosts', () => {
 })
 
 describe('withItemCosts', () => {
-  const items = [{ id: 'a', name: 'Beef' }, { id: 'b', name: 'Salt' }] as never[]
+  const items = [{ id: 'a', name: 'Beef' }, { id: 'b', name: 'Salt' }] as unknown as Parameters<typeof withItemCosts>[2]
 
   it('fills the price for a costs holder', async () => {
     const { client } = clientReturning({ data: [row('a', 420)] })
@@ -89,7 +89,7 @@ describe('movement costs', () => {
 
   it('is null without costs, and rows then carry a null cost', async () => {
     const { client } = clientReturning({ error: NOT_ALLOWED })
-    const rows = await withMovementCosts(client, TENANT, [{ id: 'm1' }] as never[])
+    const rows = await withMovementCosts(client, TENANT, [{ id: 'm1' }] as unknown as Parameters<typeof withMovementCosts>[2])
     expect(rows[0].unit_cost).toBeNull()
   })
 })

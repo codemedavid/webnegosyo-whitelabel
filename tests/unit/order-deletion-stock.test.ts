@@ -39,9 +39,9 @@ function setup(rows: ArchivedOrderRef[], record: Partial<DeletionRecord> = {}) {
     listArchivedOrders: jest.fn(async () => { calls.push('list'); return rows }),
   } as unknown as jest.Mocked<OrderDeletionRepo>
   const effects: jest.Mocked<OrderStockEffects> = {
-    giveBack: jest.fn(async () => undefined),
-    takeAgain: jest.fn(async () => undefined),
-    releasePresell: jest.fn(async () => undefined),
+    giveBack: jest.fn<Promise<void>, [string, string, string]>(async () => undefined),
+    takeAgain: jest.fn<Promise<void>, [string, string, string]>(async () => undefined),
+    releasePresell: jest.fn<Promise<void>, [string, unknown]>(async () => undefined),
   }
   const tasks: Array<() => Promise<void>> = []
   const settlement: StockSettlement = { effects, defer: (task) => { tasks.push(task) } }
