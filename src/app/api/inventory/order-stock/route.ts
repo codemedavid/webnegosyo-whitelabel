@@ -6,6 +6,9 @@ import type { AppUserScopeRow } from '@/lib/queries/fetch-app-user-scope'
 import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import { parseStockAuditSource, type StockAuditContext } from '@/lib/inventory/stock-audit'
 import type { StockWriteOutcome } from '@/lib/inventory/order-stock-service'
+import type { DepletionOrderItem } from '@/lib/inventory/order-depletion'
+import type { OrderBackend } from '@/lib/order-backend'
+import { checkDepleteLines, checkReviseLines, type OrderLineEvidence } from '@/lib/inventory/order-stock-lines'
 
 /**
  * POST /api/inventory/order-stock
@@ -34,6 +37,14 @@ import type { StockWriteOutcome } from '@/lib/inventory/order-stock-service'
  * `redeplete` is the un-cancel: an order leaving `cancelled` from the app
  * spends exactly what its cancellation put back. Refused (409) while the
  * stored order is still cancelled.
+ *
+ * `deplete` and `revise` carry lines, and the route writes with the service
+ * role, so the lines are checked against the order the server reads before
+ * anything moves (`lib/inventory/order-stock-lines.ts`): a made-up dish or
+ * quantity is refused 409 `lines_do_not_match_order`, which the app's stock
+ * queue treats as final (any 4xx outside 401/404/408/429). A Convex store with
+ * no deploy key, or a tenant's own Supabase project, cannot be read back, so
+ * its lines are still taken on trust and the route logs that it did.
  *
  * Authenticated via the caller's own Supabase access token — same trust level
  * as /api/revalidate-menu and `verifyTenantAdmin` in src/lib/admin-service.ts.
@@ -73,7 +84,7 @@ const MAX_LINE_QUANTITY = 9999
  * key answers "missing" for every order.
  */
 type LifecycleRead =
-  | { kind: 'found'; status: string; customerData: unknown; outletId: string | null }
+  | { kind: 'found'; status: string; customerData: unknown; outletId: string | null; backend: OrderBackend | null }
   | { kind: 'missing'; isProvenMissing: boolean }
   | { kind: 'unreadable' }
 
@@ -87,6 +98,7 @@ async function readOrderLifecycle(tenantId: string, orderId: string): Promise<Li
       status: order.status,
       customerData: order.customerData,
       outletId: order.outletId ?? null,
+      backend,
     }
   } catch (error) {
     console.error('[order-stock] Could not read the order', { tenantId, orderId }, error)
@@ -278,29 +290,82 @@ async function redeplete({ request, read, audit }: ActionContext): Promise<NextR
 }
 
 /**
+ * The evidence a request's lines are judged by, or a response when the order's
+ * lines cannot be read yet (503: the register retries) — or null when this
+ * order's backend cannot be read back at all and the lines stay on trust.
+ */
+async function lineEvidenceFor(
+  { request, read }: ActionContext,
+  lines: readonly DepletionOrderItem[],
+): Promise<OrderLineEvidence | NextResponse | null> {
+  if (lines.length === 0) return null
+  if (read.kind !== 'found' || read.backend === null) {
+    console.warn('[order-stock] Lines taken on trust: the order could not be read back', {
+      tenantId: request.tenantId, orderId: request.orderId, action: request.action,
+    })
+    return null
+  }
+  try {
+    const { readOrderLineEvidence } = await import('@/lib/inventory/order-stock-lines-read')
+    const dishIds = [...new Set(lines.map((line) => line.menuItemId).filter(Boolean))]
+    const lineRead = await readOrderLineEvidence(read.backend, request.tenantId, request.orderId, dishIds)
+    if (lineRead.kind === 'evidence') return lineRead.evidence
+    if (lineRead.kind === 'unreadable') return refuse(503, 'order_lines_unreadable')
+    console.warn('[order-stock] Lines taken on trust: the backend cannot be checked', {
+      tenantId: request.tenantId, orderId: request.orderId, action: request.action, reason: lineRead.reason,
+    })
+    return null
+  } catch (error) {
+    console.error('[order-stock] Could not read the order lines', {
+      tenantId: request.tenantId, orderId: request.orderId,
+    }, error)
+    return refuse(503, 'order_lines_unreadable')
+  }
+}
+
+/**
  * A saved edit moves only the DIFFERENCE — the order's original sale already
  * spent its ingredients. The caller sends both directions because one edit can
  * do both (a customer swaps a bun for a latte), already netted per
- * configuration by `lib/pos-stock-revision.ts` on the client.
+ * configuration by `lib/pos-stock-revision.ts` on the client. The server holds
+ * the edit's own before/after lines, so each dish's net must equal that edit's.
  */
-async function revise({ request, outletId, audit }: ActionContext): Promise<NextResponse> {
+async function revise(context: ActionContext): Promise<NextResponse> {
+  const { request, outletId, audit } = context
+  const revision = Number(request.body.revision)
+  const spend = toDepletionItems(request.body.deplete)
+  const giveBack = toDepletionItems(request.body.restore)
+
+  const evidence = await lineEvidenceFor(context, [...spend, ...giveBack])
+  if (evidence instanceof NextResponse) return evidence
+  const checked = evidence ? checkReviseLines(revision, spend, giveBack, evidence) : null
+  if (checked && !checked.ok) return refuse(409, checked.code)
+
   const { applyOrderRevisionStockBestEffort } = await import('@/lib/inventory/order-stock-service')
   const outcome = await applyOrderRevisionStockBestEffort(
     request.tenantId,
     request.orderId,
-    Number(request.body.revision),
-    toDepletionItems(request.body.deplete),
-    toDepletionItems(request.body.restore),
+    revision,
+    checked ? checked.deplete : spend,
+    checked ? checked.restore : giveBack,
     outletId,
     audit,
   )
   return settledResponse(outcome)
 }
 
-async function deplete({ request, outletId, audit }: ActionContext): Promise<NextResponse> {
+async function deplete(context: ActionContext): Promise<NextResponse> {
+  const { request, outletId, audit } = context
+  const items = toDepletionItems(request.body.items)
+
+  const evidence = await lineEvidenceFor(context, items)
+  if (evidence instanceof NextResponse) return evidence
+  const checked = evidence ? checkDepleteLines(items, evidence) : null
+  if (checked && !checked.ok) return refuse(409, checked.code)
+
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
   const outcome = await applyOrderStockBestEffort(
-    request.tenantId, request.orderId, toDepletionItems(request.body.items), 'sale', 0, outletId, { context: audit },
+    request.tenantId, request.orderId, checked ? checked.lines : items, 'sale', 0, outletId, { context: audit },
   )
   return settledResponse(outcome)
 }
