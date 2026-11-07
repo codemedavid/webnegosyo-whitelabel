@@ -16,6 +16,7 @@
  * admin session and inventory RLS is staff-only.
  */
 
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import { decideAuto86, type Auto86Dish } from '@/lib/inventory/auto-86'
 import { toJudgedShelf, type JudgedShelfRow, type JudgeOptions } from '@/lib/inventory/judged-shelf'
 import { selectAllPages, type PageRequest, type PageResponse } from '@/lib/storefront/paged-select'
@@ -111,7 +112,7 @@ async function applyUpdate(
   for (const slice of chunks(ids)) {
     const { data, error } = await narrow(client.from('menu_items').update(patch).eq('tenant_id', tenantId).in('id', slice)).select('id')
     if (error) {
-      console.error('[inventory] auto-86 menu update failed', tenantId, error.message)
+      reportStockFailure({ tenantId, operation: 'auto_86_update' }, error)
       continue
     }
     matched.push(...(data ?? []).map((row) => row.id))

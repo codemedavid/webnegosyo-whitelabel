@@ -21,6 +21,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import type { InventoryItem } from '@/types/database'
 import {
   detectOutAgain,
@@ -78,7 +79,7 @@ async function readBranchStock(
   // Unreadable is NOT an empty shelf: read as zero, every ingredient in the
   // batch would "cross" to out and alert over stock nobody looked at.
   if (error) {
-    console.error('[inventory] Branch stock read failed; skipping branch alerts', tenantId, error.message)
+    reportStockFailure({ tenantId, operation: 'stock_alert_write' }, error)
     return null
   }
   return indexStockRows((data ?? []) as unknown as BranchStockRow[])
@@ -103,7 +104,7 @@ const UNIQUE_VIOLATION = '23505'
 
 /** Alert writes never fail an order; they are logged where Vercel can see them. */
 function logAlertWriteFailure(step: string, tenantId: string, error: { message: string; code?: string }): void {
-  console.error(`[inventory] Stock alert ${step} failed`, tenantId, error.code ?? '', error.message)
+  reportStockFailure({ tenantId, operation: 'stock_alert_write' }, new Error(`Stock alert ${step} failed: ${error.code ?? ''} ${error.message}`))
 }
 
 interface TenantAlertFlags {
@@ -123,7 +124,7 @@ async function readTenantFlags(
     .select('low_stock_alerts_enabled, auto_86_enabled, pos_stock_policy, slug')
     .eq('id', tenantId)
     .single()
-  if (error) console.error('[inventory] Tenant alert flags unreadable; treating both as off', tenantId, error.message)
+  if (error) reportStockFailure({ tenantId, operation: 'stock_alert_write' }, new Error(`Tenant alert flags unreadable; treating both as off: ${error.message}`))
 
   const row = (data ?? {}) as {
     low_stock_alerts_enabled?: boolean
@@ -446,7 +447,7 @@ export async function processStockLevelChanges(
 
     return { ...alerts, menuItemsDisabled: auto86.disabled, menuItemsReEnabled: auto86.reEnabled }
   } catch (error) {
-    console.error('[inventory] Failed to process stock level changes', tenantId, error)
+    reportStockFailure({ tenantId, operation: 'stock_level_alerting' }, error)
     return NOTHING_HAPPENED
   }
 }
@@ -490,7 +491,7 @@ async function runAuto86(
   try {
     return await reconcileAuto86(supabase, tenantId, ingredientIds, undefined, { judgeUncounted })
   } catch (error) {
-    console.error('[inventory] Auto-86 failed', tenantId, error)
+    reportStockFailure({ tenantId, operation: 'auto_86_update' }, error)
     return { disabled: [], reEnabled: [] }
   }
 }
@@ -524,7 +525,7 @@ export async function recheckMenuAvailability(tenantId: string): Promise<Auto86R
     await refreshStorefront(flags.slug, result)
     return result
   } catch (error) {
-    console.error('[inventory] Menu re-check failed', tenantId, error)
+    reportStockFailure({ tenantId, operation: 'auto_86_update' }, error)
     return none
   }
 }

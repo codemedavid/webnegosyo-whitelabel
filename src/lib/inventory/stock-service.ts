@@ -13,6 +13,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import { auditManualMovement, type ManualMovementAudit } from '@/lib/inventory/stock-audit-service'
 import type { StockAuditSource } from '@/lib/inventory/stock-audit'
 import { verifyTenantPermission } from '@/lib/admin-service'
@@ -64,7 +65,7 @@ async function notifyStockLevelChanges(
     const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
     await processStockLevelChanges(tenantId, items, deltas, outletId)
   } catch (error) {
-    console.error('[inventory] Stock level alerting failed', tenantId, error)
+    reportStockFailure({ tenantId, operation: 'stock_level_alerting' }, error)
   }
 }
 

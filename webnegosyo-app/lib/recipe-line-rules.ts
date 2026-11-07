@@ -99,3 +99,24 @@ export function compatibleRecipeUnits<T extends RuleUnit>(
 export function toUnitDimension(value: unknown): UnitDimension | null {
   return value === "weight" || value === "volume" || value === "count" ? value : null;
 }
+
+/**
+ * Why an ingredient cannot move to `newStockUnitId` while recipes still use it,
+ * or null when every existing line still converts. The line guard only runs
+ * when a LINE is written, so a stock-unit change used to strand every recipe
+ * line measured in the old kind of unit (each sale then skipped it).
+ */
+export function stockUnitChangeProblem(
+  ingredientName: string,
+  newStockUnitId: string,
+  lineUnitIds: readonly string[],
+  units: readonly RuleUnit[],
+): string | null {
+  const newStockUnit = units.find((unit) => unit.id === newStockUnitId);
+  if (!newStockUnit) return null;
+  const clash = [...new Set(lineUnitIds)]
+    .map((id) => units.find((unit) => unit.id === id))
+    .find((unit): unit is RuleUnit => unit !== undefined && !canConvertUnits(unit, newStockUnit));
+  if (!clash) return null;
+  return `${ingredientName || "This ingredient"} is used in a recipe in ${clash.abbreviation}, which can't be measured in ${newStockUnit.abbreviation}. Change those recipe lines first, or keep the current stock unit.`;
+}

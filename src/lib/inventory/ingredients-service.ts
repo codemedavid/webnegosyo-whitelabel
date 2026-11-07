@@ -13,6 +13,8 @@ import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { InventoryItem } from '@/types/database'
+import { stockUnitChangeProblem } from '@/lib/inventory/recipe-line-rules'
+import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 import { ingredientInputSchema, type IngredientInput } from '@/lib/inventory/schemas'
 import { parseIngredientDeleteImpact, type IngredientDeleteImpact } from '@/lib/inventory/ingredient-delete'
 import {
@@ -93,6 +95,8 @@ export async function updateIngredient(
   const refusal = ingredientWriteRefusal(userRole, grantsForIngredientWrite(stored, validated))
   if (refusal) throw new Error(refusal)
 
+  await assertStockUnitChangeKeepsRecipes(supabase, tenantId, ingredientId, stored, validated)
+
   const { data, error } = await supabase
     .from('inventory_items')
     .update({ ...validated, updated_at: new Date().toISOString() } as never)
@@ -103,6 +107,37 @@ export async function updateIngredient(
 
   if (error) throw error
   return data as unknown as InventoryItem
+}
+
+/**
+ * A stock unit that no longer converts from the units recipes measure this
+ * ingredient in would make every sale skip it (recipe_components_unit_guard
+ * only fires when a LINE is written). Refused at the moment of the change.
+ */
+async function assertStockUnitChangeKeepsRecipes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  ingredientId: string,
+  stored: { name?: string | null; stock_unit_id?: string | null } | null,
+  validated: Partial<IngredientInput>,
+): Promise<void> {
+  const newUnitId = validated.stock_unit_id
+  if (!newUnitId || newUnitId === stored?.stock_unit_id) return
+
+  const [lines, units] = await Promise.all([
+    supabase.from('recipe_components').select('unit_id').eq('tenant_id', tenantId).eq('inventory_item_id', ingredientId),
+    supabase.from('inventory_units').select('id, name, abbreviation, dimension, to_base_factor').eq('tenant_id', tenantId),
+  ])
+  if (lines.error) throw lines.error
+  if (units.error) throw units.error
+
+  const problem = stockUnitChangeProblem(
+    validated.name ?? stored?.name ?? '',
+    newUnitId,
+    (lines.data ?? []).map((line) => line.unit_id as string),
+    (units.data ?? []) as unknown as InventoryUnit[],
+  )
+  if (problem) throw new Error(problem)
 }
 
 const STORED_COLUMNS = 'name, sku, category, stock_unit_id, unit_cost, is_prep, image_url, reorder_level, is_active'
