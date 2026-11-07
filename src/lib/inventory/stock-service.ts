@@ -22,6 +22,7 @@ import { withItemCosts, withMovementCosts } from '@/lib/inventory/item-costs'
 import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import {
   canSeeCosts,
+  withoutUnitCost,
   movementInputForCaller,
   movementResultForCaller,
 } from '@/lib/inventory/cost-visibility'
@@ -112,8 +113,8 @@ export async function getStockMovements(
   const rows = (data ?? []) as unknown as Array<Omit<StockMovement, 'unit_cost'>>
   // The delivery price is `costs`: read only for a holder, through the gated reader.
   if (canSeeCosts(userRole)) return withMovementCosts(supabase, tenantId, rows)
-  // Never selected, so there is nothing to strip: the rows are history without a price.
-  return rows as StockMovement[]
+  // Not selected, and stripped anyway: a price must never reach an account without `costs`.
+  return withoutUnitCost(rows as Array<Partial<StockMovement>>) as unknown as StockMovement[]
 }
 
 /**
