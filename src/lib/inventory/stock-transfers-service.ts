@@ -22,6 +22,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { INVENTORY_ITEM_COLUMNS } from '@/lib/inventory/cost-columns'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import type { InventoryItem } from '@/types/database'
 import {
@@ -55,7 +56,6 @@ interface TransferLineRow {
   inventory_item_id: string
   sent_quantity: number
   received_quantity: number | null
-  unit_cost: number | null
 }
 
 export interface CreateTransferInput {
@@ -94,7 +94,7 @@ async function loadLines(
 ): Promise<TransferLineRow[]> {
   const { data, error } = await supabase
     .from('stock_transfer_lines')
-    .select('inventory_item_id, sent_quantity, received_quantity, unit_cost')
+    .select('inventory_item_id, sent_quantity, received_quantity')
     .eq('tenant_id', tenantId)
     .eq('transfer_id', transferId)
   if (error) throw error
@@ -107,7 +107,6 @@ function toReceipts(lines: readonly TransferLineRow[]): TransferLineReceipt[] {
     inventoryItemId: line.inventory_item_id,
     sentQuantity: Number(line.sent_quantity),
     receivedQuantity: 0,
-    unitCost: line.unit_cost === null ? undefined : Number(line.unit_cost),
   }))
 }
 
@@ -169,14 +168,14 @@ async function readItemsBeforeLegs(
 ): Promise<InventoryItem[] | null> {
   const { data, error } = await supabase
     .from('inventory_items')
-    .select('*')
+    .select(INVENTORY_ITEM_COLUMNS)
     .eq('tenant_id', tenantId)
     .in('id', [...new Set(movements.map((movement) => movement.inventoryItemId))])
   if (error) {
     console.error('[inventory] Transfer legs: ingredient read failed; skipping alerts', tenantId, error.message)
     return null
   }
-  return (data ?? []) as unknown as InventoryItem[]
+  return ((data ?? []) as unknown as Array<Omit<InventoryItem, 'unit_cost'>>).map((item) => ({ ...item, unit_cost: 0 }))
 }
 
 /**
@@ -212,9 +211,12 @@ async function notifyLegs(
  * Draft a transfer. Nothing moves — the stock is still on the sender's shelf
  * and the document only says what is intended to leave it.
  *
- * The source branch's unit cost is frozen onto each line here rather than read
- * again at receipt, so a price change between sending and arriving cannot
- * revalue stock that is already on a van.
+ * No price is written on the lines. The ledger freezes every leg's cost itself
+ * (the departure at the sender's average, the arrival and any shortfall at the
+ * departure's), so a price change between sending and arriving cannot revalue
+ * stock on a van, and a draft needs no read of what the ingredient costs
+ * (`unit_cost` is not selectable by the session role, only `costs` holders may
+ * ask for it). `stock_transfer_lines.unit_cost` stays NULL on new lines.
  */
 export async function createTransfer(
   tenantId: string,
@@ -246,20 +248,6 @@ export async function createTransferWith(
   if (!canSendTransfer(scope, input.fromOutletId)) throw new Error(NOT_YOUR_BRANCH)
   validateTransferDraft(input)
 
-  const itemIds = input.lines.map((line) => line.inventoryItemId)
-  const { data: itemRows, error: itemError } = await supabase
-    .from('inventory_items')
-    .select('id, unit_cost')
-    .eq('tenant_id', tenantId)
-    .in('id', itemIds)
-  if (itemError) throw itemError
-
-  const costByItemId = new Map(
-    ((itemRows ?? []) as unknown as Array<{ id: string; unit_cost: number | null }>).map(
-      (row) => [row.id, row.unit_cost],
-    ),
-  )
-
   const { data: created, error: createError } = await supabase
     .from('stock_transfers')
     .insert({
@@ -281,7 +269,6 @@ export async function createTransferWith(
       transfer_id: transferId,
       inventory_item_id: line.inventoryItemId,
       sent_quantity: line.quantity,
-      unit_cost: costByItemId.get(line.inventoryItemId) ?? null,
     })) as never,
   )
   if (lineError) throw lineError

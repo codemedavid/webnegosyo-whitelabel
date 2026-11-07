@@ -119,9 +119,9 @@ const movementRows = (writes: Writes): Array<Record<string, unknown>> =>
   writes.rpcs.flatMap((call) => call.args.p_legs as Array<Record<string, unknown>>)
 
 describe('createTransfer', () => {
-  it('freezes the source cost onto each line', async () => {
-    // Re-deriving the price at receipt would revalue the chain's stock on a
-    // movement that changed nothing but location.
+  it('writes no price on the lines and never reads what an ingredient costs', async () => {
+    // The ledger freezes each leg's cost itself, and unit_cost is not selectable
+    // by the session role (20261107130100), so a draft neither reads nor writes one.
     const writes = stub({ items: [{ id: FLOUR, unit_cost: 25 }] })
 
     await createTransfer(TENANT, {
@@ -131,9 +131,9 @@ describe('createTransfer', () => {
     })
 
     const lineWrite = writes.inserts.find((w) => w.table === 'stock_transfer_lines')
-    expect(lineWrite?.rows).toEqual([
-      expect.objectContaining({ inventory_item_id: FLOUR, sent_quantity: 10, unit_cost: 25 }),
-    ])
+    expect(lineWrite?.rows).toEqual([expect.not.objectContaining({ unit_cost: expect.anything() })])
+    expect(lineWrite?.rows).toEqual([expect.objectContaining({ inventory_item_id: FLOUR, sent_quantity: 10 })])
+    expect(from.mock.calls.map(([table]) => table)).not.toContain('inventory_items')
   })
 
   it('writes no stock movement — a draft has not moved anything', async () => {

@@ -11,6 +11,7 @@
  * reusable by the merchant app.
  */
 
+import { readItemCosts } from '@/lib/inventory/item-costs'
 import { createClient } from '@/lib/supabase/server'
 import {
   buildDailyInventoryReport,
@@ -76,7 +77,6 @@ interface MovementRow {
 interface IngredientRow {
   id: string
   name: string
-  unit_cost: number
   stock_unit_id: string
 }
 
@@ -116,7 +116,7 @@ export async function getDailyInventoryReport(
     .eq('tenant_id', tenantId)
     .eq('business_day', dayKey)
 
-  const [movementRows, ingredientRows, unitRows, countResult] = await Promise.all([
+  const [movementRows, ingredientRows, unitRows, countResult, itemCosts] = await Promise.all([
     readAll<MovementRow>('stock movements', (from, to) => {
       const query = supabase
         .from('stock_movements')
@@ -135,7 +135,7 @@ export async function getDailyInventoryReport(
     readAll<IngredientRow>('ingredients', (from, to) =>
       supabase
         .from('inventory_items')
-        .select('id, name, unit_cost, stock_unit_id')
+        .select('id, name, stock_unit_id')
         .eq('tenant_id', tenantId)
         .order('id', { ascending: true })
         .range(from, to),
@@ -158,6 +158,10 @@ export async function getDailyInventoryReport(
     (outletId ? countQuery.eq('outlet_id', outletId) : countQuery)
       .order('started_at', { ascending: false })
       .limit(MAX_DAY_COUNTS),
+    // Ingredient prices are not selectable by the session role; this report is
+    // only read for an account holding `costs` (inventory page gate), and the
+    // reader answers nobody else.
+    readItemCosts(supabase, tenantId),
   ])
 
   const unitAbbreviationById = new Map(
@@ -169,7 +173,7 @@ export async function getDailyInventoryReport(
     name: row.name,
     // A null cost is "never priced", which the report counts and reports rather
     // than quietly treating as free.
-    unitCost: row.unit_cost ?? 0,
+    unitCost: itemCosts?.get(row.id) ?? 0,
     stockUnitAbbreviation: unitAbbreviationById.get(row.stock_unit_id) ?? '',
   }))
 

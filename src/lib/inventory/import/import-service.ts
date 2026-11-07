@@ -11,6 +11,8 @@
  * count would.
  */
 
+import { INVENTORY_ITEM_COLUMNS } from '@/lib/inventory/cost-columns'
+import { readItemCosts } from '@/lib/inventory/item-costs'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
@@ -42,10 +44,11 @@ function supabaseDeps(
       const { data, error } = await supabase
         .from('inventory_items')
         .insert({ tenant_id: tenantId, ...input } as never)
-        .select()
+        .select(INVENTORY_ITEM_COLUMNS)
         .single()
       if (error) throw error
-      return data as unknown as InventoryItem
+      // The price just written (only a `costs` holder reaches an import).
+      return { ...(data as unknown as Omit<InventoryItem, 'unit_cost'>), unit_cost: input.unit_cost }
     },
     updateItem: async (id, patch) => {
       const { data, error } = await supabase
@@ -53,10 +56,13 @@ function supabaseDeps(
         .update({ ...patch, updated_at: new Date().toISOString() } as never)
         .eq('id', id)
         .eq('tenant_id', tenantId)
-        .select()
+        .select(INVENTORY_ITEM_COLUMNS)
         .maybeSingle()
       if (error) throw error
-      return (data as unknown as InventoryItem | null) ?? null
+      if (!data) return null
+      // Callers of the importer read names and quantities from the result, not
+      // prices; the price just written is carried when the patch had one.
+      return { ...(data as unknown as Omit<InventoryItem, 'unit_cost'>), unit_cost: patch.unit_cost ?? 0 }
     },
     recordCount: async (item, quantity) => {
       const counted = await recordStockMovementWith(
@@ -77,7 +83,7 @@ function supabaseDeps(
   }
 }
 
-const STORED_COLUMNS = 'id, name, sku, category, stock_unit_id, unit_cost, is_prep, image_url, reorder_level, is_active'
+const STORED_COLUMNS = 'id, name, sku, category, stock_unit_id, is_prep, image_url, reorder_level, is_active'
 
 /**
  * The rows this batch updates, as stored — only read when the importer lacks
@@ -101,7 +107,10 @@ async function readStoredRows(
     .in('id', ids)
   if (error) throw error
   const rows = (data ?? []) as unknown as Array<StoredIngredient & { id: string }>
-  return new Map(rows.map((row) => [row.id, row]))
+  // The stored price is known only to a `costs` holder; otherwise it stays
+  // absent and any submitted price reads as a change that needs `costs`.
+  const costs = await readItemCosts(supabase, tenantId, ids)
+  return new Map(rows.map((row) => [row.id, costs?.has(row.id) ? { ...row, unit_cost: costs.get(row.id) as number } : row]))
 }
 
 export async function importIngredientBatch(tenantId: string, rawBatch: unknown): Promise<ImportRowResult[]> {
