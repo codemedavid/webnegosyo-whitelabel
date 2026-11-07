@@ -64,6 +64,15 @@ jest.mock('@/lib/inventory/order-stock-lines-read', () => ({
   },
 }))
 
+/** What the claim table says about an order the platform no longer has. */
+let strandedClaim: { hasClaim: boolean; outletIds: Array<string | null> } | 'throw' = { hasClaim: false, outletIds: [] }
+jest.mock('@/lib/inventory/stranded-order', () => ({
+  readStrandedOrderClaim: async () => {
+    if (strandedClaim === 'throw') throw new Error('db down')
+    return strandedClaim
+  },
+}))
+
 const rateLimitMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 jest.mock('@/lib/distributed-rate-limit', () => ({
   checkRateLimit: (...args: unknown[]) => rateLimitMock(...args),
@@ -104,6 +113,7 @@ describe('POST /api/inventory/order-stock', () => {
     storedBackend = 'convex'
     storedLineRead = { kind: 'unverifiable', reason: 'test_default' }
     lineReads.length = 0
+    strandedClaim = { hasClaim: false, outletIds: [] }
     lifecycleReads.length = 0
     rateLimitMock.mockResolvedValue({ allowed: true, remaining: 100, retryAfterSec: 30 })
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
@@ -735,6 +745,57 @@ describe('POST /api/inventory/order-stock', () => {
 
       expect(res.status).toBe(404)
       expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    describe('an order stranded by a backend flip (missing on platform, claim held)', () => {
+      beforeEach(() => {
+        storedBackend = 'platform'
+        storedLifecycle = null
+      })
+
+      test('restore works from the claim instead of 404', async () => {
+        strandedClaim = { hasClaim: true, outletIds: [null] }
+        reverseMock.mockResolvedValue('applied')
+        const { POST } = await import('@/app/api/inventory/order-stock/route')
+        const res = await POST(makeRequest({ tenantId: 't1', orderId: 'old-convex-id', action: 'restore' }, 'Bearer token-1'))
+
+        expect(res.status).toBe(200)
+        expect(reverseMock).toHaveBeenCalled()
+      })
+
+      test('a deplete for such an order is still a 404 (a claim does not vouch for new sales)', async () => {
+        strandedClaim = { hasClaim: true, outletIds: [null] }
+        const { POST } = await import('@/app/api/inventory/order-stock/route')
+        const res = await POST(makeRequest({ ...VALID_BODY, orderId: 'old-convex-id' }, 'Bearer token-1'))
+
+        expect(res.status).toBe(404)
+      })
+
+      test('no claim = still 404 for restore', async () => {
+        const { POST } = await import('@/app/api/inventory/order-stock/route')
+        const res = await POST(makeRequest({ tenantId: 't1', orderId: 'forged', action: 'restore' }, 'Bearer token-1'))
+
+        expect(res.status).toBe(404)
+        expect(reverseMock).not.toHaveBeenCalled()
+      })
+
+      test('a branch account cannot restore another branch\'s stranded order', async () => {
+        appUserSingleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1', outlet_id: 'north' }, error: null })
+        strandedClaim = { hasClaim: true, outletIds: ['south'] }
+        const { POST } = await import('@/app/api/inventory/order-stock/route')
+        const res = await POST(makeRequest({ tenantId: 't1', orderId: 'old-convex-id', action: 'restore' }, 'Bearer token-1'))
+
+        expect(res.status).toBe(403)
+        expect(reverseMock).not.toHaveBeenCalled()
+      })
+
+      test('an unreadable claim table asks for a retry (503)', async () => {
+        strandedClaim = 'throw'
+        const { POST } = await import('@/app/api/inventory/order-stock/route')
+        const res = await POST(makeRequest({ tenantId: 't1', orderId: 'old-convex-id', action: 'restore' }, 'Bearer token-1'))
+
+        expect(res.status).toBe(503)
+      })
     })
 
     test('a Convex miss is not proof: the sale still moves stock', async () => {

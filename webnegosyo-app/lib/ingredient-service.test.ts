@@ -128,7 +128,7 @@ describe("updateIngredient", () => {
     const query = chain({ data: [{ id: "i1" }], error: null });
     from.mockReturnValue(query);
 
-    await updateIngredient("t1", "i1", PAYLOAD);
+    await updateIngredient("t1", "i1", { name: "Flour" });
     const eqs = query.calls.filter(([m]) => m === "eq").map(([, args]) => args);
     expect(eqs).toEqual([
       ["tenant_id", "t1"],
@@ -139,7 +139,27 @@ describe("updateIngredient", () => {
   it("treats a zero-row update as a failure, never a silent success", async () => {
     // PostgREST answers an RLS-refused update with 200 and no rows.
     from.mockReturnValue(chain({ data: [], error: null }));
-    await expect(updateIngredient("t1", "i1", PAYLOAD)).rejects.toThrow("could not be changed");
+    await expect(updateIngredient("t1", "i1", { name: "Flour" })).rejects.toThrow("could not be changed");
+  });
+
+  it("refuses a stock unit that recipe lines cannot convert to, and writes nothing", async () => {
+    const update = chain({ data: [{ id: "i1" }], error: null });
+    const byTable: Record<string, unknown> = {
+      inventory_items: chain({ data: { name: "Egg", stock_unit_id: "u-g" }, error: null }),
+      recipe_components: chain({ data: [{ unit_id: "u-g" }], error: null }),
+      inventory_units: chain({
+        data: [
+          { id: "u-g", abbreviation: "g", dimension: "weight" },
+          { id: "u-pc", abbreviation: "pc", dimension: "count" },
+        ],
+        error: null,
+      }),
+    };
+    let itemCalls = 0;
+    from.mockImplementation((table: string) => (table === "inventory_items" && itemCalls++ > 0 ? update : byTable[table]));
+
+    await expect(updateIngredient("t1", "i1", { stock_unit_id: "u-pc" })).rejects.toThrow(/can't be measured in pc/);
+    expect(update.calls.filter(([m]) => m === "update")).toHaveLength(0);
   });
 });
 

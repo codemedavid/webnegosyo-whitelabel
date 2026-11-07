@@ -15,6 +15,7 @@
  */
 
 import { supabase } from "./supabase";
+import { stockUnitChangeProblem, type RuleUnit } from "./recipe-line-rules";
 import {
   buildDefaultUnitInserts,
   type IngredientPayload,
@@ -155,6 +156,44 @@ export async function createIngredient(
 }
 
 /**
+ * A stock unit that no longer converts from the units recipes measure this
+ * ingredient in would make every sale skip it. The database line guard only
+ * fires when a LINE is written, so the change itself is refused here.
+ */
+async function assertStockUnitChangeKeepsRecipes(
+  tenantId: string,
+  ingredientId: string,
+  payload: Partial<IngredientPayload>,
+): Promise<void> {
+  const newUnitId = payload.stock_unit_id;
+  if (!newUnitId) return;
+
+  const { data: current, error: currentError } = await supabase
+    .from("inventory_items")
+    .select("name, stock_unit_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", ingredientId)
+    .maybeSingle();
+  if (currentError) throw new Error("The changes were not saved. Try again.");
+  const stored = current as { name?: string; stock_unit_id?: string } | null;
+  if (!stored || stored.stock_unit_id === newUnitId) return;
+
+  const [lines, units] = await Promise.all([
+    supabase.from("recipe_components").select("unit_id").eq("tenant_id", tenantId).eq("inventory_item_id", ingredientId),
+    supabase.from("inventory_units").select("id, abbreviation, dimension").eq("tenant_id", tenantId),
+  ]);
+  if (lines.error || units.error) throw new Error("The changes were not saved. Try again.");
+
+  const problem = stockUnitChangeProblem(
+    payload.name ?? stored.name ?? "",
+    newUnitId,
+    ((lines.data ?? []) as unknown as { unit_id: string }[]).map((line) => line.unit_id),
+    (units.data ?? []) as unknown as RuleUnit[],
+  );
+  if (problem) throw new Error(problem);
+}
+
+/**
  * Update an ingredient. A zero-row update (RLS refusal, or the row deleted on
  * the web meanwhile) is an ERROR: PostgREST reports it as success, and saying
  * "Saved" over a write that never landed is the one thing this must not do.
@@ -164,6 +203,8 @@ export async function updateIngredient(
   ingredientId: string,
   payload: Partial<IngredientPayload>,
 ): Promise<void> {
+  await assertStockUnitChangeKeepsRecipes(tenantId, ingredientId, payload);
+
   const { data, error } = await supabase
     .from("inventory_items")
     .update({ ...payload, updated_at: new Date().toISOString() } as never)

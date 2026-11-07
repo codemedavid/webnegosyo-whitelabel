@@ -20,9 +20,8 @@ import {
 } from '@/lib/inventory/daily-report'
 import { resolveBusinessDayWindow } from '@/lib/inventory/business-day'
 import type { StockMovementReason } from '@/lib/inventory/stock-ledger'
-// Single line on purpose: the app's parity guard strips whole `import` lines,
-// so a wrapped import would read as drift between two identical files.
-import { judgeCountSession, type CountSessionProgress } from '@/lib/inventory/count-session'
+import type { CountSessionProgress } from '@/lib/inventory/count-session'
+import { judgeDaysCounts, type DayCountRow } from '@/lib/inventory/day-counts'
 import { readPagesConcurrently } from '@/lib/dashboard/paged-read'
 
 /** PostgREST's row cap: every read past it is paged. */
@@ -30,6 +29,8 @@ const PAGE_SIZE = 1000
 /** Bounds one request's memory. A day (or a catalogue) this large is refused, never shown short. */
 const MAX_ROWS = 100_000
 const PAGE_CONCURRENCY = 4
+/** Counts one day can have: one per shelf, plus recounts. Bounds the read. */
+const MAX_DAY_COUNTS = 200
 
 type RowPage = (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>
 
@@ -72,12 +73,6 @@ interface MovementRow {
   outlet_id: string | null
 }
 
-interface CountRow {
-  id: string
-  expected_item_count: number
-  closed_at: string | null
-}
-
 interface IngredientRow {
   id: string
   name: string
@@ -117,7 +112,7 @@ export async function getDailyInventoryReport(
    */
   const countQuery = supabase
     .from('inventory_counts')
-    .select('id, expected_item_count, closed_at')
+    .select('id, outlet_id, expected_item_count, closed_at')
     .eq('tenant_id', tenantId)
     .eq('business_day', dayKey)
 
@@ -153,16 +148,16 @@ export async function getDailyInventoryReport(
         .order('id', { ascending: true })
         .range(from, to),
     ),
-    // The day's count, if the merchant opened one. Latest first, because a
-    // shelf recounted in the evening is the one that describes how the day
-    // ended — the morning's abandoned attempt is not the last word on it.
+    // Every count the day had, latest first: a store-wide report spans several
+    // branches and each opens its own, so a single-row read would grade the
+    // whole store by one shelf. `judgeDaysCounts` keeps the latest per shelf —
+    // a shelf recounted in the evening describes how the day ended.
     // Scoped to the same branch as the ledger. Otherwise coverage is measured
     // against a count opened for another shelf — or against the store pool's,
     // whose denominator counts ingredients this branch never stocks.
     (outletId ? countQuery.eq('outlet_id', outletId) : countQuery)
       .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .limit(MAX_DAY_COUNTS),
   ])
 
   const unitAbbreviationById = new Map(
@@ -191,40 +186,9 @@ export async function getDailyInventoryReport(
 
   return {
     dayKey,
-    countSession: judgeDaysCount(
-      countResult.error ? null : ((countResult.data as unknown as CountRow) ?? null),
-      movementRows,
-    ),
+    countSession: countResult.error
+      ? null
+      : judgeDaysCounts((countResult.data ?? []) as unknown as DayCountRow[], movementRows),
     ...buildDailyInventoryReport({ movements, ingredients }),
   }
-}
-
-/**
- * How far the day's count got, from the movements filed under it.
- *
- * The counted ingredients come from the movements already read for the report
- * rather than a second query — they are the same rows, and a stocktake belongs
- * to the day whose shelf it counted.
- *
- * A stocktake carrying no session is deliberately not credited: a one-off
- * correction made during a count is not part of the count, and crediting it
- * would raise coverage for an ingredient nobody counted.
- *
- * A failed session read yields `null` rather than throwing. The stock figures
- * are independently true, and losing the whole report because its caveat could
- * not be computed would be a worse trade than losing the caveat.
- */
-function judgeDaysCount(
-  count: CountRow | null,
-  movements: readonly MovementRow[],
-): CountSessionProgress | null {
-  if (!count) return null
-
-  return judgeCountSession({
-    expectedItemCount: Number(count.expected_item_count),
-    countedItemIds: movements
-      .filter((row) => row.inventory_count_id === count.id)
-      .map((row) => row.inventory_item_id),
-    closedAt: count.closed_at,
-  })
 }

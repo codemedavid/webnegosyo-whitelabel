@@ -14,6 +14,7 @@ import type { InventoryItem, InventoryUnitRow, Recipe, RecipeComponent } from '@
 import { expandLinkedStockItems, linkedStockMenuItemIds, selectedStockOptionIds, type StockOptionCatalogItem } from './option-stock'
 import { resolveOrderDepletions, type DepletionOrderItem, type StockDepletion } from './order-depletion'
 import { resolveMovementDelta } from './stock-ledger'
+import { reportSkippedDepletionLine } from './stock-failure-report'
 import { resolveMovementOutletId } from './stock-location'
 import {
   listOrderStockClaims,
@@ -160,6 +161,19 @@ async function readIngredientContext(
   }
 }
 
+/** A skipped line is drift nobody would otherwise see; report it (deduped). */
+function reportSkippedLine(
+  target: { tenantId: string; orderId: string },
+  depletion: StockDepletion,
+): void {
+  reportSkippedDepletionLine({
+    tenantId: target.tenantId,
+    orderId: target.orderId,
+    inventoryItemId: depletion.inventoryItemId,
+    unitId: depletion.unitId,
+  })
+}
+
 /**
  * The ledger rows for a set of depletions. Pieces against weight/volume throw;
  * one bad recipe line must not sink the whole order's depletion, so it is
@@ -179,6 +193,7 @@ function buildDepletionRows(
     const stockUnit = item ? context.unitById.get(item.stock_unit_id) : undefined
     if (!item || !enteredUnit || !stockUnit) {
       skipped.push(depletion.inventoryItemId)
+      reportSkippedLine(target, depletion)
       continue
     }
 
@@ -193,6 +208,7 @@ function buildDepletionRows(
       })
     } catch {
       skipped.push(depletion.inventoryItemId)
+      reportSkippedLine(target, depletion)
       continue
     }
 

@@ -85,7 +85,7 @@ const MAX_LINE_QUANTITY = 9999
  */
 type LifecycleRead =
   | { kind: 'found'; status: string; customerData: unknown; outletId: string | null; backend: OrderBackend | null }
-  | { kind: 'missing'; isProvenMissing: boolean }
+  | { kind: 'missing'; isProvenMissing: boolean; strandedOutletIds?: Array<string | null> }
   | { kind: 'unreadable' }
 
 async function readOrderLifecycle(tenantId: string, orderId: string): Promise<LifecycleRead> {
@@ -102,6 +102,29 @@ async function readOrderLifecycle(tenantId: string, orderId: string): Promise<Li
     }
   } catch (error) {
     console.error('[order-stock] Could not read the order', { tenantId, orderId }, error)
+    return { kind: 'unreadable' }
+  }
+}
+
+/** Actions that work purely from the claims an order already holds. */
+const CLAIM_DRIVEN_ACTIONS: readonly StockAction[] = ['restore', 'redeplete']
+
+/**
+ * An order the platform does not hold but whose stock claim it does: the store
+ * changed order backend after the sale, so the order row sits on the old one.
+ * Restore and redeplete work from the claim alone, so such an order is known
+ * (not proven missing); a deplete or edit for it is still refused, because a
+ * claim vouches for the old sale, never for new stock movements.
+ */
+async function withStrandedClaim(read: LifecycleRead, action: StockAction, tenantId: string, orderId: string): Promise<LifecycleRead> {
+  if (read.kind !== 'missing' || !read.isProvenMissing || !CLAIM_DRIVEN_ACTIONS.includes(action)) return read
+  try {
+    const { readStrandedOrderClaim } = await import('@/lib/inventory/stranded-order')
+    const claim = await readStrandedOrderClaim(tenantId, orderId)
+    if (!claim.hasClaim) return read
+    return { kind: 'missing', isProvenMissing: false, strandedOutletIds: claim.outletIds }
+  } catch (error) {
+    console.error('[order-stock] Could not read the order claim', { tenantId, orderId }, error)
     return { kind: 'unreadable' }
   }
 }
@@ -141,7 +164,11 @@ function lifecycleRefusal(read: LifecycleRead, mustBeCancelled: boolean): NextRe
  */
 function orderRefusal(read: LifecycleRead, accountOutletId: string | null): NextResponse | null {
   if (read.kind === 'unreadable') return refuse(503, 'order_unreadable')
-  if (read.kind === 'missing') return read.isProvenMissing ? refuse(404, 'order_not_found') : null
+  if (read.kind === 'missing') {
+    if (read.isProvenMissing) return refuse(404, 'order_not_found')
+    const isOtherBranch = read.strandedOutletIds?.some((id) => id !== null && accountOutletId !== null && id !== accountOutletId)
+    return isOtherBranch ? refuse(403, 'order_belongs_to_another_branch') : null
+  }
   if (accountOutletId && read.outletId && read.outletId !== accountOutletId) {
     return refuse(403, 'order_belongs_to_another_branch')
   }
@@ -408,7 +435,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const accountOutletId = accountOutletOf(appUser)
-  const read = await readOrderLifecycle(tenantId, orderId)
+  const read = await withStrandedClaim(
+    await readOrderLifecycle(tenantId, orderId), parsed.action, tenantId, orderId,
+  )
   const refusal = orderRefusal(read, accountOutletId)
   if (refusal) return refusal
 

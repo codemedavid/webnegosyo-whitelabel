@@ -315,6 +315,9 @@ export const tenantSchema = z.object({
   // Where this tenant's orders live. Defaults to auto: Convex when one is
   // configured, otherwise the shared platform database.
   order_backend: z.enum(ORDER_BACKEND_PREFERENCES).optional(),
+  // Explicit "I know the old orders stay behind" for a save that moves the
+  // resolved backend while the store has orders there (order-backend-change-guard).
+  confirm_backend_change: z.boolean().optional(),
   // Email notifications
   admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
   email_notifications_enabled: z.boolean().default(false),
@@ -518,7 +521,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   // edit that does not mention order routing at all.
   const { data: oldTenantData } = await supabase
     .from('tenants')
-    .select('domain, order_backend, slug, auto_86_enabled')
+    .select('domain, order_backend, convex_deployment_url, slug, auto_86_enabled')
     .eq('id', id)
     .maybeSingle()
 
@@ -526,10 +529,24 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     domain: string | null
     slug?: string | null
     order_backend?: OrderBackendPreference | null
+    convex_deployment_url?: string | null
     auto_86_enabled?: boolean | null
   } | null
 
   const parsed = tenantSchema.parse({ ...input, id })
+  if (oldTenant) {
+    // Counted with the service role: the caller's RLS view could hide orders.
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { refuseUnconfirmedBackendChange } = await import('@/lib/order-backend-change-guard')
+    const refusal = await refuseUnconfirmedBackendChange({
+      supabase: createAdminClient(),
+      tenantId: id,
+      current: oldTenant,
+      input: parsed,
+      confirmed: parsed.confirm_backend_change,
+    })
+    if (refusal) throw new Error(refusal)
+  }
   if (await isSlugTaken(parsed.slug, id, ctx)) {
     throw new Error('Slug is already taken')
   }
