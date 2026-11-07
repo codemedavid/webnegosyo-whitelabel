@@ -30,11 +30,9 @@ import {
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { notifyCustomerOrderStock } from '@/lib/order-stock-notify'
+import { submitPlatformOrder } from '@/lib/platform-order-submit'
 import {
   classifyConvexOrderResponse,
-  classifyOrderLinesWriteError,
-  classifyOrderWriteError,
-  savedOrder,
   untrackedOrder,
 } from '@/lib/checkout-outcome'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
@@ -419,16 +417,23 @@ export default function CheckoutScreen() {
           console.warn('Convex order creation failed:', outcome.detail)
         }
       } else if (tenant.enable_order_management) {
-        // Existing Supabase flow
-        const orderItems = items.map(item => {
-          const variationText = item.selected_variations
-            ? Object.values(item.selected_variations).map(o => o.name).join(', ')
-            : item.selected_variation?.name || null
-
+        // Platform flow: the web API saves the order (server pricing, stock
+        // and rate-limit checks, service-role write). This app never inserts
+        // into `orders` / `order_items` itself, and the API spends the
+        // ingredients, so no separate stock call follows.
+        const newOrderId = uuid.v4()
+        const platformLines = items.map(item => {
+          const selectedOptions = item.selected_variations
+            ? Object.values(item.selected_variations)
+            : item.selected_variation
+              ? [item.selected_variation]
+              : []
           return {
             menu_item_id: item.menu_item.id,
             menu_item_name: item.menu_item.name,
-            variation: variationText,
+            variation: selectedOptions.length > 0
+              ? selectedOptions.map(o => o.name).join(', ')
+              : undefined,
             addons: item.selected_addons.map(a => a.name),
             quantity: item.quantity,
             price: calculateCartItemUnitPrice(
@@ -437,88 +442,49 @@ export default function CheckoutScreen() {
               item.selected_addons
             ),
             subtotal: item.subtotal,
-            special_instructions: item.special_instructions || null,
+            special_instructions: item.special_instructions || undefined,
+            option_ids: selectedOptions.map(o => o.id),
+            addon_ids: item.selected_addons.map(a => a.id),
           }
         })
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase generic DB types resolve to never due to index signature on Tenant
-        const ordersTable = supabase().from('orders') as any
-        // The anon role has no SELECT policy on orders, so INSERT..RETURNING
-        // fails wholesale under PostgREST. Generate the id here (native
-        // crypto-strength uuid — the id doubles as the tracking capability)
-        // and insert without asking for the row back.
-        const newOrderId = uuid.v4()
-        const { error: orderError } = await ordersTable
-          .insert({
-            id: newOrderId,
-            tenant_id: tenant.id,
-            order_type_id: selectedOrderType.id,
-            order_type: selectedOrderType.name,
-            customer_name: formValues.customer_name || null,
-            customer_contact: formValues.customer_phone || formValues.customer_email || null,
-            customer_data: withSmsConsent(
-              {
-                ...formValues,
-                ...(scheduledForISO
-                  ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' }
-                  : {}),
-              },
-              isSmsOptedIn,
-              new Date().toISOString()
-            ),
-            total,
-            ...(scheduledForISO ? { scheduled_for: scheduledForISO } : {}),
-            status: 'pending',
-            payment_method_id: selectedPaymentMethod?.id || null,
-            payment_method_name: selectedPaymentMethod?.name || null,
-            payment_method_details: selectedPaymentMethod?.details || null,
-            payment_method_qr_code_url: selectedPaymentMethod?.qr_code_url || null,
-            payment_status: 'pending',
-            payment_proof_url: paymentProofUrl || null,
-            payment_proof_public_id: paymentProofPublicId || null,
-            payment_proof_reference: paymentProofReference.trim() || null,
-            payment_proof_uploaded_at: (paymentProofUrl || paymentProofReference.trim())
-              ? new Date().toISOString()
-              : null,
-          })
+        outcome = await submitPlatformOrder({
+          tenantId: tenant.id,
+          clientOrderId: newOrderId,
+          orderTypeId: String(selectedOrderType.id),
+          paymentMethodId: selectedPaymentMethod?.id || undefined,
+          customerInfo: {
+            name: formValues.customer_name || undefined,
+            contact: formValues.customer_phone || formValues.customer_email || undefined,
+          },
+          customerData: withSmsConsent(
+            {
+              ...formValues,
+              ...(scheduledForISO
+                ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' }
+                : {}),
+            },
+            isSmsOptedIn,
+            new Date().toISOString()
+          ),
+          scheduledForISO: scheduledForISO || undefined,
+          paymentProof: (paymentProofUrl || paymentProofReference.trim())
+            ? {
+                url: paymentProofUrl || undefined,
+                publicId: paymentProofPublicId || undefined,
+                reference: paymentProofReference.trim() || undefined,
+              }
+            : undefined,
+          items: platformLines,
+        })
+        orderId = outcome.orderId
 
-        if (orderError) {
-          // 42501 is the store refusing, not a hiccup: orders_insert_customer
-          // requires tenants.is_active = true, so a deactivated merchant lands
-          // here for every order their app takes.
-          outcome = classifyOrderWriteError(orderError)
+        if (outcome.status !== 'saved') {
           console.warn('Order creation failed:', outcome.detail)
-        } else {
-          orderId = newOrderId
-          outcome = savedOrder(newOrderId)
-
-          const itemsToInsert = orderItems.map(oi => ({
-            order_id: orderId!,
-            ...oi,
-          }))
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: itemsError } = await (supabase().from('order_items') as any)
-            .insert(itemsToInsert)
-
-          if (itemsError) {
-            // The parent row is already committed, so a refused line write
-            // leaves the merchant holding a live pending order with a total
-            // and no items — order_items_insert_customer gates every anon line
-            // on the parent still being pending and under 15 minutes old. Not
-            // a refusal: the store took the order, so the Messenger message
-            // (the only remaining copy of the lines) must still go out.
-            outcome = classifyOrderLinesWriteError(newOrderId, itemsError)
-            console.warn('Order line items failed to save:', outcome.detail)
-          }
-
-          // Spend the ingredients. Deliberately after the lines are written —
-          // the platform reads them back rather than trusting anything sent
-          // from here, so calling earlier would find an empty order.
-          await notifyCustomerOrderStock(tenant.id, orderId)
         }
       }
 
-      // The write stays insert-only: anon reads use the existing capability RPC.
+      // Anon reads use the existing id-capability RPC (SECURITY DEFINER).
       const dailyNumber = orderId && !tenant.convex_deployment_url
         ? await readOrderNumber(() => supabase().rpc('get_customer_order', { p_order_id: orderId }) as unknown as PromiseLike<{ data: unknown; error: unknown }>)
         : null
