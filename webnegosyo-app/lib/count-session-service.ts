@@ -23,7 +23,7 @@
 
 import { supabase } from "./supabase";
 import { judgeCountSession, type CountSessionProgress } from "./daily-report/count-session";
-import { toBusinessDayKey } from "./daily-report/business-day";
+import { isFromEarlierBusinessDay, toBusinessDayKey } from "./daily-report/business-day";
 
 /** Injected in tests so no connection is opened. */
 type Db = Pick<typeof supabase, "from">;
@@ -165,11 +165,6 @@ async function countIngredientsInScope(db: Db, tenantId: string): Promise<number
  * Throws on failure, unlike the read: the merchant is watching, and a silent
  * failure would have them counting a shelf into a session that does not exist.
  */
-/** True when the count was opened on a Manila business day before today. */
-export function isFromEarlierBusinessDay(businessDay: string, now: Date = new Date()): boolean {
-  return businessDay < toBusinessDayKey(now.toISOString());
-}
-
 export async function openCount(
   tenantId: string,
   input: OpenCountInput,
