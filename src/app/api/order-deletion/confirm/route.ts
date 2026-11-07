@@ -1,13 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { z } from 'zod'
 import { NO_STORE, errorResponse, readJsonBody } from '@/lib/order-deletion/http'
 import { verifyAccountPassword } from '@/lib/order-deletion/reauth'
 import { createOrderDeletionRepo } from '@/lib/order-deletion/repository'
 import { resolveOwnerCaller } from '@/lib/order-deletion/request-caller'
 import { confirmDeletion } from '@/lib/order-deletion/service'
+import { orderStockEffects } from '@/lib/order-deletion/stock-effects'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const maxDuration = 60
+
+/** Stock settles after the response, so a big deletion never waits on it. */
+const stockSettlement = {
+  effects: orderStockEffects,
+  defer: (task: () => Promise<void>) => after(task),
+}
 
 /** Deleting thousands of orders with their archive can outlast the 8s read budget. */
 const DELETE_TIMEOUT_MS = 45_000
@@ -39,7 +46,8 @@ export async function POST(request: NextRequest) {
       owner.caller,
       owner.store,
       parsed.data,
-      new Date()
+      new Date(),
+      stockSettlement
     )
     return NextResponse.json({ result }, { headers: NO_STORE })
   } catch (error) {
