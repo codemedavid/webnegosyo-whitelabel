@@ -755,7 +755,7 @@ describe('POST /api/inventory/order-stock', () => {
 
       test('restore works from the claim instead of 404', async () => {
         strandedClaim = { hasClaim: true, outletIds: [null] }
-        reverseMock.mockResolvedValue('applied')
+        reverseMock.mockResolvedValue('settled' as never)
         const { POST } = await import('@/app/api/inventory/order-stock/route')
         const res = await POST(makeRequest({ tenantId: 't1', orderId: 'old-convex-id', action: 'restore' }, 'Bearer token-1'))
 
