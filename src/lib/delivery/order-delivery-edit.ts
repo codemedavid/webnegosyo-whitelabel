@@ -58,6 +58,34 @@ export const customerDeliveryPatchSchema = z.object({
 
 export type DeliveryPatch = z.infer<typeof merchantDeliveryPatchSchema>
 
+/** The merchant's edit form, as opened and as it stands at Save. */
+export interface MerchantDeliveryDraft {
+  address: string
+  pin: LatLng | null
+  unit: string
+  landmark: string
+  riderNote: string
+  storeNote: string
+}
+
+const DRAFT_TEXT_FIELDS = ['unit', 'landmark', 'riderNote', 'storeNote'] as const
+
+/**
+ * Only what the merchant changed since the form opened. The rest is left out
+ * (absent = leave alone), so a card opened before the customer moved their pin
+ * from a pin link cannot send the old pin and words back over theirs.
+ */
+export function merchantDeliveryChanges(opened: MerchantDeliveryDraft, draft: MerchantDeliveryDraft): DeliveryPatch {
+  const address = draft.address.trim()
+  const isPinMoved = draft.pin !== null && (opened.pin === null || draft.pin.lat !== opened.pin.lat || draft.pin.lng !== opened.pin.lng)
+  const texts = DRAFT_TEXT_FIELDS.filter((field) => draft[field].trim() !== opened[field].trim())
+  return {
+    ...(address !== '' && address !== opened.address.trim() ? { address } : {}),
+    ...(isPinMoved && draft.pin ? { pin: draft.pin } : {}),
+    ...Object.fromEntries(texts.map((field) => [field, draft[field].trim()])),
+  }
+}
+
 export interface DeliveryEditGateInput {
   status: string | null | undefined
   lalamoveOrderId: string | null | undefined

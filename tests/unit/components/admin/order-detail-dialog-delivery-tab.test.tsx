@@ -59,4 +59,14 @@ describe('OrderDetailDialog delivery tab', () => {
     )
     expect(screen.queryByRole('tab', { name: /delivery/i })).toBeNull()
   })
+
+  test('names every tab for screen readers and tests, since phones show only the icons', () => {
+    render(
+      <OrderDetailDialog order={order()} tenantSlug="seacook" tenantId="tenant-1" onClose={() => {}} />,
+    )
+    // The word beside each icon is `hidden sm:inline`, so on a phone the label is the only name.
+    for (const name of ['Details', 'Items', 'Customer', 'Delivery']) {
+      expect(screen.getByRole('tab', { name })).toHaveAttribute('aria-label', name)
+    }
+  })
 })
