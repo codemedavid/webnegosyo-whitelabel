@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { createAdminClient } from '@/lib/supabase/admin'
+import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * What the claim table knows about an order the platform no longer holds.
@@ -21,7 +21,7 @@ const MOVEMENT_SAMPLE_LIMIT = 200
 
 /** Throws on a read error: "no claim" must never be guessed during an outage. */
 export async function readStrandedOrderClaim(tenantId: string, orderId: string): Promise<StrandedOrderClaim> {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
   const { data: claims, error } = await supabase
     .from('order_stock_applications')
     .select('id')
