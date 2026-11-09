@@ -36,6 +36,11 @@ jest.mock('@/lib/auth/bearer-caller', () => ({
   requireBearerStoreCaller: (...a: unknown[]) => requireBearerStoreCaller(...a),
 }))
 
+const readThroughCeilingsCache = jest.fn()
+jest.mock('@/lib/inventory/ceilings-cache', () => ({
+  readThroughCeilingsCache: (...a: unknown[]) => readThroughCeilingsCache(...a),
+}))
+
 const TENANT = '0dd96b60-5232-4c79-922b-0bd9022d12ba'
 const BRANCH = '66ea076d-2aa1-45d4-b575-743fcdf3d73a'
 
@@ -50,9 +55,32 @@ beforeEach(() => {
   })
   checkRateLimit.mockResolvedValue({ allowed: true, remaining: 100, retryAfterSec: 30 })
   readPosStockPolicy.mockResolvedValue('warn')
+  readThroughCeilingsCache.mockImplementation((_tenant: string, _outlet: string | null, read: () => Promise<unknown>) => read())
 })
 
 describe('GET /api/inventory/ceilings', () => {
+  it('a diner’s menu read goes through the short per-branch cache', async () => {
+    readThroughCeilingsCache.mockResolvedValueOnce({ ceilings: { 'm-cached': 2 }, optionCeilings: {}, stockPolicy: 'warn' })
+
+    const body = await (await GET(request(`?tenantId=${TENANT}&outletId=${BRANCH}`))).json()
+
+    expect(body.ceilings).toEqual({ 'm-cached': 2 })
+    expect(readThroughCeilingsCache).toHaveBeenCalledWith(TENANT, BRANCH, expect.any(Function))
+    expect(getMenuStockAvailability).not.toHaveBeenCalled()
+  })
+
+  it('the register (a Bearer token) always reads the shelf fresh', async () => {
+    requireBearerStoreCaller.mockResolvedValue({ ok: true, user: { id: 'u-1' } })
+    const withToken = new NextRequest(`http://localhost/api/inventory/ceilings?tenantId=${TENANT}`, {
+      headers: { authorization: 'Bearer token-1' },
+    })
+
+    await GET(withToken)
+
+    expect(readThroughCeilingsCache).not.toHaveBeenCalled()
+    expect(getMenuStockAvailability).toHaveBeenCalledWith(TENANT, null)
+  })
+
   it('returns one ceiling per tracked dish', async () => {
     const response = await GET(request(`?tenantId=${TENANT}`))
     const body = await response.json()
