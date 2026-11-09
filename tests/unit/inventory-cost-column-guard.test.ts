@@ -22,7 +22,18 @@ import path from 'node:path'
 
 const ROOT = process.cwd()
 const COST_TABLES = ['inventory_items', 'stock_movements', 'stock_transfer_lines'] as const
-const SCANNED_ROOTS = ['src', 'webnegosyo-app/lib', 'webnegosyo-app/components', 'webnegosyo-app/app']
+const SCANNED_ROOTS = [
+  'src',
+  'webnegosyo-app/lib',
+  'webnegosyo-app/components',
+  'webnegosyo-app/app',
+  'webnegosyo-app/hooks',
+  'webnegosyo-app/stores',
+  'webnegosyo-desktop/src',
+  'mobile/lib',
+  'mobile/app',
+  'supabase/functions',
+]
 const SKIP_DIRS = new Set(['node_modules', '.next', 'tests', '__tests__'])
 
 function listSources(dir: string): string[] {
@@ -40,7 +51,27 @@ function listSources(dir: string): string[] {
 }
 
 const FROM_COST_TABLE = new RegExp(`\\.from\\(\\s*(['"\`])(${COST_TABLES.join('|')})\\1\\s*\\)`, 'g')
-const EMBEDDED_STAR = new RegExp(`(${COST_TABLES.join('|')})\\s*\\(\\s*\\*`)
+const EMBEDDED_STAR = new RegExp(`(${COST_TABLES.join('|')})(?:![A-Za-z_]+)?\\s*\\(\\s*\\*`)
+// The start of an embed, e.g. `stock_transfer_lines(` or `inventory_items!inner(`.
+const EMBED_START = new RegExp(`(${COST_TABLES.join('|')})(?:![A-Za-z_]+)?\\s*\\(`, 'g')
+
+/** The embed's OWN column list: what sits inside its parentheses, nested embeds removed. */
+function embedOwnColumns(source: string, openParen: number): string {
+  let depth = 0
+  let own = ''
+  for (let i = openParen; i < source.length; i += 1) {
+    const char = source[i]
+    if (char === '(') depth += 1
+    else if (char === ')') depth -= 1
+    if (depth === 0) break
+    if (depth === 1 && char !== '(') own += char
+  }
+  // A nested embed's table name stays behind once its parentheses are dropped; harmless.
+  return own
+}
+// A file that builds a session (cookie / signed-in) client. The service-role
+// exemption below only holds for files that cannot reach one.
+const SESSION_CLIENT = /from\s+['"](?:@\/lib\/supabase\/(?:server|client)|(?:\.\.?\/)+(?:lib\/)?supabase)['"]|createBrowserClient|createServerClient/
 
 interface Finding {
   file: string
@@ -58,9 +89,14 @@ function constants(source: string): Map<string, string> {
   return found
 }
 
-export function findCostColumnReads(file: string, source: string): Finding[] {
-  if (/createAdminClient|AdminClient\b/.test(source)) return []
-  const named = constants(source)
+export function findCostColumnReads(
+  file: string,
+  source: string,
+  sharedConstants: ReadonlyMap<string, string> = new Map(),
+): Finding[] {
+  const isServiceRoleOnly = /createAdminClient|AdminClient\b/.test(source) && !SESSION_CLIENT.test(source)
+  if (isServiceRoleOnly) return []
+  const named = new Map([...sharedConstants, ...constants(source)])
   const findings: Finding[] = []
   for (const match of source.matchAll(FROM_COST_TABLE)) {
     const start = match.index ?? 0
@@ -82,6 +118,13 @@ export function findCostColumnReads(file: string, source: string): Finding[] {
   for (const match of source.matchAll(new RegExp(EMBEDDED_STAR, 'g'))) {
     findings.push({ file, line: source.slice(0, match.index ?? 0).split('\n').length, table: match[1], why: 'embedded select of every column' })
   }
+  for (const match of source.matchAll(EMBED_START)) {
+    // Only the embed's own columns: a nested embed of another table may name its own unit_cost.
+    const ownColumns = embedOwnColumns(source, (match.index ?? 0) + match[0].length - 1)
+    if (/(^|[^a-z_])unit_cost([^a-z_]|$)/.test(ownColumns)) {
+      findings.push({ file, line: source.slice(0, match.index ?? 0).split('\n').length, table: match[1], why: 'an embedded select names unit_cost' })
+    }
+  }
   return findings
 }
 
@@ -96,18 +139,51 @@ describe('findCostColumnReads (the detector itself)', () => {
     expect(read(`supabase.from('x').select('id, stock_transfer_lines(*)')`)).toHaveLength(1)
   })
 
+  test('flags an embed that names unit_cost, with or without a join hint', () => {
+    expect(read(`supabase.from('stock_transfers').select('id, stock_transfer_lines(id, unit_cost)')`)).toHaveLength(1)
+    expect(read(`supabase.from('recipe_components').select('quantity, inventory_items!inner(name, unit_cost)')`)).toHaveLength(1)
+    expect(read(`supabase.from('x').select('id, stock_movements!fk(*)')`)).toHaveLength(1)
+    expect(read(`supabase.from('stock_transfers').select('id, stock_transfer_lines(id, inventory_items(name, unit_cost))')`)).toHaveLength(1)
+  })
+
+  test('resolves a column list imported from another file', () => {
+    const shared = new Map([['SHARED_COLUMNS', "'id, name, unit_cost'"]])
+    expect(findCostColumnReads('x.ts', `supabase.from('inventory_items').select(SHARED_COLUMNS)`, shared)).toHaveLength(1)
+  })
+
+  test('a file that also builds a session client is not exempt as service-role', () => {
+    const code = `import { createClient } from '@/lib/supabase/server'\nimport { createAdminClient } from '@/lib/supabase/admin'\nsupabase.from('inventory_items').select('*')`
+    expect(read(code)).toHaveLength(1)
+  })
+
   test('accepts explicit non-cost lists, other tables, and the service role', () => {
     expect(read(`supabase.from('inventory_items').select('id, name')`)).toEqual([])
     expect(read(`supabase.from('inventory_units').select('*')`)).toEqual([])
     expect(read(`const admin = createAdminClient()\nadmin.from('inventory_items').select('*')`)).toEqual([])
     expect(read(`const COLS = 'id, name'\nsupabase.from('inventory_items').select(COLS)`)).toEqual([])
+    expect(read(`supabase.from('stock_transfers').select('id, stock_transfer_lines(id, inventory_items(name, inventory_units(abbreviation)))')`)).toEqual([])
   })
 })
 
 describe('no client read of a cost column', () => {
-  const findings = SCANNED_ROOTS.flatMap(listSources).flatMap((file) =>
-    findCostColumnReads(file, readFileSync(path.join(ROOT, file), 'utf8')),
+  const sources = SCANNED_ROOTS.flatMap(listSources).map((file) => ({ file, source: readFileSync(path.join(ROOT, file), 'utf8') }))
+  // Exported column lists (src/lib/inventory/cost-columns.ts and friends) are
+  // resolved wherever they are imported, so adding unit_cost to one is caught.
+  const sharedConstants = new Map(
+    sources.flatMap(({ source }) =>
+      [...source.matchAll(/export\s+const\s+([A-Z_]+)\s*=\s*((?:\s*(?:'[^']*'|"[^"]*"|`[^`]*`)\s*\+?)+)/g)].map(
+        (match) => [match[1], match[2]] as const,
+      ),
+    ),
   )
+  const findings = sources.flatMap(({ file, source }) => findCostColumnReads(file, source, sharedConstants))
+
+  test('the shared column lists are resolved, and none names unit_cost', () => {
+    for (const name of ['INVENTORY_ITEM_COLUMNS', 'STOCK_MOVEMENT_COLUMNS', 'STOCK_TRANSFER_LINE_COLUMNS']) {
+      expect(sharedConstants.get(name)).toMatch(/inventory_item_id|current_qty/)
+      expect(sharedConstants.get(name)).not.toMatch(/unit_cost/)
+    }
+  })
 
   test('src/ and the merchant app select explicit non-cost columns', () => {
     expect(findings.map((f) => `${f.file}:${f.line} ${f.table}: ${f.why}`)).toEqual([])

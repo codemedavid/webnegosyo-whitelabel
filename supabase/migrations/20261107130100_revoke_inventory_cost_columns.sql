@@ -8,6 +8,14 @@
 --   >>> `select('*')` on these tables, and every old app list that names
 --   >>> `unit_cost` (inventory-service, ingredient-service, daily-report-service),
 --   >>> fails with 42501 "permission denied for table" the moment this lands.
+--   >>> Status 2026-11-10: every merchant-app BINARY up to and including 1.0.18
+--   >>> names unit_cost in its Stock list, ingredient editor and daily report
+--   >>> reads; only the 1.0.18 OTA from #110 (production branch, Android group
+--   >>> 31353c24, iOS d83928ac) is clean. Binaries 1.0.6-1.0.17 have no OTA
+--   >>> channel, so they need a store/APK update (raise
+--   >>> platform_app_releases.minimum_version to 1.0.18 to block them; builds
+--   >>> before 1.0.14 have no update gate at all). The exact lists are pinned in
+--   >>> tests/sql/run-inventory-cost-secrecy.cjs (`breaks`).
 --   >>> Requires 20261107130000 (the readers and the definer-safe
 --   >>> apply_stock_movement / profit_facts) to be applied first.
 --

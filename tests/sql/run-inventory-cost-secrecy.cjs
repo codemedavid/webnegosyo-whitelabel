@@ -3,6 +3,10 @@
 // Asserts per role, before and after the revoke, that `select *` is refused,
 // explicit non-cost columns still read, the costs-gated readers answer, and every
 // writer path (receive average, frozen costs, counts, transfers) still works.
+// It also runs the column lists of the code that is really out there: the reads
+// embedded in installed merchant-app binaries (tagged `breaks`: refused after the
+// revoke, for owners too — this is what fixes the ship order) and the lists the
+// current app OTA and web read from source (must keep working).
 //
 // Loads the inventory slice of the live platform schema with the policies,
 // triggers and function bodies EXACTLY as live had them
@@ -24,6 +28,8 @@
 const { PGlite } = require('@electric-sql/pglite')
 const { installPlatformAuth, as, asAnon, reset, readMigration } = require('./lib/platform-auth.cjs')
 const { installInventorySchema } = require('./lib/inventory-live-schema.cjs')
+const { readFileSync } = require('node:fs')
+const path = require('node:path')
 
 const MIGRATIONS = [
   '20261103130000_inventory_permission_hardening.sql',
@@ -300,11 +306,78 @@ const jleg = (reason, qty, outlet) => ({ inventory_item_id: ITEM.a, outlet_id: o
 const send = (id, legs) => [`select public.send_stock_transfer($1, $2::jsonb)`, [id, JSON.stringify(legs)]]
 const receive = (id, legs, counts) => [`select public.receive_stock_transfer($1, $2::jsonb, $3::jsonb)`, [id, JSON.stringify(legs), JSON.stringify(counts)]]
 
+// ---------------------------------------------------------------------------
+// What the code that is really running asks for, after the revoke.
+// ---------------------------------------------------------------------------
+// Copied from tag merchant-app-v1.0.18 (the JS embedded in iOS 1.0.18 and APK
+// builds 51/52); 1.0.15, 1.0.16 and 1.0.17 carry the same three lists. Binaries
+// 1.0.6-1.0.17 have no OTA channel, so these reads stay in them forever.
+const INSTALLED_BINARY_READS = [
+  ['Stock list / ingredient page / transfer sheet (inventory-service ITEM_COLUMNS)', 'inventory_items',
+    'id, name, current_qty, reorder_level, is_active, stock_unit_id, category, unit_cost, is_prep'],
+  ['ingredient editor (ingredient-service RECORD_COLUMNS)', 'inventory_items',
+    'id, name, sku, category, stock_unit_id, unit_cost, reorder_level, is_prep, is_active, current_qty'],
+  ['daily inventory report (daily-report-service ITEM_COLUMNS)', 'inventory_items', 'id, name, unit_cost, stock_unit_id'],
+]
+// Reads the same binaries make that do NOT name a cost column.
+const INSTALLED_BINARY_SAFE_READS = [
+  ['ingredient history (ingredient-service MOVEMENT_COLUMNS)', 'stock_movements', 'id, reason, quantity_delta, balance_after, note, order_id, created_at, outlet_id'],
+  ['daily report movements (daily-report-service MOVEMENT_COLUMNS)', 'stock_movements', 'inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id, outlet_id'],
+  ['transfer lines (inventory-transfer-service LINE_COLUMNS, base table)', 'stock_transfer_lines', 'transfer_id, inventory_item_id, sent_quantity'],
+]
+
+const REPO_ROOT = path.resolve(__dirname, '../..')
+/** A string constant as it stands in the source today (the OTA / web deploy). */
+function sourceConstant(file, name) {
+  const source = readFileSync(path.join(REPO_ROOT, file), 'utf8')
+  const match = source.match(new RegExp(`const\\s+${name}\\s*=\\s*\\n?\\s*(['"\`])([^'"\`]+)\\1`))
+  if (!match) throw new Error(`${name} not found in ${file}`)
+  return match[2]
+}
+const CURRENT_CODE_READS = () => [
+  ['app OTA: Stock list', 'inventory_items', sourceConstant('webnegosyo-app/lib/inventory-service.ts', 'ITEM_COLUMNS')],
+  ['app OTA: ingredient editor', 'inventory_items', sourceConstant('webnegosyo-app/lib/ingredient-service.ts', 'RECORD_COLUMNS')],
+  ['app OTA: ingredient history', 'stock_movements', sourceConstant('webnegosyo-app/lib/ingredient-service.ts', 'MOVEMENT_COLUMNS')],
+  ['app OTA: daily report items', 'inventory_items', sourceConstant('webnegosyo-app/lib/daily-report-service.ts', 'ITEM_COLUMNS')],
+  ['app OTA: daily report movements', 'stock_movements', sourceConstant('webnegosyo-app/lib/daily-report-service.ts', 'MOVEMENT_COLUMNS')],
+  ['web: INVENTORY_ITEM_COLUMNS', 'inventory_items', sourceConstant('src/lib/inventory/cost-columns.ts', 'INVENTORY_ITEM_COLUMNS')],
+  ['web: STOCK_MOVEMENT_COLUMNS', 'stock_movements', sourceConstant('src/lib/inventory/cost-columns.ts', 'STOCK_MOVEMENT_COLUMNS')],
+  ['web: STOCK_TRANSFER_LINE_COLUMNS', 'stock_transfer_lines', sourceConstant('src/lib/inventory/cost-columns.ts', 'STOCK_TRANSFER_LINE_COLUMNS')],
+]
+
+async function runningCodeChecks(db, label, isRevoked) {
+  for (const actor of ['ownerA', 'invA', 'branchA1', 'costsA']) {
+    for (const [name, table, columns] of INSTALLED_BINARY_READS) {
+      const outcome = await attempt(db, actor, `select ${columns} from ${table}`)
+      if (isRevoked) {
+        // Not a hole and not compat: the known break that decides the ship order.
+        record('breaks', `${label} installed binary <=1.0.18 without the OTA: ${name} is refused for ${actor}`, DENIED(outcome), outcome)
+      } else {
+        ok(`${label} installed binary: ${name} works today for ${actor}`, !DENIED(outcome), outcome)
+      }
+    }
+    for (const [name, table, columns] of [...INSTALLED_BINARY_SAFE_READS, ...CURRENT_CODE_READS()]) {
+      const outcome = await attempt(db, actor, `select ${columns} from ${table}`)
+      ok(`${label} ${name} still reads for ${actor}`, !DENIED(outcome), outcome)
+    }
+  }
+  if (isRevoked) {
+    const anonCost = await attempt(db, 'anon', 'select unit_cost from inventory_items')
+    closed(`${label} anon cannot select unit_cost`, DENIED(anonCost), anonCost)
+    const anonList = await attempt(db, 'anon', `select ${TABLES.inventory_items} from inventory_items`)
+    ok(`${label} anon explicit read is not a permission error (RLS still decides rows)`, !DENIED(anonList), anonList)
+  }
+}
+
 async function main() {
   const db = new PGlite()
   try {
     await installPlatformAuth(db)
     await installInventorySchema(db)
+    // Live columns the shared slice predates (20261103120000, 20261105120000):
+    // the current app and web lists name them.
+    await db.exec(`alter table inventory_items add column if not exists counted_at timestamptz;
+      alter table stock_movements add column if not exists opens_tracking boolean not null default false;`)
     await db.exec(SEED)
     for (const name of MIGRATIONS) await db.exec(readMigration(name))
     await db.exec(readMigration(READER))
@@ -318,12 +391,14 @@ async function main() {
     await loadNonCostColumns(db)
     await seedLedger(db)
     await leakChecks(db, 'before', false)
+    await runningCodeChecks(db, 'before', false)
     await readerChecks(db)
     await writerChecks(db, 'before')
 
     await db.exec(readMigration(REVOKE))
     await db.exec(readMigration(REVOKE)) // idempotent
     await leakChecks(db, 'after', true)
+    await runningCodeChecks(db, 'after', true)
     await readerChecks(db)
     await writerChecks(db, 'after')
   } finally {
