@@ -50,3 +50,34 @@ describe('HeroRenderer canvas resilience', () => {
     expect(() => render(<HeroRenderer design={design} />)).not.toThrow()
   })
 })
+
+describe('HeroRenderer button links', () => {
+  const designWith = (linkUrl: string) => ({
+    version: 3,
+    canvas: { desktop: { width: 1200, height: 500 } },
+    backgroundColor: '#ffffff',
+    elements: [{
+      id: 'b1',
+      type: 'button',
+      visibility: { desktop: true, tablet: true, mobile: true },
+      zIndex: 1,
+      desktop: { x: 0, y: 0, width: 100, height: 40, rotation: 0, padding: { top: 0, right: 0, bottom: 0, left: 0 } },
+      tablet: { x: 0, y: 0, width: 100, height: 40, rotation: 0, padding: { top: 0, right: 0, bottom: 0, left: 0 } },
+      mobile: { x: 0, y: 0, width: 100, height: 40, rotation: 0, padding: { top: 0, right: 0, bottom: 0, left: 0 } },
+      props: { kind: 'button', text: 'Go', linkUrl, linkTarget: '_self' },
+      animation: { type: 'none', duration: 0, delay: 0, easing: 'easeOut', trigger: 'load' },
+    }],
+  }) as unknown as HeroDesign
+
+  it('drops a javascript: link', () => {
+    const { container } = render(<HeroRenderer design={designWith('javascript:alert(1)')} />)
+    const anchors = Array.from(container.querySelectorAll('a'))
+    expect(anchors.length).toBeGreaterThan(0)
+    for (const anchor of anchors) expect(anchor.getAttribute('href')).toBeNull()
+  })
+
+  it('keeps a normal link', () => {
+    const { container } = render(<HeroRenderer design={designWith('https://shop.example/menu')} />)
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('https://shop.example/menu')
+  })
+})
