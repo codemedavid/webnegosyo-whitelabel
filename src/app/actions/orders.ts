@@ -53,6 +53,11 @@ import { applyCheckoutGovernment } from '@/lib/gov-discount-checkout/apply-check
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { checkOrderRateLimit } from '@/lib/action-rate-limit'
 import { holdSimpleOptionStock } from '@/lib/checkout/simple-option-hold'
+import {
+  REQUIRED_QUESTIONS_TIMEOUT_MS,
+  judgeRequiredAnswers,
+  readRequiredQuestions,
+} from '@/lib/checkout/required-answers-server'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
@@ -271,6 +276,13 @@ export async function createOrderAction(
     // The chosen payment method, read alongside (one primary-key read; never
     // rejects). Judged once the order type is known, below.
     const paymentMethodRead = readOrderPaymentMethod(supabaseAdmin, tenantId, paymentMethodId)
+    // The store's required checkout questions for this order type, read on a
+    // timed client alongside (never rejects; a failed read has no opinion).
+    const requiredQuestionsRead = readRequiredQuestions(
+      createAdminClient({ timeoutMs: REQUIRED_QUESTIONS_TIMEOUT_MS }),
+      tenantId,
+      orderTypeId,
+    )
     const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
     if (!tenantContext.ok) {
       return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
@@ -308,6 +320,27 @@ export async function createOrderAction(
     // An unknown/missing type must not turn off the required delivery gate.
     if (tenantConfig.lalamove_enabled === true && !orderTypeRow) {
       return { success: false, refused: true, error: 'Please select a valid order type before continuing.' }
+    }
+
+    // ── Required checkout questions (authoritative; every backend) ──
+    // The form refuses to submit with a required answer blank, but this is a
+    // public action: a forged request or a tab opened before the owner made a
+    // question required used to be written anyway. Judged with the form's own
+    // `isAnswered` on the answers as received, against the STORE's questions
+    // for this order type, before anything is claimed or written. The checkout
+    // preflights the same verdict (preflightCheckoutAnswersAction) ahead of
+    // its optimistic "Order placed!" screen.
+    const answersVerdict = judgeRequiredAnswers(
+      orderTypeRow ? await requiredQuestionsRead : { ok: true, questions: [] },
+      clientCustomerData,
+    )
+    if (!answersVerdict.ok) {
+      console.warn('[createOrderAction] Refused an order missing required answers', {
+        tenantId,
+        orderTypeId,
+        fields: answersVerdict.fieldErrors.map((error) => error.fieldName),
+      })
+      return { success: false, refused: true, error: answersVerdict.message, fieldErrors: answersVerdict.fieldErrors }
     }
 
     // ── Payment method (authoritative; every backend) ──
