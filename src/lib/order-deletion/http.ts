@@ -17,6 +17,7 @@ const STATUS_BY_CODE: Record<OrderDeletionErrorCode, number> = {
   export_expired: 409,
   recovery_closed: 409,
   not_restorable: 409,
+  try_again: 503,
 }
 
 export const NO_STORE = { 'Cache-Control': 'no-store' } as const

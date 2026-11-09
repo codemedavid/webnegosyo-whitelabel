@@ -69,13 +69,23 @@ export async function giveBackDeletedOrdersStock(
   )
 }
 
-/** Before a restore (which empties the archive): remember who to re-spend for. */
+/**
+ * Before a restore (which empties the archive): remember who to re-spend for.
+ * Unlike a deletion, a failed read THROWS: restoring without this list brings
+ * the orders back while the stock they gave back stays on the shelf, and the
+ * emptied archive leaves nothing to repair it from.
+ */
 export async function readOrdersToRespend(
   repo: OrderDeletionRepo,
   caller: DeletionCaller,
   deletionId: string
 ): Promise<ArchivedOrderRef[]> {
-  return (await readArchive(repo, caller, deletionId, 'order_restore_stock')).filter(isLive)
+  try {
+    return (await repo.listArchivedOrders(deletionId, caller.tenantId)).filter(isLive)
+  } catch (error) {
+    reportStockFailure({ tenantId: caller.tenantId, operation: 'order_restore_stock' }, error)
+    throw error
+  }
 }
 
 /** After a restore committed: spend again what each live order gave back. */

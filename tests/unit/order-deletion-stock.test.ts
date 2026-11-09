@@ -145,6 +145,19 @@ describe('restoreDeletion stock', () => {
     expect(effects.takeAgain).not.toHaveBeenCalled()
   })
 
+  test('an unreadable archive refuses the restore, so orders never come back with their stock still on the shelf', async () => {
+    const { repo, effects, settlement, flush } = setup([archived('a', 'delivered')], restorable)
+    repo.listArchivedOrders.mockRejectedValueOnce(new Error('boom'))
+
+    await expect(restoreDeletion(repo, CALLER, 'd1', NOW, settlement)).rejects.toMatchObject({ code: 'try_again' })
+    await flush()
+
+    expect(repo.restoreDeletion).not.toHaveBeenCalled()
+    expect(effects.takeAgain).not.toHaveBeenCalled()
+    expect(reportStockFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'order_restore_stock' }), expect.any(Error))
+  })
+
   test('a failed re-spend is reported and does not fail the restore', async () => {
     const { repo, effects, settlement, flush } = setup([archived('a', 'delivered')], restorable)
     effects.takeAgain.mockRejectedValueOnce(new Error('db down'))
