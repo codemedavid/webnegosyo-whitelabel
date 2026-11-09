@@ -57,9 +57,10 @@ interface TenantStockConfig {
 /**
  * One call per placed order, so this only limits a script. Generous, since a
  * refused call moves no stock and nothing retries it: a whole floor can share a
- * Wi-Fi IP and Philippine carriers put many phones behind one address.
+ * Wi-Fi IP and Philippine carriers put many phones behind one address. A Redis
+ * outage falls back to the per-instance limiter: this call moves stock.
  */
-const STOCK_IP_LIMIT = { limit: 60, windowSec: 60 }
+const STOCK_IP_LIMIT = { limit: 60, windowSec: 60, onRedisFailure: 'instance' as const }
 const MAX_ID_LENGTH = 128
 
 /** A diner has no account, so the audit log names the path and nobody. */

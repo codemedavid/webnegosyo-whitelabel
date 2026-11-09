@@ -460,4 +460,17 @@ describe('customer order stock route — backend comes from resolveOrderBackend'
     expect(mockStockLimit.mock.calls.at(-1)?.[0]).toBe('customer-order-stock:203.0.113.8')
     expect(from).not.toHaveBeenCalled()
   })
+
+  it('falls back to the per-instance limiter when Redis is down, never to no limit', async () => {
+    mockStockLimit.mockClear()
+    const request = new NextRequest('http://localhost/api/inventory/customer-order-stock', {
+      method: 'POST',
+      headers: { 'x-real-ip': '203.0.113.9' },
+      body: JSON.stringify({ tenantId: TENANT, orderId: ORDER }),
+    })
+
+    await POST(request)
+
+    expect(mockStockLimit.mock.calls.at(-1)?.[1]).toMatchObject({ onRedisFailure: 'instance' })
+  })
 })
