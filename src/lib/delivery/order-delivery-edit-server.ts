@@ -23,6 +23,7 @@ export const DELIVERY_EDIT_PLATFORM_ONLY_MESSAGE = 'Changing delivery details is
 const OUTSIDE_COUNTRY_MESSAGE = 'That pin is outside the Philippines. Please choose a spot in the country.'
 const RACE_MESSAGE = 'This order just changed. Please try again.'
 const UNAVAILABLE_MESSAGE = 'Could not save right now. Please try again.'
+export const PIN_LINK_UNAVAILABLE_MESSAGE = 'Pin links are not available right now. Please call the customer for the spot.'
 
 export type DeliveryEditResult =
   | { ok: true; customerData: Record<string, unknown> }
@@ -164,5 +165,11 @@ export async function createOrderPinLink(
   if (!found.ok) return found
   const slug = found.loaded.store.slug
   if (!slug) return { ok: false, status: 404, error: 'Store not found.' }
-  return { ok: true, url: `${input.origin}${pinLinkPath(slug, input.orderId, createPinLinkToken(input.orderId))}` }
+  try {
+    return { ok: true, url: `${input.origin}${pinLinkPath(slug, input.orderId, createPinLinkToken(input.orderId))}` }
+  } catch (error) {
+    // Only a deploy without API_SECRET gets here: say so in the logs, not as a bare 500.
+    console.error('[delivery-edit] could not sign a pin link:', error instanceof Error ? error.message : String(error))
+    return { ok: false, status: 503, error: PIN_LINK_UNAVAILABLE_MESSAGE }
+  }
 }
