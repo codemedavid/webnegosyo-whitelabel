@@ -50,7 +50,6 @@ import { computeServiceCharge } from '@/lib/order-service-charge'
 import { useCart } from '@/hooks/useCart'
 import { useKioskMode } from '@/hooks/use-kiosk-mode'
 import { readSavedAddresses, savedAddressFromAnswers, withSavedAddress, writeSavedAddresses } from '@/lib/checkout/saved-addresses'
-import { isPinSkipped, unpinnedDeliveryProblem } from '@/lib/delivery/unpinned-delivery'
 import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
 import { storeAddressToken } from '@/lib/page-designer/store-address'
@@ -348,10 +347,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       toast.error('Lalamove delivery is unavailable with QR checkout. Please choose pickup or contact the store.')
       return true
     }
-    // "I can't find my place": no quote to wait for, but the store must be able to reach them.
-    const message = isPinSkipped(customerData)
-      ? unpinnedDeliveryProblem(customerData)
-      : getDeliveryQuoteError()
+    const message = getDeliveryQuoteError()
     if (!message) return false
     toast.error(message)
     return true

@@ -175,7 +175,7 @@ test.describe('customer', () => {
     const isPhone = info.project.name === 'phone'
     const guest = `QA-SEED E2E ${info.project.name}`
     if (isPhone) {
-      await test.step('delivery: address search, map, "can’t find my place"', async () => {
+      await test.step('delivery: address search and map, then dine-in', async () => {
         await page.getByPlaceholder('Enter your name').fill(guest)
         const address = page.getByPlaceholder(/delivery address|Search your street/i)
         await address.fill('Quezon Avenue Lucena')
@@ -196,11 +196,12 @@ test.describe('customer', () => {
           note(info, 'map', 'No map dialog opened from "Pick on the map"')
         }
 
-        const skip = page.getByRole('button', { name: /can.t find my place/ })
-        await expect(skip).toBeVisible()
-        await skip.click()
-        await expect(page.getByText(/send your order without a pin/)).toBeVisible()
-        await shot(page, info, '05e-pin-skipped')
+        // "I can't find my place" was turned off 2026-11-09: a pin is the only way to price delivery here.
+        await expect(page.getByRole('button', { name: /can.t find my place/ })).toHaveCount(0)
+        await shot(page, info, '05e-no-pin-skip')
+        // sample-demo can't quote Lalamove (sandbox keys in production mode), so the phone run orders dine-in.
+        await page.getByRole('button', { name: 'Dine In', exact: true }).click()
+        await page.getByPlaceholder('Enter your name').fill(guest)
 
         await page.getByPlaceholder('9XXXXXXXXX').fill(FAKE_PHONE_LOCAL)
         // Sample Demo's own required "Date & Time" question is a NUMBER field.

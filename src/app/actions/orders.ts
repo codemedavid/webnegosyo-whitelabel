@@ -41,7 +41,6 @@ import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkou
 import { resolveDeliveryOrigin, type OriginOutletFields } from '@/lib/delivery/delivery-origin'
 import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
 import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
-import { isUnpinnedDeliveryOrder, unpinnedDeliveryProblem } from '@/lib/delivery/unpinned-delivery'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
@@ -615,25 +614,12 @@ export async function createOrderAction(
       return await refuse(OUTSIDE_COUNTRY_PIN_MESSAGE)
     }
 
-    // "I can't find my place": no pin means no price, so this order carries no
-    // fee and the store calls for the spot and the fee (a pin ends the mark, so
-    // it can never dodge the fee on a pinned order).
+    // "I can't find my place" was turned off (owner, 2026-11-09): a stale or forged
+    // `delivery_pin_skipped` mark is ignored, so an order without a pin is priced,
+    // and refused, like any other.
     const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
-    const isUnpinnedDelivery = isUnpinnedDeliveryOrder({
-      answers: deliveryDestination,
-      isDeliveryOrder,
-      lalamoveEnabled: tenantConfig.lalamove_enabled === true,
-      hasDistancePricing: storeDistanceConfig !== null,
-    })
-    if (isUnpinnedDelivery) {
-      const problem = unpinnedDeliveryProblem(deliveryDestination, customerInfo?.contact)
-      if (problem) return await refuse(problem)
-      // No quote was signed for this order, so none may ride on it.
-      lalamoveQuotationId = undefined
-    }
-
-    let trustedDeliveryFee = isUnpinnedDelivery ? undefined : deliveryFee
-    if (isLalamoveDelivery && !isUnpinnedDelivery) {
+    let trustedDeliveryFee = deliveryFee
+    if (isLalamoveDelivery) {
       const verification = verifyDeliveryQuote(lalamoveQuoteSignature, {
         tenantId,
         quotationId: lalamoveQuotationId,
@@ -661,7 +647,7 @@ export async function createOrderAction(
 
     const deliveryResolution = await resolveOrderDeliveryFee({
       clientFee: trustedDeliveryFee,
-      isDeliveryOrder: isDeliveryOrder && !isUnpinnedDelivery,
+      isDeliveryOrder,
       lalamoveEnabled: tenantConfig.lalamove_enabled === true,
       distanceConfig: storeDistanceConfig && withOriginRadius(storeDistanceConfig, deliveryOrigin),
       store: deliveryOrigin?.point ?? null,
