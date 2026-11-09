@@ -100,3 +100,6 @@ public/downloads/
 # Python bytecode (scripts/mascot tooling)
 __pycache__/
 *.pyc
+
+# QA seed: pre-seed tenant values, restored by teardown (machine-local)
+/scripts/seed/.sample-demo-snapshot.json
