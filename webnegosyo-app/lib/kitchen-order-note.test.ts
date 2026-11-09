@@ -79,3 +79,15 @@ describe("kitchen chit callers carry the order's answers", () => {
     expect(read("lib", "pos-kitchen-print.ts")).toMatch(/customerData: args\.customerData/);
   });
 });
+
+describe("order-level notes are printed raw on the kitchen chit", () => {
+  it("drops ESC/GS and every other control byte, so a guest can't send printer commands", () => {
+    const notes = kitchenNotesOf({ Notes: "No onions\u001b@\u001dV\u0000please\u009b" });
+    expect(notes).toEqual(["No onions @ V please"]);
+    expect(notes[0]).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+  });
+
+  it("a note of nothing but control bytes is no note", () => {
+    expect(kitchenNotesOf({ Notes: "\u001b\u001d\u0007" })).toEqual([]);
+  });
+});

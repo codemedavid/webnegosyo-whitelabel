@@ -14,6 +14,15 @@
 
 import { classifyDetailKey } from "./delivery-details";
 
+/**
+ * Every C0 control, DEL and C1 control — the same set as the web's
+ * `src/lib/item-note.ts`. The note prints raw on a thermal chit, where ESC
+ * (0x1B) and GS (0x1D) start ESC/POS commands (reset, cut, drawer kick), and
+ * the answer is whatever a guest typed at checkout.
+ */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
+const WHITESPACE_RUN = /\s+/g;
+
 /** The register's own payment/tender blob, never a guest answer. */
 const NEVER_NOTE_KEYS = new Set(["pos"]);
 
@@ -58,7 +67,7 @@ export function kitchenNotesOf(customerData: unknown): string[] {
   if (!isRecord(customerData)) return [];
   return Object.entries(customerData).reduce<string[]>((notes, [key, value]) => {
     if (typeof value !== "string" || !isKitchenNoteKey(key)) return notes;
-    const text = value.trim();
+    const text = value.replace(CONTROL_CHARS, " ").replace(WHITESPACE_RUN, " ").trim();
     if (!text) return notes;
     const isDuplicate = notes.some((note) => note.toLowerCase() === text.toLowerCase());
     return isDuplicate ? notes : [...notes, text];
