@@ -58,7 +58,7 @@ Indexes: (tenant_id, occurred_at desc, id desc); (tenant_id, outlet_id, occurred
 | orders | order.cancelled, order.reopened, order.edited, order.deleted, *order.placed*, *order.status_changed*, *order.completed* |
 | money | refund.issued, payment.recorded, payment.marked_paid, payment.proof_approved, payment.proof_rejected, discount.applied, voucher.redeemed, voucher.released, *payment.charged* |
 | cash | shift.opened, shift.closed, cash.pay_in, cash.pay_out, cash.collected, receipt.reprinted, shift.reconciled, cash.remitted, cash.remittance_accepted, cash.remittance_disputed, cash.remittance_resolved, day.closed, day.reopened, day.deposit_recorded |
-| stock | stock.received, stock.wasted, stock.counted, stock.adjusted, stock.transfer_sent, stock.transfer_received, stock.duplicate_blocked, stock.alert, *stock.sale*, *stock.restored* |
+| stock | stock.received, stock.wasted, stock.counted, stock.adjusted, stock.transfer_sent, stock.transfer_received, stock.duplicate_blocked, stock.alert, *stock.sale*, *stock.restored*, stock.oversold |
 | loyalty | loyalty.reward_claimed, loyalty.reward_voided, loyalty.stamps_adjusted, loyalty.program_changed, *loyalty.stamps_earned*, *loyalty.reward_issued* |
 | menu | menu.price_changed, menu.availability_changed, menu.item_added, menu.item_removed |
 | team | staff.added, staff.removed, staff.access_changed, settings.changed, rules.changed, assistant.action_confirmed, campaign.status_changed, voucher.status_changed |
@@ -70,7 +70,8 @@ Indexes: (tenant_id, occurred_at desc, id desc); (tenant_id, outlet_id, occurred
 ### Flags (closed vocabulary)
 
 paid_then_cancelled, cash_refund_noncash_order, after_hours, drawer_variance, removed_after_kitchen,
-repeat_cancels, count_variance, duplicate_deduction. Computed at write time (trigger/writer) by ONE SQL
+repeat_cancels, count_variance, duplicate_deduction (later files add forced_close, remittance_discrepancy,
+day_reopened, and — 20261110120000, `stock.oversold` on a block store — oversold_offline / oversold_unapproved). Computed at write time (trigger/writer) by ONE SQL
 function per rule where possible; thresholds: drawer ±₱100, count ±10%, repeat cancels ≥3 per actor per
 Manila day. TS mirror holds the copy/explanations.
 
