@@ -1,4 +1,4 @@
-import { runReportQuery } from '@/lib/reports/api/run-report-query'
+import { MAX_CONCURRENT_REPORT_CALLS, runReportQuery } from '@/lib/reports/api/run-report-query'
 import { reportQuerySchema, toReportSearchRecord } from '@/lib/reports/api/query-schema'
 import { buildReportContext } from '@/lib/reports/read/report-context'
 import type { ReportRpcClient } from '@/lib/reports/read/report-rpc'
@@ -132,9 +132,50 @@ describe('runReportQuery', () => {
   test('a refused profit section says so without failing the rest', async () => {
     const ctx = context({ period: 'this_week' })
     const { client } = fakeClient(new Date(ctx.period.start).toISOString())
-    const sections = await runReportQuery({ context: ctx, client, sections: ['summary', 'profit'] })
+    const sections = await runReportQuery({ context: ctx, client, sections: ['summary', 'profit'], canSeeCosts: true })
     expect(sections.summary?.ok).toBe(true)
     expect(sections.profit).toEqual({ ok: false, error: expect.objectContaining({ kind: 'forbidden' }) })
+  })
+
+  test('items sold in the compared period counts dishes that sold only then', async () => {
+    const ctx = context({ period: 'this_week' })
+    const currentFrom = new Date(ctx.period.start).toISOString()
+    const { client } = fakeClient(currentFrom)
+    const withGone: ReportRpcClient = {
+      rpc: (fn, args) =>
+        fn === 'report_sales_by_item' && String(args.p_from) < currentFrom
+          ? Promise.resolve({ data: [itemRow('a', 40, 400_000), itemRow('gone', 25, 100_000)], error: null })
+          : client.rpc(fn, args),
+    }
+    const sections = await runReportQuery({ context: ctx, client: withGone, sections: ['summary', 'items'] })
+    expect(sections.summary?.ok && sections.summary.data.previous).toEqual(expect.objectContaining({ items_sold: 65 }))
+  })
+
+  test('without the costs key profit is refused before any profit read', async () => {
+    const ctx = context({ period: 'this_week' })
+    const { client, calls } = fakeClient(new Date(ctx.period.start).toISOString())
+    const sections = await runReportQuery({ context: ctx, client, sections: ['periods', 'profit'], canSeeCosts: false })
+    expect(sections.profit).toEqual({ ok: false, error: expect.objectContaining({ kind: 'forbidden' }) })
+    expect(calls.filter((fn) => fn.startsWith('report_profit') || fn === 'report_expenses_by_category')).toEqual([])
+    expect(sections.periods?.ok).toBe(true)
+  })
+
+  test('a long period never runs more than a handful of report calls at once', async () => {
+    const ctx = context({ period: 'last_12_months' })
+    let inFlight = 0
+    let peak = 0
+    const { client } = fakeClient(new Date(ctx.period.start).toISOString())
+    const slow: ReportRpcClient = {
+      rpc: async (fn, args) => {
+        inFlight += 1
+        peak = Math.max(peak, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        inFlight -= 1
+        return client.rpc(fn, args)
+      },
+    }
+    await runReportQuery({ context: ctx, client: slow, sections: ['summary', 'items', 'categories', 'payments', 'channels', 'order_types'] })
+    expect(peak).toBeLessThanOrEqual(MAX_CONCURRENT_REPORT_CALLS)
   })
 
   test('hour bars are refused for a long period and fall back to its own grain', async () => {
