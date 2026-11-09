@@ -75,6 +75,8 @@ export const KINDS_BY_CATEGORY = {
     'stock.alert',
     'stock.sale',
     'stock.restored',
+    // 20261110120000: a register sale that sold past the shelf on a block store.
+    'stock.oversold',
   ],
   loyalty: [
     'loyalty.reward_claimed',
@@ -137,6 +139,8 @@ export const ACTIVITY_FLAGS = [
   'forced_close',
   'remittance_discrepancy',
   'day_reopened',
+  'oversold_offline',
+  'oversold_unapproved',
 ] as const
 
 export type ActivityFlag = (typeof ACTIVITY_FLAGS)[number]
@@ -189,6 +193,14 @@ export const FLAG_COPY: Readonly<Record<ActivityFlag, FlagCopy>> = {
   forced_close: { chip: 'Check', explanation: 'A manager ended this shift without a drawer count.' },
   remittance_discrepancy: { chip: 'Check', explanation: 'The cash received was not the amount handed over.' },
   day_reopened: { chip: 'Check', explanation: 'A closed business day was opened again.' },
+  oversold_offline: {
+    chip: 'Check',
+    explanation: 'Sold past the stock count while the register was offline, so no manager could approve it.',
+  },
+  oversold_unapproved: {
+    chip: 'Check',
+    explanation: 'Sold past the stock count without a manager approving it.',
+  },
 }
 
 export const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {

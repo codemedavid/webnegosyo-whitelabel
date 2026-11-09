@@ -7,7 +7,13 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { StockShortSheet } from "./StockShortSheet";
-import { decideAddStock, decideChargeStock, MANAGER_NOTE, type StockQuestion } from "../../lib/pos-stock-decision";
+import {
+  decideAddStock,
+  decideChargeStock,
+  MANAGER_NOTE,
+  MANAGER_PIN_NOTE,
+  type StockQuestion,
+} from "../../lib/pos-stock-decision";
 import type { StockShortfall } from "../../lib/pos-stock-warning";
 
 const shortfall: StockShortfall = {
@@ -92,6 +98,21 @@ describe("StockShortSheet", () => {
     // Selling what is in stock is still one tap.
     fireEvent.press(screen.getByText("Sell 5"));
     expect(h.onSellWithin).toHaveBeenCalledTimes(1);
+  });
+
+  it("block store, platform sale: Sell anyway goes on and says a manager approves with a PIN at Charge", () => {
+    const h = handlers();
+    const question = questionOf(
+      decideAddStock(
+        { shortfall, addedQuantity: 7 },
+        { policy: "block", isOnline: true, canSellShort: false, canAskManagerPin: true },
+      ),
+    );
+    render(<StockShortSheet question={question} {...h} />);
+
+    expect(screen.getByText(MANAGER_PIN_NOTE)).toBeTruthy();
+    fireEvent.press(screen.getByText("Sell anyway"));
+    expect(h.onSellAnyway).toHaveBeenCalledTimes(1);
   });
 
   it("offline: says the count may be old", () => {

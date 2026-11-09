@@ -6,6 +6,7 @@ import {
   type PosStockCeilings,
 } from "./pos-stock-warning";
 import { parsePosStockPolicy } from "./pos-stock-decision";
+import { rememberStockPolicy } from "./pos-stock-policy-memo";
 
 /**
  * How many of each dish the kitchen can currently make.
@@ -79,6 +80,8 @@ export async function fetchPosStockCeilings(
         (entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]),
       ),
     );
+    // Only an explicit answer is remembered: an older route sends nothing.
+    if (body.stockPolicy === "warn" || body.stockPolicy === "block") rememberStockPolicy(tenantId, body.stockPolicy);
     return {
       dishes,
       options: parseOptionCeilings(body.optionCeilings),
