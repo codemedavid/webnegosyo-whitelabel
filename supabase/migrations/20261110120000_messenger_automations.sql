@@ -136,6 +136,8 @@ create table if not exists public.messenger_settings (
   -- Messenger Profile (Get Started, ice breakers, persistent menu) sync state.
   -- Service role only: written after the Graph call.
   profile_hash text,
+  -- The profile fields WE set, so a later sync only ever deletes our own.
+  profile_fields text[] not null default '{}' check (profile_fields <@ array['get_started', 'ice_breakers', 'persistent_menu']),
   profile_synced_at timestamptz,
   profile_error text check (profile_error is null or char_length(profile_error) <= 500),
   -- "Send test to me": the owner's own PSID on their Page, linked by a
@@ -175,7 +177,8 @@ create policy messenger_settings_update on public.messenger_settings
   with check (public.app_user_manages_messenger(tenant_id));
 
 -- ---------------------------------------------------------------------------
--- save_messenger_rules: replace a store's whole rule set in ONE transaction.
+-- save_messenger_rules: replace a store's whole rule set, and its bot on/off +
+-- takeover setting, in ONE transaction (the editor saves both with one button).
 --
 -- SECURITY INVOKER, so every row still passes the policies above as the
 -- caller. p_expected_version is the rules_version the editor loaded; a save
@@ -183,7 +186,13 @@ create policy messenger_settings_update on public.messenger_settings
 -- silently dropping their rules. p_rules = [{id, name, trigger, action,
 -- is_enabled}] in order; position = array index. Returns the new version.
 -- ---------------------------------------------------------------------------
-create or replace function public.save_messenger_rules(p_tenant_id uuid, p_expected_version integer, p_rules jsonb)
+create or replace function public.save_messenger_rules(
+  p_tenant_id uuid,
+  p_expected_version integer,
+  p_rules jsonb,
+  p_bot_enabled boolean,
+  p_takeover_minutes integer
+)
 returns integer
 language plpgsql
 security invoker
@@ -221,7 +230,8 @@ begin
   end if;
 
   update public.messenger_settings s
-     set rules_version = v_version + 1, rules_customized_at = now(), updated_by = auth.uid()
+     set rules_version = v_version + 1, rules_customized_at = now(), updated_by = auth.uid(),
+         bot_enabled = p_bot_enabled, takeover_minutes = p_takeover_minutes
    where s.tenant_id = p_tenant_id;
   if not found then
     raise exception 'Messenger settings not updated' using errcode = '42501';
@@ -230,5 +240,5 @@ begin
 end;
 $$;
 
-revoke all on function public.save_messenger_rules(uuid, integer, jsonb) from public, anon;
-grant execute on function public.save_messenger_rules(uuid, integer, jsonb) to authenticated;
+revoke all on function public.save_messenger_rules(uuid, integer, jsonb, boolean, integer) from public, anon;
+grant execute on function public.save_messenger_rules(uuid, integer, jsonb, boolean, integer) to authenticated;

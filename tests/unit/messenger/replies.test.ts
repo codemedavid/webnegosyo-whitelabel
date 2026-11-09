@@ -151,6 +151,14 @@ describe('text, hours, placeholders', () => {
     expect(message).toMatchObject({ kind: 'buttons', text: 'Hi from Karamotan Grill', buttons: [{ type: 'postback', title: 'Talk to us' }] })
   })
 
+  it('never sends an empty message when every placeholder is blank', () => {
+    const bare = sampleContext(sampleStore({ tenant: { restaurant_address: '', footer_address: '', operating_hours: null } }))
+    expect(buildReply({ kind: 'text', text: '{address}', buttons: [] }, bare)).toEqual([{ kind: 'text', text: 'Karamotan Grill' }])
+    const [hours] = buildReply({ kind: 'hours_location', text: '{hours}' }, bare)
+    expect(hours.kind === 'buttons' && hours.text.length).toBeGreaterThan(0)
+    expect(buildReply({ kind: 'talk_to_staff', text: '{address}' }, bare)[0]).toMatchObject({ text: expect.stringContaining('will reply') })
+  })
+
   it('formatPeso', () => {
     expect(formatPeso(1499)).toBe('₱1,499')
     expect(formatPeso(45.5)).toBe('₱45.50')

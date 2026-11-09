@@ -109,8 +109,8 @@ async function refused(promise, code, message) {
     return true
   }, message)
 }
-async function save(db, tenant, version, rules) {
-  const { rows } = await db.query('select public.save_messenger_rules($1, $2, $3::jsonb) as v', [tenant, version, JSON.stringify(rules)])
+async function save(db, tenant, version, rules, botEnabled = true, takeover = 60) {
+  const { rows } = await db.query('select public.save_messenger_rules($1, $2, $3::jsonb, $4, $5) as v', [tenant, version, JSON.stringify(rules), botEnabled, takeover])
   return rows[0].v
 }
 async function count(db, sql, params = []) {
@@ -155,7 +155,7 @@ async function checkRefusals(db) {
   await asAnon(db)
   await refused(db.query('select id from messenger_rules'), '42501', 'anon cannot read rules')
   await refused(db.query('select tenant_id from messenger_settings'), '42501', 'anon cannot read settings')
-  await refused(db.query('select public.save_messenger_rules($1, 0, $2::jsonb)', [T_A, '[]']), '42501', 'anon cannot call the save')
+  await refused(db.query('select public.save_messenger_rules($1, 0, $2::jsonb, true, 60)', [T_A, '[]']), '42501', 'anon cannot call the save')
   await as(db, 'authenticated', U.owner)
   await refused(db.query('select id from messenger_sessions'), '42501', 'staff still cannot read sessions (PSIDs, carts)')
 }
@@ -171,10 +171,13 @@ async function checkServiceRole(db) {
     'the new session columns are writable')
 
   await as(db, 'authenticated', U.owner)
-  await db.query('select public.save_messenger_rules($1, $2, $3::jsonb)', [T_A, 4, '[]'])
+  await save(db, T_A, 4, [], false, 240)
   eq(await count(db, 'select count(*) n from messenger_rules'), 0, 'saving an empty set clears the rules')
-  eq((await db.query('select rules_customized_at is not null as custom from messenger_settings')).rows, [{ custom: true }],
-    '…and marks the store as customised, so the built-in rules do not come back')
+  eq((await db.query('select rules_customized_at is not null as custom, bot_enabled, takeover_minutes from messenger_settings')).rows,
+    [{ custom: true, bot_enabled: false, takeover_minutes: 240 }],
+    '…marks the store as customised (the built-in rules do not come back) and saves the bot settings in the same transaction')
+  await refused(save(db, T_A, 5, [], true, 5000), '23514', 'a takeover outside 0..1440 minutes is refused (and nothing is saved)')
+  eq((await db.query('select rules_version from messenger_settings')).rows, [{ rules_version: 5 }], 'the refused save left the version alone')
 }
 
 async function main() {

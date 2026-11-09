@@ -13,6 +13,9 @@ jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }))
 jest.mock('@/lib/facebook/page-tokens', () => ({ getActivePageById: jest.fn() }))
 jest.mock('@/lib/facebook-api', () => ({ sendMessage: jest.fn() }))
+// The reference → PSID check has its own tests (tests/unit/messenger/recipient.test.ts).
+const resolveMessengerRecipient = jest.fn(async (_tenant: string, reference: string) => (reference === 'psid-1234' ? '24000000000001234' : null))
+jest.mock('@/lib/messenger/recipient', () => ({ resolveMessengerRecipient: (...args: [string, string]) => resolveMessengerRecipient(...args) }))
 jest.mock('@/lib/distributed-rate-limit', () => ({
   checkRateLimit: jest.fn(async () => ({ allowed: true, remaining: 10, retryAfterSec: 0 })),
 }))
@@ -88,6 +91,25 @@ describe('POST /api/messenger/send-cart', () => {
     const message = sendMessage.mock.calls[0][2] as string
     expect(message).toContain('https://retiro.webnegosyo.app/checkout')
     expect(message).not.toContain('phishing-site')
+  })
+
+  it('messages the PSID the server resolved, never the reference the browser sent', async () => {
+    const { route, sendMessage } = await load()
+
+    await route.POST(post({ tenantId: 'tenant-1', psid: 'psid-1234', items: [ITEM] }))
+
+    expect(resolveMessengerRecipient).toHaveBeenCalledWith('tenant-1', 'psid-1234')
+    expect(sendMessage.mock.calls[0][0]).toBe('24000000000001234')
+  })
+
+  it('refuses a reference that does not resolve to this store', async () => {
+    const { route, sendMessage } = await load()
+    jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const res = await route.POST(post({ tenantId: 'tenant-1', psid: '24000000000009999', items: [ITEM] }))
+
+    expect(res.status).toBe(403)
+    expect(sendMessage).not.toHaveBeenCalled()
   })
 
   it('still works for a client that omits tenantSlug', async () => {

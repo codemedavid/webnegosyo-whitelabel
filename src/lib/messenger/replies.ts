@@ -84,6 +84,14 @@ export function fillPlaceholders(text: string, ctx: ReplyContext): string {
     .trim()
 }
 
+/**
+ * The owner's wording with placeholders filled, else the default. Never empty:
+ * Meta refuses an empty message, and the customer would get nothing.
+ */
+function wording(ctx: ReplyContext, custom: string | undefined, fallback: string): string {
+  return (custom ? fillPlaceholders(custom, ctx) : '') || fillPlaceholders(fallback, ctx) || ctx.store.name
+}
+
 function button(title: string, target: { url: string } | { payload: string }): MessengerButton {
   const label = clip(title, MESSENGER_LIMITS.buttonTitle)
   return 'url' in target ? { type: 'web_url', title: label, url: target.url } : { type: 'postback', title: label, payload: target.payload }
@@ -140,8 +148,8 @@ export function buildMenuCard(ctx: ReplyContext, action: Extract<RuleAction, { k
   return [{
     kind: 'cards',
     cards: [{
-      title: clip(fillPlaceholders(action.title || `📍 ${ctx.store.name}`, ctx), MESSENGER_LIMITS.cardTitle),
-      subtitle: clip(fillPlaceholders(action.subtitle || DEFAULT_WORDING.menuCardSubtitle, ctx), MESSENGER_LIMITS.cardSubtitle),
+      title: clip(wording(ctx, action.title, `📍 ${ctx.store.name}`), MESSENGER_LIMITS.cardTitle),
+      subtitle: clip(wording(ctx, action.subtitle, DEFAULT_WORDING.menuCardSubtitle), MESSENGER_LIMITS.cardSubtitle),
       imageUrl: ctx.store.logoUrl ?? undefined,
       tapUrl: url,
       buttons,
@@ -155,7 +163,7 @@ export function buildCategories(ctx: ReplyContext, text?: string): OutgoingMessa
     .slice(0, CATEGORY_QUICK_REPLIES)
     .map((category) => quickReply(category.name, encodePayload({ verb: 'category', categoryId: category.id, page: 0 })))
   replies.push(quickReply(DEFAULT_WORDING.fullMenu, encodePayload({ verb: 'menu' })))
-  return [textMessage(fillPlaceholders(text || DEFAULT_WORDING.categoriesText, ctx), replies)]
+  return [textMessage(wording(ctx, text, DEFAULT_WORDING.categoriesText), replies)]
 }
 
 function carousel(ctx: ReplyContext, items: readonly ReplyItem[], more: CardElement | null): OutgoingMessage {
@@ -185,7 +193,8 @@ export function buildCategoryItems(ctx: ReplyContext, categoryId: string, page =
       }
     : null
 
-  const intro = text && page === 0 ? [textMessage(fillPlaceholders(text, ctx))] : []
+  const introText = text && page === 0 ? fillPlaceholders(text, ctx) : ''
+  const intro = introText ? [textMessage(introText)] : []
   return [...intro, carousel(ctx, pageItems, more)]
 }
 
@@ -196,7 +205,7 @@ export function buildFeaturedItems(ctx: ReplyContext, itemIds: readonly string[]
     ? picked
     : (ctx.store.items.some((item) => item.isFeatured) ? ctx.store.items.filter((item) => item.isFeatured) : ctx.store.items)
   if (items.length === 0) return buildMenuCard(ctx)
-  return [textMessage(fillPlaceholders(text || DEFAULT_WORDING.featuredText, ctx)), carousel(ctx, items, null)]
+  return [textMessage(wording(ctx, text, DEFAULT_WORDING.featuredText)), carousel(ctx, items, null)]
 }
 
 function textButton(ctx: ReplyContext, entry: TextButton): MessengerButton {
@@ -213,7 +222,7 @@ function textButton(ctx: ReplyContext, entry: TextButton): MessengerButton {
 }
 
 export function buildText(ctx: ReplyContext, text: string, buttons: readonly TextButton[]): OutgoingMessage[] {
-  const filled = fillPlaceholders(text, ctx)
+  const filled = wording(ctx, text, ctx.store.name)
   if (buttons.length === 0) return [textMessage(filled)]
   return [{
     kind: 'buttons',
@@ -223,8 +232,7 @@ export function buildText(ctx: ReplyContext, text: string, buttons: readonly Tex
 }
 
 export function buildHoursLocation(ctx: ReplyContext, text?: string): OutgoingMessage[] {
-  const filled = fillPlaceholders(text || DEFAULT_WORDING.hoursLocation, ctx)
-  const body = filled || ctx.store.name
+  const body = wording(ctx, text, DEFAULT_WORDING.hoursLocation)
   const buttons: MessengerButton[] = []
   if (ctx.store.address) buttons.push(button(DEFAULT_WORDING.directions, { url: mapsUrl(ctx.store.address) }))
   buttons.push(button(DEFAULT_WORDING.fullMenu, { url: menuUrl(ctx) }))
@@ -232,17 +240,17 @@ export function buildHoursLocation(ctx: ReplyContext, text?: string): OutgoingMe
 }
 
 export function buildTalkToStaff(ctx: ReplyContext, text?: string): OutgoingMessage[] {
-  return [textMessage(fillPlaceholders(text || DEFAULT_WORDING.talkToStaff, ctx))]
+  return [textMessage(wording(ctx, text, DEFAULT_WORDING.talkToStaff))]
 }
 
 export function buildOrderStatus(ctx: ReplyContext, text?: string): OutgoingMessage[] {
-  return [textMessage(fillPlaceholders(text || DEFAULT_WORDING.orderStatus, ctx), navigationQuickReplies(ctx))]
+  return [textMessage(wording(ctx, text, DEFAULT_WORDING.orderStatus), navigationQuickReplies(ctx))]
 }
 
 /** The messages a rule's action sends. */
 export function buildReply(action: RuleAction, ctx: ReplyContext): OutgoingMessage[] {
   if (ctx.store.items.length === 0 && ['categories', 'category_items', 'featured_items'].includes(action.kind)) {
-    return [textMessage(fillPlaceholders(DEFAULT_WORDING.noMenu, ctx))]
+    return [textMessage(wording(ctx, undefined, DEFAULT_WORDING.noMenu))]
   }
   switch (action.kind) {
     case 'menu_card':

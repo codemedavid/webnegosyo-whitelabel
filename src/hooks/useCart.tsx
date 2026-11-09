@@ -604,6 +604,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }),
       })
         .then(async response => {
+          // 403 = the Messenger link expired or belongs to another store:
+          // forget it instead of retrying on every cart change.
+          if (response.status === 403) {
+            setMessengerPsidState(null)
+            return
+          }
           if (!response.ok) return
 
           const data = await response.json()

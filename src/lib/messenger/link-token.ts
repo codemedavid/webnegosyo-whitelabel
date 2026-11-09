@@ -13,8 +13,8 @@ import { MESSENGER_LINK_TOKEN_PATTERN as TOKEN_PATTERN } from './link-token-shap
 
 const PURPOSE = 'messenger-link'
 const VERSION = 'mt1'
-/** Long enough to come back to a menu link the same week. */
-export const MESSENGER_LINK_TTL_SECONDS = 7 * 24 * 60 * 60
+/** A menu card stays in the chat; a customer comes back to it weeks later. */
+export const MESSENGER_LINK_TTL_SECONDS = 30 * 24 * 60 * 60
 
 function signature(sessionId: string, expiresAt: number, secret: string): string {
   return crypto.createHmac('sha256', secret).update(`${PURPOSE}:${sessionId}:${expiresAt}`).digest('base64url')

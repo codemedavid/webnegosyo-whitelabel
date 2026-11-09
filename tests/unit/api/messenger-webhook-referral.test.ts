@@ -1,6 +1,17 @@
 /** @jest-environment node */
 import { NextRequest } from 'next/server'
 
+// The webhook answers 200 first and works after the response; run that work inline.
+const pendingWork: Array<Promise<unknown>> = []
+jest.mock('next/server', () => ({
+  ...jest.requireActual('next/server'),
+  after: (work: () => Promise<unknown>) => { pendingWork.push(work()) },
+}))
+jest.mock('server-only', () => ({}))
+jest.mock('@/lib/messenger/dedupe', () => ({ claimEventOnce: jest.fn(async () => true) }))
+jest.mock('@/lib/messenger/session', () => ({ touchSession: jest.fn(async () => null), setBotPause: jest.fn(async () => true) }))
+jest.mock('@/lib/messenger/load-store', () => ({ loadStoreBundle: jest.fn(async () => null) }))
+
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }))
 jest.mock('@/lib/facebook/page-tokens', () => ({
   getActivePageByPageId: jest.fn(),
@@ -9,7 +20,6 @@ jest.mock('@/lib/facebook/page-tokens', () => ({
 jest.mock('@/lib/facebook-api', () => ({
   verifyWebhookSignature: jest.fn(() => true),
   sendMessage: jest.fn(async () => true),
-  sendMenuCard: jest.fn(),
 }))
 jest.mock('@/lib/messenger-message-formatter', () => ({ formatOrderMessage: jest.fn(() => 'Order summary') }))
 
@@ -65,12 +75,19 @@ describe('Messenger webhook order referral', () => {
     options: { updateError?: unknown } = {},
   ) {
     const { createAdminClient } = await import('@/lib/supabase/admin')
-    const { getActivePageById } = await import('@/lib/facebook/page-tokens')
+    const { getActivePageById, getActivePageByPageId } = await import('@/lib/facebook/page-tokens')
     const { sendMessage } = await import('@/lib/facebook-api')
     const admin = adminClientWith({ orders: order, tenants: TENANT }, options)
     jest.mocked(createAdminClient).mockReturnValue(admin.client as never)
     jest.mocked(getActivePageById).mockResolvedValue({ page_id: pageIdOnStore, page_access_token: 'page-token' } as never)
-    const { POST } = await import('@/app/api/webhook/route')
+    // The webhook first finds which store the messaged Page belongs to.
+    jest.mocked(getActivePageByPageId).mockResolvedValue({ tenant_id: 'store-1', page_access_token: 'page-token' } as never)
+    const { POST: post } = await import('@/app/api/webhook/route')
+    const POST = async (request: NextRequest) => {
+      const response = await post(request)
+      await Promise.all(pendingWork.splice(0))
+      return response
+    }
     return { POST, sendMessage: jest.mocked(sendMessage), admin }
   }
 

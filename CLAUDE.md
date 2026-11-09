@@ -273,6 +273,20 @@ Search reaches the neighbourhood, the map the door, the words the gate: no provi
 - **Send pin link** (`pin-link-token.ts`, `POST /api/orders/pin-link`, page `/[tenant]/pin/[orderId]`, write `POST /api/orders/pin`): a token signed for this purpose, this order and 24 hours, deliberately NOT the permanent tracking token printed on receipts. The page shows only the store and order number, never the name, phone, items or current pin. A customer can change the pin and rider words, never the fee or the store note.
 - **Saved addresses** (`saved-addresses.ts`): last 3 confirmed pins per store, on the device only, never on a kiosk.
 
+### Messenger automations (the Page's chat answers by itself)
+
+Settings → Messenger → **Automations** (`/[tenant]/admin/settings/messenger/automations`, `settings` permission, store-wide accounts only). Plan: `docs/plans/2026-11-10-messenger-automations.md` (release 1 = triggers, menu replies, editor; release 2 = chat cart + order updates).
+
+- **Webhook** (`/api/webhook`): verify signature → 200 → work in `after()` (Meta wants 200 within 5 s and unsubscribes a Page after an hour of failures). Decisions live in `src/lib/messenger/handle-event.ts` (pure, deps injected); `webhook-deps.ts` holds the real side effects. Events are answered once (`dedupe.ts`, Redis SET NX, fails OPEN).
+- **Rules** = trigger (keyword `contains`/`exact` on WHOLE words, Get Started, ice breaker ≤4, chat-menu button ≤5, fallback) + action (`menu_card`, `categories`, `category_items`, `featured_items`, `text`, `hours_location`, `talk_to_staff`, `order_status`). One zod schema (`rules.ts`) validates on save AND on read. A store with `messenger_settings.rules_customized_at` NULL runs `DEFAULT_RULES` = the pre-2026-11-10 keywords + Filipino ones; after the first save its rows are the whole set (even empty). Saves go through `save_messenger_rules` (one transaction, `rules_version` CAS → 40001).
+- **Replies** (`replies.ts`) clip to Meta's limits (`limits.ts`; `limits-contract.test.ts` walks every action over awkward menus). The editor preview renders the same `OutgoingMessage[]`. Postback/quick-reply payloads are `wn1|verb|…` (`payload.ts`), unsigned on purpose: every id is re-checked against the Page's store; foreign payloads (other bots) are ignored.
+- **Staff takeover**: an echo whose `app_id` isn't ours (`FACEBOOK_APP_ID`) and lacks our `metadata: "wn"` = a person in Page Inbox → `messenger_sessions.bot_paused_until` (setting, default 60 min). While paused, typed messages get no bot answer; taps on our buttons still do. Staff `/menu`, `/categories`, `/hours` send that card without pausing. Typing "menu" in Inbox no longer sends a card (owner, 2026-11-10).
+- **Links never carry a PSID**: `?m=<token>` (`link-token.ts`, 30 days, names a `messenger_sessions` row). The storefront keeps it opaque; `resolveMessengerRecipient` (`recipient.ts`) turns it into the PSID for THIS store only — `createOrderAction` and `send-cart` use it, so a browser can no longer put someone else's PSID on an order. Raw `?psid=` from old cards is accepted only with an existing session until 2026-11-24. `messenger_sender_id` / `messenger_last_interaction` are server-owned customer_data keys.
+- **Messenger Profile** (`profile.ts` + `profile-sync.ts`): synced on save, skipped when the hash is unchanged (10 calls / 10 min per Page), and only fields WE set are ever deleted (`profile_fields`).
+- **Tables** (`20261110120000`): `messenger_rules`, `messenger_settings` (tester PSID + profile state are service-role only), `messenger_sessions` + `(tenant_id, psid)` unique, `last_inbound_at` (24h window), `bot_paused_until`. Old `UNIQUE(psid)` drops in release 2. Until the types are regenerated these tables are reached through `withMessengerTables` (`db.ts`); delete it after regen. PGlite: `tests/sql/run-messenger-automations.cjs`.
+- **Test send**: the owner messages their Page `TEST 123456` (code from the editor, 10 min, hash stored) → their PSID becomes `tester_psid`; "Send test" only works inside Meta's 24h window.
+- Order updates outside 24h need utility templates (`page_utility_messaging`, not in the 2026-11-04 App Review) — POST_PURCHASE_UPDATE and the other tags are gone (2026).
+
 ### Convex (Real-Time Backend)
 
 Convex serves as a secondary real-time backend alongside Supabase. Each tenant optionally has a `convex_deployment_url`.
@@ -325,7 +339,7 @@ Two-path architecture with graceful degradation:
 
 ### Key Integrations
 
-- **Facebook Messenger**: Webhook at `/api/webhook`, OAuth at `/api/auth/facebook/`, sends orders/carts via `/api/messenger/`
+- **Facebook Messenger**: Webhook at `/api/webhook` (automations: see "Messenger automations"), OAuth at `/api/auth/facebook/`, sends orders/carts via `/api/messenger/`
 - **Cloudinary**: Image uploads (`src/lib/cloudinary-utils.ts`)
 - **Maps (Apple MapKit JS / Mapbox)**: every address field renders `AddressAutocomplete` (`src/components/shared/address-autocomplete.tsx`), which picks the provider from `NEXT_PUBLIC_MAPS_PROVIDER` (`apple` → MapKit JS, else Mapbox; `src/lib/maps/provider.ts`). Apple: browsers get 30-min origin-bound tokens from `GET /api/maps/token` (ES256, signed server-side from `APPLE_MAPKIT_TEAM_ID/KEY_ID/PRIVATE_KEY`); server geocoding uses the Maps Server API (`src/lib/maps/apple/maps-server-api.ts`). No Apple key on a deploy → the field falls back to Mapbox. Customer-facing "directions" links still open Google Maps (Apple Maps on the web doesn't cover Android browsers).
 - **Lalamove**: Delivery service via `@lalamove/lalamove-js` SDK (`src/lib/lalamove-service.ts`). Quotation, booking, tracking, cancellation. Markets: PH, SG, HK, TH, TW, MY, VN.

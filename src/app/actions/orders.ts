@@ -35,6 +35,7 @@ import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { requireCheckoutOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 import { parseOrderLines } from '@/lib/checkout/order-line-schema'
 import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
+import { withVerifiedMessengerPsid } from '@/lib/messenger/recipient'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import { judgeOrderPaymentMethod, readOrderPaymentMethod } from '@/lib/checkout/order-payment-method'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
@@ -254,7 +255,11 @@ export async function createOrderAction(
     if (!sanitizedCustomerData.ok) {
       return { success: false, refused: true, error: sanitizedCustomerData.error }
     }
-    const clientCustomerData = sanitizedCustomerData.data
+    // The browser sends back what the Messenger menu link carried (a signed
+    // token, or a raw PSID from before 2026-11-10); only a reference that
+    // resolves to THIS store's customer survives, as the real PSID — the
+    // order's Messenger messages go to it.
+    const clientCustomerData = await withVerifiedMessengerPsid(tenantId, sanitizedCustomerData.data)
 
     if (!isValidClientDeliveryFee(deliveryFee)) {
       return { success: false, refused: true, error: INVALID_DELIVERY_FEE_MESSAGE }
