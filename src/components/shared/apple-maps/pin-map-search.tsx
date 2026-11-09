@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import type { AddressSelection, LatLng } from '@/lib/maps/apple/mapkit-address'
 import { readPastedLocation, UNREADABLE_LINK_MESSAGE } from '@/lib/maps/read-pasted-location'
@@ -32,11 +32,16 @@ export function PinMapSearch({ suggest, resolveSuggestion, near, onPlace }: PinM
   const { suggestions, search, clear } = useAddressSuggestions(suggest)
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  /** Bumped per keystroke: a short link's answer arrives late, and must not undo newer typing. */
+  const editGenerationRef = useRef(0)
 
   const handleType = (next: string) => {
     setText(next)
     setError(null)
+    editGenerationRef.current += 1
+    const generation = editGenerationRef.current
     void readPastedLocation(next).then((pasted) => {
+      if (generation !== editGenerationRef.current) return
       if (!pasted) {
         search(next, near)
         return
