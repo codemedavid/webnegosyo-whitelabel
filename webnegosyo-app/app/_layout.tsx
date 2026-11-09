@@ -76,7 +76,8 @@ bindSessionLossToAuth({
     });
   },
 });
-import { fetchWithTimeout } from "../lib/fetch-timeout";
+import { postConvexMutation } from "../lib/convex-http";
+import { getAccessTokenBounded } from "../lib/authorized-post";
 import * as Notifications from "expo-notifications";
 import {
   registerForPushNotifications,
@@ -320,6 +321,11 @@ function useAuthRedirect() {
   ]);
 }
 
+// The store's deployment gates these writes on the session token, read with a
+// deadline: a stalled auth refresh must not hold up order alerts.
+const PUSH_AUTH_TOKEN_TIMEOUT_MS = 5_000;
+const readPushAuthToken = () => getAccessTokenBounded(PUSH_AUTH_TOKEN_TIMEOUT_MS);
+
 function usePushNotifications() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const convexUrl = useAuthStore((s) => s.convexUrl);
@@ -368,15 +374,16 @@ function usePushNotifications() {
 
     const stale = pushTokenCleanup(session);
     if (stale) {
-      fetchWithTimeout(`${stale.convexUrl}/api/mutation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      postConvexMutation(
+        {
+          convexUrl: stale.convexUrl,
           path: "notifications:removePushToken",
           args: { userId: stale.userId },
-          format: "json",
-        }),
-      }).catch(() => {});
+        },
+        { getToken: readPushAuthToken }
+      ).then((result) => {
+        if (!result.ok) console.warn("Failed to remove push token:", result.error);
+      });
     }
 
     // Platform messages (What's New posts, on-command notices) are filed in
@@ -433,25 +440,23 @@ function usePushNotifications() {
           return;
         }
         if (!convexUrl) return;
-        try {
-          await fetchWithTimeout(`${convexUrl}/api/mutation`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              path: "notifications:registerPushToken",
-              args: {
-                userId,
-                token,
-                platform: Platform.OS === "ios" ? "ios" : "android",
-                // Binds this device to its branch so it is only rung for that
-                // branch's orders. Omitted for an owner, who hears every one.
-                outletId: pushRegistrationOutletId(session),
-              },
-              format: "json",
-            }),
-          });
-        } catch (e) {
-          console.warn("Failed to register push token:", e);
+        const registered = await postConvexMutation(
+          {
+            convexUrl,
+            path: "notifications:registerPushToken",
+            args: {
+              userId,
+              token,
+              platform: Platform.OS === "ios" ? "ios" : "android",
+              // Binds this device to its branch so it is only rung for that
+              // branch's orders. Omitted for an owner, who hears every one.
+              outletId: pushRegistrationOutletId(session),
+            },
+          },
+          { getToken: readPushAuthToken }
+        );
+        if (!registered.ok) {
+          console.warn("Failed to register push token:", registered.error);
         }
       }).catch((e) => {
         console.warn("Push notification registration failed:", e);

@@ -62,6 +62,25 @@ export async function getAccessTokenBounded(timeoutMs: number): Promise<string |
 }
 
 /**
+ * A newly issued access token, or null if that failed or `timeoutMs` passed.
+ * Same deadline for the same reason: this call queues on the auth lock too.
+ */
+export async function refreshAccessTokenBounded(timeoutMs: number): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+  });
+  try {
+    const { data } = await Promise.race([supabase.auth.refreshSession(), expiry]);
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * What became of one authorized POST. `status` is null when no server answered
  * (no session, a timeout, no network) — a caller that must tell a permanent
  * refusal from a transient one reads it (the stock notifier).

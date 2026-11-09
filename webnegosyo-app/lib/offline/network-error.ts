@@ -92,6 +92,35 @@ function nameOf(error: unknown): string {
 }
 
 /**
+ * What the server said, in the words most likely to survive. A production
+ * Convex deployment redacts an Error's message to a bare "Server Error"; a
+ * ConvexError's data is the one part it passes on.
+ */
+export function refusalMessageOf(error: unknown): string {
+  if (error && typeof error === "object") {
+    const data = (error as { data?: unknown }).data;
+    if (typeof data === "string" && data) return data;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+const TOKEN_REFUSAL = "Unauthorized: unauthenticated";
+
+/** The store is enforced and this call carried no usable session token. */
+export function isTokenRefusalMessage(message: string | null): boolean {
+  return message !== null && message.includes(TOKEN_REFUSAL);
+}
+
+/**
+ * Nothing to do with what was being written: the token will be back. Older
+ * deployments (before v40) redact this reason, so they can't be recognised.
+ */
+export function isTokenRefusal(error: unknown): boolean {
+  if (error === null || error === undefined) return false;
+  return isTokenRefusalMessage(refusalMessageOf(error));
+}
+
+/**
  * True when the failure is the connection, not the request.
  *
  * Conservative on purpose: anything unrecognised is NOT a network failure, so

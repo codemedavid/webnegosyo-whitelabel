@@ -66,6 +66,20 @@ describe("placeCounterSale", () => {
     expect(outcome.kind).toBe("queued");
   });
 
+  it("keeps a paid sale on the device when the store refuses for want of a token", async () => {
+    // Not the sale's fault and not an outage: the session token will be back,
+    // and the customer has paid. The till must not stop for it.
+    const refusal = Object.assign(new Error("[Request ID: 5f2] Server Error"), {
+      data: "Unauthorized: unauthenticated",
+    });
+    const createOrder = jest.fn().mockRejectedValue(refusal);
+    const enqueue = jest.fn().mockResolvedValue("local-1");
+    const outcome = await placeCounterSale({ createOrder, sale, enqueue, isOffline: () => false });
+    expect(outcome).toEqual({ kind: "queued", localId: "local-1" });
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(getConnectivity().status).not.toBe("offline");
+  });
+
   it("rethrows a refusal so the cashier sees it, and never queues it", async () => {
     const refusal = new Error("ArgumentValidationError: source is not in the validator");
     const createOrder = jest.fn().mockRejectedValue(refusal);

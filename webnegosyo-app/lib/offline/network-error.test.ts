@@ -1,4 +1,4 @@
-import { isNetworkFailure, PartialOrderWriteError } from "./network-error";
+import { isNetworkFailure, isTokenRefusal, PartialOrderWriteError, refusalMessageOf } from "./network-error";
 
 describe("isNetworkFailure", () => {
   it("recognises React Native's fetch failure", () => {
@@ -69,5 +69,40 @@ describe("a partial order write is never an outage", () => {
 
   it("still treats a plain network error as an outage", () => {
     expect(isNetworkFailure(new Error("Network request failed"))).toBe(true);
+  });
+});
+
+describe("a refusal for want of a token", () => {
+  // A production deployment redacts a plain Error to a bare "Server Error", so
+  // the gate's reason travels as ConvexError data; the message can't be trusted
+  // to carry it. On a dev deployment it is the other way about.
+  const fromProduction = Object.assign(new Error("[Request ID: 5f2] Server Error"), {
+    data: "Unauthorized: unauthenticated",
+  });
+  const fromDevelopment = new Error(
+    "[Request ID: 5f2] Server Error\nUncaught ConvexError: Unauthorized: unauthenticated\n  at requireAccess"
+  );
+
+  it("reads the reason from the error's data before its message", () => {
+    expect(refusalMessageOf(fromProduction)).toBe("Unauthorized: unauthenticated");
+    expect(refusalMessageOf(new Error("Not allowed"))).toBe("Not allowed");
+    expect(refusalMessageOf("plain")).toBe("plain");
+    expect(refusalMessageOf(Object.assign(new Error("Bad"), { data: { code: 1 } }))).toBe("Bad");
+  });
+
+  it("recognises it from production and from development", () => {
+    expect(isTokenRefusal(fromProduction)).toBe(true);
+    expect(isTokenRefusal(fromDevelopment)).toBe(true);
+  });
+
+  it("does not take any other refusal for it", () => {
+    expect(isTokenRefusal(new Error("Unauthorized: wrong_tenant"))).toBe(false);
+    expect(isTokenRefusal(Object.assign(new Error("x"), { data: "Unauthorized: unpinned" }))).toBe(false);
+    expect(isTokenRefusal(new Error("[Request ID: 5f2] Server Error"))).toBe(false);
+    expect(isTokenRefusal(null)).toBe(false);
+  });
+
+  it("is not an outage: the connection is fine, so the register stays online", () => {
+    expect(isNetworkFailure(fromProduction)).toBe(false);
   });
 });

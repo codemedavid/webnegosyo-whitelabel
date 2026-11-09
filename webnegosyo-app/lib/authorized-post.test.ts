@@ -6,11 +6,12 @@ jest.mock("expo-constants", () => ({
 }));
 
 const getSessionMock = jest.fn();
+const refreshSessionMock = jest.fn();
 jest.mock("./supabase", () => ({
-  supabase: { auth: { getSession: getSessionMock } },
+  supabase: { auth: { getSession: getSessionMock, refreshSession: refreshSessionMock } },
 }));
 
-import { postAuthorized, postAuthorizedDetailed } from "./authorized-post";
+import { postAuthorized, postAuthorizedDetailed, refreshAccessTokenBounded } from "./authorized-post";
 
 /**
  * The one bounded, authenticated POST the register's bookkeeping calls share.
@@ -171,5 +172,23 @@ describe("postAuthorizedDetailed", () => {
   test("postAuthorized still answers a plain boolean", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 409 });
     await expect(postAuthorized("/api/x", {})).resolves.toBe(false);
+  });
+});
+
+describe("refreshAccessTokenBounded", () => {
+  it("answers the refreshed token", async () => {
+    refreshSessionMock.mockResolvedValueOnce({ data: { session: { access_token: "fresh" } }, error: null });
+    await expect(refreshAccessTokenBounded(50)).resolves.toBe("fresh");
+  });
+
+  it("answers null when the refresh fails, rejects or never returns", async () => {
+    refreshSessionMock.mockResolvedValueOnce({ data: { session: null }, error: new Error("offline") });
+    await expect(refreshAccessTokenBounded(50)).resolves.toBeNull();
+
+    refreshSessionMock.mockRejectedValueOnce(new Error("boom"));
+    await expect(refreshAccessTokenBounded(50)).resolves.toBeNull();
+
+    refreshSessionMock.mockReturnValueOnce(forever());
+    await expect(refreshAccessTokenBounded(10)).resolves.toBeNull();
   });
 });
