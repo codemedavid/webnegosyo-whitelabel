@@ -52,7 +52,7 @@ const HOUR_MS = 60 * 60 * 1000
 // ── Menu ────────────────────────────────────────────────────────────────────
 
 function menuRows(tenantId: string) {
-  const base = { tenant_id: tenantId, category_id: IDS.category, image_url: '', is_available: true, is_featured: false, modifier_groups: [] }
+  const base = { tenant_id: tenantId, category_id: IDS.category, image_url: '', is_featured: false, modifier_groups: [] }
   return [
     {
       ...base,
@@ -138,8 +138,12 @@ async function seedMenu(db: SupabaseClient, tenant: QaTenant) {
   if (catError) throw new Error(`categories: ${catError.message}`)
   assertRows('categories upsert', cat, 1)
 
-  const items = menuRows(tenant.id)
-  const { data, error } = await db.from('menu_items').upsert(items).select('id')
+  // A re-run must not put back on sale a dish the store (or auto-86) took off.
+  const { data: existing, error: readError } = await db.from('menu_items').select('id').in('id', Object.values(IDS.items))
+  if (readError) throw new Error(`menu_items read: ${readError.message}`)
+  const known = new Set((existing as { id: string }[]).map((row) => row.id))
+  const items = menuRows(tenant.id).map((row) => (known.has(row.id) ? row : { ...row, is_available: true }))
+  const { data, error } = await db.from('menu_items').upsert(items, { defaultToNull: false }).select('id')
   if (error) throw new Error(`menu_items: ${error.message}`)
   assertRows('menu_items upsert', data, items.length)
 }
