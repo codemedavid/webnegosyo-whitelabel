@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { CANVAS_WIDTH, THEME_COLOR_FALLBACK, THEME_COLOR_KEYS } from '@/lib/hero-builder/constants'
 import { createBlankDesign } from '@/lib/hero-builder/defaults'
+import { settleAction } from '@/lib/hero-builder/settle-action'
 import type { LinkCatalog } from '@/lib/hero-builder/link-catalog'
 import { loadHeroDesign } from '@/lib/hero-builder/load'
 import { cssColor } from '@/lib/hero-builder/safe-values'
@@ -158,7 +159,7 @@ export function HeroBuilderEditor({
   // ── Publishing ────────────────────────────────────────────────────────────
   const publish = useCallback(() => {
     startTransition(async () => {
-      const result = await surface.publish({ tenantId, tenantSlug }, api.design)
+      const result = await settleAction(() => surface.publish({ tenantId, tenantSlug }, api.design), 'publish')
       if (!result.success) {
         toast.error(result.error ?? 'Could not publish')
         return
@@ -176,7 +177,7 @@ export function HeroBuilderEditor({
 
   const unpublish = useCallback(() => {
     startTransition(async () => {
-      const result = await surface.unpublish({ tenantId, tenantSlug })
+      const result = await settleAction(() => surface.unpublish({ tenantId, tenantSlug }), 'unpublish')
       if (!result.success) {
         toast.error(result.error ?? 'Could not update the storefront')
         return
