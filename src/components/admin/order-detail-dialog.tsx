@@ -184,13 +184,13 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="w-[98vw] max-w-7xl max-h-[95vh] overflow-hidden p-0">
+      <DialogContent className="w-[98vw] max-w-7xl max-h-[95vh] overflow-hidden p-0 [&>*]:min-w-0">
         {/* Header Section */}
         <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 border-b">
           <DialogHeader className="space-y-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
                   <DialogTitle className="text-2xl font-bold">
                     Order {formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}
                   </DialogTitle>
@@ -199,7 +199,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                     {currentStatus.label}
                   </Badge>
                 </div>
-                <DialogDescription className="flex items-center gap-4 text-base">
+                <DialogDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 text-base">
                   <span className="flex items-center gap-1.5">
                     <Clock className="h-4 w-4" />
                     {formatDistance(new Date(order.created_at), new Date(), { addSuffix: true })}
@@ -255,7 +255,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
             )}
 
             {/* Quick Stats */}
-            <div className="flex gap-4 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2 sm:gap-4">
               <div className="flex items-center gap-2 text-sm bg-white/50 dark:bg-slate-800/50 px-3 py-1.5 rounded-md">
                 <ShoppingBag className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">{itemsCount}</span>
@@ -281,20 +281,20 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
           <Tabs defaultValue="details" className="w-full">
             <div className="px-6 pt-4 border-b">
               <TabsList className="grid w-full max-w-2xl grid-cols-4 mb-4">
-                <TabsTrigger value="details" className="flex items-center gap-2">
+                <TabsTrigger value="details" aria-label="Details" className="flex items-center gap-2">
                   <FileText className="h-4 w-4" />
                   <span className="hidden sm:inline">Details</span>
                 </TabsTrigger>
-                <TabsTrigger value="items" className="flex items-center gap-2">
+                <TabsTrigger value="items" aria-label="Items" className="flex items-center gap-2">
                   <ShoppingBag className="h-4 w-4" />
                   <span className="hidden sm:inline">Items</span>
                 </TabsTrigger>
-                <TabsTrigger value="customer" className="flex items-center gap-2">
+                <TabsTrigger value="customer" aria-label="Customer" className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span className="hidden sm:inline">Customer</span>
                 </TabsTrigger>
                 {hasDeliveryTab && (
-                  <TabsTrigger value="delivery" className="flex items-center gap-2">
+                  <TabsTrigger value="delivery" aria-label="Delivery" className="flex items-center gap-2">
                     <Truck className="h-4 w-4" />
                     <span className="hidden sm:inline">Delivery</span>
                   </TabsTrigger>
