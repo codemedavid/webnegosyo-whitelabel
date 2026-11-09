@@ -112,6 +112,36 @@ export function orderBackendForSave(
   return "auto";
 }
 
+/** The tenant-form fields that decide where orders go after a save. */
+export interface BackendSaveInput {
+  order_backend?: SelectableOrderBackend | null;
+  convex_deployment_url?: string | null;
+}
+
+/**
+ * Where the save would move this store's orders, or null when the resolved
+ * backend stays put. An omitted/blank URL keeps the stored one (the writers
+ * save it as `undefined`), exactly as the update payloads do.
+ */
+export function previewBackendChange(
+  current: OrderBackendTenantFields,
+  input: BackendSaveInput
+): { from: OrderBackend; to: OrderBackend } | null {
+  const url = isNonEmpty(input.convex_deployment_url)
+    ? input.convex_deployment_url
+    : current.convex_deployment_url ?? null;
+  const next: OrderBackendTenantFields = {
+    order_backend: orderBackendForSave(input.order_backend, {
+      order_backend: current.order_backend,
+      convex_deployment_url: url,
+    }),
+    convex_deployment_url: url,
+  };
+  const from = resolveOrderBackend(current);
+  const to = resolveOrderBackend(next);
+  return from === to ? null : { from, to };
+}
+
 /**
  * True when the tenant has every credential required to reach its own Supabase
  * project for order reads/writes (URL, anon key, service-role key).

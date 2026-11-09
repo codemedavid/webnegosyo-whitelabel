@@ -17,7 +17,8 @@ import type { HeroBuilderApi } from '../use-hero-builder'
 import { usePageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 
 import { LinkPicker, sectionAnchorsOf, useLinkSurface } from './link-picker'
-import { PageBlockFields, ShowWhenGroup, tokenHint } from './page-block-fields'
+import { CopyTextFields } from './copy-text-fields'
+import { PageBlockFields, ShowForGroup, ShowWhenGroup, tokenHint } from './page-block-fields'
 
 function move<T>(items: readonly T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return [...items]
@@ -285,6 +286,8 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
           </Field>
         </>
       )
+    case 'copy-text':
+      return <CopyTextFields content={c} edit={edit} tokenNote={page ? tokenHint(page) : ''} />
     case 'countdown': {
       const local = toDatetimeLocalValue(c.target)
       return (
@@ -505,6 +508,7 @@ export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
           </Group>
         )}
         <ShowWhenGroup node={widget} api={api} />
+        <ShowForGroup node={widget} api={api} />
       </>
     )
   }
@@ -529,6 +533,7 @@ export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
       </Group>
       <PageSectionGroup section={section} api={api} />
       <ShowWhenGroup node={section} api={api} />
+      <ShowForGroup node={section} api={api} />
       </>
     )
   }

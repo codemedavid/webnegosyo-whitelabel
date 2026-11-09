@@ -7,7 +7,7 @@
 import { box } from '@/lib/hero-builder/section-presets'
 import type { HeroDesignV5, Widget } from '@/lib/hero-builder/types'
 
-import { block as kitBlock, pageDesign, pageSection, pinnedBar, type BlockSpec } from './template-kit'
+import { block as kitBlock, pageDesign, pageSection, pinnedBar, type BlockSpec, TIDY_FORM } from './template-kit'
 import type { PageTemplate } from './templates'
 
 const block = (id: string, spec: BlockSpec = {}): Widget => kitBlock('checkout', id, spec)
@@ -29,7 +29,7 @@ function buildStepByStep(): HeroDesignV5 {
         block('checkout.schedule'),
       ]),
       step('Your details', [
-        block('checkout.customer', { texts: { title: 'Your information' } }),
+        block('checkout.customer', { options: { ...TIDY_FORM, variant: 'clean' }, texts: { title: 'Your information' } }),
         block('checkout.loyalty'),
       ]),
       step('Payment', [
@@ -59,7 +59,7 @@ function buildExpress(): HeroDesignV5 {
           block('checkout.store_closed'),
           block('checkout.order_type', { options: { variant: 'segmented', ...compact }, texts: { title: 'How do you want it?' } }),
           block('checkout.schedule', { options: { variant: 'pill' } }),
-          block('checkout.customer', { options: { variant: 'filled', columns: '1', ...compact }, texts: { title: 'Your details' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'label_inside', columns: '1', ...compact }, texts: { title: 'Your details' } }),
           block('checkout.loyalty'),
           block('checkout.payment', { options: { variant: 'rows', ...compact } }),
           block('checkout.summary', { options: { variant: 'compact', ...compact }, texts: { title: 'Order summary' } }),
@@ -93,7 +93,7 @@ function buildBoldOnePage(): HeroDesignV5 {
           block('checkout.voucher'),
           block('checkout.order_type', { options: { variant: 'buttons', show_subtitle: false }, texts: { title: 'How do you want it?' } }),
           block('checkout.schedule'),
-          block('checkout.customer', { options: { variant: 'filled', show_subtitle: false }, texts: { title: 'Your Details' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'label_inside', show_subtitle: false }, texts: { title: 'Your Details' } }),
           block('checkout.loyalty'),
           block('checkout.payment', { options: { variant: 'grid', show_subtitle: false } }),
           block('checkout.gov_discount'),

@@ -266,7 +266,7 @@ describe('processStockLevelChanges — auto-86 decides on the level', () => {
 
     const result = await processStockLevelChanges('t1', [ingredient({ id: 'egg', current_qty: -1, reorder_level: 0 })], new Map([['egg', -1]]))
 
-    expect(mockReconcileAuto86).toHaveBeenCalledWith(expect.anything(), 't1', ['egg'])
+    expect(mockReconcileAuto86).toHaveBeenCalledWith(expect.anything(), 't1', ['egg'], undefined, { judgeUncounted: false })
     expect(result.menuItemsDisabled).toEqual(['chicken'])
   })
 
@@ -295,7 +295,7 @@ describe('processStockLevelChanges — auto-86 decides on the level', () => {
 
     await processStockLevelChanges('t1', [ingredient({ current_qty: 700 })], new Map([['flour', -10]]), 'south')
 
-    expect(mockReconcileAuto86).toHaveBeenCalledWith(expect.anything(), 't1', ['flour'])
+    expect(mockReconcileAuto86).toHaveBeenCalledWith(expect.anything(), 't1', ['flour'], undefined, { judgeUncounted: false })
   })
 
   it('keeps the alerts when auto-86 fails', async () => {

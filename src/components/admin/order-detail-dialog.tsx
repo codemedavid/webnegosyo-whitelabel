@@ -50,6 +50,10 @@ import { getOrderOutletLabel } from '@/lib/outlets/order-outlet-display'
 import type { OrderWithItems } from '@/lib/orders-service'
 import { displayCustomerName } from '@/lib/order-display-name'
 
+const OrderDeliveryCard = dynamic(
+  () => import('@/components/admin/order-delivery-card').then(mod => ({ default: mod.OrderDeliveryCard })),
+)
+
 // Lazy-load LalamoveDeliveryPanel since it's only shown conditionally
 const LalamoveDeliveryPanel = dynamic(
   () => import('@/components/admin/lalamove-delivery-panel').then(mod => ({ default: mod.LalamoveDeliveryPanel })),
@@ -435,7 +439,8 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
 
               {/* Delivery Tab */}
               {hasDeliveryTab && (
-                <TabsContent value="delivery" className="mt-0">
+                <TabsContent value="delivery" className="mt-0 space-y-4">
+                  <OrderDeliveryCard key={order.id} tenantId={tenantId} order={order} />
                   <LalamoveDeliveryPanel order={order} tenantId={tenantId} />
                 </TabsContent>
               )}

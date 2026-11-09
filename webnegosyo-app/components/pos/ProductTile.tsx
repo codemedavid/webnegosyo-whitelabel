@@ -65,7 +65,8 @@ export function ProductTile({
 
   return (
     <TouchableOpacity
-      style={[styles.tile, isInSale && styles.tileInSale, isSoldOut && styles.tileSoldOut]}
+      // Dimmed at "0 left" too: still tappable, but the cashier sees it before tapping.
+      style={[styles.tile, isInSale && styles.tileInSale, (isSoldOut || hint?.isOut) && styles.tileSoldOut]}
       onPress={onPress}
       activeOpacity={0.75}
       accessibilityRole="button"

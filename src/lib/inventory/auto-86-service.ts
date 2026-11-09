@@ -16,8 +16,9 @@
  * admin session and inventory RLS is staff-only.
  */
 
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import { decideAuto86, type Auto86Dish } from '@/lib/inventory/auto-86'
-import { toJudgedShelf, type JudgedShelfRow } from '@/lib/inventory/judged-shelf'
+import { toJudgedShelf, type JudgedShelfRow, type JudgeOptions } from '@/lib/inventory/judged-shelf'
 import { selectAllPages, type PageRequest, type PageResponse } from '@/lib/storefront/paged-select'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 import type { Recipe, RecipeComponent } from '@/types/database'
@@ -111,7 +112,7 @@ async function applyUpdate(
   for (const slice of chunks(ids)) {
     const { data, error } = await narrow(client.from('menu_items').update(patch).eq('tenant_id', tenantId).in('id', slice)).select('id')
     if (error) {
-      console.error('[inventory] auto-86 menu update failed', tenantId, error.message)
+      reportStockFailure({ tenantId, operation: 'auto_86_update' }, error)
       continue
     }
     matched.push(...(data ?? []).map((row) => row.id))
@@ -128,6 +129,7 @@ export async function reconcileAuto86(
   tenantId: string,
   ingredientIds: readonly string[],
   now: Date = new Date(),
+  options: JudgeOptions = {},
 ): Promise<Auto86Result> {
   const none: Auto86Result = { disabled: [], reEnabled: [] }
   if (ingredientIds.length === 0) return none
@@ -169,7 +171,7 @@ export async function reconcileAuto86(
     ),
   ])
 
-  const shelf = toJudgedShelf(ingredients, new Map(units.map((unit) => [unit.id, unit])))
+  const shelf = toJudgedShelf(ingredients, new Map(units.map((unit) => [unit.id, unit])), options)
   const decision = decideAuto86(dishes, recipes, components, shelf, units, now.getTime())
 
   const disabled = decision.disable.length === 0
@@ -184,4 +186,31 @@ export async function reconcileAuto86(
         (query) => query.eq('is_available', false).not('auto_disabled_at', 'is', null))
 
   return { disabled, reEnabled }
+}
+
+/**
+ * 86 or restore every dish with a recipe, with no ingredient having moved: for
+ * when the rule itself changed (auto-86 switched on, the store's stock policy
+ * changed). Throws on a failed read.
+ */
+export async function reconcileWholeMenu(
+  supabase: unknown,
+  tenantId: string,
+  now: Date = new Date(),
+  options: JudgeOptions = {},
+): Promise<Auto86Result> {
+  const client = supabase as Client
+  const result = await selectAllPages<{ id: string }>(
+    ({ from, to, withCount }: PageRequest) =>
+      client
+        .from('recipe_components')
+        .select('id, inventory_item_id', withCount ? { count: 'exact' } : undefined)
+        .eq('tenant_id', tenantId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    { label: `recipe_components for auto-86 (tenant ${tenantId})` },
+  )
+  if (result.error) throw new Error(`auto-86: reading recipe_components failed: ${result.error.message}`)
+  const ingredientIds = (result.data as unknown as Array<{ inventory_item_id: string }>).map((row) => row.inventory_item_id)
+  return reconcileAuto86(supabase, tenantId, ingredientIds, now, options)
 }

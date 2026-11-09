@@ -116,7 +116,7 @@ function usePageLook(tenantId: string, page: PageId, storeRow: Readonly<Record<s
 /** The Hero Builder editor running as the Page Designer for one page. */
 export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, storeRow, redirect, checkoutForm = null, ...editor }: PageDesignerEditorProps) {
   const look = usePageLook(tenantId, page, storeRow)
-  const formSession = useCheckoutFormSession(tenantId, page === 'checkout' ? checkoutForm : null)
+  const formSession = useCheckoutFormSession(tenantId, tenantSlug, page === 'checkout' ? checkoutForm : null)
   const [isSavingLook, startSavingLook] = useTransition()
   const labels = useMemo(() => readStorefrontLabels(look.preview as Record<string, unknown>) as Record<string, string>, [look.preview])
   const brandStyle = useMemo(

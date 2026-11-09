@@ -33,10 +33,12 @@ export function DesignedConfirmation({ design, tenantSlug, labels }: DesignedCon
   const order = b?.order ?? null
   const grandTotal = b?.grandTotal ?? 0
   const state = confirmationState(b?.hasOrderSaveFailed ?? false)
-  const tokens = useMemo(() => (order ? confirmationTokens(storeName, order, grandTotal) : {}), [storeName, order, grandTotal])
+  const storeAddress = b?.storeAddress ?? ''
+  const orderKind = b?.orderKind ?? null
+  const tokens = useMemo(() => (order ? confirmationTokens(storeName, order, grandTotal, storeAddress) : {}), [storeName, order, grandTotal, storeAddress])
   const runtime = useMemo<PageRuntime>(
-    () => ({ page: 'confirmation', state, tokens, labels, blocks: CONFIRMATION_LIVE_BLOCKS }),
-    [state, tokens, labels],
+    () => ({ page: 'confirmation', state, orderKind, tokens, labels, blocks: CONFIRMATION_LIVE_BLOCKS }),
+    [state, orderKind, tokens, labels],
   )
   // Without the Messenger block there is no message to send, so a failed save
   // says "contact the store" instead of pointing at a message that isn't there.

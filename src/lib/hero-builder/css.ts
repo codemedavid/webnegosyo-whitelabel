@@ -216,7 +216,7 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
   const { kind } = widget
   displayRules(rules, s, 'block', showHidden)
   const frameTarget = own(INNER_FRAME, kind) ?? ''
-  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery' || kind === 'order-entry' || kind === 'slideshow')
+  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery' || kind === 'order-entry' || kind === 'slideshow' || kind === 'copy-text')
   typographyRules(rules, '', s)
   set(rules, '', 'margin', boxValue(s.margin, -400, 400))
   const width = clampNumber(s.width, 1, 100)
@@ -269,6 +269,11 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
       break
     case 'badge':
       set(rules, ' .hb-badge svg', 'color', accent)
+      break
+    case 'copy-text':
+      set(rules, '', '--hb-copy-bg', accent)
+      set(rules, '', '--hb-copy-fg', accentText)
+      set(rules, '', '--hb-copy-radius', px(s.radius, 0, 999))
       break
     case 'countdown':
       set(rules, ' .hb-cd', 'justify-content', justify)
@@ -461,6 +466,18 @@ function pagePartCss(design: HeroDesignV5, scope: string, classes: Record<string
   return css
 }
 
+/**
+ * Storefront only: a page block with nothing to show (the schedule on an order
+ * type without pre-orders) takes no room, and neither does the spacer after it,
+ * so the gaps around it don't pile up. A section left with nothing at all is
+ * the layout's job (page-layout.tsx).
+ */
+function emptyBlockCss(scope: string): string {
+  return ['page-block', 'copy-text']
+    .map((kind) => `.${scope} .hb-w--${kind}:empty{display:none}.${scope} .hb-w--${kind}:empty+.hb-w--spacer{display:none}`)
+    .join('')
+}
+
 const SCOPE_PATTERN = /^[a-z][a-z0-9-]{0,40}$/
 
 export function buildDesignCss(design: HeroDesignV5, options: CssBuildOptions): BuiltDesignCss {
@@ -490,6 +507,7 @@ export function buildDesignCss(design: HeroDesignV5, options: CssBuildOptions): 
     if (block) css += `@container hb (max-width: ${DEVICE_MAX_WIDTH[device]}px){${block}}`
   }
   css += pagePartCss(design, scope, classes)
+  if (!showHidden) css += emptyBlockCss(scope)
 
   if (css.length > LIMITS.designBytes * 2) css = css.slice(0, LIMITS.designBytes * 2)
   return { css, classes, fontsHref: buildFontsHref(collectFonts(design)) }

@@ -12,6 +12,7 @@
  * shelf was accounted for when nobody finished looking at it.
  */
 
+import { isFromEarlierBusinessDay, toBusinessDayKey } from '@/lib/inventory/business-day'
 import {
   openCount,
   closeCount,
@@ -191,7 +192,7 @@ describe('opening a count', () => {
         id: 'already-open',
         tenant_id: TENANT,
         outlet_id: null,
-        business_day: '2026-07-31',
+        business_day: toBusinessDayKey(new Date().toISOString()),
         status: 'open',
         expected_item_count: 9,
         closed_at: null,
@@ -204,6 +205,32 @@ describe('opening a count', () => {
     expect(writes.inserts).toHaveLength(0)
     // The original denominator survives — rejoining must not re-snapshot it.
     expect(session.expectedItemCount).toBe(9)
+  })
+})
+
+describe('a count left open from an earlier day', () => {
+  it('is closed and replaced by a count for today, so later lines reach today\'s report', async () => {
+    const writes = stub({
+      openSession: {
+        id: 'stale', tenant_id: TENANT, outlet_id: null, business_day: '2026-07-31',
+        status: 'open', expected_item_count: 9, closed_at: null,
+      },
+    })
+
+    const session = await openCount(TENANT, {})
+
+    expect(writes.updates).toHaveLength(1)
+    expect(writes.updates[0].patch.status).toBe('closed')
+    expect(writes.filters).toContainEqual({ table: 'inventory_counts', column: 'id', value: 'stale' })
+    expect(writes.inserts).toHaveLength(1)
+    expect(writes.inserts[0].rows.business_day).toBe(toBusinessDayKey(new Date().toISOString()))
+    expect(session.id).toBe(COUNT)
+  })
+
+  it('reads yesterday-evening-Manila as an earlier day, today-Manila as current', () => {
+    const now = new Date('2026-08-02T20:30:00.000Z') // 04:30 on the 3rd in Manila
+    expect(isFromEarlierBusinessDay('2026-08-02', now)).toBe(true)
+    expect(isFromEarlierBusinessDay('2026-08-03', now)).toBe(false)
   })
 })
 

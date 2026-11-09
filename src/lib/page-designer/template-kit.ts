@@ -99,6 +99,9 @@ export function onlyWhen(widget: Widget, states: readonly string[]): Widget {
   return { ...widget, showWhen: [...states] }
 }
 
+/** The tidy delivery address + question marks every template's form starts from. */
+export const TIDY_FORM = { address_map: 'links', address_details: 'tucked', field_marks: 'optional' } as const
+
 export const centred = (style: NodeStyle): NodeStyle => ({ textAlign: 'center', ...style })
 
 export const solid = (color: string): Background => ({ type: 'color', color })

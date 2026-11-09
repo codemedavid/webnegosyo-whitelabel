@@ -7,7 +7,7 @@
 import { badge, box, heading, text } from '@/lib/hero-builder/section-presets'
 import type { HeroDesignV5, Widget } from '@/lib/hero-builder/types'
 
-import { block as kitBlock, centred, pageDesign, pageSection, pinnedBar, solid, type BlockSpec } from './template-kit'
+import { block as kitBlock, centred, pageDesign, pageSection, pinnedBar, solid, type BlockSpec, TIDY_FORM } from './template-kit'
 import type { PageTemplate } from './templates'
 
 const block = (id: string, spec: BlockSpec = {}): Widget => kitBlock('checkout', id, spec)
@@ -27,7 +27,7 @@ function buildInsetList(): HeroDesignV5 {
           block('checkout.store_closed'),
           block('checkout.order_type', { options: { variant: 'list', icon_style: 'plain', ...quiet }, texts: { title: 'Order type' } }),
           block('checkout.schedule', { options: { variant: 'list' }, texts: { title: 'When' } }),
-          block('checkout.customer', { options: { variant: 'filled', columns: '1', ...quiet }, texts: { title: 'Your details' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'label_inside', columns: '1', ...quiet }, texts: { title: 'Your details' } }),
           block('checkout.loyalty'),
           block('checkout.payment', { options: { variant: 'rows', ...quiet } }),
           block('checkout.summary', { options: { variant: 'compact', ...quiet }, texts: { title: 'Order' } }),
@@ -81,7 +81,7 @@ function buildRolledUp(): HeroDesignV5 {
           heading('Your details', 'h2', { fontSize: 20, fontWeight: 800, color: '@text' }),
           block('checkout.order_type', { options: { variant: 'list', show_subtitle: false } }),
           block('checkout.schedule', { options: { variant: 'list' } }),
-          block('checkout.customer', { options: { columns: '1', show_subtitle: false }, texts: { title: 'Contact' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'clean', columns: '1', show_subtitle: false }, texts: { title: 'Contact' } }),
           block('checkout.loyalty'),
           block('checkout.payment', { options: { variant: 'rows', show_subtitle: false } }),
           block('checkout.gov_discount'),
@@ -105,7 +105,7 @@ function buildAccordion(): HeroDesignV5 {
         block('checkout.order_type', { options: flat }),
         block('checkout.schedule', { options: { card: false } }),
       ]),
-      pageSection('Your details', [block('checkout.customer', { options: flat }), block('checkout.loyalty')]),
+      pageSection('Your details', [block('checkout.customer', { options: { ...TIDY_FORM, variant: 'clean', ...flat } }), block('checkout.loyalty')]),
       pageSection('Payment', [block('checkout.payment', { options: flat }), block('checkout.gov_discount', { options: { card: false } })]),
       pageSection('Review your order', [
         block('checkout.summary', { options: flat }),
@@ -130,7 +130,7 @@ function buildStoreOnePage(): HeroDesignV5 {
           block('checkout.summary', { options: { variant: 'compact', show_subtitle: false }, texts: { title: 'Your order' } }),
           block('checkout.order_type', { options: { variant: 'cards', show_subtitle: false } }),
           block('checkout.schedule'),
-          block('checkout.customer', { options: { show_subtitle: false }, texts: { title: 'Your details' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'clean', show_subtitle: false }, texts: { title: 'Your details' } }),
           block('checkout.loyalty'),
           block('checkout.payment', { options: { variant: 'wallet', show_subtitle: false } }),
           block('checkout.gov_discount'),
@@ -156,7 +156,7 @@ function buildPickupCounter(): HeroDesignV5 {
           block('checkout.store_closed'),
           block('checkout.order_type', { options: { variant: 'buttons', align: 'center' }, texts: { title: 'How would you like it?' } }),
           block('checkout.schedule', { options: { variant: 'pill' } }),
-          block('checkout.customer', { options: { columns: '1' }, texts: { title: 'Your details', subtitle: 'So we know who it’s for' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'clean', columns: '1' }, texts: { title: 'Your details', subtitle: 'So we know who it’s for' } }),
           block('checkout.loyalty'),
           block('checkout.payment', { options: { variant: 'grid' } }),
           block('checkout.summary'),
@@ -196,7 +196,7 @@ function buildKiosk(): HeroDesignV5 {
           block('checkout.store_closed'),
           block('checkout.order_type', { options: { variant: 'chips', show_subtitle: false }, texts: { title: 'How would you like it?' } }),
           block('checkout.schedule', { options: { variant: 'cards' } }),
-          block('checkout.customer', { options: { variant: 'filled', columns: '1', show_subtitle: false }, texts: { title: 'Your details' } }),
+          block('checkout.customer', { options: { ...TIDY_FORM, variant: 'label_inside', columns: '1', show_subtitle: false }, texts: { title: 'Your details' } }),
           block('checkout.loyalty'),
           block('checkout.payment', { options: { variant: 'grid', show_subtitle: false } }),
           block('checkout.summary', { options: { show_subtitle: false } }),
@@ -247,7 +247,7 @@ function buildTimeline(): HeroDesignV5 {
       ], STEP),
       pageSection('Your details', [
         stepMark('2 · Your details', 'User'),
-        block('checkout.customer', { options: { show_subtitle: false } }),
+        block('checkout.customer', { options: { ...TIDY_FORM, variant: 'clean', show_subtitle: false } }),
         block('checkout.loyalty'),
       ], STEP),
       pageSection('Pay', [

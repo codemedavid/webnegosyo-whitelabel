@@ -6,7 +6,7 @@
  * picked was hidden from the merchant, so a vague address could not be checked.
  */
 
-import { classifyDetailKey, findDeliveryDetails, DELIVERY_LANDMARK_KEY, DELIVERY_RIDER_NOTE_KEY, DELIVERY_UNIT_KEY } from "./delivery-details";
+import { classifyDetailKey, findDeliveryDetails, DELIVERY_LANDMARK_KEY, DELIVERY_RIDER_NOTE_KEY, DELIVERY_STORE_NOTE_KEY, DELIVERY_UNIT_KEY } from "./delivery-details";
 import { googleMapsUrl } from "./maps/address-search";
 
 export interface DeliveryCardLine {
@@ -27,7 +27,7 @@ export interface DeliveryCardInput {
   longitude?: number | null;
 }
 
-const BUILT_IN_DETAIL_KEYS = new Set([DELIVERY_UNIT_KEY, DELIVERY_LANDMARK_KEY, DELIVERY_RIDER_NOTE_KEY]);
+const BUILT_IN_DETAIL_KEYS = new Set([DELIVERY_UNIT_KEY, DELIVERY_LANDMARK_KEY, DELIVERY_RIDER_NOTE_KEY, DELIVERY_STORE_NOTE_KEY]);
 
 function coordinate(value: unknown, limit: number): number | null {
   if (typeof value !== "number" && typeof value !== "string") return null;
@@ -47,9 +47,10 @@ function orderPin(input: DeliveryCardInput): { lat: number; lng: number } | null
 export function buildDeliveryCard(input: DeliveryCardInput): DeliveryCard {
   const details = findDeliveryDetails(input.customerData);
   const lines: DeliveryCardLine[] = [
-    { label: "Unit / Floor", value: details.unit },
+    { label: "House / Unit", value: details.unit },
     { label: "Landmark", value: details.landmark },
     { label: "Note to rider", value: details.riderNote },
+    { label: "Store note", value: typeof input.customerData?.[DELIVERY_STORE_NOTE_KEY] === "string" ? input.customerData[DELIVERY_STORE_NOTE_KEY].trim() : "" },
   ].filter((line) => line.value !== "");
   return { mapUrl: googleMapsUrl(input.address ?? "", orderPin(input)), lines };
 }

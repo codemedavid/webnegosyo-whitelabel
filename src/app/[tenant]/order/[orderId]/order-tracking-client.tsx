@@ -39,6 +39,8 @@ export interface OrderTrackingBrand {
   loyaltyOffer: LoyaltyOffer | null
   /** The owner's published Page Designer layout (resolvePageDesign); null/absent = the standard page. */
   design?: HeroDesignV5 | null
+  /** `{store_address}` on a designed page: the order's branch, else the store. */
+  storeAddress?: string
   /** What `theme` was built from (sent only with a design): blocks with their own colours re-resolve it. */
   paint?: TrackingPaint
 }
@@ -271,7 +273,7 @@ export function OrderTrackingClient({
       readyNotice={readyNotice}
       onAcknowledgeReady={acknowledgeReady}
       onBack={goToMenu}
-      designedPage={brand.design ? { design: brand.design, tenantSlug } : null}
+      designedPage={brand.design ? { design: brand.design, tenantSlug, storeAddress: brand.storeAddress } : null}
     />
   )
 }

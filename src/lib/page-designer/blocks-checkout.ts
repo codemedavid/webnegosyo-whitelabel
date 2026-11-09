@@ -144,7 +144,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     id: 'checkout.schedule',
     page: 'checkout',
     label: 'Schedule',
-    description: 'As soon as possible or later (only when advance orders are on).',
+    description: 'As soon as possible or later. Shows only on order types with pre-orders on.',
     icon: 'CalendarClock',
     required: false,
     neededWhen: 'scheduling',
@@ -172,7 +172,8 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
       subtitle('Please provide the following details'),
     ],
     options: CUSTOMER_OPTIONS,
-    parts: ['field', 'label', 'error'],
+    // `button_alt` / `link`: the delivery address's map buttons and links.
+    parts: ['field', 'label', 'error', 'button_alt', 'link'],
   },
   {
     id: 'checkout.loyalty',

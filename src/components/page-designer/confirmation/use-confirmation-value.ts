@@ -46,6 +46,8 @@ export function useConfirmationValue(checkout: ConfirmationSource, grandTotal: n
 
   return {
     storeName: tenant.name,
+    storeAddress: order.storeAddress ?? '',
+    orderKind: order.orderTypeKind ?? null,
     order,
     grandTotal,
     isMessengerEnabled: messengerEnabled,

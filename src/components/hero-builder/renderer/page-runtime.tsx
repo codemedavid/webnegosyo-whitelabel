@@ -28,6 +28,8 @@ export interface PageRuntime {
   page: PageId
   /** e.g. `preparing`; null = page without states (checkout). */
   state: string | null
+  /** The order's type (`order_types.type`) for "Show for"; absent/null = unknown (all shown). */
+  orderKind?: string | null
   tokens: Readonly<Record<string, string>>
   labels: Readonly<Record<string, string | undefined>>
   blocks: Readonly<Partial<Record<string, PageBlockRenderer>>>
@@ -64,6 +66,16 @@ export function usePageRuntime(): PageRuntime | null {
 export function isShownInState(showWhen: readonly string[] | undefined, state: string | null): boolean {
   if (!showWhen?.length || state === null) return true
   return showWhen.includes(state)
+}
+
+/**
+ * Whether a node limited by "Show for" shows for this order's type. A store's
+ * own types (Grab, foodpanda, other) are collected at the counter, so they
+ * follow "Pickup" like everywhere else (order-type-kinds).
+ */
+export function isShownForOrder(showFor: readonly string[] | undefined, orderKind: string | null | undefined): boolean {
+  if (!showFor?.length || !orderKind) return true
+  return showFor.includes(orderKind === 'dine_in' || orderKind === 'delivery' ? orderKind : 'pickup')
 }
 
 export function PageBlockView({ content, isEditor }: { content: PageBlockContent; isEditor: boolean }): ReactNode {

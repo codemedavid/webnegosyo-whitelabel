@@ -56,7 +56,7 @@ export interface TrackingDashboardProps {
   /** The ready alert takes focus when it opens (off in the Studio preview, where the owner is typing). */
   shouldFocusAlert?: boolean
   /** The owner's published tracking design (Page Designer); null/absent = the standard page. */
-  designedPage?: { design: HeroDesignV5; tenantSlug: string } | null
+  designedPage?: { design: HeroDesignV5; tenantSlug: string; storeAddress?: string } | null
   /** What `theme` was built from; lets a designed page's blocks use their own colours. */
   paint?: TrackingPaint
 }
@@ -122,7 +122,7 @@ export function TrackingDashboard({
           }}
         >
           {designedPage ? (
-            <DesignedTracking design={designedPage.design} tenantSlug={designedPage.tenantSlug} blocks={blocks} labels={labels} />
+            <DesignedTracking design={designedPage.design} tenantSlug={designedPage.tenantSlug} blocks={blocks} labels={labels} storeAddress={designedPage.storeAddress} />
           ) : (
             <StandardTracking blocks={blocks} options={options} />
           )}

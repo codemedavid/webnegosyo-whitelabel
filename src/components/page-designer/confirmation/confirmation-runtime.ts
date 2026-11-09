@@ -24,12 +24,13 @@ export function confirmationGrandTotal(order: CompletedOrderData): number {
 }
 
 /**
- * `{store}`, `{name}`, `{order_type}`, `{total}` — the total is the same
+ * `{store}`, `{store_address}`, `{name}`, `{order_type}`, `{total}` — the total is the same
  * grand total the summary prints. A blank value drops the token.
  */
-export function confirmationTokens(storeName: string, order: CompletedOrderData, grandTotal: number): Record<string, string> {
+export function confirmationTokens(storeName: string, order: CompletedOrderData, grandTotal: number, storeAddress = ''): Record<string, string> {
   return {
     store: storeName,
+    store_address: storeAddress,
     name: firstNameToken(order.customerData.customer_name),
     order_type: order.orderTypeName ?? '',
     total: formatPrice(grandTotal),

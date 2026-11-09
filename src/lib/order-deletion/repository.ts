@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { ACTIVE_ORDER_STATUSES, MAX_ORDERS_PER_DELETION } from './constants'
 import { rangeBounds } from './scope'
 import type {
+  ArchivedOrderRef,
   AuditEntry,
   DeletionRecord,
   DeletionScope,
@@ -180,6 +181,24 @@ export function createOrderDeletionRepo(admin: SupabaseClient): OrderDeletionRep
       })
       if (error) fail('restore orders', error)
       return data as unknown as RestoreResult
+    },
+
+    async listArchivedOrders(deletionId, tenantId) {
+      const rows: ArchivedOrderRef[] = []
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await admin
+          .from('order_deletion_archive')
+          .select('order_id, status:order_row->>status, customer_data:order_row->customer_data')
+          .eq('deletion_id', deletionId)
+          .eq('tenant_id', tenantId)
+          .order('order_id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1)
+        if (error) fail('read archived orders', error)
+        const page = (data ?? []) as unknown as { order_id: string; status: string; customer_data: unknown }[]
+        rows.push(...page.map((row) => ({ orderId: row.order_id, status: row.status, customerData: row.customer_data })))
+        if (page.length < PAGE_SIZE) break
+      }
+      return rows
     },
   }
 }

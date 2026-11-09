@@ -76,6 +76,7 @@ export function CheckoutCTA({ checkout, className = '', showTotal = true, proces
     <button
       data-branding-scope="checkout/place-order"
       data-part="button"
+      data-place-order
       type="button"
       onClick={handleProceedToPayment}
       disabled={isProcessing || orderMinimum?.meets === false}

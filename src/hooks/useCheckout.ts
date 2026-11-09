@@ -49,8 +49,11 @@ import { STORE_CLOSED_MESSAGE, STORE_PRELAUNCH_MESSAGE } from '@/lib/store-open-
 import { computeServiceCharge } from '@/lib/order-service-charge'
 import { useCart } from '@/hooks/useCart'
 import { useKioskMode } from '@/hooks/use-kiosk-mode'
+import { readSavedAddresses, savedAddressFromAnswers, withSavedAddress, writeSavedAddresses } from '@/lib/checkout/saved-addresses'
+import { isPinSkipped, unpinnedDeliveryProblem } from '@/lib/delivery/unpinned-delivery'
 import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
+import { storeAddressToken } from '@/lib/page-designer/store-address'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
@@ -345,7 +348,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       toast.error('Lalamove delivery is unavailable with QR checkout. Please choose pickup or contact the store.')
       return true
     }
-    const message = getDeliveryQuoteError()
+    // "I can't find my place": no quote to wait for, but the store must be able to reach them.
+    const message = isPinSkipped(customerData)
+      ? unpinnedDeliveryProblem(customerData)
+      : getDeliveryQuoteError()
     if (!message) return false
     toast.error(message)
     return true
@@ -824,6 +830,12 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       }).catch(error => console.warn('[Checkout] Proactive send error:', error))
     }
 
+    // Next time this customer is one tap from here. Never on a counter tablet.
+    const savedAddress = !isKiosk && selectedOrderTypeData?.type === 'delivery' ? savedAddressFromAnswers(customerData) : null
+    if (savedAddress) {
+      writeSavedAddresses(window.localStorage, tenantSlug, withSavedAddress(readSavedAddresses(window.localStorage, tenantSlug), savedAddress))
+    }
+
     // Save tracking data for order status page
     if (orderId && result.trackingToken) {
       setTrackingOrderId(orderId)
@@ -1019,6 +1031,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         discounts: appliedDiscounts,
         customerData: normalizedCustomerData,
         orderTypeName: selectedOrderTypeData?.name ?? null,
+        orderTypeKind: selectedOrderTypeData?.type ?? null,
+        storeAddress: storeAddressToken(tenant, outlet.choices.find((entry) => entry.outlet.id === outlet.selectedOutletId)?.outlet),
         scheduledForLabel,
         paymentMethod: selectedPaymentMethodData,
         messengerMessage: message,

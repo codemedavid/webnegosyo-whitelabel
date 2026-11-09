@@ -21,6 +21,10 @@ export interface AddressFieldTheme {
   icon: string
   /** The "use my location" / "pick on the map" buttons. */
   button: string
+  /** The text links under the box and the strip on the map. */
+  link: string
+  /** The strip across a map that has no pin yet. */
+  mapStrip: string
   /** Mistake lines (location refused, map failed, pin outside the country). */
   error: string
   /** Secondary lines ("Pin set — the rider goes here", preview failed). */
@@ -28,6 +32,6 @@ export interface AddressFieldTheme {
 }
 
 /** Part marks for a themed field, so the Page Designer can style it; nothing for an unthemed one. */
-export function addressFieldPart(theme: AddressFieldTheme | undefined, part: 'field' | 'button-alt' | 'error' | 'muted'): string | undefined {
+export function addressFieldPart(theme: AddressFieldTheme | undefined, part: 'field' | 'button-alt' | 'link' | 'error' | 'muted'): string | undefined {
   return theme ? part : undefined
 }
