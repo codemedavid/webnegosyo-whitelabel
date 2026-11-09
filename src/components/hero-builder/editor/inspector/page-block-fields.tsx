@@ -160,7 +160,7 @@ export function ShowForGroup({ node, api }: { node: Section | Widget; api: HeroB
       ) : (
         <>
           <p className="mb-2 text-[11px] leading-snug text-neutral-500">
-            {current.length ? 'Only shows on these orders. The preview here always shows it.' : 'Shows on every order. Pick order types to show it only for them.'}
+            {current.length ? 'Only shows on these orders. Pickup includes Grab, foodpanda and your other counter orders. The preview here always shows it.' : 'Shows on every order. Pick order types to show it only for them.'}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {ORDER_KINDS.map((kind) => {

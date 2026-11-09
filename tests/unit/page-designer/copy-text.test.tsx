@@ -123,6 +123,13 @@ describe('Show for: order type', () => {
     expect(isShownForOrder(['delivery'], 'grab')).toBe(false)
   })
 
+  it('treats a store’s own order types as pickup', () => {
+    expect(isShownForOrder(['dine_in', 'pickup', 'delivery'], 'grab')).toBe(true)
+    expect(isShownForOrder(['pickup'], 'foodpanda')).toBe(true)
+    expect(isShownForOrder(['pickup'], 'other')).toBe(true)
+    expect(isShownForOrder(['dine_in'], 'grab')).toBe(false)
+  })
+
   it('hides an element from other order types on the storefront', () => {
     const { container } = renderPage([limited], { orderKind: 'pickup' })
     expect(container.querySelector('.hb-copy')).toBeNull()
@@ -223,7 +230,7 @@ describe('Show for in a step-by-step page', () => {
     )
     const { rerender, container } = render(page('delivery'))
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    const shownStep = () => container.querySelector('[data-step]:not([hidden])')?.textContent
+    const shownStep = () => container.querySelector('[data-layout-section]:not([hidden])')?.textContent
     expect(shownStep()).toContain('Second step')
     rerender(page('pickup'))
     expect(shownStep()).toContain('Second step')

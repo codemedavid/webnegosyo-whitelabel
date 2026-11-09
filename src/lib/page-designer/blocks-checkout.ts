@@ -144,7 +144,7 @@ export const CHECKOUT_BLOCKS: readonly PageBlockDef[] = [
     id: 'checkout.schedule',
     page: 'checkout',
     label: 'Schedule',
-    description: 'As soon as possible or later (only when advance orders are on).',
+    description: 'As soon as possible or later. Shows only on order types with pre-orders on.',
     icon: 'CalendarClock',
     required: false,
     neededWhen: 'scheduling',

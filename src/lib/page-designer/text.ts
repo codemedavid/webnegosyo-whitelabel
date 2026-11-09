@@ -64,9 +64,13 @@ export function labelKeysInUse(): string[] {
   return Object.values(PAGE_BLOCKS).flatMap((blocks) => blocks.flatMap((b) => b.texts.map((t) => t.labelKey).filter((k): k is string => !!k)))
 }
 
-/** First name only: "Maria Clara Santos" → "Maria". Guests typed anything, keep it short. */
+/**
+ * First name only: "Maria Clara Santos" → "Maria". Guests typed anything, keep it
+ * short. Tokens land before the text's markup is read, so a guest's name must not
+ * carry any: `[Pay](https://…)` would be a link on the page.
+ */
 export function firstNameToken(name: unknown): string {
   if (typeof name !== 'string') return ''
   const first = name.trim().split(/\s+/)[0] ?? ''
-  return first.slice(0, 40)
+  return first.replace(/[*_~`[\]()<>]/g, '').slice(0, 40)
 }

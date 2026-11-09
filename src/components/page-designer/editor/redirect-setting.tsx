@@ -22,10 +22,25 @@ const MODES: readonly { mode: ConfirmationRedirect; title: string; body: string 
 export function RedirectSetting({ tenantId, initial }: { tenantId: string; initial: ConfirmationRedirectSetting }) {
   const [saved, setSaved] = useState(initial)
   const [draft, setDraft] = useState(initial)
+  // The box as typed, so it can be cleared and retyped; `draft` holds the last valid number.
+  const [secondsText, setSecondsText] = useState(String(initial.seconds))
   const [isOpen, setIsOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const isDirty = draft.mode !== saved.mode || (draft.mode === 'countdown' && draft.seconds !== saved.seconds)
   const summary = saved.mode === 'instant' ? 'Skip to tracking' : saved.mode === 'stay' ? 'Stays on screen' : `Tracking after ${saved.seconds}s`
+
+  const changeSeconds = (typed: string) => {
+    setSecondsText(typed)
+    const seconds = Math.round(Number(typed))
+    if (typed.trim() && seconds >= REDIRECT_SECONDS.min && seconds <= REDIRECT_SECONDS.max) setDraft((d) => ({ ...d, seconds }))
+  }
+  // Closing without saving drops the draft, so reopening shows what is stored.
+  const changeOpen = (next: boolean) => {
+    setIsOpen(next)
+    if (next) return
+    setDraft(saved)
+    setSecondsText(String(saved.seconds))
+  }
 
   const save = () =>
     startTransition(async () => {
@@ -40,8 +55,8 @@ export function RedirectSetting({ tenantId, initial }: { tenantId: string; initi
     })
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger className="flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-100" title="After the order is placed">
+    <Dialog open={isOpen} onOpenChange={changeOpen}>
+      <DialogTrigger aria-label={`After the order is placed: ${summary}`} className="flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-100" title="After the order is placed">
         <Timer className="h-4 w-4" />
         <span className="hidden whitespace-nowrap 2xl:inline">{summary}</span>
       </DialogTrigger>
@@ -78,8 +93,9 @@ export function RedirectSetting({ tenantId, initial }: { tenantId: string; initi
               type="number"
               min={REDIRECT_SECONDS.min}
               max={REDIRECT_SECONDS.max}
-              value={draft.seconds}
-              onChange={(e) => setDraft((d) => ({ ...d, seconds: Math.round(Number(e.target.value)) || REDIRECT_SECONDS.fallback }))}
+              value={secondsText}
+              onChange={(e) => changeSeconds(e.target.value)}
+              onBlur={() => setSecondsText(String(draft.seconds))}
               className="h-8 w-20 rounded-md border border-neutral-200 px-2 text-right text-sm"
             />
           </label>

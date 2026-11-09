@@ -91,3 +91,15 @@ describe('published design columns', () => {
     }
   })
 })
+
+describe('firstNameToken', () => {
+  it('keeps a real first name', () => {
+    expect(firstNameToken('Maria Clara Santos')).toBe('Maria')
+    expect(firstNameToken("Jean-Luc O'Brien")).toBe("Jean-Luc")
+  })
+
+  it('carries no markup a guest typed, so it can never become a link', () => {
+    expect(firstNameToken('[Pay](https://evil.example)')).toBe('Payhttps://evil.example')
+    expect(firstNameToken('**Maria**')).toBe('Maria')
+  })
+})
