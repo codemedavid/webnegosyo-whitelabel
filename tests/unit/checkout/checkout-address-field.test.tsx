@@ -131,24 +131,19 @@ describe("I can't find my place", () => {
     return seen
   }
 
-  it('is offered where a pin is needed, and says what happens next', async () => {
-    const seen = await renderPinRequired({ lalamove_enabled: true }, { delivery_address: 'Purok 3' })
-    fireEvent.click(screen.getByRole('button', { name: "I can't find my place on the map" }))
-    expect(seen[seen.length - 1].delivery_pin_skipped).toBe('true')
-    expect(screen.getByRole('status')).toHaveTextContent('The store will call you')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Try the map again' }))
-    expect(seen[seen.length - 1].delivery_pin_skipped).toBeUndefined()
-  })
-
-  it('is not offered where a pin is optional, or once there is one', async () => {
-    await renderPinRequired({}, { delivery_address: 'Purok 3' })
+  // Owner, 2026-11-09: turned off. On Lalamove / per-km stores it let any order
+  // skip the delivery fee and the radius; the customer must drop a pin instead.
+  it('is never offered, even where a pin is needed', async () => {
+    await renderPinRequired({ lalamove_enabled: true }, { delivery_address: 'Purok 3' })
+    expect(screen.queryByRole('button', { name: "I can't find my place on the map" })).toBeNull()
+    await renderPinRequired({ distance_delivery_enabled: true }, { delivery_address: 'Purok 3' })
     expect(screen.queryByRole('button', { name: "I can't find my place on the map" })).toBeNull()
   })
 
-  it('is not offered with a pin', async () => {
-    await renderPinRequired({ lalamove_enabled: true }, { delivery_address: 'Purok 3', delivery_lat: '14.5', delivery_lng: '121' })
-    expect(screen.queryByRole('button', { name: "I can't find my place on the map" })).toBeNull()
+  it('ignores a mark left from an older checkout', async () => {
+    await renderPinRequired({ lalamove_enabled: true }, { delivery_address: 'Purok 3', delivery_pin_skipped: 'true' })
+    expect(screen.queryByText(/without a pin/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try the map again' })).toBeNull()
   })
 })
 

@@ -14,7 +14,7 @@ import { Plus } from 'lucide-react'
 import type { AddressFieldTheme, PinCheckView } from '@/components/shared/address-autocomplete'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { resolveAddressMap, type AddressMapChoice } from '@/lib/checkout/address-map'
-import { applyDeliveryAddressChange, DELIVERY_PIN_SKIPPED_KEY } from '@/lib/checkout/customer-field-input'
+import { applyDeliveryAddressChange } from '@/lib/checkout/customer-field-input'
 import { readSavedAddresses, withoutSavedAddress, writeSavedAddresses, type SavedAddress } from '@/lib/checkout/saved-addresses'
 import {
   DELIVERY_LANDMARK_KEY,
@@ -182,9 +182,6 @@ export function CheckoutAddressField({
 
   const addressText = customerData[fieldName] || ''
   const pinPoint = parseLatLng(customerData.delivery_lat, customerData.delivery_lng)
-  const isPinSkipped = customerData[DELIVERY_PIN_SKIPPED_KEY] === 'true' && !pinPoint
-  const mustPin = Boolean(tenant?.lalamove_enabled || tenant?.distance_delivery_enabled)
-  const canSkipPin = mustPin && !pinPoint && addressText.trim() !== ''
   const hasNoAddressYet = addressText.trim() === '' && !pinPoint
 
   const useSavedAddress = (saved: SavedAddress) => {
@@ -199,13 +196,6 @@ export function CheckoutAddressField({
     const next = withoutSavedAddress(savedAddresses, saved)
     setSavedAddresses(next)
     if (slug) writeSavedAddresses(window.localStorage, slug, next)
-  }
-  const setPinSkipped = (isSkipped: boolean) => {
-    setCustomerData((previous) => {
-      /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
-      const { [DELIVERY_PIN_SKIPPED_KEY]: _skipped, ...rest } = previous
-      return isSkipped ? { ...rest, [DELIVERY_PIN_SKIPPED_KEY]: 'true' } : rest
-    })
   }
 
   return (
@@ -227,30 +217,11 @@ export function CheckoutAddressField({
         required={isRequired}
         mapsEnabled={(tenant?.mapbox_enabled ?? true) && map !== 'hidden'}
         mapDisplay={map === 'hidden' ? undefined : map}
-        hidesPinNudge={isPinSkipped}
         biasCenter={biasCenter}
         purpose="delivery"
         check={check}
         theme={theme}
       />
-      {canSkipPin && !isPinSkipped ? (
-        <button
-          type="button"
-          onClick={() => setPinSkipped(true)}
-          data-part="link"
-          className={`inline-flex min-h-10 items-center text-sm font-medium underline-offset-2 hover:underline ${theme.link}`}
-        >
-          I can&apos;t find my place on the map
-        </button>
-      ) : null}
-      {canSkipPin && isPinSkipped ? (
-        <div role="status" data-part="muted" className={`space-y-1 text-sm ${theme.muted}`}>
-          <p>No problem. We&apos;ll send your order without a pin. The store will call you to confirm the spot and the delivery fee.</p>
-          <button type="button" onClick={() => setPinSkipped(false)} data-part="link" className={`inline-flex min-h-10 items-center font-medium ${theme.link}`}>
-            Try the map again
-          </button>
-        </div>
-      ) : null}
       {detailFields.length > 0 && !areDetailsShown ? (
         <button
           type="button"
