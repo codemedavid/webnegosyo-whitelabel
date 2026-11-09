@@ -298,7 +298,7 @@ interface OrderSpec {
 
 const L = {
   inasal: (q = 1): Line => ({ itemId: IDS.items.inasal, name: 'QA Chicken Inasal', price: 189, quantity: q, variation: 'Regular, Paa (leg)', category: 'QA Seed Menu' }),
-  inasalLarge: (q = 1): Line => ({ itemId: IDS.items.inasal, name: 'QA Chicken Inasal', price: 244, quantity: q, variation: 'Large, Pecho (breast)', addons: ['Java sauce'], category: 'QA Seed Menu' }),
+  inasalLarge: (q = 1): Line => ({ itemId: IDS.items.inasal, name: 'QA Chicken Inasal', price: 259, quantity: q, variation: 'Large, Pecho (breast)', addons: ['Java sauce'], category: 'QA Seed Menu' }),
   coffee: (q = 1): Line => ({ itemId: IDS.items.coffee, name: 'QA Iced Coffee', price: 150, quantity: q, variation: '16 oz', category: 'QA Seed Menu' }),
   fries: (q = 1): Line => ({ itemId: IDS.items.fries, name: 'QA Fries', price: 80, quantity: q, category: 'QA Seed Menu' }),
   bread: (q = 1): Line => ({ itemId: IDS.items.cheeseBread, name: 'QA Cheese Bread', price: 45, quantity: q, category: 'QA Seed Menu' }),
@@ -322,9 +322,9 @@ const ORDERS: OrderSpec[] = [
   { n: 3, type: 'delivery', status: 'preparing', hoursAgo: 1, guest: 'Pedro', deliveryFee: 79, lines: [L.inasal(), L.bread(2)], extra: { ...pinned('', 'Green gate', '', 'Granja St, Lucena City'), qa_gift_wrap: 'yes' } },
   { n: 4, type: 'pickup', status: 'ready', hoursAgo: 1.5, guest: 'Ana', lines: [L.coffee(2), L.fries()], extra: { qa_bag: 'Small' } },
   { n: 5, type: 'pickup', status: 'delivered', hoursAgo: 26, guest: 'Jose', paid: true, lines: [L.inasal(), L.coffee()] },
-  { n: 6, type: 'dine_in', status: 'delivered', hoursAgo: 50, guest: 'Liza', paid: true, lines: [L.inasalLarge(2), L.fries(), L.bread()], extra: { table_number: '7', qa_birthday: 'yes' } },
+  { n: 6, type: 'dine_in', status: 'delivered', hoursAgo: 50, guest: 'Liza', paid: true, lines: [L.inasalLarge(2), L.fries()], extra: { table_number: '7', qa_birthday: 'yes' } },
   { n: 7, type: 'delivery', status: 'cancelled', hoursAgo: 72, guest: 'Carlo', deliveryFee: 59, cancelReason: 'QA seed: guest cancelled', lines: [L.fries(3)], extra: pinned('Rm 201', 'Near the plaza', '', 'Rizal St, Lucena City') },
-  // "I can't find my place": no pin, no fee, the store calls.
+  // Legacy "I can't find my place" order (the button is off since 2026-11-10; the admin banner still reads old orders).
   { n: 8, type: 'delivery', status: 'pending', hoursAgo: 0.1, guest: 'Bea', deliveryFee: 0, lines: [L.inasal(), L.fries()], extra: { delivery_address: 'Purok 3, Brgy. Ibabang Dupay, Lucena', delivery_pin_skipped: 'true', delivery_landmark: 'Blue house after the basketball court' } },
   { n: 9, type: 'dine_in', status: 'pending', hoursAgo: 0.3, guest: 'Miguel', lines: [L.coffee(), L.bread()], extra: { table_number: '3' } },
   { n: 10, type: 'pickup', status: 'confirmed', hoursAgo: 0.8, guest: 'Rosa', lines: [L.inasal(3)], extra: { qa_pickup_day: new Date(Date.now() + 24 * HOUR_MS).toISOString().slice(0, 10), qa_bag: 'Large' } },
@@ -413,6 +413,38 @@ async function seedOrders(db: SupabaseClient, tenant: QaTenant, types: Record<st
   const { data: lines, error: linesError } = await db.from('order_items').upsert(items).select('id')
   if (linesError) throw new Error(`order_items: ${linesError.message}`)
   assertRows('order_items upsert', lines, items.length)
+
+  // A line dropped from the spec stays in the table under upsert: remove it, so
+  // a re-run leaves exactly the lines (and totals) above.
+  const keep = new Set(items.map((item) => item.id))
+  const { data: stored, error: storedError } = await db.from('order_items').select('id').in('order_id', seedOrderIds())
+  if (storedError) throw new Error(`order_items read: ${storedError.message}`)
+  const stale = (stored as { id: string }[]).map((row) => row.id).filter((id) => !keep.has(id))
+  if (stale.length) {
+    const { data: gone, error: goneError } = await db.from('order_items').delete().in('id', stale).select('id')
+    if (goneError) throw new Error(`order_items delete: ${goneError.message}`)
+    assertRows('order_items delete (stale)', gone, stale.length)
+  }
+
+  await deductSeededStock(tenant)
+}
+
+/**
+ * The seed writes orders straight into the table, so checkout's own stock
+ * deduction never runs, and the sweep skips anything older than 24 hours.
+ * Spend each live order through the SAME claimed depletion checkout uses; the
+ * claim makes a re-run (or an order the sweep already took) a no-op.
+ */
+async function deductSeededStock(tenant: QaTenant) {
+  const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+  const { buildDepletionItemsFromOrderRows } = await import('@/lib/inventory/customer-order-items')
+  const live = ORDERS.filter((spec) => spec.status !== 'cancelled')
+  for (const spec of live) {
+    const rows = spec.lines.map((line) => ({ menu_item_id: line.itemId, quantity: line.quantity }))
+    const outcome = await applyOrderStockBestEffort(tenant.id, orderId(spec.n), buildDepletionItemsFromOrderRows(rows), 'sale', 0, null, { context: { source: 'system' } })
+    if (outcome === 'failed') throw new Error(`stock deduction failed for order #${spec.n}`)
+  }
+  console.log(`  ✓ stock: ${live.length} live orders deducted (already-deducted ones are no-ops)`)
 }
 
 // ── Tenant columns: snapshot, then Page Designer designs ────────────────────

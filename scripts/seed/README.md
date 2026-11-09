@@ -33,8 +33,9 @@ testing changed them.
   created, so SMS automations never text anyone.
 - Inserting orders fires the order push trigger: sample-demo has one merchant device in `push_tokens`
   (the demo owner's Android), which rings once per new order.
-- Stock changes go through `stock_movements` (service role); the platform's deduction worker then
-  records `sale` movements for the seeded orders on its own.
+- Stock changes go through `stock_movements` (service role); each live seeded order is then spent
+  through checkout's own claimed depletion (`applyOrderStockBestEffort`; a re-run is a no-op), because
+  the background sweep skips orders older than 24 hours.
 - Tenant columns are saved to `scripts/seed/.sample-demo-snapshot.json` (gitignored) before the first
   write; teardown restores them. The snapshot is machine-local: run teardown from the same checkout.
   Pre-seed values (2026-11-09): all three `*_design` null and `*_design_enabled` false,
