@@ -192,3 +192,7 @@ R2_ACCESS_KEY_ID=                                    # R2 API token (Object Read
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET=webnegosyo-media                           # optional, this is the default
 STORAGE_UPLOAD_PROVIDER=imagekit                     # "r2" sends NEW uploads to R2 (build then requires R2_*); flip back any time
+
+# ---- Facebook Login for Business + scheduled jobs ------------------------------
+FACEBOOK_LOGIN_CONFIG_ID=                            # Login for Business configuration id (replaces `scope`, #97)
+CRON_SECRET=                                         # Bearer secret Vercel cron sends (SMS automations tick, inventory order-stock sweep)
