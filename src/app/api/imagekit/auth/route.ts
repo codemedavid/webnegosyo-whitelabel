@@ -4,6 +4,7 @@ import { resolveImageKitUploader, type UploaderResolution } from '@/lib/imagekit
 import { sanitizeUploadFileName, sanitizeUploadFolder } from '@/lib/imagekit-signature'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
+import { authorizeUploadFolder } from '@/lib/storage/upload-policy'
 
 /**
  * Issue ImageKit client-upload credentials to STORE STAFF.
@@ -56,10 +57,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (resolution.status !== 'authorized') return refusal(resolution)
 
   const body = (await request.json().catch(() => null)) as { folder?: unknown; fileName?: unknown } | null
-  const folder = typeof body?.folder === 'string' ? sanitizeUploadFolder(body.folder) : null
-  if (!folder) {
+  const requested = typeof body?.folder === 'string' ? sanitizeUploadFolder(body.folder) : null
+  if (!requested) {
     return respond({ error: 'Invalid upload folder.' }, 400)
   }
+  const decision = authorizeUploadFolder(resolution.uploader, requested)
+  if (!decision.ok) {
+    return respond({ error: 'You do not have permission to upload images here.' }, 403)
+  }
+  const { folder } = decision
   const fileName = sanitizeUploadFileName(typeof body?.fileName === 'string' ? body.fileName : '')
 
   const signed = createSignedUploadToken({ folder, fileName })

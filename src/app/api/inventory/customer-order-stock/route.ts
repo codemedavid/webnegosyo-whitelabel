@@ -10,6 +10,7 @@ import {
 } from '@/lib/inventory/customer-order-items'
 import { applyOrderStockBestEffort } from '@/lib/inventory/order-stock-service'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
+import { refuseOverIpLimit } from '@/lib/http/rate-limit-guard'
 
 /**
  * POST /api/inventory/customer-order-stock
@@ -31,7 +32,12 @@ import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
  * body are ignored on both paths. The worst a forged call can achieve is
  * triggering the depletion that order had already earned, and the ledger's
  * order+direction guard means that happens once. (The ledger's order_id is
- * TEXT precisely so a Convex id fits alongside platform UUIDs.)
+ * TEXT precisely so a Convex id fits alongside platform UUIDs.) A cancelled
+ * order earned nothing, so it spends nothing.
+ *
+ * No tracking token is required: the white-labeled builds in the field send only
+ * these two ids (`mobile/lib/order-stock-notify.ts`), so requiring one would stop
+ * their stock moving until each merchant's app is rebuilt.
  *
  * Best-effort by the same reasoning as every other depletion path: by the time
  * this runs the order is saved and the customer is looking at a confirmation. A
@@ -48,14 +54,27 @@ interface TenantStockConfig {
   convex_deploy_key: string | null
 }
 
+/**
+ * One call per placed order, so this only limits a script. Generous, since a
+ * refused call moves no stock and nothing retries it: a whole floor can share a
+ * Wi-Fi IP and Philippine carriers put many phones behind one address.
+ */
+const STOCK_IP_LIMIT = { limit: 60, windowSec: 60 }
+const MAX_ID_LENGTH = 128
+
 /** A diner has no account, so the audit log names the path and nobody. */
 const CUSTOMER_APP_AUDIT = { context: { source: 'customer_app' as const } }
 
 /** Shape of `orders:getOrderById` as far as depletion cares. */
 interface ConvexOrderForStock {
+  status?: string
   customerData?: unknown
   outletId?: string | null
   items?: unknown[]
+}
+
+function orderCancelled(): NextResponse {
+  return NextResponse.json({ success: true, skipped: 'order_cancelled' })
 }
 
 /**
@@ -94,6 +113,8 @@ async function depleteConvexOrder(
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
+  if (order.status === 'cancelled') return orderCancelled()
+
   const savedItems = buildDepletionItemsFromConvexOrderItems(Array.isArray(order.items) ? order.items : [])
   const items = readInventorySelectionSnapshot(order.customerData, savedItems) ?? savedItems
   if (items.length > 0) {
@@ -126,13 +147,15 @@ async function depletePlatformOrder(
   // shop they have nothing to do with.
   const { data: order } = await supabase
     .from('orders')
-    .select('tenant_id, outlet_id, customer_data')
+    .select('tenant_id, outlet_id, status, customer_data')
     .eq('id', orderId)
     .single()
 
   if (!order || order.tenant_id !== tenantId) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
+
+  if ((order as { status?: string | null }).status === 'cancelled') return orderCancelled()
 
   const { data: lines } = await supabase
     .from('order_items')
@@ -157,11 +180,17 @@ async function depletePlatformOrder(
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const overLimit = await refuseOverIpLimit(request, 'customer-order-stock', STOCK_IP_LIMIT)
+  if (overLimit) return overLimit
+
   const body = await request.json().catch(() => null)
   const tenantId = body?.tenantId
   const orderId = body?.orderId
 
-  if (typeof tenantId !== 'string' || typeof orderId !== 'string') {
+  if (
+    typeof tenantId !== 'string' || typeof orderId !== 'string' ||
+    tenantId.length > MAX_ID_LENGTH || orderId.length > MAX_ID_LENGTH
+  ) {
     return NextResponse.json(
       { error: 'tenantId and orderId are required' },
       { status: 400 },

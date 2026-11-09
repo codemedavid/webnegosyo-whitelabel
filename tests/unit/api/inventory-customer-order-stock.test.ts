@@ -22,6 +22,11 @@ jest.mock('@/lib/inventory/order-stock-service', () => ({
   applyOrderStockBestEffort: (...args: unknown[]) => applyOrderStockBestEffort(...args),
 }))
 
+const mockStockLimit = jest.fn(async (..._args: unknown[]) => ({ allowed: true, remaining: 10, retryAfterSec: 0 }))
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: (...args: unknown[]) => mockStockLimit(...args),
+}))
+
 const convexQuery = jest.fn()
 const createConvexServerClient = jest.fn((..._args: unknown[]) => ({ query: convexQuery }))
 jest.mock('@/lib/convex/server', () => ({
@@ -414,5 +419,45 @@ describe('customer order stock route — backend comes from resolveOrderBackend'
     expect(await response.json()).toEqual({ success: true, skipped: 'unsupported_backend' })
     expect(from).not.toHaveBeenCalledWith('orders')
     expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
+  })
+
+  it('spends nothing for a cancelled order', async () => {
+    stubTables({
+      order: { tenant_id: TENANT, outlet_id: null, status: 'cancelled' } as never,
+      lines: [{ menu_item_id: 'dish-1', quantity: 2 }],
+    })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
+
+    expect(await response.json()).toEqual({ success: true, skipped: 'order_cancelled' })
+    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
+  })
+
+  it('spends nothing for a cancelled Convex order', async () => {
+    stubTables({
+      tenant: { order_backend: 'convex', convex_deployment_url: 'https://x.convex.cloud', convex_deploy_key: 'key' },
+    })
+    convexQuery.mockResolvedValueOnce({ status: 'cancelled', items: [{ menuItemId: 'dish-1', quantity: 1 }] })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
+
+    expect(await response.json()).toEqual({ success: true, skipped: 'order_cancelled' })
+    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
+  })
+
+  it('counts per IP and refuses before any read once over', async () => {
+    from.mockClear()
+    mockStockLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 20 })
+    const request = new NextRequest('http://localhost/api/inventory/customer-order-stock', {
+      method: 'POST',
+      headers: { 'x-real-ip': '203.0.113.8' },
+      body: JSON.stringify({ tenantId: TENANT, orderId: ORDER }),
+    })
+
+    const response = await POST(request)
+
+    expect(response.status).toBe(429)
+    expect(mockStockLimit.mock.calls.at(-1)?.[0]).toBe('customer-order-stock:203.0.113.8')
+    expect(from).not.toHaveBeenCalled()
   })
 })

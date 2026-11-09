@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { taxProfileToRow } from '@/lib/gov-discount'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { canManageStaff } from '@/lib/staff-permissions'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { createClient } from '@/lib/supabase/server'
 import { taxSettingsFormSchema } from '@/lib/tax-settings/form-schema'
 import { profileFromFormValues } from '@/lib/tax-settings/form-mapping'
@@ -22,7 +22,7 @@ import type { Database } from '@/types/database'
 type TaxProfileInsert = Database['public']['Tables']['store_tax_profiles']['Insert']
 
 const tenantIdSchema = z.string().uuid()
-const PIN_BURST = { maxRequests: 10, windowMs: 60_000 }
+const PIN_BURST = { limit: 10, windowSec: 60, onRedisFailure: 'instance' as const }
 
 function settingsPath(tenantSlug: string): string {
   return `/${encodeURIComponent(tenantSlug)}/admin/settings/tax`
@@ -111,7 +111,7 @@ export async function setApprovalPinAction(tenantId: string, input: unknown): Pr
   const caller = await signedInCaller(tenantId)
   if (!caller) return { success: false, error: 'Please sign in again to set your PIN.' }
 
-  if (!checkRateLimit(`gov-pin:${caller.user.id}`, PIN_BURST).allowed) {
+  if (!(await checkRateLimit(`gov-pin:${caller.user.id}`, PIN_BURST)).allowed) {
     return { success: false, error: 'Too many tries. Wait a minute and try again.' }
   }
 

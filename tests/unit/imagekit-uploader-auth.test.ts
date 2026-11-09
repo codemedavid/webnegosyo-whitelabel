@@ -11,7 +11,7 @@ jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
 
 interface FakeSession {
   user: { id: string } | null
-  appUser: { role: string; tenant_id: string | null } | null
+  appUser: { role: string; tenant_id: string | null; is_owner?: boolean; permissions?: string[] | null } | null
 }
 
 function fakeSupabase({ user, appUser }: FakeSession) {
@@ -53,8 +53,23 @@ describe('resolveImageKitUploader', () => {
 
     const result = await resolveImageKitUploader(request({ authorization: 'Bearer token-abc' }))
 
-    expect(result).toEqual({ status: 'authorized', uploader: { userId: 'u1', role: 'admin', tenantId: 't1' } })
+    expect(result).toEqual({ status: 'authorized', uploader: { userId: 'u1', role: 'admin', tenantId: 't1', isOwner: false, permissions: null } })
     expect(cookieClient).not.toHaveBeenCalled()
+  })
+
+  it('hands the upload policy the account\'s key list and owner flag', async () => {
+    const { bearerClient, resolveImageKitUploader } = await load()
+    bearerClient.mockReturnValue(fakeSupabase({
+      user: { id: 'u1' },
+      appUser: { role: 'admin', tenant_id: 't1', is_owner: true, permissions: ['kitchen'] },
+    }) as never)
+
+    const result = await resolveImageKitUploader(request({ authorization: 'Bearer token-abc' }))
+
+    expect(result).toEqual({
+      status: 'authorized',
+      uploader: { userId: 'u1', role: 'admin', tenantId: 't1', isOwner: true, permissions: ['kitchen'] },
+    })
   })
 
   it('denies a bearer token that does not resolve to a user', async () => {
@@ -72,7 +87,7 @@ describe('resolveImageKitUploader', () => {
 
     const result = await resolveImageKitUploader(request({ cookie: 'sb-db-auth-token=abc' }))
 
-    expect(result).toEqual({ status: 'authorized', uploader: { userId: 'u2', role: 'superadmin', tenantId: null } })
+    expect(result).toEqual({ status: 'authorized', uploader: { userId: 'u2', role: 'superadmin', tenantId: null, isOwner: false, permissions: null } })
   })
 
   it('denies a signed-in user with no admin membership', async () => {
