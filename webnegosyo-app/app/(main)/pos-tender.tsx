@@ -194,7 +194,7 @@ export default function PosTenderScreen() {
   // the sale it is for: the same order id is kept across the PIN, because the
   // server's approval is bound to it (lib/pos-stock-clearance.ts).
   const [stockApproval, setStockApproval] = useState<(StockApprovalRequest & { ask: ClearanceAsk }) | null>(null);
-  const stockSaleRef = useRef<{ key: string; orderId: string; isApproved: boolean } | null>(null);
+  const stockSaleRef = useRef<{ key: string; orderId: string; isApproved: boolean; isApprovalUnreachable?: boolean } | null>(null);
   const handleCompleteRef = useRef<() => Promise<void>>(async () => {});
   const [tenderedText, setTenderedText] = useState("");
   const [reference, setReference] = useState("");
@@ -714,6 +714,7 @@ export default function PosTenderScreen() {
         isPlatform,
         lines: stockLines,
         isApproved: pendingStock?.isApproved === true,
+        isApprovalUnreachable: pendingStock?.isApprovalUnreachable === true,
         isOffline,
       });
       if (stockGate.kind === "needs_manager") {
@@ -891,15 +892,19 @@ export default function PosTenderScreen() {
         ...stockApproval.ask,
         approval: { approverUserId: approver.userId, pin },
       });
-      if (answer.kind === "go") {
+      // Unreachable (or the server could not record the approval): the sale is
+      // kept the offline way, accepted and flagged if it oversold, rather than
+      // left stuck behind the PIN sheet with the customer waiting.
+      if (answer.kind === "go" || answer.kind === "unreachable") {
         if (stockSaleRef.current?.orderId === stockApproval.ask.orderId) {
-          stockSaleRef.current = { ...stockSaleRef.current, isApproved: true };
+          stockSaleRef.current = answer.kind === "go"
+            ? { ...stockSaleRef.current, isApproved: true }
+            : { ...stockSaleRef.current, isApprovalUnreachable: true };
         }
         setStockApproval(null);
         void handleCompleteRef.current();
         return null;
       }
-      if (answer.kind === "unreachable") return "Can't reach the server. Check the connection and try again.";
       return answer.message;
     },
     [stockApproval],

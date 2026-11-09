@@ -193,6 +193,12 @@ export interface SaleStockGateInput {
   lines: ClearanceLine[];
   /** A manager already approved this exact sale (same id, same lines). */
   isApproved: boolean;
+  /**
+   * The manager's approval for this exact sale could not reach the server (or
+   * the server could not record it): kept the offline way, like any sale the
+   * server never answered for, instead of stranding it behind the PIN sheet.
+   */
+  isApprovalUnreachable?: boolean;
   isOffline: () => boolean;
   request?: (ask: ClearanceAsk) => Promise<ClearanceAnswer>;
 }
@@ -204,6 +210,7 @@ export interface SaleStockGateInput {
  */
 export async function gateSaleStock(input: SaleStockGateInput): Promise<SaleStockGate> {
   if (input.isApproved) return { kind: "proceed", offline: false };
+  if (input.isApprovalUnreachable) return { kind: "proceed", offline: true };
   const step = shouldAskForClearance({
     isPlatform: input.isPlatform,
     policy: knownStockPolicyFor(input.tenantId),

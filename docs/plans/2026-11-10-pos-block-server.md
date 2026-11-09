@@ -77,8 +77,9 @@ the owner's rule (offline sales are kept) and every such oversell is flagged.
   is not known to be `warn`: offline → stamp `pos.stockCheck = 'offline'`;
   online → ask for a clearance for the minted id; `needs_manager` →
   `StockApprovalSheet` (approver list + `PinPad`, reused from Senior/PWD) and
-  retry with the PIN; unreachable → stamp offline and sell (never freeze the
-  till). Order id is kept across the retry.
+  retry with the PIN; unreachable (at the first ask OR when the PIN is sent,
+  e.g. before this migration is applied) → stamp offline and sell (never freeze
+  the till). Order id is kept across the retry.
 - `pos-stock-decision.ts`: on block + online, "Sell anyway" now continues to the
   tender (where the PIN is asked) instead of dead-ending on "sign in".
 - `scan.tsx`: mints the order id, asks for a clearance on non-`warn` platform

@@ -192,4 +192,10 @@ describe("gateSaleStock", () => {
     expect(await gateSaleStock({ ...base, isApproved: true, request })).toEqual({ kind: "proceed", offline: false });
     expect(request).not.toHaveBeenCalled();
   });
+
+  it("keeps a sale the offline way when the approval itself could not reach the server", async () => {
+    const request = jest.fn();
+    expect(await gateSaleStock({ ...base, isApprovalUnreachable: true, request })).toEqual({ kind: "proceed", offline: true });
+    expect(request).not.toHaveBeenCalled();
+  });
 });
