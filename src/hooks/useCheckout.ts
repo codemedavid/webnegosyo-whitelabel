@@ -40,6 +40,7 @@ import { classifyOrderSave, type OrderSaveNotice } from '@/lib/checkout/order-sa
 import { useBrandingPreviewTenant, useIsBrandingPreview } from '@/hooks/use-branding-preview'
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
 import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
+import { preflightCheckoutAnswersAction } from '@/app/actions/checkout-answers'
 import { computeOrderTotals } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { useCheckoutVouchers } from '@/hooks/checkout/use-checkout-vouchers'
@@ -67,6 +68,7 @@ import { prepareOrderQr } from '@/lib/qr-order-capacity'
 import { savePendingOrder } from '@/lib/qr-pending-order'
 import { normalizeCustomerData } from '@/lib/customer-field-normalization'
 import { fieldErrorMap, validateCheckoutFields } from '@/lib/checkout-field-validation'
+import { readAnswersPreflightRefusal, withServerAnswerMarks, type ServerAnswerMark } from '@/lib/checkout/answers-preflight-refusal'
 import { withSmsConsent } from '@/lib/sms-consent'
 import { getTenantBranding } from '@/lib/branding-utils'
 import {
@@ -169,9 +171,15 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   // (or "Next" on a step) found some; from then on they follow the answers.
   // `fieldErrorAttempt` counts those taps, so the form can scroll to the first.
   const [fieldErrorAttempt, setFieldErrorAttempt] = useState(0)
+  // Mistakes the SERVER found that this tab's form could not (a question made
+  // required after the page loaded). Each shows until its answer changes.
+  const [serverAnswerMarks, setServerAnswerMarks] = useState<readonly ServerAnswerMark[]>([])
   const fieldErrors = useMemo(
-    () => (fieldErrorAttempt > 0 ? fieldErrorMap(validateCheckoutFields(formFields, customerData)) : NO_FIELD_ERRORS),
-    [fieldErrorAttempt, formFields, customerData],
+    () =>
+      fieldErrorAttempt > 0
+        ? withServerAnswerMarks(fieldErrorMap(validateCheckoutFields(formFields, customerData)), serverAnswerMarks, customerData)
+        : NO_FIELD_ERRORS,
+    [fieldErrorAttempt, formFields, customerData, serverAnswerMarks],
   )
   const revealFieldErrors = () => setFieldErrorAttempt((attempt) => attempt + 1)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -789,14 +797,33 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
    * createOrderAction stay authoritative; these only move their sentence
    * somewhere visible.
    */
-  const findPreflightRefusal = async (tenantId: string): Promise<string | null> => {
-    const [presellVerdict, stockVerdict] = await Promise.all([
+  const findPreflightRefusal = async (
+    tenantId: string,
+    orderTypeId: string,
+    normalizedCustomerData: Record<string, string>
+  ): Promise<string | null> => {
+    const [presellVerdict, stockVerdict, answersVerdict] = await Promise.all([
       cartPresellDate
         ? preflightPresellAction(tenantId, toPresellPreflightLines(items))
         : Promise.resolve({ ok: true } as const),
       preflightCheckoutStockAction(tenantId, toStockPreflightLines(items, bundleItems), outlet.selectedOutletId ?? null),
+      // The store's CURRENT required questions, judged on exactly what the
+      // order will carry (createOrderAction refuses on the same verdict).
+      preflightCheckoutAnswersAction(tenantId, orderTypeId, normalizedCustomerData),
     ])
-    const refusal = [presellVerdict, stockVerdict].find(verdict => !verdict.ok)
+    if (answersVerdict && !answersVerdict.ok) {
+      const refusal = readAnswersPreflightRefusal(
+        answersVerdict.fieldErrors,
+        formFields.map(field => field.field_name),
+        customerData
+      )
+      // Back to the form, with each question the tab shows marked beside it.
+      setServerAnswerMarks(refusal.marks)
+      setShowPaymentDetails(false)
+      revealFieldErrors()
+      return refusal.message
+    }
+    const refusal = [presellVerdict, stockVerdict].find(verdict => verdict && !verdict.ok)
     return refusal && !refusal.ok ? refusal.message : null
   }
 
@@ -1007,7 +1034,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       })
 
       // ── Preflights ── (see findPreflightRefusal)
-      const refusal = await findPreflightRefusal(tenant.id)
+      const refusal = await findPreflightRefusal(tenant.id, orderType, normalizedCustomerData)
       if (refusal) {
         toast.error(refusal)
         setIsProcessing(false)
