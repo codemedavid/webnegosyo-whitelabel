@@ -13,6 +13,8 @@
  * they are still on the page, instead of silently going missing.
  */
 import { normalizePhoneE164 } from '@/lib/phone'
+import { readFieldRules, ruleError } from '@/lib/checkout-field-rules'
+import { CHECKBOX_TICKED } from '@/lib/checkout-field-types'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -22,6 +24,8 @@ export interface ValidatableField {
   field_label: string
   field_type: string
   is_required: boolean
+  /** The question's checks (min/max length, digits, pattern…); read through `readFieldRules`. */
+  validation_rules?: unknown
 }
 
 export interface FieldValidationError {
@@ -43,7 +47,16 @@ export function validateCheckoutFields(
   const errors: FieldValidationError[] = []
 
   for (const field of fields) {
-    const value = data[field.field_name]?.trim() ?? ''
+    const raw = data[field.field_name]
+    const value = typeof raw === 'string' ? raw.trim() : ''
+
+    // A tick box answers only by being ticked: "must tick" = required.
+    if (field.field_type === 'checkbox') {
+      if (field.is_required && value !== CHECKBOX_TICKED) {
+        errors.push({ fieldName: field.field_name, message: `Please tick “${field.field_label}”` })
+      }
+      continue
+    }
 
     if (value === '') {
       if (field.is_required) {
@@ -56,7 +69,7 @@ export function validateCheckoutFields(
       continue
     }
 
-    const message = formatError(field, value)
+    const message = formatError(field, value) ?? ruleError(field.field_label, field.field_type, readFieldRules(field.validation_rules), value)
     if (message) errors.push({ fieldName: field.field_name, message })
   }
 
@@ -73,5 +86,25 @@ function formatError(field: ValidatableField, value: string): string | null {
     return `${field.field_label} doesn’t look like a valid email address`
   }
 
+  if (field.field_type === 'date' && !isCalendarDate(value)) {
+    return `${field.field_label} should be a date`
+  }
+
   return null
+}
+
+/** `YYYY-MM-DD` that names a real day (what a date box sends). */
+function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const [year, month, day] = match.slice(1).map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+}
+
+/** The first mistake per question, keyed by field name (what the form shows beside each box). */
+export function fieldErrorMap(errors: readonly FieldValidationError[]): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const error of errors) if (!(error.fieldName in map)) map[error.fieldName] = error.message
+  return map
 }

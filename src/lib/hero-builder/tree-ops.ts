@@ -6,6 +6,7 @@
 import { LIMITS } from './constants'
 import { cloneWithNewIds, createColumn } from './defaults'
 import type {
+  OrderKindChoice,
   Animation,
   Column,
   Device,
@@ -134,6 +135,28 @@ export function setAnimation(design: HeroDesignV5, id: string, animation: Animat
 
 export function updateSectionMeta(design: HeroDesignV5, id: string, meta: { label?: string; anchor?: string }): HeroDesignV5 {
   return mapNode(design, id, (node) => ('columns' in node ? { ...node, ...meta } : node))
+}
+
+/** "Show when" on a section or widget; empty clears it (always shown). */
+export function setShowWhen(design: HeroDesignV5, id: string, showWhen: readonly string[]): HeroDesignV5 {
+  return mapNode(design, id, <T extends Section | Column | Widget>(node: T): T => {
+    if ('widgets' in node) return node
+    const next = { ...node } as T & { showWhen?: string[] }
+    if (showWhen.length) next.showWhen = [...showWhen]
+    else delete next.showWhen
+    return next
+  })
+}
+
+/** "Show for" on a section or widget; empty clears it (every order). */
+export function setShowFor(design: HeroDesignV5, id: string, showFor: readonly OrderKindChoice[]): HeroDesignV5 {
+  return mapNode(design, id, <T extends Section | Column | Widget>(node: T): T => {
+    if ('widgets' in node) return node
+    const next = { ...node } as T & { showFor?: OrderKindChoice[] }
+    if (showFor.length) next.showFor = [...showFor]
+    else delete next.showFor
+    return next
+  })
 }
 
 export function updateTheme(design: HeroDesignV5, patch: Partial<Theme>): HeroDesignV5 {

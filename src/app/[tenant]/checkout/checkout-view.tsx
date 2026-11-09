@@ -16,7 +16,7 @@ import { checkoutThemeStyle } from '@/components/customer/checkout-templates/che
 import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { useCheckout, type UseCheckoutInput } from '@/hooks/useCheckout'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
-import { CheckoutTemplateRenderer } from '@/components/customer/checkout-templates'
+import { CheckoutDesignSwitch } from '@/components/page-designer/checkout/checkout-design-switch'
 import {
   CheckoutLoading,
   CheckoutConfirmation,
@@ -75,7 +75,8 @@ export function CheckoutView({ tenantSlug, initialTenant, config }: UseCheckoutI
         <div className="mx-auto max-w-2xl px-4 pt-4">
           <CheckoutOutletSummary outlet={checkout.outlet} />
         </div>
-        <CheckoutTemplateRenderer template={template} checkout={checkout} />
+        {/* The owner's Page Designer checkout when published, else the standard design. */}
+        <CheckoutDesignSwitch template={template} checkout={checkout} />
       </div>
       {/* Shared overlays — rendered for every design */}
       <PaymentDetailsDialog checkout={checkout} />

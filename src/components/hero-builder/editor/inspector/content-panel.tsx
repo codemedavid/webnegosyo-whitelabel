@@ -13,7 +13,11 @@ import type { ButtonItem, EntryMode, OrderEntryContent, Section, Slide, Widget, 
 
 import { Field, Group, IconPicker, ImageField, Segmented, SelectField, TextArea, TextInput, Toggle } from '../controls'
 import type { HeroBuilderApi } from '../use-hero-builder'
+import { usePageRuntime } from '@/components/hero-builder/renderer/page-runtime'
+
 import { LinkPicker, sectionAnchorsOf, useLinkSurface } from './link-picker'
+import { CopyTextFields } from './copy-text-fields'
+import { PageBlockFields, ShowForGroup, ShowWhenGroup, tokenHint } from './page-block-fields'
 
 function move<T>(items: readonly T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return [...items]
@@ -138,7 +142,8 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
   const edit = (patch: Partial<WidgetContent>, key?: string) => api.editContent(widget.id, patch, key)
   const sectionAnchors = sectionAnchorsOf(api.design.sections)
   const isWelcome = useLinkSurface() === 'welcome'
-  const markupHint = isWelcome ? MARKUP_HINT + STORE_HINT : MARKUP_HINT
+  const page = usePageRuntime()?.page
+  const markupHint = page ? MARKUP_HINT + tokenHint(page) : isWelcome ? MARKUP_HINT + STORE_HINT : MARKUP_HINT
   const newButtonHref = isWelcome ? '#welcome-start' : '#storefront-menu'
 
   switch (c.kind) {
@@ -280,6 +285,8 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
           </Field>
         </>
       )
+    case 'copy-text':
+      return <CopyTextFields content={c} edit={edit} tokenNote={page ? tokenHint(page) : ''} />
     case 'countdown': {
       const local = toLocalInput(c.target)
       return (
@@ -459,6 +466,33 @@ function ColumnLayoutPicker({ section, api }: { section: Section; api: HeroBuild
   )
 }
 
+/** Page Designer only: the section as a step, and pinning it as a sticky bar. */
+function PageSectionGroup({ section, api }: { section: Section; api: HeroBuilderApi }) {
+  const runtime = usePageRuntime()
+  if (!runtime) return null
+  const layout = api.design.page?.layout ?? 'scroll'
+  const setPin = (isPinned: boolean) =>
+    api.editDesign((design) => ({
+      ...design,
+      sections: design.sections.map((s) => {
+        if (s.id !== section.id) return s
+        const rest = Object.fromEntries(Object.entries(s).filter(([key]) => key !== 'pin')) as unknown as Section
+        return isPinned ? { ...rest, pin: 'bottom' as const } : rest
+      }),
+    }))
+  return (
+    <Group title="On the page">
+      {layout !== 'scroll' && (
+        <p className="text-[11px] leading-snug text-neutral-500">
+          This section is one {layout === 'steps' ? 'step' : 'panel'}; its name above is the {layout === 'steps' ? 'step' : 'panel'} title customers see.
+        </p>
+      )}
+      <Toggle label="Pin to the bottom of the screen" checked={section.pin === 'bottom'} onChange={setPin} />
+      <p className="text-[11px] leading-snug text-neutral-500">A sticky bar that stays in view while customers scroll — e.g. the total and the place-order button. It shows on every step.</p>
+    </Group>
+  )
+}
+
 interface ContentPanelProps {
   api: HeroBuilderApi
   node: Section | Widget | null
@@ -468,15 +502,26 @@ interface ContentPanelProps {
 export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
   if (!node) return null
   if (nodeKind === 'widget') {
+    const widget = node as Widget
     return (
-      <Group title="Content">
-        <WidgetContentFields widget={node as Widget} api={api} />
-      </Group>
+      <>
+        {widget.kind === 'page-block' ? (
+          // A page block brings its own groups: design, colours, words, settings.
+          <PageBlockFields widget={widget} api={api} />
+        ) : (
+          <Group title="Content">
+            <WidgetContentFields widget={widget} api={api} />
+          </Group>
+        )}
+        <ShowWhenGroup node={widget} api={api} />
+        <ShowForGroup node={widget} api={api} />
+      </>
     )
   }
   if (nodeKind === 'section') {
     const section = node as Section
     return (
+      <>
       <Group title="Section">
         <Field label="Name" hint="Only you see this, in the Layers list.">
           <TextInput value={section.label} maxLength={80} onChange={(e) => api.editSectionMeta(section.id, { label: e.target.value }, 'label')} />
@@ -492,6 +537,10 @@ export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
           />
         </Field>
       </Group>
+      <PageSectionGroup section={section} api={api} />
+      <ShowWhenGroup node={section} api={api} />
+      <ShowForGroup node={section} api={api} />
+      </>
     )
   }
   return (

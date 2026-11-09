@@ -34,7 +34,8 @@ import { isCheckoutCartEmpty } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-order-save'
 import { awaitSaveBeforeRedirect } from '@/lib/checkout/messenger-redirect-gate'
-import { resolveTrackingRedirect } from '@/lib/checkout/tracking-redirect'
+import { resolveConfirmationHandoff, resolveTrackingRedirect } from '@/lib/checkout/tracking-redirect'
+import { readConfirmationRedirect } from '@/lib/page-designer/page-mode'
 import { classifyOrderSave, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { useBrandingPreviewTenant, useIsBrandingPreview } from '@/hooks/use-branding-preview'
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
@@ -48,8 +49,11 @@ import { STORE_CLOSED_MESSAGE, STORE_PRELAUNCH_MESSAGE } from '@/lib/store-open-
 import { computeServiceCharge } from '@/lib/order-service-charge'
 import { useCart } from '@/hooks/useCart'
 import { useKioskMode } from '@/hooks/use-kiosk-mode'
+import { readSavedAddresses, savedAddressFromAnswers, withSavedAddress, writeSavedAddresses } from '@/lib/checkout/saved-addresses'
+import { isPinSkipped, unpinnedDeliveryProblem } from '@/lib/delivery/unpinned-delivery'
 import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
+import { storeAddressToken } from '@/lib/page-designer/store-address'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
@@ -62,7 +66,7 @@ import { computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
 import { prepareOrderQr } from '@/lib/qr-order-capacity'
 import { savePendingOrder } from '@/lib/qr-pending-order'
 import { normalizeCustomerData } from '@/lib/customer-field-normalization'
-import { validateCheckoutFields } from '@/lib/checkout-field-validation'
+import { fieldErrorMap, validateCheckoutFields } from '@/lib/checkout-field-validation'
 import { withSmsConsent } from '@/lib/sms-consent'
 import { getTenantBranding } from '@/lib/branding-utils'
 import {
@@ -114,6 +118,9 @@ export interface UseCheckoutInput {
   config: CheckoutConfig
 }
 
+/** No mistakes shown (stable, so memoised readers don't re-render). */
+const NO_FIELD_ERRORS: Readonly<Record<string, string>> = {}
+
 export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutInput) {
   const router = useRouter()
   // Inside the Branding Studio the checkout is a preview: no order is ever placed.
@@ -158,6 +165,15 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   // sites compare with `=== true`, so a string "true" would be silently
   // ignored and the customer would never become reachable. See lib/sms-consent.
   const [isSmsOptedIn, setIsSmsOptedIn] = useState(false)
+  // Mistakes show beside their questions only after a tap on "Place order"
+  // (or "Next" on a step) found some; from then on they follow the answers.
+  // `fieldErrorAttempt` counts those taps, so the form can scroll to the first.
+  const [fieldErrorAttempt, setFieldErrorAttempt] = useState(0)
+  const fieldErrors = useMemo(
+    () => (fieldErrorAttempt > 0 ? fieldErrorMap(validateCheckoutFields(formFields, customerData)) : NO_FIELD_ERRORS),
+    [fieldErrorAttempt, formFields, customerData],
+  )
+  const revealFieldErrors = () => setFieldErrorAttempt((attempt) => attempt + 1)
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
   const checkoutCompleteRef = useRef(false) // Sync ref to prevent race with cart empty useEffect
@@ -332,7 +348,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       toast.error('Lalamove delivery is unavailable with QR checkout. Please choose pickup or contact the store.')
       return true
     }
-    const message = getDeliveryQuoteError()
+    // "I can't find my place": no quote to wait for, but the store must be able to reach them.
+    const message = isPinSkipped(customerData)
+      ? unpinnedDeliveryProblem(customerData)
+      : getDeliveryQuoteError()
     if (!message) return false
     toast.error(message)
     return true
@@ -554,7 +573,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   // Once the thank-you screen has nothing left to do — Messenger was opened by
   // the countdown, or there is no Messenger handoff at all — a saved order goes
   // to live tracking. Replace, so Back doesn't land on an emptied checkout.
-  const trackingRedirectPath = resolveTrackingRedirect(tenantSlug, {
+  const trackingPath = resolveTrackingRedirect(tenantSlug, {
     isCheckoutComplete: checkoutComplete,
     isMessengerEnabled: messengerEnabled,
     messengerUrl: completedOrderData?.messengerUrl,
@@ -564,6 +583,14 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     trackingOrderId,
     trackingToken,
   })
+  // The owner may keep the thank-you page up (countdown / stay); the
+  // confirmation screen runs that countdown, this effect only the instant jump.
+  const confirmationHandoff = resolveConfirmationHandoff(
+    trackingPath,
+    { isMessengerEnabled: messengerEnabled, messengerUrl: completedOrderData?.messengerUrl },
+    readConfirmationRedirect(tenant),
+  )
+  const trackingRedirectPath = confirmationHandoff.kind === 'redirect' ? confirmationHandoff.path : null
   useEffect(() => {
     if (trackingRedirectPath) router.replace(trackingRedirectPath)
   }, [trackingRedirectPath, router])
@@ -645,10 +672,11 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     // Validate presence AND format. The phone check uses the same normalizer as
     // customer identity, so a number that would be dropped during capture is
     // caught here instead of quietly costing the merchant a customer.
-    const fieldErrors = validateCheckoutFields(formFields, customerData)
+    const mistakes = validateCheckoutFields(formFields, customerData)
 
-    if (fieldErrors.length > 0) {
-      toast.error(fieldErrors.map(error => error.message).join('\n'))
+    if (mistakes.length > 0) {
+      revealFieldErrors()
+      toast.error(mistakes.map(error => error.message).join('\n'))
       return
     }
 
@@ -800,6 +828,12 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, tenantId, orderToken: result.orderToken }),
       }).catch(error => console.warn('[Checkout] Proactive send error:', error))
+    }
+
+    // Next time this customer is one tap from here. Never on a counter tablet.
+    const savedAddress = !isKiosk && selectedOrderTypeData?.type === 'delivery' ? savedAddressFromAnswers(customerData) : null
+    if (savedAddress) {
+      writeSavedAddresses(window.localStorage, tenantSlug, withSavedAddress(readSavedAddresses(window.localStorage, tenantSlug), savedAddress))
     }
 
     // Save tracking data for order status page
@@ -997,6 +1031,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         discounts: appliedDiscounts,
         customerData: normalizedCustomerData,
         orderTypeName: selectedOrderTypeData?.name ?? null,
+        orderTypeKind: selectedOrderTypeData?.type ?? null,
+        storeAddress: storeAddressToken(tenant, outlet.choices.find((entry) => entry.outlet.id === outlet.selectedOutletId)?.outlet),
         scheduledForLabel,
         paymentMethod: selectedPaymentMethodData,
         messengerMessage: message,
@@ -1056,6 +1092,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     formFields,
     customerData,
     setCustomerData,
+    // field name → the mistake shown beside it (empty until a failed submit)
+    fieldErrors,
+    fieldErrorAttempt,
+    revealFieldErrors,
     isSmsOptedIn,
     setIsSmsOptedIn,
     // payment
@@ -1125,6 +1165,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     checkoutComplete,
     completedOrderData,
     redirectCountdown,
+    confirmationHandoff,
     trackingOrderId,
     trackingToken,
     messageExpanded,

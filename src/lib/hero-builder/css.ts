@@ -9,6 +9,7 @@ import { DEVICE_MAX_WIDTH, FONT_OPTIONS, LIMITS, SHADOWS, THEME_COLOR_FALLBACK, 
 import { resolveStyle } from './resolve'
 import { clampNumber, cssColor, cssUrl, pickEnum } from './safe-values'
 import { HERO_BASE_CSS } from './base-css'
+import { buildPartCss, partFonts } from '@/lib/page-designer/parts'
 import type { Background, Box, Device, HeroDesignV5, NodeStyle, Section, Widget } from './types'
 
 type Decls = Map<string, string>
@@ -215,7 +216,7 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
   const { kind } = widget
   displayRules(rules, s, 'block', showHidden)
   const frameTarget = own(INNER_FRAME, kind) ?? ''
-  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery' || kind === 'order-entry' || kind === 'slideshow')
+  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery' || kind === 'order-entry' || kind === 'slideshow' || kind === 'copy-text')
   typographyRules(rules, '', s)
   set(rules, '', 'margin', boxValue(s.margin, -400, 400))
   const width = clampNumber(s.width, 1, 100)
@@ -268,6 +269,11 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
       break
     case 'badge':
       set(rules, ' .hb-badge svg', 'color', accent)
+      break
+    case 'copy-text':
+      set(rules, '', '--hb-copy-bg', accent)
+      set(rules, '', '--hb-copy-fg', accentText)
+      set(rules, '', '--hb-copy-radius', px(s.radius, 0, 999))
       break
     case 'countdown':
       set(rules, ' .hb-cd', 'justify-content', justify)
@@ -425,8 +431,10 @@ function collectFonts(design: HeroDesignV5): string[] {
     for (const column of section.columns) {
       visit(column)
       column.widgets.forEach(visit)
+      for (const widget of column.widgets) if (widget.content.kind === 'page-block') partFonts(widget.content.options).forEach(add)
     }
   }
+  partFonts(design.page?.parts).forEach(add)
   return [...used].sort()
 }
 
@@ -437,6 +445,25 @@ export function buildFontsHref(fontKeys: readonly string[]): string | null {
     .map((g) => `family=${encodeURIComponent(g.family).replace(/%20/g, '+')}:wght@${g.weights.join(';')}`)
   if (!families.length) return null
   return `https://fonts.googleapis.com/css2?${families.join('&')}&display=swap`
+}
+
+/**
+ * Page Designer part styles: the whole page's (`design.page.parts`), then
+ * each page block's own (`p_*` options), which win by specificity. One value
+ * for every device (owner decision 2026-11-05).
+ */
+function pagePartCss(design: HeroDesignV5, scope: string, classes: Record<string, string>): string {
+  let css = buildPartCss(`.${scope}`, design.page?.parts)
+  for (const section of design.sections) {
+    for (const column of section.columns) {
+      for (const widget of column.widgets) {
+        if (widget.content.kind !== 'page-block') continue
+        const cls = classes[widget.id]
+        if (cls) css += buildPartCss(`.${scope} .${cls}`, widget.content.options)
+      }
+    }
+  }
+  return css
 }
 
 const SCOPE_PATTERN = /^[a-z][a-z0-9-]{0,40}$/
@@ -467,6 +494,7 @@ export function buildDesignCss(design: HeroDesignV5, options: CssBuildOptions): 
     }
     if (block) css += `@container hb (max-width: ${DEVICE_MAX_WIDTH[device]}px){${block}}`
   }
+  css += pagePartCss(design, scope, classes)
 
   if (css.length > LIMITS.designBytes * 2) css = css.slice(0, LIMITS.designBytes * 2)
   return { css, classes, fontsHref: buildFontsHref(collectFonts(design)) }

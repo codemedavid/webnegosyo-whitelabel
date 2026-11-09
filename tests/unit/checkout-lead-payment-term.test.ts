@@ -9,7 +9,7 @@
  * null term renders as nothing rather than the string "null".
  */
 import { describe, it, expect } from '@jest/globals'
-import { getPaymentTermLabel } from '@/app/superadmin/checkout-leads/components/payment-term'
+import { getPaymentTermLabel } from '@/lib/checkout-leads/payment-term-labels'
 
 describe('getPaymentTermLabel', () => {
   it('labels a 50% downpayment', () => {

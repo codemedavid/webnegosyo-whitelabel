@@ -28,14 +28,14 @@ export function RewardLadder({ steps, balance, earnMode, showHeadline = true }: 
   return (
     <div data-testid="reward-ladder" data-branding-scope="loyalty/rewards" className="space-y-2">
       {showHeadline && next ? (
-        <p data-testid="next-reward" className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'var(--trk-loy-text)' }}>
+        <p data-testid="next-reward" data-part="text" className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'var(--trk-loy-text)' }}>
           <span aria-hidden="true">{next.step.emoji}</span>
           {next.headline}
         </p>
       ) : null}
       {steps.length > 1 ? (
         <>
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--trk-loy-muted)' }}>
+          <p data-part="muted" className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--trk-loy-muted)' }}>
             Rewards on this card
           </p>
           <ul className="flex flex-wrap gap-1.5">
@@ -47,6 +47,7 @@ export function RewardLadder({ steps, balance, earnMode, showHeadline = true }: 
                   key={step.at}
                   data-testid="reward-chip"
                   data-reached={isReached ? 'true' : 'false'}
+                  data-part="badge"
                   className="flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-xs font-semibold"
                   style={{
                     borderColor: isNext ? 'var(--trk-stamp-next)' : 'var(--trk-loy-border)',

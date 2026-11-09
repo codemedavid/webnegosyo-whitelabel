@@ -15,6 +15,8 @@
 export const DELIVERY_UNIT_KEY = 'delivery_unit'
 export const DELIVERY_LANDMARK_KEY = 'delivery_landmark'
 export const DELIVERY_RIDER_NOTE_KEY = 'delivery_rider_note'
+/** The merchant's own line to the rider, added on the order (the three above are the customer's). */
+export const DELIVERY_STORE_NOTE_KEY = 'delivery_store_note'
 
 export interface DeliveryDetails {
   unit: string
@@ -37,6 +39,14 @@ const NEVER_DETAIL_KEYS = new Set([
   'delivery_lng',
   'delivery_pin_address',
   'delivery_pin_confirmed',
+  'delivery_pin_source',
+  'delivery_pin_seconds',
+  'delivery_search_misses',
+  'delivery_pin_skipped',
+  'delivery_pin_km',
+  'delivery_pin_updated_by',
+  'delivery_pin_updated_at',
+  'delivery_store_note',
   'outlet_id',
   'outlet_name',
 ])

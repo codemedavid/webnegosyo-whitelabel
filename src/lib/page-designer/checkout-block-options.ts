@@ -1,0 +1,272 @@
+// ---------------------------------------------------------------------------
+// The design, colour and layout settings of the checkout blocks (other than
+// the order type, which lives with its registry entry). Values are stored in
+// page designs: a choice value is never renamed once shipped, and the FIRST
+// design of every block is the block exactly as it looked before designs
+// existed, so a stored design without the key renders as before.
+// ---------------------------------------------------------------------------
+
+import { checkoutColorKnobs } from './checkout-colors'
+import { choiceKnob, CORNERS_KNOB, designKnob } from './knobs'
+import type { BlockChoice, BlockOption } from './types'
+
+interface Choice<T extends string> extends BlockChoice {
+  value: T
+}
+
+/** The first (standard) value when `value` is not one of `choices`. */
+export function choiceOr<T extends string>(choices: readonly { value: T }[], value: unknown): T {
+  return choices.find((c) => c.value === value)?.value ?? choices[0].value
+}
+
+export const CARD: BlockOption = { key: 'card', label: 'Show on a card', type: 'boolean', default: true }
+export const SHOW_SUBTITLE: BlockOption = { key: 'show_subtitle', label: 'Show the line under the title', type: 'boolean', default: true }
+
+const whenVariant = (...values: string[]) => ({ showWhen: { key: 'variant', values } })
+
+/**
+ * A "show this part" switch. On by default = the block as it was; the few
+ * parts that were never drawn before (a store name, a lock line) start off.
+ */
+const showSwitch = (key: string, label: string, hint?: string, isOnByDefault = true): BlockOption => ({
+  key,
+  label,
+  type: 'boolean',
+  default: isOnByDefault,
+  ...(hint ? { hint } : {}),
+})
+/** Card corners only matter while the block sits on a card. */
+const CARD_CORNERS: BlockOption = { ...CORNERS_KNOB, label: 'Card corners', showWhen: { key: 'card', values: [true] } }
+
+// ── Page header ────────────────────────────────────────────────────────────
+
+export const HEADER_DESIGNS = [
+  { value: 'standard', label: 'Standard', hint: 'Back button beside the title' },
+  { value: 'centered', label: 'Centred', hint: 'Title in the middle' },
+  { value: 'banner', label: 'Banner', hint: 'On a band of colour' },
+  { value: 'compact', label: 'Compact', hint: 'Small, saves room on phones' },
+] as const satisfies readonly Choice<string>[]
+export type HeaderDesign = (typeof HEADER_DESIGNS)[number]['value']
+
+export const HEADER_OPTIONS: readonly BlockOption[] = [
+  designKnob(HEADER_DESIGNS),
+  ...checkoutColorKnobs(['color_text']),
+  ...checkoutColorKnobs(['color_button', 'color_button_text'], { color_button: 'Band', color_button_text: 'Band text' })
+    .map((knob) => ({ ...knob, ...whenVariant('banner') })),
+  { key: 'show_back', label: 'Show the back button', type: 'boolean', default: true },
+  SHOW_SUBTITLE,
+  showSwitch('show_store_name', 'Show your store name', 'A small line above the title.', false),
+  showSwitch('show_logo', 'Show your logo', 'Your Branding Studio logo beside the title.', false),
+]
+
+// ── Store closed notice ────────────────────────────────────────────────────
+
+export const STORE_CLOSED_DESIGNS = [
+  { value: 'soft', label: 'Soft', hint: 'A tinted box' },
+  { value: 'card', label: 'Card', hint: 'A plain card with a warning badge' },
+  { value: 'outline', label: 'Outline', hint: 'A bold border' },
+] as const satisfies readonly Choice<string>[]
+export type StoreClosedDesign = (typeof STORE_CLOSED_DESIGNS)[number]['value']
+
+export const STORE_CLOSED_OPTIONS: readonly BlockOption[] = [
+  designKnob(STORE_CLOSED_DESIGNS),
+  ...checkoutColorKnobs(['color_text']),
+  { ...checkoutColorKnobs(['color_card'])[0], ...whenVariant('card', 'outline') },
+  CORNERS_KNOB,
+]
+
+// ── Schedule ───────────────────────────────────────────────────────────────
+
+export const SCHEDULE_DESIGNS = [
+  { value: 'cards', label: 'Cards', hint: 'Now or later, side by side' },
+  { value: 'pill', label: 'Pill toggle', hint: 'Both in one bar' },
+  { value: 'list', label: 'List', hint: 'Rows with a round tick' },
+] as const satisfies readonly Choice<string>[]
+export type ScheduleDesign = (typeof SCHEDULE_DESIGNS)[number]['value']
+
+export const SCHEDULE_OPTIONS: readonly BlockOption[] = [
+  designKnob(SCHEDULE_DESIGNS),
+  ...checkoutColorKnobs(['color_accent', 'color_card', 'color_text', 'color_border'], { color_accent: 'Chosen option', color_card: 'Options' }),
+  CORNERS_KNOB,
+  CARD,
+]
+
+// ── Customer details ───────────────────────────────────────────────────────
+
+export const FIELD_STYLES = [
+  { value: 'outlined', label: 'Outlined', hint: 'Boxes with a border' },
+  { value: 'clean', label: 'Clean', hint: 'Fine neutral lines. Your colour shows only while typing' },
+  { value: 'label_inside', label: 'Label inside', hint: 'Each question sits inside its own box, like a booking app' },
+  { value: 'sheet', label: 'Sheet', hint: 'One soft panel with thin lines between questions, like a phone’s settings' },
+  { value: 'ruled', label: 'Ruled', hint: 'A hairline under each answer, small capitals above' },
+  { value: 'tinted', label: 'Tinted', hint: 'Soft shaded boxes with a line underneath' },
+  { value: 'roomy', label: 'Roomy', hint: 'Big boxes and big labels, easy for everyone to read and tap' },
+  { value: 'filled', label: 'Filled', hint: 'Softly shaded boxes' },
+  { value: 'underlined', label: 'Underlined', hint: 'A line under each answer' },
+  { value: 'floating', label: 'Floating label', hint: 'The question sits in the box and moves up' },
+  { value: 'floating_filled', label: 'Floating, filled', hint: 'Shaded boxes, the question moves up' },
+  { value: 'inset', label: 'Inset list', hint: 'Question left, answer right, one rounded group' },
+  { value: 'joined', label: 'Joined', hint: 'Stacked boxes sharing their borders' },
+  { value: 'pill', label: 'Pill', hint: 'Round boxes with an icon' },
+  { value: 'elevated', label: 'Elevated', hint: 'No border, a soft shadow that lifts' },
+  { value: 'chunky', label: 'Chunky', hint: 'Thick border with a bold shadow' },
+  { value: 'kiosk', label: 'Large', hint: 'Big boxes for a counter tablet' },
+] as const satisfies readonly Choice<string>[]
+export type FieldStyle = (typeof FIELD_STYLES)[number]['value']
+
+export const FIELD_COLUMNS = [
+  { value: '2', label: '2' },
+  { value: '1', label: '1' },
+] as const satisfies readonly Choice<string>[]
+
+/** How the delivery address offers the map. The first is the field as it was. */
+export const ADDRESS_MAP_CHOICES = [
+  { value: 'buttons', label: 'Buttons' },
+  { value: 'links', label: 'Links' },
+  { value: 'map', label: 'Map' },
+  { value: 'hidden', label: 'Hidden' },
+] as const satisfies readonly Choice<string>[]
+
+export const ADDRESS_DETAIL_CHOICES = [
+  { value: 'open', label: 'Always show' },
+  { value: 'tucked', label: 'Behind a link' },
+] as const satisfies readonly Choice<string>[]
+
+export const FIELD_MARKS = [
+  { value: 'stars', label: 'Star what’s required' },
+  { value: 'optional', label: 'Say what’s optional' },
+] as const satisfies readonly Choice<string>[]
+
+/** These draw their own neutral lines, so the store's border colour never paints every box. */
+const OWN_LINES = ['clean', 'label_inside', 'sheet', 'ruled', 'tinted', 'roomy']
+const STORE_BORDER_DESIGNS = FIELD_STYLES.map((style) => style.value as string).filter((style) => !OWN_LINES.includes(style))
+
+const CUSTOMER_COLOURS = checkoutColorKnobs(['color_card', 'color_text', 'color_border', 'color_accent'], { color_border: 'Box borders', color_accent: 'While typing' })
+
+export const CUSTOMER_OPTIONS: readonly BlockOption[] = [
+  designKnob(FIELD_STYLES, 'Form design'),
+  ...CUSTOMER_COLOURS.map((knob) => (knob.key === 'color_border' ? { ...knob, ...whenVariant(...STORE_BORDER_DESIGNS) } : knob)),
+  { ...CORNERS_KNOB, ...whenVariant(...FIELD_STYLES.map((style) => style.value as string).filter((style) => !['underlined', 'ruled', 'pill'].includes(style))) },
+  choiceKnob('address_map', 'Map on the delivery address', ADDRESS_MAP_CHOICES, {
+    hint: 'Buttons beside the box, links under it, a map shown right below it, or no map at all. Stores on Lalamove or charging per km keep the map: the fee needs the pin.',
+  }),
+  choiceKnob('address_details', 'Unit, landmark and rider note', ADDRESS_DETAIL_CHOICES),
+  choiceKnob('field_marks', 'Marking questions', FIELD_MARKS),
+  choiceKnob('columns', 'Questions side by side (computers)', FIELD_COLUMNS, { hint: 'Phones always show one question per line.' }),
+  CARD,
+  SHOW_SUBTITLE,
+]
+
+// ── Order summary ──────────────────────────────────────────────────────────
+
+export const SUMMARY_DESIGNS = [
+  { value: 'standard', label: 'Standard', hint: 'Dishes, then the total' },
+  { value: 'receipt', label: 'Receipt', hint: 'Dashed lines, a big total' },
+  { value: 'compact', label: 'Compact', hint: 'Tighter rows' },
+] as const satisfies readonly Choice<string>[]
+export type SummaryDesign = (typeof SUMMARY_DESIGNS)[number]['value']
+
+export const TOTAL_TONES = [
+  { value: 'accent', label: 'Highlight' },
+  { value: 'text', label: 'Text' },
+] as const satisfies readonly Choice<string>[]
+
+export const SUMMARY_OPTIONS: readonly BlockOption[] = [
+  designKnob(SUMMARY_DESIGNS),
+  ...checkoutColorKnobs(['color_summary', 'color_text', 'color_muted', 'color_accent']),
+  choiceKnob('total_color', 'Total colour', TOTAL_TONES),
+  CARD_CORNERS,
+  CARD,
+  SHOW_SUBTITLE,
+  { key: 'show_items', label: 'List the dishes', type: 'boolean', default: true },
+  { ...showSwitch('show_addons', 'Show each dish’s add-ons'), showWhen: { key: 'show_items', values: [true] } },
+  { ...showSwitch('show_notes', 'Show each dish’s note'), showWhen: { key: 'show_items', values: [true] } },
+  showSwitch('show_fees', 'Show the delivery fee and service charge', 'The total still includes them.'),
+  showSwitch('show_free_hint', 'Show “Add ₱… more for free delivery”'),
+]
+
+// ── Voucher code ───────────────────────────────────────────────────────────
+
+export const VOUCHER_DESIGNS = [
+  { value: 'field', label: 'Open box', hint: 'The code box always shows' },
+  { value: 'tucked', label: 'Tucked away', hint: 'A link that opens the box' },
+] as const satisfies readonly Choice<string>[]
+export type VoucherDesign = (typeof VOUCHER_DESIGNS)[number]['value']
+
+export const VOUCHER_OPTIONS: readonly BlockOption[] = [
+  designKnob(VOUCHER_DESIGNS),
+  ...checkoutColorKnobs(['color_card', 'color_text', 'color_border', 'color_accent']),
+  CARD_CORNERS,
+  CARD,
+  // Tucked away, the prompt IS the link that opens the box, so it always shows.
+  { ...showSwitch('show_title', 'Show the prompt above the box', 'Screen readers still hear it.'), ...whenVariant('field') },
+]
+
+// ── Senior / PWD ───────────────────────────────────────────────────────────
+
+export const GOV_DISCOUNT_OPTIONS: readonly BlockOption[] = [
+  ...checkoutColorKnobs(['color_card', 'color_text', 'color_border', 'color_accent']),
+  CARD_CORNERS,
+  CARD,
+]
+
+// ── Payment methods ────────────────────────────────────────────────────────
+
+export const PAYMENT_DESIGNS = [
+  { value: 'wallet', label: 'Wallet', hint: 'Tiles in a row you can swipe' },
+  { value: 'grid', label: 'Grid', hint: 'Every method in view' },
+  { value: 'rows', label: 'List', hint: 'One method per row' },
+  { value: 'chosen', label: 'Chosen + Change', hint: 'Just the chosen method, tap to change' },
+  { value: 'accordion', label: 'Accordion', hint: 'The chosen row opens its QR and details' },
+  { value: 'split', label: 'Pay now / later', hint: 'Online or in person first, then the method' },
+] as const satisfies readonly Choice<string>[]
+export type PaymentDesign = (typeof PAYMENT_DESIGNS)[number]['value']
+
+export const PAYMENT_OPTIONS: readonly BlockOption[] = [
+  designKnob(PAYMENT_DESIGNS),
+  ...checkoutColorKnobs(['color_accent', 'color_card', 'color_text', 'color_border'], { color_accent: 'Chosen method', color_card: 'Methods' }),
+  CORNERS_KNOB,
+  CARD,
+  SHOW_SUBTITLE,
+  showSwitch('show_icons', 'Show each method’s QR or letter'),
+  showSwitch('show_descriptions', 'Show the account details', 'Customers still see them in the payment step after Place order.'),
+  showSwitch('show_qr_preview', 'Show the QR code', 'Customers still see it in the payment step after Place order.'),
+  showSwitch('show_proof_chip', 'Show “Proof required”'),
+]
+
+// ── Text me offers ─────────────────────────────────────────────────────────
+
+export const SMS_OPT_IN_OPTIONS: readonly BlockOption[] = [
+  ...checkoutColorKnobs(['color_accent', 'color_muted'], { color_accent: 'Tick box', color_muted: 'Wording' }),
+]
+
+// ── Place order button ─────────────────────────────────────────────────────
+
+export const BUTTON_SHAPES = [
+  { value: 'pill', label: 'Pill', hint: 'Fully round ends' },
+  { value: 'rounded', label: 'Rounded', hint: 'Softly rounded corners' },
+  { value: 'square', label: 'Square', hint: 'Sharp corners' },
+] as const satisfies readonly Choice<string>[]
+export type ButtonShape = (typeof BUTTON_SHAPES)[number]['value']
+
+export const BUTTON_SIZES = [
+  { value: 'regular', label: 'Regular' },
+  { value: 'large', label: 'Large' },
+] as const satisfies readonly Choice<string>[]
+
+export const BUTTON_WIDTHS = [
+  { value: 'full', label: 'Full width' },
+  { value: 'auto', label: 'Fit the words' },
+] as const satisfies readonly Choice<string>[]
+
+export const PLACE_ORDER_OPTIONS: readonly BlockOption[] = [
+  designKnob(BUTTON_SHAPES, 'Button shape'),
+  ...checkoutColorKnobs(['color_button', 'color_button_text']),
+  choiceKnob('size', 'Button size', BUTTON_SIZES),
+  choiceKnob('width', 'Button width', BUTTON_WIDTHS),
+  { key: 'show_total', label: 'Show the total on the button', type: 'boolean', default: true },
+  { ...CARD, default: false },
+  showSwitch('show_minimum_notice', 'Explain an unmet minimum order', 'Off: the button still waits for the minimum, without saying why.'),
+  showSwitch('show_footer_note', 'Show the note under the button'),
+  showSwitch('show_secure_line', 'Show a “Secure checkout” line', 'A small lock line under the button.', false),
+]

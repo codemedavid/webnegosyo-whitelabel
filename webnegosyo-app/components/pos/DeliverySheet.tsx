@@ -25,6 +25,8 @@ import { useDeliveryFeeSuggestion } from "../../lib/maps/use-delivery-fee-sugges
 import { useCheckoutSetup } from "../../lib/query/use-checkout-setup";
 import { useAuthStore } from "../../stores/auth-store";
 
+const RIDER_DETAIL_MAX_LENGTH = 200;
+
 interface DeliverySheetProps {
   visible: boolean;
   onClose: () => void;
@@ -67,6 +69,9 @@ export function DeliverySheet({
   const [address, setAddress] = useState("");
   const [location, setLocation] = useState<LatLng | null>(null);
   const [phone, setPhone] = useState("");
+  const [unit, setUnit] = useState("");
+  const [landmark, setLandmark] = useState("");
+  const [riderNote, setRiderNote] = useState("");
   const [feeError, setFeeError] = useState<string | null>(null);
 
   // Re-drafted from the sale each time the sheet opens, so reopening shows
@@ -78,6 +83,9 @@ export function DeliverySheet({
     setAddress(delivery.address);
     setLocation(delivery.location ?? null);
     setPhone(delivery.phone);
+    setUnit(delivery.unit ?? "");
+    setLandmark(delivery.landmark ?? "");
+    setRiderNote(delivery.riderNote ?? "");
     setFeeError(null);
   }, [visible, delivery]);
 
@@ -128,6 +136,9 @@ export function DeliverySheet({
       address: trimmedAddress,
       phone: phone.trim(),
       location: trimmedAddress ? location : null,
+      ...(unit.trim() ? { unit: unit.trim() } : {}),
+      ...(landmark.trim() ? { landmark: landmark.trim() } : {}),
+      ...(riderNote.trim() ? { riderNote: riderNote.trim() } : {}),
     });
     onClose();
   }
@@ -138,7 +149,12 @@ export function DeliverySheet({
   }
 
   const hasExisting =
-    delivery.fee !== null || delivery.address !== "" || delivery.phone !== "";
+    delivery.fee !== null ||
+    delivery.address !== "" ||
+    delivery.phone !== "" ||
+    !!delivery.unit ||
+    !!delivery.landmark ||
+    !!delivery.riderNote;
   const canHintPin = canSuggestDeliveryFee(setup.delivery);
 
   // A docked sheet becomes a centred dialog once the glass is a tablet's
@@ -191,6 +207,39 @@ export function DeliverySheet({
                     setAddress(next.address);
                     setLocation(next.location);
                   }}
+                />
+              </View>
+            )}
+
+            {!feeOnly && (
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>For the rider</Text>
+                <TextInput
+                  style={[styles.input, styles.stackedInput]}
+                  value={unit}
+                  onChangeText={setUnit}
+                  placeholder="House / Blk / Lot / Unit"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={RIDER_DETAIL_MAX_LENGTH}
+                  accessibilityLabel="House, block, lot or unit"
+                />
+                <TextInput
+                  style={[styles.input, styles.stackedInput]}
+                  value={landmark}
+                  onChangeText={setLandmark}
+                  placeholder="Landmark, e.g. blue gate beside 7-Eleven"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={RIDER_DETAIL_MAX_LENGTH}
+                  accessibilityLabel="Landmark"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={riderNote}
+                  onChangeText={setRiderNote}
+                  placeholder="Note to rider, e.g. call when you arrive"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={RIDER_DETAIL_MAX_LENGTH}
+                  accessibilityLabel="Note to rider"
                 />
               </View>
             )}
@@ -291,6 +340,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     marginBottom: spacing.sm,
   },
+  stackedInput: { marginBottom: spacing.sm },
   input: {
     ...typography.body,
     color: colors.textPrimary,

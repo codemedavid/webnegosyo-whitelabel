@@ -17,6 +17,8 @@ import {
   resetDeviceOverrides,
   setAnimation,
   setColumnLayout,
+  setShowFor,
+  setShowWhen,
   updateContent,
   updateSectionMeta,
   updateStyle,
@@ -28,12 +30,24 @@ import type {
   Device,
   HeroDesignV5,
   NodeStyle,
+  OrderKindChoice,
   Section,
   Theme,
   Widget,
   WidgetContent,
   WidgetKind,
 } from '@/lib/hero-builder/types'
+
+/**
+ * Page Designer locks: a node holding a required page block can't be removed,
+ * and a page block is never duplicated. Absent = the plain Hero Builder.
+ */
+export interface NodePolicy {
+  canRemove: (design: HeroDesignV5, id: string) => boolean
+  canDuplicate: (design: HeroDesignV5, id: string) => boolean
+}
+
+const OPEN_POLICY: NodePolicy = { canRemove: () => true, canDuplicate: () => true }
 
 export interface HeroBuilderApi {
   design: HeroDesignV5
@@ -53,7 +67,15 @@ export interface HeroBuilderApi {
   editAnimation: (id: string, animation: Animation | undefined) => void
   editSectionMeta: (id: string, meta: { label?: string; anchor?: string }, key?: string) => void
   editTheme: (patch: Partial<Theme>, key?: string) => void
+  /** Any immutable change to the whole design (page settings, many blocks at once). `key` coalesces undo. */
+  editDesign: (update: (design: HeroDesignV5) => HeroDesignV5, key?: string) => void
   addWidget: (kind: WidgetKind, target?: { columnId: string; index: number }) => void
+  /** Insert a ready-made widget (a page block) at the target or after the selection. */
+  addPrebuilt: (widget: Widget, target?: { columnId: string; index: number }) => void
+  editShowWhen: (id: string, showWhen: readonly string[]) => void
+  editShowFor: (id: string, showFor: readonly OrderKindChoice[]) => void
+  canRemove: (id: string) => boolean
+  canDuplicate: (id: string) => boolean
   addSection: (section?: Section, index?: number) => void
   setColumns: (sectionId: string, widths: readonly number[]) => void
   remove: (id: string) => void
@@ -63,7 +85,7 @@ export interface HeroBuilderApi {
   moveSectionTo: (sectionId: string, index: number) => void
 }
 
-export function useHeroBuilder(initialDesign: HeroDesignV5): HeroBuilderApi {
+export function useHeroBuilder(initialDesign: HeroDesignV5, policy: NodePolicy = OPEN_POLICY): HeroBuilderApi {
   const [state, dispatch] = useReducer(editorReducer, initialDesign, initialEditorState)
   // Discrete commands (duplicate/paste) read the latest committed state.
   const stateRef = useRef(state)
@@ -112,9 +134,13 @@ export function useHeroBuilder(initialDesign: HeroDesignV5): HeroBuilderApi {
     [apply],
   )
 
-  const addWidget = useCallback(
-    (kind: WidgetKind, target?: { columnId: string; index: number }) => {
-      const widget = createWidget(kind)
+  const editDesign = useCallback(
+    (update: (design: HeroDesignV5) => HeroDesignV5, key?: string) => apply(update, { key: key ? `design:${key}` : undefined }),
+    [apply],
+  )
+
+  const addPrebuilt = useCallback(
+    (widget: Widget, target?: { columnId: string; index: number }) => {
       const current = stateRef.current
       let design = current.design
       let point = target ?? insertionPointFor(design, current.selectedId)
@@ -129,6 +155,20 @@ export function useHeroBuilder(initialDesign: HeroDesignV5): HeroBuilderApi {
     },
     [apply],
   )
+  const addWidget = useCallback(
+    (kind: WidgetKind, target?: { columnId: string; index: number }) => addPrebuilt(createWidget(kind), target),
+    [addPrebuilt],
+  )
+  const editShowFor = useCallback(
+    (id: string, showFor: readonly OrderKindChoice[]) => apply((d) => setShowFor(d, id, showFor)),
+    [apply],
+  )
+  const editShowWhen = useCallback(
+    (id: string, showWhen: readonly string[]) => apply((d) => setShowWhen(d, id, showWhen)),
+    [apply],
+  )
+  const canRemove = useCallback((id: string) => policy.canRemove(state.design, id), [policy, state.design])
+  const canDuplicate = useCallback((id: string) => policy.canDuplicate(state.design, id), [policy, state.design])
 
   const addSection = useCallback(
     (section?: Section, index?: number) => {
@@ -146,10 +186,17 @@ export function useHeroBuilder(initialDesign: HeroDesignV5): HeroBuilderApi {
     [apply],
   )
 
-  const remove = useCallback((id: string) => apply((d) => removeNode(d, id), { select: null }), [apply])
+  const remove = useCallback(
+    (id: string) => {
+      if (!policy.canRemove(stateRef.current.design, id)) return
+      apply((d) => removeNode(d, id), { select: null })
+    },
+    [apply, policy],
+  )
 
   const duplicate = useCallback(
     (id: string) => {
+      if (!policy.canDuplicate(stateRef.current.design, id)) return
       const found = findNode(stateRef.current.design, id)
       if (!found) return
       if (found.kind === 'section') {
@@ -172,7 +219,7 @@ export function useHeroBuilder(initialDesign: HeroDesignV5): HeroBuilderApi {
         )
       }
     },
-    [apply],
+    [apply, policy],
   )
 
   const moveBy = useCallback((id: string, delta: -1 | 1) => apply((d) => moveNodeBy(d, id, delta)), [apply])
@@ -193,11 +240,13 @@ export function useHeroBuilder(initialDesign: HeroDesignV5): HeroBuilderApi {
       canUndo: state.past.length > 0,
       canRedo: state.future.length > 0,
       select, setDevice, undo, redo, replaceDesign, editStyle, resetOverrides, editContent, editAnimation,
-      editSectionMeta, editTheme, addWidget, addSection, setColumns, remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
+      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, editShowFor, canRemove, canDuplicate, addSection, setColumns,
+      remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
     }),
     [
       state, select, setDevice, undo, redo, replaceDesign, editStyle, resetOverrides, editContent, editAnimation,
-      editSectionMeta, editTheme, addWidget, addSection, setColumns, remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
+      editSectionMeta, editTheme, editDesign, addWidget, addPrebuilt, editShowWhen, editShowFor, canRemove, canDuplicate, addSection, setColumns,
+      remove, duplicate, moveBy, moveWidgetTo, moveSectionTo,
     ],
   )
 }

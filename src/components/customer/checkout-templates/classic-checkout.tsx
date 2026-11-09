@@ -40,6 +40,11 @@ const ORDER_TYPE_ICONS: Record<OrderTypeKind, LucideIcon> = {
 }
 
 import { CheckoutAddressField } from './checkout-address-field'
+import { CheckoutFieldControl } from './checkout-field-control'
+import type { CheckoutFieldType } from '@/lib/checkout-field-types'
+
+/** Kinds Classic has no markup of its own for (added 2026-11-05). */
+const CLASSIC_SHARED_TYPES: readonly CheckoutFieldType[] = ['choice', 'checkbox', 'date']
 
 
 export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
@@ -301,6 +306,15 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                           <option key={option} value={option}>{option}</option>
                         ))}
                       </select>
+                    ) : CLASSIC_SHARED_TYPES.includes(field.field_type) ? (
+                      // Buttons, tick box and date: the shared control, in Classic's box.
+                      <CheckoutFieldControl
+                        checkout={checkout}
+                        field={field}
+                        id={`classic-${field.id}`}
+                        boxClass={`w-full px-3 py-2 rounded-md ${CO.input}`}
+                        isInvalid={false}
+                      />
                     ) : field.field_type === 'phone' && (tenant?.lalamove_market || '').toUpperCase() === 'PH' ? (
                       <div className="relative">
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--co-text)] font-medium pointer-events-none">

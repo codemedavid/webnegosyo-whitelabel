@@ -592,7 +592,7 @@ describe('lalamove server actions', () => {
         'Landmark: Blue gate',
         'Address: 12 Mabini St',
         'Pin: https://www.google.com/maps/search/?api=1&query=14.7,121.05',
-      ].join('\n'))
+      ].join('\r\n'))
     })
 
     test('refuses to book when the store pickup phone is not a usable number', async () => {

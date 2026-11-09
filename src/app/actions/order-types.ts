@@ -20,6 +20,7 @@ import {
 } from '@/lib/order-types-service'
 import { getDefaultFormFields } from '@/lib/order-types/default-form-fields'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
+import type { CustomerFormField } from '@/types/database'
 
 // ============================================
 // Order Types Actions
@@ -281,7 +282,7 @@ export async function createCustomerFormFieldAction(
   input: {
     field_name: string
     field_label: string
-    field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number'
+    field_type: CustomerFormField['field_type']
     is_required?: boolean
     placeholder?: string
     validation_rules?: Record<string, unknown>
@@ -311,7 +312,7 @@ export async function updateCustomerFormFieldAction(
   input: {
     field_name: string
     field_label: string
-    field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number'
+    field_type: CustomerFormField['field_type']
     is_required?: boolean
     placeholder?: string
     validation_rules?: Record<string, unknown>

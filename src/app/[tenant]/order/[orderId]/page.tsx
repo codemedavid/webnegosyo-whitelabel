@@ -9,6 +9,9 @@ import { describeLoyaltyOffer, type LoyaltyOffer } from '@/lib/loyalty/offer'
 import { readLoyaltyTenantFlags } from '@/lib/loyalty/tenant-flags'
 import { readWalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 import { readTrackingStyle } from '@/lib/tracking-style/keys'
+import { publishedDesignColumns, resolvePageDesign } from '@/lib/page-designer/page-mode'
+import { storeAddressToken } from '@/lib/page-designer/store-address'
+import { designUsesStoreAddress, readOrderStoreAddress } from '@/lib/page-designer/order-store-address'
 import type { Tenant } from '@/types/database'
 import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { OrderTrackingFallback } from './order-tracking-fallback'
@@ -33,7 +36,11 @@ async function renderStudioPreview(tenant: Tenant, tenantSlug: string) {
   const menu = await getCachedMenuItemsList(tenant.id).catch(() => [])
   return (
     <TrackingStudioPreview
-      tenant={pickStorefrontColumns(tenant as unknown as Record<string, unknown>)}
+      tenant={{
+        ...pickStorefrontColumns(tenant as unknown as Record<string, unknown>),
+        // The shared select carries only the flag; the preview shows a published design too.
+        ...publishedDesignColumns(tenant as unknown as Record<string, unknown>, ['tracking']),
+      }}
       tenantSlug={tenantSlug}
       tenantId={tenant.id}
       storeName={tenant.name}
@@ -67,6 +74,8 @@ async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
   const row = tenant as unknown as Record<string, unknown>
   const branding = getTenantBranding(row)
   const trackingStyle = readTrackingStyle(row)
+  // Null (the standard page) until a design is published — also while the columns don't exist yet.
+  const design = resolvePageDesign(row, 'tracking')
   return {
     storeName: tenant.name,
     logoUrl: branding.logoUrl,
@@ -74,6 +83,10 @@ async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
     options: trackingStyle.options,
     storefrontLabels: row.storefront_labels ?? null,
     loyaltyOffer: await resolveLoyaltyOffer(tenant),
+    design,
+    storeAddress: design ? storeAddressToken(tenant, null) : undefined,
+    // Only a designed page re-colours single blocks; the standard page never needs it.
+    ...(design ? { paint: { branding, style: trackingStyle } } : {}),
   }
 }
 
@@ -110,6 +123,10 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
   ])
 
   if (trackingToken && tracking?.data) {
+    // Only a design that prints the address pays for reading the order's branch.
+    const storeAddress = brand.design && designUsesStoreAddress(brand.design)
+      ? await readOrderStoreAddress(tenant, orderId, trackingToken)
+      : brand.storeAddress
     return (
       <OrderTrackingClient
         orderId={orderId}
@@ -121,7 +138,7 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
           // Same shape as /api/orders/stamps, so the wallet buttons are there on first paint.
           ? { ...stamps.status, wallets: readWalletAvailability() }
           : null}
-        brand={brand}
+        brand={{ ...brand, storeAddress }}
       />
     )
   }

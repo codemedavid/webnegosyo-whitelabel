@@ -242,3 +242,18 @@ describe("deliveryCustomerData — the pinned spot", () => {
     ).toEqual({ delivery_address: "Somewhere" });
   });
 });
+
+describe("the words that find the door", () => {
+  it("writes them under the web checkout's own keys, trimmed", () => {
+    expect(deliveryCustomerData(delivery({ address: "Camella", unit: " Blk 4 Lot 12 ", landmark: "Blue gate", riderNote: "Call me" }))).toEqual({
+      delivery_address: "Camella",
+      delivery_unit: "Blk 4 Lot 12",
+      delivery_landmark: "Blue gate",
+      delivery_rider_note: "Call me",
+    });
+  });
+
+  it("leaves an ordinary sale's blob untouched", () => {
+    expect(deliveryCustomerData(delivery({ unit: " ", landmark: "", riderNote: undefined }))).toEqual({});
+  });
+});

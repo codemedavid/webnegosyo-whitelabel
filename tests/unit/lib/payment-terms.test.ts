@@ -10,14 +10,22 @@ import {
 const EXPECTED_PAYABLE_AMOUNTS = {
   downpayment_50: 1950,
   full_payment: 3899,
-  monthly_subscription: 999,
+  monthly_subscription: 1499,
+  six_month_full: 5499,
+  six_month_downpayment: 2000,
 } satisfies Record<CheckoutPaymentTerm, number>
 
 describe('checkout payment terms', () => {
   it('defines the Smart Menu base price and default term', () => {
     expect(CHECKOUT_BASE_PRICE).toBe(3899)
     expect(DEFAULT_PAYMENT_TERM).toBe('downpayment_50')
-    expect(CHECKOUT_PAYMENT_TERMS).toEqual(['downpayment_50', 'full_payment', 'monthly_subscription'])
+    expect(CHECKOUT_PAYMENT_TERMS).toEqual([
+      'downpayment_50',
+      'full_payment',
+      'monthly_subscription',
+      'six_month_full',
+      'six_month_downpayment',
+    ])
   })
 
   it('computes the payable amount for every supported payment term', () => {

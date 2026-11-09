@@ -6,6 +6,8 @@ import { buildDesignCss } from '@/lib/hero-builder/css'
 import { safeAnchor, safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import type { Column, HeroDesignV5, Section, Widget } from '@/lib/hero-builder/types'
 
+import { PageLayout } from './page-layout'
+import { isShownForOrder, isShownInState, usePageRuntime } from './page-runtime'
 import { WidgetView } from './widget-view'
 
 export interface HeroBuilderRendererProps {
@@ -20,10 +22,28 @@ export interface HeroBuilderRendererProps {
 interface NodeContext {
   classes: Record<string, string>
   isEditor: boolean
+  /** Page Designer state ("preparing"…) for "Show when"; null = no states. */
+  pageState: string | null
+  /** The order's type for "Show for"; null = unknown. */
+  orderKind: string | null
+}
+
+/** Both page conditions a section or widget can carry. */
+function isNodeShown(node: Pick<Widget, 'showWhen' | 'showFor'>, pageState: string | null, orderKind: string | null): boolean {
+  return isShownInState(node.showWhen, pageState) && isShownForOrder(node.showFor, orderKind)
 }
 
 function editorAttrs(ctx: NodeContext, id: string, kind: 'section' | 'column' | 'widget') {
   return ctx.isEditor ? { 'data-hb-id': id, 'data-hb-kind': kind } : {}
+}
+
+/**
+ * "Show when": off-state nodes are left out of the storefront; the editor
+ * keeps them (faded) so they stay selectable.
+ */
+function stateAttrs(ctx: NodeContext, node: Pick<Widget, 'showWhen' | 'showFor'>): { skip: boolean; attrs: Record<string, string> } {
+  if (isNodeShown(node, ctx.pageState, ctx.orderKind)) return { skip: false, attrs: {} }
+  return ctx.isEditor ? { skip: false, attrs: { 'data-hb-state-off': 'true' } } : { skip: true, attrs: {} }
 }
 
 /** The first mp4 any device layer asks for; CSS shows it only where used. */
@@ -39,12 +59,14 @@ function sectionVideo(section: Section): string | null {
 }
 
 function WidgetNode({ widget, ctx, isPriority }: { widget: Widget; ctx: NodeContext; isPriority: boolean }) {
+  const state = stateAttrs(ctx, widget)
+  if (state.skip) return null
   return (
     // `hb-w--<kind>`, not `hb-<kind>`: the inner elements already use
     // hb-heading / hb-text / hb-badge / hb-divider / hb-gallery / hb-html, and
     // sharing the class made the base sheet style the wrapper too (a 3-column
     // grid around the gallery, a second divider line).
-    <div className={`hb-w hb-w--${widget.kind} ${ctx.classes[widget.id] ?? ''}`} {...editorAttrs(ctx, widget.id, 'widget')}>
+    <div className={`hb-w hb-w--${widget.kind} ${ctx.classes[widget.id] ?? ''}`} {...editorAttrs(ctx, widget.id, 'widget')} {...state.attrs}>
       <WidgetView widget={widget} isEditor={ctx.isEditor} isPriority={isPriority} />
     </div>
   )
@@ -68,12 +90,16 @@ function ColumnNode({ column, ctx, isPriority }: { column: Column; ctx: NodeCont
 function SectionNode({ section, ctx, isPriority }: { section: Section; ctx: NodeContext; isPriority: boolean }) {
   const video = sectionVideo(section)
   const anchor = safeAnchor(section.anchor)
+  const state = stateAttrs(ctx, section)
+  if (state.skip) return null
   return (
     <section
       id={anchor ?? undefined}
       aria-label={section.label || undefined}
       className={`hb-section ${ctx.classes[section.id] ?? ''}`}
+      data-pin={section.pin === 'bottom' ? 'bottom' : undefined}
       {...editorAttrs(ctx, section.id, 'section')}
+      {...state.attrs}
     >
       {video && (
         <>
@@ -109,17 +135,32 @@ export const HeroBuilderRenderer = memo(function HeroBuilderRenderer({
     () => buildDesignCss(design, { scope, showHidden: isEditor, viewportHeight }),
     [design, scope, isEditor, viewportHeight],
   )
-  const ctx: NodeContext = { classes: built.classes, isEditor }
+  const runtime = usePageRuntime()
+  const pageState = runtime?.state ?? null
+  const orderKind = runtime?.orderKind ?? null
+  const ctx: NodeContext = { classes: built.classes, isEditor, pageState, orderKind }
 
   if (!design.sections.length && !isEditor) return null
+  // Page Designer: one step at a time / folding panels (only on a page, never a hero).
+  const layout = runtime ? design.page?.layout : undefined
+  const isStepped = layout === 'steps' || layout === 'accordion'
 
   return (
     <div className={`${scope}${className ? ` ${className}` : ''}`} data-branding-scope="storefront/hero">
       {built.fontsHref && <link rel="stylesheet" href={built.fontsHref} />}
       <style dangerouslySetInnerHTML={{ __html: built.css }} />
-      {design.sections.map((section, i) => (
-        <SectionNode key={section.id} section={section} ctx={ctx} isPriority={i === 0} />
-      ))}
+      {isStepped && design.page ? (
+        <PageLayout
+          settings={design.page}
+          isEditor={isEditor}
+          stepProblem={runtime?.stepProblem}
+          sections={design.sections
+            .filter((section) => isEditor || isNodeShown(section, pageState, orderKind))
+            .map((section, i) => ({ section, node: <SectionNode section={section} ctx={ctx} isPriority={i === 0} /> }))}
+        />
+      ) : (
+        design.sections.map((section, i) => <SectionNode key={section.id} section={section} ctx={ctx} isPriority={i === 0} />)
+      )}
     </div>
   )
 })

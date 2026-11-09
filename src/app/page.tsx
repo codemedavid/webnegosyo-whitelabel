@@ -1,54 +1,26 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { LandingPage } from '@/components/landing/landing-page'
+import { FunnelPage } from '@/components/funnel/funnel-page'
+import { FUNNEL_METADATA } from '@/components/funnel/funnel-metadata'
 import { getTenantSlugFromHeaders } from '@/lib/tenant'
 
 // Disable static generation for this page to allow dynamic tenant detection
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const TITLE = 'SmartMenu by WebNegosyo — Online Ordering Website na Kusang Nag-a-upsell'
-const DESCRIPTION =
-  'Buong sistema para sa food business — SmartMenu ordering website na kusang nag-uupsell, POS, inventory, SMS marketing, at AI analytics. ₱3,499 one-time setup + ₱649/buwan, live in 48 hours. Growing restaurants, together.'
-
-export const metadata: Metadata = {
-  title: TITLE,
-  description: DESCRIPTION,
-  keywords: [
-    'online ordering website',
-    'smart menu',
-    'restaurant menu engineering',
-    'upsell system',
-    'food business Philippines',
-    'QR menu',
-    'bundle system',
-    'average order value',
-  ],
-  openGraph: {
-    title: TITLE,
-    description: DESCRIPTION,
-    type: 'website',
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
-}
+/**
+ * The platform homepage serves the sales funnel for now (owner, 2026-11-04).
+ * The previous landing page is still `@/components/landing/landing-page`;
+ * render `<LandingPage />` here again to switch back.
+ */
+export const metadata: Metadata = FUNNEL_METADATA
 
 export default async function HomePage() {
-  // Check if this is a tenant subdomain request
-  // If so, redirect to the tenant menu (middleware should handle rewrite, but this is a fallback)
+  // A tenant subdomain never shows the platform homepage (middleware rewrites it; this is the fallback)
   const tenantSlug = await getTenantSlugFromHeaders()
-  
   if (tenantSlug) {
-    // Redirect to tenant menu - this ensures we never show landing page on tenant subdomains
     redirect(`/${tenantSlug}/menu`)
   }
-  
-  // Only show landing page if not a tenant subdomain
-  return (
-    <>
-      <LandingPage />
-    </>
-  )
+
+  return <FunnelPage />
 }

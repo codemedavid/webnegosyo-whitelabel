@@ -34,5 +34,5 @@ export function spacer(id: string, extra: Partial<Widget> = {}): Widget {
 export const ALL_WIDGET_KINDS: readonly WidgetKind[] = [
   'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
   'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
-  'order-entry', 'store-logo', 'slideshow',
+  'order-entry', 'store-logo', 'slideshow', 'page-block', 'copy-text',
 ]
