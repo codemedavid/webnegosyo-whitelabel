@@ -239,7 +239,7 @@ export function HeroBuilderEditor({
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-3">
         <Link href={`/${tenantSlug}/admin`} className="flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-neutral-600 hover:bg-neutral-100" title="Back to admin">
           <ArrowLeft className="h-4 w-4" />
-          <span className="hidden font-semibold text-neutral-900 md:inline">{surface.title}</span>
+          <span className="hidden font-semibold text-neutral-900 2xl:inline">{surface.title}</span>
         </Link>
         <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline', status.className)}>{status.label}</span>
         {toolbarSlot}
@@ -259,7 +259,7 @@ export function HeroBuilderEditor({
               className={cn('flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition', api.device === device ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-900')}
             >
               <Icon className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">{label}</span>
+              <span className="hidden 2xl:inline">{label}</span>
             </button>
           ))}
         </div>
@@ -289,8 +289,8 @@ export function HeroBuilderEditor({
           <button type="button" onClick={api.redo} disabled={!api.canRedo} title="Redo (⌘⇧Z)" aria-label="Redo" className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 disabled:opacity-30">
             <Redo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setShowTemplates(true)} className="hidden h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 md:flex">
-            <LayoutTemplate className="h-4 w-4" /> Templates
+          <button type="button" onClick={() => setShowTemplates(true)} title="Templates" aria-label="Templates" className="hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 md:flex">
+            <LayoutTemplate className="h-4 w-4" /> <span className="hidden 2xl:inline">Templates</span>
           </button>
           <button
             type="button"
