@@ -7,6 +7,7 @@ import {
   deliveryEditRefusal,
   merchantDeliveryPatchSchema,
 } from '@/lib/delivery/order-delivery-edit'
+import { findDeliveryDetails } from '@/lib/delivery/delivery-details'
 
 const NOW = new Date('2026-11-06T00:00:00Z')
 
@@ -34,6 +35,22 @@ describe('deliveryEditRefusal', () => {
 })
 
 describe('applyDeliveryPatch', () => {
+  it("clears a detail the store's own question held, so the rider stops reading it", () => {
+    // The edit form shows "Nearest Landmark" as the landmark; clearing the box must clear what the rider reads.
+    const { answers } = apply(
+      { 'Nearest Landmark': 'Near Petron', 'Note to Rider': 'Gate is green', 'Floor / Unit': '3F', Notes: 'No onions' },
+      { landmark: '', riderNote: '', unit: '' },
+    )
+    expect(findDeliveryDetails(answers)).toEqual({ unit: '', landmark: '', riderNote: '' })
+    expect(answers).toEqual({ Notes: 'No onions' })
+  })
+
+  it("keeps the store's own question when only another detail is cleared or a detail is changed", () => {
+    const { answers } = apply({ 'Nearest Landmark': 'Near Petron', 'Floor / Unit': '3F' }, { landmark: 'Near Shell', unit: '' })
+    expect(answers).toEqual({ 'Nearest Landmark': 'Near Petron', delivery_landmark: 'Near Shell' })
+    expect(findDeliveryDetails(answers).landmark).toBe('Near Shell')
+  })
+
   it('sets and clears details without touching anything else', () => {
     const { answers, isDestinationChanged } = apply({ delivery_unit: 'Old', Phone: '0917' }, { unit: '', landmark: 'Blue gate', storeNote: 'Fragile' })
     expect(answers).toEqual({ Phone: '0917', delivery_landmark: 'Blue gate', delivery_store_note: 'Fragile' })

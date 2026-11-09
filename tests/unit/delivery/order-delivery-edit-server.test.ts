@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
-import { createOrderPinLink, DELIVERY_EDIT_PLATFORM_ONLY_MESSAGE, saveOrderDeliveryEdit } from '@/lib/delivery/order-delivery-edit-server'
+import { createOrderPinLink, DELIVERY_EDIT_PLATFORM_ONLY_MESSAGE, PIN_LINK_UNAVAILABLE_MESSAGE, saveOrderDeliveryEdit } from '@/lib/delivery/order-delivery-edit-server'
 import { DELIVERY_EDIT_BOOKED_MESSAGE } from '@/lib/delivery/order-delivery-edit'
 import { verifyPinLinkToken } from '@/lib/delivery/pin-link-token'
 
@@ -156,5 +156,18 @@ describe('createOrderPinLink', () => {
   it('refuses when the order can no longer change', async () => {
     const result = await createOrderPinLink(fakeClient({ order: { ...ORDER_ROW, status: 'delivered' } }).client, { tenantId: TENANT, orderId: ORDER, origin: 'https://x' })
     expect(result).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('answers 503 with a logged reason, not a crash, when API_SECRET is missing', async () => {
+    delete process.env.API_SECRET
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const result = await createOrderPinLink(fakeClient().client, { tenantId: TENANT, orderId: ORDER, origin: 'https://x' })
+      expect(result).toEqual({ ok: false, status: 503, error: PIN_LINK_UNAVAILABLE_MESSAGE })
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('[delivery-edit]'), expect.stringContaining('API_SECRET'))
+    } finally {
+      logged.mockRestore()
+      process.env.API_SECRET = 'test-secret'
+    }
   })
 })

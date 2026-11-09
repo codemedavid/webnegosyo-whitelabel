@@ -153,6 +153,17 @@ VERCEL_TEAM_ID=       # team_7LbkpqMFpexa6YcoodORZOA1
 
 Server-only (never NEXT_PUBLIC_). Set for Production in Vercel project settings.
 
+# Signed order links (Required)
+# One HMAC key, purpose-separated per token: the customer's order-tracking token
+# (receipts, tracking page), the Lalamove quote signature checked at checkout,
+# payment-proof delete tokens, and the 24-hour "Send pin link" token
+# (/api/orders/pin-link, /[tenant]/pin/[orderId], /api/orders/pin).
+# Without it: no tracking links, Lalamove checkout refuses, and "Send pin link"
+# answers 503 "Pin links are not available right now" (logged as
+# "[delivery-edit] could not sign a pin link"). Rotating it voids every
+# outstanding tracking and pin link.
+API_SECRET=                                          # >= 32 random bytes: `openssl rand -base64 32`
+
 # Loyalty wallet passes (Optional - Apple Wallet / Google Wallet loyalty cards)
 # Each wallet is OFF until every one of its values is set and valid; the
 # "Add to ... Wallet" button simply does not appear otherwise.
