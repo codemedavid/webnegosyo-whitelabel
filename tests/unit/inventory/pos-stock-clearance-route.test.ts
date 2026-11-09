@@ -125,7 +125,7 @@ describe('POST /api/pos/stock-clearance', () => {
 
   it('answers the verdict: cleared 200, needs_manager 409 with approvers', async () => {
     callerWith(account())
-    expect(await call(body())).toEqual({ status: 200, json: { status: 'cleared', clearanceId: 'c-1' } })
+    expect(await call(body())).toEqual({ status: 200, json: { status: 'cleared', clearanceId: 'c-1', outletId: null } })
 
     mockDecide.mockResolvedValue({
       ok: false,

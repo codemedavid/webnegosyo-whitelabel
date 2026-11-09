@@ -81,8 +81,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
 
     if (outcome.ok) {
-      const { ok: _ok, ...answer } = outcome
-      return NextResponse.json(answer)
+      // The branch the clearance is bound to, so the register can tell when it
+      // differs from the branch its order row will carry.
+      return NextResponse.json({
+        status: outcome.status,
+        ...('clearanceId' in outcome ? { clearanceId: outcome.clearanceId } : {}),
+        ...('approverName' in outcome ? { approverName: outcome.approverName } : {}),
+        outletId: outlet.outletId,
+      })
     }
     if ('code' in outcome) {
       return NextResponse.json(
