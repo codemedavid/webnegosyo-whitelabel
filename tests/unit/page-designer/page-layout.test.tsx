@@ -53,6 +53,15 @@ describe('step by step', () => {
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
   })
 
+  it('paints upcoming step dots from the text colour, never the store border', () => {
+    // A black store border (sample-demo) turned every upcoming dot black with a
+    // muted number on it; form lines already follow the text colour for this reason.
+    renderPage(design('steps', sections))
+    const upcoming = screen.getByLabelText('You', { selector: '[data-part="step"]' })
+    expect(upcoming.getAttribute('style') ?? '').not.toContain('--co-border')
+    expect(upcoming.getAttribute('style') ?? '').toContain('color-mix')
+  })
+
   it('Next asks the page about the step and shows the reason', () => {
     const stepProblem = jest.fn().mockReturnValueOnce('Please choose how you’ll get your order').mockReturnValue(null)
     renderPage(design('steps', sections), { stepProblem })

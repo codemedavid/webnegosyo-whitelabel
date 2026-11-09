@@ -38,6 +38,8 @@ const ACCENT = 'var(--co-accent, var(--trk-accent, var(--hb-primary)))'
 const ACCENT_TEXT = 'var(--co-accent-text, #ffffff)'
 const MUTED = 'var(--co-muted, var(--trk-text-muted, var(--hb-muted)))'
 const LINE = 'var(--co-border, var(--trk-card-border, #e5e7eb))'
+/** Upcoming step dots: a tint of the text colour, so a strong store border can't fill them. */
+const STEP_IDLE = 'color-mix(in srgb, var(--co-text, var(--trk-text, var(--hb-text, #111827))) 12%, transparent)'
 const TEXT = 'var(--co-text, var(--trk-text, var(--hb-text)))'
 const NO_SECTIONS: ReadonlySet<number> = new Set()
 
@@ -81,7 +83,7 @@ function Progress({ style, labels, current }: { style: NonNullable<PageSettings[
               title={label}
               className={dot ? 'block h-2.5 w-2.5 rounded-full' : 'flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold'}
               style={{
-                background: isOn || isDone ? ACCENT : LINE,
+                background: isOn || isDone ? ACCENT : STEP_IDLE,
                 color: isOn || isDone ? ACCENT_TEXT : MUTED,
                 width: dot && isOn ? 22 : undefined,
               }}
