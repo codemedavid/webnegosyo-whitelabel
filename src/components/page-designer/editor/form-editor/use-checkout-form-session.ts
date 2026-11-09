@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { saveCheckoutFormAction } from '@/app/actions/page-designer'
 import { toggleOrderTypeAdvanceOrderAction } from '@/app/actions/order-types'
+import { settleAction } from '@/lib/hero-builder/settle-action'
 import type { Widget } from '@/lib/hero-builder/types'
 
 import { CustomerFormPanel } from './customer-form-panel'
@@ -42,10 +43,11 @@ export function useCheckoutFormSession(tenantId: string, tenantSlug: string, sou
         startSaving(async () => {
           const sent = input
           if (!sent) return
-          const result = await saveCheckoutFormAction(tenantId, sent)
+          const result = await settleAction(() => saveCheckoutFormAction(tenantId, sent), 'saveCheckoutForm')
           // Part-way saves come back with what was stored: take it, so retrying never doubles a question.
-          if (result.form) markSaved(sent, result.form)
-          if (!result.success || !result.form) {
+          const stored = 'form' in result ? result.form : undefined
+          if (stored) markSaved(sent, stored)
+          if (!result.success || !stored) {
             toast.error(result.error ?? 'Could not save the questions')
             return
           }
@@ -53,7 +55,8 @@ export function useCheckoutFormSession(tenantId: string, tenantSlug: string, sou
         }),
       onToggleAdvanceOrder: (id, isOn) => {
         setAdvanceOrder(id, isOn)
-        void toggleOrderTypeAdvanceOrderAction(id, tenantId, tenantSlug, isOn).then((result) => {
+        // A request that never answered is undone too, never left showing a change the store didn't take.
+        void settleAction(() => toggleOrderTypeAdvanceOrderAction(id, tenantId, tenantSlug, isOn), 'toggleAdvanceOrder').then((result) => {
           if (result.success) return
           setAdvanceOrder(id, !isOn)
           toast.error(result.error ?? 'Could not change pre-orders')
