@@ -55,3 +55,39 @@ describe('resolveShortMapLink', () => {
     await expect(resolveShortMapLink(SHORT, fetchImpl)).resolves.toBeNull()
   })
 })
+
+describe('resolveShortMapLink: hardening', () => {
+  it('refuses to fetch a first link that is not a Google short map link', async () => {
+    const { fetchImpl, urls } = redirects('https://maps.google.com/?q=15.66,120.58')
+    await expect(resolveShortMapLink('http://169.254.169.254/latest/meta-data', fetchImpl)).resolves.toBeNull()
+    await expect(resolveShortMapLink('https://goo.gl/notmaps', fetchImpl)).resolves.toBeNull()
+    expect(urls).toEqual([])
+  })
+
+  it('normalises the first link before fetching it (no port, no credentials)', async () => {
+    const { fetchImpl, urls } = redirects('https://maps.google.com/?q=15.66,120.58')
+    await resolveShortMapLink('https://user:pw@maps.app.goo.gl:8443/AbC123?g_st=ic', fetchImpl)
+    expect(urls).toEqual(['https://maps.app.goo.gl/AbC123?g_st=ic'])
+  })
+
+  it('discards every response body it never reads, so no socket is left open', async () => {
+    const cancel = jest.fn(async () => undefined)
+    const locations = ['https://goo.gl/maps/Next', 'https://maps.google.com/?q=15.66,120.58']
+    const fetchImpl: LinkFetch = async () => ({
+      status: 302,
+      headers: { get: () => locations.shift() ?? null },
+      body: { cancel },
+    })
+    await resolveShortMapLink(SHORT, fetchImpl)
+    expect(cancel).toHaveBeenCalledTimes(2)
+  })
+
+  it('still answers when discarding a body fails', async () => {
+    const fetchImpl: LinkFetch = async () => ({
+      status: 302,
+      headers: { get: () => 'https://maps.google.com/?q=15.66,120.58' },
+      body: { cancel: async () => { throw new Error('already closed') } },
+    })
+    await expect(resolveShortMapLink(SHORT, fetchImpl)).resolves.toEqual({ kind: 'point', point: { lat: 15.66, lng: 120.58 } })
+  })
+})

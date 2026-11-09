@@ -14,7 +14,12 @@ const REQUEST_TIMEOUT_MS = 5_000
 export type LinkFetch = (
   url: string,
   init: { method: string; redirect: 'manual'; signal: AbortSignal },
-) => Promise<{ status: number; headers: { get(name: string): string | null } }>
+) => Promise<{
+  status: number
+  headers: { get(name: string): string | null }
+  /** Never read: only the redirect matters, so it is discarded to free the connection. */
+  body?: { cancel(): Promise<unknown> } | null
+}>
 
 function nextUrl(location: string, from: string): URL | null {
   try {
@@ -31,15 +36,23 @@ function unwrapConsent(url: URL): URL {
   return (inner && nextUrl(inner, url.href)) || url
 }
 
+/** The first link too: this module is the boundary, whatever its caller checked. */
+function firstShortLink(url: string): string | null {
+  const parsed = nextUrl(url, 'https://invalid.invalid')
+  return parsed ? shortMapLink(parsed) : null
+}
+
 /** The spot or place behind a short link, or null when it leads nowhere readable. */
 export async function resolveShortMapLink(url: string, fetchImpl: LinkFetch): Promise<PastedLocation | null> {
-  let current = url
+  let current = firstShortLink(url)
+  if (!current) return null
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
     const response = await fetchImpl(current, {
       method: 'GET',
       redirect: 'manual',
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
+    void response.body?.cancel().catch(() => undefined)
     const location = response.headers.get('location')
     if (response.status < 300 || response.status >= 400 || !location) return null
 
