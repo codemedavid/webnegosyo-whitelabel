@@ -388,6 +388,23 @@ describe('lalamove server actions', () => {
       expect(result.success).toBe(false)
     })
 
+    test('never shows the shopper the store’s Lalamove setup problem', async () => {
+      const service = await import('@/lib/lalamove-service')
+      ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockRejectedValue(
+        new Error('These are sandbox keys (pk_test_/sk_test_) but the store is in production mode.'),
+      )
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121, 'Home', 14.7, 121.1)
+
+      expect(result.success).toBe(false)
+      expect(result.error).not.toMatch(/sandbox|pk_test|keys/i)
+      expect(result.error).toMatch(/delivery fee/i)
+      expect(errorSpy).toHaveBeenCalled()
+      errorSpy.mockRestore()
+    })
+
     test('binds the signed price to the provider expiry and destination', async () => {
       await mockQuote()
       const { createQuotationAction } = await import('@/app/actions/lalamove')
