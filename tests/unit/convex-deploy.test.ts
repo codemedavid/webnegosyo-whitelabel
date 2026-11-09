@@ -114,6 +114,50 @@ describe("convex-deploy", () => {
       expect(result).toBe(false);
     });
 
+    it("returns false when Convex answers 200 with an error body", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "error", errorMessage: "[Request ID: x] Server Error" }),
+      });
+
+      const result = await syncTenantConfig(
+        "https://test.convex.cloud",
+        "prod:test|key123",
+        { auth_enforced: "true", tenant_id: "t1" }
+      );
+
+      expect(result).toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns true when every write answers a success body", async () => {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ status: "success", value: null }) });
+
+      const result = await syncTenantConfig(
+        "https://test.convex.cloud",
+        "prod:test|key123",
+        { auth_enforced: "true" }
+      );
+
+      expect(result).toBe(true);
+    });
+
+    it("returns false when a function fails with HTTP 560", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 560,
+        json: async () => ({ status: "error", errorMessage: "Server Error" }),
+      });
+
+      const result = await syncTenantConfig(
+        "https://test.convex.cloud",
+        "prod:test|key123",
+        { auth_enforced: "true" }
+      );
+
+      expect(result).toBe(false);
+    });
+
     it("returns true for empty config object", async () => {
       const result = await syncTenantConfig(
         "https://test.convex.cloud",

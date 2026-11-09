@@ -181,8 +181,10 @@ export const createOrder = mutation({
   args: createOrderArgs,
   handler: async (ctx, args) => {
     await requireLalamoveOrderAccess(ctx);
-    // POS is a merchant write, including idempotent replay of an existing sale.
-    if (args.source === "pos") await requireAccess(ctx, "write");
+    // Every source, including idempotent replay of an existing sale. Web
+    // checkout comes through `createOrderInternal`; what reaches this name is a
+    // merchant device, and an unenforced store still admits it with no token.
+    await requireAccess(ctx, "write", "orders:createOrder");
     return insertOrder(ctx, args);
   },
 });
@@ -206,7 +208,7 @@ export const updateOrderStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "orders:updateOrderStatus");
     await ctx.db.patch(args.orderId, { status: args.status });
     return args.orderId;
   },
@@ -231,7 +233,7 @@ export const setPrepTime = mutation({
     status: v.union(v.literal("preparing"), v.literal("confirmed")),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "orders:setPrepTime");
     if (
       !Number.isInteger(args.prepMinutes) ||
       args.prepMinutes < 1 ||
@@ -292,6 +294,7 @@ async function updateCustomerContactHandler(ctx: MutationCtx, args: ObjectType<t
 export const updateCustomerContact = mutation({
   args: updateCustomerContactArgs,
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write", "orders:updateCustomerContact");
     return updateCustomerContactHandler(ctx, args);
   },
 });
@@ -304,7 +307,7 @@ export const updatePaymentStatus = mutation({
     paymentStatus: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "orders:updatePaymentStatus");
     await ctx.db.patch(args.orderId, { paymentStatus: args.paymentStatus });
   },
 });
@@ -352,7 +355,7 @@ export const reviseOrder = mutation({
     discount: v.optional(v.union(v.any(), v.null())),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "orders:reviseOrder");
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("That order no longer exists.");
 
@@ -436,7 +439,7 @@ export const recordPayment = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "orders:recordPayment");
     await ctx.db.insert("orderPayments", {
       ...args,
       amount: normalizePaymentAmount(args.amount),
@@ -490,7 +493,7 @@ export const updateLalamoveDetails = mutation({
     lalamoveTrackingUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "orders:updateLalamoveDetails");
     const order = await ctx.db.get(args.orderId);
     if (order?.lalamoveStatus === "BOOKING") {
       throw new Error("The delivery booking is awaiting confirmation. Check Lalamove before changing it.");
@@ -748,9 +751,9 @@ export const getAllOrderItems = query({
 
 export const getAllOrderItemsInternal = internalQuery({ handler: getAllOrderItemsHandler });
 
-export const getOrderByClientId = query({
-  args: { clientOrderId: v.string() },
-  handler: async (ctx, args) => {
+const getOrderByClientIdArgs = { clientOrderId: v.string() };
+
+async function getOrderByClientIdHandler(ctx: QueryCtx, args: ObjectType<typeof getOrderByClientIdArgs>) {
     const order = await ctx.db
       .query("orders")
       .withIndex("by_client_order_id", (q) =>
@@ -765,8 +768,18 @@ export const getOrderByClientId = query({
       .collect();
 
     return { ...orderForClient(order), items };
+}
+
+export const getOrderByClientId = query({
+  args: getOrderByClientIdArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getOrderByClientIdHandler(ctx, args);
   },
 });
+
+/** The customer's QR tracking, answered through the web server's deploy key. */
+export const getOrderByClientIdInternal = internalQuery({ args: getOrderByClientIdArgs, handler: getOrderByClientIdHandler });
 
 export const getRealtimeQueue = query({
   args: {

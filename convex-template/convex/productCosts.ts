@@ -9,7 +9,7 @@ export const setCost = mutation({
     costNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "productCosts:setCost");
     const existing = await ctx.db
       .query("productCosts")
       .withIndex("by_item", (q) => q.eq("menuItemId", args.menuItemId))
