@@ -473,25 +473,34 @@ export async function POST(request: NextRequest) {
                 // Ensure messenger session exists for PSID-tenant validation
                 await ensureMessengerSession(senderId, tenant.id)
 
-                // Store PSID for future proactive messaging
-                // This allows us to send messages proactively for returning customers (within 24-hour window)
+                // Store PSID for future proactive messaging (within the
+                // 24-hour window). Conditional on the row we read: customer_data
+                // is rewritten whole, so a concurrent edit (delivery details, a
+                // pin link) must not be clobbered by this copy. A lost race
+                // matches no row and simply skips the write.
                 try {
-                  await supabase
+                  const now = new Date().toISOString()
+                  let psidWrite = supabase
                     .from('orders')
                     .update({
                       customer_data: {
                         ...(order.customer_data as Record<string, unknown> || {}),
                         messenger_sender_id: senderId,
-                        messenger_psid: senderId, // Store PSID for proactive messaging
-                        messenger_message_sent_at: new Date().toISOString(),
-                        messenger_last_interaction: new Date().toISOString(), // Track last interaction for 24-hour window
+                        messenger_psid: senderId,
+                        messenger_message_sent_at: now,
+                        messenger_last_interaction: now,
                       },
                     } as unknown as never)
                     .eq('id', orderId)
-
-                  // Also store PSID in customer_data for future orders from same customer
-                  // This enables proactive messaging for returning customers
-                  log.debug(`Stored PSID ${senderId} for future proactive messaging`)
+                  if (order.updated_at) {
+                    psidWrite = psidWrite.eq('updated_at', order.updated_at)
+                  }
+                  const { error: psidError } = await psidWrite
+                  if (psidError) {
+                    console.error(`[Webhook] Failed to store sender mapping for order ${orderId}:`, psidError.message)
+                  } else {
+                    log.debug(`Stored PSID ${senderId} for future proactive messaging`)
+                  }
                 } catch (error) {
                   console.error(`[Webhook] Failed to store sender mapping:`, error)
                   // Non-critical, continue
