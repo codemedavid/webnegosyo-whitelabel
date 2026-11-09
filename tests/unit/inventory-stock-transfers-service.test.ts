@@ -27,10 +27,16 @@ const AT_NORTH: BranchScope = { kind: 'branch', outletId: NORTH }
 const AT_SOUTH: BranchScope = { kind: 'branch', outletId: SOUTH }
 
 const from = jest.fn()
+const rpc = jest.fn()
+const mockReportStockFailure = jest.fn()
+jest.mock('@/lib/inventory/stock-failure-report', () => ({
+  reportStockFailure: (...a: unknown[]) => mockReportStockFailure(...a),
+}))
 const scope = jest.fn<Promise<BranchScope>, unknown[]>()
 
 jest.mock('@/lib/supabase/server', () => ({
-  createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a) }),
+  createClient: () =>
+    Promise.resolve({ from: (...a: unknown[]) => from(...a), rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 jest.mock('@/lib/inventory/acting-branch-scope', () => ({
   resolveActingBranchScope: (...a: unknown[]) => scope(...a),
@@ -41,6 +47,7 @@ jest.mock('@/lib/inventory/stock-alerts-service', () => ({
 }))
 
 interface Writes {
+  rpcs: Array<{ fn: string; args: Record<string, unknown> }>
   inserts: Array<{ table: string; rows: unknown }>
   updates: Array<{ table: string; patch: unknown }>
 }
@@ -50,7 +57,11 @@ function stub(options: {
   lines?: Array<Record<string, unknown>>
   items?: Array<Record<string, unknown>>
 }): Writes {
-  const writes: Writes = { inserts: [], updates: [] }
+  const writes: Writes = { rpcs: [], inserts: [], updates: [] }
+  rpc.mockImplementation((fn: string, args: Record<string, unknown>) => {
+    writes.rpcs.push({ fn, args })
+    return Promise.resolve({ data: null, error: null })
+  })
 
   const transfer = options.transfer ?? {
     id: XFER,
@@ -96,22 +107,21 @@ function stub(options: {
 
 beforeEach(() => {
   from.mockReset()
+  rpc.mockReset()
+  mockReportStockFailure.mockReset()
   mockProcessStockLevelChanges.mockReset()
   scope.mockReset()
   scope.mockResolvedValue(ALL)
 })
 
+/** The legs the service handed to the transfer functions. */
 const movementRows = (writes: Writes): Array<Record<string, unknown>> =>
-  writes.inserts
-    .filter((write) => write.table === 'stock_movements')
-    .flatMap((write) => (Array.isArray(write.rows) ? write.rows : [write.rows])) as Array<
-    Record<string, unknown>
-  >
+  writes.rpcs.flatMap((call) => call.args.p_legs as Array<Record<string, unknown>>)
 
 describe('createTransfer', () => {
-  it('freezes the source cost onto each line', async () => {
-    // Re-deriving the price at receipt would revalue the chain's stock on a
-    // movement that changed nothing but location.
+  it('writes no price on the lines and never reads what an ingredient costs', async () => {
+    // The ledger freezes each leg's cost itself, and unit_cost is not selectable
+    // by the session role (20261107130100), so a draft neither reads nor writes one.
     const writes = stub({ items: [{ id: FLOUR, unit_cost: 25 }] })
 
     await createTransfer(TENANT, {
@@ -121,9 +131,9 @@ describe('createTransfer', () => {
     })
 
     const lineWrite = writes.inserts.find((w) => w.table === 'stock_transfer_lines')
-    expect(lineWrite?.rows).toEqual([
-      expect.objectContaining({ inventory_item_id: FLOUR, sent_quantity: 10, unit_cost: 25 }),
-    ])
+    expect(lineWrite?.rows).toEqual([expect.not.objectContaining({ unit_cost: expect.anything() })])
+    expect(lineWrite?.rows).toEqual([expect.objectContaining({ inventory_item_id: FLOUR, sent_quantity: 10 })])
+    expect(from.mock.calls.map(([table]) => table)).not.toContain('inventory_items')
   })
 
   it('writes no stock movement — a draft has not moved anything', async () => {
@@ -165,26 +175,49 @@ describe('sendTransfer', () => {
 
     expect(movementRows(writes)).toEqual([
       expect.objectContaining({
-        tenant_id: TENANT,
         inventory_item_id: FLOUR,
         outlet_id: NORTH,
         reason: 'transfer_out',
         quantity_delta: -10,
-        stock_transfer_id: XFER,
       }),
     ])
     expect(writes.inserts.some((w) => w.table === 'inventory_stock')).toBe(false)
   })
 
-  it('marks the document as in transit', async () => {
+  it('sends legs and the status change as ONE database step', async () => {
+    // Two requests used to leave the stock moved while the transfer still said
+    // draft, and the each-leg-once index then blocked every retry.
     const writes = stub({})
 
     await sendTransfer(TENANT, XFER)
 
-    expect(writes.updates).toContainEqual({
-      table: 'stock_transfers',
-      patch: expect.objectContaining({ status: 'sent' }),
-    })
+    expect(writes.rpcs).toEqual([
+      { fn: 'send_stock_transfer', args: expect.objectContaining({ p_transfer_id: XFER }) },
+    ])
+    expect(writes.inserts.some((w) => w.table === 'stock_movements')).toBe(false)
+    expect(writes.updates.some((w) => w.table === 'stock_transfers')).toBe(false)
+  })
+
+  it('throws, alerts nobody and reports when the step fails, so nothing half-moved is claimed', async () => {
+    stub({})
+    rpc.mockResolvedValue({ data: null, error: { message: 'connection reset', code: '08006' } })
+
+    await expect(sendTransfer(TENANT, XFER)).rejects.toMatchObject({ message: 'connection reset' })
+
+    expect(mockProcessStockLevelChanges).not.toHaveBeenCalled()
+    expect(mockReportStockFailure).toHaveBeenCalledWith(
+      { tenantId: TENANT, operation: 'stock_transfer_step' },
+      expect.objectContaining({ message: 'connection reset' }),
+    )
+  })
+
+  it('does not report a refusal the merchant can act on (a second tab already sent it)', async () => {
+    stub({})
+    rpc.mockResolvedValue({ data: null, error: { message: 'A sent transfer cannot be marked sent.', code: '23514' } })
+
+    await expect(sendTransfer(TENANT, XFER)).rejects.toMatchObject({ code: '23514' })
+
+    expect(mockReportStockFailure).not.toHaveBeenCalled()
   })
 
   it('refuses to send a transfer that has already gone', async () => {
@@ -224,7 +257,6 @@ describe('receiveTransfer', () => {
         outlet_id: SOUTH,
         reason: 'transfer_in',
         quantity_delta: 8,
-        stock_transfer_id: XFER,
       }),
     )
   })
@@ -259,16 +291,19 @@ describe('receiveTransfer', () => {
     )
   })
 
-  it('records what was counted against the line', async () => {
+  it('records what was counted in the same step as the legs and status', async () => {
     scope.mockResolvedValue(AT_SOUTH)
     const writes = stub({ transfer: sent })
 
     await receiveTransfer(TENANT, XFER, { [FLOUR]: 8 })
 
-    expect(writes.updates).toContainEqual({
-      table: 'stock_transfer_lines',
-      patch: expect.objectContaining({ received_quantity: 8 }),
-    })
+    expect(writes.rpcs).toEqual([
+      {
+        fn: 'receive_stock_transfer',
+        args: expect.objectContaining({ p_transfer_id: XFER, p_counts: { [FLOUR]: 8 } }),
+      },
+    ])
+    expect(writes.updates.some((w) => w.table === 'stock_transfer_lines')).toBe(false)
   })
 
   it('refuses the sending branch counting in its own delivery', async () => {

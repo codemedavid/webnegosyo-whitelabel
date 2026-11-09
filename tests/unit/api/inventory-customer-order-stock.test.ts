@@ -22,15 +22,15 @@ jest.mock('@/lib/inventory/order-stock-service', () => ({
   applyOrderStockBestEffort: (...args: unknown[]) => applyOrderStockBestEffort(...args),
 }))
 
-const mockStockLimit = jest.fn(async (..._args: unknown[]) => ({ allowed: true, remaining: 10, retryAfterSec: 0 }))
-jest.mock('@/lib/distributed-rate-limit', () => ({
-  checkRateLimit: (...args: unknown[]) => mockStockLimit(...args),
-}))
-
 const convexQuery = jest.fn()
 const createConvexServerClient = jest.fn((..._args: unknown[]) => ({ query: convexQuery }))
 jest.mock('@/lib/convex/server', () => ({
   createConvexServerClient: (...args: unknown[]) => createConvexServerClient(...args),
+}))
+
+const rateLimit = jest.fn()
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: (...args: unknown[]) => rateLimit(...args),
 }))
 
 import { POST } from '@/app/api/inventory/customer-order-stock/route'
@@ -49,7 +49,7 @@ function post(body: unknown): NextRequest {
 function stubTables(options: {
   inventoryEnabled?: boolean
   tenant?: Record<string, unknown>
-  order?: { tenant_id: string; outlet_id?: string | null } | null
+  order?: { tenant_id: string; outlet_id?: string | null; source?: string; created_at?: string } | null
   lines?: Array<{ menu_item_id: string | null; quantity: number }>
 }) {
   from.mockImplementation((table: string) => {
@@ -96,7 +96,7 @@ function stubTables(options: {
       // `order: null` means "no such order" and must not fall through to the
       // default the way `??` would.
       const order =
-        'order' in options ? options.order : { tenant_id: TENANT, outlet_id: null }
+        'order' in options ? options.order : { tenant_id: TENANT, outlet_id: null, source: 'web', created_at: new Date().toISOString() }
       return {
         select: () => ({
           eq: () => ({ single: () => Promise.resolve({ data: order, error: null }) }),
@@ -118,6 +118,8 @@ beforeEach(() => {
   from.mockReset()
   applyOrderStockBestEffort.mockReset()
   convexQuery.mockReset()
+  rateLimit.mockReset()
+  rateLimit.mockResolvedValue({ allowed: true, remaining: 10, retryAfterSec: 30 })
   createConvexServerClient.mockClear()
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -171,7 +173,7 @@ describe('customer order stock route', () => {
     // The branch is as unsteerable as the lines: it comes off the stored order,
     // so a forged call cannot deplete a shop the order never visited.
     stubTables({
-      order: { tenant_id: TENANT, outlet_id: 'outlet-north' },
+      order: { tenant_id: TENANT, outlet_id: 'outlet-north', source: 'web', created_at: new Date().toISOString() },
       lines: [{ menu_item_id: 'dish-1', quantity: 1 }],
     })
 
@@ -256,6 +258,8 @@ describe('customer order stock route — Convex-backend tenants', () => {
     stubTables({ tenant: CONVEX_TENANT })
     convexQuery.mockResolvedValueOnce({
       _id: CONVEX_ORDER,
+      source: 'mobile',
+      _creationTime: Date.now(),
       outletId: undefined,
       items: [
         { menuItemId: 'dish-1', quantity: 2 },
@@ -293,6 +297,8 @@ describe('customer order stock route — Convex-backend tenants', () => {
     stubTables({ tenant: CONVEX_TENANT })
     convexQuery.mockResolvedValueOnce({
       _id: CONVEX_ORDER,
+      source: 'mobile',
+      _creationTime: Date.now(),
       items: [{ menuItemId: 'dish-1', quantity: 1 }],
     })
 
@@ -319,6 +325,8 @@ describe('customer order stock route — Convex-backend tenants', () => {
     stubTables({ tenant: CONVEX_TENANT })
     convexQuery.mockResolvedValueOnce({
       _id: CONVEX_ORDER,
+      source: 'mobile',
+      _creationTime: Date.now(),
       outletId: 'outlet-north',
       items: [{ menuItemId: 'dish-1', quantity: 1 }],
     })
@@ -420,57 +428,70 @@ describe('customer order stock route — backend comes from resolveOrderBackend'
     expect(from).not.toHaveBeenCalledWith('orders')
     expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
   })
+})
 
-  it('spends nothing for a cancelled order', async () => {
-    stubTables({
-      order: { tenant_id: TENANT, outlet_id: null, status: 'cancelled' } as never,
-      lines: [{ menu_item_id: 'dish-1', quantity: 2 }],
-    })
+describe('customer order stock route — only the order the app just placed', () => {
+  const MINUTE = 60_000
+  const placed = (agoMs: number, source = 'web') => ({
+    tenant_id: TENANT, outlet_id: null, source, created_at: new Date(Date.now() - agoMs).toISOString(),
+  })
+  const lines = [{ menu_item_id: 'dish-1', quantity: 1 }]
 
+  it('spends an order placed a minute ago', async () => {
+    stubTables({ order: placed(MINUTE), lines })
+    await POST(post({ tenantId: TENANT, orderId: ORDER }))
+    expect(applyOrderStockBestEffort).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves an order from last week alone', async () => {
+    stubTables({ order: placed(7 * 24 * 60 * MINUTE), lines })
     const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
-
-    expect(await response.json()).toEqual({ success: true, skipped: 'order_cancelled' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true, skipped: 'order_not_eligible' })
     expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
   })
 
-  it('spends nothing for a cancelled Convex order', async () => {
-    stubTables({
-      tenant: { order_backend: 'convex', convex_deployment_url: 'https://x.convex.cloud', convex_deploy_key: 'key' },
-    })
-    convexQuery.mockResolvedValueOnce({ status: 'cancelled', items: [{ menuItemId: 'dish-1', quantity: 1 }] })
-
-    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
-
-    expect(await response.json()).toEqual({ success: true, skipped: 'order_cancelled' })
+  it.each(['pos', 'qr_handoff'])('leaves a %s order to its own stock call', async (source) => {
+    stubTables({ order: placed(MINUTE, source), lines })
+    await POST(post({ tenantId: TENANT, orderId: ORDER }))
     expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
   })
 
-  it('counts per IP and refuses before any read once over', async () => {
-    from.mockClear()
-    mockStockLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 20 })
-    const request = new NextRequest('http://localhost/api/inventory/customer-order-stock', {
-      method: 'POST',
-      headers: { 'x-real-ip': '203.0.113.8' },
-      body: JSON.stringify({ tenantId: TENANT, orderId: ORDER }),
-    })
+  it('refuses to spend more units than any real cart holds', async () => {
+    stubTables({ order: placed(MINUTE), lines: [{ menu_item_id: 'dish-1', quantity: 400 }, { menu_item_id: 'dish-2', quantity: 400 }] })
+    await POST(post({ tenantId: TENANT, orderId: ORDER }))
+    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
+  })
 
-    const response = await POST(request)
-
+  it('answers 429 and reads nothing once an address is over its allowance', async () => {
+    rateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 12 })
+    stubTables({ order: placed(MINUTE), lines })
+    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
     expect(response.status).toBe(429)
-    expect(mockStockLimit.mock.calls.at(-1)?.[0]).toBe('customer-order-stock:203.0.113.8')
+    expect(response.headers.get('Retry-After')).toBe('12')
     expect(from).not.toHaveBeenCalled()
   })
 
-  it('falls back to the per-instance limiter when Redis is down, never to no limit', async () => {
-    mockStockLimit.mockClear()
-    const request = new NextRequest('http://localhost/api/inventory/customer-order-stock', {
-      method: 'POST',
-      headers: { 'x-real-ip': '203.0.113.9' },
-      body: JSON.stringify({ tenantId: TENANT, orderId: ORDER }),
-    })
+  it('counts each order on its own allowance too', async () => {
+    rateLimit.mockResolvedValueOnce({ allowed: true, remaining: 5, retryAfterSec: 30 })
+    rateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 40 })
+    stubTables({ order: placed(MINUTE), lines })
+    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
+    expect(response.status).toBe(429)
+    expect(rateLimit.mock.calls[1][0]).toBe(`customer-order-stock:order:${ORDER}`)
+  })
 
-    await POST(request)
+  it('only the customer app source counts on a Convex deployment', async () => {
+    stubTables({ tenant: { convex_deployment_url: 'https://x.convex.cloud', convex_deploy_key: 'k' } })
+    convexQuery.mockResolvedValueOnce({ _id: 'j1', source: 'pos', _creationTime: Date.now(), items: [{ menuItemId: 'dish-1', quantity: 1 }] })
+    await POST(post({ tenantId: TENANT, orderId: 'j1' }))
+    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
+  })
 
-    expect(mockStockLimit.mock.calls.at(-1)?.[1]).toMatchObject({ onRedisFailure: 'instance' })
+  it('leaves an old Convex order alone', async () => {
+    stubTables({ tenant: { convex_deployment_url: 'https://x.convex.cloud', convex_deploy_key: 'k' } })
+    convexQuery.mockResolvedValueOnce({ _id: 'j1', source: 'mobile', _creationTime: Date.now() - 3 * 60 * 60 * 1000, items: [{ menuItemId: 'dish-1', quantity: 1 }] })
+    await POST(post({ tenantId: TENANT, orderId: 'j1' }))
+    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
   })
 })

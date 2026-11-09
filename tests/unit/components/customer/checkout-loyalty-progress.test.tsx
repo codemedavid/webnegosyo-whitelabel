@@ -98,6 +98,6 @@ it.each(CHECKOUT_TEMPLATES.map(template => template.id))('checkout design %s sho
 })
 
 it('the shared fields primitive is what carries the card for the designs that compose it', () => {
-  const source = readFileSync('src/components/customer/checkout-templates/checkout-primitives.tsx', 'utf8')
+  const source = readFileSync('src/components/customer/checkout-templates/checkout-fields.tsx', 'utf8')
   expect(source).toContain('<CheckoutLoyaltyProgress checkout={checkout} />')
 })

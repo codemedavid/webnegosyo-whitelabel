@@ -33,17 +33,28 @@ export function OrderBackendPicker({
   onChange,
   hasConvexUrl,
   isPending,
+  isMovingOrders = false,
+  isMoveConfirmed = false,
+  onMoveConfirmedChange,
 }: {
   value: SelectableOrderBackend
   onChange: (value: SelectableOrderBackend) => void
   hasConvexUrl: boolean
   isPending: boolean
+  /** True when saving would change which backend the store's orders resolve to. */
+  isMovingOrders?: boolean
+  isMoveConfirmed?: boolean
+  onMoveConfirmedChange?: (confirmed: boolean) => void
 }) {
   return (
     <fieldset className="space-y-2" disabled={isPending}>
       <legend className="text-sm font-medium">Order backend</legend>
       <p className="text-sm text-muted-foreground">
         Where new orders are stored and where the admin queue reads them from.
+      </p>
+      <p className="text-sm text-amber-300">
+        Changing this does not move existing orders. They stay on the old backend, so they disappear
+        from the queue and reports, and voiding one may not return its stock.
       </p>
       <div className="space-y-2 pt-1">
         {ORDER_BACKEND_PREFERENCES.map((option) => {
@@ -77,6 +88,17 @@ export function OrderBackendPicker({
           )
         })}
       </div>
+      {isMovingOrders && (
+        <label className="flex cursor-pointer gap-3 rounded-lg border border-amber-300/40 bg-amber-300/10 p-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={isMoveConfirmed}
+            onChange={(event) => onMoveConfirmedChange?.(event.target.checked)}
+          />
+          <span>I understand the existing orders will be left behind. Save is refused for stores that already have orders unless this is ticked.</span>
+        </label>
+      )}
     </fieldset>
   )
 }

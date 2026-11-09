@@ -377,3 +377,19 @@ describe('buildDesignCss — centred boxed widgets', () => {
     expect(rule).not.toContain('width:100%')
   })
 })
+
+describe('page blocks with nothing to show', () => {
+  const design = designOf([section('s', [column('c', [spacer('sp')])])])
+
+  it('take no room on the storefront, nor does the spacer after them', () => {
+    const { css } = buildDesignCss(design, { scope: 'hb-x' })
+    expect(css).toContain('.hb-x .hb-w--page-block:empty{display:none}')
+    expect(css).toContain('.hb-x .hb-w--page-block:empty+.hb-w--spacer{display:none}')
+    expect(css).toContain('.hb-x .hb-w--copy-text:empty{display:none}')
+  })
+
+  it('stay selectable in the editor', () => {
+    const { css } = buildDesignCss(design, { scope: 'hb-x', showHidden: true })
+    expect(css).not.toContain(':empty')
+  })
+})

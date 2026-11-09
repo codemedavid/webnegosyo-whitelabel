@@ -55,6 +55,9 @@ import {
   evaluateCartHandoff,
   type HandoffBlockReason,
 } from "../../lib/scan-handoff-validate";
+import { fetchPosStockCeilings } from "../../lib/pos-stock-ceilings";
+import { canSellPastStock } from "../../lib/pos-stock-decision";
+import { judgeHandoffStock } from "../../lib/scan-handoff-stock";
 import {
   buildHandoffAvailability,
   describeSoldOutHandoff,
@@ -168,6 +171,7 @@ type ScreenState =
       payload: QrOrderPayloadV1;
       items: QrOrderItemV1[];
       total: number;
+      stockWarning?: string | null;
       pricesUpdated: boolean;
     }
   | { mode: "pickup-verifying"; ticket: QrPickupPayloadV1 }
@@ -262,6 +266,28 @@ export default function ScanScreen() {
     async (payload: QrOrderPayloadV1) => {
       setState({ mode: "validating", payload });
 
+      // The register's stock rule, for a cart nobody tapped in. A failed read
+      // answers "no ceilings", so it never stops a scan.
+      const showPreview = async (items: QrOrderItemV1[], total: number, pricesUpdated: boolean) => {
+        const stock = judgeHandoffStock(
+          items,
+          await fetchPosStockCeilings(tenantId, outletId),
+          canSellPastStock({ role, isOwner, permissions }),
+        );
+        if (stock.kind === "block") {
+          setState({ mode: "handoff-blocked", message: stock.message });
+          return;
+        }
+        setState({
+          mode: "preview",
+          payload,
+          items,
+          total,
+          pricesUpdated,
+          stockWarning: stock.kind === "warn" ? stock.message : null,
+        });
+      };
+
       // Store check first, before this store's catalog is even consulted —
       // the same order as the pickup path.
       const isSameStore = Boolean(tenantId) && tenantId === payload.tenantId;
@@ -291,7 +317,7 @@ export default function ScanScreen() {
       if (isSameStore && tenantId && payload.items.some(item => item.isBundleItem)) {
         try {
           const verdict = await priceComboHandoff(tenantId, payload.items, outletId);
-          setState({ mode: "preview", payload, items: verdict.items, total: verdict.total, pricesUpdated: verdict.pricesUpdated });
+          await showPreview(verdict.items, verdict.total, verdict.pricesUpdated);
         } catch (error) {
           setState({ mode: "handoff-blocked", message: error instanceof Error ? error.message : HANDOFF_BLOCK_MESSAGE.catalog_unavailable });
         }
@@ -308,15 +334,9 @@ export default function ScanScreen() {
         return;
       }
 
-      setState({
-        mode: "preview",
-        payload,
-        items: verdict.items,
-        total: verdict.total,
-        pricesUpdated: verdict.pricesUpdated,
-      });
+      await showPreview(verdict.items, verdict.total, verdict.pricesUpdated);
     },
-    [tenantId, outletId]
+    [tenantId, outletId, role, isOwner, permissions]
   );
 
   // Pickup ticket: the token in the QR is verified server-side (this app has
@@ -732,6 +752,7 @@ export default function ScanScreen() {
           items={state.items}
           total={state.total}
           pricesUpdated={state.pricesUpdated}
+          stockWarning={state.stockWarning ?? null}
           isAccepting={isAccepting}
           onAccept={handleAccept}
           onReject={handleReject}
@@ -758,6 +779,7 @@ function PreviewPanel({
   items,
   total,
   pricesUpdated,
+  stockWarning,
   isAccepting,
   onAccept,
   onReject,
@@ -767,6 +789,7 @@ function PreviewPanel({
   items: QrOrderItemV1[];
   total: number;
   pricesUpdated: boolean;
+  stockWarning: string | null;
   isAccepting: boolean;
   onAccept: () => void;
   onReject: () => void;
@@ -793,6 +816,12 @@ function PreviewPanel({
             <Text style={styles.sub}>Payment: {payload.paymentMethod}</Text>
           ) : null}
         </Card>
+
+        {stockWarning ? (
+          <View style={styles.noticeBanner}>
+            <Text style={styles.noticeText}>{stockWarning}</Text>
+          </View>
+        ) : null}
 
         {pricesUpdated && (
           <View style={styles.noticeBanner}>

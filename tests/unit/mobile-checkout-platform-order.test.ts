@@ -33,28 +33,38 @@ const orderRealtimeSource = () =>
     'utf8'
   )
 
-const supabaseBranch = () => checkoutSource().split('// Existing Supabase flow')[1]
+const platformBranch = () =>
+  checkoutSource().split('// Platform flow')[1].split('// Anon reads use')[0]
 
-describe('mobile checkout — platform order insert works for the anon role', () => {
-  it('does not ask the insert to return the row (anon may not read orders)', () => {
-    const branch = supabaseBranch()
-    const insertChain = branch.slice(0, branch.indexOf('order_items'))
+describe('mobile checkout — platform order goes through the web order API', () => {
+  it('never writes orders or order_items itself (the anon INSERT policies are being dropped)', () => {
+    const source = checkoutSource()
 
-    expect(insertChain).not.toContain('.select()')
-    expect(insertChain).not.toContain('.single()')
+    expect(source).not.toMatch(/from\('orders'\)/)
+    expect(source).not.toMatch(/from\('order_items'\)/)
+    expect(source).not.toContain('.insert(')
   })
 
-  it('generates the order id client-side with the native crypto uuid', () => {
+  it('generates the attempt id client-side with the native crypto uuid and sends it', () => {
     expect(checkoutSource()).toContain("from 'expo-modules-core'")
-    expect(supabaseBranch()).toContain('uuid.v4()')
-    expect(supabaseBranch()).toContain('id: newOrderId')
+    expect(platformBranch()).toContain('uuid.v4()')
+    expect(platformBranch()).toContain('clientOrderId: newOrderId')
   })
 
-  it('still writes the line items and spends stock against the generated id', () => {
-    const branch = supabaseBranch()
+  it('sends the cart lines and lets the server price them', () => {
+    const branch = platformBranch()
 
-    expect(branch).toContain('order_id: orderId')
-    expect(branch).toContain('notifyCustomerOrderStock(tenant.id, orderId)')
+    expect(branch).toContain('submitPlatformOrder(')
+    expect(branch).toContain('items: platformLines')
+    expect(branch).toContain('addon_ids')
+    expect(branch).toContain('option_ids')
+  })
+
+  it('posts to the customer-app route with no secret', () => {
+    const submit = fs.readFileSync(path.join(MOBILE_ROOT, 'lib/platform-order-submit.ts'), 'utf8')
+
+    expect(submit).toContain('/api/orders/customer-app')
+    expect(submit).not.toMatch(/service_role|SERVICE_ROLE|NEXT_PUBLIC/)
   })
 })
 

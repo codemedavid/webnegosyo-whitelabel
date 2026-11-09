@@ -7,11 +7,9 @@ import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import { submitCheckoutForm, fetchActivePlatformPaymentMethods } from '@/app/actions/checkout-leads'
 import { createMetaEventId, getMetaBrowserData, trackMetaEvent } from '@/lib/meta-pixel'
-import { MONTHLY_SUBSCRIPTION_PRICE } from '@/lib/checkout-leads/payment-terms'
-import { SMARTMENU } from '@/components/landing/landing-theme'
+import type { FunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
 import { ORDER, ORDER_FORM } from './funnel-copy'
-import { OFFER_NAME } from './funnel-offer'
-import { FUNNEL_LINE } from './funnel-ui'
+import { OFFER_NAME, dueTodayFor } from './funnel-offer'
 
 /** Philippine mobile number, local (09…) or international (639…) form. */
 const PH_MOBILE = /^(09\d{9}|639\d{9})$/
@@ -86,12 +84,18 @@ function usePaymentOptions(onSingleOption: (id: string) => void) {
   return { options, isLoading, hasError }
 }
 
+interface FunnelOrderFormProps {
+  /** The plan the visitor picked above the form; the server prices it. */
+  term: FunnelPlanTerm
+  submitLabel: string
+}
+
 /**
- * Brunson's order form. A "yes" becomes a checkout lead on the monthly term
+ * The order form. A "yes" becomes a checkout lead on the chosen plan's term
  * (amount computed server-side), then the existing confirmation page shows
  * the reference number and payment instructions.
  */
-export function FunnelOrderForm() {
+export function FunnelOrderForm({ term, submitLabel }: FunnelOrderFormProps) {
   const router = useRouter()
   const isSubmittingRef = useRef(false)
   const [fields, setFields] = useState<OrderFields>(EMPTY_FIELDS)
@@ -127,7 +131,7 @@ export function FunnelOrderForm() {
         phone: parsed.data.phone,
         business_name: parsed.data.businessName,
         selected_payment_method_id: parsed.data.paymentMethodId,
-        payment_term: 'monthly_subscription',
+        payment_term: term,
         notes: `Funnel: ${OFFER_NAME}`,
         meta: { eventId, ...getMetaBrowserData() },
       })
@@ -138,7 +142,7 @@ export function FunnelOrderForm() {
       }
       trackMetaEvent(
         'Lead',
-        { content_name: OFFER_NAME, currency: 'PHP', value: result.data.amount ?? MONTHLY_SUBSCRIPTION_PRICE },
+        { content_name: OFFER_NAME, currency: 'PHP', value: result.data.amount ?? dueTodayFor(term) },
         eventId
       )
       isSaved = true
@@ -158,7 +162,7 @@ export function FunnelOrderForm() {
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
       {TEXT_FIELDS.map((field) => (
         <div key={field.key}>
-          <label htmlFor={`funnel-${field.key}`} className="mb-1.5 block text-[14px] font-bold" style={{ color: SMARTMENU.ink }}>
+          <label htmlFor={`funnel-${field.key}`} className="mb-1.5 block text-[13.5px] font-medium text-[#EFE6D8]">
             {field.label}
           </label>
           <input
@@ -171,11 +175,10 @@ export function FunnelOrderForm() {
             onChange={(event) => updateField(field.key, event.target.value)}
             aria-invalid={Boolean(errors[field.key])}
             aria-describedby={errors[field.key] ? `funnel-${field.key}-error` : undefined}
-            className="block min-h-12 w-full rounded-xl border bg-white px-4 text-base outline-none transition-shadow focus:ring-2"
-            style={{ borderColor: errors[field.key] ? SMARTMENU.red : FUNNEL_LINE, color: SMARTMENU.ink }}
+            className="fn-input"
           />
           {errors[field.key] && (
-            <p id={`funnel-${field.key}-error`} className="mt-1 text-[13px]" style={{ color: SMARTMENU.red }}>
+            <p id={`funnel-${field.key}-error`} className="mt-1 text-[13px] text-[#FF8A73]">
               {errors[field.key]}
             </p>
           )}
@@ -194,11 +197,10 @@ export function FunnelOrderForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="flex min-h-14 w-full items-center justify-center gap-2 rounded-full px-6 text-base font-bold transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-70 sm:text-lg"
-        style={{ backgroundColor: SMARTMENU.red, color: '#FFF7EE' }}
+        className="fn-cta fn-cta--large"
       >
         {isSubmitting && <Loader2 aria-hidden className="h-5 w-5 animate-spin" />}
-        {isSubmitting ? ORDER.submitting : `${ORDER.submit} →`}
+        <span>{isSubmitting ? ORDER.submitting : `${submitLabel} →`}</span>
       </button>
     </form>
   )
@@ -223,39 +225,33 @@ function PaymentPicker({
   const isEmpty = !isLoading && !hasError && options.length === 0
   return (
     <fieldset>
-      <legend className="mb-1.5 text-[14px] font-bold" style={{ color: SMARTMENU.ink }}>
+      <legend className="mb-1.5 text-[13.5px] font-medium text-[#EFE6D8]">
         {ORDER_FORM.paymentLegend}
       </legend>
-      {isLoading && <p className="text-[13px]" style={{ color: SMARTMENU.cocoa }}>{ORDER_FORM.paymentLoading}</p>}
+      {isLoading && <p className="text-[13px] text-[#A99C8D]">{ORDER_FORM.paymentLoading}</p>}
       {(hasError || isEmpty) && (
-        <p className="text-[13px]" style={{ color: SMARTMENU.red }}>
+        <p className="text-[13px] text-[#FF8A73]">
           {ORDER_FORM.paymentLoadError}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         {options.map((option) => {
           const isSelected = option.id === selectedId
           return (
-            <label
-              key={option.id}
-              className="flex min-h-12 cursor-pointer items-center gap-2.5 rounded-xl border-2 bg-white px-4 text-[15px] font-bold"
-              style={{ borderColor: isSelected ? SMARTMENU.red : FUNNEL_LINE, color: SMARTMENU.ink }}
-            >
+            <label key={option.id} className="fn-choice text-[15px] font-semibold text-white">
               <input
                 type="radio"
                 name="funnel-payment"
                 value={option.id}
                 checked={isSelected}
                 onChange={() => onSelect(option.id)}
-                className="h-4 w-4 accent-current"
-                style={{ color: SMARTMENU.red }}
               />
               {option.name}
             </label>
           )
         })}
       </div>
-      {error && <p role="alert" className="mt-1 text-[13px]" style={{ color: SMARTMENU.red }}>{error}</p>}
+      {error && <p role="alert" className="mt-1 text-[13px] text-[#FF8A73]">{error}</p>}
     </fieldset>
   )
 }

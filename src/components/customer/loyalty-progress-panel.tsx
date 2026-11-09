@@ -46,7 +46,7 @@ export function LoyaltyProgressPanel({
   const refreshNotice = error ? (
     <div role="status" className="space-y-1 text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
       <p>{error} {card ? 'Showing your last confirmed balance.' : 'Your balance is unavailable right now.'}</p>
-      {onRetry && <button type="button" onClick={onRetry} className="font-semibold underline" style={{ color: 'var(--trk-loy-link)' }}>Try again</button>}
+      {onRetry && <button type="button" onClick={onRetry} data-part="link" className="font-semibold underline" style={{ color: 'var(--trk-loy-link)' }}>Try again</button>}
     </div>
   ) : null
 
@@ -80,6 +80,7 @@ export function LoyaltyProgressPanel({
     >
       <div
         data-branding-scope="loyalty/band"
+        data-part="banner"
         className="flex items-center gap-2 px-4 py-2.5"
         style={{ backgroundColor: 'var(--trk-band-soft)', color: 'var(--trk-band-soft-text)' }}
       >
@@ -89,12 +90,12 @@ export function LoyaltyProgressPanel({
       </div>
 
       <div className="space-y-2.5 p-4">
-        <p className="text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>
+        <p data-part="text" className="text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>
           {hasReward
             ? `Reward ready! ${card.rewardLabel} is waiting at ${storeName}.`
             : `${card.balance} of ${card.threshold} ${unit} toward ${card.rewardLabel}`}
         </p>
-        {hasReward && <p className="text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>{card.balance} of {card.threshold} {unit} toward your next {card.rewardLabel}</p>}
+        {hasReward && <p data-part="text" className="text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>{card.balance} of {card.threshold} {unit} toward your next {card.rewardLabel}</p>}
         <StampTrack
           threshold={card.threshold}
           filled={card.balance}
@@ -104,12 +105,12 @@ export function LoyaltyProgressPanel({
           steps={steps}
         />
         <RewardLadder steps={steps} balance={card.balance} earnMode={card.earnMode} showHeadline={earningActive} />
-        <p className="text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
+        <p data-part="muted" className="text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
           {earningActive ? 'Use this number every time and your stamps add up automatically.' : card.programStatus === 'ended' ? 'This program has ended.' : 'Earning is paused for this program.'}
         </p>
-        {card.balance < 0 && <p className="text-xs" style={{ color: 'var(--trk-loy-muted)' }}>Your balance includes an adjustment. New earnings first cover the {Math.abs(card.balance)} {unit} adjustment.</p>}
+        {card.balance < 0 && <p data-part="muted" className="text-xs" style={{ color: 'var(--trk-loy-muted)' }}>Your balance includes an adjustment. New earnings first cover the {Math.abs(card.balance)} {unit} adjustment.</p>}
         {refreshNotice}
-        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="inline-block text-xs font-semibold underline" style={{ color: 'var(--trk-loy-link)' }}><StoreLabel name="loyalty.view_rewards" fallback="View rewards & use a reward" /></Link> : null}
+        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} data-part="link" className="inline-block text-xs font-semibold underline" style={{ color: 'var(--trk-loy-link)' }}><StoreLabel name="loyalty.view_rewards" fallback="View rewards & use a reward" /></Link> : null}
       </div>
     </section>
   )

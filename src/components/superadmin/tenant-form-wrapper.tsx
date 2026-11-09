@@ -36,7 +36,7 @@ import {
 } from '@/lib/loyverse/webhook-status'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
-import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/order-backend'
+import { orderBackendPreferenceOf, previewBackendChange, type SelectableOrderBackend } from '@/lib/order-backend'
 import { OrderBackendPicker } from '@/components/superadmin/order-backend-picker'
 import { toast } from 'sonner'
 import { NO_AUTOFILL_INPUT_PROPS } from '@/lib/no-autofill-input'
@@ -164,6 +164,7 @@ interface TenantFormData {
   convex_deployment_url: string
   convex_deploy_key: string
   order_backend: SelectableOrderBackend
+  confirm_backend_change: boolean
   // Email notifications
   admin_email: string
   email_notifications_enabled: boolean
@@ -1994,6 +1995,9 @@ function ConvexMobileAppSection({
           onChange={(order_backend) => setFormData({ ...formData, order_backend })}
           hasConvexUrl={Boolean(formData.convex_deployment_url)}
           isPending={isPending || isRoutingLocked}
+          isMovingOrders={Boolean(tenant) && previewBackendChange(tenant ?? {}, formData) !== null}
+          isMoveConfirmed={formData.confirm_backend_change}
+          onMoveConfirmedChange={(confirm_backend_change) => setFormData({ ...formData, confirm_backend_change })}
         />
 
         {!formData.convex_deployment_url && (
@@ -2118,6 +2122,7 @@ export function TenantFormWrapper({
     // Blank for the same reason as loyverse_access_token; blank means keep.
     convex_deploy_key: '',
     order_backend: orderBackendPreferenceOf(tenant ?? {}),
+    confirm_backend_change: false,
     // Email notifications
     admin_email: tenant?.admin_email || prefill?.email || '',
     email_notifications_enabled: featureFlag('email_notifications_enabled'),
@@ -2209,6 +2214,7 @@ export function TenantFormWrapper({
       convex_deployment_url: formData.convex_deployment_url || undefined,
       convex_deploy_key: formData.convex_deploy_key || undefined,
       order_backend: formData.order_backend,
+      confirm_backend_change: formData.confirm_backend_change || undefined,
       // Email notifications
       admin_email: formData.admin_email || null,
       email_notifications_enabled: formData.email_notifications_enabled,

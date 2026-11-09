@@ -54,6 +54,7 @@ interface IngredientsTabProps {
   openCountId: string | null
   countProgress: CountSessionProgress | null
   openCountOutletId: string | null
+  openCountBusinessDay?: string | null
   branches: SelectableBranch[]
   /** What this account may do here; see `inventory-access.ts`. */
   access: InventoryAccess
@@ -77,6 +78,7 @@ export function IngredientsTab({
   openCountId,
   countProgress,
   openCountOutletId,
+  openCountBusinessDay = null,
   branches,
   access,
 }: IngredientsTabProps) {
@@ -218,6 +220,7 @@ export function IngredientsTab({
         tenantSlug={tenantSlug}
         outletId={openCountId ? openCountOutletId : null}
         countId={openCountId}
+        countBusinessDay={openCountBusinessDay}
         progress={countProgress}
         branches={branches}
       />

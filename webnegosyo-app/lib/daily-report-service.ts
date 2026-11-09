@@ -17,6 +17,7 @@
  */
 
 import { supabase } from "./supabase";
+import { loadItemCosts, type RpcClient } from "./inventory-costs";
 import {
   buildDailyInventoryReport,
   type DailyInventoryReport,
@@ -24,12 +25,16 @@ import {
   type DailyReportMovement,
 } from "./daily-report/daily-report";
 import { resolveBusinessDayWindow } from "./daily-report/business-day";
-import { judgeCountSession, type CountSessionProgress } from "./daily-report/count-session";
+import type { CountSessionProgress } from "./daily-report/count-session";
+import { judgeDaysCounts, type DayCountRow } from "./daily-report/day-counts";
+
+/** Counts one day can have: one per shelf, plus recounts. Bounds the read. */
+const MAX_DAY_COUNTS = 200;
 import type { StockMovementReason } from "./daily-report/movement-reason";
 
 const MOVEMENT_COLUMNS =
   "inventory_item_id, reason, quantity_delta, balance_after, created_at, inventory_count_id, outlet_id";
-const ITEM_COLUMNS = "id, name, unit_cost, stock_unit_id";
+const ITEM_COLUMNS = "id, name, stock_unit_id";
 
 export interface DailyReportForDay extends DailyInventoryReport {
   /** The Manila day this covers, `YYYY-MM-DD`. */
@@ -44,10 +49,29 @@ export interface DailyReportForDay extends DailyInventoryReport {
   countSession: CountSessionProgress | null;
 }
 
-interface CountRow {
-  id: string;
-  expected_item_count: number;
-  closed_at: string | null;
+/** PostgREST caps a response at 1000 rows; a busy day has more movements. */
+const MOVEMENT_PAGE_SIZE = 1000;
+/** Bounds memory: a day this large is refused (the report then reads unavailable), never shown short. */
+const MAX_MOVEMENT_ROWS = 100_000;
+
+type MovementPage = (
+  from: number,
+  to: number,
+) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+
+/** Every movement of the day, or an error: a truncated ledger must never reconcile as a whole day. */
+async function readAllMovementPages(
+  page: MovementPage,
+): Promise<{ data: unknown[]; error: { message: string } | null }> {
+  const rows: unknown[] = [];
+  for (let from = 0; from < MAX_MOVEMENT_ROWS; from += MOVEMENT_PAGE_SIZE) {
+    const result = await page(from, from + MOVEMENT_PAGE_SIZE - 1);
+    if (result.error) return { data: [], error: result.error };
+    const batch = (result.data ?? []) as unknown[];
+    rows.push(...batch);
+    if (batch.length < MOVEMENT_PAGE_SIZE) return { data: rows, error: null };
+  }
+  return { data: [], error: { message: "Too many stock movements in one day to reconcile." } };
 }
 
 interface MovementRow {
@@ -114,27 +138,35 @@ export async function loadDailyReport(
 
     const countQuery = db
       .from("inventory_counts")
-      .select("id, expected_item_count, closed_at")
+      .select("id, outlet_id, expected_item_count, closed_at")
       .eq("tenant_id", tenantId)
       .eq("business_day", dayKey);
 
-    const [movementResult, itemResult, unitResult, countResult] = await Promise.all([
-      (outletId ? movementQuery.eq("outlet_id", outletId) : movementQuery).order("created_at", {
-        ascending: true,
-      }),
+    const [movementResult, itemResult, unitResult, countResult, itemCosts] = await Promise.all([
+      readAllMovementPages((from, to) =>
+        (outletId ? movementQuery.eq("outlet_id", outletId) : movementQuery)
+          // `id` breaks created_at ties so consecutive pages never overlap.
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
       db.from("inventory_items").select(ITEM_COLUMNS).eq("tenant_id", tenantId),
       db.from("inventory_units").select("id, abbreviation").eq("tenant_id", tenantId),
-      // The day's count, if one was opened. Latest first, because a shelf
-      // recounted in the evening describes how the day ended — the morning's
-      // abandoned attempt is not the last word on it.
+      // Every count the day had, latest first: a store-wide report spans
+      // several branches and each opens its own. `judgeDaysCounts` keeps the
+      // latest per shelf — a shelf recounted in the evening describes how the
+      // day ended.
       // Scoped to the same branch as the ledger. Otherwise a branch manager's
       // coverage would be measured against a count opened for a different
       // shelf — or against the store pool's, whose denominator counts
       // ingredients their branch never stocks.
       (outletId ? countQuery.eq("outlet_id", outletId) : countQuery)
         .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        .limit(MAX_DAY_COUNTS),
+      // The prices come from the `costs`-gated reader (the column is not
+      // selectable). The report is a money report: an account without the key
+      // gets an empty map and the report counts everything as uncosted.
+      loadItemCosts(tenantId, undefined, db as unknown as RpcClient),
     ]);
 
     if (movementResult.error) throw movementResult.error;
@@ -152,7 +184,7 @@ export async function loadDailyReport(
       name: row.name,
       // A null cost is "never priced", which the report counts and reports
       // rather than quietly treating as free.
-      unitCost: row.unit_cost ?? 0,
+      unitCost: itemCosts.get(row.id) ?? 0,
       stockUnitAbbreviation: abbreviationById.get(row.stock_unit_id) ?? "",
     }));
 
@@ -171,45 +203,18 @@ export async function loadDailyReport(
 
     return {
       dayKey,
-      countSession: judgeDaysCount(
-        countResult.error ? null : ((countResult.data as unknown as CountRow) ?? null),
-        (movementResult.data ?? []) as unknown as MovementRow[],
-      ),
+      countSession: countResult.error
+        ? null
+        : judgeDaysCounts(
+            (countResult.data ?? []) as unknown as DayCountRow[],
+            (movementResult.data ?? []) as unknown as MovementRow[],
+          ),
       ...buildDailyInventoryReport({ movements, ingredients }),
     };
   } catch (error) {
     console.warn("[inventory] daily report unavailable", { tenantId, dayKey, error });
     return null;
   }
-}
-
-/**
- * How far the day's count got, from the movements filed under it.
- *
- * The counted ingredients come from the movements already read for the report
- * rather than a second query — they are the same rows.
- *
- * A stocktake carrying no session is deliberately not credited: a one-off
- * correction made during a count is not part of the count, and crediting it
- * would raise coverage for an ingredient nobody counted.
- *
- * A failed session read yields `null` rather than throwing. The stock figures
- * are independently true, and losing the whole report because its caveat could
- * not be computed would be a worse trade than losing the caveat.
- */
-function judgeDaysCount(
-  count: CountRow | null,
-  movements: readonly MovementRow[],
-): CountSessionProgress | null {
-  if (!count) return null;
-
-  return judgeCountSession({
-    expectedItemCount: Number(count.expected_item_count),
-    countedItemIds: movements
-      .filter((row) => row.inventory_count_id === count.id)
-      .map((row) => row.inventory_item_id),
-    closedAt: count.closed_at,
-  });
 }
 
 interface RecipeRow {

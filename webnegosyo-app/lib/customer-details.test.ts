@@ -164,6 +164,6 @@ describe("redaction boundary", () => {
       delivery_rider_note: "Call on arrival",
     });
 
-    expect(rows.map((row) => row.label)).toEqual(["Unit / Floor", "Landmark", "Note to rider"]);
+    expect(rows.map((row) => row.label)).toEqual(["House / Unit", "Landmark", "Note to rider"]);
   });
 });

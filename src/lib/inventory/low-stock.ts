@@ -100,3 +100,30 @@ export function detectStockCrossings(
 
   return crossings
 }
+
+/**
+ * Ingredients a batch took further below empty.
+ *
+ * Not a crossing: an ingredient that started at 0 is already `out`, so its
+ * first sale crosses nothing and no alert ever fires for a store that never
+ * counted. Only stores judging never-counted shelves ask this question, and the
+ * one-open-alert rule keeps it to a single alert until the shelf recovers.
+ */
+export function detectOutAgain(
+  before: readonly StockLevelInput[],
+  deltas: ReadonlyMap<string, number>,
+): StockCrossing[] {
+  return before.flatMap((item) => {
+    const delta = deltas.get(item.id)
+    if (!item.is_active || delta === undefined || delta >= 0) return []
+    if (evaluateStockLevel(item) !== 'out') return []
+    return [{
+      itemId: item.id,
+      name: item.name,
+      from: 'out' as const,
+      to: 'out' as const,
+      quantity: item.current_qty + delta,
+      reorderLevel: item.reorder_level,
+    }]
+  })
+}

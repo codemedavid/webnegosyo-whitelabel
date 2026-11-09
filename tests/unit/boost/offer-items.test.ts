@@ -112,3 +112,16 @@ describe('postAddOffers', () => {
     expect(postAddOffers(many, { addedItemId: 'x', cartItemIds: [] })).toHaveLength(4)
   })
 })
+
+describe('offerableItems with stock ceilings', () => {
+  it('never offers a dish the kitchen cannot make, and keeps the unknown and the stocked', () => {
+    const items = [
+      { id: 'out', is_available: true },
+      { id: 'few', is_available: true },
+      { id: 'untracked', is_available: true },
+    ]
+    const ceilings = new Map([['out', 0], ['few', 2]])
+
+    expect(offerableItems(items, { limit: 4, ceilings }).map((item) => item.id)).toEqual(['few', 'untracked'])
+  })
+})

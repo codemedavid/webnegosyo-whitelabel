@@ -4,7 +4,7 @@
  */
 
 jest.mock("./supabase", () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
 
 import { supabase } from "./supabase";
@@ -55,7 +55,10 @@ const PAYLOAD: IngredientPayload = {
   is_active: true,
 };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: [], error: null });
+});
 
 describe("loadUnitOptions", () => {
   it("returns the active units", async () => {
@@ -128,7 +131,7 @@ describe("updateIngredient", () => {
     const query = chain({ data: [{ id: "i1" }], error: null });
     from.mockReturnValue(query);
 
-    await updateIngredient("t1", "i1", PAYLOAD);
+    await updateIngredient("t1", "i1", { name: "Flour" });
     const eqs = query.calls.filter(([m]) => m === "eq").map(([, args]) => args);
     expect(eqs).toEqual([
       ["tenant_id", "t1"],
@@ -139,7 +142,27 @@ describe("updateIngredient", () => {
   it("treats a zero-row update as a failure, never a silent success", async () => {
     // PostgREST answers an RLS-refused update with 200 and no rows.
     from.mockReturnValue(chain({ data: [], error: null }));
-    await expect(updateIngredient("t1", "i1", PAYLOAD)).rejects.toThrow("could not be changed");
+    await expect(updateIngredient("t1", "i1", { name: "Flour" })).rejects.toThrow("could not be changed");
+  });
+
+  it("refuses a stock unit that recipe lines cannot convert to, and writes nothing", async () => {
+    const update = chain({ data: [{ id: "i1" }], error: null });
+    const byTable: Record<string, unknown> = {
+      inventory_items: chain({ data: { name: "Egg", stock_unit_id: "u-g" }, error: null }),
+      recipe_components: chain({ data: [{ unit_id: "u-g" }], error: null }),
+      inventory_units: chain({
+        data: [
+          { id: "u-g", abbreviation: "g", dimension: "weight" },
+          { id: "u-pc", abbreviation: "pc", dimension: "count" },
+        ],
+        error: null,
+      }),
+    };
+    let itemCalls = 0;
+    from.mockImplementation((table: string) => (table === "inventory_items" && itemCalls++ > 0 ? update : byTable[table]));
+
+    await expect(updateIngredient("t1", "i1", { stock_unit_id: "u-pc" })).rejects.toThrow(/can't be measured in pc/);
+    expect(update.calls.filter(([m]) => m === "update")).toHaveLength(0);
   });
 });
 
@@ -166,13 +189,36 @@ describe("loadIngredientRecord", () => {
       chain({
         data: {
           id: "i1", name: "Flour", sku: null, category: null, stock_unit_id: "kg",
-          unit_cost: "52.5", reorder_level: "5", is_prep: false, is_active: true, current_qty: "12",
+          reorder_level: "5", is_prep: false, is_active: true, current_qty: "12",
         },
         error: null,
       }),
     );
+    // The price is not a table column any more: it comes from the `costs` reader.
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: [{ inventory_item_id: "i1", unit_cost: "52.5" }],
+      error: null,
+    });
     const record = await loadIngredientRecord("t1", "i1");
     expect(record).toMatchObject({ unit_cost: 52.5, reorder_level: 5, current_qty: 12 });
+  });
+
+  it("never selects unit_cost from the table and reads the price for this ingredient only", async () => {
+    const query = chain({ data: { id: "i1", name: "Flour", stock_unit_id: "kg" }, error: null });
+    from.mockReturnValue(query);
+    await loadIngredientRecord("t1", "i1");
+    const selected = query.calls.find(([m]) => m === "select")?.[1][0] as string;
+    expect(selected).not.toMatch(/unit_cost/);
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      "inventory_costs_for_tenant",
+      expect.objectContaining({ p_tenant_id: "t1", p_item_ids: ["i1"] }),
+    );
+  });
+
+  it("shows no price (0) to an account without costs, instead of an error", async () => {
+    from.mockReturnValue(chain({ data: { id: "i1", name: "Flour", stock_unit_id: "kg" }, error: null }));
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: { code: "42501", message: "needs costs" } });
+    await expect(loadIngredientRecord("t1", "i1")).resolves.toMatchObject({ unit_cost: 0 });
   });
 });
 

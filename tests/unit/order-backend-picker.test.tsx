@@ -48,4 +48,20 @@ describe('OrderBackendPicker', () => {
     expect(screen.getByRole('radio', { name: /^Automatic/ })).toBeDisabled()
     expect(screen.getByRole('radio', { name: /^Platform database/ })).toBeDisabled()
   })
+
+  it('always warns that existing orders stay behind', () => {
+    render(<OrderBackendPicker value="auto" onChange={jest.fn()} hasConvexUrl isPending={false} />)
+    expect(screen.getByText(/does not move existing orders/i)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+
+  it('asks for a confirmation only when the save would move orders', () => {
+    const onConfirm = jest.fn()
+    render(
+      <OrderBackendPicker value="platform" onChange={jest.fn()} hasConvexUrl isPending={false}
+        isMovingOrders onMoveConfirmedChange={onConfirm} />
+    )
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(onConfirm).toHaveBeenCalledWith(true)
+  })
 })

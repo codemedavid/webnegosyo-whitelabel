@@ -524,11 +524,11 @@ describe('POST /api/lalamove', () => {
     const service = await import('@/lib/lalamove-service')
     const call = (service.createLalamoveOrder as unknown as jest.Mock).mock.calls[0] as unknown[]
     expect(call[7]).toBe([
-      'Unit/Floor: Unit 5B',
+      'House/Unit: Unit 5B',
       'Note: Call on arrival',
       'Address: 12 Mabini St',
       'Pin: https://www.google.com/maps/search/?api=1&query=14.7,121.05',
-    ].join('\n'))
+    ].join('\r\n'))
   })
 
   test.each(['requote', 'sync', 'cancel'])(

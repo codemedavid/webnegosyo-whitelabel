@@ -14,10 +14,22 @@ export interface AddressCoordinates {
 /** Hidden keys the address field keeps beside the coordinates. */
 export const DELIVERY_PIN_ADDRESS_KEY = 'delivery_pin_address'
 export const DELIVERY_PIN_CONFIRMED_KEY = 'delivery_pin_confirmed'
+/** How the pin was found, how long it took and the searches that found nothing: measures, no address in them. */
+export const DELIVERY_PIN_SOURCE_KEY = 'delivery_pin_source'
+export const DELIVERY_PIN_SECONDS_KEY = 'delivery_pin_seconds'
+export const DELIVERY_SEARCH_MISSES_KEY = 'delivery_search_misses'
+/** "I can't find my place": the order goes without a pin and the store calls (`delivery/unpinned-delivery.ts`). */
+export const DELIVERY_PIN_SKIPPED_KEY = 'delivery_pin_skipped'
+
+export type PinSource = 'gps' | 'search' | 'link' | 'map' | 'saved'
 
 export interface AddressChangeMeta {
   /** The customer confirmed this spot on the map. */
   isConfirmed?: boolean
+  source?: PinSource
+  /** From first touching the field to confirming the pin. */
+  seconds?: number
+  searchMisses?: number
 }
 
 function normalizeAddressText(value: string): string {
@@ -55,17 +67,26 @@ export function applyDeliveryAddressChange(
     delivery_lng: _lng,
     [DELIVERY_PIN_ADDRESS_KEY]: _label,
     [DELIVERY_PIN_CONFIRMED_KEY]: _confirmed,
+    [DELIVERY_PIN_SOURCE_KEY]: _source,
+    [DELIVERY_PIN_SECONDS_KEY]: _seconds,
+    [DELIVERY_SEARCH_MISSES_KEY]: _misses,
     ...rest
   } = previous
   /* eslint-enable @typescript-eslint/no-unused-vars */
   const next = { ...rest, [fieldName]: address }
   if (!coordinates) return next
+  // A pin answers "I can't find my place".
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+  const { [DELIVERY_PIN_SKIPPED_KEY]: _skipped, ...pinned } = next
   return {
-    ...next,
+    ...pinned,
     delivery_lat: String(coordinates.lat),
     delivery_lng: String(coordinates.lng),
     [DELIVERY_PIN_ADDRESS_KEY]: address,
     ...(meta.isConfirmed ? { [DELIVERY_PIN_CONFIRMED_KEY]: 'true' } : {}),
+    ...(meta.source ? { [DELIVERY_PIN_SOURCE_KEY]: meta.source } : {}),
+    ...(meta.seconds !== undefined ? { [DELIVERY_PIN_SECONDS_KEY]: String(meta.seconds) } : {}),
+    ...(meta.searchMisses ? { [DELIVERY_SEARCH_MISSES_KEY]: String(meta.searchMisses) } : {}),
   }
 }
 

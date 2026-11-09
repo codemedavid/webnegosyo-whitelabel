@@ -193,10 +193,10 @@ export function LoyaltyStampCard({
     return (
       <CardShell>
         <div className="p-5 text-center">
-          <p className="text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>
+          <p data-part="text" className="text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>
             This order already has a number on it.
           </p>
-          <p className="mt-1 text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
+          <p data-part="muted" className="mt-1 text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
             Your stamps are safe on the number you gave at the counter.
           </p>
         </div>
@@ -235,10 +235,11 @@ export function LoyaltyStampCard({
         )}
 
         <div className="space-y-1.5">
-          <label htmlFor={phoneId} className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--trk-loy-muted)' }}>
+          <label htmlFor={phoneId} data-part="label" className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--trk-loy-muted)' }}>
             <StoreLabel name="loyalty.number_label" fallback="Mobile number" />
           </label>
           <div
+            data-part="field"
             className="flex items-center gap-2 border-2 px-3 transition-colors focus-within:border-[var(--trk-stamp)]"
             style={{ borderRadius: 'var(--trk-radius-inner)', backgroundColor: 'var(--trk-input-bg)', borderColor: e164 ? 'var(--trk-stamp)' : 'var(--trk-loy-border)' }}
           >
@@ -271,7 +272,7 @@ export function LoyaltyStampCard({
 
         {!hasName && (
           <div className="space-y-1.5">
-            <label htmlFor={nameId} className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--trk-loy-muted)' }}>
+            <label htmlFor={nameId} data-part="label" className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--trk-loy-muted)' }}>
               Your name <span className="font-normal normal-case">(optional)</span>
             </label>
             <input
@@ -281,6 +282,7 @@ export function LoyaltyStampCard({
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={NAME_MAX}
+              data-part="field"
               className="h-12 w-full border-2 px-4 text-base outline-none placeholder:text-[color:var(--trk-input-placeholder)] focus:border-[var(--trk-stamp)]"
               style={{ borderRadius: 'var(--trk-radius-inner)', backgroundColor: 'var(--trk-input-bg)', borderColor: 'var(--trk-loy-border)', color: 'var(--trk-input-text)' }}
             />
@@ -288,7 +290,7 @@ export function LoyaltyStampCard({
         )}
 
         {phase.kind === 'error' && (
-          <p role="alert" className="text-xs font-medium" style={{ color: 'var(--trk-error)' }}>
+          <p role="alert" data-part="error" className="text-xs font-medium" style={{ color: 'var(--trk-error)' }}>
             We couldn&apos;t save that right now. Please try again.
           </p>
         )}
@@ -298,6 +300,7 @@ export function LoyaltyStampCard({
           disabled={!canSubmit}
           whileTap={canSubmit ? { scale: 0.97 } : undefined}
           data-branding-scope="loyalty/button"
+          data-part="button"
           className="flex h-14 w-full items-center justify-center gap-2 text-base font-bold shadow-lg transition-opacity disabled:opacity-40 disabled:shadow-none"
           style={{ borderRadius: 'var(--trk-radius-pill)', backgroundColor: 'var(--trk-loy-cta)', color: 'var(--trk-on-loy-cta)' }}
         >
@@ -318,7 +321,7 @@ export function LoyaltyStampCard({
 
         {offer && <WalletHint wallets={wallets} />}
 
-        <p className="flex items-center justify-center gap-1.5 text-[11px]" style={{ color: 'var(--trk-loy-faint)' }}>
+        <p data-part="muted" className="flex items-center justify-center gap-1.5 text-[11px]" style={{ color: 'var(--trk-loy-faint)' }}>
           <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
           <StoreLabel name="loyalty.privacy" fallback="Only used for your rewards and order updates. No spam." />
         </p>
@@ -348,30 +351,30 @@ function EarnedCardState({
 
   return (
     <div data-testid="stamp-card-earned">
-      <div data-branding-scope="loyalty/band" className="relative px-5 pb-4 pt-5 text-center" style={BAND_STYLE}>
+      <div data-branding-scope="loyalty/band" data-part="banner" className="relative px-5 pb-4 pt-5 text-center" style={BAND_STYLE}>
         {hasReward && <RewardBurst emoji={steps[0]?.emoji} />}
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">{card.programName}</p>
-        <h2 className="mt-1 text-2xl font-extrabold leading-tight">
+        <p data-part="muted" className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">{card.programName}</p>
+        <h2 data-part="title" className="mt-1 text-2xl font-extrabold leading-tight">
           {hasReward
             ? <StoreLabel name="loyalty.reward_ready" fallback="Reward ready!" />
             : card.earnedOnOrder === true
               ? <StoreLabel name="loyalty.collected" fallback="Stamp collected!" />
               : <StoreLabel name="loyalty.progress_title" fallback="Your reward progress" />}
         </h2>
-        <p className="mt-1.5 text-sm opacity-90">
+        <p data-part="subtitle" className="mt-1.5 text-sm opacity-90">
           {hasReward
             ? `${card.rewardLabel} is ready to use at ${storeName}. Open your rewards to get a QR for the cashier.`
             : `${card.balance} of ${card.threshold} ${unit} toward ${card.rewardLabel}`}
         </p>
       </div>
       <div className="p-5">
-        {hasReward && <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>{card.balance} of {card.threshold} {unit} toward your next {card.rewardLabel}</p>}
+        {hasReward && <p data-part="text" className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>{card.balance} of {card.threshold} {unit} toward your next {card.rewardLabel}</p>}
         <StampTrack threshold={card.threshold} filled={filled} earnMode={card.earnMode} logoUrl={logoUrl} steps={steps} nextIsLive={earningActive} />
         <div className="mt-4">
           <RewardLadder steps={steps} balance={card.balance} earnMode={card.earnMode} showHeadline={earningActive} />
         </div>
-        {card.balance < 0 && <p className="mt-3 text-xs" style={{ color: 'var(--trk-loy-muted)' }}>Your balance includes an adjustment. New earnings first cover the {Math.abs(card.balance)} {unit} adjustment.</p>}
-        <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
+        {card.balance < 0 && <p data-part="muted" className="mt-3 text-xs" style={{ color: 'var(--trk-loy-muted)' }}>Your balance includes an adjustment. New earnings first cover the {Math.abs(card.balance)} {unit} adjustment.</p>}
+        <p data-part="muted" className="mt-3 text-center text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
           {earningActive
             ? <StoreLabel name="loyalty.keep_using" fallback="Use the same number when you order and your stamps add up automatically." />
             : card.programStatus === 'ended' ? 'This program has ended.' : 'Earning is paused for this program.'}
@@ -395,13 +398,13 @@ function AwaitingState({
 }) {
   return (
     <div data-testid="stamp-card-awaiting" className="p-5 text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-stamp-soft)', color: 'var(--trk-stamp)' }}>
+      <div data-part="icon" className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-stamp-soft)', color: 'var(--trk-stamp)' }}>
         <Stamp className="h-7 w-7" aria-hidden="true" />
       </div>
-      <h2 className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
+      <h2 data-part="title" className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
         <StoreLabel name="loyalty.awaiting" fallback="Your stamp is on the way" />
       </h2>
-      <p className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
+      <p data-part="subtitle" className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
         {isOrderComplete
           ? `${storeName} has your number — your stamp lands once this order is settled.`
           : 'It lands as soon as your order is completed. Come back to this page any time.'}
@@ -422,17 +425,17 @@ function AwaitingState({
 function ClosedState({ offer, storeName }: { offer: LoyaltyOffer | null; storeName: string }) {
   return (
     <div data-testid="stamp-card-closed" className="p-5 text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-loy-border)', color: 'var(--trk-loy-muted)' }}>
+      <div data-part="icon" className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-loy-border)', color: 'var(--trk-loy-muted)' }}>
         <Stamp className="h-7 w-7" aria-hidden="true" />
       </div>
-      <h2 className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
+      <h2 data-part="title" className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
         Stamp claiming is closed
       </h2>
-      <p className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
+      <p data-part="subtitle" className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
         {CLAIM_WINDOW_CLOSED_MESSAGE}
       </p>
       {offer && (
-        <p className="mt-3 text-xs" style={{ color: 'var(--trk-loy-faint)' }}>
+        <p data-part="muted" className="mt-3 text-xs" style={{ color: 'var(--trk-loy-faint)' }}>
           {offer.earnMode === 'stamp'
             ? `${offer.threshold} stamps = ${offer.rewardLabel} at ${storeName}.`
             : `${offer.threshold} points = ${offer.rewardLabel} at ${storeName}.`}
@@ -444,7 +447,7 @@ function ClosedState({ offer, storeName }: { offer: LoyaltyOffer | null; storeNa
 
 function ViewRewardsLink({ tenantSlug }: { tenantSlug: string }) {
   return (
-    <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-loy-link)' }}>
+    <Link href={`/${tenantSlug}/loyalty`} data-part="link" className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-loy-link)' }}>
       <StoreLabel name="loyalty.view_rewards" fallback="View rewards & use a reward" />
     </Link>
   )
@@ -455,6 +458,7 @@ function CardShell({ children }: { children: React.ReactNode }) {
     <section
       data-testid="loyalty-stamp-card"
       data-branding-scope="loyalty/card"
+      data-part="card"
       aria-label="Loyalty"
       className="scroll-mt-20 overflow-hidden border shadow-sm"
       style={{ borderRadius: 'var(--trk-radius)', backgroundColor: 'var(--trk-loy-bg)', borderColor: 'var(--trk-loy-border)', color: 'var(--trk-loy-text)' }}
@@ -466,25 +470,25 @@ function CardShell({ children }: { children: React.ReactNode }) {
 
 function OfferHeader({ offer, storeName }: { offer: LoyaltyOffer | null; storeName: string }) {
   return (
-    <div data-branding-scope="loyalty/band" className="relative overflow-hidden px-5 pb-4 pt-5" style={BAND_STYLE}>
+    <div data-branding-scope="loyalty/band" data-part="banner" className="relative overflow-hidden px-5 pb-4 pt-5" style={BAND_STYLE}>
       <Sparkles className="absolute -right-3 -top-3 h-20 w-20 opacity-15" aria-hidden="true" />
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">
+      <p data-part="muted" className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">
         {offer ? offer.programName : storeName}
       </p>
       {offer ? (
         <>
-          <h2 className="mt-1 text-2xl font-extrabold leading-tight">
+          <h2 data-part="title" className="mt-1 text-2xl font-extrabold leading-tight">
             <StoreLabel name="loyalty.claim_title" fallback="Claim your stamp for this order" />
           </h2>
-          <p className="mt-1.5 flex items-center gap-1.5 text-sm opacity-90">
+          <p data-part="subtitle" className="mt-1.5 flex items-center gap-1.5 text-sm opacity-90">
             <Gift className="h-4 w-4 shrink-0" aria-hidden="true" />
             {offerSummary(offer)}
           </p>
         </>
       ) : (
         <>
-          <h2 className="mt-1 text-2xl font-extrabold leading-tight">Add your number to this order</h2>
-          <p className="mt-1.5 text-sm opacity-90">So {storeName} can text you if anything comes up.</p>
+          <h2 data-part="title" className="mt-1 text-2xl font-extrabold leading-tight">Add your number to this order</h2>
+          <p data-part="subtitle" className="mt-1.5 text-sm opacity-90">So {storeName} can text you if anything comes up.</p>
         </>
       )}
     </div>
@@ -508,21 +512,22 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
     const unit = offer.earnMode === 'stamp' ? 'stamps' : 'points'
     return (
       <div role="status" aria-live="polite">
-        <div data-branding-scope="loyalty/band" className="relative overflow-hidden px-5 pb-4 pt-5 text-center" style={BAND_STYLE}>
+        <div data-branding-scope="loyalty/band" data-part="banner" className="relative overflow-hidden px-5 pb-4 pt-5 text-center" style={BAND_STYLE}>
           <Confetti disabled={Boolean(reduceMotion) || !confetti} />
           <motion.div
             initial={reduceMotion ? false : { scale: 0.4, rotate: -20, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 260, damping: 14 }}
+            data-part="icon"
             className="mx-auto flex h-16 w-16 items-center justify-center rounded-full"
             style={{ backgroundColor: 'var(--trk-band-chip)' }}
           >
             {loyalty.rewardUnlocked ? <PartyPopper className="h-8 w-8" aria-hidden="true" /> : <Stamp className="h-8 w-8" aria-hidden="true" />}
           </motion.div>
-          <h2 className="mt-3 text-2xl font-extrabold leading-tight">
+          <h2 data-part="title" className="mt-3 text-2xl font-extrabold leading-tight">
             {loyalty.rewardUnlocked ? 'Reward unlocked!' : <StoreLabel name="loyalty.collected" fallback="Stamp collected!" />}
           </h2>
-          <p className="mt-1 text-sm opacity-90">
+          <p data-part="subtitle" className="mt-1 text-sm opacity-90">
             {loyalty.rewardUnlocked
               ? `${offer.rewardLabel} is ready at ${storeName}. Open your rewards to get a QR for the cashier.`
               : loyalty.balance != null
@@ -531,12 +536,12 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
           </p>
         </div>
         <div className="p-5">
-          {loyalty.rewardUnlocked && loyalty.balance != null && <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>{loyalty.balance} of {offer.threshold} {unit} toward your next {offer.rewardLabel}</p>}
+          {loyalty.rewardUnlocked && loyalty.balance != null && <p data-part="text" className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-loy-text)' }}>{loyalty.balance} of {offer.threshold} {unit} toward your next {offer.rewardLabel}</p>}
           <StampTrack threshold={offer.threshold} filled={filled} earnMode={offer.earnMode} animateLast logoUrl={logoUrl} steps={cardSteps(offer.rewardSteps, offer.threshold, offer.rewardLabel)} />
           <div className="mt-4 text-left">
             <RewardLadder steps={cardSteps(offer.rewardSteps, offer.threshold, offer.rewardLabel)} balance={filled} earnMode={offer.earnMode} />
           </div>
-          <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
+          <p data-part="muted" className="mt-3 text-center text-xs" style={{ color: 'var(--trk-loy-muted)' }}>
             <StoreLabel name="loyalty.keep_using" fallback="Use the same number when you order and your stamps add up automatically." />
           </p>
         </div>
@@ -547,13 +552,13 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
   if (loyalty.state === 'pending' && offer) {
     return (
       <div role="status" aria-live="polite" className="p-5 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-stamp-soft)', color: 'var(--trk-stamp)' }}>
+        <div data-part="icon" className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-stamp-soft)', color: 'var(--trk-stamp)' }}>
           <Stamp className="h-7 w-7" aria-hidden="true" />
         </div>
-        <h2 className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
+        <h2 data-part="title" className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
           Number saved!
         </h2>
-        <p className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
+        <p data-part="subtitle" className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
           {isOrderComplete
             ? `Stamps count on qualifying orders from now on at ${storeName}.`
             : 'Your stamp lands when your order is completed. Keep this page open or come back later.'}
@@ -567,13 +572,13 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
 
   return (
     <div role="status" aria-live="polite" className="p-5 text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-success-soft)', color: 'var(--trk-success)' }}>
+      <div data-part="icon" className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-success-soft)', color: 'var(--trk-success)' }}>
         <ShieldCheck className="h-7 w-7" aria-hidden="true" />
       </div>
-      <h2 className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
+      <h2 data-part="title" className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-loy-text)' }}>
         Thanks! Your number is on this order.
       </h2>
-      <p className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
+      <p data-part="subtitle" className="mt-1 text-sm" style={{ color: 'var(--trk-loy-muted)' }}>
         {storeName} can reach you if anything comes up.
       </p>
     </div>

@@ -12,6 +12,7 @@
  */
 
 import { supabase } from "./supabase";
+import { loadItemCosts, withCosts } from "./inventory-costs";
 import {
   applyBranchStock,
   buildStockViews,
@@ -23,7 +24,7 @@ import {
 } from "./inventory-stock";
 
 const ITEM_COLUMNS =
-  "id, name, current_qty, reorder_level, is_active, stock_unit_id, category, unit_cost, is_prep";
+  "id, name, current_qty, reorder_level, is_active, stock_unit_id, category, is_prep";
 const STOCK_COLUMNS = "inventory_item_id, outlet_id, current_qty, reorder_level";
 
 /**
@@ -45,7 +46,7 @@ export async function loadInventoryStock(
   // The auth store starts empty — a cold mount must not query for every tenant.
   if (!tenantId) return [];
 
-  const [itemsResult, unitsResult, stockResult] = await Promise.all([
+  const [itemsResult, unitsResult, stockResult, costs] = await Promise.all([
     supabase
       .from("inventory_items")
       .select(ITEM_COLUMNS)
@@ -55,13 +56,15 @@ export async function loadInventoryStock(
     outletId === undefined
       ? Promise.resolve(null)
       : supabase.from("inventory_stock").select(STOCK_COLUMNS).eq("tenant_id", tenantId),
+    // Prices only for an account holding `costs` (empty for everyone else).
+    loadItemCosts(tenantId),
   ]);
 
   if (itemsResult.error) throw itemsResult.error;
 
   // A unit catalog that cannot be read costs the suffix, not the shelf.
   const units = (unitsResult.error ? [] : unitsResult.data ?? []) as unknown as InventoryUnitRow[];
-  const items = (itemsResult.data ?? []) as unknown as InventoryItemRow[];
+  const items = withCosts((itemsResult.data ?? []) as unknown as InventoryItemRow[], costs);
 
   // A failed branch read leaves every row at zero rather than falling back to
   // the roll-up. Showing a manager the chain's flour labelled as their own is

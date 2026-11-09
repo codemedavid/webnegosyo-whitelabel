@@ -1,80 +1,97 @@
-import { Check, X } from 'lucide-react'
+import { ArrowRight, Check, X } from 'lucide-react'
 import { SMARTMENU } from '@/components/landing/landing-theme'
 import { FUNNEL_CTA_HREF } from './funnel-offer'
 
-/** Section tint — the logo's cream plate, used where the reference alternates bands. */
-export const FUNNEL_TINT = SMARTMENU.cream
-export const FUNNEL_LINE = `${SMARTMENU.ink}14`
+/**
+ * The /funnel palette is SmartMenu's own (landing-theme SMARTMENU): the dark
+ * stage is the warm "night" the landing photos settle into, red is the action
+ * colour, amber the accent and highlighter, cream the text. Red and green are
+ * lifted a step where they sit as small text on night, so they stay readable.
+ */
+export const FN = {
+  bg: SMARTMENU.night,
+  panel: '#1D1713',
+  raised: '#261E19',
+  line: '#30271F',
+  text: '#FFFFFF',
+  text2: '#EFE6D8',
+  body: SMARTMENU.parchment,
+  muted: '#A99C8D',
+  marker: SMARTMENU.amber,
+  markerInk: SMARTMENU.ink,
+  amber: SMARTMENU.amber,
+  red: SMARTMENU.red,
+  redDeep: SMARTMENU.redDeep,
+  /** Brand red lifted for text and glows on night. */
+  redBright: '#FF5E4A',
+  /** Brand green lifted for text on night. */
+  green: '#3CC47C',
+} as const
 
 /**
- * The one call to action. Every button on the page scrolls to the order form,
- * so a visitor is never sent away from the funnel to say yes.
+ * The one call to action: the reference's glass pill (SmartMenu red, hairline
+ * rim, inset light, a slow shimmer). Every button scrolls to the plans and order
+ * form, so a visitor is never sent away from the funnel to say yes.
  */
 export function CtaLink({
   children,
   size = 'base',
-  tone = 'red',
+  isPulsing = false,
   className = '',
+  href = FUNNEL_CTA_HREF,
 }: {
   children: React.ReactNode
   size?: 'base' | 'large'
-  tone?: 'red' | 'light'
+  isPulsing?: boolean
   className?: string
+  href?: string
 }) {
-  const isLight = tone === 'light'
+  const sizeClass = size === 'large' ? 'fn-cta--large' : 'fn-cta--small'
   return (
-    <a
-      href={FUNNEL_CTA_HREF}
-      className={`inline-flex items-center justify-center rounded-full text-center font-bold tracking-tight transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 active:translate-y-0 ${
-        size === 'large' ? 'min-h-14 px-5 py-3.5 text-[15px] leading-snug text-balance sm:px-7 sm:py-4 sm:text-lg' : 'min-h-11 px-5 py-2.5 text-sm'
-      } ${className}`}
-      style={{
-        backgroundColor: isLight ? '#FFFFFF' : SMARTMENU.red,
-        color: isLight ? SMARTMENU.ink : '#FFF7EE',
-        boxShadow: isLight ? 'none' : `0 14px 30px -14px ${SMARTMENU.red}B3`,
-        outlineColor: SMARTMENU.amber,
-      }}
-    >
-      {children}
+    <a href={href} className={`fn-cta ${sizeClass} ${isPulsing ? 'fn-cta--pulse' : ''} ${className}`}>
+      <span className="text-balance">{children}</span>
+      <ArrowRight aria-hidden className={size === 'large' ? 'h-[18px] w-[18px] shrink-0' : 'h-3.5 w-3.5 shrink-0'} strokeWidth={2.5} />
     </a>
   )
 }
 
-export function CheckMark({ color = SMARTMENU.green }: { color?: string }) {
-  return <Check aria-hidden className="mt-0.5 h-4 w-4 shrink-0" style={{ color }} strokeWidth={2.5} />
+export function CheckMark({ color = FN.amber }: { color?: string }) {
+  return <Check aria-hidden className="mt-[3px] h-4 w-4 shrink-0" style={{ color }} strokeWidth={2.5} />
 }
 
 export function CrossMark() {
-  return <X aria-hidden className="mt-0.5 h-4 w-4 shrink-0" style={{ color: SMARTMENU.cocoa }} strokeWidth={2.25} />
+  return <X aria-hidden className="mt-[3px] h-4 w-4 shrink-0" style={{ color: FN.muted }} strokeWidth={2} />
+}
+
+/** The reference's glowing red kicker ("● FREE LIVE MASTERCLASS"). */
+export function Kicker({ children, tone = 'red' }: { children: React.ReactNode; tone?: 'red' | 'amber' }) {
+  return (
+    <p className={`fn-kicker fn-kicker--${tone}`}>
+      <span aria-hidden className="fn-dot" />
+      {children}
+    </p>
+  )
+}
+
+/** Highlighter-pen words, revealed left to right like the reference's marker. */
+export function Marker({ children }: { children: React.ReactNode }) {
+  return <mark className="fn-marker">{children}</mark>
 }
 
 export function SectionTitle({
-  eyebrow,
+  kicker,
   title,
   subtitle,
-  align = 'center',
 }: {
-  eyebrow?: string
-  title: string
+  kicker?: string
+  title: React.ReactNode
   subtitle?: string
-  align?: 'center' | 'left'
 }) {
-  const isCenter = align === 'center'
   return (
-    <div className={isCenter ? 'mx-auto max-w-3xl text-center' : 'max-w-2xl'}>
-      {eyebrow && (
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.22em]" style={{ color: SMARTMENU.red }}>
-          {eyebrow}
-        </p>
-      )}
-      <h2 className="t-funnel-h2 font-extrabold leading-[1.08] tracking-tight" style={{ color: SMARTMENU.ink }}>
-        {title}
-      </h2>
-      {subtitle && (
-        <p className="mt-4 text-[15px] leading-relaxed sm:text-base" style={{ color: SMARTMENU.cocoa }}>
-          {subtitle}
-        </p>
-      )}
+    <div className="mx-auto max-w-3xl text-center">
+      {kicker && <Kicker>{kicker}</Kicker>}
+      <h2 className="fn-h2">{title}</h2>
+      {subtitle && <p className="fn-lead mx-auto mt-4 max-w-2xl">{subtitle}</p>}
     </div>
   )
 }

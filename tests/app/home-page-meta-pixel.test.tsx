@@ -4,8 +4,8 @@ jest.mock('next/navigation', () => ({
   redirect: jest.fn(),
 }))
 
-jest.mock('@/components/landing/landing-page', () => ({
-  LandingPage: () => <div>landing page</div>,
+jest.mock('@/components/funnel/funnel-page', () => ({
+  FunnelPage: () => <div>funnel page</div>,
 }))
 
 jest.mock('@/lib/tenant', () => ({
@@ -33,7 +33,7 @@ describe('HomePage meta pixel rendering', () => {
     const page = await HomePage()
     const html = renderToStaticMarkup(page)
 
-    expect(html).toContain('landing page')
+    expect(html).toContain('funnel page')
     expect(html).not.toContain('connect.facebook.net/en_US/fbevents.js')
     expect(html).not.toContain("fbq('init'")
   })

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatCoordinateFallback } from '@/lib/geocoding/mapbox-geocoding'
+import { mergeSuggestions, searchQueriesFor } from '@/lib/maps/address-query'
 import {
   autocompleteLabel,
   formatPlaceAddress,
@@ -181,11 +182,17 @@ type SuggestFn = (query: string, near: LatLng) => Promise<AddressSuggestion[]>
  * The suggestion list for one search box: debounced, and only the answer to
  * the LATEST query is shown — a slow answer to an older query (or to text the
  * diner has since cleared, or a pick already made) is dropped.
+ *
+ * "Blk 4 Lot 12 Camella Tanza" searches as "Camella Tanza" first, then as typed
+ * (`address-query.ts`). One after the other, because a new autocomplete cancels
+ * the one in flight at Apple.
  */
 export function useAddressSuggestions(suggest: SuggestFn) {
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const generationRef = useRef(0)
+  /** Searches that found nothing, since the field opened: stamped on the order, so a bad area shows in the data. */
+  const missCountRef = useRef(0)
 
   useEffect(() => () => {
     generationRef.current += 1
@@ -206,13 +213,20 @@ export function useAddressSuggestions(suggest: SuggestFn) {
       const generation = generationRef.current
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null
-        void suggest(text, near).then((next) => {
-          if (generation === generationRef.current) setSuggestions(next)
-        })
+        void (async () => {
+          const lists: AddressSuggestion[][] = []
+          for (const query of searchQueriesFor(text)) {
+            lists.push(await suggest(query, near))
+            if (generation !== generationRef.current) return
+          }
+          const merged = mergeSuggestions(lists)
+          if (merged.length === 0) missCountRef.current += 1
+          setSuggestions(merged)
+        })()
       }, SUGGESTION_DEBOUNCE_MS)
     },
     [clear, suggest],
   )
 
-  return { suggestions, search, clear }
+  return { suggestions, search, clear, missCountRef }
 }

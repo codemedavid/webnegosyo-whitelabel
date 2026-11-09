@@ -15,6 +15,8 @@
  */
 
 import { cache } from 'react'
+import { INVENTORY_ITEM_COLUMNS } from '@/lib/inventory/cost-columns'
+import { withItemCosts } from '@/lib/inventory/item-costs'
 import { createClient } from '@/lib/supabase/server'
 import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import { buildCostingGraph } from '@/lib/inventory/graph-builder'
@@ -48,7 +50,7 @@ const fetchCostingRowsFromSupabase = cache(async (tenantId: string): Promise<Cos
 
   const [units, items, recipes, components] = await Promise.all([
     supabase.from('inventory_units').select('*').eq('tenant_id', tenantId),
-    supabase.from('inventory_items').select('*').eq('tenant_id', tenantId),
+    supabase.from('inventory_items').select(INVENTORY_ITEM_COLUMNS).eq('tenant_id', tenantId),
     supabase.from('recipes').select('*').eq('tenant_id', tenantId),
     supabase.from('recipe_components').select('*').eq('tenant_id', tenantId),
   ])
@@ -60,7 +62,9 @@ const fetchCostingRowsFromSupabase = cache(async (tenantId: string): Promise<Cos
 
   return {
     units: (units.data ?? []) as unknown as InventoryUnitRow[],
-    items: (items.data ?? []) as unknown as InventoryItem[],
+    // The graph prices every dish, so it needs the ingredient costs: through the
+    // `costs`-gated reader (0 for an account without the key, which sees no costs).
+    items: await withItemCosts(supabase, tenantId, (items.data ?? []) as unknown as Omit<InventoryItem, 'unit_cost'>[]),
     recipes: (recipes.data ?? []) as unknown as Recipe[],
     components: (components.data ?? []) as unknown as RecipeComponent[],
   }

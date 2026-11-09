@@ -11,7 +11,7 @@
 import { loadInventoryStock } from "./inventory-service";
 
 jest.mock("./supabase", () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
 
 import { supabase } from "./supabase";
@@ -45,6 +45,8 @@ const flourRow = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // No prices unless a test hands some out: the cost reader answers an empty list.
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: [], error: null });
 });
 
 describe("loadInventoryStock", () => {

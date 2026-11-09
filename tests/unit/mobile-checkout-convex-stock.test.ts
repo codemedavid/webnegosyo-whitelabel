@@ -21,10 +21,14 @@ const checkoutSource = () =>
   fs.readFileSync(path.join(MOBILE_ROOT, 'app/(main)/checkout.tsx'), 'utf8')
 
 describe('mobile checkout — inventory notification rides both backends', () => {
-  it('notifies inventory on the Supabase branch', () => {
-    const supabaseBranch = checkoutSource().split('// Existing Supabase flow')[1]
+  it('leaves inventory to the order API on the platform branch', () => {
+    // The platform branch posts to /api/orders/customer-app, whose
+    // createOrderAction spends the ingredients. A second call from here would
+    // only race the ledger's order+direction guard for nothing.
+    const platformBranch = checkoutSource().split('// Platform flow')[1]
 
-    expect(supabaseBranch).toContain('notifyCustomerOrderStock(tenant.id, orderId)')
+    expect(platformBranch).toContain('submitPlatformOrder(')
+    expect(platformBranch.split('// Anon reads use')[0]).not.toContain('notifyCustomerOrderStock')
   })
 
   it('notifies inventory on the Convex branch too', () => {
@@ -33,7 +37,7 @@ describe('mobile checkout — inventory notification rides both backends', () =>
     // the platform reads the lines back out of the deployment, so calling with
     // no order would find nothing to spend.
     const [convexBranch] = checkoutSource()
-      .split('// Existing Supabase flow')[0]
+      .split('// Platform flow')[0]
       .split('// Create order in Convex')
       .slice(1)
 

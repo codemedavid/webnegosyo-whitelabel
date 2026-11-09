@@ -1,7 +1,7 @@
 /**
- * The funnel's order form is Brunson's step two: a "yes" on the sales page
- * becomes a checkout lead on the monthly term, then lands on the existing
- * confirmation page with payment instructions.
+ * The funnel's order form: a "yes" on the sales page becomes a checkout lead
+ * on the plan the visitor picked (six months by default), then lands on the
+ * existing confirmation page with payment instructions.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -23,10 +23,12 @@ jest.mock('@/app/actions/checkout-leads', () => ({
   fetchActivePlatformPaymentMethods: () => fetchActivePlatformPaymentMethods(),
 }))
 
+const SUBMIT = /kunin ang 6-month plan/i
+
 async function renderForm() {
   // next/jest leaves static imports ahead of jest.mock, so load lazily.
   const { FunnelOrderForm } = await import('@/components/funnel/funnel-order-form')
-  return render(<FunnelOrderForm />)
+  return render(<FunnelOrderForm term="six_month_full" submitLabel="Kunin ang 6-month plan" />)
 }
 
 async function fillValidForm() {
@@ -47,16 +49,16 @@ describe('FunnelOrderForm', () => {
     ])
   })
 
-  it('creates a lead on the monthly term and opens its confirmation page', async () => {
+  it('creates a lead on the given term and opens its confirmation page', async () => {
     submitCheckoutForm.mockResolvedValue({
-      data: { reference_number: 'SM-123', amount: 999 },
+      data: { reference_number: 'SM-123', amount: 5499 },
       error: null,
     })
     await renderForm()
     await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
 
     const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
 
     await waitFor(() => expect(submitCheckoutForm).toHaveBeenCalledTimes(1))
     expect(submitCheckoutForm.mock.calls[0][0]).toMatchObject({
@@ -64,7 +66,7 @@ describe('FunnelOrderForm', () => {
       business_name: "Juan's Kitchen",
       phone: '09171234567',
       selected_payment_method_id: 'pm-gcash',
-      payment_term: 'monthly_subscription',
+      payment_term: 'six_month_full',
     })
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith('/checkout/confirmation?confirm=SM-123')
@@ -73,14 +75,14 @@ describe('FunnelOrderForm', () => {
 
   it('stays pending after the lead is saved so a second tap cannot file a duplicate', async () => {
     submitCheckoutForm.mockResolvedValue({
-      data: { reference_number: 'SM-123', amount: 999 },
+      data: { reference_number: 'SM-123', amount: 5499 },
       error: null,
     })
     await renderForm()
     await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
 
     const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
     await waitFor(() => expect(push).toHaveBeenCalled())
 
     const button = screen.getByRole('button') as HTMLButtonElement
@@ -95,10 +97,10 @@ describe('FunnelOrderForm', () => {
     await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
 
     const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
 
     await waitFor(() =>
-      expect((screen.getByRole('button', { name: /claim my setup slot/i }) as HTMLButtonElement).disabled).toBe(false)
+      expect((screen.getByRole('button', { name: SUBMIT }) as HTMLButtonElement).disabled).toBe(false)
     )
   })
 
@@ -114,7 +116,7 @@ describe('FunnelOrderForm', () => {
     await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
 
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
 
     expect(submitCheckoutForm).not.toHaveBeenCalled()
     expect(await screen.findByText(/full name mo/i)).toBeTruthy()
@@ -126,7 +128,7 @@ describe('FunnelOrderForm', () => {
     await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
 
     const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
 
     await waitFor(() => expect(submitCheckoutForm).toHaveBeenCalled())
     expect(push).not.toHaveBeenCalled()

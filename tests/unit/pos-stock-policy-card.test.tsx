@@ -37,7 +37,7 @@ describe('PosStockPolicyCard', () => {
     const { container } = await renderCard({ policy: 'warn', canChange: true })
 
     expect(screen.getByText(
-      'A manager or owner signs in on the register to sell more than the stock covers. Sales made while the register is offline are never blocked.',
+      'A manager or owner signs in on the register to sell more than the stock covers. Anything at zero or below counts as out, even if you never counted it, so record a count or delivery to sell it, on the register and online. Sales made while the register is offline are never blocked.',
     )).toBeInTheDocument()
     expect(container.textContent).not.toMatch(/PIN/)
   })

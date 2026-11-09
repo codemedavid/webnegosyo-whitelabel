@@ -1,12 +1,4 @@
-import Constants from 'expo-constants'
-
-function getWebAppUrl(): string {
-  return (
-    (Constants.expoConfig?.extra?.webAppUrl as string | undefined) ||
-    process.env.EXPO_PUBLIC_WEB_APP_URL ||
-    'https://webnegosyo.com'
-  )
-}
+import { getWebAppUrl } from './web-app-url'
 
 /**
  * Fire-and-forget: ask the platform to spend a customer order's ingredients.
