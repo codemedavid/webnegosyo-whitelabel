@@ -20,6 +20,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { applySimpleOptionStockSettled } from './simple-option-stock-service'
 import type { DepletionOrderItem } from './order-depletion'
 import { reportStockFailure } from './stock-failure-report'
+import { invalidateStockCeilings } from './ceilings-cache'
 import type { StockAuditContext } from './stock-audit'
 import { applyOrderStockMovements, reverseOrderStockMovements } from './order-stock-movements'
 import { unwritten, type StockWriteOutcome } from './order-stock-ledger'
@@ -58,6 +59,9 @@ export async function reverseOrderStockBestEffort(
     reportStockFailure({ tenantId, orderId, operation: 'reverse_order_stock' }, error)
     await auditOrderStock(target, { error })
     return 'failed'
+  } finally {
+    // Settled or failed part-way, stock may have moved: diners' cached ceilings are dropped. Never throws.
+    await invalidateStockCeilings(tenantId)
   }
 }
 
@@ -106,6 +110,9 @@ export async function applyOrderStockBestEffort(
     reportStockFailure({ tenantId, orderId, operation: 'apply_order_stock', revision }, error)
     await auditOrderStock(target, { error })
     return 'failed'
+  } finally {
+    // Settled or failed part-way, stock may have moved: diners' cached ceilings are dropped. Never throws.
+    await invalidateStockCeilings(tenantId)
   }
 }
 
