@@ -11,6 +11,8 @@ export interface CheckoutFormContextValue {
   form: CheckoutFormEditor
   onSaveNow: () => void
   isSaving: boolean
+  /** Switches pre-orders for an order type right away; the store takes it at once. */
+  onToggleAdvanceOrder: (id: string, isOn: boolean) => void
 }
 
 const CheckoutFormContext = createContext<CheckoutFormContextValue | null>(null)
@@ -35,7 +37,8 @@ export function useCheckoutFormPreview(): SampleCheckoutForm | null {
   return useMemo(() => {
     if (!form?.activeId) return null
     return {
-      orderTypes: form.tabs.map((t) => ({
+      // What customers can pick; a register-only type shows just while its questions are open.
+      orderTypes: form.tabs.filter((t) => t.isOnWeb || t.id === form.activeId).map((t) => ({
         id: t.id,
         name: t.name,
         type: t.type,

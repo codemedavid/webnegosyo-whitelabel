@@ -128,8 +128,10 @@ export function HeroBuilderEditor({
     }
     const draft = saved ? loadHeroDesign(saved) : null
     if (!draft || JSON.stringify(draft) === JSON.stringify(start)) return
+    // Stays until answered: switching pages lands here, and a timed offer was easy to miss.
     toast('You have unsaved work from last time', {
-      duration: 15_000,
+      duration: Infinity,
+      closeButton: true,
       action: { label: 'Restore', onClick: () => api.replaceDesign(draft) },
     })
   }, [api, draftKey, start])
@@ -188,9 +190,16 @@ export function HeroBuilderEditor({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey
+      // The preview, the templates and any dialog sit over the canvas: its shortcuts must not act behind them.
+      if (showPreview && event.key === 'Escape') {
+        setShowPreview(false)
+        return
+      }
+      if (showPreview || showTemplates || document.querySelector('[role="dialog"]')) return
       if (mod && event.key.toLowerCase() === 's') {
         event.preventDefault()
-        publish()
+        // Exactly when the Publish button can be pressed.
+        if (!isPending && api.design.sections.length > 0 && (!isLive || hasUnpublishedChanges)) publish()
         return
       }
       if (isEditableTarget(event.target)) return
@@ -213,7 +222,7 @@ export function HeroBuilderEditor({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [api, publish])
+  }, [api, publish, showPreview, showTemplates, isPending, isLive, hasUnpublishedChanges])
 
   const status = !isLive
     ? { label: 'Not live', className: 'bg-neutral-100 text-neutral-600' }
@@ -418,7 +427,7 @@ export function HeroBuilderEditor({
       />
 
       {showPreview && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-neutral-900/95" role="dialog" aria-label="Preview">
+        <div className="fixed inset-0 z-50 flex flex-col bg-neutral-900/95" role="dialog" aria-modal="true" aria-label="Preview">
           <div className="flex h-14 shrink-0 items-center justify-between px-4 text-white">
             <p className="text-sm font-semibold">Preview</p>
             <div className="flex gap-1 rounded-lg bg-white/10 p-1">
@@ -434,7 +443,7 @@ export function HeroBuilderEditor({
                 </button>
               ))}
             </div>
-            <button type="button" onClick={() => setShowPreview(false)} className="rounded-md p-2 hover:bg-white/10" aria-label="Close preview">
+            <button type="button" autoFocus onClick={() => setShowPreview(false)} className="rounded-md p-2 hover:bg-white/10" aria-label="Close preview">
               <X className="h-5 w-5" />
             </button>
           </div>

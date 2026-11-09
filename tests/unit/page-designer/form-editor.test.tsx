@@ -33,9 +33,9 @@ const ask = (id: string, overrides: Partial<FormQuestion> = {}): FormQuestion =>
 
 const SOURCE: CheckoutFormSource = {
   orderTypes: [
-    { id: PICKUP, name: 'Pickup', type: 'pickup', description: null, isEnabled: true, advanceOrderEnabled: false },
-    { id: DELIVERY, name: 'Delivery', type: 'delivery', description: null, isEnabled: true, advanceOrderEnabled: false },
-    { id: DINE_IN, name: 'Dine in', type: 'dine_in', description: null, isEnabled: false, advanceOrderEnabled: false },
+    { id: PICKUP, name: 'Pickup', type: 'pickup', description: null, isEnabled: true, advanceOrderEnabled: false, isOnWeb: true },
+    { id: DELIVERY, name: 'Delivery', type: 'delivery', description: null, isEnabled: true, advanceOrderEnabled: false, isOnWeb: true },
+    { id: DINE_IN, name: 'Dine in', type: 'dine_in', description: null, isEnabled: false, advanceOrderEnabled: false, isOnWeb: true },
   ],
   saved: {
     [PICKUP]: [ask('f-name', { field_name: 'customer_name', field_label: 'Name' }), ask('f-notes', { field_name: 'notes', field_label: 'Notes', field_type: 'textarea' })],
@@ -52,7 +52,7 @@ function Harness({ source = SOURCE }: { source?: CheckoutFormSource }) {
   const form = useCheckoutForm('t1', source)
   current = form
   return (
-    <CheckoutFormProvider value={{ form, onSaveNow, isSaving: false }}>
+    <CheckoutFormProvider value={{ form, onSaveNow, isSaving: false, onToggleAdvanceOrder: jest.fn() }}>
       <CustomerFormPanel widget={WIDGET} />
     </CheckoutFormProvider>
   )
@@ -210,7 +210,7 @@ describe('canvas preview', () => {
     function Preview() {
       const form = useCheckoutForm('t3', SOURCE)
       return (
-        <CheckoutFormProvider value={{ form, onSaveNow, isSaving: false }}>
+        <CheckoutFormProvider value={{ form, onSaveNow, isSaving: false, onToggleAdvanceOrder: jest.fn() }}>
           <PreviewProbe />
           <button type="button" onClick={() => form.setActiveId(DELIVERY)}>open delivery</button>
         </CheckoutFormProvider>

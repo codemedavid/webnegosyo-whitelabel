@@ -68,10 +68,14 @@ export function isShownInState(showWhen: readonly string[] | undefined, state: s
   return showWhen.includes(state)
 }
 
-/** Whether a node limited by "Show for" shows for this order's type. */
+/**
+ * Whether a node limited by "Show for" shows for this order's type. A store's
+ * own types (Grab, foodpanda, other) are collected at the counter, so they
+ * follow "Pickup" like everywhere else (order-type-kinds).
+ */
 export function isShownForOrder(showFor: readonly string[] | undefined, orderKind: string | null | undefined): boolean {
   if (!showFor?.length || !orderKind) return true
-  return showFor.includes(orderKind)
+  return showFor.includes(orderKind === 'dine_in' || orderKind === 'delivery' ? orderKind : 'pickup')
 }
 
 export function PageBlockView({ content, isEditor }: { content: PageBlockContent; isEditor: boolean }): ReactNode {

@@ -60,7 +60,13 @@ const EMPTY: CheckoutFormSource = { orderTypes: [], saved: {} }
  * unsaved instead of being overwritten by the reply.
  */
 export function useCheckoutForm(tenantId: string, source: CheckoutFormSource | null) {
-  const { orderTypes, saved: initial } = source ?? EMPTY
+  const { orderTypes: loadedTypes, saved: initial } = source ?? EMPTY
+  // Pre-orders are switched live from the Schedule block, never held in the draft.
+  const [advanceOverrides, setAdvanceOverrides] = useState<Readonly<Record<string, boolean>>>({})
+  const orderTypes = useMemo(
+    () => loadedTypes.map((t) => (Object.hasOwn(advanceOverrides, t.id) ? { ...t, advanceOrderEnabled: advanceOverrides[t.id] } : t)),
+    [loadedTypes, advanceOverrides],
+  )
   const draftKey = `pd-form:${tenantId}`
   const [saved, setSaved] = useState<FormDraft>(initial)
   const [draft, setDraft] = useState<FormDraft>(initial)
@@ -111,6 +117,7 @@ export function useCheckoutForm(tenantId: string, source: CheckoutFormSource | n
     tabs,
     activeId: activeId && tabs.some((t) => t.id === activeId) ? activeId : (tabs[0]?.id ?? null),
     setActiveId,
+    setAdvanceOrder: useCallback((id: string, isOn: boolean) => setAdvanceOverrides((current) => ({ ...current, [id]: isOn })), []),
     saved,
     draft,
     input,

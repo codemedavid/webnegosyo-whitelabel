@@ -6,7 +6,7 @@ import { buildDesignCss } from '@/lib/hero-builder/css'
 import { safeAnchor, safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import type { Column, HeroDesignV5, Section, Widget } from '@/lib/hero-builder/types'
 
-import { PageLayout } from './page-layout'
+import { PageLayout, ScrollingSections } from './page-layout'
 import { isShownForOrder, isShownInState, usePageRuntime } from './page-runtime'
 import { WidgetView } from './widget-view'
 
@@ -158,6 +158,8 @@ export const HeroBuilderRenderer = memo(function HeroBuilderRenderer({
             .filter((section) => isEditor || isNodeShown(section, pageState, orderKind))
             .map((section, i) => ({ section, node: <SectionNode section={section} ctx={ctx} isPriority={i === 0} /> }))}
         />
+      ) : runtime && !isEditor ? (
+        <ScrollingSections sections={design.sections.map((section, i) => ({ section, node: <SectionNode section={section} ctx={ctx} isPriority={i === 0} /> }))} />
       ) : (
         design.sections.map((section, i) => <SectionNode key={section.id} section={section} ctx={ctx} isPriority={i === 0} />)
       )}

@@ -466,6 +466,18 @@ function pagePartCss(design: HeroDesignV5, scope: string, classes: Record<string
   return css
 }
 
+/**
+ * Storefront only: a page block with nothing to show (the schedule on an order
+ * type without pre-orders) takes no room, and neither does the spacer after it,
+ * so the gaps around it don't pile up. A section left with nothing at all is
+ * the layout's job (page-layout.tsx).
+ */
+function emptyBlockCss(scope: string): string {
+  return ['page-block', 'copy-text']
+    .map((kind) => `.${scope} .hb-w--${kind}:empty{display:none}.${scope} .hb-w--${kind}:empty+.hb-w--spacer{display:none}`)
+    .join('')
+}
+
 const SCOPE_PATTERN = /^[a-z][a-z0-9-]{0,40}$/
 
 export function buildDesignCss(design: HeroDesignV5, options: CssBuildOptions): BuiltDesignCss {
@@ -495,6 +507,7 @@ export function buildDesignCss(design: HeroDesignV5, options: CssBuildOptions): 
     if (block) css += `@container hb (max-width: ${DEVICE_MAX_WIDTH[device]}px){${block}}`
   }
   css += pagePartCss(design, scope, classes)
+  if (!showHidden) css += emptyBlockCss(scope)
 
   if (css.length > LIMITS.designBytes * 2) css = css.slice(0, LIMITS.designBytes * 2)
   return { css, classes, fontsHref: buildFontsHref(collectFonts(design)) }

@@ -37,6 +37,8 @@ export interface FormOrderType {
   description: string | null
   isEnabled: boolean
   advanceOrderEnabled: boolean
+  /** False = register only (a Grab counter): the storefront's checkout never offers it. */
+  isOnWeb: boolean
 }
 
 /** What the page loads for the form editor: the store's order types and their saved questions. */
