@@ -198,4 +198,6 @@ async function main() {
   }
 }
 
-main().catch((error) => { console.error(error); process.exitCode = 1 })
+if (require.main === module) main().catch((error) => { console.error(error); process.exitCode = 1 })
+
+module.exports = { STUB_SCHEMA, SEED, U, T_A, T_B, RULE, ruleId, save }
