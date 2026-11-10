@@ -719,9 +719,29 @@ describe('the declaration travels with the export', () => {
   })
 })
 
+/**
+ * What Next's generated route types ask of a handler export (typegen.js,
+ * `RouteHandlerConfig`): assignable to `(request, context: { params }) => …`.
+ */
+type NextRouteExport<TParams> = (
+  request: NextRequest,
+  context: { params: Promise<TParams> },
+) => Promise<Response | void> | Response | void
+type Accepts<TExpected, TActual extends TExpected> = TActual
+
 /** Compile-time half of the contract: checked by `tsc`, never run. */
 export function typeContract() {
   const respond = () => NextResponse.json({})
+  const route = defineRoute({ auth: { kind: 'cron' }, handler: respond })
+  // Routes with no params, a dynamic segment, a catch-all and an optional catch-all.
+  type Checks = [
+    Accepts<NextRouteExport<object>, typeof route>,
+    Accepts<NextRouteExport<{ token: string }>, typeof route>,
+    Accepts<NextRouteExport<{ path: string[] }>, typeof route>,
+    Accepts<NextRouteExport<{ path?: string[] }>, typeof route>,
+  ]
+  const checks: Checks | null = null
+  void [route, checks]
   // @ts-expect-error a public route must state its rate limit
   defineRoute({ auth: { kind: 'public' }, handler: respond })
   // @ts-expect-error a staff route must name its permission
