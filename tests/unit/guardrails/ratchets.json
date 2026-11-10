@@ -1,0 +1,33 @@
+{
+  "looseLibFiles": 261,
+  "looseAdminComponentFiles": 110,
+  "filesOver800Lines": [
+    "src/actions/tenants.ts",
+    "src/app/actions/lalamove.ts",
+    "src/app/actions/orders.ts",
+    "src/components/customer/product-detail-content.tsx",
+    "src/components/shared/mapbox-address-autocomplete.tsx",
+    "src/components/superadmin/tenant-form-wrapper.tsx",
+    "src/components/superadmin/tenant-manager.tsx",
+    "src/hooks/useCart.tsx",
+    "src/hooks/useCheckout.ts",
+    "src/lib/admin-service.ts",
+    "src/lib/branding-registry.ts",
+    "src/lib/expenses/bill-schedule.ts",
+    "src/lib/mcp/provisioning-ops.ts",
+    "src/lib/menu-engineering-service.ts",
+    "src/lib/orders-service.ts",
+    "src/lib/receipt-layout.ts",
+    "src/types/database.ts"
+  ],
+  "adminClientImporters": {
+    "src/app/api": 71,
+    "src/app/actions": 32,
+    "src/lib": 106,
+    "src/components": 2,
+    "elsewhere": 18
+  },
+  "convexDeploymentUrlReaders": 60,
+  "handWrittenDatabaseTypeImporters": 373,
+  "utcDateAsBusinessDay": 50
+}
