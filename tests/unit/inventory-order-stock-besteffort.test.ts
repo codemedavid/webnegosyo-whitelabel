@@ -15,6 +15,11 @@ jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 
+const invalidateStockCeilings = jest.fn(async () => undefined)
+jest.mock('@/lib/inventory/ceilings-cache', () => ({
+  invalidateStockCeilings: (...a: unknown[]) => invalidateStockCeilings(...(a as [])),
+}))
+
 const ITEMS = [{ menuItemId: 'm1', quantity: 1 }]
 
 beforeEach(() => {
@@ -47,6 +52,17 @@ describe('applyOrderStockBestEffort', () => {
     })
 
     await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBe('failed')
+  })
+
+  it('drops the store’s cached diner ceilings once stock may have moved, even after a failure part-way', async () => {
+    from.mockImplementation(() => {
+      throw new Error('connection refused')
+    })
+    invalidateStockCeilings.mockClear()
+
+    await applyOrderStockBestEffort('t1', 'o1', ITEMS)
+
+    expect(invalidateStockCeilings).toHaveBeenCalledWith('t1')
   })
 
   it('does nothing at all for an order with no lines', async () => {

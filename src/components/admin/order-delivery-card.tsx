@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { createPinLinkAction, saveDeliveryDetailsAction } from '@/app/actions/delivery-details'
 import { DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
 import { DELIVERY_STORE_NOTE_KEY, findDeliveryDetails } from '@/lib/delivery/delivery-details'
-import { deliveryEditRefusal, DELIVERY_PIN_KM_KEY, DELIVERY_PIN_UPDATED_BY_KEY } from '@/lib/delivery/order-delivery-edit'
+import { deliveryEditRefusal, DELIVERY_PIN_KM_KEY, DELIVERY_PIN_UPDATED_BY_KEY, merchantDeliveryChanges, type MerchantDeliveryDraft } from '@/lib/delivery/order-delivery-edit'
 import { buildRiderMessage, buildRiderRemarks } from '@/lib/delivery/rider-remarks'
 import { isPinSkipped } from '@/lib/delivery/unpinned-delivery'
 import { toLatLng, type LatLng } from '@/lib/delivery-fee'
@@ -112,15 +112,20 @@ export function OrderDeliveryCard({ tenantId, order }: OrderDeliveryCardProps) {
 
   const handleSave = async (event: FormEvent) => {
     event.preventDefault()
+    // Only what changed: the rest may have been moved by the customer since this card loaded.
+    const opened: MerchantDeliveryDraft = {
+      address: text(answers[DELIVERY_ADDRESS_FIELD_NAME]),
+      pin: toLatLng(answers.delivery_lat, answers.delivery_lng),
+      ...findDeliveryDetails(answers),
+      storeNote: text(answers[DELIVERY_STORE_NOTE_KEY]),
+    }
+    const patch = merchantDeliveryChanges(opened, { address, pin, unit, landmark, riderNote, storeNote })
+    if (Object.keys(patch).length === 0) {
+      setIsEditing(false)
+      return
+    }
     setIsSaving(true)
-    const result = await saveDeliveryDetailsAction(tenantId, order.id, {
-      ...(address.trim() ? { address: address.trim() } : {}),
-      ...(pin ? { pin } : {}),
-      unit: unit.trim(),
-      landmark: landmark.trim(),
-      riderNote: riderNote.trim(),
-      storeNote: storeNote.trim(),
-    })
+    const result = await saveDeliveryDetailsAction(tenantId, order.id, patch)
     setIsSaving(false)
     if (!result.success) {
       toast.error(result.error)

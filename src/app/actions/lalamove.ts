@@ -123,6 +123,9 @@ function isLongitude(value: number): boolean {
  * and that branch is pinned, the trip starts THERE (read server-side, active
  * and owned by this store), and the signature binds the branch.
  */
+const QUOTE_UNAVAILABLE_MESSAGE =
+  'We couldn’t get a delivery fee for this address right now. Please try again, or contact the store.'
+
 export async function createQuotationAction(
   tenantId: string,
   _clientPickupAddress: string,
@@ -212,11 +215,10 @@ export async function createQuotationAction(
       },
     }
   } catch (error) {
+    // The shopper calls this at checkout: Lalamove's and the key checks' messages
+    // ("These are sandbox keys…") are for the store, so they stay in the log.
     console.error('Quotation creation error:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to create quotation',
-    }
+    return { success: false, error: QUOTE_UNAVAILABLE_MESSAGE }
   }
 }
 

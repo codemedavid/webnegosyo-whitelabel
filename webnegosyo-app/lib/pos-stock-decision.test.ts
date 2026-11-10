@@ -4,6 +4,7 @@
  */
 
 import {
+  MANAGER_PIN_NOTE,
   acceptShortfalls,
   canSellPastStock,
   chargeShortfallsToAsk,
@@ -132,6 +133,26 @@ describe("decideAddStock", () => {
     expect(decision.question.managerNote).toMatch(/manager/i);
     // Selling what is in stock never needs anyone.
     expect(decision.question.sellWithin).toEqual({ label: "Sell 5", units: 5 });
+  });
+
+  it("block policy on a platform sale: the cashier sells anyway and a manager approves with a PIN at Charge", () => {
+    const decision = decideAddStock(
+      { shortfall: short(), addedQuantity: 7 },
+      { ...BLOCK_CASHIER, canAskManagerPin: true },
+    );
+    if (decision.kind !== "ask") throw new Error("expected a question");
+    expect(decision.question.sellAnyway).toEqual({ mode: "manager_pin", label: "Sell anyway" });
+    expect(decision.question.managerNote).toBe(MANAGER_PIN_NOTE);
+  });
+
+  it("block policy: no PIN can be asked offline, so the old rule (never block offline) holds", () => {
+    const decision = decideAddStock(
+      { shortfall: short(), addedQuantity: 7 },
+      { ...BLOCK_OFFLINE, canAskManagerPin: true },
+    );
+    if (decision.kind !== "ask") throw new Error("expected a question");
+    expect(decision.question.sellAnyway.mode).toBe("proceed");
+    expect(decision.question.managerNote).toBeNull();
   });
 
   it("block policy: a signed-in manager sells anyway directly", () => {

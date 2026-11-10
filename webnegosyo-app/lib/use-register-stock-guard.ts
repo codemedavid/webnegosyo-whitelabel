@@ -192,7 +192,9 @@ export function useRegisterStockGuard(input: RegisterStockGuardInput): RegisterS
       pending.sellWithin();
     },
     onSellAnyway: () => {
-      if (!pending || pending.question.sellAnyway.mode !== "proceed") return;
+      // "needs_manager" is the only answer that stops here: "manager_pin"
+      // goes on, and the tender gets the manager's PIN from the server.
+      if (!pending || pending.question.sellAnyway.mode === "needs_manager") return;
       close();
       pending.sellAnyway();
     },

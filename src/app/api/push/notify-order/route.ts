@@ -9,8 +9,9 @@
  *
  * The caller is unauthenticated (pg_net cannot hold a secret a migration
  * would not leak), so nothing in the payload is trusted: the order is re-read
- * by id with the service role, the tenant must match, and a once-only claim
- * row per order makes replays silent no-ops.
+ * by id with the service role, the tenant must match, and only then does a
+ * once-only claim row per order make replays silent no-ops. Claiming first let
+ * a wrong tenant_id burn the real order's push.
  *
  * What Expo says back is read, not assumed. This route used to count an HTTP
  * 200 as "sent" — and an HTTP 200 is what Expo returns while refusing every
@@ -32,7 +33,8 @@ import {
   describePushFailures,
   sendExpoPushMessages,
 } from '@/lib/push/expo-delivery'
-import { afterResponse, pruneStaleTokens } from '@/lib/push/push-route-helpers'
+import { afterResponse, pruneStaleTokens, PG_NET_IP_LIMIT } from '@/lib/push/push-route-helpers'
+import { refuseOverIpLimit } from '@/lib/http/rate-limit-guard'
 
 interface NotifiableOrderRow {
   id: string
@@ -45,6 +47,9 @@ interface NotifiableOrderRow {
 }
 
 export async function POST(request: NextRequest) {
+  const overLimit = await refuseOverIpLimit(request, 'notify-order', PG_NET_IP_LIMIT)
+  if (overLimit) return overLimit
+
   let body: unknown
   try {
     body = await request.json()
@@ -59,8 +64,22 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient()
 
-  // Claim first: exactly one send per order, however many times the trigger
-  // (or anyone else) replays the request.
+  const { data: order, error: orderError } = await admin
+    .from('orders')
+    .select('id, tenant_id, outlet_id, customer_name, total, item_count, customer_data')
+    .eq('id', payload.order_id)
+    .maybeSingle<NotifiableOrderRow>()
+
+  if (orderError) {
+    console.error('[notify-order] order read failed:', orderError.message)
+    return NextResponse.json({ error: 'Order read failed' }, { status: 500 })
+  }
+  if (!order || order.tenant_id !== payload.tenant_id) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
+
+  // Validated, so claim: exactly one send per order, however many times the
+  // trigger (or anyone else) replays the request.
   const { data: claim, error: claimError } = await admin
     .from('order_push_notifications')
     .upsert(
@@ -75,20 +94,6 @@ export async function POST(request: NextRequest) {
   }
   if (!claim || claim.length === 0) {
     return NextResponse.json({ sent: 0, duplicate: true })
-  }
-
-  const { data: order, error: orderError } = await admin
-    .from('orders')
-    .select('id, tenant_id, outlet_id, customer_name, total, item_count, customer_data')
-    .eq('id', payload.order_id)
-    .maybeSingle<NotifiableOrderRow>()
-
-  if (orderError) {
-    console.error('[notify-order] order read failed:', orderError.message)
-    return NextResponse.json({ error: 'Order read failed' }, { status: 500 })
-  }
-  if (!order || order.tenant_id !== payload.tenant_id) {
-    return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
   const { data: tokens, error: tokensError } = await admin

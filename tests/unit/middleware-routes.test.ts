@@ -129,6 +129,9 @@ describe('isFrameProtectedPath', () => {
     '/superadmin/tenants',
     '/superadmin/login',
     '/superadmin/mcp/authorize',
+    '/onboarding',
+    '/onboarding/abc123',
+    '/onboarding/join/xyz',
   ])('refuses cross-origin framing of %s', (path) => {
     expect(isFrameProtectedPath(path)).toBe(true)
   })
@@ -143,6 +146,8 @@ describe('isFrameProtectedPath', () => {
     '/shop/admin-tips',
     '/shop/loginx',
     '/privacy',
+    '/shop/onboarding',
+    '/onboarding-guide',
     '/api/revalidate-menu',
   ])('leaves %s embeddable (merchants embed their storefront)', (path) => {
     expect(isFrameProtectedPath(path)).toBe(false)

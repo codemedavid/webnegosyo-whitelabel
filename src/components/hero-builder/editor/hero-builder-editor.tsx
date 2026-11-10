@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { CANVAS_WIDTH, THEME_COLOR_FALLBACK, THEME_COLOR_KEYS } from '@/lib/hero-builder/constants'
 import { createBlankDesign } from '@/lib/hero-builder/defaults'
+import { settleAction } from '@/lib/hero-builder/settle-action'
 import type { LinkCatalog } from '@/lib/hero-builder/link-catalog'
 import { loadHeroDesign } from '@/lib/hero-builder/load'
 import { cssColor } from '@/lib/hero-builder/safe-values'
@@ -158,7 +159,7 @@ export function HeroBuilderEditor({
   // ── Publishing ────────────────────────────────────────────────────────────
   const publish = useCallback(() => {
     startTransition(async () => {
-      const result = await surface.publish({ tenantId, tenantSlug }, api.design)
+      const result = await settleAction(() => surface.publish({ tenantId, tenantSlug }, api.design), 'publish')
       if (!result.success) {
         toast.error(result.error ?? 'Could not publish')
         return
@@ -176,7 +177,7 @@ export function HeroBuilderEditor({
 
   const unpublish = useCallback(() => {
     startTransition(async () => {
-      const result = await surface.unpublish({ tenantId, tenantSlug })
+      const result = await settleAction(() => surface.unpublish({ tenantId, tenantSlug }), 'unpublish')
       if (!result.success) {
         toast.error(result.error ?? 'Could not update the storefront')
         return
@@ -238,10 +239,11 @@ export function HeroBuilderEditor({
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-3">
         <Link href={`/${tenantSlug}/admin`} className="flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-neutral-600 hover:bg-neutral-100" title="Back to admin">
           <ArrowLeft className="h-4 w-4" />
-          <span className="hidden font-semibold text-neutral-900 md:inline">{surface.title}</span>
+          <span className="hidden font-semibold text-neutral-900 2xl:inline">{surface.title}</span>
         </Link>
         <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline', status.className)}>{status.label}</span>
-        {toolbarSlot}
+        {/* Page tabs and per-page settings scroll in their own strip, so they can never push Publish off screen. */}
+        {toolbarSlot && <div className="flex min-w-0 shrink items-center gap-2 overflow-x-auto">{toolbarSlot}</div>}
         <button type="button" onClick={() => setPanels((p) => ({ ...p, left: !p.left }))} className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 lg:hidden" aria-label="Toggle elements panel">
           <PanelLeft className="h-4 w-4" />
         </button>
@@ -258,18 +260,18 @@ export function HeroBuilderEditor({
               className={cn('flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition', api.device === device ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-900')}
             >
               <Icon className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">{label}</span>
+              <span className="hidden 2xl:inline">{label}</span>
             </button>
           ))}
         </div>
 
         {pageStates.length > 0 && (
-          <label className="hidden items-center gap-1.5 text-xs font-medium text-neutral-600 md:flex" title="Preview the page at this stage — for elements with “Show when”">
-            <span className="hidden xl:inline">Showing</span>
+          <label className="hidden min-w-0 shrink items-center gap-1.5 text-xs font-medium text-neutral-600 md:flex" title="Preview the page at this stage — for elements with “Show when”">
+            <span className="hidden 2xl:inline">Showing</span>
             <select
               value={pageState ?? ''}
               onChange={(e) => setPageState(e.target.value || null)}
-              className="h-8 rounded-md border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-800"
+              className="h-8 min-w-0 max-w-40 rounded-md border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-800"
               aria-label="Order stage to preview"
             >
               {pageStates.map((state) => (
@@ -288,8 +290,8 @@ export function HeroBuilderEditor({
           <button type="button" onClick={api.redo} disabled={!api.canRedo} title="Redo (⌘⇧Z)" aria-label="Redo" className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 disabled:opacity-30">
             <Redo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setShowTemplates(true)} className="hidden h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 md:flex">
-            <LayoutTemplate className="h-4 w-4" /> Templates
+          <button type="button" onClick={() => setShowTemplates(true)} title="Templates" aria-label="Templates" className="hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 md:flex">
+            <LayoutTemplate className="h-4 w-4" /> <span className="hidden 2xl:inline">Templates</span>
           </button>
           <button
             type="button"

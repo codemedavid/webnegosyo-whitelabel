@@ -133,3 +133,46 @@ describe("decideAccess — a deployment with no store pinned", () => {
     ).toBe(true);
   });
 });
+
+describe("decideAccess — platform staff", () => {
+  // The web admin opens any store for platform staff, who belong to no store
+  // (the database refuses a tenant_id on their app_users row). They may look;
+  // changing a store's orders is that store's business.
+  const staff: AccessIdentity = { subject: "u5", wn_role: "platform_staff", wn_tenant_id: null };
+
+  test("may read an enforced store", () => {
+    expect(decideAccess({ ...enforced, identity: staff, kind: "read" })).toEqual({
+      allowed: true,
+      reason: "platform_staff",
+    });
+  });
+
+  test("may not write to an enforced store", () => {
+    expect(decideAccess({ ...enforced, identity: staff, kind: "write" })).toEqual({
+      allowed: false,
+      reason: "unauthenticated",
+    });
+  });
+
+  test("still reads a deployment with no store pinned", () => {
+    const unpinned = { ...enforced, tenantId: null };
+    expect(decideAccess({ ...unpinned, identity: staff, kind: "read" }).allowed).toBe(true);
+    expect(decideAccess({ ...unpinned, identity: staff, kind: "write" }).allowed).toBe(false);
+  });
+
+  test("passes like any other caller until the store is enforced", () => {
+    const soft = { ...enforced, authEnforced: false };
+    expect(decideAccess({ ...soft, identity: staff, kind: "write" })).toEqual({
+      allowed: true,
+      reason: "not_enforced",
+    });
+  });
+
+  test("a role alone is not enough when the token names another store", () => {
+    const naming: AccessIdentity = { ...staff, wn_tenant_id: "other" };
+    expect(decideAccess({ ...enforced, identity: naming, kind: "read" })).toEqual({
+      allowed: false,
+      reason: "wrong_tenant",
+    });
+  });
+});

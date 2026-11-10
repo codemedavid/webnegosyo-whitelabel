@@ -9,11 +9,13 @@
  *   warn  (default) the cashier is told and may "Sell anyway" — see
  *         `pos-stock-warning.ts` for why the register never refuses on an
  *         estimate by default.
- *   block "Sell anyway" needs someone who may sell past the count. There is
- *         no generic manager-PIN approval on the platform (the Senior/PWD
- *         approval is bound to its claimants and the sales book), so a
- *         manager signs in on the register instead: an account holding
- *         `inventory` (or the owner) sells anyway directly.
+ *   block "Sell anyway" needs someone who may sell past the count: an
+ *         account holding `inventory` (or the owner) sells anyway directly.
+ *         On a platform counter sale (`canAskManagerPin`) the cashier may
+ *         go on to Charge, where the SERVER judges the sale and a manager
+ *         approves it with their PIN (`pos-stock-clearance.ts`,
+ *         `StockApprovalSheet`) — the database refuses the sale otherwise.
+ *         Elsewhere (Convex, an order edit) a manager signs in instead.
  *
  * Whatever the policy, "Sell N" (what the count covers) is always allowed,
  * and the register NEVER blocks while offline: the count it holds may be
@@ -43,9 +45,18 @@ export interface StockDecisionContext {
   isOnline: boolean;
   /** `canSellPastStock` for the signed-in account. */
   canSellShort: boolean;
+  /**
+   * The tender can get a manager's PIN approval from the server for this sale
+   * (a new platform counter sale). Absent = false.
+   */
+  canAskManagerPin?: boolean;
 }
 
-export type SellAnywayMode = "proceed" | "needs_manager";
+/**
+ * proceed: sell; manager_pin: sell, and a manager approves at Charge;
+ * needs_manager: refused until a manager signs in.
+ */
+export type SellAnywayMode = "proceed" | "manager_pin" | "needs_manager";
 
 export interface StockQuestion {
   title: string;
@@ -65,6 +76,7 @@ export type StockDecision = { kind: "proceed" } | { kind: "ask"; question: Stock
 
 export const MANAGER_NOTE =
   "This store needs a manager to sell more than the stock count. Ask a manager to sign in on this register, or record a stock count.";
+export const MANAGER_PIN_NOTE = "A manager approves this with their PIN when you charge.";
 export const OFFLINE_NOTE = "You're offline, so the stock count may be out of date.";
 
 const SELL_ANYWAY_LABEL = "Sell anyway";
@@ -82,6 +94,13 @@ const isShort = (shortfall: StockShortfall): boolean => shortfall.wanted > shelf
 
 function policyParts(context: StockDecisionContext): Pick<StockQuestion, "sellAnyway" | "managerNote" | "offlineNote"> {
   const needsManager = context.policy === "block" && context.isOnline && !context.canSellShort;
+  if (needsManager && context.canAskManagerPin) {
+    return {
+      sellAnyway: { mode: "manager_pin", label: SELL_ANYWAY_LABEL },
+      managerNote: MANAGER_PIN_NOTE,
+      offlineNote: null,
+    };
+  }
   return {
     sellAnyway: { mode: needsManager ? "needs_manager" : "proceed", label: SELL_ANYWAY_LABEL },
     managerNote: needsManager ? MANAGER_NOTE : null,

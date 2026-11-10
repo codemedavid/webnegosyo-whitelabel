@@ -321,6 +321,11 @@ const SORT_COLUMN: Record<CustomersSort, string> = {
   frequent: 'order_count',
 }
 
+/** `.or()` takes a raw filter string: these would add a condition or close the group. */
+function stripOrFilterSyntax(text: string): string {
+  return text.replace(/[,()*%]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 /**
  * Apply the shared name/phone search filter + sort to a customers query.
  * Extracted so the list and the paginated read build the query identically.
@@ -336,7 +341,7 @@ function applyCustomerFilters(query: any, params?: CustomersListParams) {
   if (search) {
     const phone = normalizePhoneE164(search)
     query = phone
-      ? query.or(`name.ilike.%${search}%,phone_e164.eq.${phone}`)
+      ? query.or(`name.ilike.%${stripOrFilterSyntax(search)}%,phone_e164.eq.${phone}`)
       : query.ilike('name', `%${search}%`)
   }
 

@@ -35,7 +35,7 @@
 import type { OrderBackend } from "../order-backend";
 import { withDeadline } from "./deadline";
 import { reportOffline } from "./connectivity";
-import { isNetworkFailure } from "./network-error";
+import { isNetworkFailure, isTokenRefusal, refusalMessageOf } from "./network-error";
 import {
   deferOwedStock,
   getOutbox,
@@ -96,10 +96,6 @@ export interface SyncOutboxResult {
   stockAbandoned: number;
   /** The connection was lost mid-run; the remaining sales stay queued. */
   stoppedOffline: boolean;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 const SCOPE_CHANGED = Symbol("sync scope changed");
@@ -223,8 +219,10 @@ async function runSync(
         result.stoppedOffline = true;
         break;
       }
-      await deps.recordFailure(sale.localId, messageOf(error));
+      await deps.recordFailure(sale.localId, refusalMessageOf(error));
       result.refused += 1;
+      // The next sale would get the same answer. The retry timer comes back.
+      if (isTokenRefusal(error)) break;
     }
   }
   return result;

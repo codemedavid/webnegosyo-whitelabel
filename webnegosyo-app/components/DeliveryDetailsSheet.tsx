@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,6 +14,7 @@ import { Modal } from "./Modal";
 import { AddressField } from "./pos/delivery/AddressField";
 import { colors, radius, spacing, typography } from "../theme/colors";
 import { saveDeliveryDetails } from "../lib/delivery-details-service";
+import { merchantDeliveryChanges, type MerchantDeliveryDraft } from "../lib/delivery-changes";
 import { findDeliveryDetails, DELIVERY_STORE_NOTE_KEY } from "../lib/delivery-details";
 import { EMPTY_CHECKOUT_SETUP, type LatLng } from "../lib/pos-checkout-fields";
 import { useCheckoutSetup } from "../lib/query/use-checkout-setup";
@@ -78,6 +79,8 @@ export function DeliveryDetailsSheet({ visible, onClose, onSaved, tenantId, orde
   const [storeNote, setStoreNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the sheet opened with: Save sends only what differs from it.
+  const openedRef = useRef<MerchantDeliveryDraft | null>(null);
 
   // Drafted from the order each time it opens, so an abandoned edit never comes back.
   useEffect(() => {
@@ -89,24 +92,29 @@ export function DeliveryDetailsSheet({ visible, onClose, onSaved, tenantId, orde
     setLandmark(details.landmark);
     setRiderNote(details.riderNote);
     setStoreNote(text(customerData?.[DELIVERY_STORE_NOTE_KEY]));
+    openedRef.current = { address, pin: location, ...details, storeNote: text(customerData?.[DELIVERY_STORE_NOTE_KEY]) };
     setError(null);
     // Only opening re-drafts: the order refreshing behind the sheet must not wipe what is being typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   async function save() {
-    if (!tenantId) return;
+    if (!tenantId || !openedRef.current) return;
+    const patch = merchantDeliveryChanges(openedRef.current, {
+      address: draftAddress,
+      pin: draftLocation,
+      unit,
+      landmark,
+      riderNote,
+      storeNote,
+    });
+    if (Object.keys(patch).length === 0) {
+      onClose();
+      return;
+    }
     setIsSaving(true);
     setError(null);
-    const trimmedAddress = draftAddress.trim();
-    const result = await saveDeliveryDetails(tenantId, orderId, {
-      ...(trimmedAddress ? { address: trimmedAddress } : {}),
-      ...(draftLocation ? { pin: draftLocation } : {}),
-      unit: unit.trim(),
-      landmark: landmark.trim(),
-      riderNote: riderNote.trim(),
-      storeNote: storeNote.trim(),
-    });
+    const result = await saveDeliveryDetails(tenantId, orderId, patch);
     setIsSaving(false);
     if (!result.ok) {
       setError(result.error);
@@ -180,14 +188,14 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.separator,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     minHeight: 44,
   },
   multiline: { minHeight: 72, textAlignVertical: "top" },
-  footer: { padding: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  footer: { padding: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   error: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
   save: { backgroundColor: colors.accent, borderRadius: radius.md, minHeight: 48, alignItems: "center", justifyContent: "center" },
   saveText: { ...typography.heading, color: colors.card },

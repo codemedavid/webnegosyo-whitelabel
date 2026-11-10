@@ -46,6 +46,8 @@ export const SERVER_OWNED_CUSTOMER_DATA_KEYS = [
   'pos',
   // The store's own line to the rider: forged, a customer could tell a rider to collect cash "from the store".
   'delivery_store_note',
+  // "I can't find my place" is off (2026-11-10): no checkout sends it, and a forged one would tell the merchant no fee was charged.
+  'delivery_pin_skipped',
   // Who moved a pin and how far it is: only the delivery edit writer knows (order-delivery-edit.ts).
   'delivery_pin_km',
   'delivery_pin_updated_by',

@@ -13,6 +13,8 @@ import { ScheduleOrdersPanel } from '@/components/page-designer/editor/form-edit
 import { useCheckoutFormSession } from '@/components/page-designer/editor/form-editor/use-checkout-form-session'
 import type { CheckoutFormSource } from '@/lib/page-designer/form-changes'
 import { toggleOrderTypeAdvanceOrderAction } from '@/app/actions/order-types'
+import { saveCheckoutFormAction } from '@/app/actions/page-designer'
+import { ACTION_UNREACHABLE } from '@/lib/hero-builder/settle-action'
 
 jest.mock('@/app/actions/order-types', () => ({ toggleOrderTypeAdvanceOrderAction: jest.fn() }))
 jest.mock('@/app/actions/page-designer', () => ({ saveCheckoutFormAction: jest.fn() }))
@@ -79,4 +81,29 @@ it('puts the switch back and says so when the store refused it', async () => {
   refresh()
   expect(screen.getByRole('switch', { name: 'Pre-orders for Shopee Food' })).not.toBeChecked()
   expect(toast.error).toHaveBeenCalledWith('No permission')
+})
+
+it('puts the switch back when the request itself fails (network, thrown action)', async () => {
+  toggle.mockRejectedValue(new Error('Failed to fetch'))
+  const { session, refresh } = setup()
+  await act(async () => session.result.current.context.onToggleAdvanceOrder('o-other', true))
+  await flush()
+  refresh()
+  expect(screen.getByRole('switch', { name: 'Pre-orders for Shopee Food' })).not.toBeChecked()
+  expect(toast.error).toHaveBeenCalledWith(ACTION_UNREACHABLE)
+})
+
+it('"Save form now" says so when the request itself fails, instead of crashing the editor', async () => {
+  ;(saveCheckoutFormAction as jest.Mock).mockRejectedValue(new Error('Failed to fetch'))
+  const { session } = setup()
+  act(() =>
+    session.result.current.form.edit('o-delivery', () => [
+      { id: 'new-1', field_name: '', field_label: 'Car plate', field_type: 'text', is_required: false, placeholder: '', options: [], validation_rules: {} },
+    ]),
+  )
+  expect(session.result.current.form.input).toBeDefined()
+  await act(async () => session.result.current.context.onSaveNow())
+  await flush()
+  expect(toast.error).toHaveBeenCalledWith(ACTION_UNREACHABLE)
+  expect(session.result.current.form.hasChanges).toBe(true)
 })

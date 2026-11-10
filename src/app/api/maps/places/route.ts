@@ -57,8 +57,8 @@ interface AppPlace {
 }
 
 /** The cleaned words find the right town; the words as typed still get their say. One call when they are the same. */
-async function searchAddress(client: AppleMapsClient, query: string, near: z.infer<typeof latLngSchema> | undefined): Promise<ServerPlace[]> {
-  const lists = await Promise.all(searchQueriesFor(query).map((words) => client.search(words, near)))
+async function searchAddress(client: AppleMapsClient, queries: readonly string[], near: z.infer<typeof latLngSchema> | undefined): Promise<ServerPlace[]> {
+  const lists = await Promise.all(queries.map((words) => client.search(words, near)))
   const labelled = lists.map((places) => places.map((place) => ({ place, label: [place.name, place.address].filter(Boolean).join(', ') })))
   return mergeSuggestions(labelled).map(({ place }) => place)
 }
@@ -77,14 +77,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!parsed.success) return mapsFail(400, 'Enter at least 2 characters to search.')
 
   const body = parsed.data
-  const gate = await gateAppMapsRequest(request, body.tenantId, BUDGETS)
+  const queries = 'query' in body ? searchQueriesFor(body.query) : []
+  // Each Apple search spends the shared quota, so a cleaned door address (two searches) counts twice.
+  const gate = await gateAppMapsRequest(request, body.tenantId, { ...BUDGETS, units: Math.max(1, queries.length) })
   if (!gate.ok) return gate.response
   if (!gate.config) return mapsFail(503, 'Maps are not available right now.')
 
   try {
     const client = clientFor(gate.config)
     const places = 'query' in body
-      ? await searchAddress(client, body.query, body.near)
+      ? await searchAddress(client, queries, body.near)
       : await client.reverseGeocode(body.at)
     return NextResponse.json(
       { places: places.slice(0, MAX_PLACES).map(toAppPlace) },

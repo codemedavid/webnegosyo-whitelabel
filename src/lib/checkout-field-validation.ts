@@ -14,7 +14,10 @@
  */
 import { normalizePhoneE164 } from '@/lib/phone'
 import { readFieldRules, ruleError } from '@/lib/checkout-field-rules'
-import { CHECKBOX_TICKED } from '@/lib/checkout-field-types'
+import { normalizeFormFieldValue, type NormalizableField } from '@/lib/customer-field-normalization'
+import { isAnswered, missingAnswerMessage, type FieldValidationError } from '@/lib/checkout/required-answers'
+
+export type { FieldValidationError } from '@/lib/checkout/required-answers'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -26,11 +29,6 @@ export interface ValidatableField {
   is_required: boolean
   /** The question's checks (min/max length, digits, pattern…); read through `readFieldRules`. */
   validation_rules?: unknown
-}
-
-export interface FieldValidationError {
-  fieldName: string
-  message: string
 }
 
 /**
@@ -50,30 +48,28 @@ export function validateCheckoutFields(
     const raw = data[field.field_name]
     const value = typeof raw === 'string' ? raw.trim() : ''
 
+    // Answered or not is judged on what the order will CARRY (the normalized
+    // answer), with the same `isAnswered` createOrderAction runs on what it
+    // receives, so the server can never refuse an answer this form accepted.
     // A tick box answers only by being ticked: "must tick" = required.
-    if (field.field_type === 'checkbox') {
-      if (field.is_required && value !== CHECKBOX_TICKED) {
-        errors.push({ fieldName: field.field_name, message: `Please tick “${field.field_label}”` })
-      }
+    if (!isAnswered(field.field_type, sentAnswer(field, raw))) {
+      if (field.is_required) errors.push({ fieldName: field.field_name, message: missingAnswerMessage(field) })
+      // Unanswered optional question: nothing to format-check.
       continue
     }
-
-    if (value === '') {
-      if (field.is_required) {
-        errors.push({
-          fieldName: field.field_name,
-          message: `${field.field_label} is required`,
-        })
-      }
-      // Blank optional field: nothing to format-check.
-      continue
-    }
+    if (field.field_type === 'checkbox') continue
 
     const message = formatError(field, value) ?? ruleError(field.field_label, field.field_type, readFieldRules(field.validation_rules), value)
     if (message) errors.push({ fieldName: field.field_name, message })
   }
 
   return errors
+}
+
+/** The answer as the checkout will send it (see normalizeCustomerData). */
+function sentAnswer(field: ValidatableField, raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  return normalizeFormFieldValue(field as NormalizableField, raw)
 }
 
 /** Format rule for a filled-in value, or null when the value is acceptable. */

@@ -5,6 +5,7 @@ import { Loader2, Timer } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { saveConfirmationRedirectAction } from '@/app/actions/page-designer'
+import { settleAction } from '@/lib/hero-builder/settle-action'
 import { REDIRECT_SECONDS, type ConfirmationRedirect, type ConfirmationRedirectSetting } from '@/lib/page-designer/page-mode'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
@@ -44,7 +45,7 @@ export function RedirectSetting({ tenantId, initial }: { tenantId: string; initi
 
   const save = () =>
     startTransition(async () => {
-      const result = await saveConfirmationRedirectAction(tenantId, draft)
+      const result = await settleAction(() => saveConfirmationRedirectAction(tenantId, draft), 'saveConfirmationRedirect')
       if (!result.success) {
         toast.error(result.error ?? 'Could not save')
         return

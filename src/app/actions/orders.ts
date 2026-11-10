@@ -43,7 +43,6 @@ import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkou
 import { resolveDeliveryOrigin, type OriginOutletFields } from '@/lib/delivery/delivery-origin'
 import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
 import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
-import { isUnpinnedDeliveryOrder, unpinnedDeliveryProblem } from '@/lib/delivery/unpinned-delivery'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
@@ -56,6 +55,11 @@ import { applyCheckoutGovernment } from '@/lib/gov-discount-checkout/apply-check
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { checkOrderRateLimit } from '@/lib/action-rate-limit'
 import { holdSimpleOptionStock } from '@/lib/checkout/simple-option-hold'
+import {
+  REQUIRED_QUESTIONS_TIMEOUT_MS,
+  judgeRequiredAnswers,
+  readRequiredQuestions,
+} from '@/lib/checkout/required-answers-server'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
@@ -288,6 +292,13 @@ export async function createOrderAction(
     // The chosen payment method, read alongside (one primary-key read; never
     // rejects). Judged once the order type is known, below.
     const paymentMethodRead = readOrderPaymentMethod(supabaseAdmin, tenantId, paymentMethodId)
+    // The store's required checkout questions for this order type, read on a
+    // timed client alongside (never rejects; a failed read has no opinion).
+    const requiredQuestionsRead = readRequiredQuestions(
+      createAdminClient({ timeoutMs: REQUIRED_QUESTIONS_TIMEOUT_MS }),
+      tenantId,
+      orderTypeId,
+    )
     const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
     if (!tenantContext.ok) {
       // A database hiccup is not a verdict on the store: unmarked, so the
@@ -329,6 +340,27 @@ export async function createOrderAction(
     // An unknown/missing type must not turn off the required delivery gate.
     if (tenantConfig.lalamove_enabled === true && !orderTypeRow) {
       return { success: false, refused: true, error: 'Please select a valid order type before continuing.' }
+    }
+
+    // ── Required checkout questions (authoritative; every backend) ──
+    // The form refuses to submit with a required answer blank, but this is a
+    // public action: a forged request or a tab opened before the owner made a
+    // question required used to be written anyway. Judged with the form's own
+    // `isAnswered` on the answers as received, against the STORE's questions
+    // for this order type, before anything is claimed or written. The checkout
+    // preflights the same verdict (preflightCheckoutAnswersAction) ahead of
+    // its optimistic "Order placed!" screen.
+    const answersVerdict = judgeRequiredAnswers(
+      orderTypeRow ? await requiredQuestionsRead : { ok: true, questions: [] },
+      clientCustomerData,
+    )
+    if (!answersVerdict.ok) {
+      console.warn('[createOrderAction] Refused an order missing required answers', {
+        tenantId,
+        orderTypeId,
+        fields: answersVerdict.fieldErrors.map((error) => error.fieldName),
+      })
+      return { success: false, refused: true, error: answersVerdict.message, fieldErrors: answersVerdict.fieldErrors }
     }
 
     // ── Payment method (authoritative; every backend) ──
@@ -635,25 +667,12 @@ export async function createOrderAction(
       return await refuse(OUTSIDE_COUNTRY_PIN_MESSAGE)
     }
 
-    // "I can't find my place": no pin means no price, so this order carries no
-    // fee and the store calls for the spot and the fee (a pin ends the mark, so
-    // it can never dodge the fee on a pinned order).
+    // "I can't find my place" was turned off (owner, 2026-11-09): a stale or forged
+    // `delivery_pin_skipped` mark is ignored, so an order without a pin is priced,
+    // and refused, like any other.
     const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
-    const isUnpinnedDelivery = isUnpinnedDeliveryOrder({
-      answers: deliveryDestination,
-      isDeliveryOrder,
-      lalamoveEnabled: tenantConfig.lalamove_enabled === true,
-      hasDistancePricing: storeDistanceConfig !== null,
-    })
-    if (isUnpinnedDelivery) {
-      const problem = unpinnedDeliveryProblem(deliveryDestination, customerInfo?.contact)
-      if (problem) return await refuse(problem)
-      // No quote was signed for this order, so none may ride on it.
-      lalamoveQuotationId = undefined
-    }
-
-    let trustedDeliveryFee = isUnpinnedDelivery ? undefined : deliveryFee
-    if (isLalamoveDelivery && !isUnpinnedDelivery) {
+    let trustedDeliveryFee = deliveryFee
+    if (isLalamoveDelivery) {
       const verification = verifyDeliveryQuote(lalamoveQuoteSignature, {
         tenantId,
         quotationId: lalamoveQuotationId,
@@ -681,7 +700,7 @@ export async function createOrderAction(
 
     const deliveryResolution = await resolveOrderDeliveryFee({
       clientFee: trustedDeliveryFee,
-      isDeliveryOrder: isDeliveryOrder && !isUnpinnedDelivery,
+      isDeliveryOrder,
       lalamoveEnabled: tenantConfig.lalamove_enabled === true,
       distanceConfig: storeDistanceConfig && withOriginRadius(storeDistanceConfig, deliveryOrigin),
       store: deliveryOrigin?.point ?? null,

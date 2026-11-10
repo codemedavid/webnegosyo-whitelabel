@@ -49,7 +49,7 @@ function post(body: unknown): NextRequest {
 function stubTables(options: {
   inventoryEnabled?: boolean
   tenant?: Record<string, unknown>
-  order?: { tenant_id: string; outlet_id?: string | null; source?: string; created_at?: string } | null
+  order?: { tenant_id: string; outlet_id?: string | null; source?: string; created_at?: string; status?: string; payment_status?: string | null } | null
   lines?: Array<{ menu_item_id: string | null; quantity: number }>
 }) {
   from.mockImplementation((table: string) => {
@@ -188,6 +188,23 @@ describe('customer order stock route', () => {
       'outlet-north',
       { context: { source: 'customer_app' } },
     )
+  })
+
+  it.each([
+    ['cancelled', null],
+    ['pending', 'refunded'],
+  ])('spends nothing for an order already %s / %s', async (status, paymentStatus) => {
+    // The sweep skips finished orders; so must this public route, or a call
+    // after a quick cancel sells stock for an order that never happened.
+    stubTables({
+      order: { tenant_id: TENANT, outlet_id: null, source: 'web', created_at: new Date().toISOString(), status, payment_status: paymentStatus },
+      lines: [{ menu_item_id: 'dish-1', quantity: 1 }],
+    })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
+
+    expect(await response.json()).toEqual({ success: true, skipped: 'order_not_eligible' })
+    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
   })
 
   it('refuses an order belonging to another tenant', async () => {

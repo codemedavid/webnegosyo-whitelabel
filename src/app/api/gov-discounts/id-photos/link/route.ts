@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { authenticateBearer } from '@/lib/auth/bearer-caller'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { parseIdPhotoLinkRequest } from '@/lib/gov-discount-ledger/request-schemas'
 import { ID_PHOTO_BUCKET, ID_PHOTO_LINK_TTL_SECONDS } from '@/lib/gov-discount-ledger/id-photos/rules'
 
-const BURST = { maxRequests: 60, windowMs: 60_000 }
+const BURST = { limit: 60, windowSec: 60, onRedisFailure: 'instance' as const }
 
 interface Caller {
   db: SupabaseClient
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const caller = await resolveCaller(request)
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!checkRateLimit(`gov-id-photo-link:${caller.userId}`, BURST).allowed) {
+  if (!(await checkRateLimit(`gov-id-photo-link:${caller.userId}`, BURST)).allowed) {
     return NextResponse.json({ error: 'Too many requests. Try again in a minute.' }, { status: 429 })
   }
 

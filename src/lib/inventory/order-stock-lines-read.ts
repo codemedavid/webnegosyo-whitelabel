@@ -12,7 +12,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import type { OrderBackend } from '@/lib/order-backend'
@@ -93,7 +93,7 @@ function selectionIdsOf(customerData: unknown): Map<string, ReadonlySet<string>>
 }
 
 async function readPlatform(tenantId: string, orderId: string, dishIds: readonly string[]): Promise<OrderLineRead> {
-  const supabase = createAdminClient() as unknown as SupabaseClient
+  const supabase = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }) as unknown as SupabaseClient
   const [order, items, revisions, menuOptionIds] = await Promise.all([
     supabase.from('orders').select('revision_number, customer_data').eq('id', orderId).eq('tenant_id', tenantId).maybeSingle(),
     supabase.from('order_items').select('menu_item_id, quantity').eq('order_id', orderId),
@@ -130,7 +130,7 @@ async function readPlatform(tenantId: string, orderId: string, dishIds: readonly
 }
 
 async function readConvex(tenantId: string, orderId: string, dishIds: readonly string[]): Promise<OrderLineRead> {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
   const { data: tenant } = await supabase.from('tenants').select('convex_deployment_url').eq('id', tenantId).maybeSingle()
   const deployKey = (await getTenantSecrets(supabase, tenantId))?.convex_deploy_key
   const url = (tenant as { convex_deployment_url?: string | null } | null)?.convex_deployment_url
