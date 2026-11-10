@@ -41,6 +41,8 @@ const config = {
     '<rootDir>/customer-app/',
     '<rootDir>/e2e/',
     '<rootDir>/tests/e2e/',
+    // Playwright drives shipped with the verify-webnegosyo skill.
+    '<rootDir>/.claude/',
     // Worktrees under .claude/ mirror OTHER branches' test expectations but
     // resolve `@/` against THIS tree's src, so they go permanently red the
     // moment main's copy diverges from the worktree's snapshot.
