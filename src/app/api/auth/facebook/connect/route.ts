@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isSameOriginRequest } from '@/lib/http/same-origin'
 import { getUserPages, subscribePageToWebhook } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
 import { canManageFacebook } from '@/lib/facebook/management-access'
@@ -84,6 +85,10 @@ async function resolveVerifiedPage(
  * Stores page info, subscribes to webhook, updates tenant reference.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginRequest(request.headers)) {
+    return NextResponse.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 })
+  }
+
   try {
     const body = await request.json()
     const { tenant_id, page_id, temp_id } = (body ?? {}) as Record<string, unknown>

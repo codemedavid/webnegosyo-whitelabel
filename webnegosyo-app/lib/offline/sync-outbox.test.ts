@@ -140,6 +140,17 @@ describe("syncOutbox", () => {
     expect(getConnectivity().status).toBe("offline");
   });
 
+  it("stops at a refusal for want of a token: the next sale would only get the same answer", async () => {
+    const h = harness([sale("a"), sale("b")]);
+    h.createOrder.mockRejectedValueOnce(
+      Object.assign(new Error("[Request ID: 5f2] Server Error"), { data: "Unauthorized: unauthenticated" })
+    );
+    await expect(syncOutbox(h.deps)).resolves.toMatchObject({ synced: 0, refused: 1, stoppedOffline: false });
+    expect(h.recordFailure).toHaveBeenCalledWith("a", "Unauthorized: unauthenticated");
+    expect(h.createOrder).toHaveBeenCalledTimes(1);
+    expect(getConnectivity().status).not.toBe("offline");
+  });
+
   it("records a refusal on that sale, keeps it, and carries on with the next", async () => {
     const h = harness([sale("a"), sale("b")]);
     h.createOrder

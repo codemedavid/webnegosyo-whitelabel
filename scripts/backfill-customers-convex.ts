@@ -124,10 +124,10 @@ async function backfillTenant(
 ): Promise<TenantReport> {
   const convex = createConvexServerClient(tenant.convex_deployment_url, tenant.convex_deploy_key)
 
-  const orders = await convex.query<ConvexOrderRow[]>('orders:getOrders', {
+  const orders = await convex.query<ConvexOrderRow[]>('orders:getOrdersInternal', {
     limit: ORDER_FETCH_LIMIT,
   })
-  const items = await convex.query<ConvexOrderItemRow[]>('orders:getAllOrderItems', {})
+  const items = await convex.query<ConvexOrderItemRow[]>('orders:getAllOrderItemsInternal', {})
   const itemsByOrder = groupConvexItemsByOrder(items ?? [])
 
   const identityStore = createSupabaseCustomerStore(admin)

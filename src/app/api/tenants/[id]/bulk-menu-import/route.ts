@@ -4,6 +4,7 @@ import { getConsoleCaller } from '@/lib/platform-staff/guard'
 import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
 import type { ParsedMenuData } from '@/types/ai-menu-parser'
 import { importParsedMenu } from '@/lib/menu-import/import-parsed-menu'
+import { isSameOriginRequest } from '@/lib/http/same-origin'
 
 /**
  * POST /api/tenants/[id]/bulk-menu-import
@@ -13,6 +14,11 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    // The console session is a cookie, sent by the browser from any page.
+    if (!isSameOriginRequest(request.headers)) {
+        return NextResponse.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 })
+    }
+
     try {
         const { id: tenantId } = await params
 

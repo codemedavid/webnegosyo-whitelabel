@@ -6,6 +6,7 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createLogger } from '@/lib/logger'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { normalizePhoneE164 } from '@/lib/phone'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLoyaltySmsFallback } from '@/lib/tenant-secrets'
@@ -57,6 +58,23 @@ export async function jsonBody(request: NextRequest) {
   return readBody(request)
 }
 
+/**
+ * Flood control only, in front of the database: the per-phone, per-IP and
+ * per-tenant quotas in issue_loyalty_challenge / allow_loyalty_verification_attempt
+ * remain the real limits (per IP 30 per 2 min), and each of their checks writes
+ * an event row, which is what a script hammering this would grow. Well above
+ * those quotas, so a person always hears the database's own answer first.
+ */
+const FLOOD_LIMIT = { limit: 60, windowSec: 60 }
+
+async function refuseFlood(trustedIp: string): Promise<NextResponse | null> {
+  const result = await checkRateLimit(`loyalty-claims:${trustedIp}`, FLOOD_LIMIT)
+  if (result.allowed) return null
+  const response = respond({ error: 'Too many requests. Please try again shortly.' }, 429)
+  response.headers.set('Retry-After', String(result.retryAfterSec))
+  return response
+}
+
 // Same floor and independent jitter for every well-formed request outcome.
 // This reduces fast-path timing differences; it is not constant-time under
 // database lock waits or outages. Edge flood controls remain a rollout task.
@@ -69,6 +87,8 @@ export async function paced(start: number, body: unknown, status: number) {
 export async function handlePublicClaimRequest(request: NextRequest): Promise<NextResponse> {
   const prepared = preparation(request)
   if (!prepared) return unavailable()
+  const flood = await refuseFlood(prepared.trustedIp)
+  if (flood) return flood
   const raw = await jsonBody(request)
   if (raw instanceof NextResponse) return raw
   const parsed = issueSchema.safeParse(raw)
@@ -117,6 +137,8 @@ export async function handlePublicClaimRequest(request: NextRequest): Promise<Ne
 export async function handlePublicClaimVerify(request: NextRequest): Promise<NextResponse> {
   const prepared = preparation(request)
   if (!prepared) return unavailable()
+  const flood = await refuseFlood(prepared.trustedIp)
+  if (flood) return flood
   const raw = await jsonBody(request)
   if (raw instanceof NextResponse) return raw
   const parsed = verifySchema.safeParse(raw)

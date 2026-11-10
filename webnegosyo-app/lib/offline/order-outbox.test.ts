@@ -18,6 +18,7 @@ import {
   parseStoredOutbox,
   recordSyncFailure,
   removeQueuedSale,
+  isSignedOutRefusal,
   requeueSignedOutRefusals,
   resetOutboxForTests,
   subscribeOutbox,
@@ -222,6 +223,35 @@ describe("order outbox", () => {
       await park("b", "No API key found in request");
 
       expect(await requeueSignedOutRefusals()).toBe(2);
+    });
+
+    it("recognises a Convex deployment refusing for want of a token", async () => {
+      await park("a", "Unauthorized: unauthenticated");
+      // Nothing burned it, so it is not parked; one parked for other reasons
+      // first must still come back once the token does.
+      expect(needsAttention(getOutbox().sales[0])).toBe(false);
+      expect(isSignedOutRefusal("Unauthorized: unauthenticated")).toBe(true);
+      expect(isSignedOutRefusal("Unauthorized: wrong_tenant")).toBe(false);
+    });
+
+    it("gives back a sale whose last refusal was for want of a token", async () => {
+      await park("a", "Some other refusal");
+      await recordSyncFailure("a", "Unauthorized: unauthenticated");
+      expect(needsAttention(getOutbox().sales[0])).toBe(true);
+
+      await expect(requeueSignedOutRefusals()).resolves.toBe(1);
+
+      expect(getOutbox().sales[0]).toMatchObject({ attempts: 0, lastError: null });
+    });
+
+    it("does not count a missing token against the sale", async () => {
+      await enqueueSale(sale("a"));
+      for (let i = 0; i < MAX_SYNC_ATTEMPTS + 3; i += 1) {
+        await recordSyncFailure("a", "Unauthorized: unauthenticated");
+      }
+
+      expect(getOutbox().sales[0]).toMatchObject({ attempts: 0, lastError: "Unauthorized: unauthenticated" });
+      expect(needsAttention(getOutbox().sales[0])).toBe(false);
     });
 
     it("leaves a sale the server refused on its merits parked for a person", async () => {

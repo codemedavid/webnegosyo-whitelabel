@@ -57,6 +57,7 @@ function mockSession({
 function connectRequest(body: Record<string, unknown>) {
   return new NextRequest('https://example.test/api/auth/facebook/connect', {
     method: 'POST',
+    headers: { origin: 'https://example.test', host: 'example.test' },
     body: JSON.stringify(body),
   })
 }
