@@ -41,6 +41,7 @@ function baseInput(overrides: Record<string, unknown> = {}) {
       orderTypeName: 'Pickup',
       deliveryFee: 50,
       serviceCharge: 10,
+      orderTotal: 240,
       paymentMethodName: 'GCash',
       customerData: { name: 'Ana', scheduled_for: '2026-10-03T10:00:00.000Z', scheduled_for_label: 'Today 6 PM' },
     },
@@ -127,7 +128,8 @@ describe('runOrderFollowUps', () => {
       tenantName: 'Cafe',
       adminEmail: 'm@x.ph',
       orderId: 'order-1',
-      orderTotal: 260,
+      // What the order row stores, discounts included: not a re-add of the lines.
+      orderTotal: 240,
       deliveryFee: 50,
       orderType: 'Pickup',
       paymentMethod: 'GCash',

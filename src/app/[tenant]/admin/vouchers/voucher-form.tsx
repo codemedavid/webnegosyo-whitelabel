@@ -1,5 +1,6 @@
 'use client'
 
+import { toDatetimeLocalValue } from '@/lib/datetime-local'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle } from 'lucide-react'
@@ -296,7 +297,7 @@ export function VoucherForm({ tenantId, voucher, onSaved, onCancel }: VoucherFor
           <Input
             id="voucher-starts"
             type="datetime-local"
-            value={draft.startsAt?.slice(0, 16) ?? ''}
+            value={toDatetimeLocalValue(draft.startsAt)}
             onChange={(e) =>
               update({ startsAt: e.target.value ? new Date(e.target.value).toISOString() : null })
             }
@@ -307,7 +308,7 @@ export function VoucherForm({ tenantId, voucher, onSaved, onCancel }: VoucherFor
           <Input
             id="voucher-ends"
             type="datetime-local"
-            value={draft.endsAt?.slice(0, 16) ?? ''}
+            value={toDatetimeLocalValue(draft.endsAt)}
             onChange={(e) =>
               update({ endsAt: e.target.value ? new Date(e.target.value).toISOString() : null })
             }

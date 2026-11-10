@@ -1,3 +1,6 @@
+
+/** A hung deployment must not hold the request until the platform kills it. */
+const CONVEX_REQUEST_TIMEOUT_MS = 20_000
 interface ConvexServerClient {
   mutation<T = unknown>(path: string, args: Record<string, unknown>): Promise<T>;
   query<T = unknown>(path: string, args: Record<string, unknown>): Promise<T>;
@@ -35,6 +38,7 @@ export function createConvexServerClient(
         Authorization: `Convex ${deployKey}`,
       },
       body: JSON.stringify({ path, args, format: "json" }),
+      signal: AbortSignal.timeout(CONVEX_REQUEST_TIMEOUT_MS),
     });
 
     const data = await response.json();

@@ -105,6 +105,7 @@ export async function sendMetaConversionEvent(input: MetaConversionEventInput) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
   })
 
   const payload = await response.json().catch(() => null)

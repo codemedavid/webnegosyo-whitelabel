@@ -322,7 +322,7 @@ Two-path architecture with graceful degradation:
 - **Server-side**: `src/app/actions/analytics.ts` dynamically creates a Convex client per-tenant and fires `analytics:trackEvent`
 - **Client-side**: `src/hooks/use-analytics.ts` buffers events in a ref array, flushes to Convex every 5 seconds
 - **Provider**: `src/components/customer/analytics-provider.tsx` wraps Convex; no-ops if `convex_deployment_url` is null
-- **Platform analytics**: `src/lib/queries/analytics-server.ts` queries Supabase directly for superadmin dashboard (`getTopActiveTenants`, `getTotalOrders`)
+- **Platform analytics**: `src/lib/queries/platform-analytics-server.ts` + `tenant-metrics-server.ts` query Supabase directly for the superadmin dashboard
 
 ### Key Integrations
 
@@ -444,4 +444,4 @@ Request-path logging goes through `src/lib/logger.ts` (`createLogger(label, flag
 - `log.debug(...)` is **opt-in per namespace** and silent by default, including in development. Middleware re-runs on RSC prefetches and client-side navigations, so unconditional dev tracing prints the same lines many times per page view and buries real errors.
 - `log.error(...)` is **never gated** — middleware catch blocks must stay visible in Vercel logs.
 
-Turn tracing on with an env var: `DEBUG_TENANT_RESOLUTION=true` (tenant resolver), `DEBUG_MIDDLEWARE=true` (middleware rewrites), or `DEBUG_ALL=true` for every namespace. Only the exact string `true` counts. Add new namespaces to `DebugFlagKey` and `readDebugFlags()` in the same file.
+Turn tracing on with an env var: `DEBUG_TENANT_RESOLUTION=true` (tenant resolver), `DEBUG_MIDDLEWARE=true` (middleware rewrites), `DEBUG_MESSENGER=true` (webhook + Graph API; lines carry PSIDs), `DEBUG_LALAMOVE=true`, or `DEBUG_ALL=true` for every namespace. Only the exact string `true` counts. Add new namespaces to `DebugFlagKey` and `readDebugFlags()` in the same file.

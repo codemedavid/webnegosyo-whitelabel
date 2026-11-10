@@ -161,9 +161,14 @@ function resolveDay(hours: Record<string, DayHours>, weekday: number): ResolvedD
   }
 }
 
-function isWithin(day: ResolvedDay, minutes: number): boolean {
+/**
+ * Whether the window that STARTS today is running. An overnight window's early
+ * hours belong to the window that began yesterday (see `carriedOver`), so they
+ * must not count here: Friday closed + Saturday 18:00–02:00 is shut at 01:00 Saturday.
+ */
+function isWithinTodaysWindow(day: ResolvedDay, minutes: number): boolean {
   return day.isOvernight
-    ? minutes >= day.openMinutes || minutes < day.closeMinutes
+    ? minutes >= day.openMinutes
     : minutes >= day.openMinutes && minutes < day.closeMinutes
 }
 
@@ -221,7 +226,7 @@ export function getStoreOpenStatus(
   const yesterday = resolveDay(hours, (zoned.weekday + DAYS_PER_WEEK - 1) % DAYS_PER_WEEK)
   const carriedOver = !!yesterday && !yesterday.closed && yesterday.isOvernight && zoned.minutes < yesterday.closeMinutes
 
-  const openToday = !today.closed && isWithin(today, zoned.minutes)
+  const openToday = !today.closed && isWithinTodaysWindow(today, zoned.minutes)
   if (openToday || carriedOver) {
     return {
       isOpen: true,

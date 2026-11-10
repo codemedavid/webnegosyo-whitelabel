@@ -13,7 +13,6 @@
  * All of it is best-effort by design: the order is already saved.
  */
 
-import { computeOrderTotals } from '@/lib/order-totals'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { OrderItem } from '@/types/database'
 import { runAfterResponse, type AfterScheduler } from '@/lib/checkout/after-response'
@@ -35,6 +34,8 @@ export interface MerchantOrderNotice {
   orderTypeName: string | null
   deliveryFee: number | undefined
   serviceCharge: number | undefined
+  /** The total the order row stores, discounts included. */
+  orderTotal: number
   paymentMethodName: string | null | undefined
   customerData: Record<string, unknown> | undefined
 }
@@ -118,13 +119,9 @@ async function notifyMerchant(input: OrderFollowUpInput): Promise<void> {
       addons: item.addons,
       subtotal: item.subtotal,
     })),
-    // The merchant's copy of the total must be the same arithmetic the
-    // customer was shown, or a discount lands on one side only.
-    orderTotal: computeOrderTotals({
-      subtotal: items.reduce((sum, item) => sum + item.subtotal, 0),
-      deliveryFee: notice.deliveryFee,
-      serviceCharge: notice.serviceCharge,
-    }).grandTotal,
+    // The total the order was saved with: re-adding the lines here would bill
+    // the merchant's copy at full price whenever a discount applied.
+    orderTotal: notice.orderTotal,
     deliveryFee: notice.deliveryFee ?? 0,
     orderType: notice.orderTypeName,
     paymentMethod: notice.paymentMethodName ?? null,

@@ -17,6 +17,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export interface MerchantAppUser {
   role: string
   tenant_id: string | null
+  /** A branch-locked account: MCP tools are store-wide, so it may not connect. */
+  outlet_id?: string | null
 }
 
 /**
@@ -28,7 +30,7 @@ export function isMerchantAuthorized(
   appUser: MerchantAppUser | null | undefined,
   mcpEnabled: boolean | null | undefined,
 ): boolean {
-  if (!appUser || appUser.role !== 'admin' || !appUser.tenant_id) return false
+  if (!appUser || appUser.role !== 'admin' || !appUser.tenant_id || appUser.outlet_id) return false
   return mcpEnabled === true
 }
 

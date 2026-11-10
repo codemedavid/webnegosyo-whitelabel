@@ -771,6 +771,22 @@ export async function createOrder(
         .eq('client_order_id', parityOptions!.clientOrderId!.trim())
         .maybeSingle()
       if (existing) {
+        // The first attempt may have written the row and then failed on its
+        // items, or may still be writing them (a double tap). Never report that
+        // as a saved order: it would be success with nothing on it, and writing
+        // the items here could double them against the attempt still in flight.
+        // Failing lets the durable save retry, then fall back to Messenger.
+        // The real fix is an atomic order + items write.
+        const { data: existingItems, error: existingItemsError } = await orderWriter
+          .from('order_items')
+          .select('id')
+          .eq('order_id', (existing as { id: string }).id)
+          .limit(1)
+        if (existingItemsError) throw existingItemsError
+        if (!existingItems || existingItems.length === 0) {
+          throw new Error(`Order ${(existing as { id: string }).id} exists without its items`)
+        }
+
         let dedupedToken: string | undefined
         try {
           const { createOrderToken } = await import('@/lib/order-token')

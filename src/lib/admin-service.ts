@@ -479,7 +479,9 @@ export async function reorderCategories(tenantId: string, categoryIds: string[])
       .eq('tenant_id', tenantId)
   )
 
-  await Promise.all(updates)
+  const results = await Promise.all(updates)
+  const failed = results.find((result) => result.error)
+  if (failed?.error) throw failed.error
 }
 
 // ============================================
