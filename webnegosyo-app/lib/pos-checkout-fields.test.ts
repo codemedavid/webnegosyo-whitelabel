@@ -54,6 +54,11 @@ describe("toPosCheckoutField", () => {
     expect(field).toMatchObject({ label: "Landmark", type: "text" });
   });
 
+  it("asks the web's buttons question as a dropdown of the same choices, and a tick box as text", () => {
+    expect(toPosCheckoutField(row({ field_type: "choice", options: ["Yes", "No"] }))).toMatchObject({ type: "select", options: ["Yes", "No"] });
+    expect(toPosCheckoutField(row({ field_type: "checkbox" }))?.type).toBe("text");
+  });
+
   it("drops a field with no name — there is no key to store its answer under", () => {
     expect(toPosCheckoutField(row({ field_name: "  " }))).toBeNull();
   });

@@ -51,9 +51,18 @@ import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
 import { computeServiceCharge } from '@/lib/order-service-charge'
 import { applyCheckoutGovernment } from '@/lib/gov-discount-checkout/apply-checkout-government'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
+import { checkOrderRateLimit } from '@/lib/action-rate-limit'
+import { holdSimpleOptionStock } from '@/lib/checkout/simple-option-hold'
+import {
+  REQUIRED_QUESTIONS_TIMEOUT_MS,
+  judgeRequiredAnswers,
+  readRequiredQuestions,
+} from '@/lib/checkout/required-answers-server'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
+const ORDER_RATE_LIMIT_MESSAGE =
+  'You’re placing orders very quickly. Please wait a minute, then try again.'
 const OUTSIDE_COUNTRY_PIN_MESSAGE =
   'Your delivery pin is outside the Philippines. Please search for your address again and pick the right spot on the map.'
 
@@ -208,17 +217,25 @@ export async function createOrderAction(
   voucherUnitPicks?: unknown
 ) {
   // Declared OUTSIDE the try so the catch below can reach them. Presell stock
-  // is claimed mid-flight, and a throw after that point used to walk past every
-  // release: the customer was told the order was lost while their allocation
-  // stayed consumed for good. Set once the claim exists, and once an order row
-  // exists to own it.
-  let releasePresellClaim: (() => Promise<void>) | null = null
+  // and simple-option counters are claimed mid-flight, and a throw after that
+  // point used to walk past every release: the customer was told the order was
+  // lost while their allocation stayed consumed for good. Set once a claim
+  // exists, and once an order row exists to own it.
+  let releaseReservedStock: (() => Promise<void>) | null = null
   let orderPersisted = false
 
   try {
     // Basic input sanity checks before hitting the database
     if (!tenantId || typeof tenantId !== 'string') {
       return { success: false, refused: true, error: 'Invalid tenant ID' }
+    }
+
+    // ── Rate limit: orders per store per client address (fails open) ──
+    // Never per store alone — a busy store must not be throttled as a whole —
+    // and generous, since a dine-in floor can share one Wi-Fi address.
+    const rate = await checkOrderRateLimit(tenantId)
+    if (!rate.allowed) {
+      return { success: false, refused: true, error: ORDER_RATE_LIMIT_MESSAGE }
     }
 
     // ── Boundary validation (this is a public server action) ──
@@ -259,9 +276,20 @@ export async function createOrderAction(
     // The chosen payment method, read alongside (one primary-key read; never
     // rejects). Judged once the order type is known, below.
     const paymentMethodRead = readOrderPaymentMethod(supabaseAdmin, tenantId, paymentMethodId)
+    // The store's required checkout questions for this order type, read on a
+    // timed client alongside (never rejects; a failed read has no opinion).
+    const requiredQuestionsRead = readRequiredQuestions(
+      createAdminClient({ timeoutMs: REQUIRED_QUESTIONS_TIMEOUT_MS }),
+      tenantId,
+      orderTypeId,
+    )
     const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
     if (!tenantContext.ok) {
-      return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
+      // A database hiccup is not a verdict on the store: unmarked, so the
+      // checkout retries and the customer keeps the Messenger fallback.
+      return tenantContext.reason === 'unavailable'
+        ? { success: false, error: 'We could not reach the store just now. Please try again.' }
+        : { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
     }
     const { tenantConfig, tenantSecrets } = tenantContext
 
@@ -275,18 +303,6 @@ export async function createOrderAction(
       return profile?.onlineClaimsEnabled === true
     })
     if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
-
-    if (tenantConfig.inventory_enabled === true && items.some((item) => item.option_ids?.length || item.addon_ids?.length)) {
-      const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
-      try {
-        await assertSimpleOptionStockAvailable(tenantId, items.map((item) => ({
-          menuItemId: item.menu_item_id, quantity: item.quantity,
-          optionIds: item.option_ids, addonIds: item.addon_ids, addonQuantities: item.addon_quantities,
-        })))
-      } catch (error) {
-        return { success: false, refused: true, error: error instanceof Error ? error.message : 'Could not check add-on stock' }
-      }
-    }
 
     // ── The order type: ONE tenant-scoped read serves every consumer below ──
     // (web availability, advance schedule, minimum, delivery kind, service
@@ -308,6 +324,27 @@ export async function createOrderAction(
     // An unknown/missing type must not turn off the required delivery gate.
     if (tenantConfig.lalamove_enabled === true && !orderTypeRow) {
       return { success: false, refused: true, error: 'Please select a valid order type before continuing.' }
+    }
+
+    // ── Required checkout questions (authoritative; every backend) ──
+    // The form refuses to submit with a required answer blank, but this is a
+    // public action: a forged request or a tab opened before the owner made a
+    // question required used to be written anyway. Judged with the form's own
+    // `isAnswered` on the answers as received, against the STORE's questions
+    // for this order type, before anything is claimed or written. The checkout
+    // preflights the same verdict (preflightCheckoutAnswersAction) ahead of
+    // its optimistic "Order placed!" screen.
+    const answersVerdict = judgeRequiredAnswers(
+      orderTypeRow ? await requiredQuestionsRead : { ok: true, questions: [] },
+      clientCustomerData,
+    )
+    if (!answersVerdict.ok) {
+      console.warn('[createOrderAction] Refused an order missing required answers', {
+        tenantId,
+        orderTypeId,
+        fields: answersVerdict.fieldErrors.map((error) => error.fieldName),
+      })
+      return { success: false, refused: true, error: answersVerdict.message, fieldErrors: answersVerdict.fieldErrors }
     }
 
     // ── Payment method (authoritative; every backend) ──
@@ -518,6 +555,8 @@ export async function createOrderAction(
     }
     /** Release is idempotent: the paths that already gave the stock back must not do it twice. */
     let claimReleased = false
+    // The simple-option counters, once held below (idempotent too).
+    let releaseOptionHold: () => Promise<void> = async () => {}
 
     // Hand the reserved pre-order stock back before answering. Both helpers do
     // it; they differ only in what the checkout is told afterwards.
@@ -527,6 +566,7 @@ export async function createOrderAction(
     // propagate would replace a refusal they can act on ("outside our delivery
     // area") with a generic lost-order message, and bury the real exception.
     const releaseClaim = async () => {
+      await releaseOptionHold()
       if (!presellClaim || claimReleased) return
       try {
         const { releasePresellForOrder } = await import('@/lib/presell/order-claim')
@@ -540,7 +580,7 @@ export async function createOrderAction(
         })
       }
     }
-    releasePresellClaim = releaseClaim
+    releaseReservedStock = releaseClaim
 
     /**
      * The store saying no on purpose. `error` is written for a diner and names
@@ -564,6 +604,27 @@ export async function createOrderAction(
     ): Promise<{ success: false; error: string }> => {
       await releaseClaim()
       return { success: false, error }
+    }
+
+    // ── Simple-option counters ──
+    // Platform: CLAIMED under the id the order is then inserted with, so the
+    // post-order depletion finds the claim taken and a cancel finds its
+    // movements — as the very last step before the insert (below), so a
+    // function killed mid-checkout (road distance, vouchers…) never leaves
+    // counters reduced for an order that was never written (MEDIUM-4). Other
+    // backends: the unlocked courtesy read, here, before anything else.
+    // Lines carry the ids their text was charged for (see priceOrderLines).
+    const platformOrderId = resolveOrderBackend(tenantConfig) === 'platform' ? crypto.randomUUID() : null
+    const holdOptionStock = () => holdSimpleOptionStock({
+      db: supabaseAdmin,
+      tenantId,
+      orderId: platformOrderId,
+      items,
+      outletId: resolvedOutlet?.id ?? null,
+    })
+    if (tenantConfig.inventory_enabled === true && !platformOrderId) {
+      const check = await holdOptionStock()
+      if (!check.ok) return await refuse(check.error)
     }
 
     // ── Delivery fee (authoritative) ──
@@ -590,6 +651,10 @@ export async function createOrderAction(
       return await refuse(OUTSIDE_COUNTRY_PIN_MESSAGE)
     }
 
+    // "I can't find my place" was turned off (owner, 2026-11-09): a stale or forged
+    // `delivery_pin_skipped` mark is ignored, so an order without a pin is priced,
+    // and refused, like any other.
+    const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
     let trustedDeliveryFee = deliveryFee
     if (isLalamoveDelivery) {
       const verification = verifyDeliveryQuote(lalamoveQuoteSignature, {
@@ -617,7 +682,6 @@ export async function createOrderAction(
       }
     }
 
-    const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
     const deliveryResolution = await resolveOrderDeliveryFee({
       clientFee: trustedDeliveryFee,
       isDeliveryOrder,
@@ -687,6 +751,7 @@ export async function createOrderAction(
     const checkoutGovernment = await applyCheckoutGovernment({
       db: supabaseAdmin,
       tenantId,
+      outletId: resolvedOutlet?.id ?? null,
       claim: governmentClaim,
       items,
       serviceCharge,
@@ -749,6 +814,7 @@ export async function createOrderAction(
         orderTypeName: orderTypeRow?.name ?? null,
         deliveryFee: effectiveDeliveryFee,
         serviceCharge,
+        orderTotal: pricing.totals.grandTotal,
         paymentMethodName: trustedPaymentMethodName,
         customerData: effectiveCustomerData,
       },
@@ -859,7 +925,14 @@ export async function createOrderAction(
       return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
-    // Otherwise, continue with existing Supabase flow
+    // Otherwise, continue with existing Supabase flow.
+    // The option claim (see "Simple-option counters" above), right before the
+    // insert: nothing that can stall sits between the two.
+    if (tenantConfig.inventory_enabled === true && platformOrderId) {
+      const hold = await holdOptionStock()
+      if (!hold.ok) return await refuse(hold.error)
+      releaseOptionHold = hold.release
+    }
     const result = await createOrder(
       tenantId,
       items,
@@ -882,6 +955,8 @@ export async function createOrderAction(
       {
         clientOrderId: typeof clientOrderId === 'string' ? clientOrderId : null,
         discountPayload: pricing.discountPayload,
+        // The id the simple-option counters were claimed under.
+        orderId: platformOrderId,
       }
     )
     if (result.deduped) {
@@ -892,7 +967,8 @@ export async function createOrderAction(
       // Its presell claim is the one the saved order carries, so the claim THIS
       // retry just took reserved the allocation a second time for an order that
       // already exists. Hand that duplicate back or the shelf shrinks on every
-      // double tap.
+      // double tap. The same goes for the option counters claimed under this
+      // retry's own (never written) order id.
       await releaseClaim()
       return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
@@ -910,8 +986,8 @@ export async function createOrderAction(
     //
     // `releaseClaim` swallows nothing but never throws either, so the real
     // exception below stays the one the customer and the log hear about.
-    if (!orderPersisted && releasePresellClaim) {
-      await releasePresellClaim()
+    if (!orderPersisted && releaseReservedStock) {
+      await releaseReservedStock()
     }
 
     // A throw here means the customer has already been shown "Order Placed!"

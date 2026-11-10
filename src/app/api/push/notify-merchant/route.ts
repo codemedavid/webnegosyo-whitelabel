@@ -36,7 +36,8 @@ import {
   type PushFailure,
   type PushReceiptHandle,
 } from '@/lib/push/expo-delivery'
-import { afterResponse, pruneStaleTokens } from '@/lib/push/push-route-helpers'
+import { afterResponse, pruneStaleTokens, PG_NET_IP_LIMIT } from '@/lib/push/push-route-helpers'
+import { refuseOverIpLimit } from '@/lib/http/rate-limit-guard'
 
 const LOG_LABEL = 'notify-merchant'
 
@@ -216,6 +217,9 @@ async function readPayload(request: NextRequest): Promise<Outcome<NotifyMerchant
 }
 
 export async function POST(request: NextRequest) {
+  const overLimit = await refuseOverIpLimit(request, 'notify-merchant', PG_NET_IP_LIMIT)
+  if (overLimit) return overLimit
+
   const payload = await readPayload(request)
   if (!payload.ok) return payload.response
 

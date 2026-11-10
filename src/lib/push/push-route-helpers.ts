@@ -9,6 +9,16 @@ import { staleTokensFrom, type PushFailure } from './expo-delivery'
 type AdminClient = ReturnType<typeof createAdminClient>
 
 /**
+ * Per-IP ceiling for these routes. pg_net sends from the database host, so ALL
+ * stores' trigger calls share one egress IP, and a refused call is never retried
+ * (pg_net fires once). A normal per-IP limit would drop real pushes platform-wide
+ * at a busy moment, so this sits far above any real order rate (20 a second across
+ * every store) and only stops a flood. Refused before any read or claim, so a
+ * refusal never burns an order's push.
+ */
+export const PG_NET_IP_LIMIT = { limit: 1200, windowSec: 60 }
+
+/**
  * Forgets the devices Expo says no longer have the app, in BOTH token tables:
  * one physical device that has uninstalled is equally dead for order pushes
  * and for platform messages, and a token left behind inflates every

@@ -90,6 +90,29 @@ export function findRecipeProblem(
 }
 
 /**
+ * Why an ingredient cannot move to `newStockUnitId` while recipes still use it,
+ * or `null` when every existing line still converts.
+ *
+ * The line guard only runs when a LINE is written, so changing the ingredient's
+ * stock unit from grams to pieces used to leave every recipe line measuring
+ * grams of an item now stocked by the piece — each sale then skipped it.
+ */
+export function stockUnitChangeProblem(
+  ingredientName: string,
+  newStockUnitId: string,
+  lineUnitIds: readonly string[],
+  units: readonly InventoryUnit[],
+): string | null {
+  const newStockUnit = units.find((unit) => unit.id === newStockUnitId)
+  if (!newStockUnit) return null
+  const clash = [...new Set(lineUnitIds)]
+    .map((id) => units.find((unit) => unit.id === id))
+    .find((unit): unit is InventoryUnit => unit !== undefined && !canConvertUnits(unit, newStockUnit))
+  if (!clash) return null
+  return `${ingredientName || 'This ingredient'} is used in a recipe in ${clash.abbreviation}, which can't be measured in ${newStockUnit.abbreviation}. Change those recipe lines first, or keep the current stock unit.`
+}
+
+/**
  * The unit a line keeps when its ingredient changes: the current one if it
  * still converts, else the new ingredient's stock unit — so switching from
  * flour (g) to eggs (pc) never leaves a line measured in grams of egg.

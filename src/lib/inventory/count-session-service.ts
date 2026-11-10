@@ -16,7 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { resolveActingBranchScope } from '@/lib/inventory/acting-branch-scope'
 import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import { resolveMovementBranch } from '@/lib/inventory/branch-stock-view'
-import { toBusinessDayKey } from '@/lib/inventory/business-day'
+import { isFromEarlierBusinessDay, toBusinessDayKey } from '@/lib/inventory/business-day'
 import {
   judgeCountSession,
   type CountSessionProgress,
@@ -116,6 +116,20 @@ async function countIngredientsInScope(
   return (data ?? []).length
 }
 
+async function closeStaleCount(supabase: CountClient, tenantId: string, countId: string): Promise<void> {
+  const { error } = await supabase
+    .from('inventory_counts')
+    .update({
+      status: 'closed',
+      closed_at: new Date().toISOString(),
+      closed_by: await actingUserId(supabase),
+    } as never)
+    .eq('tenant_id', tenantId)
+    .eq('id', countId)
+    .eq('status', 'open')
+  if (error) throw error
+}
+
 /**
  * Start counting, or join the count already under way.
  *
@@ -144,7 +158,12 @@ export async function openCount(
   )
 
   const existing = await findOpenCount(supabase, tenantId, outletId)
-  if (existing) return existing
+  if (existing && !isFromEarlierBusinessDay(existing.businessDay)) return existing
+  // A count left open overnight would otherwise be joined forever, with its
+  // business day frozen at the day it opened, so every later line would miss
+  // the daily report of the day it was actually counted. Close it (the
+  // evidence of what was counted stays on its movements) and start today's.
+  if (existing) await closeStaleCount(supabase, tenantId, existing.id)
 
   const { data, error } = await supabase
     .from('inventory_counts')

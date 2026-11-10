@@ -1,0 +1,478 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`cashier shift report at 32 columns blind and uncounted prints no money anywhere, says So far, keeps first/last receipt and void numbers 1`] = `
+"          LOLY'S CAFE
+          Main branch
+          SHIFT REPORT
+             So far
+--------------------------------
+Cashier            Jenica Santos
+Drawer                 Cashier 1
+Business day   Tue, Oct 20, 2026
+Opened              10:00 AM Tue
+Closed                still open
+Printed     Oct 20, 2026 8:05 PM
+--------------------------------
+Totals stay hidden until the
+drawer is counted.
+--------------------------------
+VOIDS
+#03  11:00 AM
+--------------------------------
+First receipt                #01
+Last receipt                 #07
+Receipt count                  2
+--------------------------------
+Cashier signature:
+
+______________________________
+
+Checked by:
+
+______________________________
+--------------------------------
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`cashier shift report at 32 columns prints her sales, items, voids, drawer and signature lines 1`] = `
+"          LOLY'S CAFE
+          Main branch
+          SHIFT REPORT
+             Closed
+--------------------------------
+Cashier            Jenica Santos
+Drawer                 Cashier 1
+Business day   Tue, Oct 20, 2026
+Opened              10:00 AM Tue
+Closed               8:00 PM Tue
+Printed     Oct 20, 2026 8:05 PM
+--------------------------------
+Orders                         3
+Gross sales             1,220.50
+Discounts                 -50.00
+NET SALES               1,170.50
+Collected               1,170.50
+Unpaid                      0.00
+--------------------------------
+PAID BY
+Cash              2       650.00
+GCash             1       520.50
+--------------------------------
+CASH IN DRAWER
+Starting cash             500.00
+Cash taken (net)        1,150.00
+Paid in                   100.00
+Paid out                  -40.00
+Should be in drawer     1,710.00
+Counted                 1,660.00
+SHORT                      50.00
+Other bills       1       999.00
+  Taken on bills rung earlier or
+  by others. Any cash is already
+  in Cash taken.
+--------------------------------
+ITEMS SOLD
+Adobo
+   x5                     700.00
+Halo-halo
+   x2                     300.00
+Rice
+   x2                      50.00
+Iced Spanish Latte with Oat Milk
+(Large, Extra Shot)
+   x1.5                   120.50
+--------------------------------
+Items total             1,170.50
+--------------------------------
+VOIDS
+#03  11:00 AM             210.00
+--------------------------------
+First receipt                #01
+Last receipt                 #07
+Receipt count                  3
+--------------------------------
+Cashier signature:
+
+______________________________
+
+Checked by:
+
+______________________________
+--------------------------------
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`cashier shift report at 32 columns says when not every item fits 1`] = `
+"          LOLY'S CAFE
+          Main branch
+          SHIFT REPORT
+             Closed
+--------------------------------
+Cashier            Jenica Santos
+Drawer                 Cashier 1
+Business day   Tue, Oct 20, 2026
+Opened              10:00 AM Tue
+Closed               8:00 PM Tue
+Printed     Oct 20, 2026 8:05 PM
+--------------------------------
+Orders                         3
+Gross sales             1,220.50
+Discounts                 -50.00
+NET SALES               1,170.50
+Collected               1,170.50
+Unpaid                      0.00
+--------------------------------
+PAID BY
+Cash              2       650.00
+GCash             1       520.50
+--------------------------------
+CASH IN DRAWER
+Starting cash             500.00
+Cash taken (net)        1,150.00
+Paid in                   100.00
+Paid out                  -40.00
+Should be in drawer     1,710.00
+Counted                 1,660.00
+SHORT                      50.00
+Other bills       1       999.00
+  Taken on bills rung earlier or
+  by others. Any cash is already
+  in Cash taken.
+--------------------------------
+ITEMS SOLD
+Adobo
+   x5                     700.00
+Halo-halo
+   x2                     300.00
+Rice
+   x2                      50.00
+Iced Spanish Latte with Oat Milk
+(Large, Extra Shot)
+   x1.5                   120.50
+--------------------------------
+Items total             1,170.50
+Only the 500 most sold are
+listed.
+--------------------------------
+VOIDS
+#03  11:00 AM             210.00
+--------------------------------
+First receipt                #01
+Last receipt                 #07
+Receipt count                  3
+--------------------------------
+Cashier signature:
+
+______________________________
+
+Checked by:
+
+______________________________
+--------------------------------
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`cashier shift report at 32 columns words change handed back on a colleague's bill as change given, never as negative other bills 1`] = `
+"          LOLY'S CAFE
+          Main branch
+          SHIFT REPORT
+             Closed
+--------------------------------
+Cashier            Jenica Santos
+Drawer                 Cashier 1
+Business day   Tue, Oct 20, 2026
+Opened              10:00 AM Tue
+Closed               8:00 PM Tue
+Printed     Oct 20, 2026 8:05 PM
+--------------------------------
+Orders                         3
+Gross sales             1,220.50
+Discounts                 -50.00
+NET SALES               1,170.50
+Collected               1,170.50
+Unpaid                      0.00
+--------------------------------
+PAID BY
+Cash              2       650.00
+GCash             1       520.50
+--------------------------------
+CASH IN DRAWER
+Starting cash             500.00
+Cash taken (net)         -155.00
+Paid in                   100.00
+Paid out                  -40.00
+Should be in drawer       405.00
+Counted                   355.00
+SHORT                      50.00
+Change given on other bills
+                         -155.00
+  Handed back on 1 bill rung
+  earlier or by others. Already
+  taken out of Cash taken.
+--------------------------------
+ITEMS SOLD
+Adobo
+   x5                     700.00
+Halo-halo
+   x2                     300.00
+Rice
+   x2                      50.00
+Iced Spanish Latte with Oat Milk
+(Large, Extra Shot)
+   x1.5                   120.50
+--------------------------------
+Items total             1,170.50
+--------------------------------
+VOIDS
+#03  11:00 AM             210.00
+--------------------------------
+First receipt                #01
+Last receipt                 #07
+Receipt count                  3
+--------------------------------
+Cashier signature:
+
+______________________________
+
+Checked by:
+
+______________________________
+--------------------------------
+    Not an official receipt.
+         For store use.
+"
+`;
+
+exports[`cashier shift report at 48 columns blind and uncounted prints no money anywhere, says So far, keeps first/last receipt and void numbers 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                  SHIFT REPORT
+                     So far
+------------------------------------------------
+Cashier                            Jenica Santos
+Drawer                                 Cashier 1
+Business day                   Tue, Oct 20, 2026
+Opened                              10:00 AM Tue
+Closed                                still open
+Printed                     Oct 20, 2026 8:05 PM
+------------------------------------------------
+Totals stay hidden until the drawer is counted.
+------------------------------------------------
+VOIDS
+#03  11:00 AM
+------------------------------------------------
+First receipt                                #01
+Last receipt                                 #07
+Receipt count                                  2
+------------------------------------------------
+Cashier signature:
+
+______________________________________________
+
+Checked by:
+
+______________________________________________
+------------------------------------------------
+            Not an official receipt.
+                 For store use.
+"
+`;
+
+exports[`cashier shift report at 48 columns prints her sales, items, voids, drawer and signature lines 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                  SHIFT REPORT
+                     Closed
+------------------------------------------------
+Cashier                            Jenica Santos
+Drawer                                 Cashier 1
+Business day                   Tue, Oct 20, 2026
+Opened                              10:00 AM Tue
+Closed                               8:00 PM Tue
+Printed                     Oct 20, 2026 8:05 PM
+------------------------------------------------
+Orders                                         3
+Gross sales                             1,220.50
+Discounts                                 -50.00
+NET SALES                               1,170.50
+Collected                               1,170.50
+Unpaid                                      0.00
+------------------------------------------------
+PAID BY
+Cash                           2          650.00
+GCash                          1          520.50
+------------------------------------------------
+CASH IN DRAWER
+Starting cash                             500.00
+Cash taken (net)                        1,150.00
+Paid in                                   100.00
+Paid out                                  -40.00
+Should be in drawer                     1,710.00
+Counted                                 1,660.00
+SHORT                                      50.00
+Other bills                    1          999.00
+  Taken on bills rung earlier or by others. Any
+  cash is already in Cash taken.
+------------------------------------------------
+ITEMS SOLD
+Adobo                           x5        700.00
+Halo-halo                       x2        300.00
+Rice                            x2         50.00
+Iced Spanish Latte with Oat   x1.5        120.50
+------------------------------------------------
+Items total                             1,170.50
+------------------------------------------------
+VOIDS
+#03  11:00 AM                             210.00
+------------------------------------------------
+First receipt                                #01
+Last receipt                                 #07
+Receipt count                                  3
+------------------------------------------------
+Cashier signature:
+
+______________________________________________
+
+Checked by:
+
+______________________________________________
+------------------------------------------------
+            Not an official receipt.
+                 For store use.
+"
+`;
+
+exports[`cashier shift report at 48 columns says when not every item fits 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                  SHIFT REPORT
+                     Closed
+------------------------------------------------
+Cashier                            Jenica Santos
+Drawer                                 Cashier 1
+Business day                   Tue, Oct 20, 2026
+Opened                              10:00 AM Tue
+Closed                               8:00 PM Tue
+Printed                     Oct 20, 2026 8:05 PM
+------------------------------------------------
+Orders                                         3
+Gross sales                             1,220.50
+Discounts                                 -50.00
+NET SALES                               1,170.50
+Collected                               1,170.50
+Unpaid                                      0.00
+------------------------------------------------
+PAID BY
+Cash                           2          650.00
+GCash                          1          520.50
+------------------------------------------------
+CASH IN DRAWER
+Starting cash                             500.00
+Cash taken (net)                        1,150.00
+Paid in                                   100.00
+Paid out                                  -40.00
+Should be in drawer                     1,710.00
+Counted                                 1,660.00
+SHORT                                      50.00
+Other bills                    1          999.00
+  Taken on bills rung earlier or by others. Any
+  cash is already in Cash taken.
+------------------------------------------------
+ITEMS SOLD
+Adobo                           x5        700.00
+Halo-halo                       x2        300.00
+Rice                            x2         50.00
+Iced Spanish Latte with Oat   x1.5        120.50
+------------------------------------------------
+Items total                             1,170.50
+Only the 500 most sold are listed.
+------------------------------------------------
+VOIDS
+#03  11:00 AM                             210.00
+------------------------------------------------
+First receipt                                #01
+Last receipt                                 #07
+Receipt count                                  3
+------------------------------------------------
+Cashier signature:
+
+______________________________________________
+
+Checked by:
+
+______________________________________________
+------------------------------------------------
+            Not an official receipt.
+                 For store use.
+"
+`;
+
+exports[`cashier shift report at 48 columns words change handed back on a colleague's bill as change given, never as negative other bills 1`] = `
+"                  LOLY'S CAFE
+                  Main branch
+                  SHIFT REPORT
+                     Closed
+------------------------------------------------
+Cashier                            Jenica Santos
+Drawer                                 Cashier 1
+Business day                   Tue, Oct 20, 2026
+Opened                              10:00 AM Tue
+Closed                               8:00 PM Tue
+Printed                     Oct 20, 2026 8:05 PM
+------------------------------------------------
+Orders                                         3
+Gross sales                             1,220.50
+Discounts                                 -50.00
+NET SALES                               1,170.50
+Collected                               1,170.50
+Unpaid                                      0.00
+------------------------------------------------
+PAID BY
+Cash                           2          650.00
+GCash                          1          520.50
+------------------------------------------------
+CASH IN DRAWER
+Starting cash                             500.00
+Cash taken (net)                         -155.00
+Paid in                                   100.00
+Paid out                                  -40.00
+Should be in drawer                       405.00
+Counted                                   355.00
+SHORT                                      50.00
+Change given on other bills              -155.00
+  Handed back on 1 bill rung earlier or by
+  others. Already taken out of Cash taken.
+------------------------------------------------
+ITEMS SOLD
+Adobo                           x5        700.00
+Halo-halo                       x2        300.00
+Rice                            x2         50.00
+Iced Spanish Latte with Oat   x1.5        120.50
+------------------------------------------------
+Items total                             1,170.50
+------------------------------------------------
+VOIDS
+#03  11:00 AM                             210.00
+------------------------------------------------
+First receipt                                #01
+Last receipt                                 #07
+Receipt count                                  3
+------------------------------------------------
+Cashier signature:
+
+______________________________________________
+
+Checked by:
+
+______________________________________________
+------------------------------------------------
+            Not an official receipt.
+                 For store use.
+"
+`;

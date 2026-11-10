@@ -24,6 +24,15 @@ import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { sendStockCall } from "../../lib/offline/drain-stock-calls";
 import { qrOrderStockItems } from "../../lib/qr-order-stock";
+import {
+  clearanceLines,
+  gateSaleStock,
+  withOfflineStockCheck,
+  withoutCustomerStockCheck,
+} from "../../lib/pos-stock-clearance";
+import { newLocalOrderId } from "../../lib/offline/local-id";
+import { isOffline } from "../../lib/offline/connectivity";
+import { outletIdFromCustomerData } from "../../lib/backends/supabase-orders";
 import { priceComboHandoff } from "../../lib/scan-handoff-pricing";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
@@ -55,6 +64,17 @@ import {
   evaluateCartHandoff,
   type HandoffBlockReason,
 } from "../../lib/scan-handoff-validate";
+import { fetchPosStockCeilings } from "../../lib/pos-stock-ceilings";
+import { canSellPastStock } from "../../lib/pos-stock-decision";
+import { judgeHandoffStock } from "../../lib/scan-handoff-stock";
+import {
+  buildHandoffAvailability,
+  describeSoldOutHandoff,
+  findSoldOutHandoffLine,
+  type HandoffItemAvailability,
+  type HandoffMenuRow,
+} from "../../lib/scan-handoff-availability";
+import type { OutletMenuOverrideRow } from "../../lib/outlet-menu-overrides";
 import { markPaidAfterHandover, planOrderStatusChange } from "../../lib/order-status-change";
 import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 
@@ -160,6 +180,7 @@ type ScreenState =
       payload: QrOrderPayloadV1;
       items: QrOrderItemV1[];
       total: number;
+      stockWarning?: string | null;
       pricesUpdated: boolean;
     }
   | { mode: "pickup-verifying"; ticket: QrPickupPayloadV1 }
@@ -174,20 +195,53 @@ type ScreenState =
 
 const SCAN_DEBOUNCE_MS = 1500;
 
-/** Base price per menu item id from this store's catalog. Throws on a failed read. */
-async function loadCatalogPrices(
+interface HandoffCatalog {
+  /** Base price per menu item id (store-wide, as before). */
+  prices: Map<string, number>;
+  /** What this register may sell of each dish right now. */
+  availability: Map<string, HandoffItemAvailability>;
+}
+
+const HANDOFF_MENU_COLUMNS = "id, name, price, is_available, modifier_groups, variation_types, variations, addons";
+
+/**
+ * The scanned dishes as this store (and the register's branch) sells them.
+ * Throws on a failed read: an unreadable menu must block the scan, never wave
+ * a sold-out dish through as "available".
+ */
+async function loadHandoffCatalog(
   tenantId: string,
+  outletId: string | null,
   menuItemIds: readonly string[]
-): Promise<Map<string, number>> {
-  if (menuItemIds.length === 0) return new Map();
-  const { data, error } = await supabase
-    .from("menu_items")
-    .select("id, price")
-    .eq("tenant_id", tenantId)
-    .in("id", menuItemIds);
-  if (error) throw error;
-  const rows = (data ?? []) as { id: string; price: number }[];
-  return new Map(rows.map((row) => [String(row.id), row.price]));
+): Promise<HandoffCatalog> {
+  if (menuItemIds.length === 0) return { prices: new Map(), availability: new Map() };
+  const [menu, overrides] = await Promise.all([
+    supabase
+      .from("menu_items")
+      .select(HANDOFF_MENU_COLUMNS)
+      .eq("tenant_id", tenantId)
+      .in("id", menuItemIds),
+    outletId
+      ? supabase
+          .from("outlet_menu_items")
+          .select("outlet_id, menu_item_id, is_listed, is_available, price, discounted_price, discount_cleared")
+          .eq("tenant_id", tenantId)
+          .eq("outlet_id", outletId)
+          .in("menu_item_id", menuItemIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (menu.error) throw menu.error;
+  if (overrides.error) throw overrides.error;
+
+  const rows = (menu.data ?? []) as unknown as HandoffMenuRow[];
+  return {
+    prices: new Map(rows.map((row) => [String(row.id), row.price])),
+    availability: buildHandoffAvailability(
+      rows,
+      (overrides.data ?? []) as unknown as OutletMenuOverrideRow[],
+      outletId
+    ),
+  };
 }
 
 export default function ScanScreen() {
@@ -221,25 +275,35 @@ export default function ScanScreen() {
     async (payload: QrOrderPayloadV1) => {
       setState({ mode: "validating", payload });
 
-      // Standalone catalog prices cannot validate a combo: they erase its
-      // discount. Verify its slots and exact total with the checkout pricer.
-      if (tenantId === payload.tenantId && payload.items.some(item => item.isBundleItem)) {
-        try {
-          const verdict = await priceComboHandoff(tenantId, payload.items, outletId);
-          setState({ mode: "preview", payload, items: verdict.items, total: verdict.total, pricesUpdated: verdict.pricesUpdated });
-        } catch (error) {
-          setState({ mode: "handoff-blocked", message: error instanceof Error ? error.message : HANDOFF_BLOCK_MESSAGE.catalog_unavailable });
+      // The register's stock rule, for a cart nobody tapped in. A failed read
+      // answers "no ceilings", so it never stops a scan.
+      const showPreview = async (items: QrOrderItemV1[], total: number, pricesUpdated: boolean) => {
+        const stock = judgeHandoffStock(
+          items,
+          await fetchPosStockCeilings(tenantId, outletId),
+          canSellPastStock({ role, isOwner, permissions }),
+        );
+        if (stock.kind === "block") {
+          setState({ mode: "handoff-blocked", message: stock.message });
+          return;
         }
-        return;
-      }
+        setState({
+          mode: "preview",
+          payload,
+          items,
+          total,
+          pricesUpdated,
+          stockWarning: stock.kind === "warn" ? stock.message : null,
+        });
+      };
 
       // Store check first, before this store's catalog is even consulted —
       // the same order as the pickup path.
+      const isSameStore = Boolean(tenantId) && tenantId === payload.tenantId;
       const ids = [...new Set(payload.items.map((i) => i.menuItemId))];
-      let catalogPrices: Map<string, number>;
+      let catalog: HandoffCatalog = { prices: new Map(), availability: new Map() };
       try {
-        catalogPrices =
-          tenantId === payload.tenantId ? await loadCatalogPrices(tenantId, ids) : new Map();
+        if (isSameStore && tenantId) catalog = await loadHandoffCatalog(tenantId, outletId ?? null, ids);
       } catch (e) {
         console.warn("[scan] catalog lookup failed:", e);
         setState({
@@ -249,25 +313,39 @@ export default function ScanScreen() {
         return;
       }
 
+      // The ONE "sold out" switch, before any order exists: a dish or option
+      // 86'd since the customer built the cart is refused, combos included.
+      const soldOut = findSoldOutHandoffLine(payload.items, catalog.availability);
+      if (soldOut) {
+        setState({ mode: "handoff-blocked", message: describeSoldOutHandoff(soldOut) });
+        return;
+      }
+
+      // Standalone catalog prices cannot validate a combo: they erase its
+      // discount. Verify its slots and exact total with the checkout pricer.
+      if (isSameStore && tenantId && payload.items.some(item => item.isBundleItem)) {
+        try {
+          const verdict = await priceComboHandoff(tenantId, payload.items, outletId);
+          await showPreview(verdict.items, verdict.total, verdict.pricesUpdated);
+        } catch (error) {
+          setState({ mode: "handoff-blocked", message: error instanceof Error ? error.message : HANDOFF_BLOCK_MESSAGE.catalog_unavailable });
+        }
+        return;
+      }
+
       const verdict = evaluateCartHandoff({
         payload,
         sessionTenantId: tenantId,
-        catalogPrices,
+        catalogPrices: catalog.prices,
       });
       if (!verdict.ok) {
         setState({ mode: "handoff-blocked", message: HANDOFF_BLOCK_MESSAGE[verdict.reason] });
         return;
       }
 
-      setState({
-        mode: "preview",
-        payload,
-        items: verdict.items,
-        total: verdict.total,
-        pricesUpdated: verdict.pricesUpdated,
-      });
+      await showPreview(verdict.items, verdict.total, verdict.pricesUpdated);
     },
-    [tenantId, outletId]
+    [tenantId, outletId, role, isOwner, permissions]
   );
 
   // Pickup ticket: the token in the QR is verified server-side (this app has
@@ -381,16 +459,50 @@ export default function ScanScreen() {
       const hasUpsellItems = items.some((i) => i.isUpsellItem);
       const hasBundleItems = items.some((i) => i.isBundleItem);
       const stockItems = qrOrderStockItems(items, payload.customerData);
+      // The staff member scanning the code is the branch taking the order,
+      // so their branch is stamped over whatever the handoff payload carried.
+      // A customer's payload never gets to say the register was offline.
+      const scannedData = withOrderOutlet(
+        { ...withoutCustomerStockCheck(payload.customerData), _inventory_selections: { version: 1, items: stockItems } },
+        outletId && outletName ? { id: outletId, name: outletName } : null,
+      );
+
+      // A block store's database refuses a scanned sale the server did not
+      // clear (lib/pos-stock-clearance.ts). The platform keeps the id minted
+      // here; nothing is written until the server answers.
+      const isPlatform = writeBackend === "platform";
+      const newOrderId = isPlatform ? newLocalOrderId() : undefined;
+      const stockGate =
+        tenantId && newOrderId
+          ? await gateSaleStock({
+              tenantId,
+              orderId: newOrderId,
+              outletId: outletIdFromCustomerData(scannedData),
+              isPlatform,
+              lines: clearanceLines(stockItems),
+              isApproved: false,
+              isOffline,
+            })
+          : ({ kind: "proceed", offline: false } as const);
+      if (stockGate.kind === "needs_manager") {
+        Alert.alert(
+          "Manager needed",
+          `${stockGate.message} Ask a manager to sign in on this phone and scan again, or ask the customer to change their order.`,
+        );
+        setIsAccepting(false);
+        return;
+      }
+      if (stockGate.kind === "refused") {
+        Alert.alert("Could not accept order", stockGate.message);
+        setIsAccepting(false);
+        return;
+      }
 
       const orderId = await createOrder({
+        ...(newOrderId ? { id: newOrderId } : {}),
         customerName: payload.customerName,
         customerContact: payload.customerContact,
-        // The staff member scanning the code is the branch taking the order,
-        // so their branch is stamped over whatever the handoff payload carried.
-        customerData: withOrderOutlet(
-          { ...payload.customerData, _inventory_selections: { version: 1, items: stockItems } },
-          outletId && outletName ? { id: outletId, name: outletName } : null,
-        ),
+        customerData: stockGate.offline ? withOfflineStockCheck(scannedData) : scannedData,
         total,
         orderType: payload.orderType,
         orderTypeId: payload.orderTypeId,
@@ -683,6 +795,7 @@ export default function ScanScreen() {
           items={state.items}
           total={state.total}
           pricesUpdated={state.pricesUpdated}
+          stockWarning={state.stockWarning ?? null}
           isAccepting={isAccepting}
           onAccept={handleAccept}
           onReject={handleReject}
@@ -709,6 +822,7 @@ function PreviewPanel({
   items,
   total,
   pricesUpdated,
+  stockWarning,
   isAccepting,
   onAccept,
   onReject,
@@ -718,6 +832,7 @@ function PreviewPanel({
   items: QrOrderItemV1[];
   total: number;
   pricesUpdated: boolean;
+  stockWarning: string | null;
   isAccepting: boolean;
   onAccept: () => void;
   onReject: () => void;
@@ -744,6 +859,12 @@ function PreviewPanel({
             <Text style={styles.sub}>Payment: {payload.paymentMethod}</Text>
           ) : null}
         </Card>
+
+        {stockWarning ? (
+          <View style={styles.noticeBanner}>
+            <Text style={styles.noticeText}>{stockWarning}</Text>
+          </View>
+        ) : null}
 
         {pricesUpdated && (
           <View style={styles.noticeBanner}>

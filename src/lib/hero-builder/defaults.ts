@@ -102,6 +102,12 @@ export const WIDGET_DEFAULTS: Record<WidgetKind, WidgetDefaults> = {
       radius: 999,
     },
   },
+  'copy-text': {
+    label: 'Copy text',
+    content: () => ({ kind: 'copy-text', title: '', text: '', design: 'icon', buttonLabel: 'Copy', copiedLabel: 'Copied!' }),
+    // Colours stay blank: the box follows the page's text, the button its primary.
+    style: { fontSize: 15, radius: 12 },
+  },
   countdown: {
     label: 'Countdown',
     content: () => ({ kind: 'countdown', target: inFuture(3), showLabels: true, expiredText: 'This offer has ended' }),
@@ -164,6 +170,12 @@ export const WIDGET_DEFAULTS: Record<WidgetKind, WidgetDefaults> = {
     label: 'Slideshow',
     content: () => ({ kind: 'slideshow', slides: [], autoplay: true, interval: 5, showDots: true }),
     style: { radius: 18, aspectRatio: '16/9', objectFit: 'cover', accentColor: '@text' },
+  },
+  'page-block': {
+    label: 'Page block',
+    // Real blocks are made with createPageBlock (src/lib/page-designer/), which names one.
+    content: () => ({ kind: 'page-block', block: '', texts: {}, options: {} }),
+    style: {},
   },
 }
 

@@ -18,6 +18,9 @@ export interface ImageKitUploader {
   userId: string
   role: 'admin' | 'superadmin' | 'platform_staff'
   tenantId: string | null
+  isOwner: boolean
+  /** null = legacy full access. What it may reach is `upload-policy.ts`'s call. */
+  permissions: string[] | null
 }
 
 /**
@@ -51,7 +54,13 @@ interface AuthCapableClient {
     select: (columns: string) => {
       eq: (column: string, value: string) => {
         maybeSingle: () => PromiseLike<{
-          data: { role?: string | null; tenant_id?: string | null; platform_permissions?: string[] | null } | null
+          data: {
+            role?: string | null
+            tenant_id?: string | null
+            is_owner?: boolean | null
+            permissions?: string[] | null
+            platform_permissions?: string[] | null
+          } | null
         }>
       }
     }
@@ -70,7 +79,7 @@ async function resolveWith(client: AuthCapableClient): Promise<UploaderResolutio
 
   const { data: member } = await client
     .from('app_users')
-    .select('role, tenant_id')
+    .select('role, tenant_id, is_owner, permissions')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -80,7 +89,13 @@ async function resolveWith(client: AuthCapableClient): Promise<UploaderResolutio
 
   return {
     status: 'authorized',
-    uploader: { userId: user.id, role, tenantId: member?.tenant_id ?? null },
+    uploader: {
+      userId: user.id,
+      role,
+      tenantId: member?.tenant_id ?? null,
+      isOwner: member?.is_owner === true,
+      permissions: member?.permissions ?? null,
+    },
   }
 }
 
@@ -99,7 +114,7 @@ async function resolveStaff(client: AuthCapableClient, userId: string): Promise<
   const canUpload = STAFF_UPLOAD_GRANTS.some((grant) => hasPlatformPermission(holder, grant))
   if (!canUpload) return { status: 'denied' }
 
-  return { status: 'authorized', uploader: { userId, role: 'platform_staff', tenantId: null } }
+  return { status: 'authorized', uploader: { userId, role: 'platform_staff', tenantId: null, isOwner: false, permissions: null } }
 }
 
 function bearerClient(authorization: string): AuthCapableClient {

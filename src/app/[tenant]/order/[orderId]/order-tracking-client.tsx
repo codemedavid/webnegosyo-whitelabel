@@ -8,10 +8,12 @@ import type { CSSProperties } from 'react'
 import { getStorageKey, updateActiveOrderStatus } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
+import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import { isPickupScanEnabled, shouldShowPickupQr } from '@/lib/pickup-qr-gating'
 import { PickupQrCard } from '@/components/customer/pickup-qr-card'
 import { LoyaltyStampCard } from '@/components/customer/loyalty-stamp-card'
 import { TrackingDashboard } from '@/components/customer/order-tracking/tracking-dashboard'
+import type { TrackingPaint } from '@/components/page-designer/tracking/tracking-blocks-context'
 import { getStatusIndex } from '@/components/customer/order-tracking/status-steps'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import { decideStampCardView } from '@/lib/loyalty/stamp-card-view'
@@ -35,6 +37,12 @@ export interface OrderTrackingBrand {
   storefrontLabels: unknown
   /** The store's live loyalty offer, or null when no stamp may be promised. */
   loyaltyOffer: LoyaltyOffer | null
+  /** The owner's published Page Designer layout (resolvePageDesign); null/absent = the standard page. */
+  design?: HeroDesignV5 | null
+  /** `{store_address}` on a designed page: the order's branch, else the store. */
+  storeAddress?: string
+  /** What `theme` was built from (sent only with a design): blocks with their own colours re-resolve it. */
+  paint?: TrackingPaint
 }
 
 interface OrderTrackingClientProps {
@@ -220,6 +228,7 @@ export function OrderTrackingClient({
       storeName={brand.storeName}
       logoUrl={brand.logoUrl}
       theme={brand.theme}
+      paint={brand.paint}
       options={brand.options}
       storefrontLabels={brand.storefrontLabels}
       data={trackingData}
@@ -264,6 +273,7 @@ export function OrderTrackingClient({
       readyNotice={readyNotice}
       onAcknowledgeReady={acknowledgeReady}
       onBack={goToMenu}
+      designedPage={brand.design ? { design: brand.design, tenantSlug, storeAddress: brand.storeAddress } : null}
     />
   )
 }

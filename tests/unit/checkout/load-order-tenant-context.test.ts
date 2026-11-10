@@ -101,7 +101,7 @@ describe('loadOrderTenantContext', () => {
     settle('order_types', { data: null, error: null })
 
     // Assert
-    await expect(context).resolves.toEqual({ ok: false })
+    await expect(context).resolves.toEqual({ ok: false, reason: 'inactive' })
   })
 
   test('a secrets failure for an active store still throws (an order that cannot be routed is lost)', async () => {
@@ -127,6 +127,17 @@ describe('loadOrderTenantContext', () => {
     // Assert
     expect(result.ok && result.tenantConfig).toEqual({ id: 'tenant-1', order_backend: 'convex', convex_deploy_key: 'key' })
     expect(result.ok && result.tenantSecrets).toEqual({ convex_deploy_key: 'key' })
+  })
+
+  test('a failed tenant read is unavailable, not an inactive store (a retry can still save the order)', async () => {
+    // Act
+    const context = load('ot-1')
+    await flush()
+    settle('tenants', { data: null, error: { code: '57014', message: 'statement timeout' } })
+    settle('order_types', { data: null, error: null })
+
+    // Assert
+    await expect(context).resolves.toEqual({ ok: false, reason: 'unavailable' })
   })
 
   test('an order-type read error is reported, not thrown', async () => {

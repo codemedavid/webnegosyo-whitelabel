@@ -55,12 +55,23 @@ export function sourceNote(source: ShiftSalesSource): string | null {
   return null;
 }
 
-/** "#01 – #37 · 37 receipts" (works in hidden mode: no money in it). */
+/**
+ * "#01 – #37 · 37 receipts" for the shift (works in hidden mode: no money in
+ * it). The cashier lens says "First #01 · Last #10", like her slip
+ * (cash-slips/shift-report-cashier.ts): daily numbers are the branch's, so the
+ * numbers between hers belong to other cashiers and a range read as missing
+ * receipts.
+ */
 export function receiptRangeText(report: ShiftSalesReport): string {
   const count = report.summary ? report.summary.orders + report.summary.voidCount : report.receipts.length;
   const counted = `${count}${report.receiptsTruncated && !report.summary ? "+" : ""} ${count === 1 ? "receipt" : "receipts"}`;
   if (!report.firstNumber) return count === 0 ? "No receipts yet" : counted;
-  const range = report.lastNumber && report.lastNumber !== report.firstNumber ? `${report.firstNumber} – ${report.lastNumber}` : report.firstNumber;
+  const hasLast = Boolean(report.lastNumber) && report.lastNumber !== report.firstNumber;
+  if (report.scope === "cashier") {
+    const numbers = hasLast ? `First ${report.firstNumber} · Last ${report.lastNumber}` : `Receipt ${report.firstNumber}`;
+    return `${numbers} · ${counted}`;
+  }
+  const range = hasLast ? `${report.firstNumber} – ${report.lastNumber}` : report.firstNumber;
   return `${range} · ${counted}`;
 }
 

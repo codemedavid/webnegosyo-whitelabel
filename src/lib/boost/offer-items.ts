@@ -70,18 +70,21 @@ export function oneTapSelection(item: MenuItem): OneTapSelection {
 export interface OfferableOptions {
   excludeIds?: ReadonlySet<string>
   limit: number
+  /** Dish id → portions the kitchen can make. Absent = no limit known. */
+  ceilings?: ReadonlyMap<string, number>
 }
 
 /** Suggestions worth showing: in stock, not already in the order, no repeats. */
 export function offerableItems<T extends Pick<MenuItem, 'id' | 'is_available'>>(
   items: readonly T[],
-  { excludeIds, limit }: OfferableOptions
+  { excludeIds, limit, ceilings }: OfferableOptions
 ): T[] {
   const seen = new Set<string>()
   const out: T[] = []
   for (const item of items) {
     if (out.length >= limit) break
     if (item.is_available === false || seen.has(item.id) || excludeIds?.has(item.id)) continue
+    if (ceilings?.get(item.id) === 0) continue
     seen.add(item.id)
     out.push(item)
   }

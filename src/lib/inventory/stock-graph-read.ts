@@ -26,6 +26,7 @@ interface PagedQuery {
   range: (from: number, to: number) => PromiseLike<PageResponse<{ id: string }>>
 }
 import type { ProducibleStock } from '@/lib/inventory/producible'
+import { isCounted, judgesUncounted, toJudgedShelf, type JudgeOptions } from '@/lib/inventory/judged-shelf'
 import type { StockOptionCatalogItem } from '@/lib/inventory/option-stock'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 import type { ModifierGroup, Recipe, RecipeComponent } from '@/types/database'
@@ -35,18 +36,22 @@ interface IngredientRow {
   stock_unit_id: string
   current_qty: number
   is_active: boolean
+  counted_at: string | null
 }
 
 interface BranchStockRow {
   inventory_item_id: string
   outlet_id: string | null
   current_qty: number
+  counted_at: string | null
 }
 
 interface MenuItemRow {
   id: string
   name: string
   modifier_groups?: ModifierGroup[] | null
+  /** "Sell anyway" until this instant: the dish is not stock-limited meanwhile. */
+  auto_86_snoozed_until?: string | null
 }
 
 export interface TenantStockGraph {
@@ -78,47 +83,59 @@ export interface TenantStockGraph {
  * never set up per-branch stock for flour" is ignorance, not an empty shelf.
  * Refusing on ignorance is how a merchant discovers this feature by losing a
  * day of orders.
+ *
+ * The same holds for a shelf nobody has COUNTED (`judged-shelf.ts`): a row a
+ * sale created at a branch that never received the ingredient, or an
+ * ingredient set up but never received anywhere, has no limit.
+ *
+ * Unless the store is set to block (`judgeUncounted`): then a branch's shelf is
+ * read as it stands, and no row means zero, as everywhere else in inventory.
  */
 function resolveShelf(
   ingredients: readonly IngredientRow[],
   units: ReadonlyMap<string, InventoryUnit>,
   branchStock: readonly BranchStockRow[],
   outletId: string | null,
+  options: JudgeOptions,
 ): ProducibleStock[] {
-  const branchQty = new Map<string, number>()
-  if (outletId) {
-    for (const row of branchStock) {
-      if (row.outlet_id !== outletId) continue
-      branchQty.set(row.inventory_item_id, Number(row.current_qty))
-    }
+  if (!outletId) return toJudgedShelf(ingredients, units, options)
+
+  const branchShelf = new Map<string, BranchStockRow>()
+  for (const row of branchStock) {
+    if (row.outlet_id === outletId) branchShelf.set(row.inventory_item_id, row)
   }
 
-  const shelf: ProducibleStock[] = []
-  for (const ingredient of ingredients) {
-    const stockUnit = units.get(ingredient.stock_unit_id)
-    // Nothing to convert against means nothing to judge with.
-    if (!stockUnit) continue
+  // The branch's own shelf, counted there; no row or no count = unjudgeable.
+  return toJudgedShelf(
+    ingredients.flatMap((ingredient) => {
+      const shelf = branchShelf.get(ingredient.id)
+      if (options.judgeUncounted) {
+        return [{ ...ingredient, current_qty: shelf?.current_qty ?? 0, counted_at: shelf?.counted_at ?? null }]
+      }
+      if (!shelf || !isCounted(shelf)) return []
+      return [{ ...ingredient, current_qty: shelf.current_qty, counted_at: shelf.counted_at }]
+    }),
+    units,
+    options,
+  )
+}
 
-    let onHand: number
-    if (outletId) {
-      const branch = branchQty.get(ingredient.id)
-      if (branch === undefined) continue // Unjudgeable at this branch.
-      onHand = branch
-    } else {
-      onHand = Number(ingredient.current_qty)
-    }
-
-    if (!Number.isFinite(onHand)) continue
-
-    shelf.push({
-      id: ingredient.id,
-      current_qty: onHand,
-      is_active: ingredient.is_active,
-      stockUnit,
-    })
-  }
-
-  return shelf
+/**
+ * Recipes of every dish whose owner chose "sell anyway" are left out while
+ * that holds, so neither the checkout guard nor any ceiling limits it: the
+ * owner has told us the shelf reading is wrong today.
+ */
+function withoutSnoozedDishes(recipes: readonly Recipe[], menuItems: readonly MenuItemRow[], nowMs: number): Recipe[] {
+  const snoozed = new Set(
+    menuItems
+      .filter((item) => {
+        const until = item.auto_86_snoozed_until ? Date.parse(item.auto_86_snoozed_until) : NaN
+        return Number.isFinite(until) && until > nowMs
+      })
+      .map((item) => item.id),
+  )
+  if (snoozed.size === 0) return [...recipes]
+  return recipes.filter((recipe) => !recipe.menu_item_id || !snoozed.has(recipe.menu_item_id))
 }
 
 /**
@@ -128,6 +145,7 @@ function resolveShelf(
 export async function readTenantStockGraph(
   tenantId: string,
   outletId: string | null = null,
+  now: Date = new Date(),
 ): Promise<TenantStockGraph | null> {
   try {
     const supabase = createAdminClient()
@@ -136,12 +154,13 @@ export async function readTenantStockGraph(
     // on must pay for none of the reads below.
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
-      .select('inventory_enabled')
+      .select('inventory_enabled, pos_stock_policy')
       .eq('id', tenantId)
       .maybeSingle()
 
     if (tenantError) return null
-    if ((tenant as { inventory_enabled?: boolean | null } | null)?.inventory_enabled !== true) {
+    const flags = tenant as { inventory_enabled?: boolean | null; pos_stock_policy?: string | null } | null
+    if (flags?.inventory_enabled !== true) {
       return null
     }
 
@@ -165,10 +184,10 @@ export async function readTenantStockGraph(
         // Every target column: option recipes are matched by their own id.
         paged('recipes', 'id, target_type, menu_item_id, variation_option_id, addon_id, modifier_option_id'),
         paged('recipe_components', 'id, recipe_id, inventory_item_id, quantity, unit_id'),
-        paged('inventory_items', 'id, name, stock_unit_id, current_qty, is_active'),
+        paged('inventory_items', 'id, name, stock_unit_id, current_qty, is_active, counted_at'),
         paged('inventory_units', 'id, name, abbreviation, dimension, to_base_factor'),
-        paged('inventory_stock', 'id, inventory_item_id, outlet_id, current_qty'),
-        paged('menu_items', 'id, name, modifier_groups'),
+        paged('inventory_stock', 'id, inventory_item_id, outlet_id, current_qty, counted_at'),
+        paged('menu_items', 'id, name, modifier_groups, auto_86_snoozed_until'),
       ])
 
     // A PostgREST error arrives as `error`, not as a throw. Without this the
@@ -191,13 +210,14 @@ export async function readTenantStockGraph(
     const menuItems = (menuResult.data ?? []) as unknown as MenuItemRow[]
 
     return {
-      recipes: (recipesResult.data ?? []) as unknown as Recipe[],
+      recipes: withoutSnoozedDishes((recipesResult.data ?? []) as unknown as Recipe[], menuItems, now.getTime()),
       components: (componentsResult.data ?? []) as unknown as RecipeComponent[],
       shelf: resolveShelf(
         (itemsResult.data ?? []) as unknown as IngredientRow[],
         unitsById,
         (stockResult.data ?? []) as unknown as BranchStockRow[],
         outletId,
+        { judgeUncounted: judgesUncounted(flags.pos_stock_policy) },
       ),
       units,
       namesByMenuItemId: new Map(menuItems.map((item) => [item.id, item.name])),

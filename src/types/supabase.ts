@@ -1332,6 +1332,72 @@ export type Database = {
           },
         ]
       }
+      customer_app_orders: {
+        Row: {
+          app_id: string
+          backend: string
+          created_at: string
+          customer_id: string
+          id: string
+          idempotency_key: string
+          last_status: string | null
+          last_status_at: string | null
+          order_id: string | null
+          placed_at: string | null
+          state: string
+          summary: Json | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          app_id: string
+          backend: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          idempotency_key: string
+          last_status?: string | null
+          last_status_at?: string | null
+          order_id?: string | null
+          placed_at?: string | null
+          state?: string
+          summary?: Json | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          app_id?: string
+          backend?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          idempotency_key?: string
+          last_status?: string | null
+          last_status_at?: string | null
+          order_id?: string | null
+          placed_at?: string | null
+          state?: string
+          summary?: Json | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_app_profiles: {
         Row: {
           created_at: string
@@ -2743,6 +2809,7 @@ export type Database = {
       inventory_items: {
         Row: {
           category: string | null
+          counted_at: string | null
           created_at: string | null
           current_qty: number
           id: string
@@ -2759,6 +2826,7 @@ export type Database = {
         }
         Insert: {
           category?: string | null
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2775,6 +2843,7 @@ export type Database = {
         }
         Update: {
           category?: string | null
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2808,6 +2877,7 @@ export type Database = {
       }
       inventory_stock: {
         Row: {
+          counted_at: string | null
           created_at: string | null
           current_qty: number
           id: string
@@ -2818,6 +2888,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -2828,6 +2899,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          counted_at?: string | null
           created_at?: string | null
           current_qty?: number
           id?: string
@@ -4677,6 +4749,7 @@ export type Database = {
       menu_items: {
         Row: {
           addons: Json
+          auto_86_snoozed_until: string | null
           auto_disabled_at: string | null
           badge_text: string | null
           bcg_classification: string | null
@@ -4704,6 +4777,7 @@ export type Database = {
         }
         Insert: {
           addons?: Json
+          auto_86_snoozed_until?: string | null
           auto_disabled_at?: string | null
           badge_text?: string | null
           bcg_classification?: string | null
@@ -4731,6 +4805,7 @@ export type Database = {
         }
         Update: {
           addons?: Json
+          auto_86_snoozed_until?: string | null
           auto_disabled_at?: string | null
           badge_text?: string | null
           bcg_classification?: string | null
@@ -4772,87 +4847,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      menu_items_loyverse_dupe_backup_20260821: {
-        Row: {
-          addons: Json | null
-          auto_disabled_at: string | null
-          badge_text: string | null
-          bcg_classification: string | null
-          boost_priority: number | null
-          category_id: string | null
-          created_at: string | null
-          description: string | null
-          discounted_price: number | null
-          id: string | null
-          image_url: string | null
-          is_available: boolean | null
-          is_featured: boolean | null
-          loyverse_item_id: string | null
-          modifier_groups: Json | null
-          name: string | null
-          order: number | null
-          price: number | null
-          rn: number | null
-          show_in_checkout_upsell: boolean | null
-          tenant_id: string | null
-          updated_at: string | null
-          variation_types: Json | null
-          variations: Json | null
-        }
-        Insert: {
-          addons?: Json | null
-          auto_disabled_at?: string | null
-          badge_text?: string | null
-          bcg_classification?: string | null
-          boost_priority?: number | null
-          category_id?: string | null
-          created_at?: string | null
-          description?: string | null
-          discounted_price?: number | null
-          id?: string | null
-          image_url?: string | null
-          is_available?: boolean | null
-          is_featured?: boolean | null
-          loyverse_item_id?: string | null
-          modifier_groups?: Json | null
-          name?: string | null
-          order?: number | null
-          price?: number | null
-          rn?: number | null
-          show_in_checkout_upsell?: boolean | null
-          tenant_id?: string | null
-          updated_at?: string | null
-          variation_types?: Json | null
-          variations?: Json | null
-        }
-        Update: {
-          addons?: Json | null
-          auto_disabled_at?: string | null
-          badge_text?: string | null
-          bcg_classification?: string | null
-          boost_priority?: number | null
-          category_id?: string | null
-          created_at?: string | null
-          description?: string | null
-          discounted_price?: number | null
-          id?: string | null
-          image_url?: string | null
-          is_available?: boolean | null
-          is_featured?: boolean | null
-          loyverse_item_id?: string | null
-          modifier_groups?: Json | null
-          name?: string | null
-          order?: number | null
-          price?: number | null
-          rn?: number | null
-          show_in_checkout_upsell?: boolean | null
-          tenant_id?: string | null
-          updated_at?: string | null
-          variation_types?: Json | null
-          variations?: Json | null
-        }
-        Relationships: []
       }
       merchant_notification_seen: {
         Row: {
@@ -8544,6 +8538,7 @@ export type Database = {
           inventory_count_id: string | null
           inventory_item_id: string
           note: string | null
+          opens_tracking: boolean
           order_id: string | null
           outlet_id: string | null
           quantity_delta: number
@@ -8564,6 +8559,7 @@ export type Database = {
           inventory_count_id?: string | null
           inventory_item_id: string
           note?: string | null
+          opens_tracking?: boolean
           order_id?: string | null
           outlet_id?: string | null
           quantity_delta: number
@@ -8584,6 +8580,7 @@ export type Database = {
           inventory_count_id?: string | null
           inventory_item_id?: string
           note?: string | null
+          opens_tracking?: boolean
           order_id?: string | null
           outlet_id?: string | null
           quantity_delta?: number
@@ -9611,6 +9608,8 @@ export type Database = {
           checkout_button_color: string | null
           checkout_button_text_color: string | null
           checkout_card_background_color: string | null
+          checkout_design: string | null
+          checkout_design_enabled: boolean
           checkout_modal_background_color: string | null
           checkout_modal_border_color: string | null
           checkout_modal_button_color: string | null
@@ -9626,6 +9625,10 @@ export type Database = {
           checkout_upsell_max_items: number | null
           checkout_upsell_subtitle: string | null
           checkout_upsell_title: string | null
+          confirmation_design: string | null
+          confirmation_design_enabled: boolean
+          confirmation_redirect: string
+          confirmation_redirect_seconds: number
           convex_auth_enforced: boolean
           convex_deployment_url: string | null
           convex_public_reads: boolean
@@ -9786,6 +9789,7 @@ export type Database = {
           pending_domain_claimed_at: string | null
           pending_domain_token: string | null
           pickup_scan_enabled: boolean
+          pos_stock_policy: string
           presell_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
@@ -9823,6 +9827,8 @@ export type Database = {
           text_primary_color: string | null
           text_secondary_color: string | null
           timezone: string
+          tracking_design: string | null
+          tracking_design_enabled: boolean
           tracking_style: Json
           updated_at: string
           warning_color: string | null
@@ -9903,6 +9909,8 @@ export type Database = {
           checkout_button_color?: string | null
           checkout_button_text_color?: string | null
           checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
           checkout_modal_background_color?: string | null
           checkout_modal_border_color?: string | null
           checkout_modal_button_color?: string | null
@@ -9918,6 +9926,10 @@ export type Database = {
           checkout_upsell_max_items?: number | null
           checkout_upsell_subtitle?: string | null
           checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
           convex_auth_enforced?: boolean
           convex_deployment_url?: string | null
           convex_public_reads?: boolean
@@ -10078,6 +10090,7 @@ export type Database = {
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
           pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -10115,6 +10128,8 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
           tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
@@ -10195,6 +10210,8 @@ export type Database = {
           checkout_button_color?: string | null
           checkout_button_text_color?: string | null
           checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
           checkout_modal_background_color?: string | null
           checkout_modal_border_color?: string | null
           checkout_modal_button_color?: string | null
@@ -10210,6 +10227,10 @@ export type Database = {
           checkout_upsell_max_items?: number | null
           checkout_upsell_subtitle?: string | null
           checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
           convex_auth_enforced?: boolean
           convex_deployment_url?: string | null
           convex_public_reads?: boolean
@@ -10370,6 +10391,7 @@ export type Database = {
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
           pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -10407,6 +10429,8 @@ export type Database = {
           text_primary_color?: string | null
           text_secondary_color?: string | null
           timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
           tracking_style?: Json
           updated_at?: string
           warning_color?: string | null
@@ -11051,6 +11075,18 @@ export type Database = {
           p_tenant_id: string
           p_threshold: number
           p_version_id: string
+        }
+        Returns: Json
+      }
+      apply_order_stock_claim: {
+        Args: {
+          p_kind: string
+          p_mode?: string
+          p_movements?: Json
+          p_order_id: string
+          p_reason: string
+          p_revision: number
+          p_tenant_id: string
         }
         Returns: Json
       }
@@ -11780,8 +11816,30 @@ export type Database = {
         }
         Returns: number
       }
+      inventory_costs_for_tenant: {
+        Args: { p_after?: string; p_item_ids?: string[]; p_tenant_id: string }
+        Returns: {
+          inventory_item_id: string
+          unit_cost: number
+        }[]
+      }
       inventory_effective_unit_cost: {
         Args: { p_item_id: string; p_path?: string[]; p_tenant_id: string }
+        Returns: number
+      }
+      inventory_may_act_for_branch: {
+        Args: { p_outlet_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_movement_costs: {
+        Args: { p_movement_ids: string[]; p_tenant_id: string }
+        Returns: {
+          movement_id: string
+          unit_cost: number
+        }[]
+      }
+      inventory_recent_own_movements: {
+        Args: { p_tenant_id: string }
         Returns: number
       }
       inventory_recipe_cost: {
@@ -11959,6 +12017,10 @@ export type Database = {
         Args: { p_customer_data: Json; p_discount_data: Json }
         Returns: number
       }
+      order_items_anon_line_ok: {
+        Args: { p_menu_item_id: string; p_order_id: string }
+        Returns: boolean
+      }
       order_refund_insert_check: {
         Args: { p_amount: number; p_is_client: boolean; p_order_id: string }
         Returns: undefined
@@ -12005,6 +12067,10 @@ export type Database = {
       read_loyalty_refund_evidence: {
         Args: { p_settlement_id: string; p_tenant_id: string }
         Returns: Json
+      }
+      receive_stock_transfer: {
+        Args: { p_counts: Json; p_legs: Json; p_transfer_id: string }
+        Returns: undefined
       }
       record_approval_side_effects: {
         Args: { p_id: string; p_side_effects: Json; p_tenant_id: string }
@@ -12395,7 +12461,11 @@ export type Database = {
           void_orders: number
         }[]
       }
-      report_shift_sales: { Args: { p_shift_id: string }; Returns: Json }
+      report_shift_nets: { Args: { p_shift_ids: string[] }; Returns: Json }
+      report_shift_sales: {
+        Args: { p_scope?: string; p_shift_id: string }
+        Returns: Json
+      }
       resolve_loyalty_entitlement: {
         Args: {
           p_action: string
@@ -12471,6 +12541,10 @@ export type Database = {
       save_cash_settings: {
         Args: { p_settings: Json; p_tenant: string }
         Returns: Json
+      }
+      send_stock_transfer: {
+        Args: { p_legs: Json; p_transfer_id: string }
+        Returns: undefined
       }
       set_approval_rules: {
         Args: { p_actor: string; p_rules: Json; p_tenant_id: string }

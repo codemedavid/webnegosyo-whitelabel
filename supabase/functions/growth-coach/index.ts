@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { checkCoachLimit, createInstanceCounter, isMerchantRole } from "./limit.ts";
 
 // AI Growth Coach for the WebNegosyo merchant app. A signed-in merchant POSTs a
 // PII-free snapshot of their store's numbers (built client-side in
@@ -25,6 +26,17 @@ const MAX_TOKENS = 900;
 // The facts snapshot is small (~1–2 KB). Cap generously so an authenticated
 // client can't inflate token spend with an oversized payload.
 const MAX_FACTS_BYTES = 16_000;
+
+// Each ask is one paid model call. An owner reading a plan and asking again stays
+// well under this; a script does not.
+const COACH_LIMIT = { limit: 20, windowSec: 3600 };
+const instanceCounter = createInstanceCounter();
+
+function redisCredentials() {
+  const url = Deno.env.get("UPSTASH_REDIS_URL");
+  const token = Deno.env.get("UPSTASH_REDIS_TOKEN");
+  return url && token ? { url, token } : null;
+}
 
 function json(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
@@ -155,6 +167,21 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid or expired session." }, 401);
     }
 
+    // A valid JWT is not a merchant: any Supabase Auth account can hold one.
+    // Read as the caller; app_users_select_self shows them their own row only.
+    const { data: member, error: memberErr } = await callerClient
+      .from("app_users")
+      .select("role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (memberErr) {
+      console.error("[growth-coach] membership read failed:", memberErr.message);
+      return json({ error: "The AI coach is busy right now. Please try again." }, 503);
+    }
+    if (!isMerchantRole((member as { role?: string } | null)?.role)) {
+      return json({ error: "The AI coach is for WebNegosyo merchant accounts." }, 403);
+    }
+
     const rawBody = await req.text();
     if (rawBody.length > MAX_FACTS_BYTES) {
       return json({ error: "Request payload too large." }, 413);
@@ -167,6 +194,14 @@ Deno.serve(async (req) => {
     }
     if (!isValidFacts(body)) {
       return json({ error: "Invalid or incomplete growth data." }, 400);
+    }
+
+    const isAllowed = await checkCoachLimit(user.id, COACH_LIMIT, {
+      counter: instanceCounter,
+      redis: redisCredentials(),
+    });
+    if (!isAllowed) {
+      return json({ error: "You've asked the coach a lot this hour. Try again a little later." }, 429);
     }
 
     // Resolve the key only after the caller is authenticated and the payload is
@@ -205,9 +240,6 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("[growth-coach] unexpected error:", e);
-    return json(
-      { error: e instanceof Error ? e.message : "Unexpected server error." },
-      500,
-    );
+    return json({ error: "Unexpected server error." }, 500);
   }
 });

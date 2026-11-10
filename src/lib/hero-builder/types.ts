@@ -291,6 +291,40 @@ export interface SlideshowContent {
   showDots: boolean
 }
 
+/**
+ * Page Designer only: words a customer copies with one tap (the store's address
+ * to book their own rider, a GCash number, a reference). `{tokens}` are filled
+ * in before copying. Blank after tokens = nothing on the storefront.
+ */
+export interface CopyTextContent {
+  kind: 'copy-text'
+  /** Small line above; blank = none. */
+  title: string
+  text: string
+  /** `icon` = box + copy icon, `button` = box + labelled button, `only` = just a button. */
+  design: 'icon' | 'button' | 'only'
+  buttonLabel: string
+  copiedLabel: string
+}
+
+/**
+ * Page Designer only (checkout, thank-you, order tracking): one of the page's
+ * own working parts — the payment picker, the order status, the place-order
+ * button. `block` names it in the page's block registry
+ * (src/lib/page-designer/); the page supplies the renderer at run time, so
+ * the engine never imports checkout or tracking code. The owner can move,
+ * restyle and re-word it; required blocks cannot be removed.
+ */
+export interface PageBlockContent {
+  kind: 'page-block'
+  /** Registry id, e.g. `tracking.status`. */
+  block: string
+  /** The owner's wording per text slot. Blank = the store label, else the default. */
+  texts: Record<string, string>
+  /** Block switches, validated against the registry. */
+  options: Record<string, string | boolean>
+}
+
 export type WidgetContent =
   | HeadingContent
   | TextContent
@@ -300,6 +334,7 @@ export type WidgetContent =
   | IconContent
   | IconListContent
   | BadgeContent
+  | CopyTextContent
   | CountdownContent
   | DividerContent
   | SpacerContent
@@ -309,16 +344,33 @@ export type WidgetContent =
   | OrderEntryContent
   | StoreLogoContent
   | SlideshowContent
+  | PageBlockContent
 
 export type WidgetKind = WidgetContent['kind']
 
 // ── Tree ───────────────────────────────────────────────────────────────────
+
+/**
+ * Page Designer pages that change over time (tracking, thank-you): show this
+ * node only in these page states, e.g. `['preparing']`. Absent or empty =
+ * always. Ignored where a page has no state (hero, welcome).
+ */
+export type ShowWhen = string[]
+
+/**
+ * Page Designer: show this node only for these order types, e.g. `['delivery']`.
+ * Absent or empty = every order. Unknown order type = shown, like "Show when".
+ */
+export type OrderKindChoice = 'dine_in' | 'pickup' | 'delivery'
+export type ShowFor = OrderKindChoice[]
 
 export interface Widget extends Responsive {
   id: string
   kind: WidgetKind
   content: WidgetContent
   animation?: Animation
+  showWhen?: ShowWhen
+  showFor?: ShowFor
 }
 
 export interface Column extends Responsive {
@@ -332,6 +384,10 @@ export interface Section extends Responsive {
   /** In-page anchor so buttons can link to `#anchor`. */
   anchor?: string
   columns: Column[]
+  showWhen?: ShowWhen
+  showFor?: ShowFor
+  /** Page Designer: pinned to the bottom of the screen (sticky order bar). */
+  pin?: 'bottom'
 }
 
 export type ThemeColorKey = 'primary' | 'secondary' | 'accent' | 'text' | 'muted' | 'background' | 'surface'
@@ -345,10 +401,24 @@ export interface Theme {
   buttonRadius: number
 }
 
+export type PageLayout = 'scroll' | 'steps' | 'accordion'
+
+/** Page Designer whole-page settings; hero and welcome designs have none. */
+export interface PageSettings {
+  /** Part styles every page block follows (`p_<part>_<prop>`, see page-designer/parts.ts). */
+  parts?: Record<string, string>
+  /** How the sections are shown: one scrolling page, one step at a time, or folding panels. */
+  layout?: PageLayout
+  progress?: 'bar' | 'numbers' | 'dots' | 'none'
+  /** Steps: the Next button's words. */
+  nextLabel?: string
+}
+
 export interface HeroDesignV5 {
   version: 5
   theme: Theme
   sections: Section[]
+  page?: PageSettings
 }
 
 export type NodeKind = 'section' | 'column' | 'widget'

@@ -66,3 +66,48 @@ describe("buildKitchenChitSegments", () => {
     }
   });
 });
+
+describe("the order's own note on the chit", () => {
+  const lineLengths = (text: string) => text.split("\n").map((line) => line.length);
+
+  it("prints the checkout note as NOTE: above the items", () => {
+    const text = buildKitchenChitText({
+      ...CHIT_ORDER,
+      customerData: { "Any notes for us?": "birthday, add a candle" },
+    });
+    expect(text).toContain("NOTE: birthday, add a candle");
+    expect(text.indexOf("NOTE:")).toBeLessThan(text.indexOf("2x Burger"));
+  });
+
+  it("wraps a long note at the chit's width", () => {
+    const note = "please cut the burger in half and pack the sauce separately for the kids";
+    const text = buildKitchenChitText({ ...CHIT_ORDER, customerData: { Note: note } });
+    expect(Math.max(...lineLengths(text))).toBeLessThanOrEqual(32);
+    expect(text.replace(/\s+/g, " ")).toContain("cut the burger in half");
+  });
+
+  it("wraps a long item note too", () => {
+    const text = buildKitchenChitText({
+      ...CHIT_ORDER,
+      items: [
+        {
+          menuItemName: "Burger",
+          quantity: 1,
+          specialInstructions: "well done, no onion, no pickles, sauce on the side",
+        },
+      ],
+    });
+    expect(Math.max(...lineLengths(text))).toBeLessThanOrEqual(32);
+    expect(text).toContain("** well done");
+  });
+
+  it("prints no NOTE line without one, and never the rider's note", () => {
+    expect(buildKitchenChitText(CHIT_ORDER)).not.toContain("NOTE:");
+    expect(
+      buildKitchenChitText({
+        ...CHIT_ORDER,
+        customerData: { delivery_rider_note: "call at the gate" },
+      }),
+    ).not.toContain("NOTE:");
+  });
+});

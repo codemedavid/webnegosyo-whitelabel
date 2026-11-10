@@ -83,8 +83,24 @@ function chainFor(table: string) {
   return chain
 }
 
+/** The `costs`-gated readers (20261107130000): answer a holder, 42501 anyone else. */
+async function costReader(fn: string) {
+  if (!hasPermission(caller, 'costs')) return { data: null, error: { code: '42501', message: 'needs costs' } }
+  if (fn === 'inventory_costs_for_tenant') {
+    const written = [...writes].reverse().find((w) => typeof (w.patch as { unit_cost?: number }).unit_cost === 'number')
+    const cost = written ? (written.patch as { unit_cost: number }).unit_cost : STORED.unit_cost
+    return { data: [{ inventory_item_id: ITEM, unit_cost: cost }], error: null }
+  }
+  if (fn === 'inventory_movement_costs') {
+    const rows = (movementRows ?? []) as Array<{ id: string; unit_cost?: number | null }>
+    return { data: rows.map((row) => ({ movement_id: row.id, unit_cost: row.unit_cost ?? null })), error: null }
+  }
+  return { data: null, error: { code: 'PGRST202', message: `unknown ${fn}` } }
+}
+
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
+    rpc: (fn: string) => costReader(fn),
     from: (table: string) => chainFor(table),
     auth: { getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }) },
   }),

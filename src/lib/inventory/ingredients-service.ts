@@ -13,6 +13,10 @@ import { createClient } from '@/lib/supabase/server'
 import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { InventoryItem } from '@/types/database'
+import { INVENTORY_ITEM_COLUMNS } from '@/lib/inventory/cost-columns'
+import { readItemCosts, withItemCosts } from '@/lib/inventory/item-costs'
+import { stockUnitChangeProblem } from '@/lib/inventory/recipe-line-rules'
+import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 import { ingredientInputSchema, type IngredientInput } from '@/lib/inventory/schemas'
 import { parseIngredientDeleteImpact, type IngredientDeleteImpact } from '@/lib/inventory/ingredient-delete'
 import {
@@ -28,12 +32,14 @@ export const getIngredients = cache(async (tenantId: string): Promise<InventoryI
 
   const { data, error } = await supabase
     .from('inventory_items')
-    .select('*')
+    .select(INVENTORY_ITEM_COLUMNS)
     .eq('tenant_id', tenantId)
     .order('name', { ascending: true })
 
   if (error) throw error
-  return (data ?? []) as unknown as InventoryItem[]
+  // The price comes from the `costs`-gated reader; an account without the key
+  // gets 0 here, which every non-costs screen already hides (`ingredientsForCaller`).
+  return withItemCosts(supabase, tenantId, (data ?? []) as unknown as Omit<InventoryItem, 'unit_cost'>[])
 })
 
 export async function createIngredient(
@@ -53,11 +59,12 @@ export async function createIngredient(
   const { data, error } = await supabase
     .from('inventory_items')
     .insert({ tenant_id: tenantId, ...validated } as never)
-    .select()
+    .select(INVENTORY_ITEM_COLUMNS)
     .single()
 
   if (error) throw error
-  return data as unknown as InventoryItem
+  // A new ingredient's price is the one just written (only a `costs` holder may write one).
+  return { ...(data as unknown as Omit<InventoryItem, 'unit_cost'>), unit_cost: validated.unit_cost ?? 0 }
 }
 
 /**
@@ -93,19 +100,53 @@ export async function updateIngredient(
   const refusal = ingredientWriteRefusal(userRole, grantsForIngredientWrite(stored, validated))
   if (refusal) throw new Error(refusal)
 
+  await assertStockUnitChangeKeepsRecipes(supabase, tenantId, ingredientId, stored, validated)
+
   const { data, error } = await supabase
     .from('inventory_items')
     .update({ ...validated, updated_at: new Date().toISOString() } as never)
     .eq('id', ingredientId)
     .eq('tenant_id', tenantId)
-    .select()
+    .select(INVENTORY_ITEM_COLUMNS)
     .single()
 
   if (error) throw error
-  return data as unknown as InventoryItem
+  const [updated] = await withItemCosts(supabase, tenantId, [data as unknown as Omit<InventoryItem, 'unit_cost'>])
+  return updated
 }
 
-const STORED_COLUMNS = 'name, sku, category, stock_unit_id, unit_cost, is_prep, image_url, reorder_level, is_active'
+/**
+ * A stock unit that no longer converts from the units recipes measure this
+ * ingredient in would make every sale skip it (recipe_components_unit_guard
+ * only fires when a LINE is written). Refused at the moment of the change.
+ */
+async function assertStockUnitChangeKeepsRecipes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  ingredientId: string,
+  stored: { name?: string | null; stock_unit_id?: string | null } | null,
+  validated: Partial<IngredientInput>,
+): Promise<void> {
+  const newUnitId = validated.stock_unit_id
+  if (!newUnitId || newUnitId === stored?.stock_unit_id) return
+
+  const [lines, units] = await Promise.all([
+    supabase.from('recipe_components').select('unit_id').eq('tenant_id', tenantId).eq('inventory_item_id', ingredientId),
+    supabase.from('inventory_units').select('id, name, abbreviation, dimension, to_base_factor').eq('tenant_id', tenantId),
+  ])
+  if (lines.error) throw lines.error
+  if (units.error) throw units.error
+
+  const problem = stockUnitChangeProblem(
+    validated.name ?? stored?.name ?? '',
+    newUnitId,
+    (lines.data ?? []).map((line) => line.unit_id as string),
+    (units.data ?? []) as unknown as InventoryUnit[],
+  )
+  if (problem) throw new Error(problem)
+}
+
+const STORED_COLUMNS = 'name, sku, category, stock_unit_id, is_prep, image_url, reorder_level, is_active'
 
 async function readStoredIngredient(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -121,7 +162,12 @@ async function readStoredIngredient(
 
   if (error) throw error
   if (!data) throw new Error('This ingredient no longer exists. Refresh the page to see the current list.')
-  return data as unknown as StoredIngredient
+  // The stored price is only known to a `costs` holder. For anyone else it stays
+  // absent, so a submitted price reads as "changed" and asks for `costs`
+  // (grantsForIngredientWrite), while a form that hides prices sends none.
+  const costs = await readItemCosts(supabase, tenantId, [ingredientId])
+  const stored = data as unknown as StoredIngredient
+  return costs?.has(ingredientId) ? { ...stored, unit_cost: costs.get(ingredientId) as number } : stored
 }
 
 /**

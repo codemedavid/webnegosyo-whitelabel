@@ -1,0 +1,34 @@
+# Web analytics inventory (Explore agent)
+- ~12 surfaces. Sidebar src/components/shared/sidebar.tsx:352-409: Start here, Dashboard; Menu→Boost Sales; Reports: Sales (/admin/reports), Product Analytics, Cash & remits; Money: Expenses, Profit (/admin/reports/profit); Stock: Stock, Transfers, Stock history; Grow: Customers, Loyalty, Texts, Vouchers, Senior & PWD; Store Setup: Branches.
+- admin-sidebar-visibility.ts:47-51 — platform hides Product Analytics; non-platform hides /admin/reports includes() → also hides Profit.
+- staff-permissions.ts:322-367: reports→Sales,Profit(+expenses+costs); analytics→boost, product-analytics, menu-eng AND dashboard sales tiles; customers; cash_manage; inventory; store_setup; branch figures check orders.
+- Dashboard /admin page.tsx; load-admin-dashboard.ts (multi-backend, 120s cache); sales = orders.total; Today/7/30/90 rolling; no branch, no link to reports.
+- Reports /admin/reports sales-overview.tsx: insight sentence, KPIs net/orders/AOV/collected, trend w/ compare, ledger, by-shift, profit card. period.ts presets today/yesterday/this/last week/month/custom ≤93d. Branch picker incl Unassigned.
+- /admin/reports/[dim]: items (+matrix by price, picked together), categories, payments, channels (source+order type), hours heatmap, branches. Count/Net/Share/Change. No sort/column picker/search.
+- Profit /admin/reports/profit: profit + cash flow tabs; prime cost; store-level only.
+- Product Analytics (Convex only) has margin%/cost/avg-per-day per item; platform redirected to items?view=matrix.
+- Convex orders-page tabs (convex-orders-wrapper.tsx): Dashboard/Analytics (upsell funnel, bundle, customer insights)/Trends (cancellation).
+- Boost Sales perf fixed 30d (boost/workspace.ts:63-131).
+- Customers list page-local sort/search. customer-dashboard.ts only in app.
+- Branches all-time revenue (outlets/branch-page-data.ts). Start here goal-trackers.ts. Stock "Reports" tab daily-report-panel.tsx (food cost%, COGS, waste, shrinkage). Cash & remits; Expenses CSV/XLSX.
+- analytics_events upsell funnel read by app, never web. MCP sales-summary.ts etc. Owl get_sales_overview uses dashboard numbers.
+- MISSING: monthly (93d cap, >31d weekly bars, no This year), item/category profit, avg orders/customers per day, items sold total, variations/addons, filters beyond period/branch/compare, custom columns, ANY sales export, discountByKind not surfaced, voids not shown, transactions list.
+# App analytics inventory (from Explore agent)
+- THREE sales engines in app: (1) on-device Σ orders.total (analytics-compute.ts, branch-kpis.ts) — Home/Analytics/Trends/Growth/Branches/Portfolio/Performance/sales CSV; no paid filter; ≠ net sales. (2) customer dashboard hub-overview (customer-dashboard.ts, qualified orders by completion time). (3) SQL twins: report_profit_summary/_by_period/report_expenses_by_category, report_shift_sales/report_period_sales, report_sales_by_hour.
+- No /api/reports* route. Web has no customer dashboard.
+- No chart lib (View bars; react-native-svg for ProfitTrendCard, StockHealthRing).
+- Screens: reports.tsx (customer-first), REPORTS_SECTIONS Money[expenses,profit] Sales[analytics,growth] Products[product-analytics,daily-report] Branches Store[activity]; dashboard.tsx Home today; analytics.tsx (9 analytics:* refs, CSV); trends.tsx; growth.tsx (30d product data always); product-analytics.tsx 4 modes (Products items/addons/variations, Pairs, Day by day w/ CSV, Lifetime BCG + cost editing) each own presets; product-performance/[productId]; daily-report (stock variance); inventory; branches/portfolio (getOrders 2000 cap, branch-kpis); profit.tsx (report_profit_* RPCs, lib/profit/profit-model.ts); shift-sales/day-close; activity; gov-discounts; customers (CSV); team StaffSalesLeaderboard.
+- CSV: lib/export/ run-export.ts csv.ts share.ts — analytics, daily sales, orders, customers, expenses. Sales CSV calls Σtotal "grossSales", 2000 cap.
+- Issues: 6 revenue heroes, ~8 period controls (ReportPeriodBar meant to be canonical), duplicate customers/top items/payments, stale workspaces.ts labels, inconsistent error states, phone-side caps.
+# Data model findings (Explore agent)
+- sales-model.ts orderFigures: gross = total − service − (delivery − deliveryDisc) + foodDisc; net = gross − foodDisc; collected from order_payments. Live = status not cancelled/canceled/refunded/voided & total≥0 (pending/unpaid count, owed → unpaid). summarizeSales: count, gross, discount, net, service, delivery, billed, collected, unpaid, overpaid, AOV, voids, coverage. discountByKind (senior/pwd/voucher/manual/promo) — NOT in SQL.
+- sales-breakdowns.ts rollupItems/Categories/Periods(hour/day/week/month, business day)/Hours. payment-buckets.ts. profit-facts.ts/profit-model.ts: profit = net − COGS − expenses. Parity tests report-sql-parity.property.test.ts, report-profit-parity.property.test.ts.
+- SQL (all ≤93 days, (p_tenant,p_from,p_to,p_outlet,p_unassigned)): report_sales_summary, _by_period(grain), _by_hour, _by_dimension (source|order_type|outlet), _by_item, _by_category, report_payments; report_profit_summary/_by_period/report_expenses_by_category; report_period_sales/shift_sales/cash_summary/cash_by_staff (DEFINER). reporting schema: order_figures, line_figures, profit_facts, constant_cutoff. Keys: reports; profit needs expenses+costs; cash cash_manage.
+- orders: no cashier column (customer_data->pos->cashierId JSON only). source pos/mobile/qr_handoff/else online. customer_id.
+- order_items: web = variation text ", " + addons text[] "Name ×2" + addon_details jsonb (since 2026-10-29); POS = variation_selections jsonb [{typeName, optionName, priceAdjustment}] incl addons, price = base. App reconciles in webnegosyo-app/lib/product-performance/modifiers.ts, aggregate.ts. src/lib/order-item-display.ts.
+- order_item_costs: trigger order_items_cost_snapshot, base recipe or product_costs, no modifier costs. Store-wide cost readers only.
+- refunds rewrite order in place (execute_refund). gov_discount_claims vat_exempt_sales/vat_removed. store_tax_profiles vat_status; sale-vat.ts unused in reports.
+- Gaps: year range (chunk 93d), discount by kind SQL, per-item COGS, variation/addon SQL, staff dimension, customers/day new vs returning SQL, VAT.
+- Exports: exceljs present, no PDF lib. Existing: expenses export (route + export-workbook.ts, 400d), gov-discount csv.ts toCsv (BOM, CRLF, formula guard), inventory workbook. Planned Phase 2 (/api/reports/export, export_audit, month-end pack, 366d) NOT built — docs/plans/2026-10-12-reports-and-inventory-suite.md §7.3–7.5.
+- Perf: =any(array()) + EXECUTE pattern; statement_timeout probes; 1000-row cap on RPC; 30d summary 0.1–0.85s largest store ~6.9k orders/mo.
+- Long ranges: short term 93-day chunk loop + Redis cache closed periods; medium term daily rollup table w/ dirty-day trigger + pg_cron rebuild via reporting.order_figures.

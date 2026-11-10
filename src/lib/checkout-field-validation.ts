@@ -13,6 +13,11 @@
  * they are still on the page, instead of silently going missing.
  */
 import { normalizePhoneE164 } from '@/lib/phone'
+import { readFieldRules, ruleError } from '@/lib/checkout-field-rules'
+import { normalizeFormFieldValue, type NormalizableField } from '@/lib/customer-field-normalization'
+import { isAnswered, missingAnswerMessage, type FieldValidationError } from '@/lib/checkout/required-answers'
+
+export type { FieldValidationError } from '@/lib/checkout/required-answers'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -22,11 +27,8 @@ export interface ValidatableField {
   field_label: string
   field_type: string
   is_required: boolean
-}
-
-export interface FieldValidationError {
-  fieldName: string
-  message: string
+  /** The question's checks (min/max length, digits, pattern…); read through `readFieldRules`. */
+  validation_rules?: unknown
 }
 
 /**
@@ -43,24 +45,31 @@ export function validateCheckoutFields(
   const errors: FieldValidationError[] = []
 
   for (const field of fields) {
-    const value = data[field.field_name]?.trim() ?? ''
+    const raw = data[field.field_name]
+    const value = typeof raw === 'string' ? raw.trim() : ''
 
-    if (value === '') {
-      if (field.is_required) {
-        errors.push({
-          fieldName: field.field_name,
-          message: `${field.field_label} is required`,
-        })
-      }
-      // Blank optional field: nothing to format-check.
+    // Answered or not is judged on what the order will CARRY (the normalized
+    // answer), with the same `isAnswered` createOrderAction runs on what it
+    // receives, so the server can never refuse an answer this form accepted.
+    // A tick box answers only by being ticked: "must tick" = required.
+    if (!isAnswered(field.field_type, sentAnswer(field, raw))) {
+      if (field.is_required) errors.push({ fieldName: field.field_name, message: missingAnswerMessage(field) })
+      // Unanswered optional question: nothing to format-check.
       continue
     }
+    if (field.field_type === 'checkbox') continue
 
-    const message = formatError(field, value)
+    const message = formatError(field, value) ?? ruleError(field.field_label, field.field_type, readFieldRules(field.validation_rules), value)
     if (message) errors.push({ fieldName: field.field_name, message })
   }
 
   return errors
+}
+
+/** The answer as the checkout will send it (see normalizeCustomerData). */
+function sentAnswer(field: ValidatableField, raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  return normalizeFormFieldValue(field as NormalizableField, raw)
 }
 
 /** Format rule for a filled-in value, or null when the value is acceptable. */
@@ -73,5 +82,25 @@ function formatError(field: ValidatableField, value: string): string | null {
     return `${field.field_label} doesn’t look like a valid email address`
   }
 
+  if (field.field_type === 'date' && !isCalendarDate(value)) {
+    return `${field.field_label} should be a date`
+  }
+
   return null
+}
+
+/** `YYYY-MM-DD` that names a real day (what a date box sends). */
+function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const [year, month, day] = match.slice(1).map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+}
+
+/** The first mistake per question, keyed by field name (what the form shows beside each box). */
+export function fieldErrorMap(errors: readonly FieldValidationError[]): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const error of errors) if (!(error.fieldName in map)) map[error.fieldName] = error.message
+  return map
 }

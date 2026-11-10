@@ -37,6 +37,7 @@ import {
   type KitchenTicket,
 } from "../../lib/kitchen-tickets";
 import { buildKitchenChitSegments } from "../../lib/kitchen-chit";
+import { printManualKitchenChit } from "../../lib/kitchen-chit-reprint";
 import {
   AWAITING_KITCHEN_STATUS,
   EMPTY_RING_TRACKER,
@@ -390,13 +391,21 @@ export default function KitchenScreen() {
   }, [lastBumped, updateStatus, readFreshStatus]);
 
   const handlePrint = useCallback(async (ticket: KitchenTicket) => {
-    const outcome = await printForRole(
-      "kitchen",
-      buildKitchenChitSegments({ ...ticket.order, items: ticket.items }),
-    );
-    if (!outcome.anySuccess) {
-      const firstError = outcome.results[0]?.result.error;
-      Alert.alert("Print failed", firstError ?? "Could not reach the kitchen printer.");
+    // A chit this device already printed comes out marked REPRINT, so the
+    // cooks do not make the order twice; the first one prints plain.
+    // A first chit that never came out is given back, so the retry is not
+    // stamped REPRINT (lib/kitchen-chit-reprint.ts).
+    let failure: string | undefined;
+    const isPrinted = await printManualKitchenChit(ticket.order._id, Date.now(), async (chitOptions) => {
+      const outcome = await printForRole(
+        "kitchen",
+        buildKitchenChitSegments({ ...ticket.order, items: ticket.items }, chitOptions),
+      );
+      failure = outcome.results[0]?.result.error;
+      return outcome.anySuccess;
+    });
+    if (!isPrinted) {
+      Alert.alert("Print failed", failure ?? "Could not reach the kitchen printer.");
     }
   }, []);
 
@@ -455,6 +464,7 @@ export default function KitchenScreen() {
       <RingStatusBar
         ringingCount={ringTracker.ringing.size}
         waitingCount={waitingCount}
+        isDemo={isDemo}
         onTestSound={testSound}
       />
 

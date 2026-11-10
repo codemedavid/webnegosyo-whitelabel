@@ -17,6 +17,7 @@ function readChain(data: unknown) {
     select: () => chain,
     eq: () => chain,
     in: () => chain,
+    limit: () => chain,
     single: async () => result,
     maybeSingle: async () => result,
     then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve),
@@ -42,6 +43,8 @@ jest.mock('@/lib/supabase/server', () => ({
 
 /** When set, the orders INSERT hits the client-order-id unique index (a retried submit). */
 let duplicateOrder: Record<string, unknown> | null = null
+/** The lines the retried order already has. */
+let existingLines: unknown[] = [{ id: 'line-1' }]
 
 function duplicateInsertChain() {
   const result = {
@@ -65,7 +68,7 @@ jest.mock('@/lib/supabase/admin', () => ({
           ? { id: 'order-1', ...(payload as Record<string, unknown>) }
           : null)
       },
-      select: () => readChain(duplicateOrder),
+      select: () => readChain(table === 'order_items' ? existingLines : duplicateOrder),
       update: (payload: unknown) => {
         adminOps.push({ table, op: 'update', payload })
         return readChain(null)
@@ -97,6 +100,7 @@ describe('createOrder — platform write round trips', () => {
     serverReads.length = 0
     adminOps.length = 0
     duplicateOrder = null
+    existingLines = [{ id: 'line-1' }]
     upsertCustomerFromOrder.mockClear()
   })
 
@@ -131,6 +135,45 @@ describe('createOrder — platform write round trips', () => {
     expect(result.order.id).toBe('order-1')
     expect(result.order).not.toHaveProperty('order_token_hash')
     expect(result.order).not.toHaveProperty('order_token_expires_at')
+  })
+
+  test('a retry of an order with no items fails instead of reporting an empty order as saved', async () => {
+    // Arrange: the first attempt saved the row and failed on its items, or is
+    // still writing them. Writing them here could double the lines.
+    duplicateOrder = { id: 'order-0', tenant_id: 'tenant-1' }
+    existingLines = []
+    const { createOrder } = await import('@/lib/orders-service')
+    const create = createOrder as unknown as (...args: unknown[]) => Promise<{ order: Record<string, unknown>; deduped?: boolean }>
+    const noArg = undefined
+
+    // Act
+    const attempt = create(
+      'tenant-1', [line], { name: 'Ana', contact: '09171234567' }, 'ot-1',
+      noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg,
+      { clientOrderId: 'client-1' },
+    )
+
+    // Assert
+    await expect(attempt).rejects.toThrow(/without its items/)
+    expect(adminOps.filter((op) => op.table === 'order_items')).toEqual([])
+  })
+
+  test('a retry of a complete order does not write its items again', async () => {
+    // Arrange
+    duplicateOrder = { id: 'order-0', tenant_id: 'tenant-1' }
+    const { createOrder } = await import('@/lib/orders-service')
+    const create = createOrder as unknown as (...args: unknown[]) => Promise<{ order: Record<string, unknown>; deduped?: boolean }>
+    const noArg = undefined
+
+    // Act
+    await create(
+      'tenant-1', [line], { name: 'Ana', contact: '09171234567' }, 'ot-1',
+      noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg,
+      { clientOrderId: 'client-1' },
+    )
+
+    // Assert
+    expect(adminOps.filter((op) => op.table === 'order_items')).toEqual([])
   })
 
   test('still rolls the order into the customer profile', async () => {

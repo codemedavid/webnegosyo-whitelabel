@@ -169,5 +169,5 @@ test('sends the rider the unit, landmark, note, address and a pin link', async (
     'Note: Call first',
     'Address: Mabini St',
     'Pin: https://www.google.com/maps/search/?api=1&query=14.7,121.05',
-  ].join('\n'))
+  ].join('\r\n'))
 })

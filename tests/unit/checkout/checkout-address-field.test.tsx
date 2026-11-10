@@ -45,7 +45,7 @@ describe('CheckoutAddressField', () => {
   it('asks for unit, landmark and a note to the rider, stored under fixed keys', async () => {
     const seen = await renderField()
     fireEvent.change(screen.getByLabelText(/Landmark/), { target: { value: 'Blue gate' } })
-    fireEvent.change(screen.getByLabelText(/Unit \/ Floor/), { target: { value: '5B' } })
+    fireEvent.change(screen.getByLabelText(/House \/ Blk/), { target: { value: '5B' } })
     fireEvent.change(screen.getByLabelText(/Note to rider/), { target: { value: 'Call me' } })
     expect(seen[seen.length - 1]).toEqual({ delivery_landmark: 'Blue gate', delivery_unit: '5B', delivery_rider_note: 'Call me' })
   })
@@ -54,6 +54,96 @@ describe('CheckoutAddressField', () => {
     await renderField({ fieldNames: ['delivery_address', 'Nearest Landmark'] })
     expect(screen.queryByLabelText(/Landmark/)).toBeNull()
     expect(screen.getByLabelText(/Note to rider/)).toBeInTheDocument()
+  })
+})
+
+describe('saved addresses', () => {
+  const SAVED = [{ address: 'Camella Tanza', lat: 14.39, lng: 120.85, unit: 'Blk 4 Lot 12', riderNote: 'Blue gate' }]
+
+  beforeEach(() => window.localStorage.setItem('wn-delivery-addresses:brew', JSON.stringify(SAVED)))
+  afterEach(() => window.localStorage.clear())
+
+  async function renderSaved(extra: Record<string, unknown> = {}) {
+    const { CheckoutAddressField } = await import('@/components/customer/checkout-templates/checkout-address-field')
+    const seen: Array<Record<string, string>> = []
+    function Harness() {
+      const [customerData, setCustomerData] = useState<Record<string, string>>({})
+      seen.push(customerData)
+      const checkout = {
+        customerData,
+        setCustomerData,
+        tenant: { ...TENANT, slug: 'brew' },
+        formFields: [{ id: '0', field_name: 'delivery_address' }],
+        outlet: { choices: [], selectedOutletId: null },
+        ...extra,
+      } as unknown as UseCheckoutReturn
+      return <CheckoutAddressField checkout={checkout} fieldName="delivery_address" isRequired inputClassName="" labelClassName="" />
+    }
+    render(<Harness />)
+    return seen
+  }
+
+  it('fills the address, pin and details in one tap', async () => {
+    const seen = await renderSaved()
+    fireEvent.click(await screen.findByRole('button', { name: 'Blk 4 Lot 12, Camella Tanza' }))
+    expect(seen[seen.length - 1]).toMatchObject({
+      delivery_address: 'Camella Tanza',
+      delivery_lat: '14.39',
+      delivery_lng: '120.85',
+      delivery_pin_confirmed: 'true',
+      delivery_pin_source: 'saved',
+      delivery_unit: 'Blk 4 Lot 12',
+      delivery_rider_note: 'Blue gate',
+    })
+    expect(screen.queryByRole('region', { name: 'Your saved addresses' })).toBeNull()
+  })
+
+  it('forgets one on this device', async () => {
+    await renderSaved()
+    fireEvent.click(await screen.findByRole('button', { name: 'Forget Camella Tanza' }))
+    expect(screen.queryByRole('region', { name: 'Your saved addresses' })).toBeNull()
+    expect(window.localStorage.getItem('wn-delivery-addresses:brew')).toBe('[]')
+  })
+
+  it('never offers them on a counter tablet', async () => {
+    await renderSaved({ isKiosk: true })
+    expect(screen.queryByRole('region', { name: 'Your saved addresses' })).toBeNull()
+  })
+})
+
+describe("I can't find my place", () => {
+  async function renderPinRequired(tenant: Record<string, unknown>, initial: Record<string, string>) {
+    const { CheckoutAddressField } = await import('@/components/customer/checkout-templates/checkout-address-field')
+    const seen: Array<Record<string, string>> = []
+    function Harness() {
+      const [customerData, setCustomerData] = useState<Record<string, string>>(initial)
+      seen.push(customerData)
+      const checkout = {
+        customerData,
+        setCustomerData,
+        tenant: { ...TENANT, ...tenant },
+        formFields: [{ id: '0', field_name: 'delivery_address' }],
+        outlet: { choices: [], selectedOutletId: null },
+      } as unknown as UseCheckoutReturn
+      return <CheckoutAddressField checkout={checkout} fieldName="delivery_address" isRequired inputClassName="" labelClassName="" />
+    }
+    render(<Harness />)
+    return seen
+  }
+
+  // Owner, 2026-11-09: turned off. On Lalamove / per-km stores it let any order
+  // skip the delivery fee and the radius; the customer must drop a pin instead.
+  it('is never offered, even where a pin is needed', async () => {
+    await renderPinRequired({ lalamove_enabled: true }, { delivery_address: 'Purok 3' })
+    expect(screen.queryByRole('button', { name: "I can't find my place on the map" })).toBeNull()
+    await renderPinRequired({ distance_delivery_enabled: true }, { delivery_address: 'Purok 3' })
+    expect(screen.queryByRole('button', { name: "I can't find my place on the map" })).toBeNull()
+  })
+
+  it('ignores a mark left from an older checkout', async () => {
+    await renderPinRequired({ lalamove_enabled: true }, { delivery_address: 'Purok 3', delivery_pin_skipped: 'true' })
+    expect(screen.queryByText(/without a pin/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try the map again' })).toBeNull()
   })
 })
 

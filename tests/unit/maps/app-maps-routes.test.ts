@@ -176,6 +176,38 @@ describe('POST /api/maps/places', () => {
     expect(search).not.toHaveBeenCalled()
   })
 
+  it('charges each Apple search against the person\'s limits: two for a cleaned door address', async () => {
+    const { places } = await loadRoutes()
+
+    await places(post('/api/maps/places', { tenantId: TENANT, query: 'Blk 4 Lot 12 Camella Tanza' }))
+
+    expect(search).toHaveBeenCalledTimes(2)
+    const keys = checkRateLimit.mock.calls.map(([key]) => key)
+    expect(keys.filter((key) => key === 'maps-places:user-1')).toHaveLength(2)
+    expect(keys.filter((key) => key === 'maps-places-day:user-1')).toHaveLength(2)
+  })
+
+  it('charges once for a search that needs no cleaning', async () => {
+    const { places } = await loadRoutes()
+
+    await places(post('/api/maps/places', { tenantId: TENANT, query: 'SM North' }))
+
+    expect(search).toHaveBeenCalledTimes(1)
+    expect(checkRateLimit.mock.calls.map(([key]) => key)).toEqual(['maps-places:user-1', 'maps-places-day:user-1'])
+  })
+
+  it('refuses the second search when only one is left in the budget', async () => {
+    checkRateLimit
+      .mockResolvedValueOnce({ allowed: true, retryAfterSec: 0 })
+      .mockResolvedValueOnce({ allowed: false, retryAfterSec: 7 })
+    const { places } = await loadRoutes()
+
+    const response = await places(post('/api/maps/places', { tenantId: TENANT, query: 'Blk 4 Lot 12 Camella Tanza' }))
+
+    expect(response.status).toBe(429)
+    expect(search).not.toHaveBeenCalled()
+  })
+
   it('fails closed with 503 on a deploy without Apple Maps keys', async () => {
     readMapKitConfig.mockReturnValue(null)
     const { places } = await loadRoutes()

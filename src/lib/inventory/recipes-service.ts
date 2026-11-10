@@ -229,9 +229,23 @@ export async function deleteRecipeForTarget(
   await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
-  const { error } = await applyTargetFilter(
+  const { data: deleted, error } = await applyTargetFilter(
     supabase.from('recipes').delete().eq('tenant_id', tenantId) as never,
     target,
-  )
+  ).select('id')
   if (error) throw error
+  if (deleted && deleted.length > 0) return
+
+  // Zero rows means absent (a no-op) OR refused by RLS, and a refused recipe
+  // keeps deducting stock, so "success" would be a lie. Tell them apart.
+  const { data: remaining, error: readError } = await applyTargetFilter(
+    supabase.from('recipes').select('id').eq('tenant_id', tenantId) as never,
+    target,
+  ).limit(1)
+  if (readError) throw readError
+  if (remaining && remaining.length > 0) {
+    throw new Error(
+      'This recipe applies to every branch, so only a store-wide account with Menu access can remove it.',
+    )
+  }
 }

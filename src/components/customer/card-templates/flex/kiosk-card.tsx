@@ -6,6 +6,7 @@ import {
   AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, readableOn, tint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
+import { LowStockBadge } from '../card-stock'
 
 const KIOSK_DEFAULTS: CardStyle = {
   imageRatio: 'square',
@@ -52,6 +53,7 @@ export const KioskCard = memo(function KioskCard({
             : undefined}
           imageClassName="transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.07] group-hover:-rotate-2"
         >
+          <LowStockBadge branding={branding} />
           {!isOrderable && <SoldOutVeil />}
         </CardMedia>
       </div>

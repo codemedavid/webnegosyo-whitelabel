@@ -13,7 +13,12 @@
 import { useCallback } from "react";
 import type { QueryClient } from "@tanstack/query-core";
 import { listCategories, listProducts, type Category, type Product } from "../products";
-import { normalizeModifierGroups, type ModifierGroup, type ModifierSource } from "../modifier-groups";
+import {
+  normalizeModifierGroups,
+  unfillableRequiredGroup,
+  type ModifierGroup,
+  type ModifierSource,
+} from "../modifier-groups";
 import { resourceKey } from "../backends/query-keys";
 import { invalidateResource, useResource, type ResourceResult } from "./use-resource";
 
@@ -26,21 +31,39 @@ const STORE_WIDE = "store";
 export interface RegisterItem {
   product: Product;
   groups: ModifierGroup[];
+  /**
+   * Why the register cannot sell this right now, or null when it can. Set by
+   * the merchant's ONE "sold out" switch — the dish's own (`is_available`,
+   * branch overrides included) or a required choice with nothing left — never
+   * by a stock estimate, which only warns.
+   */
+  soldOutReason: string | null;
 }
 
 export interface PosCatalog {
-  /** Available products only — the register cannot sell what is 86'd. */
+  /**
+   * Every product, in menu order. An 86'd dish stays on the grid as a greyed
+   * "Sold out" tile (Toast's behaviour) so the cashier can tell the customer
+   * rather than hunt for it — and it cannot be added.
+   */
   items: RegisterItem[];
   categories: Category[];
 }
 
+export const DISH_SOLD_OUT_REASON =
+  "Marked sold out. Turn it back on in Products when you have it again.";
+
+function soldOutReasonFor(product: Product, groups: readonly ModifierGroup[]): string | null {
+  if (!product.is_available) return DISH_SOLD_OUT_REASON;
+  const group = unfillableRequiredGroup(groups);
+  return group ? `Every ${group.name} choice is sold out, so this can't be made right now.` : null;
+}
+
 export function buildRegisterItems(products: readonly Product[]): RegisterItem[] {
-  return products
-    .filter((product) => product.is_available)
-    .map((product) => ({
-      product,
-      groups: normalizeModifierGroups(product as unknown as ModifierSource),
-    }));
+  return products.map((product) => {
+    const groups = normalizeModifierGroups(product as unknown as ModifierSource);
+    return { product, groups, soldOutReason: soldOutReasonFor(product, groups) };
+  });
 }
 
 export async function fetchPosCatalog(

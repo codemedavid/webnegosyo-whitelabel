@@ -127,4 +127,9 @@ describe('EMBED_SANDBOX', () => {
     expect(EMBED_SANDBOX).not.toContain('allow-top-navigation')
     expect(EMBED_SANDBOX).not.toContain('allow-modals')
   })
+
+  it('keeps forms working but popups stay sandboxed', () => {
+    expect(flags).toContain('allow-forms')
+    expect(flags).not.toContain('allow-popups-to-escape-sandbox')
+  })
 })

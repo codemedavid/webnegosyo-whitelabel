@@ -3,6 +3,7 @@ import { unsubscribePageFromWebhook } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
 import { getTenantPageByPageId } from '@/lib/facebook/page-tokens'
 import { canManageFacebook } from '@/lib/facebook/management-access'
+import { isSameOriginRequest } from '@/lib/http/same-origin'
 import type { Database } from '@/types/database'
 
 type AppUser = Database['public']['Tables']['app_users']['Row']
@@ -13,6 +14,10 @@ type AppUser = Database['public']['Tables']['app_users']['Row']
  * Unsubscribes from webhook and removes connection
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOriginRequest(request.headers)) {
+    return NextResponse.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 })
+  }
+
   try {
     const body = await request.json()
     const { tenant_id, page_id } = body

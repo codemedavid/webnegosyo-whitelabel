@@ -67,7 +67,7 @@ async function depletionItemsFor(payload: unknown[]): Promise<DepletionOrderItem
     items: parsed.lines,
     outletId: null,
     loyverse: null,
-    notice: { orderTypeName: null, deliveryFee: 0, serviceCharge: 0, paymentMethodName: null, customerData: undefined },
+    notice: { orderTypeName: null, deliveryFee: 0, serviceCharge: 0, orderTotal: 0, paymentMethodName: null, customerData: undefined },
   }, (task) => { void task() })
   return applyOrderStockBestEffort.mock.calls[0][2] as DepletionOrderItem[]
 }

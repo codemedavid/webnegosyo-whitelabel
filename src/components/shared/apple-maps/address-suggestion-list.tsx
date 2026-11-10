@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { MapPin } from 'lucide-react'
+import type { AddressFieldTheme } from '../address-field-theme'
 import type { AddressSuggestion } from './use-apple-address-search'
 
 interface AddressSuggestionListProps {
@@ -11,6 +12,8 @@ interface AddressSuggestionListProps {
   /** Index of the keyboard-highlighted option, or -1. */
   activeIndex: number
   onSelect: (suggestion: AddressSuggestion) => void
+  /** Themed page colours (the checkout); absent = the standard white list. */
+  theme?: AddressFieldTheme
 }
 
 export function suggestionOptionId(listId: string, index: number): string {
@@ -62,7 +65,7 @@ export function useSuggestionKeyboard(
   return { activeIndex, onKeyDown }
 }
 
-export function AddressSuggestionList({ id, suggestions, activeIndex, onSelect }: AddressSuggestionListProps) {
+export function AddressSuggestionList({ id, suggestions, activeIndex, onSelect, theme }: AddressSuggestionListProps) {
   // Keep the highlighted option in view while arrowing through a long list.
   useEffect(() => {
     if (activeIndex < 0) return
@@ -76,7 +79,7 @@ export function AddressSuggestionList({ id, suggestions, activeIndex, onSelect }
       id={id}
       role="listbox"
       aria-label="Address suggestions"
-      className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+      className={`absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border ${theme?.dropdown ?? 'border-gray-200 bg-white'} py-1 shadow-lg`}
     >
       {suggestions.map((suggestion, index) => {
         const isActive = index === activeIndex
@@ -91,10 +94,10 @@ export function AddressSuggestionList({ id, suggestions, activeIndex, onSelect }
               event.preventDefault()
               onSelect(suggestion)
             }}
-            className={`flex cursor-pointer items-start gap-2 px-4 py-2 text-left hover:bg-gray-50 ${isActive ? 'bg-gray-100' : ''}`}
+            className={`flex cursor-pointer items-start gap-2 px-4 py-2 text-left ${theme?.option ?? 'hover:bg-gray-50'} ${isActive ? (theme?.optionActive ?? 'bg-gray-100') : ''}`}
           >
-            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
-            <span className="text-sm text-gray-900">{suggestion.label}</span>
+            <MapPin className={`mt-0.5 h-4 w-4 shrink-0 ${theme?.icon ?? 'text-gray-400'}`} aria-hidden="true" />
+            <span className={`text-sm ${theme?.optionText ?? 'text-gray-900'}`}>{suggestion.label}</span>
           </li>
         )
       })}

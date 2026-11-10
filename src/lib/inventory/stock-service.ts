@@ -12,16 +12,20 @@
  * happened to be holding.
  */
 
+import { invalidateStockCeilings } from '@/lib/inventory/ceilings-cache'
 import { createClient } from '@/lib/supabase/server'
+import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import { auditManualMovement, type ManualMovementAudit } from '@/lib/inventory/stock-audit-service'
 import type { StockAuditSource } from '@/lib/inventory/stock-audit'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { INVENTORY_ITEM_COLUMNS, STOCK_MOVEMENT_COLUMNS } from '@/lib/inventory/cost-columns'
+import { withItemCosts, withMovementCosts } from '@/lib/inventory/item-costs'
 import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import {
   canSeeCosts,
+  withoutUnitCost,
   movementInputForCaller,
   movementResultForCaller,
-  withoutUnitCost,
 } from '@/lib/inventory/cost-visibility'
 import type { InventoryItem, InventoryUnitRow, StockMovement } from '@/types/database'
 import {
@@ -64,7 +68,7 @@ async function notifyStockLevelChanges(
     const { processStockLevelChanges } = await import('@/lib/inventory/stock-alerts-service')
     await processStockLevelChanges(tenantId, items, deltas, outletId)
   } catch (error) {
-    console.error('[inventory] Stock level alerting failed', tenantId, error)
+    reportStockFailure({ tenantId, operation: 'stock_level_alerting' }, error)
   }
 }
 
@@ -100,15 +104,18 @@ export async function getStockMovements(
 
   const { data, error } = await supabase
     .from('stock_movements')
-    .select('*')
+    .select(STOCK_MOVEMENT_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('inventory_item_id', inventoryItemId)
     .order('created_at', { ascending: false })
     .limit(limit)
 
   if (error) throw error
-  const rows = (data ?? []) as unknown as StockMovement[]
-  return canSeeCosts(userRole) ? rows : withoutUnitCost(rows)
+  const rows = (data ?? []) as unknown as Array<Omit<StockMovement, 'unit_cost'>>
+  // The delivery price is `costs`: read only for a holder, through the gated reader.
+  if (canSeeCosts(userRole)) return withMovementCosts(supabase, tenantId, rows)
+  // Not selected, and stripped anyway: a price must never reach an account without `costs`.
+  return withoutUnitCost(rows as Array<Partial<StockMovement>>) as unknown as StockMovement[]
 }
 
 /**
@@ -123,7 +130,13 @@ export async function recordStockMovement(
   const { userRole } = await requireGrant(tenantId, 'inventory', 'create', PERMISSION_REFUSALS.recordStock)
   const supabase = await createClient()
   const result = await recordStockMovementWith(supabase, tenantId, movementInputForCaller(input, userRole))
-  return movementResultForCaller(result, userRole)
+  if (!canSeeCosts(userRole)) return movementResultForCaller(result, userRole)
+
+  // A `costs` holder sees the prices: the ledger's own figure for the movement
+  // and the ingredient's blended cost, through the gated readers.
+  const [movement] = await withMovementCosts(supabase, tenantId, [result.movement])
+  const [item] = await withItemCosts(supabase, tenantId, [result.item])
+  return movementResultForCaller({ ...result, movement, item }, userRole)
 }
 
 /**
@@ -291,6 +304,18 @@ export async function recordStockMovementWith(
   input: StockMovementInput,
   actor?: MovementActor,
 ): Promise<StockMovementResult> {
+  const result = await writeStockMovement(supabase, tenantId, input, actor)
+  // The shelf changed: diners' cached ceilings (`ceilings-cache.ts`) are dropped. Never throws.
+  await invalidateStockCeilings(tenantId)
+  return result
+}
+
+async function writeStockMovement(
+  supabase: StockMovementClient,
+  tenantId: string,
+  input: StockMovementInput,
+  actor?: MovementActor,
+): Promise<StockMovementResult> {
   const validated = stockMovementInputSchema.parse(input)
 
   // Throws for a manager naming somebody else's shop, before anything is read
@@ -313,12 +338,15 @@ export async function recordStockMovementWith(
 
   const { data: itemRow, error: itemError } = await supabase
     .from('inventory_items')
-    .select('*')
+    .select(INVENTORY_ITEM_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('id', validated.inventory_item_id)
     .single()
   if (itemError) throw itemError
-  const item = itemRow as unknown as InventoryItem
+  // Nothing on this path reads the price (the ledger blends it under the row
+  // lock), so the item is carried without it; results that reach a caller get it
+  // back through `itemForResult`.
+  const item = { ...(itemRow as unknown as Omit<InventoryItem, 'unit_cost'>), unit_cost: 0 } as InventoryItem
 
   const { data: unitRows, error: unitError } = await supabase
     .from('inventory_units')
@@ -406,7 +434,7 @@ export async function recordStockMovementWith(
       inventory_count_id: validated.inventory_count_id ?? null,
       client_request_id: validated.client_request_id ?? null,
     } as never)
-    .select()
+    .select(STOCK_MOVEMENT_COLUMNS)
     .single()
   if (movementError) {
     // The unique index on (tenant_id, client_request_id) refused a retry of a
@@ -417,7 +445,9 @@ export async function recordStockMovementWith(
     }
     throw movementError
   }
-  const movement = movementRow as unknown as StockMovement
+  // Prices are not part of this result: they come back through the `costs`-gated
+  // reader, added by `recordStockMovement` for a caller who holds the key.
+  const movement = { ...(movementRow as unknown as Omit<StockMovement, 'unit_cost'>), unit_cost: null } as StockMovement
 
   // A delivery's price is blended into the average cost by the ledger trigger,
   // under the row lock, from the per-stock-unit price written above
@@ -440,13 +470,13 @@ export async function recordStockMovementWith(
 
   const { data: updatedRow, error: refreshError } = await supabase
     .from('inventory_items')
-    .select('*')
+    .select(INVENTORY_ITEM_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('id', validated.inventory_item_id)
     .single()
   if (refreshError) throw refreshError
 
-  return { movement, item: updatedRow as unknown as InventoryItem }
+  return { movement, item: { ...(updatedRow as unknown as Omit<InventoryItem, 'unit_cost'>), unit_cost: 0 } }
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -462,7 +492,7 @@ async function readAlreadyRecorded(
 ): Promise<StockMovementResult> {
   const { data: original, error } = await supabase
     .from('stock_movements')
-    .select('*')
+    .select(STOCK_MOVEMENT_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('client_request_id', clientRequestId)
     .single()
@@ -470,14 +500,14 @@ async function readAlreadyRecorded(
 
   const { data: current } = await supabase
     .from('inventory_items')
-    .select('*')
+    .select(INVENTORY_ITEM_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('id', item.id)
     .single()
 
   return {
-    movement: original as unknown as StockMovement,
-    item: (current ?? item) as unknown as InventoryItem,
+    movement: { ...(original as unknown as Omit<StockMovement, 'unit_cost'>), unit_cost: null } as StockMovement,
+    item: current ? { ...(current as unknown as Omit<InventoryItem, 'unit_cost'>), unit_cost: 0 } : item,
     alreadyRecorded: true,
   }
 }

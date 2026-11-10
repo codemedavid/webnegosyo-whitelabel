@@ -119,6 +119,15 @@ describe("syncOrderEdits", () => {
     expect(result).toMatchObject({ synced: 1, refused: 1 });
   });
 
+  it("records the reason a production deployment carries in its error data", async () => {
+    const mutate = jest.fn().mockRejectedValue(
+      Object.assign(new Error("[Request ID: 5f2] Server Error"), { data: "Unauthorized: unauthenticated" })
+    );
+    const { deps } = setup([edit("e1")], { mutate });
+    await syncOrderEdits(deps);
+    expect(deps.recordFailure).toHaveBeenCalledWith("e1", "Unauthorized: unauthenticated");
+  });
+
   it("skips changes refused too many times", async () => {
     const { deps } = setup([edit("e1", { attempts: MAX_EDIT_ATTEMPTS })]);
 

@@ -159,5 +159,6 @@ export function useStorefrontMenu({ tenant, categories, allMenuItems: storeWideM
     isCartOpen, openCart: () => setIsCartOpen(true), closeCart: () => setIsCartOpen(false),
     selectedBundle, closeBundle: () => setSelectedBundle(null),
     sheetItem, closeProduct: () => setSheetItem(null), selectItem: handleItemSelect,
+    selectedOutletId: branchSelection.outlet?.id ?? null,
   }
 }

@@ -4,12 +4,12 @@ import { useState, type DragEvent } from 'react'
 import { ChevronRight, Columns3, EyeOff, GripVertical, LayoutPanelTop } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { WIDGET_DEFAULTS } from '@/lib/hero-builder/defaults'
 import { resolveStyle } from '@/lib/hero-builder/resolve'
 import { findNode } from '@/lib/hero-builder/tree-ops'
 import type { Responsive } from '@/lib/hero-builder/types'
 
 import { DRAG_MOVE } from '../canvas'
+import { widgetLabel } from '../widget-label'
 import type { HeroBuilderApi } from '../use-hero-builder'
 
 const DRAG_SECTION = 'application/x-hb-section'
@@ -97,7 +97,7 @@ export function LayersPanel({ api }: { api: HeroBuilderApi }) {
                   )}
                   <div className={cn(section.columns.length > 1 && 'ml-4')}>
                     {column.widgets.map((widget) => {
-                      const Label = WIDGET_DEFAULTS[widget.kind]?.label ?? widget.kind
+                      const Label = widgetLabel(widget)
                       const preview = textPreview(widget.content)
                       return (
                         <div

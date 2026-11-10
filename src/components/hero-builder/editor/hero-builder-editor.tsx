@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import {
@@ -11,11 +11,14 @@ import {
 import { cn } from '@/lib/utils'
 import { CANVAS_WIDTH, THEME_COLOR_FALLBACK, THEME_COLOR_KEYS } from '@/lib/hero-builder/constants'
 import { createBlankDesign } from '@/lib/hero-builder/defaults'
+import { settleAction } from '@/lib/hero-builder/settle-action'
 import type { LinkCatalog } from '@/lib/hero-builder/link-catalog'
 import { loadHeroDesign } from '@/lib/hero-builder/load'
 import { cssColor } from '@/lib/hero-builder/safe-values'
 import type { Device, HeroDesignV5 } from '@/lib/hero-builder/types'
+import { PAGE_META } from '@/lib/page-designer/pages'
 import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
+import { PageRuntimeProvider } from '@/components/hero-builder/renderer/page-runtime'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -24,11 +27,12 @@ import { Canvas } from './canvas'
 import { Inspector } from './inspector/inspector'
 import { LinkCatalogProvider, LinkSurfaceProvider } from './inspector/link-picker'
 import { AddPanel } from './panels/add-panel'
+import { PAGE_NODE_POLICY } from './page-policy'
 import { LayersPanel } from './panels/layers-panel'
 import { ThemePanel } from './panels/theme-panel'
 import { HERO_SURFACE, type BuilderSurface } from './surface'
 import { TemplateGallery } from './template-gallery'
-import { useHeroBuilder } from './use-hero-builder'
+import { useHeroBuilder, type HeroBuilderApi } from './use-hero-builder'
 
 const DRAFT_SAVE_DELAY_MS = 800
 
@@ -46,6 +50,15 @@ interface HeroBuilderEditorProps {
   surface?: BuilderSurface
   /** Where "View live" opens. */
   liveHref?: string
+  /** Extra controls after the title (the Page Designer's page tabs). */
+  toolbarSlot?: ReactNode
+  /**
+   * Page Designer: the page's Look (its Branding Studio colours and wording),
+   * shown as the left "Look" tab above the theme. Look edits count as
+   * unpublished changes and are saved by the surface's publish.
+   */
+  /** Page Designer: the page's own Look tab (it can edit the design, e.g. the page style). */
+  look?: { panel: (api: HeroBuilderApi) => ReactNode; hasChanges: boolean }
 }
 
 type LeftTab = 'add' | 'layers' | 'theme'
@@ -78,11 +91,17 @@ export function HeroBuilderEditor({
   linkCatalog,
   surface = HERO_SURFACE,
   liveHref = `/${tenantSlug}/menu`,
+  toolbarSlot,
+  look,
 }: HeroBuilderEditorProps) {
-  const start = useMemo(() => initialDesign ?? createBlankDesign(), [initialDesign])
-  const api = useHeroBuilder(start)
-  const [leftTab, setLeftTab] = useState<LeftTab>(initialDesign?.sections.length ? 'layers' : 'add')
-  const [showTemplates, setShowTemplates] = useState(!initialDesign?.sections.length)
+  const page = surface.page
+  const start = useMemo(() => initialDesign ?? page?.standardDesign() ?? createBlankDesign(), [initialDesign, page])
+  const api = useHeroBuilder(start, page ? PAGE_NODE_POLICY : undefined)
+  const [leftTab, setLeftTab] = useState<LeftTab>(initialDesign?.sections.length || page ? 'layers' : 'add')
+  const [showTemplates, setShowTemplates] = useState(!initialDesign?.sections.length && !page)
+  const pageStates = page ? PAGE_META[page.id].states : []
+  const [pageState, setPageState] = useState<string | null>(pageStates[0]?.id ?? null)
+  const pageRuntime = useMemo(() => page?.runtime(pageState) ?? null, [page, pageState])
   const [showPreview, setShowPreview] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<Device>('desktop')
   const [contentRequest, setContentRequest] = useState(0)
@@ -93,7 +112,9 @@ export function HeroBuilderEditor({
   const draftKey = `${surface.draftPrefix}:${tenantId}`
 
   const designJson = useMemo(() => JSON.stringify(api.design), [api.design])
-  const hasUnpublishedChanges = designJson !== (publishedJson ?? JSON.stringify(start))
+  const startJson = useMemo(() => JSON.stringify(start), [start])
+  const hasDesignChanges = designJson !== (publishedJson ?? startJson)
+  const hasUnpublishedChanges = hasDesignChanges || !!look?.hasChanges
 
   // ── Crash-safe local draft ────────────────────────────────────────────────
   const offeredDraft = useRef(false)
@@ -108,14 +129,16 @@ export function HeroBuilderEditor({
     }
     const draft = saved ? loadHeroDesign(saved) : null
     if (!draft || JSON.stringify(draft) === JSON.stringify(start)) return
+    // Stays until answered: switching pages lands here, and a timed offer was easy to miss.
     toast('You have unsaved work from last time', {
-      duration: 15_000,
+      duration: Infinity,
+      closeButton: true,
       action: { label: 'Restore', onClick: () => api.replaceDesign(draft) },
     })
   }, [api, draftKey, start])
 
   useEffect(() => {
-    if (!hasUnpublishedChanges) return
+    if (!hasDesignChanges) return
     const timer = window.setTimeout(() => {
       try {
         window.localStorage.setItem(draftKey, designJson)
@@ -124,7 +147,7 @@ export function HeroBuilderEditor({
       }
     }, DRAFT_SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [designJson, draftKey, hasUnpublishedChanges])
+  }, [designJson, draftKey, hasDesignChanges])
 
   useEffect(() => {
     if (!hasUnpublishedChanges) return
@@ -136,7 +159,7 @@ export function HeroBuilderEditor({
   // ── Publishing ────────────────────────────────────────────────────────────
   const publish = useCallback(() => {
     startTransition(async () => {
-      const result = await surface.publish({ tenantId, tenantSlug }, api.design)
+      const result = await settleAction(() => surface.publish({ tenantId, tenantSlug }, api.design), 'publish')
       if (!result.success) {
         toast.error(result.error ?? 'Could not publish')
         return
@@ -154,7 +177,7 @@ export function HeroBuilderEditor({
 
   const unpublish = useCallback(() => {
     startTransition(async () => {
-      const result = await surface.unpublish({ tenantId, tenantSlug })
+      const result = await settleAction(() => surface.unpublish({ tenantId, tenantSlug }), 'unpublish')
       if (!result.success) {
         toast.error(result.error ?? 'Could not update the storefront')
         return
@@ -168,9 +191,16 @@ export function HeroBuilderEditor({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey
+      // The preview, the templates and any dialog sit over the canvas: its shortcuts must not act behind them.
+      if (showPreview && event.key === 'Escape') {
+        setShowPreview(false)
+        return
+      }
+      if (showPreview || showTemplates || document.querySelector('[role="dialog"]')) return
       if (mod && event.key.toLowerCase() === 's') {
         event.preventDefault()
-        publish()
+        // Exactly when the Publish button can be pressed.
+        if (!isPending && api.design.sections.length > 0 && (!isLive || hasUnpublishedChanges)) publish()
         return
       }
       if (isEditableTarget(event.target)) return
@@ -193,7 +223,7 @@ export function HeroBuilderEditor({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [api, publish])
+  }, [api, publish, showPreview, showTemplates, isPending, isLive, hasUnpublishedChanges])
 
   const status = !isLive
     ? { label: 'Not live', className: 'bg-neutral-100 text-neutral-600' }
@@ -203,15 +233,17 @@ export function HeroBuilderEditor({
 
   const rootStyle = { ...brandStyle, ...themeVarStyle(api.design) }
 
-  return (
+  const editor = (
     <div className="flex h-dvh flex-col bg-neutral-50 text-neutral-900" style={rootStyle}>
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-3">
         <Link href={`/${tenantSlug}/admin`} className="flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-neutral-600 hover:bg-neutral-100" title="Back to admin">
           <ArrowLeft className="h-4 w-4" />
-          <span className="hidden font-semibold text-neutral-900 md:inline">{surface.title}</span>
+          <span className="hidden font-semibold text-neutral-900 2xl:inline">{surface.title}</span>
         </Link>
         <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline', status.className)}>{status.label}</span>
+        {/* Page tabs and per-page settings scroll in their own strip, so they can never push Publish off screen. */}
+        {toolbarSlot && <div className="flex min-w-0 shrink items-center gap-2 overflow-x-auto">{toolbarSlot}</div>}
         <button type="button" onClick={() => setPanels((p) => ({ ...p, left: !p.left }))} className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 lg:hidden" aria-label="Toggle elements panel">
           <PanelLeft className="h-4 w-4" />
         </button>
@@ -228,10 +260,28 @@ export function HeroBuilderEditor({
               className={cn('flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition', api.device === device ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-900')}
             >
               <Icon className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">{label}</span>
+              <span className="hidden 2xl:inline">{label}</span>
             </button>
           ))}
         </div>
+
+        {pageStates.length > 0 && (
+          <label className="hidden min-w-0 shrink items-center gap-1.5 text-xs font-medium text-neutral-600 md:flex" title="Preview the page at this stage — for elements with “Show when”">
+            <span className="hidden 2xl:inline">Showing</span>
+            <select
+              value={pageState ?? ''}
+              onChange={(e) => setPageState(e.target.value || null)}
+              className="h-8 min-w-0 max-w-40 rounded-md border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-800"
+              aria-label="Order stage to preview"
+            >
+              {pageStates.map((state) => (
+                <option key={state.id} value={state.id}>
+                  {state.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div className="flex items-center gap-1">
           <button type="button" onClick={api.undo} disabled={!api.canUndo} title="Undo (⌘Z)" aria-label="Undo" className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 disabled:opacity-30">
@@ -240,8 +290,8 @@ export function HeroBuilderEditor({
           <button type="button" onClick={api.redo} disabled={!api.canRedo} title="Redo (⌘⇧Z)" aria-label="Redo" className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 disabled:opacity-30">
             <Redo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setShowTemplates(true)} className="hidden h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 md:flex">
-            <LayoutTemplate className="h-4 w-4" /> Templates
+          <button type="button" onClick={() => setShowTemplates(true)} title="Templates" aria-label="Templates" className="hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 md:flex">
+            <LayoutTemplate className="h-4 w-4" /> <span className="hidden 2xl:inline">Templates</span>
           </button>
           <button
             type="button"
@@ -267,11 +317,11 @@ export function HeroBuilderEditor({
               <DropdownMenuItem
                 className="text-red-600"
                 onClick={() => {
-                  api.replaceDesign(createBlankDesign())
+                  api.replaceDesign(page ? page.standardDesign() : createBlankDesign())
                   toast('Started over. Undo brings your design back; nothing changes on the storefront until you publish.')
                 }}
               >
-                Start over (blank)
+                {page ? 'Reset to standard page' : 'Start over (blank)'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -304,7 +354,7 @@ export function HeroBuilderEditor({
             {([
               { tab: 'add', label: 'Add', icon: Plus },
               { tab: 'layers', label: 'Layers', icon: Layers },
-              { tab: 'theme', label: 'Theme', icon: Palette },
+              { tab: 'theme', label: look ? 'Look' : 'Theme', icon: Palette },
             ] as const).map(({ tab, label, icon: Icon }) => (
               <button
                 key={tab}
@@ -321,12 +371,25 @@ export function HeroBuilderEditor({
           <div className="min-h-0 flex-1 overflow-y-auto">
             {leftTab === 'add' && <AddPanel api={api} groups={surface.addGroups} presets={surface.sectionPresets} />}
             {leftTab === 'layers' && <LayersPanel api={api} />}
-            {leftTab === 'theme' && <ThemePanel api={api} />}
+            {leftTab === 'theme' && (
+              <>
+                {look?.panel(api)}
+                {look && <p className="px-4 pt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">Text, buttons &amp; images you add</p>}
+                <ThemePanel api={api} />
+              </>
+            )}
           </div>
         </aside>
 
         {/* ── Canvas ──────────────────────────────────────────────────── */}
-        <main className="min-w-0 flex-1" onClick={() => setPanels({ left: false, right: false })}>
+        <main className="relative min-w-0 flex-1" onClick={() => setPanels({ left: false, right: false })}>
+          {surface.Banner && (
+            <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+              <div className="pointer-events-auto w-full max-w-xl">
+                <surface.Banner api={api} target={{ tenantId, tenantSlug }} isUnchanged={designJson === startJson} />
+              </div>
+            </div>
+          )}
           <Canvas
             api={api}
             onEditContent={() => setContentRequest((n) => n + 1)}
@@ -356,15 +419,17 @@ export function HeroBuilderEditor({
         hasContent={api.design.sections.length > 0}
         templates={surface.templates}
         categories={surface.templateCategories}
+        categoryLabels={surface.templateCategoryLabels}
         preview={surface.templatePreview}
-        onPick={(design) => {
+        onPick={(design, template) => {
           api.replaceDesign(design)
+          surface.onTemplatePicked?.(template.id, { tenantId, tenantSlug })
           setLeftTab('layers')
         }}
       />
 
       {showPreview && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-neutral-900/95" role="dialog" aria-label="Preview">
+        <div className="fixed inset-0 z-50 flex flex-col bg-neutral-900/95" role="dialog" aria-modal="true" aria-label="Preview">
           <div className="flex h-14 shrink-0 items-center justify-between px-4 text-white">
             <p className="text-sm font-semibold">Preview</p>
             <div className="flex gap-1 rounded-lg bg-white/10 p-1">
@@ -380,13 +445,13 @@ export function HeroBuilderEditor({
                 </button>
               ))}
             </div>
-            <button type="button" onClick={() => setShowPreview(false)} className="rounded-md p-2 hover:bg-white/10" aria-label="Close preview">
+            <button type="button" autoFocus onClick={() => setShowPreview(false)} className="rounded-md p-2 hover:bg-white/10" aria-label="Close preview">
               <X className="h-5 w-5" />
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-4 pb-6">
             <div
-              className="mx-auto overflow-hidden rounded-xl bg-[var(--brand-background,#fff)] shadow-2xl transition-[width] duration-300"
+              className="mx-auto overflow-hidden rounded-xl bg-[var(--hb-canvas-bg,var(--brand-background,#fff))] shadow-2xl transition-[width] duration-300"
               style={{ width: previewDevice === 'desktop' ? '100%' : CANVAS_WIDTH[previewDevice], maxWidth: '100%' }}
             >
               <HeroBuilderRenderer design={api.design} />
@@ -401,4 +466,5 @@ export function HeroBuilderEditor({
       )}
     </div>
   )
+  return pageRuntime ? <PageRuntimeProvider value={pageRuntime}>{editor}</PageRuntimeProvider> : editor
 }

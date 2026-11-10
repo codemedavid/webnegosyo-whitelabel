@@ -54,7 +54,8 @@ async function readLinkedItems(
 
   const { data, error }: QueryResult = await client
     .from('menu_items')
-    .select('id, name, price, discounted_price')
+    // `is_available`: a linked option is unorderable while its dish is switched off.
+    .select('id, name, price, discounted_price, is_available')
     .eq('tenant_id', tenantId)
     .in('id', ids)
   if (error) return { ok: false }

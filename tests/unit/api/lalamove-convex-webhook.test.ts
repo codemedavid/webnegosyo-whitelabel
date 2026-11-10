@@ -93,3 +93,52 @@ test.each([
 
   expect(response.status).toBe(500)
 })
+
+describe('per-tenant webhook signature', () => {
+  function signedRequest(sig: string, tenantId = TENANT_ID) {
+    return new NextRequest(
+      `https://example.test/api/lalamove-convex?sig=${sig}&tenant_id=${tenantId}&order_id=order-1`,
+      { method: 'POST', body: JSON.stringify({ orderId: 'rider-1', status: 'ON_GOING' }) },
+    )
+  }
+
+  test('accepts the HMAC of this tenant, and logs nothing', async () => {
+    const { signLalamoveWebhook } = await import('@/lib/lalamove-webhook-auth')
+    const legacyLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await POST(signedRequest(signLalamoveWebhook('test-secret', TENANT_ID)))
+
+    expect(res.status).toBe(200)
+    expect(legacyLog).not.toHaveBeenCalled()
+    legacyLog.mockRestore()
+  })
+
+  test("refuses another tenant's signature", async () => {
+    const { signLalamoveWebhook } = await import('@/lib/lalamove-webhook-auth')
+    const other = '00000000-0000-4000-8000-000000000002'
+
+    const res = await POST(signedRequest(signLalamoveWebhook('test-secret', other)))
+
+    expect(res.status).toBe(401)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  test('a signature never derives from an unset platform secret', async () => {
+    delete process.env.LALAMOVE_WEBHOOK_SECRET
+    const { signLalamoveWebhook } = await import('@/lib/lalamove-webhook-auth')
+
+    const res = await POST(signedRequest(signLalamoveWebhook('', TENANT_ID)))
+
+    expect(res.status).toBe(401)
+  })
+
+  test('the old platform-secret URL still works during the transition, and says so in the logs', async () => {
+    const legacyLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await POST(request({ orderId: 'rider-1', status: 'ON_GOING' }))
+
+    expect(res.status).toBe(200)
+    expect(legacyLog.mock.calls.flat().join(' ')).toContain('legacy platform secret')
+    legacyLog.mockRestore()
+  })
+})

@@ -12,6 +12,7 @@
 
 import type { ModifierGroup } from "./modifier-groups";
 import type { OrderDiscountLine } from "./order-totals";
+import { toPrintableText } from "./printable-text";
 
 /** One chosen modifier option, flattened for the cart line. */
 export interface PosCartSelection {
@@ -213,6 +214,70 @@ export function updateQty(
 ): PosCartLine[] {
   if (quantity <= 0) return removeLine(cart, key);
   return cart.map((line) => (line.key === key ? priceLine(line, quantity) : line));
+}
+
+/**
+ * The longest kitchen note a line may carry. Matches the checkout's
+ * `MAX_SPECIAL_INSTRUCTIONS_LENGTH` (src/lib/checkout/order-line-schema.ts),
+ * so a note typed at the counter fits wherever a web note does.
+ */
+export const MAX_LINE_NOTE_LENGTH = 1000;
+
+/**
+ * A note as a line stores it: printer control characters stripped
+ * (`toPrintableText`), trimmed, capped, and blank meaning none.
+ */
+export function normalizeLineNote(note: string | null | undefined): string | undefined {
+  const trimmed = toPrintableText(note ?? "").trim().slice(0, MAX_LINE_NOTE_LENGTH).trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** The key `line` would have with `note` instead of its own. */
+export function lineKeyWithNote(line: PosLineInput, note: string | null | undefined): string {
+  return lineKey(line.menuItemId, line.selections, normalizeLineNote(note), line.carryover);
+}
+
+/** The line's input with `note` in place of its own (absent when blank). */
+function withNote(line: PosCartLine, note: string | undefined): PosLineInput {
+  const { key: _key, unitPrice: _unit, subtotal: _subtotal, note: _old, ...input } = line;
+  void _key;
+  void _unit;
+  void _subtotal;
+  void _old;
+  return note ? { ...input, note } : input;
+}
+
+/**
+ * Write (or, with a blank note, clear) the kitchen note on one line.
+ *
+ * The note is part of the line's identity, so the line is re-keyed. When a
+ * line with the new identity already exists the two merge, quantities added,
+ * at the edited line's place in the cart — the same stacking `addLine` does.
+ * An unknown key or an unchanged note returns the cart untouched.
+ *
+ * Whatever else is held by line key (item discounts, voucher unit picks,
+ * Senior/PWD claims) is moved by the store with `lib/pos-line-rekey.ts`.
+ */
+export function setLineNote(
+  cart: PosCartLine[],
+  key: string,
+  note: string | null | undefined,
+): PosCartLine[] {
+  const line = cart.find((entry) => entry.key === key);
+  if (!line) return cart;
+
+  const normalized = normalizeLineNote(note);
+  if (normalized === line.note) return cart;
+
+  const input = withNote(line, normalized);
+  const nextKey = lineKeyWithNote(line, normalized);
+  const twin = cart.find((entry) => entry.key === nextKey && entry.key !== key);
+  const quantity = line.quantity + (twin?.quantity ?? 0);
+  const rewritten = priceLine(input, quantity);
+
+  return cart
+    .filter((entry) => entry !== twin)
+    .map((entry) => (entry.key === key ? rewritten : entry));
 }
 
 export function removeLine(cart: PosCartLine[], key: string): PosCartLine[] {

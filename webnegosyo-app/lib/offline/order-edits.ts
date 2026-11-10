@@ -16,6 +16,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { OrderBackend } from "../order-backend";
 import { isSignedOutRefusal } from "./order-outbox";
+import { isTokenRefusalMessage } from "./network-error";
 
 export const ORDER_EDITS_STORAGE_KEY = "pos_offline_order_edits_v1";
 
@@ -160,11 +161,18 @@ export function removeOrderEdit(editId: string): Promise<void> {
   );
 }
 
+/** A refusal for want of a session token costs no attempt, as for a sale. */
 export function recordOrderEditFailure(editId: string, message: string): Promise<void> {
   return updateEdits((edits) =>
     edits.some((edit) => edit.editId === editId)
       ? edits.map((edit) =>
-          edit.editId === editId ? { ...edit, attempts: edit.attempts + 1, lastError: message } : edit
+          edit.editId === editId
+            ? {
+                ...edit,
+                attempts: isTokenRefusalMessage(message) ? edit.attempts : edit.attempts + 1,
+                lastError: message,
+              }
+            : edit
         )
       : edits
   );

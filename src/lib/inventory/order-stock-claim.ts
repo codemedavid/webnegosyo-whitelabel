@@ -1,22 +1,16 @@
 /**
- * Idempotency for order-driven stock movements.
+ * Idempotency for order-driven stock movements: reading and reasoning about
+ * the claims in `order_stock_applications` (unique per tenant, order, reason,
+ * kind, revision).
  *
- * Both ledger writers used to guard themselves by SELECTing for an existing
- * movement and inserting when there was none. Under concurrency that is not a
- * guard: N parallel calls all read "none" and all insert. The database has to
- * be the one saying no, which is what `order_stock_applications` and its unique
- * index (migration 20260805120000) are for — this module is the thin pair of
- * calls around it.
- *
- * The claim is taken BEFORE the ledger is written and released if that write
- * fails, so a crash mid-depletion leaves the order retryable rather than
- * permanently marked as done with its stock never moved.
+ * Claims are WRITTEN only by `apply_order_stock_claim`
+ * (`order-stock-commit.ts`), together with their ledger rows in one
+ * transaction. They used to be an INSERT before the ledger write and a DELETE
+ * after a failed one; a crash or a lost response between the two either
+ * stranded the order un-depleted or deducted it twice.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-
-/** Postgres unique_violation: another caller claimed this order first. */
-const UNIQUE_VIOLATION = '23505'
 
 /** The two directions stock moves for an order. Mirrors the ledger's reasons. */
 export type OrderStockDirection = 'sale' | 'void'
@@ -38,34 +32,6 @@ export type OrderStockClaimKind = 'order' | 'edit'
  * tenant scoping is this module's job, not RLS's, and every call filters on it.
  */
 type ClaimClient = Pick<SupabaseClient, 'from'>
-
-/**
- * Try to become the one caller that applies this order's stock in this
- * direction. Returns false when someone else already has.
- *
- * A losing race is a normal outcome, not a failure. Any OTHER database error
- * throws: reading an outage as "already applied" would silently skip depletion
- * for a real sale, which is the exact failure this guard exists to prevent.
- */
-export async function claimOrderStockApplication(
-  supabase: ClaimClient,
-  tenantId: string,
-  orderId: string,
-  reason: OrderStockDirection,
-  revision: number = 0,
-  kind: OrderStockClaimKind = 'order',
-): Promise<boolean> {
-  const { error } = await supabase
-    .from('order_stock_applications')
-    .insert({ tenant_id: tenantId, order_id: orderId, reason, revision, kind } as never)
-
-  if (!error) return true
-  if (error.code === UNIQUE_VIOLATION) {
-    console.warn('[inventory] Stock already applied for order', { orderId, reason, revision, kind })
-    return false
-  }
-  throw error
-}
 
 /** One claim row, as narrow as revision arithmetic needs it. */
 export interface OrderStockClaimRow {
@@ -118,30 +84,6 @@ export async function listOrderStockClaims(
     kind: row.kind === 'edit' ? 'edit' : 'order',
     restored: Array.isArray(row.restored) ? row.restored : null,
   }))
-}
-
-/**
- * Remember on a cancellation's claim exactly what it put back.
- *
- * Throws on failure: the caller decides whether a missing record matters (an
- * un-cancel without it falls back to recomputing from the order's lines).
- */
-export async function recordRestoredMovements(
-  supabase: Pick<SupabaseClient, 'from'>,
-  tenantId: string,
-  orderId: string,
-  revision: number,
-  restored: readonly RestoredMovement[],
-): Promise<void> {
-  const { error } = await supabase
-    .from('order_stock_applications')
-    .update({ restored } as never)
-    .eq('tenant_id', tenantId)
-    .eq('order_id', orderId)
-    .eq('reason', 'void')
-    .eq('kind', 'order')
-    .eq('revision', revision)
-  if (error) throw error
 }
 
 /**
@@ -274,39 +216,4 @@ export function isCancelledByClaims(claims: readonly OrderStockClaimRow[]): bool
     .filter((claim) => claim.reason === 'sale')
     .reduce((max, claim) => Math.max(max, claim.revision), 0)
   return own.some((claim) => claim.reason === 'void' && claim.revision >= latestSale)
-}
-
-/**
- * Give the claim back after a depletion failed to write.
- *
- * `revision` must match the claim that was taken, or the delete finds nothing
- * and the claim is leaked.
- *
- * Never throws. The caller is already handling an error when it gets here, and
- * a failed release must not replace that error with a less useful one — the
- * cost of a leaked claim is a retry that no-ops, which is recoverable by hand.
- */
-export async function releaseOrderStockApplication(
-  supabase: ClaimClient,
-  tenantId: string,
-  orderId: string,
-  reason: OrderStockDirection,
-  revision: number = 0,
-  kind: OrderStockClaimKind = 'order',
-): Promise<void> {
-  try {
-    const { error } = await supabase
-      .from('order_stock_applications')
-      .delete()
-      .eq('tenant_id', tenantId)
-      .eq('order_id', orderId)
-      .eq('reason', reason)
-      .eq('kind', kind)
-      .eq('revision', revision)
-    if (error) {
-      console.error('[inventory] Could not release stock claim', { orderId, reason }, error)
-    }
-  } catch (error) {
-    console.error('[inventory] Could not release stock claim', { orderId, reason }, error)
-  }
 }

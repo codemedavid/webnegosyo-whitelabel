@@ -292,6 +292,8 @@ describe('refreshAccessToken', () => {
       },
       error: null,
     })
+    stub.singleQueue.push({ data: { role: 'admin', tenant_id: 'tenant_1', is_owner: true, permissions: null, outlet_id: null }, error: null })
+    stub.singleQueue.push({ data: { id: 'tok_1' }, error: null })
 
     const result = await refreshAccessToken(
       stub.client,

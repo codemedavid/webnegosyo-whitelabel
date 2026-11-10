@@ -4,8 +4,12 @@
  */
 
 import { createHmac } from 'crypto'
+import { createLogger } from '@/lib/logger'
 
 const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v20.0'
+
+/** Tracing is opt-in (DEBUG_MESSENGER): these lines carry PSIDs. */
+const log = createLogger('[Facebook API]', 'DEBUG_MESSENGER')
 
 interface FacebookPage {
   id: string
@@ -184,7 +188,7 @@ export async function subscribePageToWebhook(
       `subscribed_fields=${subscribedFields}` +
       `&access_token=${pageAccessToken}`
 
-    console.log(`[Facebook API] Subscribing page ${pageId} to webhook with fields: ${subscribedFields}`)
+    log.debug(`Subscribing page ${pageId} to webhook with fields: ${subscribedFields}`)
 
     const response = await fetch(url, { method: 'POST' })
 
@@ -198,9 +202,9 @@ export async function subscribePageToWebhook(
     const data = (await response.json()) as { success: boolean }
 
     if (data.success) {
-      console.log(`[Facebook API] ✅ Successfully subscribed page ${pageId} to webhook`)
-      console.log(`[Facebook API] Subscribed fields: ${subscribedFields}`)
-      console.log(`[Facebook API] ⚠️ IMPORTANT: messaging_referrals is required for order tracking via ref parameter`)
+      log.debug(`✅ Successfully subscribed page ${pageId} to webhook`)
+      log.debug(`Subscribed fields: ${subscribedFields}`)
+      log.debug(`⚠️ IMPORTANT: messaging_referrals is required for order tracking via ref parameter`)
     } else {
       console.warn(`[Facebook API] ⚠️ Subscription response for page ${pageId} was not successful`)
       console.warn(`[Facebook API] Response data:`, JSON.stringify(data, null, 2))
@@ -264,7 +268,7 @@ export async function verifyPageWebhookSubscription(
           console.error(`[Facebook API] ⚠️ CRITICAL: messaging_referrals is missing! Order tracking via ref parameter will not work.`)
         }
       } else {
-        console.log(`[Facebook API] ✅ Page ${pageId} has all required webhook fields subscribed`)
+        log.debug(`✅ Page ${pageId} has all required webhook fields subscribed`)
       }
 
       return {
@@ -447,12 +451,7 @@ export async function sendMenuCard(
 
   try {
     // Log payload structure for debugging (without sensitive data)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Facebook API] Sending menu card payload:', JSON.stringify({
-        recipient: { id: '***' },
-        message: payload.message,
-      }, null, 2))
-    }
+    log.debug('Sending menu card payload', { recipient: { id: '***' }, message: payload.message })
 
     const response = await fetch(
       `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
@@ -495,11 +494,11 @@ export async function sendMenuCard(
 
     if (data.message_id) {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[Facebook API] ✅ Menu card sent successfully to ${psid}, message_id: ${data.message_id}`)
+        log.debug(`✅ Menu card sent successfully to ${psid}, message_id: ${data.message_id}`)
       } else {
         // Mask PSID in production: show only last 4 characters
         const maskedPsid = psid.length > 4 ? '*'.repeat(psid.length - 4) + psid.slice(-4) : '****'
-        console.log(`[Facebook API] ✅ Menu card sent successfully to ${maskedPsid}`)
+        log.debug(`✅ Menu card sent successfully to ${maskedPsid}`)
       }
       // Optionally send a fallback text message with the link
       // Only sent when ENABLE_FALLBACK_LINK is explicitly enabled to avoid duplicate/noisy messages

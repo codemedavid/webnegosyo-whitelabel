@@ -37,10 +37,13 @@ const DEFAULT_GRID = 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
 interface TemplateGalleryProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onPick: (design: HeroDesignV5) => void
+  /** The fresh design, and which template it came from. */
+  onPick: (design: HeroDesignV5, template: GalleryTemplate) => void
   hasContent: boolean
   templates?: readonly GalleryTemplate[]
   categories?: readonly string[]
+  /** Filter names per category (default: the category, capitalised). */
+  categoryLabels?: Readonly<Record<string, string>>
   preview?: GalleryPreview
 }
 
@@ -51,6 +54,7 @@ export function TemplateGallery({
   hasContent,
   templates = HERO_TEMPLATES,
   categories = HERO_TEMPLATE_CATEGORIES,
+  categoryLabels,
   preview = HERO_PREVIEW,
 }: TemplateGalleryProps) {
   // One build per template for the thumbnails; picking builds a fresh copy.
@@ -60,7 +64,7 @@ export function TemplateGallery({
   const filters = [ALL, ...categories]
 
   const handlePick = (template: GalleryTemplate) => {
-    onPick(template.build())
+    onPick(template.build(), template)
     onOpenChange(false)
   }
 
@@ -86,13 +90,20 @@ export function TemplateGallery({
         </div>
         <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-neutral-100 px-5 py-3 sm:px-6" role="group" aria-label="Filter templates">
           {filters.map((option) => (
-            <FilterChip key={option} option={option} total={templates.length} isActive={filter === option} onSelect={setFilter} />
+            <FilterChip key={option} option={option} label={categoryLabels?.[option]} total={templates.length} isActive={filter === option} onSelect={setFilter} />
           ))}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className={`grid auto-rows-max gap-5 p-5 sm:p-6 ${preview.gridClass ?? DEFAULT_GRID}`}>
             {visible.map(({ template, design }) => (
-              <TemplateCard key={template.id} template={template} design={design} preview={preview} onPick={handlePick} />
+              <TemplateCard
+                key={template.id}
+                template={template}
+                categoryLabel={categoryLabels?.[template.category]}
+                design={design}
+                preview={preview}
+                onPick={handlePick}
+              />
             ))}
           </div>
         </div>
@@ -103,13 +114,14 @@ export function TemplateGallery({
 
 interface FilterChipProps {
   option: string
+  label?: string
   total: number
   isActive: boolean
   onSelect: (option: string) => void
 }
 
-function FilterChip({ option, total, isActive, onSelect }: FilterChipProps) {
-  const label = option === ALL ? `All (${total})` : option
+function FilterChip({ option, label: name, total, isActive, onSelect }: FilterChipProps) {
+  const label = option === ALL ? `All (${total})` : name ?? option
   return (
     <button
       type="button"
@@ -126,12 +138,13 @@ function FilterChip({ option, total, isActive, onSelect }: FilterChipProps) {
 
 interface TemplateCardProps {
   template: GalleryTemplate
+  categoryLabel?: string
   design: HeroDesignV5
   preview: GalleryPreview
   onPick: (template: GalleryTemplate) => void
 }
 
-function TemplateCard({ template, design, preview, onPick }: TemplateCardProps) {
+function TemplateCard({ template, categoryLabel, design, preview, onPick }: TemplateCardProps) {
   // A container with one full-card button laid over it, not a <button>: the
   // preview renders the template's own links and buttons (welcome tiles), and
   // a button may not contain another.
@@ -141,7 +154,7 @@ function TemplateCard({ template, design, preview, onPick }: TemplateCardProps) 
       <div className="border-t border-neutral-100 px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold text-neutral-900">{template.name}</p>
-          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium capitalize text-neutral-600">{template.category}</span>
+          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium capitalize text-neutral-600">{categoryLabel ?? template.category}</span>
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-neutral-500">{template.description}</p>
       </div>

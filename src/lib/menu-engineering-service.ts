@@ -749,7 +749,10 @@ export async function updateCheckoutUpsellSettings(
   if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
   const validated = checkoutUpsellSettingsSchema.parse(input)
 
-  const supabase = ctx?.client ?? (await createClient())
+  // Service role after the check above: `analytics` holders may run Boost Sales
+  // but not write `tenants` themselves (tenants_update_staff, 20261106130000).
+  // `validated` holds only the checkout_upsell_* fields.
+  const supabase = ctx?.client ?? createAdminClient()
   const { data, error } = await supabase
     .from('tenants')
     .update(validated as any) // eslint-disable-line @typescript-eslint/no-explicit-any

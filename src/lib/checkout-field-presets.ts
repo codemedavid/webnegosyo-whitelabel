@@ -2,7 +2,7 @@
  * Checkout form field presets.
  *
  * A checkout field is stored as a raw `field_type` (the `customer_form_fields`
- * CHECK constraint allows only text/email/phone/textarea/select/number), but
+ * CHECK constraint allows the types in `checkout-field-types.ts`), but
  * one field is special: the checkout renders the Mapbox address autocomplete —
  * and hangs the delivery-fee/radius logic off it — when the field is *named*
  * `delivery_address`. That convention was invisible in the admin, so deleting
@@ -56,6 +56,9 @@ export const CHECKOUT_FIELD_PRESETS: readonly CheckoutFieldPreset[] = [
   { id: 'textarea', label: 'Textarea', fieldType: 'textarea' },
   { id: 'select', label: 'Select (Dropdown)', fieldType: 'select' },
   { id: 'number', label: 'Number', fieldType: 'number' },
+  { id: 'choice', label: 'Buttons (pick one)', fieldType: 'choice' },
+  { id: 'checkbox', label: 'Tick box (yes / no)', description: 'Required = the customer must tick it.', fieldType: 'checkbox' },
+  { id: 'date', label: 'Date', fieldType: 'date' },
   {
     id: DELIVERY_ADDRESS_PRESET_ID,
     label: 'Delivery Address',
