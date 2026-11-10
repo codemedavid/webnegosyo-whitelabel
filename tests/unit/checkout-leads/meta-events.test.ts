@@ -100,7 +100,9 @@ describe('toLeadMetaAttribution', () => {
 describe('sendLeadPurchaseOnce', () => {
   let sendLeadPurchaseOnce: Awaited<ReturnType<typeof load>>['sendLeadPurchaseOnce']
   beforeAll(async () => ({ sendLeadPurchaseOnce } = await load()))
-  beforeEach(() => sendMetaConversionEvent.mockReset())
+  beforeEach(() => {
+    sendMetaConversionEvent.mockReset()
+  })
 
   it('claims only a paid, browser, never-sent lead', async () => {
     const { admin, calls } = fakeAdmin(LEAD)

@@ -9,7 +9,7 @@ const createCheckoutLead = jest.fn(async (...args: unknown[]) => {
   void args
   return { data: { id: 'lead-1', reference_number: 'SM-1', email: 'a@b.co', phone: '09171234567', amount: 5499 }, error: null }
 })
-const updateCheckoutLeadStatus = jest.fn(async (...args: unknown[]) => { void args; return { error: null } })
+const updateCheckoutLeadStatus = jest.fn(async (...args: unknown[]): Promise<{ error: string | null }> => { void args; return { error: null } })
 const applyLeadStatusWithLaunch = jest.fn(async (...args: unknown[]) => { void args; return { handled: false, isPublished: false } })
 const sendLeadConversion = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
 const sendLeadPurchaseOnce = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
