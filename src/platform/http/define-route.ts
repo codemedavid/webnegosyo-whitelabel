@@ -37,11 +37,9 @@ import { unstable_rethrow } from 'next/navigation'
 import type { z } from 'zod'
 import { withRequestBearer } from '@/lib/supabase/bearer-session'
 import {
-  resolveConsoleAccess,
   resolveCronAccess,
   resolveDeviceAccess,
   resolveSignatureAccess,
-  resolveStaffAccess,
   type AccessRefusal,
   type AccessResult,
   type RateSubject,
@@ -208,11 +206,14 @@ async function run(
   const input = await readInput(declaration, request, context, rawBody)
   if (!input.ok) return refuse({ code: 'invalid' }, { issues: input.issues })
 
+  // Loaded here, not at the top: only an entry with a signed-in caller needs the admin stack.
   if (auth.kind === 'staff') {
+    const { resolveStaffAccess } = await import('./access-session')
     const refused = await admit(await resolveStaffAccess(request, auth, input.value))
     if (refused) return refused
   }
   if (auth.kind === 'superadmin') {
+    const { resolveConsoleAccess } = await import('./access-session')
     const refused = await admit(await resolveConsoleAccess(auth))
     if (refused) return refused
   }

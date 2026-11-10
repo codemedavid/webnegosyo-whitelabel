@@ -33,7 +33,7 @@
 
 import { unstable_rethrow } from 'next/navigation'
 import type { z } from 'zod'
-import { resolveConsoleAccess, resolveStaffAccess, type AccessRefusal, type AccessResult, type RateSubject } from './access'
+import type { AccessRefusal, AccessResult, RateSubject } from './access'
 import {
   assertValidDeclaration,
   attachEntry,
@@ -116,11 +116,14 @@ async function run(
   const parsed = parseArgs(declaration.args, args)
   if (!parsed.ok) return refuse({ code: 'invalid' }, { issues: parsed.issues })
 
+  // Loaded here, not at the top: a public action (checkout) never needs the admin stack.
   if (auth.kind === 'staff') {
+    const { resolveStaffAccess } = await import('./access-session')
     const refused = await admit(await resolveStaffAccess(null, auth, parsed.value))
     if (refused) return refused.refused
   }
   if (auth.kind === 'superadmin') {
+    const { resolveConsoleAccess } = await import('./access-session')
     const refused = await admit(await resolveConsoleAccess(auth))
     if (refused) return refused.refused
   }
