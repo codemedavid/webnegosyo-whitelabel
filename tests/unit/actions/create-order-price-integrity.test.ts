@@ -347,6 +347,14 @@ describe('createOrderAction — price integrity', () => {
       expect(createOrder).not.toHaveBeenCalled()
     })
 
+    test('refuses a pinless "can\'t find my place" order instead of saving it at no fee', async () => {
+      // Turned off 2026-11-09: the mark used to let any order skip the fee and the radius.
+      const result = await place(orderArgs({ customerData: { delivery_address: 'Purok 3', delivery_pin_skipped: 'true' } }))
+
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
     test('refuses delivery when both quotation and fee are omitted', async () => {
       const result = await place(orderArgs())
 
@@ -441,6 +449,14 @@ describe('createOrderAction — price integrity', () => {
       }
     }
     const nearby = { delivery_lat: 14.6, delivery_lng: 120.99 }
+
+    test('never saves a pinless per-km delivery at no fee, mark or not', async () => {
+      distanceStore(null)
+      const result = await place(orderArgs({ deliveryFee: 0, customerData: { delivery_address: 'Purok 3', delivery_pin_skipped: 'true' } }))
+
+      expect(result).toMatchObject({ success: false })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
 
     test('waives the distance fee when the item subtotal meets the minimum', async () => {
       distanceStore(300)

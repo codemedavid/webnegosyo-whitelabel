@@ -18,7 +18,7 @@ import { useSafeQuery } from "../../lib/hooks";
 import { filterQueueToScope } from "../../lib/branch-dashboard";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
-import { hasLiveOrderBackend } from "../../lib/order-backend";
+import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backend";
 import {
   selectIncomingOrders,
   countUnseenIncoming,
@@ -288,13 +288,18 @@ export default function PosScreen() {
   // rides on the stock read: warn (default) lets the cashier sell anyway; block
   // needs an account that may sell past the count. Offline never blocks.
   const { status: connectivity } = useConnectivity();
+  // A new platform sale can get a manager's PIN approval from the server at
+  // Charge (lib/pos-stock-clearance.ts); an edit or a Convex store cannot.
+  const canAskManagerPin =
+    !editContext && resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl }) === "platform";
   const stockContext = useMemo(
     () => ({
       policy: parsePosStockPolicy(stockCeilings.stockPolicy),
       isOnline: connectivity !== "offline",
       canSellShort: canSellPastStock({ role, isOwner, permissions }),
+      canAskManagerPin,
     }),
-    [stockCeilings.stockPolicy, connectivity, role, isOwner, permissions],
+    [stockCeilings.stockPolicy, connectivity, role, isOwner, permissions, canAskManagerPin],
   );
   const stockGuard = useRegisterStockGuard({
     lines,

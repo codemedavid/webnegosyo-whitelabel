@@ -24,6 +24,15 @@ import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { sendStockCall } from "../../lib/offline/drain-stock-calls";
 import { qrOrderStockItems } from "../../lib/qr-order-stock";
+import {
+  clearanceLines,
+  gateSaleStock,
+  withOfflineStockCheck,
+  withoutCustomerStockCheck,
+} from "../../lib/pos-stock-clearance";
+import { newLocalOrderId } from "../../lib/offline/local-id";
+import { isOffline } from "../../lib/offline/connectivity";
+import { outletIdFromCustomerData } from "../../lib/backends/supabase-orders";
 import { priceComboHandoff } from "../../lib/scan-handoff-pricing";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
@@ -450,16 +459,50 @@ export default function ScanScreen() {
       const hasUpsellItems = items.some((i) => i.isUpsellItem);
       const hasBundleItems = items.some((i) => i.isBundleItem);
       const stockItems = qrOrderStockItems(items, payload.customerData);
+      // The staff member scanning the code is the branch taking the order,
+      // so their branch is stamped over whatever the handoff payload carried.
+      // A customer's payload never gets to say the register was offline.
+      const scannedData = withOrderOutlet(
+        { ...withoutCustomerStockCheck(payload.customerData), _inventory_selections: { version: 1, items: stockItems } },
+        outletId && outletName ? { id: outletId, name: outletName } : null,
+      );
+
+      // A block store's database refuses a scanned sale the server did not
+      // clear (lib/pos-stock-clearance.ts). The platform keeps the id minted
+      // here; nothing is written until the server answers.
+      const isPlatform = writeBackend === "platform";
+      const newOrderId = isPlatform ? newLocalOrderId() : undefined;
+      const stockGate =
+        tenantId && newOrderId
+          ? await gateSaleStock({
+              tenantId,
+              orderId: newOrderId,
+              outletId: outletIdFromCustomerData(scannedData),
+              isPlatform,
+              lines: clearanceLines(stockItems),
+              isApproved: false,
+              isOffline,
+            })
+          : ({ kind: "proceed", offline: false } as const);
+      if (stockGate.kind === "needs_manager") {
+        Alert.alert(
+          "Manager needed",
+          `${stockGate.message} Ask a manager to sign in on this phone and scan again, or ask the customer to change their order.`,
+        );
+        setIsAccepting(false);
+        return;
+      }
+      if (stockGate.kind === "refused") {
+        Alert.alert("Could not accept order", stockGate.message);
+        setIsAccepting(false);
+        return;
+      }
 
       const orderId = await createOrder({
+        ...(newOrderId ? { id: newOrderId } : {}),
         customerName: payload.customerName,
         customerContact: payload.customerContact,
-        // The staff member scanning the code is the branch taking the order,
-        // so their branch is stamped over whatever the handoff payload carried.
-        customerData: withOrderOutlet(
-          { ...payload.customerData, _inventory_selections: { version: 1, items: stockItems } },
-          outletId && outletName ? { id: outletId, name: outletName } : null,
-        ),
+        customerData: stockGate.offline ? withOfflineStockCheck(scannedData) : scannedData,
         total,
         orderType: payload.orderType,
         orderTypeId: payload.orderTypeId,

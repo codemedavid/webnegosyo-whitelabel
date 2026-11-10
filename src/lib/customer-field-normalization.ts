@@ -67,6 +67,17 @@ export function normalizeCustomerFieldValue(
 }
 
 /**
+ * One form field's answer exactly as the checkout will send it. The table
+ * field is keyed on its reserved NAME, not its type: a merchant may have saved
+ * it as text or number, and either way "Table 12" → "12".
+ */
+export function normalizeFormFieldValue(field: NormalizableField, raw: string): string {
+  return field.field_name === TABLE_NUMBER_FIELD_NAME
+    ? normalizeTableNumber(raw)
+    : normalizeCustomerFieldValue(raw, field.field_type)
+}
+
+/**
  * Return a new `customerData` map with every declared form field normalized by
  * its type. Keys that are not declared form fields (e.g. `delivery_lat`,
  * `delivery_lng`, `scheduled_for`) are passed through untouched, and fields
@@ -81,12 +92,7 @@ export function normalizeCustomerData(
   for (const field of formFields) {
     const value = result[field.field_name]
     if (typeof value !== 'string') continue
-    // The table field is keyed on its reserved NAME, not its type: a merchant
-    // may have saved it as text or number, and either way "Table 12" → "12".
-    result[field.field_name] =
-      field.field_name === TABLE_NUMBER_FIELD_NAME
-        ? normalizeTableNumber(value)
-        : normalizeCustomerFieldValue(value, field.field_type)
+    result[field.field_name] = normalizeFormFieldValue(field, value)
   }
 
   return result
