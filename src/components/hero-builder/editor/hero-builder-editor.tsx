@@ -242,7 +242,8 @@ export function HeroBuilderEditor({
           <span className="hidden font-semibold text-neutral-900 2xl:inline">{surface.title}</span>
         </Link>
         <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline', status.className)}>{status.label}</span>
-        {toolbarSlot}
+        {/* Page tabs and per-page settings scroll in their own strip, so they can never push Publish off screen. */}
+        {toolbarSlot && <div className="flex min-w-0 shrink items-center gap-2 overflow-x-auto">{toolbarSlot}</div>}
         <button type="button" onClick={() => setPanels((p) => ({ ...p, left: !p.left }))} className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 lg:hidden" aria-label="Toggle elements panel">
           <PanelLeft className="h-4 w-4" />
         </button>
@@ -265,12 +266,12 @@ export function HeroBuilderEditor({
         </div>
 
         {pageStates.length > 0 && (
-          <label className="hidden items-center gap-1.5 text-xs font-medium text-neutral-600 md:flex" title="Preview the page at this stage — for elements with “Show when”">
-            <span className="hidden xl:inline">Showing</span>
+          <label className="hidden min-w-0 shrink items-center gap-1.5 text-xs font-medium text-neutral-600 md:flex" title="Preview the page at this stage — for elements with “Show when”">
+            <span className="hidden 2xl:inline">Showing</span>
             <select
               value={pageState ?? ''}
               onChange={(e) => setPageState(e.target.value || null)}
-              className="h-8 rounded-md border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-800"
+              className="h-8 min-w-0 max-w-40 rounded-md border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-800"
               aria-label="Order stage to preview"
             >
               {pageStates.map((state) => (
