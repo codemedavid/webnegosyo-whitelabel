@@ -42,6 +42,12 @@ Tests live in `tests/unit/` with fixtures in `tests/fixtures/`. Jest uses jsdom 
 - **Properties**: any `fc.assert` lives in a `*.property.test.ts` file and takes `propertyParameters()` (`tests/utils/property.ts`); a failure prints a seed and path, replay with `FC_SEED` + `FC_PATH`. Test-enforced (`tests/unit/property-test-conventions.test.ts`).
 - **SQL**: new PGlite runners build on `tests/sql/lib/platform-auth.cjs` (roles, `auth.uid()`, Supabase default grants), copy live helper bodies verbatim, run the REAL migration file and assert affected rows per role.
 
+**Verification on every change** (adapted from pstack; the skills live in `~/.claude/skills/`). Green Jest is not the finish line, so these run each time, not on request:
+- **`prove-it-works` before saying "done"**: state the finish condition up front, then check the real thing. UI → walk the changed flow at `<tenant>.localhost:3000` (Chrome MCP, or `verify-webnegosyo` once it exists) and screenshot it; DB/RLS/trigger → `execute_sql` on platform as the real role, asserting affected rows; server logic → the unit test plus the matching `tests/live/*` suite when one exists; merchant app → simulator. The reply carries commands + output; anything not run is reported as **inconclusive**, never as passed.
+- **`blast-radius` before committing** anything that touches auth/RLS/policies, triggers, migrations, money (`src/lib/reports/`, discounts, totals), checkout, staff permissions, or logic mirrored across web/app/Convex/edge functions. Prove the one fact the change is safe because of by running real code; otherwise mark it **unproven**.
+- **`benchmark-checklist` for every performance number** (reports speed, query or page timings) before it is reported or acted on. Live probes take `set local statement_timeout = '5s'` and a one-day window first.
+- **`verify-webnegosyo`** (`create-verification-skill`, not generated yet): it may only touch a designated test store, never seed the shared platform DB with fixed slugs, and must pass its own Launch → Doctor → Drive → Evidence → Cleanup once before use. Keep it current with `maintain-verification-skill`.
+
 ## Architecture
 
 ### Multi-Tenancy
