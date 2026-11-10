@@ -11,11 +11,10 @@ import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { answerOrderReferral } from './order-referral-reply'
 import { BOT_METADATA, maskPsid, sendMessages } from './send'
 import { setBotPause, touchSession } from './session'
-import { withMessengerTables } from '@/lib/messenger/db'
 
 /** Store the owner's PSID as the test recipient and spend the code. */
 async function linkTester(tenantId: string, psid: string): Promise<boolean> {
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_settings')
     .update({ tester_psid: psid, tester_code_hash: null, tester_code_expires_at: null } as never)
     .eq('tenant_id', tenantId)

@@ -9,7 +9,6 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { maskPsid } from './send'
-import { withMessengerTables } from '@/lib/messenger/db'
 
 export interface MessengerSession {
   id: string
@@ -42,7 +41,7 @@ export async function touchSession(input: {
   isInbound: boolean
 }): Promise<MessengerSession | null> {
   const nowIso = input.now.toISOString()
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_sessions')
     .upsert(
       {
@@ -74,7 +73,7 @@ const PRE_MIGRATION_CODES = new Set(['42703', '42P10', 'PGRST204'])
  * before the migration never drops customers' Messenger links.
  */
 async function touchLegacySession(input: { tenantId: string; psid: string; now: Date }): Promise<MessengerSession | null> {
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_sessions')
     .upsert({ psid: input.psid, tenant_id: input.tenantId, state: 'menu', updated_at: input.now.toISOString() }, { onConflict: 'psid' })
     .select('id, tenant_id')
@@ -89,7 +88,7 @@ async function touchLegacySession(input: { tenantId: string; psid: string; now: 
 
 /** Pause (or, with `until = null`, resume) the bot for one customer. Asserts the row changed. */
 export async function setBotPause(sessionId: string, until: Date | null): Promise<boolean> {
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_sessions')
     .update({ bot_paused_until: until ? until.toISOString() : null } as never)
     .eq('id', sessionId)
@@ -103,7 +102,7 @@ export async function setBotPause(sessionId: string, until: Date | null): Promis
 
 /** Session id → its store + PSID, for a signed link token. */
 export async function readSessionOwner(sessionId: string): Promise<{ tenantId: string; psid: string } | null> {
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_sessions')
     .select('tenant_id, psid')
     .eq('id', sessionId)

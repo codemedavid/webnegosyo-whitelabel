@@ -13,14 +13,13 @@ import type { AutomationsEditorProps } from '@/components/admin/messenger-automa
 import { DEFAULT_RULES } from './rules'
 import { rowsToRules, type RuleRow } from './settings'
 import { buildReplyStore } from './store-view'
-import { withMessengerTables } from '@/lib/messenger/db'
 
 type EditorData = { ok: true; props: Omit<AutomationsEditorProps, 'tenantId'> } | { ok: false; error: string }
 
 const UNAVAILABLE = 'Messenger automations aren’t available for this store yet. Please try again later.'
 
 export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorData> {
-  const supabase = withMessengerTables(await createClient())
+  const supabase = await createClient()
   const [settingsRead, rulesRead, menu, tester] = await Promise.all([
     supabase.from('messenger_settings')
       .select('bot_enabled, takeover_minutes, rules_customized_at, rules_version, profile_error')
@@ -32,7 +31,7 @@ export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorDat
       .order('position', { ascending: true })
       .limit(60),
     getStorefrontMenu(tenant.slug).catch(() => null),
-    withMessengerTables(createAdminClient()).from('messenger_settings').select('tester_psid').eq('tenant_id', tenant.id).maybeSingle(),
+    createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenant.id).maybeSingle(),
   ])
 
   if (settingsRead.error || rulesRead.error) {

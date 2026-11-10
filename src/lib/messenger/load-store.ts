@@ -16,7 +16,6 @@ import {
   activeRules, DEFAULT_SETTINGS, rowsToRules, toSettings,
   type MessengerSettings, type RuleRow, type SettingsRow, type StoreBundle,
 } from './settings'
-import { withMessengerTables } from '@/lib/messenger/db'
 
 export type { MessengerSettings, StoreBundle } from './settings'
 export { activeRules, DEFAULT_SETTINGS } from './settings'
@@ -24,7 +23,7 @@ export { activeRules, DEFAULT_SETTINGS } from './settings'
 const TENANT_COLUMNS = 'id, slug, name, domain, logo_url, operating_hours, timezone, restaurant_address, footer_address, facebook_page_id'
 
 export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{ settings: MessengerSettings; storedRules: MessengerRule[] }> {
-  const admin = withMessengerTables(createAdminClient())
+  const admin = createAdminClient()
   const [settingsRead, rulesRead] = await Promise.all([
     admin.from('messenger_settings')
       .select('bot_enabled, takeover_minutes, rules_customized_at, rules_version, tester_psid, tester_code_hash, tester_code_expires_at, profile_hash, profile_fields')
@@ -47,7 +46,7 @@ export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{
 }
 
 export async function loadStoreBundle(tenantId: string, now: Date = new Date()): Promise<StoreBundle | null> {
-  const { data: tenantRow, error } = await withMessengerTables(createAdminClient())
+  const { data: tenantRow, error } = await createAdminClient()
     .from('tenants')
     .select(TENANT_COLUMNS)
     .eq('id', tenantId)

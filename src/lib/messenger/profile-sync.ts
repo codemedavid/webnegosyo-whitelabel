@@ -9,12 +9,11 @@ import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { activeRules, loadMessengerSettingsAndRules } from './load-store'
 import { planProfileSync } from './profile'
 import { callMessengerProfile } from './send'
-import { withMessengerTables } from '@/lib/messenger/db'
 
 export type ProfileSyncOutcome = 'unchanged' | 'synced' | 'no_page' | 'failed'
 
 async function recordSync(tenantId: string, patch: Record<string, unknown>): Promise<void> {
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_settings')
     .update(patch as never)
     .eq('tenant_id', tenantId)

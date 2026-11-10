@@ -4951,32 +4951,88 @@ export type Database = {
           },
         ]
       }
+      messenger_rules: {
+        Row: {
+          action: Json
+          created_at: string
+          id: string
+          is_enabled: boolean
+          name: string
+          position: number
+          tenant_id: string
+          trigger: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          action: Json
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          name: string
+          position?: number
+          tenant_id: string
+          trigger: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          action?: Json
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          position?: number
+          tenant_id?: string
+          trigger?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messenger_sessions: {
         Row: {
+          bot_paused_until: string | null
           cart_data: Json | null
           checkout_state: Json | null
           created_at: string
           id: string
+          last_inbound_at: string | null
+          page_id: string | null
           psid: string
           state: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          bot_paused_until?: string | null
           cart_data?: Json | null
           checkout_state?: Json | null
           created_at?: string
           id?: string
+          last_inbound_at?: string | null
+          page_id?: string | null
           psid: string
           state?: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          bot_paused_until?: string | null
           cart_data?: Json | null
           checkout_state?: Json | null
           created_at?: string
           id?: string
+          last_inbound_at?: string | null
+          page_id?: string | null
           psid?: string
           state?: string
           tenant_id?: string
@@ -4987,6 +5043,65 @@ export type Database = {
             foreignKeyName: "messenger_sessions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messenger_settings: {
+        Row: {
+          bot_enabled: boolean
+          profile_error: string | null
+          profile_fields: string[]
+          profile_hash: string | null
+          profile_synced_at: string | null
+          rules_customized_at: string | null
+          rules_version: number
+          takeover_minutes: number
+          tenant_id: string
+          tester_code_expires_at: string | null
+          tester_code_hash: string | null
+          tester_psid: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          bot_enabled?: boolean
+          profile_error?: string | null
+          profile_fields?: string[]
+          profile_hash?: string | null
+          profile_synced_at?: string | null
+          rules_customized_at?: string | null
+          rules_version?: number
+          takeover_minutes?: number
+          tenant_id: string
+          tester_code_expires_at?: string | null
+          tester_code_hash?: string | null
+          tester_psid?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          bot_enabled?: boolean
+          profile_error?: string | null
+          profile_fields?: string[]
+          profile_hash?: string | null
+          profile_synced_at?: string | null
+          rules_customized_at?: string | null
+          rules_version?: number
+          takeover_minutes?: number
+          tenant_id?: string
+          tester_code_expires_at?: string | null
+          tester_code_hash?: string | null
+          tester_psid?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -11040,6 +11155,10 @@ export type Database = {
         Args: { target_tenant_id: string }
         Returns: boolean
       }
+      app_user_manages_messenger: {
+        Args: { target_tenant_id: string }
+        Returns: boolean
+      }
       app_user_may_reach_branch: {
         Args: { target_outlet_id: string; target_tenant_id: string }
         Returns: boolean
@@ -12541,6 +12660,16 @@ export type Database = {
       save_cash_settings: {
         Args: { p_settings: Json; p_tenant: string }
         Returns: Json
+      }
+      save_messenger_rules: {
+        Args: {
+          p_bot_enabled: boolean
+          p_expected_version: number
+          p_rules: Json
+          p_takeover_minutes: number
+          p_tenant_id: string
+        }
+        Returns: number
       }
       send_stock_transfer: {
         Args: { p_legs: Json; p_transfer_id: string }

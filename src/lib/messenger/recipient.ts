@@ -14,7 +14,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { looksLikeMessengerLinkToken } from './link-token-shape'
 import { readMessengerLinkToken } from './link-token'
 import { readSessionOwner } from './session'
-import { withMessengerTables } from '@/lib/messenger/db'
 
 /**
  * Menu cards before 2026-11-10 carried the raw PSID. Kept two weeks only: the
@@ -24,7 +23,7 @@ export const LEGACY_PSID_ACCEPTED_UNTIL = new Date('2026-11-24T00:00:00Z')
 const LEGACY_PSID_PATTERN = /^\d{5,32}$/
 
 async function hasLegacySession(tenantId: string, psid: string): Promise<boolean> {
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_sessions')
     .select('id')
     .eq('tenant_id', tenantId)

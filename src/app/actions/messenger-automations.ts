@@ -25,7 +25,6 @@ import { sendMessages } from '@/lib/messenger/send'
 import { touchSession } from '@/lib/messenger/session'
 import { createMessengerLinkToken } from '@/lib/messenger/link-token'
 import { hashTesterCode, newTesterCode, TESTER_CODE_TTL_MS } from '@/lib/messenger/tester'
-import { withMessengerTables } from '@/lib/messenger/db'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TAKEOVER_CHOICES = [0, 30, 60, 240, 1440] as const
@@ -74,7 +73,7 @@ export async function saveMessengerAutomationsAction(
   if (problems.length > 0) return { ok: false, error: problems[0] }
   const rules = withRowIds(parsed.data.rules)
 
-  const supabase = withMessengerTables(await createClient())
+  const supabase = await createClient()
   // Rules, bot on/off and the takeover setting in ONE transaction.
   const { data: version, error: saveError } = await supabase.rpc('save_messenger_rules', {
     p_tenant_id: tenantId,
@@ -105,7 +104,7 @@ export async function createMessengerTesterCodeAction(tenantId: string): Promise
 
   const code = newTesterCode()
   const expiresAt = new Date(Date.now() + TESTER_CODE_TTL_MS)
-  const { data, error } = await withMessengerTables(createAdminClient())
+  const { data, error } = await createAdminClient()
     .from('messenger_settings')
     .upsert({ tenant_id: tenantId, tester_code_hash: hashTesterCode(tenantId, code), tester_code_expires_at: expiresAt.toISOString() } as never, { onConflict: 'tenant_id' })
     .select('tenant_id')
@@ -121,7 +120,7 @@ export async function readMessengerTesterAction(tenantId: string): Promise<Actio
   if (!z.string().uuid().safeParse(tenantId).success) return { ok: false, error: NOT_ALLOWED }
   const access = await authorize(tenantId)
   if ('error' in access) return { ok: false, error: access.error }
-  const { data } = await withMessengerTables(createAdminClient()).from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
+  const { data } = await createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
   return { ok: true, isLinked: Boolean((data as { tester_psid: string | null } | null)?.tester_psid) }
 }
 
@@ -140,7 +139,7 @@ export async function sendMessengerTestAction(tenantId: string, rawAction: unkno
   const access = await authorize(tenantId)
   if ('error' in access) return { ok: false, error: access.error }
 
-  const { data: settings } = await withMessengerTables(createAdminClient()).from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
+  const { data: settings } = await createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
   const testerPsid = (settings as { tester_psid: string | null } | null)?.tester_psid
   if (!testerPsid) return { ok: false, error: 'Link your Messenger first: get a test code and send it to your Page.' }
 
