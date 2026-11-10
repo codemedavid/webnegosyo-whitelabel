@@ -24,6 +24,8 @@ Most tenants now run on the **shared platform Supabase**: `resolveOrderBackend(t
 npm run dev              # Dev server (Turbopack)
 npm run build            # Production build (runs validate-env.mjs prebuild)
 npm run lint             # ESLint
+npm run typecheck        # tsc --noEmit over src, tests and the sub-project sources the tests import
+npm run verify           # lint + typecheck + test:sql + Jest for what changed since origin/main (CI runs the same three and the whole Jest suite)
 npm run test             # Jest unit tests
 npm run test:watch       # Jest watch mode
 npm run test:coverage    # Coverage report
