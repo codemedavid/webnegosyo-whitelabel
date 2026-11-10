@@ -32,26 +32,35 @@ async function hasLegacySession(tenantId: string, psid: string): Promise<boolean
   return !error && !!data
 }
 
-export async function resolveMessengerRecipient(
+/** The PSID a reference stands for and, for a signed link, its session (whose chat cart the order empties). */
+export async function resolveMessengerReference(
   tenantId: string,
   reference: unknown,
   now: Date = new Date(),
-): Promise<string | null> {
+): Promise<{ psid: string; sessionId: string | null } | null> {
   if (typeof reference !== 'string' || !reference) return null
 
   if (looksLikeMessengerLinkToken(reference)) {
     const sessionId = readMessengerLinkToken(reference, now)
     if (!sessionId) return null
     const owner = await readSessionOwner(sessionId)
-    return owner && owner.tenantId === tenantId ? owner.psid : null
+    return owner && owner.tenantId === tenantId ? { psid: owner.psid, sessionId } : null
   }
 
   if (now.getTime() < LEGACY_PSID_ACCEPTED_UNTIL.getTime() && LEGACY_PSID_PATTERN.test(reference)) {
     const isKnown = await hasLegacySession(tenantId, reference)
     if (isKnown) console.warn('[Messenger] legacy raw PSID accepted (menu card sent before signed links)', { tenantId })
-    return isKnown ? reference : null
+    return isKnown ? { psid: reference, sessionId: null } : null
   }
   return null
+}
+
+export async function resolveMessengerRecipient(
+  tenantId: string,
+  reference: unknown,
+  now: Date = new Date(),
+): Promise<string | null> {
+  return (await resolveMessengerReference(tenantId, reference, now))?.psid ?? null
 }
 
 /**
@@ -62,8 +71,18 @@ export async function withVerifiedMessengerPsid(
   tenantId: string,
   customerData: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {
-  if (!customerData || !('messenger_psid' in customerData)) return customerData
+  return (await verifyMessengerCustomerData(tenantId, customerData)).customerData
+}
+
+/** `withVerifiedMessengerPsid` plus the link's session id, so a placed order can empty the chat cart. */
+export async function verifyMessengerCustomerData(
+  tenantId: string,
+  customerData: Record<string, unknown> | undefined,
+): Promise<{ customerData: Record<string, unknown> | undefined; chatSessionId: string | null }> {
+  if (!customerData || !('messenger_psid' in customerData)) return { customerData, chatSessionId: null }
   const { messenger_psid: reference, ...rest } = customerData
-  const psid = await resolveMessengerRecipient(tenantId, reference)
-  return psid ? { ...rest, messenger_psid: psid } : rest
+  const resolved = await resolveMessengerReference(tenantId, reference)
+  return resolved
+    ? { customerData: { ...rest, messenger_psid: resolved.psid }, chatSessionId: resolved.sessionId }
+    : { customerData: rest, chatSessionId: null }
 }

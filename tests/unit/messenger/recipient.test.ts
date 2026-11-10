@@ -11,7 +11,7 @@ jest.mock('@/lib/supabase/admin', () => ({
 }))
 
 import { createMessengerLinkToken } from '@/lib/messenger/link-token'
-import { LEGACY_PSID_ACCEPTED_UNTIL, resolveMessengerRecipient, withVerifiedMessengerPsid } from '@/lib/messenger/recipient'
+import { LEGACY_PSID_ACCEPTED_UNTIL, resolveMessengerRecipient, verifyMessengerCustomerData, withVerifiedMessengerPsid } from '@/lib/messenger/recipient'
 
 const SESSION = '0b0c9d3c-1111-4000-8000-000000000001'
 const NOW = new Date('2026-11-10T00:00:00Z')
@@ -71,5 +71,25 @@ describe('withVerifiedMessengerPsid', () => {
     const data = { name: 'Ana' }
     expect(await withVerifiedMessengerPsid('t1', data)).toBe(data)
     expect(await withVerifiedMessengerPsid('t1', undefined)).toBeUndefined()
+  })
+})
+
+describe('verifyMessengerCustomerData', () => {
+  const env = process.env
+  beforeEach(() => { process.env = { ...env, API_SECRET: 'secret' }; readSessionOwner.mockReset() })
+  afterAll(() => { process.env = env })
+
+  it('a valid link gives the PSID and the session whose chat cart the order empties', async () => {
+    readSessionOwner.mockResolvedValue({ tenantId: 't1', psid: '24000000000000001' })
+    const token = createMessengerLinkToken(SESSION)
+    expect(await verifyMessengerCustomerData('t1', { name: 'Ana', messenger_psid: token })).toEqual({
+      customerData: { name: 'Ana', messenger_psid: '24000000000000001' },
+      chatSessionId: SESSION,
+    })
+  })
+
+  it("another store's link: no PSID, no session (nothing of theirs is emptied)", async () => {
+    readSessionOwner.mockResolvedValue({ tenantId: 't2', psid: '24000000000000001' })
+    expect(await verifyMessengerCustomerData('t1', { messenger_psid: createMessengerLinkToken(SESSION) })).toEqual({ customerData: {}, chatSessionId: null })
   })
 })

@@ -11,6 +11,8 @@ import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { answerOrderReferral } from './order-referral-reply'
 import { BOT_METADATA, maskPsid, sendMessages } from './send'
 import { setBotPause, touchSession } from './session'
+import { changeChatCart } from './chat-cart-store'
+import { loadRecentOrders } from './recent-orders'
 
 /** Store the owner's PSID as the test recipient and spend the code. */
 async function linkTester(tenantId: string, psid: string): Promise<boolean> {
@@ -47,5 +49,7 @@ export function createWebhookDeps(): WebhookDeps {
     answerOrderReferral,
     createLinkToken: (sessionId) => createMessengerLinkToken(sessionId),
     linkTester,
+    changeCart: changeChatCart,
+    loadRecentOrders,
   }
 }

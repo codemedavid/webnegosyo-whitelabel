@@ -1,8 +1,9 @@
 /**
  * The one way the automations talk to Meta's Send API.
  *
- * Every message is a `RESPONSE` inside the customer's 24h window (the bot only
- * answers something the customer just did) and carries `metadata: "wn"`, so
+ * Every message is inside the customer's 24h window: a `RESPONSE` to something
+ * they just did, or an `UPDATE` (an order status message, sent only while the
+ * window is open — `order-view.ts`). Each carries `metadata: "wn"`, so
  * its echo is recognisable as ours. Errors are logged once with Meta's code,
  * never with the PSID or the page token.
  */
@@ -51,10 +52,12 @@ async function postGraph(path: string, token: string, body: unknown, fetchImpl: 
   }
 }
 
-function sendOne(token: string, psid: string, message: OutgoingMessage, fetchImpl: Fetch) {
+export type MessagingType = 'RESPONSE' | 'UPDATE'
+
+function sendOne(token: string, psid: string, message: OutgoingMessage, fetchImpl: Fetch, messagingType: MessagingType) {
   return postGraph('/me/messages', token, {
     recipient: { id: psid },
-    messaging_type: 'RESPONSE',
+    messaging_type: messagingType,
     message: { ...toGraphMessage(message), metadata: BOT_METADATA },
   }, fetchImpl)
 }
@@ -73,6 +76,7 @@ export async function sendMessages(
   psid: string,
   messages: readonly OutgoingMessage[],
   fetchImpl: Fetch = fetch,
+  messagingType: MessagingType = 'RESPONSE',
 ): Promise<SendResult> {
   if (messages.length === 0) return { ok: true, sent: 0 }
   // Best effort: a typing bubble while the reply goes out.
@@ -81,11 +85,11 @@ export async function sendMessages(
   let sent = 0
   let tookControl = false
   for (const message of messages) {
-    let result = await sendOne(token, psid, message, fetchImpl)
+    let result = await sendOne(token, psid, message, fetchImpl, messagingType)
     if (!result.ok && result.error.subcode === THREAD_CONTROLLED_BY_ANOTHER_APP && !tookControl) {
       tookControl = true
       const take = await postGraph('/me/take_thread_control', token, { recipient: { id: psid }, metadata: 'webnegosyo_automation' }, fetchImpl)
-      if (take.ok) result = await sendOne(token, psid, message, fetchImpl)
+      if (take.ok) result = await sendOne(token, psid, message, fetchImpl, messagingType)
     }
     if (!result.ok) {
       console.error('[Messenger send] refused', { psid: maskPsid(psid), code: result.error.code, subcode: result.error.subcode, message: result.error.message })

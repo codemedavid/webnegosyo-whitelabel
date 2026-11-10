@@ -21,12 +21,13 @@ export const ACTION_LABELS: Record<ActionKind, { title: string; help: string }> 
   text: { title: 'Your own message', help: 'Your words, with up to 3 buttons.' },
   hours_location: { title: 'Hours & location', help: 'Today’s hours, your address and a directions button.' },
   talk_to_staff: { title: 'Talk to staff', help: 'Tells the customer someone will reply, and pauses the bot for them.' },
-  order_status: { title: 'Order status', help: 'Points the customer to their tracking link.' },
+  order_status: { title: 'Order status', help: 'The customer’s recent orders from this chat, each with its tracking link.' },
+  cart: { title: 'Their cart', help: 'What the customer added from the chat, with − / + / Remove and a Checkout button.' },
 }
 
 export const TRIGGER_KIND_ORDER: readonly TriggerKind[] = ['keyword', 'get_started', 'ice_breaker', 'menu_button', 'fallback']
 export const ACTION_KIND_ORDER: readonly ActionKind[] = [
-  'menu_card', 'categories', 'category_items', 'featured_items', 'text', 'hours_location', 'talk_to_staff', 'order_status',
+  'menu_card', 'categories', 'category_items', 'featured_items', 'text', 'hours_location', 'talk_to_staff', 'order_status', 'cart',
 ]
 
 export const TAKEOVER_OPTIONS: ReadonlyArray<{ minutes: number; label: string }> = [

@@ -5,6 +5,8 @@ import { DEFAULT_RULES, type MessengerRule } from '@/lib/messenger/rules'
 import { encodePayload } from '@/lib/messenger/payload'
 import { hashTesterCode } from '@/lib/messenger/tester'
 import type { OutgoingMessage } from '@/lib/messenger/graph-message'
+import { applyCartOp, priceChatCart, type CartOp, type ChatCartLine } from '@/lib/messenger/chat-cart'
+import type { ReplyOrder } from '@/lib/messenger/order-view'
 import { NOW, sampleStore } from './sample-store'
 
 const PAGE = 'page-1'
@@ -13,10 +15,16 @@ const TENANT = 'tenant-1'
 const OUR_APP = '1346321933462152'
 
 function bundle(overrides: Partial<StoreBundle> = {}): StoreBundle {
-  return { tenantId: TENANT, slug: 'karamotan', facebookPageRowId: 'row', store: sampleStore(), rules: [...DEFAULT_RULES], settings: DEFAULT_SETTINGS, ...overrides }
+  return { tenantId: TENANT, slug: 'karamotan', facebookPageRowId: 'row', isPlatformOrders: true, store: sampleStore(), rules: [...DEFAULT_RULES], settings: DEFAULT_SETTINGS, ...overrides }
 }
 
-function harness(options: { bundle?: StoreBundle | null; pausedUntil?: Date | null; seen?: boolean; page?: boolean; testerAllowed?: boolean } = {}) {
+function harness(options: {
+  bundle?: StoreBundle | null; pausedUntil?: Date | null; seen?: boolean; page?: boolean; testerAllowed?: boolean
+  cart?: ChatCartLine[]; cartUnreadable?: boolean; orders?: ReplyOrder[]
+} = {}) {
+  let cart: ChatCartLine[] = options.cart ?? []
+  const cartOps: Array<CartOp | null> = []
+  const orderReads: string[] = []
   const sent: Array<{ psid: string; messages: readonly OutgoingMessage[] }> = []
   const pauses: Array<Date | null> = []
   const touches: Array<{ isInbound: boolean }> = []
@@ -40,8 +48,17 @@ function harness(options: { bundle?: StoreBundle | null; pausedUntil?: Date | nu
     answerOrderReferral: async ({ orderId }) => { referrals.push(orderId); return { outcome: 'sent' } },
     createLinkToken: () => 'mt1.TOKEN',
     linkTester: async (_tenant, psid) => { linked.push(psid); return true },
+    changeCart: async ({ op, store }) => {
+      cartOps.push(op)
+      if (options.cartUnreadable) return null
+      const applied = op ? applyCartOp(cart, op, store) : { cart, outcome: undefined }
+      const priced = priceChatCart(applied.cart, store)
+      cart = priced.kept
+      return { priced, outcome: applied.outcome }
+    },
+    loadRecentOrders: async ({ psid }) => { orderReads.push(psid); return options.orders ?? [] },
   }
-  return { deps, sent, pauses, touches, referrals, linked }
+  return { deps, sent, pauses, touches, referrals, linked, cartOps, orderReads, cart: () => cart }
 }
 
 const base = { pageId: PAGE, psid: PSID, timestamp: 1, dedupeKey: 'mid:1' }
@@ -146,6 +163,84 @@ describe('handleEvent', () => {
       expect(await handleEvent(postback(encodePayload({ verb: 'staff' })), h.deps)).toBe('replied')
       expect(h.pauses).toHaveLength(1)
       expect(h.sent[0].messages[0]).toMatchObject({ kind: 'text', text: expect.stringContaining('Karamotan Grill') })
+    })
+  })
+
+  describe('chat cart', () => {
+    it('Add to cart stores the dish and answers with the total and Checkout', async () => {
+      const h = harness()
+      expect(await handleEvent(postback(encodePayload({ verb: 'add', itemId: 'drink-1' })), h.deps)).toBe('replied')
+      expect(h.cartOps).toEqual([{ kind: 'add', itemId: 'drink-1' }])
+      expect(h.cart()).toEqual([{ itemId: 'drink-1', qty: 1, name: 'Iced Tea' }])
+      expect(h.sent[0].messages[0]).toMatchObject({ kind: 'buttons', text: expect.stringContaining('Added Iced Tea') })
+      expect(JSON.stringify(h.sent[0].messages)).toContain('/cart?mc=1&m=mt1.TOKEN')
+    })
+
+    it('− / + / Remove change the cart and show it again', async () => {
+      const h = harness({ cart: [{ itemId: 'drink-1', qty: 2 }] })
+      await handleEvent(postback(encodePayload({ verb: 'dec', itemId: 'drink-1' })), h.deps)
+      expect(h.cart()).toEqual([{ itemId: 'drink-1', qty: 1, name: 'Iced Tea' }])
+      await handleEvent({ ...postback(encodePayload({ verb: 'rm', itemId: 'drink-1' })), dedupeKey: 'mid:2' }, h.deps)
+      expect(h.cart()).toEqual([])
+      expect(JSON.stringify(h.sent[1].messages)).toContain('Your cart is empty')
+    })
+
+    it('typing "cart" shows the cart without changing it; Empty cart asks first', async () => {
+      const h = harness({ cart: [{ itemId: 'drink-1', qty: 2 }] })
+      expect(await handleEvent(text('my cart po'), h.deps)).toBe('replied')
+      expect(h.cartOps).toEqual([null])
+      expect(h.sent[0].messages[0].kind).toBe('cards')
+      await handleEvent(postback(encodePayload({ verb: 'clear' })), h.deps)
+      expect(h.cartOps).toEqual([null])
+      expect(h.sent[1].messages[0]).toMatchObject({ kind: 'buttons', text: 'Empty your cart?' })
+      await handleEvent(postback(encodePayload({ verb: 'clear_yes' })), h.deps)
+      expect(h.cart()).toEqual([])
+    })
+
+    it('another store\'s dish id is refused', async () => {
+      const h = harness()
+      await handleEvent(postback(encodePayload({ verb: 'add', itemId: 'someone-elses-dish' })), h.deps)
+      expect(h.cart()).toEqual([])
+      expect(JSON.stringify(h.sent[0].messages)).toContain("can't be ordered from the chat")
+    })
+
+    it('a cart that can\'t be read says so and offers the menu', async () => {
+      const h = harness({ cartUnreadable: true })
+      await handleEvent(postback(encodePayload({ verb: 'add', itemId: 'drink-1' })), h.deps)
+      expect(JSON.stringify(h.sent[0].messages)).toContain("couldn't open your cart")
+    })
+
+    it('cart taps still answer while staff have the bot paused', async () => {
+      const h = harness({ pausedUntil: new Date(NOW.getTime() + 60_000) })
+      expect(await handleEvent(postback(encodePayload({ verb: 'add', itemId: 'drink-1' })), h.deps)).toBe('replied')
+    })
+  })
+
+  describe('where is my order', () => {
+    const order: ReplyOrder = {
+      id: 'o1', label: '#07', status: 'preparing', kind: 'pickup', totalCentavos: 44700,
+      trackingUrl: 'https://karamotan.webnegosyo.com/order/o1?t=abc',
+    }
+
+    it('lists this customer\'s orders with tracking links (platform store)', async () => {
+      const h = harness({ orders: [order] })
+      expect(await handleEvent(text('where is my order'), h.deps)).toBe('replied')
+      expect(h.orderReads).toEqual([PSID])
+      const cards = h.sent[0].messages[1]
+      expect(cards).toMatchObject({ kind: 'cards', cards: [{ title: 'Order #07 · Preparing', subtitle: '₱447 · Karamotan Grill' }] })
+    })
+
+    it('no recent order: says so', async () => {
+      const h = harness({ orders: [] })
+      await handleEvent(text('nasaan order ko'), h.deps)
+      expect(JSON.stringify(h.sent[0].messages)).toContain("couldn't find a recent order")
+    })
+
+    it('a Convex store never reads platform orders and points to the tracking link', async () => {
+      const h = harness({ bundle: bundle({ isPlatformOrders: false }), orders: [order] })
+      await handleEvent(text('order status'), h.deps)
+      expect(h.orderReads).toEqual([])
+      expect(JSON.stringify(h.sent[0].messages)).toContain('tracking link on your receipt')
     })
   })
 

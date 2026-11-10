@@ -2,7 +2,9 @@
  * Every action over awkward menus stays inside Meta's limits. A message over a
  * limit is refused whole by the Send API, so the customer would get nothing.
  */
-import { buildCategoryItems, buildReply } from '@/lib/messenger/replies'
+import { buildCartChange, buildCategoryItems, buildClearConfirm, buildOrderUpdate, buildReply, withPreviewData } from '@/lib/messenger/replies'
+import { applyCartOp, priceChatCart, type ChatCartLine } from '@/lib/messenger/chat-cart'
+import type { ReplyOrder } from '@/lib/messenger/order-view'
 import { charLength, MESSENGER_LIMITS as L } from '@/lib/messenger/limits'
 import type { OutgoingMessage } from '@/lib/messenger/graph-message'
 import { ACTION_KINDS, type RuleAction } from '@/lib/messenger/rules'
@@ -26,6 +28,7 @@ const ACTIONS: Record<(typeof ACTION_KINDS)[number], RuleAction> = {
   hours_location: { kind: 'hours_location' },
   talk_to_staff: { kind: 'talk_to_staff', text: '{store} '.repeat(60) },
   order_status: { kind: 'order_status' },
+  cart: { kind: 'cart' },
 }
 
 function problems(message: OutgoingMessage): string[] {
@@ -63,12 +66,34 @@ describe('every reply fits Meta\'s limits', () => {
   for (const store of [awkward, sampleStore(), sampleStore({ items: [] })]) {
     for (const kind of ACTION_KINDS) {
       it(`${kind} on a ${store.items.length}-dish store`, () => {
-        for (const message of buildReply(ACTIONS[kind], sampleContext(store, 'mt1.1.' + 'a'.repeat(80)))) {
+        for (const message of buildReply(ACTIONS[kind], withPreviewData(sampleContext(store, 'mt1.1.' + 'a'.repeat(80))))) {
           expect(problems(message)).toEqual([])
         }
       })
     }
   }
+
+  it('a full chat cart (20 long dishes) and every tap on it', () => {
+    const cart: ChatCartLine[] = awkward.items.slice(0, 20).map((item) => ({ itemId: item.id, qty: 50 }))
+    const base = { ...sampleContext(awkward, 'mt1.1.' + 'a'.repeat(80)) }
+    for (const outcome of ['added', 'increased', 'removed', 'cleared', 'unavailable', 'cart_full', 'max_qty', 'not_in_cart'] as const) {
+      const ctx = { ...base, cart: { priced: priceChatCart(cart, awkward), outcome, itemId: awkward.items[0].id } }
+      for (const message of buildCartChange(ctx)) expect(problems(message)).toEqual([])
+    }
+    const applied = applyCartOp(cart, { kind: 'add', itemId: awkward.items[25].id }, awkward)
+    expect(applied.outcome).toBe('cart_full')
+    for (const message of buildClearConfirm()) expect(problems(message)).toEqual([])
+  })
+
+  it('orders and status messages', () => {
+    const orders: ReplyOrder[] = Array.from({ length: 3 }, (_, index) => ({
+      id: `o${index}`, label: '#07', status: 'ready', kind: 'delivery', totalCentavos: 99999999, trackingUrl: `https://karamotan.webnegosyo.com/order/o${index}?t=${'a'.repeat(20)}`,
+    }))
+    for (const message of buildReply({ kind: 'order_status', text: '{store} '.repeat(60) }, { ...sampleContext(awkward), orders })) {
+      expect(problems(message)).toEqual([])
+    }
+    for (const message of buildOrderUpdate('x'.repeat(2000), orders[0])) expect(problems(message)).toEqual([])
+  })
 
   it('every page of a long category', () => {
     for (let page = 0; page < 3; page += 1) {

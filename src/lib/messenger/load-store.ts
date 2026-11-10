@@ -10,6 +10,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
+import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import type { MessengerRule } from './rules'
 import { buildReplyStore } from './store-view'
 import {
@@ -20,7 +21,7 @@ import {
 export type { MessengerSettings, StoreBundle } from './settings'
 export { activeRules, DEFAULT_SETTINGS } from './settings'
 
-const TENANT_COLUMNS = 'id, slug, name, domain, logo_url, operating_hours, timezone, restaurant_address, footer_address, facebook_page_id'
+const TENANT_COLUMNS = 'id, slug, name, domain, logo_url, operating_hours, timezone, restaurant_address, footer_address, facebook_page_id, order_backend, convex_deployment_url'
 
 export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{ settings: MessengerSettings; storedRules: MessengerRule[] }> {
   const admin = createAdminClient()
@@ -59,6 +60,7 @@ export async function loadStoreBundle(tenantId: string, now: Date = new Date()):
     id: string; slug: string; name: string; domain: string | null; logo_url: string | null
     operating_hours: unknown; timezone: string | null; restaurant_address: string | null; footer_address: string | null
     facebook_page_id: string | null
+    order_backend: string | null; convex_deployment_url: string | null
   }
 
   const [menu, { settings, storedRules }] = await Promise.all([
@@ -83,6 +85,7 @@ export async function loadStoreBundle(tenantId: string, now: Date = new Date()):
     tenantId: tenant.id,
     slug: tenant.slug,
     facebookPageRowId: tenant.facebook_page_id,
+    isPlatformOrders: resolveOrderBackend(tenant as OrderBackendTenantFields) === 'platform',
     store,
     rules: activeRules(settings, storedRules),
     settings,

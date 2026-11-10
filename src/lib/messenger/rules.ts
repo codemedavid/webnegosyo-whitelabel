@@ -71,6 +71,7 @@ export const actionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('hours_location'), text: optionalText(MAX_REPLY_TEXT) }).strict(),
   z.object({ kind: z.literal('talk_to_staff'), text: optionalText(MAX_REPLY_TEXT) }).strict(),
   z.object({ kind: z.literal('order_status'), text: optionalText(MAX_REPLY_TEXT) }).strict(),
+  z.object({ kind: z.literal('cart') }).strict(),
 ])
 
 export type RuleTrigger = z.infer<typeof triggerSchema>
@@ -81,7 +82,7 @@ export type ActionKind = RuleAction['kind']
 
 export const TRIGGER_KINDS = ['keyword', 'get_started', 'ice_breaker', 'menu_button', 'fallback'] as const satisfies readonly TriggerKind[]
 export const ACTION_KINDS = [
-  'menu_card', 'categories', 'category_items', 'featured_items', 'text', 'hours_location', 'talk_to_staff', 'order_status',
+  'menu_card', 'categories', 'category_items', 'featured_items', 'text', 'hours_location', 'talk_to_staff', 'order_status', 'cart',
 ] as const satisfies readonly ActionKind[]
 
 export const ruleSchema = z.object({
@@ -108,6 +109,9 @@ export const DEFAULT_MENU_KEYWORDS = [
   'magkano', 'ano meron', 'ano ang meron', 'pa order', 'paorder', 'mag order', 'order po',
 ]
 
+/** Added 2026-11 with the chat cart. Not "order": that word starts a new order. */
+export const DEFAULT_CART_KEYWORDS = ['cart', 'my cart', 'view cart', 'basket', 'checkout', 'check out ko']
+
 /**
  * What a store runs before its owner saves any rule. Order status comes first,
  * as before: "where is my order" must never get a menu card.
@@ -118,6 +122,13 @@ export const DEFAULT_RULES: readonly MessengerRule[] = Object.freeze([
     name: 'Where is my order',
     trigger: { kind: 'keyword', keywords: DEFAULT_ORDER_STATUS_KEYWORDS, match: 'contains' },
     action: { kind: 'order_status' },
+    isEnabled: true,
+  },
+  {
+    id: 'default-cart',
+    name: 'My cart',
+    trigger: { kind: 'keyword', keywords: DEFAULT_CART_KEYWORDS, match: 'contains' },
+    action: { kind: 'cart' },
     isEnabled: true,
   },
   {

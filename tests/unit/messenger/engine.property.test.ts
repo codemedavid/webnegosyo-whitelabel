@@ -16,6 +16,11 @@ const payloadArb: fc.Arbitrary<MessengerPayload> = fc.oneof(
   fc.constant<MessengerPayload>({ verb: 'menu' }),
   fc.constant<MessengerPayload>({ verb: 'categories' }),
   fc.constant<MessengerPayload>({ verb: 'staff' }),
+  fc.constant<MessengerPayload>({ verb: 'cart' }),
+  fc.constant<MessengerPayload>({ verb: 'clear' }),
+  fc.constant<MessengerPayload>({ verb: 'clear_yes' }),
+  fc.constant<MessengerPayload>({ verb: 'orders' }),
+  fc.tuple(fc.constantFrom<'add' | 'inc' | 'dec' | 'rm'>('add', 'inc', 'dec', 'rm'), id).map(([verb, itemId]): MessengerPayload => ({ verb, itemId })),
   id.map((ruleId): MessengerPayload => ({ verb: 'rule', ruleId })),
   fc.tuple(id, fc.integer({ min: 0, max: 50 })).map(([categoryId, page]): MessengerPayload => ({ verb: 'category', categoryId, page })),
 )

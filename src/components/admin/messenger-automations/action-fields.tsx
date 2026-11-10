@@ -168,7 +168,13 @@ export function ActionFields({ action, store, onChange }: ActionFieldsProps) {
         </>
       ) : null}
 
-      {action.kind !== 'menu_card' && action.kind !== 'text' ? (
+      {action.kind === 'cart' ? (
+        <p className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+          Customers add dishes with the “Add to cart” button on dish cards. Dishes with required choices (size, flavour) open your online menu instead.
+        </p>
+      ) : null}
+
+      {action.kind !== 'menu_card' && action.kind !== 'text' && action.kind !== 'cart' ? (
         <>
           <WordingField
             id="action-wording"

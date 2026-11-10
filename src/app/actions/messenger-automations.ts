@@ -20,11 +20,12 @@ import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { actionSchema, ruleSchema, ruleSetProblems, type MessengerRule } from '@/lib/messenger/rules'
 import { loadStoreBundle } from '@/lib/messenger/load-store'
 import { syncMessengerProfile, type ProfileSyncOutcome } from '@/lib/messenger/profile-sync'
-import { buildReply } from '@/lib/messenger/replies'
+import { buildReply, withPreviewData } from '@/lib/messenger/replies'
 import { sendMessages } from '@/lib/messenger/send'
 import { touchSession } from '@/lib/messenger/session'
 import { createMessengerLinkToken } from '@/lib/messenger/link-token'
 import { hashTesterCode, newTesterCode, TESTER_CODE_TTL_MS } from '@/lib/messenger/tester'
+import { MAX_ORDER_UPDATE_TEXT, orderUpdatesSchema, UPDATE_STATUSES, type OrderUpdatesConfig } from '@/lib/messenger/order-view'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TAKEOVER_CHOICES = [0, 30, 60, 240, 1440] as const
@@ -150,6 +151,49 @@ export async function sendMessengerTestAction(tenantId: string, rawAction: unkno
 
   const session = await touchSession({ tenantId, pageId: page.page_id, psid: testerPsid, now: new Date(), isInbound: false })
   const linkToken = session ? createMessengerLinkToken(session.id) : null
-  const result = await sendMessages(page.page_access_token, testerPsid, buildReply(action.data, { store: bundle.store, linkToken }))
+  const result = await sendMessages(page.page_access_token, testerPsid, buildReply(action.data, withPreviewData({ store: bundle.store, linkToken })))
   return result.ok ? { ok: true } : { ok: false, error: testSendError(result.error.code, result.error.subcode) }
+}
+
+const orderUpdatesInput = z.object({ tenantId: z.string().uuid(), config: orderUpdatesSchema }).strict()
+
+/**
+ * Order status messages: on/off, which statuses, the owner's wording.
+ * Through the caller's session client; the affected row is checked because an
+ * RLS refusal on UPDATE is silent.
+ */
+export async function saveMessengerOrderUpdatesAction(input: { tenantId: string; config: OrderUpdatesConfig }): Promise<ActionResult<{ config: OrderUpdatesConfig }>> {
+  const parsed = orderUpdatesInput.safeParse(input)
+  if (!parsed.success) return { ok: false, error: `Status messages can be at most ${MAX_ORDER_UPDATE_TEXT} characters.` }
+  const { tenantId } = parsed.data
+  const access = await authorize(tenantId)
+  if ('error' in access) return { ok: false, error: access.error }
+
+  const config: OrderUpdatesConfig = {
+    enabled: parsed.data.config.enabled,
+    statuses: UPDATE_STATUSES.filter((status) => parsed.data.config.statuses.includes(status)),
+    texts: Object.fromEntries(Object.entries(parsed.data.config.texts).filter(([, text]) => typeof text === 'string' && text.trim() !== '')),
+  }
+
+  const supabase = await createClient()
+  const updated = await supabase.from('messenger_settings')
+    .update({ order_updates: config, updated_by: access.userId } as never)
+    .eq('tenant_id', tenantId)
+    .select('tenant_id')
+  let rows = updated.data?.length ?? 0
+  if (!updated.error && rows === 0) {
+    const inserted = await supabase.from('messenger_settings')
+      .insert({ tenant_id: tenantId, order_updates: config, updated_by: access.userId } as never)
+      .select('tenant_id')
+    if (inserted.error) {
+      console.error('[Messenger automations] order updates not stored', { tenantId, code: inserted.error.code })
+      return { ok: false, error: inserted.error.code === '42501' ? NOT_ALLOWED : "Couldn't save your status messages. Please try again." }
+    }
+    rows = inserted.data?.length ?? 0
+  }
+  if (updated.error || rows !== 1) {
+    console.error('[Messenger automations] order updates not stored', { tenantId, code: updated.error?.code, rows })
+    return { ok: false, error: updated.error?.code === '42501' ? NOT_ALLOWED : "Couldn't save your status messages. Please try again." }
+  }
+  return { ok: true, config }
 }

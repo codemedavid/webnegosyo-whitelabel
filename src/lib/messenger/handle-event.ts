@@ -12,13 +12,21 @@
  *   6. bot off → stay quiet
  *   7. rule / button → reply. While a staff reply has the bot paused, typed
  *      messages get no bot answer; taps on our own buttons still do.
+ *      A reply that shows the cart or orders has them read (and a cart tap
+ *      applied) first, so the pure builders only ever format.
  */
 
 import type { OutgoingMessage } from './graph-message'
 import type { InboundEvent } from './events'
 import type { StoreBundle } from './settings'
 import { decodePayload, type MessengerPayload } from './payload'
-import { buildCategories, buildCategoryItems, buildMenuCard, buildReply, type ReplyContext } from './replies'
+import {
+  buildCart, buildCartChange, buildCategories, buildCategoryItems, buildClearConfirm, buildMenuCard, buildReply,
+  type ChatCartView, type ReplyContext,
+} from './replies'
+import type { CartOp } from './chat-cart'
+import type { ReplyOrder } from './order-view'
+import type { ReplyStore } from './store-view'
 import { findEnabledRule, pickRuleForText, type MessengerRule, type RuleAction } from './rules'
 import { orderIdFromRef } from './ref'
 import type { MessengerSession } from './session'
@@ -48,6 +56,10 @@ export interface WebhookDeps {
   answerOrderReferral(input: { orderId: string; pageId: string; senderId: string }): Promise<{ outcome: string }>
   createLinkToken(sessionId: string): string | null
   linkTester(tenantId: string, psid: string): Promise<boolean>
+  /** Read the session's chat cart, apply `op` (null = just read), drop what can't be ordered, store it. Null = unreadable. */
+  changeCart(input: { sessionId: string; op: CartOp | null; store: ReplyStore }): Promise<ChatCartView | null>
+  /** This customer's newest orders at this store (platform orders only). */
+  loadRecentOrders(input: { tenantId: string; psid: string; store: ReplyStore; now: Date }): Promise<ReplyOrder[]>
 }
 
 export type EventOutcome =
@@ -75,16 +87,36 @@ export function readStaffCommand(text: string): RuleAction | null {
   return match ? STAFF_COMMANDS[match[1]] ?? null : null
 }
 
+export interface ReplyNeeds {
+  /** Read the chat cart first, applying this op ('read' = no change). */
+  cart?: CartOp | 'read'
+  /** Read this customer's recent orders first. */
+  orders?: boolean
+}
+
 export interface ReplyDecision {
   build(ctx: ReplyContext): OutgoingMessage[]
   /** "Talk to staff": the bot steps back for this customer. */
   pausesBot: boolean
   /** A typed message (not a tap on our button): stays unanswered while paused. */
   isTyped: boolean
+  needs?: ReplyNeeds
+}
+
+function needsFor(action: RuleAction): ReplyNeeds | undefined {
+  if (action.kind === 'cart') return { cart: 'read' }
+  if (action.kind === 'order_status') return { orders: true }
+  return undefined
 }
 
 function fromAction(action: RuleAction, isTyped: boolean): ReplyDecision {
-  return { build: (ctx) => buildReply(action, ctx), pausesBot: action.kind === 'talk_to_staff', isTyped }
+  return { build: (ctx) => buildReply(action, ctx), pausesBot: action.kind === 'talk_to_staff', isTyped, needs: needsFor(action) }
+}
+
+const CART_VERB_OPS = { add: 'add', inc: 'inc', dec: 'dec', rm: 'remove' } as const
+
+function tap(build: ReplyDecision['build'], needs?: ReplyNeeds): ReplyDecision {
+  return { build, pausesBot: false, isTyped: false, needs }
 }
 
 function getStartedAction(rules: readonly MessengerRule[]): RuleAction {
@@ -101,13 +133,26 @@ function fromPayload(payload: MessengerPayload, rules: readonly MessengerRule[])
       return fromAction(rule?.action ?? { kind: 'menu_card' }, false)
     }
     case 'menu':
-      return { build: (ctx) => buildMenuCard(ctx), pausesBot: false, isTyped: false }
+      return tap((ctx) => buildMenuCard(ctx))
     case 'categories':
-      return { build: (ctx) => buildCategories(ctx), pausesBot: false, isTyped: false }
+      return tap((ctx) => buildCategories(ctx))
     case 'category':
-      return { build: (ctx) => buildCategoryItems(ctx, payload.categoryId, payload.page), pausesBot: false, isTyped: false }
+      return tap((ctx) => buildCategoryItems(ctx, payload.categoryId, payload.page))
     case 'staff':
       return fromAction({ kind: 'talk_to_staff' }, false)
+    case 'add':
+    case 'inc':
+    case 'dec':
+    case 'rm':
+      return tap(buildCartChange, { cart: { kind: CART_VERB_OPS[payload.verb], itemId: payload.itemId } })
+    case 'cart':
+      return tap((ctx) => buildCart(ctx), { cart: 'read' })
+    case 'clear':
+      return tap(() => buildClearConfirm())
+    case 'clear_yes':
+      return tap(buildCartChange, { cart: { kind: 'clear' } })
+    case 'orders':
+      return fromAction({ kind: 'order_status' }, false)
   }
 }
 
@@ -159,6 +204,30 @@ async function handleEcho(event: Extract<InboundEvent, { kind: 'echo' }>, page: 
   return 'staff_paused'
 }
 
+/** Fill the context with what the reply shows. A failed read leaves it out; the builders say so. */
+async function loadNeeds(
+  ctx: ReplyContext,
+  needs: ReplyNeeds | undefined,
+  input: { session: MessengerSession | null; bundle: StoreBundle; psid: string; now: Date; deps: WebhookDeps },
+): Promise<void> {
+  if (!needs || !input.session) return
+  const { session, bundle, deps } = input
+  const store = ctx.store
+  const [cart, orders] = await Promise.all([
+    needs.cart
+      ? deps.changeCart({ sessionId: session.id, op: needs.cart === 'read' ? null : needs.cart, store }).catch(() => null)
+      : Promise.resolve(null),
+    needs.orders && bundle.isPlatformOrders
+      ? deps.loadRecentOrders({ tenantId: bundle.tenantId, psid: input.psid, store, now: input.now }).catch(() => undefined)
+      : Promise.resolve(undefined),
+  ])
+  if (cart) {
+    ctx.cart = needs.cart !== 'read' && needs.cart && 'itemId' in needs.cart ? { ...cart, itemId: needs.cart.itemId } : cart
+  }
+  // Convex / per-store Supabase stores: their orders aren't on this database.
+  if (needs.orders) ctx.orders = bundle.isPlatformOrders ? orders : null
+}
+
 export async function handleEvent(event: InboundEvent, deps: WebhookDeps): Promise<EventOutcome> {
   if (!(await deps.claimOnce(event.pageId, event.dedupeKey))) return 'duplicate'
   const page = await deps.findPage(event.pageId)
@@ -207,6 +276,7 @@ export async function handleEvent(event: InboundEvent, deps: WebhookDeps): Promi
   if (isPaused && decision.isTyped) return 'paused'
 
   const ctx: ReplyContext = { store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null }
+  await loadNeeds(ctx, decision.needs, { session, bundle, psid: event.psid, now, deps })
   const messages = decision.build(ctx)
   if (decision.pausesBot && session) {
     const minutes = Math.max(bundle.settings.takeoverMinutes, MIN_STAFF_PAUSE_MINUTES)

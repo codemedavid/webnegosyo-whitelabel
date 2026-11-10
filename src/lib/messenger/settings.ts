@@ -35,6 +35,8 @@ export interface StoreBundle {
   tenantId: string
   slug: string
   facebookPageRowId: string | null
+  /** `resolveOrderBackend(tenant) === 'platform'`: its orders are readable here. */
+  isPlatformOrders: boolean
   store: ReplyStore | null
   rules: MessengerRule[]
   settings: MessengerSettings

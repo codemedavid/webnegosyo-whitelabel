@@ -1,6 +1,6 @@
 # Messenger automations: triggers, menu carousels, chat cart, order updates
 
-Date: 2026-11-10 · Status: **PLAN, awaiting owner approval** · Goal: `/board` → "Messenger automations" (created 2026-11-04)
+Date: 2026-11-10 · Status: **APPROVED (D1–D7 = recommendations, 2026-11-10); release 1 built, release 2 built 2026-11-10 (unapplied)** · Goal: `/board` → "Messenger automations" (created 2026-11-04)
 
 ## The ask
 

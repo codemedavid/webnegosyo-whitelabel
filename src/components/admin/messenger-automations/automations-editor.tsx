@@ -7,13 +7,15 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { saveMessengerAutomationsAction } from '@/app/actions/messenger-automations'
+import { saveMessengerAutomationsAction, saveMessengerOrderUpdatesAction } from '@/app/actions/messenger-automations'
+import type { OrderUpdatesConfig } from '@/lib/messenger/order-view'
 import { ruleSetProblems, type MessengerRule, type TriggerKind } from '@/lib/messenger/rules'
 import { ACTION_LABELS, describeTrigger, moveRule, newDraftRule, TAKEOVER_OPTIONS } from '@/lib/messenger/rule-labels'
 import type { ReplyStore } from '@/lib/messenger/store-view'
 import { FIELD_CLASS } from './field-styles'
 import { RuleEditorSheet } from './rule-editor-sheet'
 import { TesterPanel } from './tester-panel'
+import { OrderUpdatesCard } from './order-updates-card'
 
 export interface AutomationsEditorProps {
   tenantId: string
@@ -27,6 +29,8 @@ export interface AutomationsEditorProps {
   isPageConnected: boolean
   isTesterLinked: boolean
   profileError: string | null
+  orderUpdates: OrderUpdatesConfig
+  isPlatformOrders: boolean
 }
 
 const ONCE_ONLY: readonly TriggerKind[] = ['get_started', 'fallback']
@@ -38,6 +42,8 @@ export function AutomationsEditor(props: AutomationsEditorProps) {
   const [version, setVersion] = useState(props.version)
   const [isCustomized, setIsCustomized] = useState(props.isCustomized)
   const [isDirty, setIsDirty] = useState(false)
+  const [orderUpdates, setOrderUpdates] = useState(props.orderUpdates)
+  const [areUpdatesDirty, setAreUpdatesDirty] = useState(false)
   const [editing, setEditing] = useState<MessengerRule | null>(null)
   const [isTesterLinked, setIsTesterLinked] = useState(props.isTesterLinked)
   const [profileError, setProfileError] = useState(props.profileError)
@@ -56,6 +62,14 @@ export function AutomationsEditor(props: AutomationsEditorProps) {
   }
 
   const save = () => startSaving(async () => {
+    if (areUpdatesDirty) {
+      const updates = await saveMessengerOrderUpdatesAction({ tenantId: props.tenantId, config: orderUpdates })
+      if (!updates.ok) { toast.error(updates.error); return }
+      setOrderUpdates(updates.config)
+      setAreUpdatesDirty(false)
+      if (!isDirty) { toast.success('Order status messages saved'); return }
+    }
+    if (!isDirty) return
     const result = await saveMessengerAutomationsAction({ tenantId: props.tenantId, expectedVersion: version, rules, botEnabled, takeoverMinutes })
     if (!result.ok) { toast.error(result.error); return }
     setRules(result.rules)
@@ -129,14 +143,20 @@ export function AutomationsEditor(props: AutomationsEditorProps) {
         </CardContent>
       </Card>
 
+      <OrderUpdatesCard
+        config={orderUpdates}
+        isPlatformOrders={props.isPlatformOrders}
+        onChange={(config) => { setOrderUpdates(config); setAreUpdatesDirty(true) }}
+      />
+
       <TesterPanel tenantId={props.tenantId} isLinked={isTesterLinked} onLinkedChange={setIsTesterLinked} />
 
       {profileError ? <p className="text-sm text-destructive" role="alert">{profileError}</p> : null}
 
       <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:flex-row sm:items-center sm:justify-end sm:rounded-lg sm:border">
         {problems.length > 0 ? <p className="text-sm text-destructive sm:mr-auto">{problems[0]}</p> : null}
-        {isDirty && problems.length === 0 ? <p className="text-sm text-muted-foreground sm:mr-auto">You have unsaved changes.</p> : null}
-        <Button type="button" disabled={!isDirty || isSaving || problems.length > 0} onClick={save}>{isSaving ? 'Saving…' : 'Save'}</Button>
+        {(isDirty || areUpdatesDirty) && problems.length === 0 ? <p className="text-sm text-muted-foreground sm:mr-auto">You have unsaved changes.</p> : null}
+        <Button type="button" disabled={(!isDirty && !areUpdatesDirty) || isSaving || problems.length > 0} onClick={save}>{isSaving ? 'Saving…' : 'Save'}</Button>
       </div>
 
       <RuleEditorSheet

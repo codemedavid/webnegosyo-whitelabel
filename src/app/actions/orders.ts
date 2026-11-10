@@ -35,7 +35,8 @@ import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { requireCheckoutOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 import { parseOrderLines } from '@/lib/checkout/order-line-schema'
 import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
-import { withVerifiedMessengerPsid } from '@/lib/messenger/recipient'
+import { verifyMessengerCustomerData } from '@/lib/messenger/recipient'
+import { emptyChatCart } from '@/lib/messenger/chat-cart-store'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import { judgeOrderPaymentMethod, readOrderPaymentMethod } from '@/lib/checkout/order-payment-method'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
@@ -259,7 +260,17 @@ export async function createOrderAction(
     // token, or a raw PSID from before 2026-11-10); only a reference that
     // resolves to THIS store's customer survives, as the real PSID — the
     // order's Messenger messages go to it.
-    const clientCustomerData = await withVerifiedMessengerPsid(tenantId, sanitizedCustomerData.data)
+    const { customerData: clientCustomerData, chatSessionId } = await verifyMessengerCustomerData(tenantId, sanitizedCustomerData.data)
+    // Placed with the chat's link: what they added in Messenger is now this order.
+    // Never throws: the order is already saved, and a failure here must not read as a failed order.
+    const finishChatCart = async () => {
+      if (!chatSessionId) return
+      try {
+        await emptyChatCart(chatSessionId)
+      } catch (error) {
+        console.error('[Messenger] chat cart not emptied after order', error instanceof Error ? error.message : error)
+      }
+    }
 
     if (!isValidClientDeliveryFee(deliveryFee)) {
       return { success: false, refused: true, error: INVALID_DELIVERY_FEE_MESSAGE }
@@ -876,7 +887,8 @@ export async function createOrderAction(
           })),
         })
       })
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
+      await finishChatCart()
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
     // Route on the same resolver the admin queue reads with, so a write can
@@ -908,7 +920,8 @@ export async function createOrderAction(
       orderPersisted = true
       await burnFor(result.order.id)
       await followUp(result.order.id, null)
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
+      await finishChatCart()
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
     // Otherwise, continue with existing Supabase flow.
@@ -956,13 +969,15 @@ export async function createOrderAction(
       // double tap. The same goes for the option counters claimed under this
       // retry's own (never written) order id.
       await releaseClaim()
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
+      await finishChatCart()
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
     // The order row exists and carries the claim; the stock is spent for real.
     orderPersisted = true
     await burnFor(result.order.id)
     await followUp(result.order.id, result.order.id)
     // Return both order and token for secure public API access
+    await finishChatCart()
     return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
   } catch (error) {
     // Presell stock reserved for an order that never got written is stock that

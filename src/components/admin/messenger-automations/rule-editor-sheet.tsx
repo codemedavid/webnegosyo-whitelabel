@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { sendMessengerTestAction } from '@/app/actions/messenger-automations'
-import { buildReply } from '@/lib/messenger/replies'
+import { buildReply, withPreviewData } from '@/lib/messenger/replies'
 import { ruleSchema, type MessengerRule, type TriggerKind } from '@/lib/messenger/rules'
 import { TRIGGER_LABELS } from '@/lib/messenger/rule-labels'
 import type { ReplyStore } from '@/lib/messenger/store-view'
@@ -55,7 +55,7 @@ function draftProblem(rule: MessengerRule): string | null {
 function EditorBody({ tenantId, rule: initial, store, takenKinds, isTesterLinked, onClose, onDone }: RuleEditorSheetProps & { rule: MessengerRule }) {
   const [rule, setRule] = useState<MessengerRule>(initial)
   const [isSending, startSending] = useTransition()
-  const preview = useMemo(() => buildReply(rule.action, { store, linkToken: null }), [rule.action, store])
+  const preview = useMemo(() => buildReply(rule.action, withPreviewData({ store, linkToken: null })), [rule.action, store])
   const problem = draftProblem({ ...rule, name: rule.name.trim() || 'Automation' })
 
   const sendTest = () => startSending(async () => {

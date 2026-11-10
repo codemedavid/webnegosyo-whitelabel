@@ -10,7 +10,7 @@ import {
   ITEMS_PER_PAGE,
 } from '@/lib/messenger/replies'
 import { decodePayload } from '@/lib/messenger/payload'
-import { dish, sampleContext, sampleStore } from './sample-store'
+import { category, dish, sampleContext, sampleStore } from './sample-store'
 
 describe('buildReplyStore', () => {
   const store = sampleStore()
@@ -107,7 +107,7 @@ describe('categories and carousels', () => {
     expect(messages[1].kind).toBe('text')
   })
 
-  it('item cards: price, Order + Full menu, tap opens the item', () => {
+  it('item cards: price, Add to cart + View item + Full menu, tap opens the item', () => {
     const [message] = buildCategoryItems(sampleContext(), 'c-small', 0)
     const card = message.kind === 'cards' ? message.cards[0] : null
     expect(card).toMatchObject({
@@ -115,7 +115,18 @@ describe('categories and carousels', () => {
       subtitle: '₱45 · A test menu item',
       tapUrl: 'https://karamotan.webnegosyo.com/menu/item/drink-1',
     })
-    expect(card?.buttons.map((entry) => entry.title)).toEqual(['Order', 'Full menu'])
+    expect(card?.buttons.map((entry) => entry.title)).toEqual(['🛒 Add to cart', 'View item', 'Full menu'])
+    expect(card?.buttons[0]).toMatchObject({ type: 'postback', payload: 'wn1|add|drink-1' })
+  })
+
+  it('a dish with a required choice opens the item page instead of Add to cart', () => {
+    const store = sampleStore({
+      categories: [category('c1', 'Drinks', 1)],
+      items: [dish('milk-tea', 'c1', 0, { variations: [{ id: 'v1', name: 'Large', price: 10 }] as never })],
+    })
+    const [message] = buildCategoryItems(sampleContext(store), 'c1', 0)
+    const card = message.kind === 'cards' ? message.cards[0] : null
+    expect(card?.buttons.map((entry) => entry.title)).toEqual(['Choose options', 'Full menu'])
   })
 
   it('featured: the owner\'s picks, in their order, skipping sold out', () => {

@@ -24,6 +24,14 @@ export type MessengerPayload =
   /** One category's dishes, `page` 0-based. */
   | { verb: 'category'; categoryId: string; page: number }
   | { verb: 'staff' }
+  /** Chat cart (release 2): add / + / − / remove one dish. */
+  | { verb: 'add' | 'inc' | 'dec' | 'rm'; itemId: string }
+  | { verb: 'cart' }
+  /** "Empty cart" asks first; `clear_yes` is the confirmation. */
+  | { verb: 'clear' }
+  | { verb: 'clear_yes' }
+  /** This customer's recent orders. */
+  | { verb: 'orders' }
 
 export function encodePayload(payload: MessengerPayload): string {
   switch (payload.verb) {
@@ -31,7 +39,16 @@ export function encodePayload(payload: MessengerPayload): string {
     case 'menu':
     case 'categories':
     case 'staff':
+    case 'cart':
+    case 'clear':
+    case 'clear_yes':
+    case 'orders':
       return [PREFIX, payload.verb].join(SEPARATOR)
+    case 'add':
+    case 'inc':
+    case 'dec':
+    case 'rm':
+      return [PREFIX, payload.verb, payload.itemId].join(SEPARATOR)
     case 'rule':
       return [PREFIX, 'rule', payload.ruleId].join(SEPARATOR)
     case 'category':
@@ -59,7 +76,18 @@ export function decodePayload(raw: string): MessengerPayload | null {
     case 'menu':
     case 'categories':
     case 'staff':
+    case 'cart':
+    case 'clear':
+    case 'clear_yes':
+    case 'orders':
       return parts.length === 2 ? { verb } : null
+    case 'add':
+    case 'inc':
+    case 'dec':
+    case 'rm': {
+      const itemId = readId(first)
+      return itemId && parts.length === 3 ? { verb, itemId } : null
+    }
     case 'rule': {
       const ruleId = readId(first)
       return ruleId && parts.length === 3 ? { verb: 'rule', ruleId } : null
