@@ -4951,6 +4951,48 @@ export type Database = {
           },
         ]
       }
+      messenger_order_updates: {
+        Row: {
+          created_at: string
+          order_id: string
+          outcome: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          outcome?: string
+          status: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          outcome?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_order_updates_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messenger_order_updates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messenger_rules: {
         Row: {
           action: Json
@@ -5002,6 +5044,7 @@ export type Database = {
         Row: {
           bot_paused_until: string | null
           cart_data: Json | null
+          cart_version: number
           checkout_state: Json | null
           created_at: string
           id: string
@@ -5015,6 +5058,7 @@ export type Database = {
         Insert: {
           bot_paused_until?: string | null
           cart_data?: Json | null
+          cart_version?: number
           checkout_state?: Json | null
           created_at?: string
           id?: string
@@ -5028,6 +5072,7 @@ export type Database = {
         Update: {
           bot_paused_until?: string | null
           cart_data?: Json | null
+          cart_version?: number
           checkout_state?: Json | null
           created_at?: string
           id?: string
@@ -5051,6 +5096,7 @@ export type Database = {
       messenger_settings: {
         Row: {
           bot_enabled: boolean
+          order_updates: Json | null
           profile_error: string | null
           profile_fields: string[]
           profile_hash: string | null
@@ -5067,6 +5113,7 @@ export type Database = {
         }
         Insert: {
           bot_enabled?: boolean
+          order_updates?: Json | null
           profile_error?: string | null
           profile_fields?: string[]
           profile_hash?: string | null
@@ -5083,6 +5130,7 @@ export type Database = {
         }
         Update: {
           bot_enabled?: boolean
+          order_updates?: Json | null
           profile_error?: string | null
           profile_fields?: string[]
           profile_hash?: string | null

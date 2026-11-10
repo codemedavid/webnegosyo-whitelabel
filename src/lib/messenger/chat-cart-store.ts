@@ -7,7 +7,7 @@
  */
 
 import 'server-only'
-import { untypedAdminClient as createAdminClient } from './untyped-admin'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { applyCartOp, parseChatCart, priceChatCart, sameCart, type CartOp, type ChatCartLine, type CartOpOutcome } from './chat-cart'
 import type { ChatCartView } from './replies'
 import type { ReplyStore } from './store-view'

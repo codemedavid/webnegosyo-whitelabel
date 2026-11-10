@@ -1,7 +1,7 @@
 /** The real side effects behind `runOrderUpdate` (service role: the caller is a database trigger). */
 
 import 'server-only'
-import { untypedAdminClient as createAdminClient } from './untyped-admin'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { toCentavos } from './chat-cart'
