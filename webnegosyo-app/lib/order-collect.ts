@@ -32,10 +32,8 @@ const ALLOWED: CollectGate = { allowed: true };
 const SETTLED_EPSILON = 0.005;
 
 /**
- * Backends that can accept the payment mutation.
- *
- * Per-tenant Supabase projects are absent for the same reason they cannot take
- * an edit: that backend has no mutation path at all today.
+ * Backends that can accept the payment mutation. An allowlist, so a backend
+ * this build does not know is refused instead of failing at the tap.
  */
 const COLLECTABLE_BACKENDS: readonly OrderBackend[] = ["platform", "convex"];
 

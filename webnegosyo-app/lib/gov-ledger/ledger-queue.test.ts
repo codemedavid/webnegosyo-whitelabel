@@ -123,6 +123,5 @@ describe("record drafts", () => {
   it("maps the register's backend onto the ledger's names", () => {
     expect(ledgerBackendOf("platform")).toBe("platform_supabase");
     expect(ledgerBackendOf("convex")).toBe("convex");
-    expect(ledgerBackendOf("supabase")).toBe("tenant_supabase");
   });
 });

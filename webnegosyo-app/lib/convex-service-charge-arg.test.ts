@@ -52,13 +52,10 @@ describe("convexServiceChargeArg", () => {
 });
 
 describe("serviceChargeArgFor", () => {
-  it.each(["platform", "supabase"] as const)(
-    "sends the charge on %s whatever the Convex version says",
-    (backend) => {
-      expect(serviceChargeArgFor(backend, 24, null)).toEqual({ serviceCharge: 24 });
-      expect(serviceChargeArgFor(backend, 24, 5)).toEqual({ serviceCharge: 24 });
-    },
-  );
+  it("sends the charge on platform whatever the Convex version says", () => {
+    expect(serviceChargeArgFor("platform", 24, null)).toEqual({ serviceCharge: 24 });
+    expect(serviceChargeArgFor("platform", 24, 5)).toEqual({ serviceCharge: 24 });
+  });
 
   it("keeps the version gate on Convex and on a session not resolved yet", () => {
     expect(serviceChargeArgFor("convex", 24, 22)).toEqual({});

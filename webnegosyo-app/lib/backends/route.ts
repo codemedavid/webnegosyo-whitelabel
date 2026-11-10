@@ -40,13 +40,12 @@ export type WriteBackendInput = Pick<RefRouteInput, "orderBackend" | "convexUrl"
  * order into the external-order ledger. `resolveRefRoute` is built on this, so
  * the write and the report can never disagree.
  *
- * Anything not explicitly moved to the platform (or to its own project) stays
- * on Convex, which is every tenant that works today. `null` means the session
+ * Anything not explicitly moved to the platform stays on Convex, which is
+ * every tenant that works today. `null` means the session
  * has not resolved yet; Convex's own hook already skips without a url.
  */
 export function resolveWriteBackend({ orderBackend }: WriteBackendInput): OrderBackend {
-  if (orderBackend === "platform" || orderBackend === "supabase") return orderBackend;
-  return "convex";
+  return orderBackend === "platform" ? "platform" : "convex";
 }
 
 export function resolveRefRoute({
@@ -57,12 +56,6 @@ export function resolveRefRoute({
 }: RefRouteInput): RefRoute {
   const backend = resolveWriteBackend({ orderBackend, convexUrl });
   if (backend === "convex") return "convex";
-
-  // `supabase` is the SEPARATE per-tenant-project track. This adapter targets
-  // the shared platform database only and must not read the wrong one.
-  if (backend === "supabase") {
-    return "unsupported";
-  }
 
   // A superadmin who has not entered a store has no tenant, and their RLS
   // policy grants every tenant's rows — querying now would cross stores.

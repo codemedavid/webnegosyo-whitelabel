@@ -61,10 +61,8 @@ const UNAPPENDABLE_STATUSES: Record<string, string> = {
 };
 
 /**
- * Backends that can accept the revise mutation.
- *
- * Per-tenant Supabase projects are absent on purpose: that backend has no
- * mutation path at all today, so its orders are read-only in every surface.
+ * Backends that can accept the revise mutation. An allowlist, so a backend
+ * this build does not know is refused instead of failing at the tap.
  */
 const EDITABLE_BACKENDS: readonly OrderBackend[] = ["platform", "convex"];
 

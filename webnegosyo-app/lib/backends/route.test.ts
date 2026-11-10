@@ -86,16 +86,6 @@ describe("resolveRefRoute", () => {
     expect(route).toBe("idle");
   });
 
-  it("treats a tenant on its own Supabase project as not-yet-served", () => {
-    // Arrange: `order_backend = 'supabase'` is the separate per-tenant-project
-    // track. This adapter targets the SHARED platform database only, and must
-    // not silently read the wrong database.
-    const route = resolveRefRoute(input({ orderBackend: "supabase" }));
-
-    // Assert
-    expect(route).toBe("unsupported");
-  });
-
   it("falls back to Convex when the backend has not been resolved yet", () => {
     // Arrange: the session patch has not landed. Convex is the historical
     // default and its own hook already handles a null url by skipping.
@@ -124,10 +114,6 @@ describe("resolveWriteBackend", () => {
     expect(resolveWriteBackend({ orderBackend: null, convexUrl: "https://x.convex.cloud" })).toBe(
       "convex"
     );
-  });
-
-  it("names the tenant's own project for a supabase store", () => {
-    expect(resolveWriteBackend({ orderBackend: "supabase", convexUrl: null })).toBe("supabase");
   });
 
   it("agrees with the mutation router on every session", () => {
