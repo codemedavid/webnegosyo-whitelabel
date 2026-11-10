@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendMetaConversionEvent } from '@/lib/meta-conversions'
+import type { LeadMetaAttribution, LeadMetaInput } from './meta-events'
+import type { Json } from '@/types/supabase'
 import {
   getCheckoutPayableAmount,
   isCheckoutPaymentTerm,
@@ -31,6 +32,10 @@ import type {
  * actually moves leads through statuses, and apply the table first.
  */
 
+/** Exactly the `CheckoutLead` fields; never meta_attribution / meta_purchase_sent_at. */
+const CHECKOUT_LEAD_PUBLIC_SELECT =
+  'id, reference_number, name, email, phone, business_name, notes, payment_term, selected_payment_method_id, status, payment_proof_url, payment_proof_uploaded_at, amount, created_at, updated_at'
+
 export interface CreateCheckoutLeadInput {
   name: string
   email: string
@@ -39,13 +44,8 @@ export interface CreateCheckoutLeadInput {
   notes?: string
   selected_payment_method_id: string
   payment_term: CheckoutPaymentTerm
-  meta?: {
-    eventId?: string
-    fbp?: string
-    fbc?: string
-    eventSourceUrl?: string
-    clientUserAgent?: string
-  }
+  /** The browser's pixel signals (untrusted; the action clips them into `metaAttribution`). */
+  meta?: LeadMetaInput
 }
 
 interface MutationResult {
@@ -54,7 +54,8 @@ interface MutationResult {
 
 // Create a checkout lead with collision-safe reference number
 export async function createCheckoutLead(
-  input: CreateCheckoutLeadInput
+  input: CreateCheckoutLeadInput,
+  options: { metaAttribution?: LeadMetaAttribution | null } = {}
 ): Promise<{ data: CheckoutLead | null; error: string | null }> {
   const supabase = createAdminClient()
   const paymentTerm = input.payment_term
@@ -81,8 +82,12 @@ export async function createCheckoutLead(
         selected_payment_method_id: input.selected_payment_method_id,
         payment_term: paymentTerm,
         amount,
+        // Stored for the Purchase sent when staff mark it paid (meta-events.ts).
+        meta_attribution: (options.metaAttribution ?? null) as unknown as Json,
       })
-      .select()
+      // Explicit columns: this row goes back to the buyer's browser, and
+      // meta_attribution (their IP and user agent) must not ride along.
+      .select(CHECKOUT_LEAD_PUBLIC_SELECT)
       .single()
 
     if (error) {
@@ -91,29 +96,6 @@ export async function createCheckoutLead(
         continue
       }
       return { data: null, error: error.message }
-    }
-
-    if (input.meta?.eventId) {
-      void sendMetaConversionEvent({
-        eventName: 'Lead',
-        eventId: input.meta.eventId,
-        eventSourceUrl: input.meta.eventSourceUrl,
-        userData: {
-          email: input.email,
-          phone: input.phone,
-          fbp: input.meta.fbp,
-          fbc: input.meta.fbc,
-          clientUserAgent: input.meta.clientUserAgent,
-        },
-        customData: {
-          content_name: 'Smart Menu System',
-          currency: 'PHP',
-          value: data.amount ?? amount,
-          reference_number: data.reference_number,
-        },
-      }).catch((metaError) => {
-        console.error('[Meta CAPI] Lead event dispatch failed', metaError)
-      })
     }
 
     return { data: data as CheckoutLead, error: null }

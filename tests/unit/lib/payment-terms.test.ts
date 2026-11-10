@@ -13,6 +13,7 @@ const EXPECTED_PAYABLE_AMOUNTS = {
   monthly_subscription: 1499,
   six_month_full: 5499,
   six_month_downpayment: 2000,
+  six_month_installment: 999,
 } satisfies Record<CheckoutPaymentTerm, number>
 
 describe('checkout payment terms', () => {
@@ -25,6 +26,7 @@ describe('checkout payment terms', () => {
       'monthly_subscription',
       'six_month_full',
       'six_month_downpayment',
+      'six_month_installment',
     ])
   })
 

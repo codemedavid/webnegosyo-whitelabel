@@ -1,9 +1,9 @@
-import { GraduationCap, Wand2 } from 'lucide-react'
+import { CalendarPlus, GraduationCap, Wand2 } from 'lucide-react'
 import { BONUS_SECTION, HELPED } from './funnel-copy'
 import { BONUSES, formatPeso, type FunnelBonus } from './funnel-offer'
 import { CtaLink } from './funnel-ui'
 
-const BONUS_ICONS = [Wand2, GraduationCap] as const
+const BONUS_ICONS = [CalendarPlus, Wand2, GraduationCap] as const
 
 /** The reference's bonus row: glowing tile, serif eyebrow, ~~worth~~ FREE, body, a tag. */
 function BonusCard({ bonus, index }: { bonus: FunnelBonus; index: number }) {

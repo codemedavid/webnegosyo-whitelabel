@@ -188,6 +188,46 @@ export const FUNNEL_STYLES = `
 .funnel-world .fn-choice input { accent-color: ${FN.amber}; width: 16px; height: 16px; }
 .funnel-world .fn-details > summary::-webkit-details-marker { display: none; }
 
+/* Payment step */
+.funnel-world .fn-copy {
+  display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; color: ${FN.amber}; border: 1px solid rgba(245,166,35,0.35); background: rgba(245,166,35,0.08);
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.funnel-world .fn-copy:hover { background: rgba(245,166,35,0.15); }
+.funnel-world .fn-copy[data-copied] { color: ${FN.green}; border-color: rgba(60,196,124,0.45); background: rgba(60,196,124,0.1); }
+.funnel-world .fn-copy:focus-visible, .funnel-world .fn-ghost-btn:focus-visible { outline: 2px solid ${FN.amber}; outline-offset: 2px; }
+.funnel-world .fn-ghost-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; color: #fff; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.04);
+  transition: background .15s ease, border-color .15s ease;
+}
+.funnel-world .fn-ghost-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.26); }
+.funnel-world .fn-ghost-btn:disabled { cursor: progress; opacity: 0.7; }
+.funnel-world .fn-qr-plate {
+  padding: 14px; border-radius: 22px; background: #fff;
+  box-shadow: 0 0 0 1px rgba(245,166,35,0.35), 0 0 0 7px rgba(245,166,35,0.07), 0 24px 60px rgba(0,0,0,0.45);
+}
+.funnel-world .fn-step-num {
+  display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; border-radius: 999px;
+  font-size: 12px; font-weight: 700; color: ${FN.amber}; border: 1px solid rgba(245,166,35,0.4); background: rgba(245,166,35,0.08);
+}
+.funnel-world .fn-progress {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; color: ${FN.muted};
+  border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03);
+}
+.funnel-world .fn-progress--done { color: ${FN.green}; border-color: rgba(60,196,124,0.4); background: rgba(60,196,124,0.08); }
+.funnel-world .fn-progress--current { color: ${FN.markerInk}; border-color: ${FN.amber}; background: ${FN.amber}; box-shadow: 0 0 18px rgba(245,166,35,0.35); }
+.funnel-world .fn-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 190px; padding: 28px 20px;
+  border-radius: 18px; cursor: pointer; text-align: center; border: 1.5px dashed rgba(245,166,35,0.4); background: rgba(10,8,6,0.55);
+  transition: border-color .15s ease, background .15s ease;
+}
+.funnel-world .fn-drop:hover { border-color: rgba(245,166,35,0.7); background: rgba(245,166,35,0.05); }
+.funnel-world .fn-drop:has(input:focus-visible) { box-shadow: 0 0 0 3px rgba(245,166,35,0.25); }
+.funnel-world .fn-drop[data-busy] { cursor: progress; }
+.funnel-world .fn-choice-logo { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: space-between; gap: 10px; }
+
 /* Motion */
 @keyframes fn-pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.85); } }
 @keyframes fn-shimmer { 0% { transform: rotate(18deg) translateX(-180%); opacity: 0; } 8% { opacity: 1; } 30%, 100% { transform: rotate(18deg) translateX(620%); opacity: 0; } }

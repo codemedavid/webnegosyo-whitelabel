@@ -4,7 +4,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { CartProvider } from "@/hooks/useCart";
 import { QueryProvider } from "@/providers/query-provider";
 import { MessengerPsidCapture } from "@/components/shared/messenger-psid-capture";
-import { MetaPixelBootstrap } from "@/components/tracking/meta-pixel-bootstrap";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -32,13 +31,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const metaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
-
   return (
     <html lang="en">
-      <head>
-        <MetaPixelBootstrap pixelId={metaPixelId} />
-      </head>
+      {/* No Meta pixel here: only the marketing pages load it (components/tracking/marketing-pixel.tsx). */}
       <body
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
