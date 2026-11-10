@@ -4,6 +4,12 @@ name: Tests
 # executed Jest, so a red suite was only ever seen by whoever happened to run it
 # locally.
 #
+#   lint     - `npm run lint` (ESLint, the root config). Errors fail the job;
+#              warnings do not.
+#   types    - `npm run typecheck`: tsc over src, tests, scripts and the
+#              sub-project sources the tests import.
+#   build    - `npm run build`, the command a Vercel deployment runs, with
+#              placeholder settings and no database.
 #   web      - the Next.js app's Jest suite (tests/, src/; next/jest + jsdom).
 #              Property tests (*.property.test.*) run here too, at the everyday
 #              FC_NUM_RUNS budget.
@@ -55,6 +61,114 @@ env:
   SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
 
 jobs:
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    # `next build` lints as part of every Vercel deployment, so a lint error
+    # that nobody ran locally used to surface as a failed production deploy.
+    # This is the same check, on the pull request instead. `npm run lint` covers
+    # more than the build does (tests/, and the app, desktop and Convex sources
+    # that have no linter of their own), so it is its own job rather than
+    # something the build job is trusted to do.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+  types:
+    name: Types (tsc)
+    runs-on: ubuntu-latest
+    # Jest transpiles without type checking and `next build` only checks src
+    # (tsconfig.build.json), so nothing else type-checks the tests, the scripts
+    # or the app, desktop and Convex sources that the cross-project tests
+    # import. A type error in src also shows up here in about a minute instead
+    # of at the end of a build.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # tests/unit/desktop imports two desktop files that import 'electron',
+      # which belongs to webnegosyo-desktop, not to the root install. Only its
+      # type declarations are needed: the version is the one in
+      # webnegosyo-desktop/package-lock.json, nothing is saved to package.json
+      # and --ignore-scripts skips the download of the Electron binary.
+      # TODO: replace this step with `npm ci --ignore-scripts` inside
+      # webnegosyo-desktop once that project's package.json is restored (the
+      # tracked file is not the desktop manifest, so it cannot be installed).
+      - name: Electron type declarations
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund electron@33.4.11
+
+      - name: tsc
+        run: npm run typecheck
+
+  build:
+    name: Build (next build)
+    runs-on: ubuntu-latest
+    # The production build is the last gate before a deployment and the only
+    # one that compiles every route, so a pull request that cannot build is
+    # caught here rather than by a failed Vercel deployment after the merge.
+    # It needs no database: `prebuild` skips the stock contract probe outside a
+    # production deployment (VERCEL_ENV), the admin layouts are force-dynamic,
+    # and the few pages rendered at build time degrade to their empty state
+    # when a read fails.
+    timeout-minutes: 30
+    env:
+      # PLACEHOLDERS, NOT CREDENTIALS, like the three above.
+      # scripts/validate-env.mjs (prebuild) only checks that these are set, and
+      # Next inlines the NEXT_PUBLIC_ ones into the bundle; nothing here is
+      # deployed or served. The hosts cannot be reached (`.invalid` never
+      # resolves). Never replace these with secrets.
+      NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT: https://ik.imagekit.io/ci-placeholder
+      NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY: ci-placeholder-imagekit-public-key
+      IMAGEKIT_PRIVATE_KEY: ci-placeholder-imagekit-private-key
+      NEXT_PUBLIC_SENTRY_DSN: https://ci-placeholder@sentry.invalid/0
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: next build
+        # `npm run build`, not `npx next build`, so prebuild runs exactly as it
+        # does on Vercel.
+        run: npm run build
+
   web:
     name: Web (Jest)
     runs-on: ubuntu-latest
@@ -140,6 +254,14 @@ jobs:
       # regenerate the patch against the locked version.
       - name: Install dependencies
         run: npm ci
+
+      - name: tsc
+        # The app's own tsconfig (expo/tsconfig.base, strict), over every
+        # screen and component. Jest alone leaves most of them unchecked:
+        # ts-jest type-checks only the files a logic test loads, the components
+        # project goes through babel (no types), and an EAS build does not run
+        # tsc.
+        run: npx tsc --noEmit
 
       - name: Jest
         # Both projects (logic + components) from webnegosyo-app/jest.config.js.
