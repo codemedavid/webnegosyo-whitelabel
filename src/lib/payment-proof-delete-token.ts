@@ -10,7 +10,7 @@
  *
  * An HMAC rather than "refuse files attached to an order": that lookup is not
  * indexable on the shared platform DB (`orders.payment_proof_public_id` has no
- * index) and cannot see Convex or tenant-Supabase orders, which carry the
+ * index) and cannot see Convex orders, which carry the
  * proof inside customer data. Stateless over API_SECRET (as tracking tokens
  * and delivery-quote signatures are), with its own context.
  */

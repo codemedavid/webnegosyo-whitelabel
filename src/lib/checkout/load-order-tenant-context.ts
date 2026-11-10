@@ -29,7 +29,7 @@ const NO_ROW_CODE = 'PGRST116'
 
 /** Every tenant column the order action consults. Credentials live in tenant_secrets. */
 export const ORDER_TENANT_CONFIG_SELECT = [
-  'order_backend', 'supabase_order_url', 'supabase_order_anon_key', 'supabase_order_service_key',
+  'order_backend',
   'inventory_enabled', 'convex_deployment_url', 'admin_email', 'email_notifications_enabled',
   'name', 'slug', 'is_active', 'lalamove_enabled', 'lalamove_market', 'distance_delivery_enabled',
   'delivery_price_per_km', 'delivery_min_fee', 'delivery_radius_km', 'free_delivery_min_order',

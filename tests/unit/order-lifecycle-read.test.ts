@@ -39,14 +39,6 @@ jest.mock('@/lib/convex/server', () => ({
   createConvexServerClient: () => ({ query: (...args: unknown[]) => convexQuery(...args) }),
 }))
 
-const fetchTenantOrderById = jest.fn()
-jest.mock('@/lib/tenant-supabase-orders-read', () => ({
-  fetchTenantOrderById: (...args: unknown[]) => fetchTenantOrderById(...args),
-}))
-jest.mock('@/lib/supabase/tenant-order-client', () => ({
-  createTenantOrderRealtimeClient: () => ({ tenantClient: true }),
-}))
-
 async function load() {
   return import('@/lib/order-lifecycle-read')
 }
@@ -109,18 +101,19 @@ describe('readStoredOrderLifecycle', () => {
     expect(order?.outletId).toBe('outlet-north')
   })
 
-  it('reads a tenant-Supabase order from the tenant project', async () => {
-    // Arrange
-    tenantRow = { order_backend: 'supabase', supabase_order_url: 'https://t.supabase.co', supabase_order_anon_key: 'anon' }
-    fetchTenantOrderById.mockResolvedValue({ status: 'pending', customer_data: null })
-    const { readStoredOrderLifecycle } = await load()
+  it("reads the platform for a stale 'supabase' pin (the retired own-database backend)", async () => {
+    // Arrange: the column's CHECK still allows the word; it routes like auto.
+    tenantRow = { order_backend: 'supabase', convex_deployment_url: null }
+    platformOrder = { status: 'pending', customer_data: null }
+    const { readRoutedOrderLifecycle } = await load()
 
     // Act
-    const order = await readStoredOrderLifecycle('t1', 'order-1')
+    const routed = await readRoutedOrderLifecycle('t1', 'order-1')
 
     // Assert
-    expect(fetchTenantOrderById).toHaveBeenCalledWith({ tenantClient: true }, 't1', 'order-1')
-    expect(order).toEqual({ status: 'pending', customerData: null, outletId: null })
+    expect(routed).toEqual({ backend: 'platform', order: { status: 'pending', customerData: null, outletId: null } })
+    expect(ordersEq).toHaveBeenCalledWith('tenant_id', 't1')
+    expect(convexQuery).not.toHaveBeenCalled()
   })
 
   it('answers null for an unknown tenant or a missing order', async () => {

@@ -318,16 +318,13 @@ export interface Tenant {
   convex_deploy_key?: string | null;
   convex_schema_version?: number;
   // Order backend selection — see src/lib/order-backend.ts (single source of truth).
-  // 'convex' = own Convex deployment | 'supabase' = own separate Supabase project | 'platform' = shared platform Supabase (legacy default).
+  // 'convex' = own Convex deployment | 'platform' = shared platform Supabase.
   // 'auto' is the default: derive from the credentials (Convex when a
   // deployment URL is set, otherwise the shared platform database).
-  order_backend?: "auto" | "convex" | "supabase" | "platform";
-  // Per-tenant Supabase order-project credentials (only when order_backend = 'supabase').
-  supabase_order_url?: string | null;
-  supabase_order_anon_key?: string | null;
-  supabase_order_service_key?: string | null;
-  supabase_order_db_url?: string | null;
-  supabase_order_schema_version?: number;
+  // The column's CHECK still accepts the retired 'supabase' (a store's own
+  // separate project, removed 2026-11-10); it is not typed here and resolves
+  // like 'auto'.
+  order_backend?: "auto" | "convex" | "platform";
   // Subscription allowances. Absent/null means the platform default, never
   // "unlimited" and never "none" — see resolveStaffLimit / resolveOutletLimit
   // in src/lib/billing/subscription-status.ts.

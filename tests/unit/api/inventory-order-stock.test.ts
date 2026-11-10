@@ -35,7 +35,7 @@ jest.mock('@/lib/inventory/order-stock-service', () => ({
  */
 let storedLifecycle: { status: string; customerData?: unknown; outletId?: string | null } | null | 'throw' = null
 /** Which backend answered. Convex by default: a miss there is not proof. */
-let storedBackend: 'convex' | 'supabase' | 'platform' = 'convex'
+let storedBackend: 'convex' | 'platform' = 'convex'
 const lifecycleReads: string[] = []
 jest.mock('@/lib/order-lifecycle-read', () => ({
   readRoutedOrderLifecycle: async (_tenantId: string, orderId: string) => {

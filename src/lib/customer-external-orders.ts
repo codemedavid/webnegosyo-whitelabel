@@ -216,7 +216,7 @@ export function createSupabaseExternalOrderLedger(admin: AdminClient): ExternalO
 
 /**
  * Best-effort customer capture for an order that was just written to a foreign
- * backend. Wired into the Convex and tenant-Supabase checkout paths.
+ * backend. Wired into the Convex checkout path.
  *
  * Never throws: the order is already saved by the time this runs, so a customer
  * bookkeeping failure must not surface to the shopper. Failures are logged with

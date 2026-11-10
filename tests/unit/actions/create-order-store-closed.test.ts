@@ -61,7 +61,6 @@ const stopAtBackend: BackendWrite = async () => {
   throw new Error(BACKEND_STOP)
 }
 const mockCreateOrder = jest.fn<BackendWrite>(stopAtBackend)
-const mockCreateOrderTenantSupabase = jest.fn<BackendWrite>(stopAtBackend)
 
 jest.mock('@/lib/orders-service', () => ({
   getOrdersByTenant: jest.fn(),
@@ -70,14 +69,6 @@ jest.mock('@/lib/orders-service', () => ({
   getOrderStats: jest.fn(),
   createOrder: (...args: unknown[]) => mockCreateOrder(...args),
   createOrderConvex: jest.fn(),
-}))
-
-jest.mock('@/lib/tenant-supabase-orders', () => ({
-  createOrderTenantSupabase: (...args: unknown[]) => mockCreateOrderTenantSupabase(...args),
-}))
-
-jest.mock('@/lib/supabase/tenant-order-client', () => ({
-  createTenantOrderWriteClient: () => ({}),
 }))
 
 const TENANT_ID = 'tenant-1'
@@ -180,14 +171,10 @@ describe('createOrderAction — closed / pre-launch store is refused, not lost',
     expect(mockCreateOrder).not.toHaveBeenCalled()
   })
 
-  test('refuses an ASAP order outside operating hours on a tenant-owned Supabase backend', async () => {
-    // createOrderTenantSupabase has no hours guard of its own.
+  test("refuses an ASAP order outside operating hours on a stale 'supabase' pin (routes like auto)", async () => {
     tableRows = {
       tenants: tenant({
         order_backend: 'supabase',
-        supabase_order_url: 'https://tenant.supabase.co',
-        supabase_order_anon_key: 'anon',
-        supabase_order_service_key: 'service',
         enforce_operating_hours: true,
         operating_hours: ALWAYS_CLOSED_HOURS,
       }),
@@ -198,7 +185,7 @@ describe('createOrderAction — closed / pre-launch store is refused, not lost',
     const result = await placeOrder()
 
     expect(result.refused).toBe(true)
-    expect(mockCreateOrderTenantSupabase).not.toHaveBeenCalled()
+    expect(mockCreateOrder).not.toHaveBeenCalled()
   })
 
   test('lets a valid SCHEDULED order through a closed (launched) store', async () => {

@@ -28,7 +28,7 @@ export function ActivityCell({
   tenantId: string
 }) {
   const activity = insight?.activity
-  if (!activity || activity.source === 'unsupported') {
+  if (!activity) {
     return <td className="px-4 py-3 text-white/30">—</td>
   }
   if (activity.source === 'unreachable') {

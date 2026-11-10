@@ -40,8 +40,12 @@ describe('isOrderSaveRetrySafe', () => {
     expect(isOrderSaveRetrySafe({ order_backend: 'auto', convex_deployment_url: 'https://x.convex.cloud' })).toBe(false)
   })
 
-  it('refuses to retry a tenant on its own Supabase project, which has no idempotency at all', () => {
-    expect(isOrderSaveRetrySafe({ order_backend: 'supabase', convex_deployment_url: null })).toBe(false)
+  it("judges a stale 'supabase' pin (the retired own-database backend) the way the server routes it: like auto", () => {
+    const stale = 'supabase' as never
+    expect(isOrderSaveRetrySafe({ order_backend: stale, convex_deployment_url: null })).toBe(true)
+    expect(isOrderSaveRetrySafe({ order_backend: stale, convex_deployment_url: 'https://x.convex.cloud' })).toBe(false)
+    // A projection that never selected the URL proves nothing: refuse.
+    expect(isOrderSaveRetrySafe({ order_backend: stale })).toBe(false)
   })
 
   it('refuses to retry when there is no tenant to judge', () => {

@@ -23,8 +23,7 @@ export const PHONE_READY_WITHIN_MS = 30 * 60_000
 
 const GUEST_COLUMNS =
   'id, name, phone_e164, sms_consent, sms_opt_out, order_count, total_spent, first_order_at, last_order_at, top_items, channels_used'
-const TENANT_COLUMNS =
-  'id, name, order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key'
+const TENANT_COLUMNS = 'id, name, order_backend, convex_deployment_url'
 
 export class TextsReadError extends Error {
   constructor(message: string) {

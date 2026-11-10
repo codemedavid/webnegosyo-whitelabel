@@ -132,12 +132,6 @@ describe('buildActivityRows', () => {
     expect(rows[0].source).toBe('unreachable')
   })
 
-  it('reports a store on its own Supabase project as unsupported', () => {
-    const rows = buildActivityRows([tenant({ backend: 'supabase' })], new Map(), new Map())
-
-    expect(rows[0].source).toBe('unsupported')
-  })
-
   it('ranks the busiest store first, and computes the average order', () => {
     const platform = platformRowsToStats([
       {

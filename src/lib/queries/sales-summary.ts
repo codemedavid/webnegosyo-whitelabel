@@ -17,10 +17,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
-import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import {
   resolveOrderBackend,
-  hasTenantSupabaseOrderCredentials,
   type OrderBackendTenantFields,
 } from '@/lib/order-backend'
 import type { MenuPerformanceSource, MenuPerformanceCoverage } from '@/lib/queries/menu-performance-merge'
@@ -65,7 +63,6 @@ export interface FetchSalesSummaryOptions {
   /** Service-role client for the shared platform project. */
   platformClient?: SupabaseClient
   convexFactory?: (url: string, key: string) => ConvexQueryClient
-  tenantSupabaseFactory?: (tenant: OrderBackendTenantFields) => SupabaseClient
 }
 
 /** The tenant columns this read needs. Structural, so tests pass plain objects. */
@@ -84,7 +81,7 @@ function localDateKey(iso: string): string {
   return parsed.toLocaleDateString('en-CA', { timeZone: MERCHANT_LOCAL_TIME_ZONE })
 }
 
-/** Groups platform/tenant-Supabase order rows into merchant-local daily buckets. */
+/** Groups platform order rows into merchant-local daily buckets. */
 export function platformOrdersToDaily(rows: readonly unknown[]): DailySales[] {
   const byDay = new Map<string, { orders: number; revenue: number }>()
   for (const raw of rows) {
@@ -227,24 +224,12 @@ export async function fetchSalesSummary(
     windowDays = DEFAULT_WINDOW_DAYS,
     platformClient,
     convexFactory = createConvexServerClient,
-    tenantSupabaseFactory = (t: OrderBackendTenantFields) => createTenantOrderWriteClient(t),
   } = options
 
   const backend = resolveOrderBackend(tenant)
 
   if (backend === 'convex') {
     return fetchFromConvex(tenant, windowDays, convexFactory)
-  }
-
-  if (backend === 'supabase') {
-    if (!hasTenantSupabaseOrderCredentials(tenant)) {
-      return unavailable(
-        'tenant_supabase',
-        windowDays,
-        'Tenant is on its own Supabase order project but its credentials are missing or misconfigured, so its sales cannot be read.',
-      )
-    }
-    return fetchFromSupabase(tenantSupabaseFactory(tenant), tenant.id, windowDays, 'tenant_supabase')
   }
 
   if (!platformClient) {
@@ -254,9 +239,7 @@ export async function fetchSalesSummary(
 }
 
 /** Tenant columns needed to decide where the orders are and how to reach them. */
-const TENANT_ROUTING_SELECT =
-  'id, order_backend, convex_deployment_url, ' +
-  'supabase_order_url, supabase_order_anon_key, supabase_order_service_key'
+const TENANT_ROUTING_SELECT = 'id, order_backend, convex_deployment_url'
 
 /**
  * Resolve a tenant by id through the service-role provisioning client, then

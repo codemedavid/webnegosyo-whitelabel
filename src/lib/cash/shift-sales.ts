@@ -5,7 +5,7 @@
  * helpers, so this file adds NO revenue formula: it parses and splits.
  *
  * - `source: 'unavailable'` = the store's orders are not in the platform
- *   database (Convex / tenant Supabase). Screens say so; they never show ₱0.
+ *   database (Convex). Screens say so; they never show ₱0.
  * - `hidden: true` = a blind count still open, read by someone who is not a
  *   cash manager: every money field is null, the receipt list stays.
  *

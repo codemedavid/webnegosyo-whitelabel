@@ -33,21 +33,5 @@ async function main() {
     assert.equal((await db.query("select max(daily_number) as n from orders where order_date='2026-09-15' and tenant_id=$1",[tenant])).rows[0].n,5)
     console.log('Platform daily numbering: reset, tenant scope, replay seed, private allocation, 100 queued inserts passed')
   } finally { await db.close() }
-  const own = new PGlite()
-  try {
-    await own.exec(`create role anon; create role authenticated;
-      create table orders(id uuid default gen_random_uuid(),tenant_id uuid,created_at timestamptz,daily_order_number integer);
-      insert into orders(tenant_id,created_at,daily_order_number) values('${tenant}','2026-09-15T15:00:00Z',42);`)
-    const schema = readFileSync('src/lib/supabase-order-schema.ts','utf8')
-    // From the business-day helpers the trigger calls (bundle v4) to the end of the trigger.
-    const start = schema.indexOf('create table if not exists public.business_day_cutoffs')
-    const end = schema.indexOf('\n-- ---------------------------------------------------------------------------\n-- order_items',start)
-    await own.exec(schema.slice(start,end))
-    const row = (await own.query('insert into orders(tenant_id,created_at,daily_order_number) values($1,$2,999) returning daily_order_number',[tenant,'2026-09-15T15:59:00Z'])).rows[0]
-    assert.equal(row.daily_order_number,43)
-    const next = (await own.query('insert into orders(tenant_id,created_at) values($1,$2) returning daily_order_number',[tenant,'2026-09-15T16:00:00Z'])).rows[0]
-    assert.equal(next.daily_order_number,1)
-    console.log('Tenant upgrade: preserves existing sequence and resets on Manila date passed')
-  } finally { await own.close() }
 }
 main().catch(error=>{console.error(error);process.exitCode=1})

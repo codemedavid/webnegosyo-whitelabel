@@ -4,8 +4,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { resolveOrderBackend, type OrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
-import { createTenantOrderRealtimeClient } from '@/lib/supabase/tenant-order-client'
-import { fetchTenantOrderById } from '@/lib/tenant-supabase-orders-read'
 
 /**
  * The server's own read of an order's status and customer_data.
@@ -31,7 +29,7 @@ function readOutletId(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null
 }
 
-const ROUTING_COLUMNS = 'order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key'
+const ROUTING_COLUMNS = 'order_backend, convex_deployment_url'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -51,17 +49,6 @@ async function readFromConvex(
   )
   if (!order || typeof order.status !== 'string') return null
   return { status: order.status, customerData: order.customerData ?? null, outletId: readOutletId(order.outletId) }
-}
-
-async function readFromTenantSupabase(
-  config: OrderBackendTenantFields,
-  tenantId: string,
-  orderId: string,
-): Promise<StoredOrderLifecycle | null> {
-  const order = await fetchTenantOrderById(createTenantOrderRealtimeClient(config), tenantId, orderId)
-  if (!order) return null
-  const row = order as unknown as { status: string; customer_data?: unknown; outlet_id?: unknown }
-  return { status: row.status, customerData: row.customer_data ?? null, outletId: readOutletId(row.outlet_id) }
 }
 
 async function readFromPlatform(
@@ -120,8 +107,6 @@ export async function readRoutedOrderLifecycle(
   switch (backend) {
     case 'convex':
       return { backend, order: await readFromConvex(supabase, config, tenantId, orderId) }
-    case 'supabase':
-      return { backend, order: await readFromTenantSupabase(config, tenantId, orderId) }
     case 'platform':
       return { backend, order: await readFromPlatform(supabase, tenantId, orderId) }
   }

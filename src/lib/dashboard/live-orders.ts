@@ -11,10 +11,9 @@ import 'server-only'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { getOrderStats } from '@/lib/orders-service'
-import { getTenantSupabaseOrderStats } from '@/lib/tenant-order-queue'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
-import { hasTenantSupabaseOrderCredentials, resolveOrderBackend } from '@/lib/order-backend'
+import { resolveOrderBackend } from '@/lib/order-backend'
 import type { OrderStats } from '@/lib/order-stats'
 import type { Tenant } from '@/types/database'
 
@@ -35,9 +34,6 @@ export async function readLiveOrderStats(tenant: Tenant): Promise<OrderStats | n
   try {
     const backend = resolveOrderBackend(tenant)
     if (backend === 'convex') return await readConvexStats(tenant)
-    if (backend === 'supabase') {
-      return hasTenantSupabaseOrderCredentials(tenant) ? await getTenantSupabaseOrderStats(tenant) : null
-    }
     return await getOrderStats(tenant.id)
   } catch (error) {
     console.error('[dashboard] live order stats unavailable', error)

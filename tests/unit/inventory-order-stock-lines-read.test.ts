@@ -81,8 +81,4 @@ describe('readOrderLineEvidence — other backends', () => {
     tables.tenants = { data: { convex_deployment_url: null } }
     expect((await readOrderLineEvidence('convex', 't1', 'j1', [])).kind).toBe('unverifiable')
   })
-
-  test('an order in the tenant own Supabase project cannot be checked', async () => {
-    expect((await readOrderLineEvidence('supabase', 't1', 'o1', [])).kind).toBe('unverifiable')
-  })
 })

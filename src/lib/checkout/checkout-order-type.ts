@@ -3,7 +3,7 @@
  *
  * The action used to read the same row up to four times — minimum, advance
  * schedule, delivery kind, and the merchant email's name (that last one without
- * a tenant filter) — and a fifth time for the tenant-Supabase backend. One
+ * a tenant filter). One
  * tenant-scoped read now serves every consumer, including the service charge
  * the server recomputes instead of trusting the browser.
  */
