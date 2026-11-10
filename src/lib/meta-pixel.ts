@@ -5,6 +5,7 @@ export type MetaEventName =
   | 'ViewContent'
   | 'InitiateCheckout'
   | 'Lead'
+  | 'AddPaymentInfo'
 
 type MetaPixelFunction = ((...args: unknown[]) => void) & {
   callMethod?: (...args: unknown[]) => void

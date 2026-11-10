@@ -13,10 +13,11 @@ const submitCheckoutForm = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 const fetchActivePlatformPaymentMethods = jest.fn<() => Promise<unknown>>()
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }))
+const trackMetaEvent = jest.fn()
 jest.mock('@/lib/meta-pixel', () => ({
   createMetaEventId: () => 'evt-1',
   getMetaBrowserData: () => ({}),
-  trackMetaEvent: jest.fn(),
+  trackMetaEvent: (...args: unknown[]) => trackMetaEvent(...args),
 }))
 jest.mock('@/app/actions/checkout-leads', () => ({
   submitCheckoutForm: (...args: unknown[]) => submitCheckoutForm(...args),
@@ -44,6 +45,7 @@ describe('FunnelOrderForm', () => {
   beforeEach(() => {
     onSaved.mockReset()
     submitCheckoutForm.mockReset()
+    trackMetaEvent.mockReset()
     fetchActivePlatformPaymentMethods.mockResolvedValue([
       {
         id: 'pm-gcash',
@@ -167,5 +169,22 @@ describe('FunnelOrderForm', () => {
 
     await waitFor(() => expect(submitCheckoutForm).toHaveBeenCalled())
     expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('tells Meta the checkout started once, on the first field, before the Lead', async () => {
+    submitCheckoutForm.mockResolvedValue({ data: { reference_number: 'SM-123', amount: 5499 }, error: null })
+    await renderForm()
+    await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
+
+    const user = await fillValidForm()
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+
+    const events = trackMetaEvent.mock.calls.map((call) => call[0])
+    expect(events).toEqual(['InitiateCheckout', 'Lead'])
+    expect(trackMetaEvent.mock.calls[0][1]).toMatchObject({ currency: 'PHP', value: 5499 })
+    // The browser Lead carries the id the server sends, so Meta counts the pair once.
+    expect(trackMetaEvent.mock.calls[1][2]).toBe('evt-1')
+    expect(submitCheckoutForm.mock.calls[0][0]).toMatchObject({ meta: { eventId: 'evt-1' } })
   })
 })

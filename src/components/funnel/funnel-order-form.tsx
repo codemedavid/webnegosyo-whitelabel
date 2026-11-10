@@ -138,10 +138,22 @@ function confirmationFor(
  */
 export function FunnelOrderForm({ term, submitLabel, onSaved }: FunnelOrderFormProps) {
   const isSubmittingRef = useRef(false)
+  const hasStartedRef = useRef(false)
   const [fields, setFields] = useState<OrderFields>(EMPTY_FIELDS)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const payments = usePaymentOptions((id) => setFields((prev) => ({ ...prev, paymentMethodId: id })))
+
+  /**
+   * The buyer starts filling the order form: InitiateCheckout, once per form.
+   * It comes BEFORE Lead (the save), so Meta reads the funnel in order:
+   * ViewContent → InitiateCheckout → Lead → AddPaymentInfo → Purchase.
+   */
+  function markStarted() {
+    if (hasStartedRef.current) return
+    hasStartedRef.current = true
+    trackMetaEvent('InitiateCheckout', { content_name: OFFER_NAME, currency: 'PHP', value: dueTodayFor(term) })
+  }
 
   function updateField(key: keyof OrderFields, raw: string) {
     const value = key === 'phone' ? raw.replace(/\D/g, '') : raw
@@ -152,6 +164,8 @@ export function FunnelOrderForm({ term, submitLabel, onSaved }: FunnelOrderFormP
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     if (isSubmittingRef.current) return
+    // Safari never focuses a tapped button: a straight-to-submit still starts the checkout first.
+    markStarted()
     const parsed = orderSchema.safeParse(fields)
     if (!parsed.success) {
       setErrors(firstErrors(parsed.error))
@@ -209,7 +223,7 @@ export function FunnelOrderForm({ term, submitLabel, onSaved }: FunnelOrderFormP
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
+    <form onSubmit={handleSubmit} onFocusCapture={markStarted} noValidate className="space-y-4">
       {TEXT_FIELDS.map((field) => (
         <div key={field.key}>
           <label htmlFor={`funnel-${field.key}`} className="mb-1.5 block text-[13.5px] font-medium text-[#EFE6D8]">

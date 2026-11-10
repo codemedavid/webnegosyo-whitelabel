@@ -1,4 +1,5 @@
 import { LandingViewContent } from '@/components/tracking/landing-view-content'
+import { MarketingPixel } from '@/components/tracking/marketing-pixel'
 import { FunnelBonuses } from './funnel-bonuses'
 import { FunnelCloseBand, FunnelFaq, FunnelFooter } from './funnel-close'
 import { FunnelFeatures } from './funnel-features'
@@ -19,6 +20,7 @@ import { FunnelWorld } from './funnel-world'
 export function FunnelPage() {
   return (
     <FunnelWorld>
+      <MarketingPixel />
       <LandingViewContent />
       <FunnelHeader />
       <main>

@@ -5,6 +5,7 @@ import { CheckCircle2, ImageUp, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
 import { isImageKitConfigured, uploadPaymentProofImage } from '@/lib/imagekit-upload'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import { PAYMENT } from './funnel-payment-copy'
 
 const PROOF_TYPES = ['image/png', 'image/jpg', 'image/jpeg', 'image/webp']
@@ -19,7 +20,7 @@ function proofFileProblem(file: File): string | null {
   return null
 }
 
-function usePaymentProofUpload(referenceNumber: string, initialUrl: string | null) {
+function usePaymentProofUpload(referenceNumber: string, initialUrl: string | null, amount?: number) {
   const [proofUrl, setProofUrl] = useState(initialUrl ?? '')
   const [isUploading, setIsUploading] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -41,6 +42,8 @@ function usePaymentProofUpload(referenceNumber: string, initialUrl: string | nul
         return
       }
       setProofUrl(url)
+      // The buyer says they paid: the step between Lead and staff's Purchase.
+      trackMetaEvent('AddPaymentInfo', { content_name: 'Smart Menu System', currency: 'PHP', value: amount })
     } catch (error) {
       console.error('[funnel] payment proof upload failed', error)
       toast.error(PAYMENT.proofUploadFailed)
@@ -72,8 +75,16 @@ function ProofInput({ onPick, isDisabled }: { onPick: (file: File) => void; isDi
 }
 
 /** The screenshot upload: a big drop target, then a "received" state with the image. */
-export function FunnelPaymentProof({ referenceNumber, initialProofUrl }: { referenceNumber: string; initialProofUrl: string | null }) {
-  const { proofUrl, isUploading, progress, upload } = usePaymentProofUpload(referenceNumber, initialProofUrl)
+export function FunnelPaymentProof({
+  referenceNumber,
+  initialProofUrl,
+  amount,
+}: {
+  referenceNumber: string
+  initialProofUrl: string | null
+  amount?: number
+}) {
+  const { proofUrl, isUploading, progress, upload } = usePaymentProofUpload(referenceNumber, initialProofUrl, amount)
 
   return (
     <section className="fn-card p-6 sm:p-8" aria-labelledby="funnel-pay-proof">

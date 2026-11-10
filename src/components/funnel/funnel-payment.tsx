@@ -1,13 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
 import Image from 'next/image'
 import { Check, Lock, MessageCircle, ShieldCheck } from 'lucide-react'
 import { BRAND } from '@/components/landing/landing-theme'
 import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
 import { getPaymentTermLabel } from '@/lib/checkout-leads/payment-term-labels'
 import { getCheckoutBalanceDue, isCheckoutPaymentTerm, isFunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
-import { trackMetaEvent } from '@/lib/meta-pixel'
 import { GUARANTEES } from './funnel-copy'
 import { formatPeso } from './funnel-offer'
 import { PAYMENT } from './funnel-payment-copy'
@@ -142,10 +140,6 @@ export function FunnelPayment({ lead }: { lead: CheckoutLeadConfirmation }) {
   const balanceDue =
     lead.payment_term && isCheckoutPaymentTerm(lead.payment_term) ? getCheckoutBalanceDue(lead.payment_term) : 0
 
-  useEffect(() => {
-    trackMetaEvent('InitiateCheckout', { content_name: 'Smart Menu System', currency: 'PHP', value: lead.amount })
-  }, [lead.amount])
-
   return (
     <>
       <PaymentHeader />
@@ -164,7 +158,7 @@ export function FunnelPayment({ lead }: { lead: CheckoutLeadConfirmation }) {
           <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
             <div className="space-y-5">
               <FunnelPaymentMethod method={method} />
-              <FunnelPaymentProof referenceNumber={lead.reference_number} initialProofUrl={lead.payment_proof_url} />
+              <FunnelPaymentProof referenceNumber={lead.reference_number} initialProofUrl={lead.payment_proof_url} amount={lead.amount} />
             </div>
             <NextSteps isPlan={isFunnelPlanTerm(lead.payment_term)} />
           </div>

@@ -1194,6 +1194,8 @@ export type Database = {
           email: string
           id: string
           live_at: string | null
+          meta_attribution: Json | null
+          meta_purchase_sent_at: string | null
           name: string
           notes: string | null
           paid_at: string | null
@@ -1214,6 +1216,8 @@ export type Database = {
           email: string
           id?: string
           live_at?: string | null
+          meta_attribution?: Json | null
+          meta_purchase_sent_at?: string | null
           name: string
           notes?: string | null
           paid_at?: string | null
@@ -1234,6 +1238,8 @@ export type Database = {
           email?: string
           id?: string
           live_at?: string | null
+          meta_attribution?: Json | null
+          meta_purchase_sent_at?: string | null
           name?: string
           notes?: string | null
           paid_at?: string | null

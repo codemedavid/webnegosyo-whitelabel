@@ -1,4 +1,5 @@
 import { LandingViewContent } from '@/components/tracking/landing-view-content'
+import { MarketingPixel } from '@/components/tracking/marketing-pixel'
 import { CapabilitiesSection } from './capabilities-section'
 import { FAQSection, PricingSection } from './pricing-faq'
 import { FeatureJourney } from './feature-journey'
@@ -31,6 +32,7 @@ export function LandingPage() {
       <div aria-hidden dangerouslySetInnerHTML={{ __html: DIRECTION_CONTRACT }} />
       <style>{LANDING_STYLES}</style>
 
+      <MarketingPixel />
       <LandingViewContent />
       <LandingNav />
       <main>
