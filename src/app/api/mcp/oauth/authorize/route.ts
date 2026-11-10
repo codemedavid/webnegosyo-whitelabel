@@ -132,10 +132,10 @@ async function authorize(req: Request): Promise<Response> {
   if (user) {
     const { data: roleRow } = await supabase
       .from('app_users')
-      .select('role, tenant_id, is_owner, permissions')
+      .select('role, tenant_id, is_owner, permissions, outlet_id')
       .eq('user_id', user.id)
       .maybeSingle()
-    const appUser = roleRow as (PermissionHolder & { tenant_id: string | null }) | null
+    const appUser = roleRow as (PermissionHolder & { tenant_id: string | null; outlet_id: string | null }) | null
     // OAuth credentials carry the same authority as manually-created AI keys.
     if (appUser && !hasPermission(appUser, 'store_setup')) {
       return Response.json({ error: 'Store setup permission required' }, { status: 403 })

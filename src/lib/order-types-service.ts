@@ -9,6 +9,7 @@ import type { OrderType, CustomerFormField } from '@/types/database'
 import { ORDER_TYPE_KINDS } from '@/lib/order-types/order-type-kinds'
 import { MARKUP_PERCENT_MAX, MARKUP_PERCENT_MIN } from '@/lib/order-types/order-type-pricing'
 import { z } from 'zod'
+import { customerFormFieldSchema, type CustomerFormFieldInput } from '@/lib/order-types/customer-form-field-schema'
 
 // ============================================
 // Schemas
@@ -69,19 +70,10 @@ export const orderTypeSchema = z.object({
   }
 )
 
-export const customerFormFieldSchema = z.object({
-  field_name: z.string().min(1, 'Field name is required'),
-  field_label: z.string().min(1, 'Field label is required'),
-  field_type: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'number']),
-  is_required: z.boolean(),
-  placeholder: z.string().optional(),
-  validation_rules: z.record(z.string(), z.unknown()).optional(),
-  options: z.array(z.string()).optional(),
-  order_index: z.number().int().min(0),
-})
+export { customerFormFieldSchema } from '@/lib/order-types/customer-form-field-schema'
 
 export type OrderTypeInput = z.infer<typeof orderTypeSchema>
-export type CustomerFormFieldInput = z.infer<typeof customerFormFieldSchema>
+export type { CustomerFormFieldInput }
 
 // ============================================
 // Order Types Operations

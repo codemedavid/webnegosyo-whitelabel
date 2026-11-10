@@ -15,11 +15,16 @@
  *   npm run convex:bulk-deploy
  *   npm run convex:bulk-deploy -- --execute
  *   npm run convex:bulk-deploy -- --tenant <id> --execute
+ *   npm run convex:bulk-deploy -- --tenants slug-a,slug-b --execute
+ *   npm run convex:bulk-deploy -- --tenants slug-a --dry-run
  *   npm run convex:bulk-deploy -- --limit 5 --execute
  *
  * Idempotent: a tenant already on CURRENT_SCHEMA_VERSION is skipped, and a
  * re-push of the same bundle is a no-op on the Convex side. A tenant that fails
  * keeps its old version, so re-running retries exactly the stragglers.
+ *
+ * Prints one result per store and exits non-zero if any failed or any named
+ * store does not exist. Secrets are scrubbed from whatever a failure quotes.
  *
  * Thin I/O glue by design — selection is unit-tested in
  * `@/lib/convex-deploy-selection`, the bundle in `@/lib/convex-push-bundle`.
@@ -29,17 +34,13 @@ import { config as loadEnv } from 'dotenv'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
   deployConvexSchema,
-  syncTenantConfig,
   validateConvexCredentials,
   CURRENT_SCHEMA_VERSION,
 } from '@/lib/convex-deploy'
+import { syncTenantConvexConfig } from '@/lib/convex-config-sync'
 import { tenantsNeedingDeploy } from '@/lib/convex-deploy-selection'
+import { parseTenantList, redactSecrets } from '@/lib/convex-enforcement'
 import { listTenantSecrets } from '@/lib/tenant-secrets'
-import {
-  buildTenantConfigPayload,
-  CONVEX_CONFIG_TENANT_COLUMNS,
-  type ConvexTenantConfigSource,
-} from '@/lib/convex-tenant-config'
 
 // A 100-deployment sweep is long enough that nobody wants to export the service
 // key by hand first; read the same file `next dev` does.
@@ -58,7 +59,15 @@ interface TenantRow {
 interface Args {
   execute: boolean
   tenantId: string | null
+  /** Slugs from `--tenants`, for a stage rollout. Empty = every store behind. */
+  slugs: string[]
   limit: number | null
+}
+
+interface SelectedTenant extends TenantRow {
+  deployKey: string
+  /** Every secret on file for the store, to scrub from anything printed. */
+  secrets: Array<string | null | undefined>
 }
 
 function parseArgs(argv: string[]): Args {
@@ -68,8 +77,10 @@ function parseArgs(argv: string[]): Args {
   }
   const limit = valueAfter('--limit')
   return {
-    execute: argv.includes('--execute'),
+    // `--dry-run` wins, so adding it to a command can only make it safer.
+    execute: argv.includes('--execute') && !argv.includes('--dry-run'),
     tenantId: valueAfter('--tenant'),
+    slugs: parseTenantList(valueAfter('--tenants')),
     limit: limit ? Number(limit) : null,
   }
 }
@@ -82,17 +93,21 @@ function requireEnv(name: string): string {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** Named stores that can't be selected, each with the reason. */
+type Skipped = string[]
+
 /** Every tenant with both a deployment URL and a deploy key, behind the current version. */
 async function selectTenants(
   supabase: SupabaseClient,
   args: Args
-): Promise<Array<TenantRow & { deployKey: string; config: ConvexTenantConfigSource }>> {
+): Promise<{ tenants: SelectedTenant[]; skipped: Skipped }> {
   let query = supabase
     .from('tenants')
-    .select(`slug, convex_schema_version, ${CONVEX_CONFIG_TENANT_COLUMNS}`)
+    .select('id, slug, convex_deployment_url, convex_schema_version')
     .not('convex_deployment_url', 'is', null)
     .neq('convex_deployment_url', '')
   if (args.tenantId) query = query.eq('id', args.tenantId)
+  if (args.slugs.length) query = query.in('slug', args.slugs)
 
   const { data, error } = await query
   if (error) throw new Error(`Tenant read failed: ${error.message}`)
@@ -102,39 +117,39 @@ async function selectTenants(
   const secrets = await listTenantSecrets(supabase, rows.map((row) => row.id))
 
   const configured = rows.flatMap((row) => {
-    const deployKey = secrets.get(row.id)?.convex_deploy_key?.trim()
-    return deployKey ? [{ ...row, deployKey }] : []
+    const held = secrets.get(row.id)
+    const deployKey = held?.convex_deploy_key?.trim()
+    return deployKey ? [{ ...row, deployKey, secrets: Object.values(held ?? {}) }] : []
   })
+
+  // A store named on the command line that drops out must not pass in silence:
+  // a stage rollout would look finished with a store missing.
+  const configuredSlugs = new Set(configured.map((row) => row.slug))
+  const skipped = args.slugs
+    .filter((slug) => !configuredSlugs.has(slug))
+    .map((slug) => `${slug}: no such store, or no Convex deployment and deploy key on file`)
 
   // Version compare lives here, not in the query: the column is TEXT, so a
   // database `lt` compares lexically and "5" sorts above "18".
   const behind = tenantsNeedingDeploy(configured, CURRENT_SCHEMA_VERSION)
-  const scoped = args.limit ? behind.slice(0, args.limit) : behind
-
-  return scoped.map((row) => ({
-    ...row,
-    config: row as unknown as ConvexTenantConfigSource,
-  }))
+  return { tenants: args.limit ? behind.slice(0, args.limit) : behind, skipped }
 }
 
-async function deployOne(
-  supabase: SupabaseClient,
-  tenant: { id: string; slug: string; convex_deployment_url: string; deployKey: string; config: ConvexTenantConfigSource }
-): Promise<string | null> {
+async function deployOne(supabase: SupabaseClient, tenant: SelectedTenant): Promise<string | null> {
   const valid = await validateConvexCredentials(tenant.convex_deployment_url, tenant.deployKey)
   if (!valid) return 'invalid deploy key or URL'
 
   const deployed = await deployConvexSchema(tenant.deployKey, tenant.convex_deployment_url)
   if (!deployed.success) return `schema push failed: ${deployed.error}`
 
-  // Same payload the tenant-save path pushes, so a deploy and a settings save
-  // can never leave the deployment holding different values.
-  const synced = await syncTenantConfig(
-    tenant.convex_deployment_url,
-    tenant.deployKey,
-    buildTenantConfigPayload(tenant.config)
-  )
-  if (!synced) return 'schema deployed but tenantConfig sync failed'
+  // The one sync every settings save uses: secrets merged in, business-day
+  // entry included. A payload built here without them once would have blanked
+  // the store's Lalamove keys, because the config emits every key it knows.
+  const synced = await syncTenantConvexConfig(tenant.id)
+  if (synced.status !== 'synced') {
+    const reason = synced.status === 'failed' ? synced.error : synced.reason
+    return `schema deployed but tenantConfig sync failed: ${reason}`
+  }
 
   const { error } = await supabase
     .from('tenants')
@@ -153,9 +168,11 @@ async function main() {
     { auth: { persistSession: false } }
   )
 
-  const tenants = await selectTenants(supabase, args)
+  const { tenants, skipped } = await selectTenants(supabase, args)
   console.log(`Target schema version: v${CURRENT_SCHEMA_VERSION}`)
   console.log(`Deployments behind: ${tenants.length}`)
+  for (const line of skipped) console.log(`  ✗ ${line}`)
+  if (skipped.length) process.exitCode = 1
   if (!tenants.length) return
 
   if (!args.execute) {
@@ -171,19 +188,19 @@ async function main() {
 
   for (const [index, tenant] of tenants.entries()) {
     const label = `[${index + 1}/${tenants.length}] ${tenant.slug}`
+    let failure: string | null
     try {
-      const failure = await deployOne(supabase, tenant)
-      if (failure) {
-        failures.push(`${tenant.slug}: ${failure}`)
-        console.log(`${label} ✗ ${failure}`)
-      } else {
-        deployed++
-        console.log(`${label} ✓ v${CURRENT_SCHEMA_VERSION}`)
-      }
+      failure = await deployOne(supabase, tenant)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      failures.push(`${tenant.slug}: ${message}`)
-      console.log(`${label} ✗ ${message}`)
+      failure = error instanceof Error ? error.message : String(error)
+    }
+    if (failure) {
+      const safe = redactSecrets(failure, tenant.secrets)
+      failures.push(`${tenant.slug}: ${safe}`)
+      console.log(`${label} ✗ ${safe}`)
+    } else {
+      deployed++
+      console.log(`${label} ✓ v${CURRENT_SCHEMA_VERSION}`)
     }
     if (index < tenants.length - 1) await sleep(DEPLOY_GAP_MS)
   }
@@ -197,6 +214,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error)
+  console.error(error instanceof Error ? error.message : error)
   process.exit(1)
 })

@@ -182,6 +182,22 @@ describe("register stock journey: 5 in stock, cashier adds 7", () => {
     expect(onTender).not.toHaveBeenCalled();
   });
 
+  it("block, platform sale: a cashier sells 7 and goes on to tender, where a manager's PIN is asked", () => {
+    const pinContext: StockDecisionContext = { ...BLOCK_CASHIER, canAskManagerPin: true };
+    addSevenAgainstFive(pinContext);
+    expect(screen.getByText(/manager approves this with their PIN/)).toBeTruthy();
+    fireEvent.press(screen.getByText("Sell anyway"));
+    expect(latteUnits()).toBe(7);
+  });
+
+  it("block, platform sale: Charge goes on to tender, which gets the manager's PIN from the server", () => {
+    act(() => usePosCartStore.getState().add({ ...LATTE, quantity: 7, selections: [] }));
+    render(<Register ceilings={ceilingsOf(5)} context={{ ...BLOCK_CASHIER, canAskManagerPin: true }} />);
+    act(() => pressCharge());
+    fireEvent.press(screen.getByText("Sell anyway"));
+    expect(onTender).toHaveBeenCalledTimes(1);
+  });
+
   it("block: a signed-in manager sells 7", () => {
     addSevenAgainstFive(BLOCK_MANAGER);
     fireEvent.press(screen.getByText("Sell anyway"));

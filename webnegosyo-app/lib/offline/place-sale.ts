@@ -14,14 +14,16 @@
  * 3. The write failed because the server could not be reached → queue. The
  *    idempotency key travels with the queued sale, so an ambiguous failure
  *    (the row landed, the answer did not) replays into the same order.
- * 4. The server REFUSED → rethrow. The cashier sees it, as today.
+ * 4. An enforced store refused for want of a session token → queue. The sale is
+ *    fine, the customer has paid, and the token will be back.
+ * 5. The server REFUSED → rethrow. The cashier sees it, as today.
  *
  * Nothing here prints, navigates or touches the cart; the tender screen does
  * exactly what it did before with the outcome.
  */
 
 import { isOffline as connectivityIsOffline, reportOffline, reportOnline } from "./connectivity";
-import { isNetworkFailure } from "./network-error";
+import { isNetworkFailure, isTokenRefusal } from "./network-error";
 import { withDeadline } from "./deadline";
 import { enqueueSale, type QueuedSale } from "./order-outbox";
 
@@ -65,6 +67,11 @@ export async function placeCounterSale(input: PlaceSaleInput): Promise<PlaceSale
     reportOnline();
     return { kind: "written", orderId: String(orderId) };
   } catch (error) {
+    if (isTokenRefusal(error)) {
+      // Reached the server, so this says nothing about the connection.
+      const savedId = await enqueue(queued);
+      return { kind: "queued", localId: savedId ?? queued.localId };
+    }
     if (!isNetworkFailure(error)) throw error;
     reportOffline();
     const savedId = await enqueue(queued);

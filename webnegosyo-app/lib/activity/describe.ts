@@ -74,12 +74,14 @@ const KIND_ICONS: Partial<Readonly<Record<ActivityKind, ActivityIcon>>> = {
   'refund.issued': 'refund',
   'stock.alert': 'alert',
   'stock.duplicate_blocked': 'alert',
+  'stock.oversold': 'alert',
   'expense.voided': 'cancel',
 }
 
 const WARNING_KINDS: ReadonlySet<ActivityKind> = new Set<ActivityKind>([
   'stock.alert',
   'stock.duplicate_blocked',
+  'stock.oversold',
   'payment.proof_rejected',
   'approval.failed',
 ])
@@ -229,6 +231,8 @@ function stockTitle(event: StoreActivityEvent, who: string | null): string {
       return `${actor} received stock from ${text(event.summary, 'fromOutlet') ?? 'another branch'}`
     case 'stock.duplicate_blocked':
       return `Blocked a second stock deduction${order ? ` for ${order}` : ''}`
+    case 'stock.oversold':
+      return `${actor} sold past the stock count${order ? ` on ${order}` : ''}${item === 'stock' ? '' : ` (${item})`}`
     case 'stock.sale':
       return `${amount} used${order ? ` for ${order}` : ''}`
     default:

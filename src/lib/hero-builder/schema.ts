@@ -25,6 +25,9 @@ const font = z
   .refine((v) => v === '' || Object.prototype.hasOwnProperty.call(FONT_OPTIONS, v), 'Unknown font')
 const shortText = z.string().max(LIMITS.shortText)
 const iconName = z.string().regex(/^[A-Za-z0-9]{0,40}$/, 'Invalid icon')
+const showWhen = z.array(z.string().regex(/^[a-z_]{1,32}$/, 'Invalid page state')).max(12).optional()
+const showFor = z.array(z.enum(['dine_in', 'pickup', 'delivery'])).max(3).optional()
+const blockText = z.string().max(LIMITS.textLength)
 const num = (min: number, max: number) => z.number().finite().min(min).max(max)
 /** One optional value per order type (dine-in, pickup, delivery). */
 const perMode = <T extends z.ZodTypeAny>(value: T) =>
@@ -137,6 +140,14 @@ const content = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('badge'), text: shortText, icon: iconName.optional() }),
   z.object({
+    kind: z.literal('copy-text'),
+    title: shortText,
+    text: shortText,
+    design: z.enum(['icon', 'button', 'only']),
+    buttonLabel: z.string().max(40),
+    copiedLabel: z.string().max(40),
+  }),
+  z.object({
     kind: z.literal('countdown'),
     target: z.string().max(64).refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid countdown date'),
     showLabels: z.boolean(),
@@ -185,6 +196,15 @@ const content = z.discriminatedUnion('kind', [
     interval: num(SLIDE_INTERVAL.min, SLIDE_INTERVAL.max),
     showDots: z.boolean(),
   }),
+  z.object({
+    kind: z.literal('page-block'),
+    block: z.string().regex(/^[a-z0-9._-]{0,64}$/, 'Invalid page block'),
+    // Keys and lengths are checked against the page's block registry on publish.
+    texts: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), blockText).refine((t) => Object.keys(t).length <= 40, 'Too many texts'),
+    options: z
+      .record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.union([z.string().max(LIMITS.blockOptionChars), z.boolean()]))
+      .refine((o) => Object.keys(o).length <= LIMITS.blockOptions, 'Too many options'),
+  }),
 ])
 
 const widget = z
@@ -193,10 +213,12 @@ const widget = z
     kind: z.enum([
       'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
       'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
-      'order-entry', 'store-logo', 'slideshow',
+      'order-entry', 'store-logo', 'slideshow', 'page-block', 'copy-text',
     ]),
     content,
     animation: animation.optional(),
+    showWhen,
+    showFor,
     ...responsive,
   })
   .refine((w) => w.kind === w.content.kind, 'Widget kind does not match its content')
@@ -208,8 +230,25 @@ const section = z.object({
   label: z.string().max(80),
   anchor: z.string().regex(/^[a-z0-9-]{0,48}$/, 'Anchors use lowercase letters, numbers and dashes').optional(),
   columns: z.array(column).min(1).max(LIMITS.columnsPerSection),
+  showWhen,
+  showFor,
+  /** Page Designer: pin the section to the bottom of the screen (a sticky order bar). */
+  pin: z.enum(['bottom']).optional(),
   ...responsive,
 })
+
+/** Page Designer: whole-page settings (part styles, layout). Hero/welcome designs leave it out. */
+const pageSettings = z
+  .object({
+    parts: z
+      .record(z.string().regex(/^p_[a-z0-9_]{1,40}$/), z.string().max(32))
+      .refine((p) => Object.keys(p).length <= LIMITS.pageParts, 'Too many page styles')
+      .optional(),
+    layout: z.enum(['scroll', 'steps', 'accordion']).optional(),
+    progress: z.enum(['bar', 'numbers', 'dots', 'none']).optional(),
+    nextLabel: z.string().max(40).optional(),
+  })
+  .optional()
 
 const theme = z.object({
   colors: z
@@ -232,6 +271,7 @@ export const heroDesignV5Schema = z
   .object({
     version: z.literal(5),
     theme,
+    page: pageSettings,
     sections: z.array(section).max(LIMITS.sections, `A hero can have at most ${LIMITS.sections} sections`),
   })
   .refine(

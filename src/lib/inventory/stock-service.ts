@@ -12,6 +12,7 @@
  * happened to be holding.
  */
 
+import { invalidateStockCeilings } from '@/lib/inventory/ceilings-cache'
 import { createClient } from '@/lib/supabase/server'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import { auditManualMovement, type ManualMovementAudit } from '@/lib/inventory/stock-audit-service'
@@ -298,6 +299,18 @@ async function assertOutletBelongsToTenant(
 }
 
 export async function recordStockMovementWith(
+  supabase: StockMovementClient,
+  tenantId: string,
+  input: StockMovementInput,
+  actor?: MovementActor,
+): Promise<StockMovementResult> {
+  const result = await writeStockMovement(supabase, tenantId, input, actor)
+  // The shelf changed: diners' cached ceilings (`ceilings-cache.ts`) are dropped. Never throws.
+  await invalidateStockCeilings(tenantId)
+  return result
+}
+
+async function writeStockMovement(
   supabase: StockMovementClient,
   tenantId: string,
   input: StockMovementInput,

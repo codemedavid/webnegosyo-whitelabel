@@ -50,6 +50,7 @@ export type OrderDeletionErrorCode =
   | 'too_many_attempts'
   | 'recovery_closed'
   | 'not_restorable'
+  | 'try_again'
 
 /** A refusal the owner can act on. Anything else is an unexpected failure. */
 export class OrderDeletionError extends Error {
@@ -238,6 +239,14 @@ export async function confirmDeletion(
   return result
 }
 
+async function readOrdersToRespendOrRefuse(repo: OrderDeletionRepo, caller: DeletionCaller, deletionId: string) {
+  try {
+    return await readOrdersToRespend(repo, caller, deletionId)
+  } catch {
+    throw new OrderDeletionError('try_again', 'The orders could not be restored right now. Nothing changed; try again in a moment.')
+  }
+}
+
 export async function restoreDeletion(
   repo: OrderDeletionRepo,
   caller: DeletionCaller,
@@ -256,7 +265,7 @@ export async function restoreDeletion(
     throw new OrderDeletionError('recovery_closed', 'The recovery window has closed; these orders are gone.')
   }
   // Read first: restoring empties the archive.
-  const toRespend = stock ? await readOrdersToRespend(repo, caller, deletion.id) : []
+  const toRespend = stock ? await readOrdersToRespendOrRefuse(repo, caller, deletion.id) : []
   const result = await repo.restoreDeletion(deletion.id, caller.userId)
   if (stock) respendRestoredOrdersStock(stock, caller, toRespend)
   return result

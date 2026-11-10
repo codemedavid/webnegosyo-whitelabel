@@ -5,7 +5,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // 5.1.1(v)). A signed-in merchant calls this from the in-app "Delete Account"
 // flow. It deletes the caller's own auth identity and their app_users access
 // rows. Tenant/business data (orders, menu, analytics) is intentionally
-// preserved — other staff or the store owner may still rely on it.
+// preserved — other staff or the store owner may still rely on it. A store's
+// last owner may delete too: Apple requires deletion in the app, and a platform
+// admin can hand an ownerless store to someone else.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +15,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const GENERIC_FAILURE = "We could not delete your account right now.";
 
 function json(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
@@ -72,7 +76,8 @@ Deno.serve(async (req) => {
       ((deleteErr as { status?: number }).status === 404 ||
         /not.?found/i.test(deleteErr.message));
     if (deleteErr && !alreadyGone) {
-      return json({ error: `Failed to delete account: ${deleteErr.message}` }, 500);
+      console.error("[delete-account] auth delete failed:", deleteErr.message);
+      return json({ error: GENERIC_FAILURE }, 500);
     }
 
     // Defensive cleanup in case the FK cascade is ever changed; best-effort,
@@ -81,9 +86,7 @@ Deno.serve(async (req) => {
 
     return json({ success: true }, 200);
   } catch (e) {
-    return json(
-      { error: e instanceof Error ? e.message : "Unexpected server error." },
-      500
-    );
+    console.error("[delete-account] unexpected error:", e);
+    return json({ error: GENERIC_FAILURE }, 500);
   }
 });

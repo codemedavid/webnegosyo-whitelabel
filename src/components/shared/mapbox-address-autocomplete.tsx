@@ -20,6 +20,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
+import { addressFieldPart, type AddressFieldTheme } from './address-field-theme'
+
 // Metro Manila — the map's opening view and the default bias for address search.
 /** Metro Manila: only when the store has no pin to start from. */
 const DEFAULT_MAP_CENTER = { lat: 14.5995, lng: 120.9842 }
@@ -39,6 +41,8 @@ interface MapboxAddressAutocompleteProps {
   mapboxEnabled?: boolean // If false, shows regular input without Mapbox features
   /** Where search leans and the map opens before a pin exists: the branch or store. */
   biasCenter?: { lat: number; lng: number } | null
+  /** Themed page colours (the checkout); absent = the standard gray field. */
+  theme?: AddressFieldTheme
 }
 
 export function MapboxAddressAutocomplete({
@@ -49,6 +53,7 @@ export function MapboxAddressAutocomplete({
   className = '',
   mapboxEnabled = true,
   biasCenter = null,
+  theme,
 }: MapboxAddressAutocompleteProps) {
   const biasLat = biasCenter?.lat
   const biasLng = biasCenter?.lng
@@ -705,7 +710,7 @@ export function MapboxAddressAutocomplete({
     return (
       <div className="space-y-2">
         <div className="relative">
-          <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <MapPin className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 ${theme?.icon ?? 'text-gray-400'}`} />
           <input
             ref={inputRef}
             type="text"
@@ -716,7 +721,8 @@ export function MapboxAddressAutocomplete({
             }}
             placeholder={placeholder}
             required={required}
-            className={`pl-10 ${className} w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500`}
+            data-part={addressFieldPart(theme, 'field')}
+            className={`pl-10 ${className} ${theme?.input ?? 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500'}`}
           />
         </div>
       </div>
@@ -727,7 +733,7 @@ export function MapboxAddressAutocomplete({
     <div className="space-y-2">
       <div className="relative flex gap-2">
         <div className="relative flex-1">
-          <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 z-10 pointer-events-none" />
+          <MapPin className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 ${theme?.icon ?? 'text-gray-400'} z-10 pointer-events-none`} />
           <div className="relative">
             <input
               ref={inputRef}
@@ -758,12 +764,13 @@ export function MapboxAddressAutocomplete({
               placeholder={placeholder}
               required={required}
               autoComplete="address-line1"
-              className={`pl-10 ${className} w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500`}
+              data-part={addressFieldPart(theme, 'field')}
+              className={`pl-10 ${className} ${theme?.input ?? 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500'}`}
             />
             
             {/* Main Search Results Dropdown */}
             {showMainSearchResults && mainSearchResults.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+              <div className={`absolute z-50 w-full mt-1 ${theme?.dropdown ?? 'bg-white border border-gray-200'} rounded-md shadow-lg max-h-60 overflow-y-auto`}>
                 {mainSearchResults.map((result) => (
                   <button
                     key={result.mapbox_id}
@@ -772,11 +779,11 @@ export function MapboxAddressAutocomplete({
                       handleMainSearchResultSelect(result)
                       setShowMainSearchResults(false)
                     }}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+                    className={`w-full px-4 py-2 text-left ${theme?.option ?? 'hover:bg-gray-50 focus:bg-gray-50'} focus:outline-none`}
                   >
                     <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
-                      <span className="text-sm text-gray-900">{result.place_name}</span>
+                      <MapPin className={`h-4 w-4 ${theme?.icon ?? 'text-gray-400'} mt-0.5 shrink-0`} />
+                      <span className={`text-sm ${theme?.optionText ?? 'text-gray-900'}`}>{result.place_name}</span>
                     </div>
                   </button>
                 ))}
@@ -793,7 +800,8 @@ export function MapboxAddressAutocomplete({
             onClick={() => handleUseCurrentLocation(false)}
             disabled={isGettingLocation}
             title="Use current location"
-            className="shrink-0"
+            data-part={addressFieldPart(theme, 'button-alt')}
+            className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
           >
             <LocateFixed className={`h-4 w-4 ${isGettingLocation ? 'animate-pulse' : ''}`} />
           </Button>
@@ -809,7 +817,8 @@ export function MapboxAddressAutocomplete({
               setShowMapPicker(true)
             }}
             title="Pick on map"
-            className="shrink-0"
+            data-part={addressFieldPart(theme, 'button-alt')}
+            className={theme ? `shrink-0 ${theme.button}` : 'shrink-0'}
           >
             <Map className="h-4 w-4" />
           </Button>
@@ -817,7 +826,7 @@ export function MapboxAddressAutocomplete({
       </div>
 
       {mapError && (
-        <p className="text-sm text-red-600">{mapError}</p>
+        <p data-part={addressFieldPart(theme, 'error')} className={`text-sm ${theme?.error ?? 'text-red-600'}`}>{mapError}</p>
       )}
 
       <Dialog open={showMapPicker} onOpenChange={setShowMapPicker}>

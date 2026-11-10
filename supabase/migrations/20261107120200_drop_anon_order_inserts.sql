@@ -5,6 +5,14 @@
 -- orders as the anon role through these two policies, and dropping them would
 -- refuse every customer order (RLS answers with 42501 / zero rows).
 --
+-- Status 2026-11-10: that deploy shipped (#110, 2026-11-08); the customer app
+-- (mobile/) posts to /api/orders/customer-app since #110 but no store build with
+-- it has shipped. Pre-apply check (read-only): orders of the last 24 h with
+-- source <> 'pos', order_token_hash IS NULL and no customer_data.convex_order_id
+-- or qa_seed are what an anon client writes; expect none (30 days to 2026-11-10:
+-- none). tests/sql/run-drop-anon-order-inserts.cjs proves, over the live order
+-- policies, that no other permissive policy lets anon in afterwards.
+--
 -- After it, anon can no longer insert orders or order_items. Staff policies
 -- (orders_insert_admin, order_items_write_admin, platform_staff_*) and the
 -- service role are untouched. The interim limits in 20261107120100 become

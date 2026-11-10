@@ -93,7 +93,7 @@ jest.mock('@/lib/vouchers/order-pricing', () => ({
   priceOrderWithVouchers: (...args: unknown[]) =>
     (priceOrderWithVouchers as unknown as (...a: unknown[]) => unknown)(...args),
 }))
-const NO_VOUCHERS = { application: { discountLines: [] }, discountPayload: null, redemptions: [] }
+const NO_VOUCHERS = { totals: { grandTotal: 230 }, application: { discountLines: [] }, discountPayload: null, redemptions: [] }
 jest.mock('@/lib/vouchers/repository', () => ({ createVoucherLookup: () => ({}) }))
 jest.mock('@/lib/vouchers/order-voucher-flow', () => ({
   burnRedemptions: async () => ({ failures: [] }),

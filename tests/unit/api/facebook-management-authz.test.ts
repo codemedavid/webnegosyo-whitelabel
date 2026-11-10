@@ -41,6 +41,7 @@ function mockCaller(appUser: unknown, signedIn = true) {
 function postRequest(path: string) {
   return new NextRequest(`https://example.test${path}`, {
     method: 'POST',
+    headers: { origin: 'https://example.test', host: 'example.test' },
     body: JSON.stringify({
       tenant_id: 'store-1', page_id: 'page-1', page_name: 'Page',
       page_access_token: 'page-token', user_access_token: 'user-token', temp_id: 'temp-1',

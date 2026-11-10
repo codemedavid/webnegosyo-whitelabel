@@ -94,7 +94,9 @@ export async function trackAnalyticsEventAction(
     }
 
     const convex = createConvexServerClient(config.convex_deployment_url, deployKey)
-    await convex.mutation('analytics:trackEvent', {
+    // Internal since v40; the client falls back to the public name on an older
+    // deployment, where that name carries no gate.
+    await convex.mutation('analytics:trackEventInternal', {
       type: eventType,
       metadata: safeMetadata,
     })

@@ -106,7 +106,9 @@ export function evaluateVoucherEligibility(
 
   if (voucher.minOrderAmount != null) {
     const cartSubtotal = getCartSubtotal(context.lines)
-    if (cartSubtotal < voucher.minOrderAmount) {
+    // Compared in centavos: allocated combo lines can sum to 499.99999999999994
+    // against a ₱500 minimum, which would refuse the code with "Add ₱0.00 more".
+    if (Math.round(cartSubtotal * 100) < Math.round(voucher.minOrderAmount * 100)) {
       const shortfall = Math.round((voucher.minOrderAmount - cartSubtotal) * 100) / 100
       return reject(
         'below_minimum',

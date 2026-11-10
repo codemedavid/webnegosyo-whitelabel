@@ -47,7 +47,9 @@ it('allocates per Manila day and recovers the same number for a retried order', 
       { dailyNumber: 2, orderDate: '2026-09-15' },
       { dailyNumber: 1, orderDate: '2026-09-16' },
     ])
-    expect(ctx.scheduler.runAfter).toHaveBeenCalledTimes(3)
+    // One new-order push per new order; the gate's audit rows are scheduled too.
+    const pushes = ctx.scheduler.runAfter.mock.calls.filter(([, , args]) => !(args as { fn?: string } | undefined)?.fn)
+    expect(pushes).toHaveLength(3)
     // Rebuilding a missing counter must continue after existing daily numbers.
     tables.set('dailyOrderCounters', [])
     await handler(ctx, { ...input, clientOrderId: 'after-recovery' })

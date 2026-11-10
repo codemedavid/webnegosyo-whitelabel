@@ -26,6 +26,7 @@ import type { OrderDiscountLine } from "../order-totals";
 import type { PosStockItem } from "../pos-stock";
 import type { LoyverseOrderLine } from "../loyverse-notify";
 import type { CaptureItem } from "../customers/capture";
+import { isTokenRefusalMessage } from "./network-error";
 
 export const OUTBOX_STORAGE_KEY = "pos_offline_outbox_v1";
 
@@ -300,19 +301,29 @@ export function deferOwedStock(localId: string, retryAt: number): Promise<void> 
   }));
 }
 
+/**
+ * A store refusing for want of a session token says nothing about the sale, so
+ * it costs no attempt: the sale stays on the retry timer until the token is back.
+ */
 export function recordSyncFailure(localId: string, message: string): Promise<void> {
-  return updateSale(localId, (sale) => ({ ...sale, attempts: sale.attempts + 1, lastError: message }));
+  return updateSale(localId, (sale) => ({
+    ...sale,
+    attempts: isTokenRefusalMessage(message) ? sale.attempts : sale.attempts + 1,
+    lastError: message,
+  }));
 }
 
 /**
  * Refusals that mean "this device was signed out", not "this sale is wrong":
- * PostgREST answering the anonymous role (RLS, or no usable token).
+ * PostgREST answering the anonymous role (RLS, or no usable token), and an
+ * enforced Convex deployment answering a call with no token.
  */
 const SIGNED_OUT_REFUSAL_PATTERNS: readonly RegExp[] = [
   /row-level security policy/i,
   /JWT expired/i,
   /No API key found/i,
   /invalid JWT/i,
+  /Unauthorized: unauthenticated/,
 ];
 
 export function isSignedOutRefusal(message: string | null): boolean {

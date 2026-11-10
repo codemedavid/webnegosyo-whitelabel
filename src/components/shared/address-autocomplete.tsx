@@ -1,13 +1,16 @@
 'use client'
 
 import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import type { AddressMapDisplay } from '@/lib/checkout/address-map'
 import { getMapsProvider } from '@/lib/maps/provider'
 import { AppleAddressAutocomplete, type AddressChangeMeta } from './apple-maps/apple-address-autocomplete'
 import type { PinCheckView, PinPurpose } from './apple-maps/pin-confirm-dialog'
+import type { AddressFieldTheme } from './address-field-theme'
 import { PlainAddressInput } from './apple-maps/plain-address-input'
 
 export type { AddressChangeMeta } from './apple-maps/apple-address-autocomplete'
 export type { PinCheckView, PinPurpose } from './apple-maps/pin-confirm-dialog'
+export type { AddressFieldTheme } from './address-field-theme'
 
 interface LatLngPoint {
   lat: number
@@ -30,6 +33,15 @@ export interface AddressAutocompleteProps {
   purpose?: PinPurpose
   /** Warnings about a confirmed spot (Apple Maps). */
   check?: (point: LatLngPoint) => PinCheckView | null
+  /**
+   * Themed page colours for the box, suggestions and messages (the customer
+   * checkout passes its own). Absent = the standard gray field everywhere else.
+   */
+  theme?: AddressFieldTheme
+  /** How the map is offered (Apple Maps); absent = icon buttons beside the box. */
+  mapDisplay?: AddressMapDisplay
+  /** The customer already chose to go without a pin: stop asking for one (Apple Maps). */
+  hidesPinNudge?: boolean
 }
 
 /**
@@ -42,6 +54,8 @@ export function AddressAutocomplete({
   biasCenter = null,
   purpose,
   check,
+  mapDisplay,
+  hidesPinNudge,
   ...props
 }: AddressAutocompleteProps) {
   const mapbox = <MapboxAddressAutocomplete {...props} mapboxEnabled biasCenter={biasCenter} />
@@ -57,6 +71,8 @@ export function AddressAutocomplete({
       biasCenter={biasCenter}
       purpose={purpose}
       check={check}
+      mapDisplay={mapDisplay}
+      hidesPinNudge={hidesPinNudge}
       fallback={mapbox}
     />
   )

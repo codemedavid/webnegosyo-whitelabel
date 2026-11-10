@@ -25,8 +25,23 @@ it('checks POS merchant access before returning an idempotent order', async () =
   await expect(handler(context({ subject: 'u1', wn_tenant_id: 't1', wn_role: 'admin' }), args)).resolves.toBe('existing-order')
 })
 
-it('preserves the public customer order path', async () => {
-  await expect(handler(context(null), { ...args, source: 'web' })).resolves.toBe('existing-order')
+it('refuses every source without a token once the store is enforced', async () => {
+  for (const source of ['web', 'mobile', 'qr_handoff', 'pos']) {
+    await expect(handler(context(null), { ...args, source })).rejects.toThrow('Unauthorized')
+  }
+  await expect(handler(context({ subject: 'u1', wn_tenant_id: 't1', wn_role: 'admin' }), { ...args, source: 'qr_handoff' }))
+    .resolves.toBe('existing-order')
+})
+
+it('still admits a token-less caller until the store is enforced, so no order stops', async () => {
+  config.auth_enforced = 'false'
+  try {
+    for (const source of ['web', 'mobile', 'qr_handoff', 'pos']) {
+      await expect(handler(context(null), { ...args, source })).resolves.toBe('existing-order')
+    }
+  } finally {
+    config.auth_enforced = 'true'
+  }
 })
 
 it('requires strict merchant authentication for public Lalamove-store order writes even during soft auth rollout', async () => {

@@ -132,7 +132,11 @@ describe('/api/uploads/sign', () => {
 
     it('falls back to the extension when the browser sent no type', async () => {
       const { resolve, presign, route } = await load()
-      resolve.mockResolvedValue(ADMIN as never)
+      // Documents are for platform accounts; store staff upload images only.
+      resolve.mockResolvedValue({
+        status: 'authorized',
+        uploader: { userId: 'u9', role: 'superadmin', tenantId: null, isOwner: false, permissions: null },
+      } as never)
 
       const res = await route.POST(post({ ...PHOTO, fileName: 'menu.pdf', contentType: '' }))
 
@@ -163,5 +167,65 @@ describe('/api/uploads/sign', () => {
 
       expect((await route.POST(post(PHOTO))).status).toBe(503)
     })
+  })
+
+  it('forces the R2 key under the caller\'s own store', async () => {
+    process.env = { ...process.env, ...R2_ENV }
+    const { resolve, presign, route } = await load()
+    resolve.mockResolvedValue(ADMIN as never)
+
+    const res = await route.POST(post({ ...PHOTO, folder: 'menu-items' }))
+
+    expect(res.status).toBe(200)
+    expect(presign.mock.calls[0][0]).toContain('menu-items/t1/')
+  })
+
+  it('forces the ImageKit folder under the caller\'s own store too', async () => {
+    const { resolve, route } = await load()
+    resolve.mockResolvedValue(ADMIN as never)
+
+    const res = await route.POST(post({ ...PHOTO, folder: 'menu-items' }))
+    const body = await res.json()
+
+    expect(body.fields.folder).toBe('menu-items/t1')
+  })
+
+  it('refuses staff without the key the folder needs, and another store\'s prefix', async () => {
+    const { resolve, route } = await load()
+    resolve.mockResolvedValue({
+      status: 'authorized',
+      uploader: { userId: 'u2', role: 'admin', tenantId: 't1', isOwner: false, permissions: ['kitchen'] },
+    } as never)
+    expect((await route.POST(post({ ...PHOTO, folder: 'menu-items' }))).status).toBe(403)
+
+    resolve.mockResolvedValue(ADMIN as never)
+    expect((await route.POST(post({ ...PHOTO, folder: 'menu-items/t2' }))).status).toBe(403)
+  })
+
+  it('judges a missing type by the extension for store staff too', async () => {
+    process.env = { ...process.env, ...R2_ENV }
+    const { resolve, route } = await load()
+    resolve.mockResolvedValue(ADMIN as never)
+
+    const pdf = await route.POST(post({ ...PHOTO, fileName: 'menu.pdf', contentType: '' }))
+    const photo = await route.POST(post({ ...PHOTO, fileName: 'latte.jpg', contentType: '' }))
+
+    expect(pdf.status).toBe(415)
+    expect(photo.status).toBe(200)
+  })
+
+  it('refuses a document from store staff but keeps it for a superadmin', async () => {
+    process.env = { ...process.env, ...R2_ENV }
+    const { resolve, route } = await load()
+    const pdf = { folder: 'menu-items', fileName: 'menu.pdf', contentType: 'application/pdf', size: 100 }
+
+    resolve.mockResolvedValue(ADMIN as never)
+    expect((await route.POST(post(pdf))).status).toBe(415)
+
+    resolve.mockResolvedValue({
+      status: 'authorized',
+      uploader: { userId: 'u9', role: 'superadmin', tenantId: null, isOwner: false, permissions: null },
+    } as never)
+    expect((await route.POST(post({ ...pdf, folder: 'platform/university/resources' }))).status).toBe(200)
   })
 })

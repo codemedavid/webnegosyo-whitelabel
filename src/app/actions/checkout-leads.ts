@@ -114,7 +114,7 @@ export async function changeCheckoutLeadStatus(
   return updateCheckoutLeadStatus(leadId, newStatus)
 }
 
-// ---- Store onboarding (₱999 funnel) ----
+// ---- Store onboarding (/funnel plans) ----
 
 export async function fetchLeadOnboarding(leadId: string) {
   await requirePlatformPermission('checkout_leads.view')

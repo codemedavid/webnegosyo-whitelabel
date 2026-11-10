@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { readThroughCeilingsCache } from '@/lib/inventory/ceilings-cache'
 import { getMenuStockAvailability, type OptionStockCeilings } from '@/lib/inventory/menu-ceilings'
 import { DEFAULT_POS_STOCK_POLICY, readPosStockPolicy } from '@/lib/inventory/pos-stock-policy'
 import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
@@ -85,26 +86,37 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const rate = await checkRateLimit(key, RATE_LIMIT)
   if (!rate.allowed) return tooMany(rate.retryAfterSec)
 
-  // A ceiling is stale the moment the next order lands, so nothing may hold
-  // onto one. A cached "3 left" outliving its stock is the exact failure this
-  // whole feature exists to prevent.
+  // No browser or CDN may hold a ceiling: it is stale the moment the next
+  // order lands. Diners' reads share a few-second server cache that every
+  // sale and stock movement drops (`ceilings-cache.ts`); the register, whose
+  // `block` policy holds a sale against these numbers, always reads fresh.
   const headers = { 'Cache-Control': 'no-store' }
 
-  // Read alongside the graph; readPosStockPolicy never throws (warn on failure).
-  const policyRead = readPosStockPolicy(tenantId)
   try {
-    const { dishes, options } = await getMenuStockAvailability(tenantId, outletId)
-    return NextResponse.json(
-      {
-        ceilings: Object.fromEntries(dishes),
-        optionCeilings: toJsonOptionCeilings(options),
-        stockPolicy: await policyRead,
-      },
-      { headers },
-    )
+    const body = hasToken
+      ? await readCeilingsBody(tenantId, outletId)
+      : await readThroughCeilingsCache(tenantId, outletId, () => readCeilingsBody(tenantId, outletId))
+    return NextResponse.json(body, { headers })
   } catch (error) {
     console.error('[inventory] Ceilings read failed', tenantId, error)
     return NextResponse.json({ ceilings: {}, optionCeilings: {}, stockPolicy: DEFAULT_POS_STOCK_POLICY }, { headers })
+  }
+}
+
+interface CeilingsBody {
+  ceilings: Record<string, number>
+  optionCeilings: Record<string, Record<string, number>>
+  stockPolicy: Awaited<ReturnType<typeof readPosStockPolicy>>
+}
+
+async function readCeilingsBody(tenantId: string, outletId: string | null): Promise<CeilingsBody> {
+  // Read alongside the graph; readPosStockPolicy never throws (warn on failure).
+  const policyRead = readPosStockPolicy(tenantId)
+  const { dishes, options } = await getMenuStockAvailability(tenantId, outletId)
+  return {
+    ceilings: Object.fromEntries(dishes),
+    optionCeilings: toJsonOptionCeilings(options),
+    stockPolicy: await policyRead,
   }
 }
 

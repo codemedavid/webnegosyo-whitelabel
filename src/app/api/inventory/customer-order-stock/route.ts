@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
 import { readInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
@@ -10,6 +10,7 @@ import {
 } from '@/lib/inventory/customer-order-items'
 import { applyOrderStockBestEffort } from '@/lib/inventory/order-stock-service'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
+import { TERMINAL_ORDER_STATES } from '@/lib/inventory/order-stock-repair'
 import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
 import type { DepletionOrderItem } from '@/lib/inventory/order-depletion'
@@ -89,6 +90,12 @@ function notEligible(): NextResponse {
   return NextResponse.json({ success: true, skipped: 'order_not_eligible' })
 }
 
+/** Cancelled, voided or refunded already: the sweep skips these, and so does this route. */
+function isFinished(status: unknown, paymentStatus: unknown): boolean {
+  const normalized = (value: unknown) => (typeof value === 'string' ? value.trim().toLowerCase() : '')
+  return TERMINAL_ORDER_STATES.has(normalized(status)) || TERMINAL_ORDER_STATES.has(normalized(paymentStatus))
+}
+
 function isFreshCustomerAppOrder(
   backend: 'platform' | 'convex',
   source: unknown,
@@ -117,6 +124,8 @@ const CUSTOMER_APP_AUDIT = { context: { source: 'customer_app' as const } }
 interface ConvexOrderForStock {
   _creationTime?: number
   source?: string
+  status?: string
+  paymentStatus?: string
   customerData?: unknown
   outletId?: string | null
   items?: unknown[]
@@ -157,7 +166,10 @@ async function depleteConvexOrder(
   if (!order) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
-  if (!isFreshCustomerAppOrder('convex', order.source, Number(order._creationTime), Date.now())) {
+  if (
+    isFinished(order.status, order.paymentStatus) ||
+    !isFreshCustomerAppOrder('convex', order.source, Number(order._creationTime), Date.now())
+  ) {
     return notEligible()
   }
 
@@ -194,15 +206,20 @@ async function depletePlatformOrder(
   // shop they have nothing to do with.
   const { data: order } = await supabase
     .from('orders')
-    .select('tenant_id, outlet_id, customer_data, source, created_at')
+    .select('tenant_id, outlet_id, customer_data, source, created_at, status, payment_status')
     .eq('id', orderId)
     .single()
 
   if (!order || order.tenant_id !== tenantId) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
-  const { source, created_at: createdAt } = order as { source?: unknown; created_at?: unknown }
-  if (!isFreshCustomerAppOrder('platform', source, Date.parse(String(createdAt)), Date.now())) {
+  const { source, created_at: createdAt, status, payment_status: paymentStatus } = order as {
+    source?: unknown
+    created_at?: unknown
+    status?: unknown
+    payment_status?: unknown
+  }
+  if (isFinished(status, paymentStatus) || !isFreshCustomerAppOrder('platform', source, Date.parse(String(createdAt)), Date.now())) {
     return notEligible()
   }
 
@@ -247,7 +264,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!orderRate.allowed) return tooManyRequests(orderRate.retryAfterSec)
 
   try {
-    const supabase = createAdminClient()
+    // Public request path: every read is bounded, so a slow database can't hold the diner's call open.
+    const supabase = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
 
     // Same gate `createOrderAction` applies: a tenant who has not turned
     // inventory on must never accumulate a ledger they did not ask for.

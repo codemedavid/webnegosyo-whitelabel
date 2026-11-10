@@ -150,4 +150,49 @@ describe('POST /api/messenger/send-cart', () => {
 
     expect(res.headers.get('access-control-allow-origin')).toBe('https://retiro.webnegosyo.app')
   })
+
+  it('never relays caller-written text: no item names, variations or prices reach the customer', async () => {
+    const { route, sendMessage } = await load()
+    const items = [{ name: 'FREE GCASH: visit evil.example', quantity: 2, subtotal: 1, variation: 'call 0917' }]
+
+    const res = await route.POST(post({ tenantId: 'tenant-1', psid: 'psid-1234', items }))
+
+    expect(res.status).toBe(200)
+    const message = sendMessage.mock.calls[0][2] as string
+    expect(message).toContain('Retiro Cafe')
+    expect(message).toContain('2 items')
+    expect(message).toContain('https://retiro.webnegosyo.app/checkout')
+    expect(message).not.toMatch(/evil\.example|0917|GCASH/)
+  })
+
+  it('does not repeat the same count to the same person within the dedupe window', async () => {
+    const { route, sendMessage } = await load()
+    const limiter = await import('@/lib/distributed-rate-limit')
+    jest.mocked(limiter.checkRateLimit).mockImplementation(async (key: string) => ({
+      allowed: !key.startsWith('send-cart-same:'),
+      remaining: 0,
+      retryAfterSec: 30,
+    }))
+
+    const res = await route.POST(post({ tenantId: 'tenant-1', psid: 'psid-1234', items: [ITEM] }))
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).duplicate).toBe(true)
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('caps messages per person, whatever the caller IP', async () => {
+    const { route, sendMessage } = await load()
+    const limiter = await import('@/lib/distributed-rate-limit')
+    jest.mocked(limiter.checkRateLimit).mockImplementation(async (key: string) => ({
+      allowed: !key.startsWith('send-cart-psid:'),
+      remaining: 0,
+      retryAfterSec: 30,
+    }))
+
+    const res = await route.POST(post({ tenantId: 'tenant-1', psid: 'psid-1234', items: [ITEM] }))
+
+    expect(res.status).toBe(429)
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
 })

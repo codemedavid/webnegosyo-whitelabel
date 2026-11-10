@@ -23,6 +23,10 @@ export interface PinConfirmMapProps {
   isSatellite?: boolean
   /** False = a preview: no panning or zooming. */
   isInteractive?: boolean
+  /** False = no pin drawn: the customer hasn't chosen a spot yet, so none is implied. */
+  showsPin?: boolean
+  /** How far back the map starts, in metres; absent = close enough to see the gate. */
+  cameraDistanceM?: number
   className?: string
 }
 
@@ -50,6 +54,8 @@ export function PinConfirmMap({
   onError,
   isSatellite = false,
   isInteractive = true,
+  showsPin = true,
+  cameraDistanceM = DOOR_CAMERA_DISTANCE_M,
   className = 'h-[60vh] min-h-[320px]',
 }: PinConfirmMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -78,7 +84,7 @@ export function PinConfirmMap({
         const start = latestCenterRef.current
         const map = new mapkit.Map(container, {
           center: new mapkit.Coordinate(start.lat, start.lng),
-          cameraDistance: DOOR_CAMERA_DISTANCE_M,
+          cameraDistance: cameraDistanceM,
           mapType: mapTypeFor(mapkit, isSatelliteRef.current),
           showsMapTypeControl: false,
           showsZoomControl: isInteractive,
@@ -126,11 +132,15 @@ export function PinConfirmMap({
   return (
     <div className={`relative w-full overflow-hidden rounded-md border bg-gray-100 ${className}`}>
       <div ref={containerRef} className={`absolute inset-0 ${isInteractive ? '' : 'pointer-events-none'}`} />
-      {/* The pin's tip sits exactly on the map's centre. */}
-      <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-full">
-        <MapPin className="h-10 w-10 fill-orange-500 text-white drop-shadow-lg" strokeWidth={1.5} />
-      </div>
-      <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/40" />
+      {showsPin ? (
+        <>
+          {/* The pin's tip sits exactly on the map's centre. */}
+          <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-full">
+            <MapPin className="h-10 w-10 fill-orange-500 text-white drop-shadow-lg" strokeWidth={1.5} />
+          </div>
+          <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/40" />
+        </>
+      ) : null}
     </div>
   )
 }

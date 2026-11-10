@@ -91,17 +91,24 @@ export function tenantRewritePath(tenantSlug: string | null, pathname: string): 
 
 const TENANT_LOGIN_PATH = /^\/[^/]+\/login(\/|$)/i
 const SUPERADMIN_PATH = /^\/superadmin(\/|$)/i
+const ONBOARDING_PATH = /^\/onboarding(\/|$)/i
 
 /**
  * Pages that must not be framed by another site (clickjacking): the tenant
- * admin, the tenant login, and everything under `/superadmin` (its login and
- * the MCP OAuth consent page included). Classify the SERVED path — on a tenant
+ * admin, the tenant login, everything under `/superadmin` (its login and the
+ * MCP OAuth consent page included), and `/onboarding` (it sets the owner's
+ * password). Classify the SERVED path — on a tenant
  * host `/admin` becomes `/<slug>/admin` before this is asked. The public
  * storefront stays embeddable: merchants put their menu inside their own sites.
  */
 export function isFrameProtectedPath(rawPathname: string): boolean {
   const pathname = normalizePathname(rawPathname)
-  return SUPERADMIN_PATH.test(pathname) || TENANT_LOGIN_PATH.test(pathname) || tenantAdminSlugFor(pathname) !== null
+  return (
+    SUPERADMIN_PATH.test(pathname) ||
+    ONBOARDING_PATH.test(pathname) ||
+    TENANT_LOGIN_PATH.test(pathname) ||
+    tenantAdminSlugFor(pathname) !== null
+  )
 }
 
 /**

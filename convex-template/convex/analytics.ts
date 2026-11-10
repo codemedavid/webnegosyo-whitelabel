@@ -4,7 +4,7 @@ import { orderTime, orderTimeFilter } from './orderTime';
 import { v, type ObjectType } from "convex/values";
 import { orderBranchFilter, eventBranchFilter } from "./branchFilter";
 import { summarizeOrderChannels } from "./analyticsChannels";
-import { mutation, query, internalQuery, type QueryCtx } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireAccess } from "./auth";
 import { businessDayKey, businessDayStartMs, localDayOfWeek, localHour } from "./time";
 import { readCutoffSchedule } from "./businessDayConfig";
@@ -96,16 +96,26 @@ const windowArgs = {
   endMs: v.optional(v.number()),
 };
 
+const trackEventArgs = {
+  type: v.string(),
+  metadata: v.optional(v.any()),
+  sessionId: v.optional(v.string()),
+};
+
+async function trackEventHandler(ctx: MutationCtx, args: ObjectType<typeof trackEventArgs>) {
+  await ctx.db.insert("analyticsEvents", args);
+}
+
 export const trackEvent = mutation({
-  args: {
-    type: v.string(),
-    metadata: v.optional(v.any()),
-    sessionId: v.optional(v.string()),
-  },
+  args: trackEventArgs,
   handler: async (ctx, args) => {
-    await ctx.db.insert("analyticsEvents", args);
+    await requireAccess(ctx, "write", "analytics:trackEvent");
+    await trackEventHandler(ctx, args);
   },
 });
+
+/** Storefront events, sent by the web server after it has bounded them. */
+export const trackEventInternal = internalMutation({ args: trackEventArgs, handler: trackEventHandler });
 
 const getUpsellAnalyticsArgs = {
     ...windowArgs,

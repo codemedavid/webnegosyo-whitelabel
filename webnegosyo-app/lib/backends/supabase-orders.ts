@@ -788,7 +788,8 @@ function textFromCustomerData(
   return trimmed === "" ? null : trimmed;
 }
 
-function outletIdFromCustomerData(
+/** The branch an order row is written under (`orders.outlet_id`). */
+export function outletIdFromCustomerData(
   customerData: Record<string, unknown> | undefined
 ): string | null {
   const value = customerData?.[ORDER_OUTLET_ID_KEY];

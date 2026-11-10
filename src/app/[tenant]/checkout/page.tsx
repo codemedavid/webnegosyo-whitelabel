@@ -18,6 +18,9 @@
 import { CheckoutNotFound } from '@/components/customer/checkout-templates/checkout-shared'
 import { getStorefrontTenant } from '@/lib/storefront/storefront-tenant'
 import { loadCheckoutConfig } from '@/lib/checkout/load-checkout-config'
+import { getCachedTenantBySlug } from '@/lib/cache'
+import { hasPublishedFlag, publishedDesignColumns } from '@/lib/page-designer/page-mode'
+import type { PageId } from '@/lib/page-designer/types'
 import { CheckoutView } from './checkout-view'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +39,23 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
   if (!tenant) return <CheckoutNotFound />
 
   const config = await loadCheckoutConfig(tenant)
+  const withDesigns = await withPublishedDesigns(tenant, tenantSlug)
 
-  return <CheckoutView tenantSlug={tenantSlug} initialTenant={tenant} config={config} />
+  return <CheckoutView tenantSlug={tenantSlug} initialTenant={withDesigns} config={config} />
+}
+
+/** Pages checkout renders that the owner can design: the checkout itself, then the thank-you page. */
+const CHECKOUT_PAGES: readonly PageId[] = ['checkout', 'confirmation']
+
+/**
+ * The storefront select carries only the Page Designer flags; a published
+ * design's text comes from the cached full row, read only when one is live.
+ * A failed read keeps the standard pages rather than failing checkout.
+ */
+async function withPublishedDesigns<T extends object>(tenant: T, tenantSlug: string): Promise<T> {
+  const row = tenant as unknown as Record<string, unknown>
+  if (!hasPublishedFlag(row, CHECKOUT_PAGES)) return tenant
+  const full = await getCachedTenantBySlug(tenantSlug).catch(() => null)
+  if (!full) return tenant
+  return { ...tenant, ...publishedDesignColumns(full as unknown as Record<string, unknown>, CHECKOUT_PAGES) }
 }

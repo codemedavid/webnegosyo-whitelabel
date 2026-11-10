@@ -352,6 +352,8 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   'qr-codes': 'store_setup',
   'hero-designer': 'store_setup',
   'welcome-designer': 'store_setup',
+  // Checkout, thank-you and order-tracking designs.
+  'page-designer': 'store_setup',
   // Minting an MCP key grants full merchant authority — owner/store_setup only.
   mcp: 'store_setup',
   customers: 'customers',

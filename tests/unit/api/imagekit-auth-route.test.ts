@@ -92,14 +92,14 @@ describe('/api/imagekit/auth', () => {
       const { resolve, route } = await load()
       resolve.mockResolvedValue(ADMIN as never)
 
-      const res = await route.POST(post({ folder: '/platform/whats-new', fileName: 'cover photo.png' }))
+      const res = await route.POST(post({ folder: '/menu-items', fileName: 'cover photo.png' }))
 
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.token).toBe('jwt')
       expect(body.fields).toEqual({
         fileName: 'cover_photo.png',
-        folder: 'platform/whats-new',
+        folder: 'menu-items/t1',
         useUniqueFileName: 'true',
         overwriteFile: 'false',
       })
@@ -175,5 +175,14 @@ describe('/api/imagekit/auth', () => {
 
       expect(res.status).toBe(429)
     })
+  })
+
+  it('applies the same folder policy as /api/uploads/sign', async () => {
+    const { resolve, route } = await load()
+    resolve.mockResolvedValue(ADMIN as never)
+
+    const own = await route.POST(post({ folder: 'menu-items', fileName: 'a.jpg' }))
+    expect((await own.json()).fields.folder).toBe('menu-items/t1')
+    expect((await route.POST(post({ folder: 'menu-items/t2', fileName: 'a.jpg' }))).status).toBe(403)
   })
 })

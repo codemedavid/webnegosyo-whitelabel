@@ -1,16 +1,32 @@
 'use client'
 
+import type { ComponentType } from 'react'
+
 import { publishHeroDesignAction, unpublishHeroDesignAction } from '@/app/actions/hero-builder'
 import { publishWelcomeDesignAction, unpublishWelcomeDesignAction } from '@/app/actions/welcome-builder'
 import { SECTION_PRESETS, type SectionPreset } from '@/lib/hero-builder/section-presets'
 import { HERO_TEMPLATE_CATEGORIES, HERO_TEMPLATES } from '@/lib/hero-builder/templates'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
+import type { PageId } from '@/lib/page-designer/types'
+import type { PageRuntime } from '@/components/hero-builder/renderer/page-runtime'
 import { WELCOME_SECTION_PRESETS } from '@/lib/welcome-builder/section-presets'
 import { WELCOME_TEMPLATE_CATEGORIES, WELCOME_TEMPLATES } from '@/lib/welcome-builder/templates'
 
 import type { LinkSurface } from './inspector/link-picker'
 import { HERO_ADD_GROUPS, WELCOME_ADD_GROUP, type AddGroup } from './panels/add-panel'
 import type { GalleryPreview, GalleryTemplate } from './template-gallery'
+import type { HeroBuilderApi } from './use-hero-builder'
+
+/**
+ * Page Designer surfaces only: the page being designed, how its blocks look
+ * while editing (sample data at a given state), and its standard layout.
+ */
+export interface PageSurfaceConfig {
+  id: PageId
+  /** Sample runtime for the canvas, preview and template thumbnails. */
+  runtime: (state: string | null) => PageRuntime
+  standardDesign: () => HeroDesignV5
+}
 
 export interface PublishResult {
   success: boolean
@@ -20,6 +36,14 @@ export interface PublishResult {
 export interface SurfaceTarget {
   tenantId: string
   tenantSlug: string
+}
+
+/** What a surface's notice above the canvas gets. */
+export interface SurfaceBannerProps {
+  api: HeroBuilderApi
+  target: SurfaceTarget
+  /** The design is still exactly what the editor opened with. */
+  isUnchanged: boolean
 }
 
 /**
@@ -34,7 +58,13 @@ export interface BuilderSurface {
   draftPrefix: string
   templates: readonly GalleryTemplate[]
   templateCategories: readonly string[]
+  /** Filter names per category (default: the category, capitalised). */
+  templateCategoryLabels?: Readonly<Record<string, string>>
   templatePreview?: GalleryPreview
+  /** Called after the owner picks a gallery template. */
+  onTemplatePicked?: (templateId: string, target: SurfaceTarget) => void
+  /** A small notice over the canvas (Page Designer: "use the matching look?"). */
+  Banner?: ComponentType<SurfaceBannerProps>
   addGroups: readonly AddGroup[]
   sectionPresets: readonly SectionPreset[]
   publish: (target: SurfaceTarget, design: HeroDesignV5) => Promise<PublishResult>
@@ -44,6 +74,8 @@ export interface BuilderSurface {
   removeLabel: string
   /** Placeholder under the full preview, or null when the page stands alone. */
   previewFooter: string | null
+  /** Set for the checkout / thank-you / tracking designer. */
+  page?: PageSurfaceConfig
 }
 
 export const HERO_SURFACE: BuilderSurface = {
