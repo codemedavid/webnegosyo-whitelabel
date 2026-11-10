@@ -1,3 +1,7 @@
+-- APPLIED to platform 2026-11-10 (recorded as 20261110114834) after checking that
+-- the deployed checkout and customer app write orders with the service role:
+-- pg_stat_statements since 2026-10-14 shows no anon INSERT on orders/order_items.
+--
 -- DO NOT APPLY BEFORE THE WEB DEPLOY.
 --
 -- Apply this file only AFTER the web deploy in which checkout inserts orders
