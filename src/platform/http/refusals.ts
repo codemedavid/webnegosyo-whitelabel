@@ -6,9 +6,13 @@
  * app and the console keep parsing what they parse today); a server action
  * turns it into the `{ success: false, error }` its caller shows to a person.
  * Every sentence here is safe to show: none is built from an error message.
+ *
+ * Wording only, and nothing from `next/server`: server actions are imported
+ * (as references) by client components, whose tests load this file under
+ * jsdom, where the web `Request` that `next/server` needs does not exist.
+ * The route's response is built in `refusal-response.ts`.
  */
 
-import { NextResponse } from 'next/server'
 import { SUBSCRIPTION_PAUSED_MESSAGE } from '@/lib/billing/subscription-gate'
 import type { AccessRefusal } from './access'
 import type { AuthKind, Refusal, RefusalCode, RefusalStatus } from './entry'
@@ -76,26 +80,4 @@ export function routeRefusal(kind: AuthKind, refusal: AccessRefusal, extras: Ref
 
 export function actionRefusal(refusal: AccessRefusal, extras: RefusalExtras = {}): Refusal {
   return build(ACTION_MESSAGES, ACTION_MESSAGES, refusal, extras)
-}
-
-/** Kinds whose credential is a secret in the request: their answers are never cached. */
-const SECRET_KINDS: readonly AuthKind[] = ['cron', 'device', 'signature']
-
-/**
- * The response for a refusal when the route does not word its own.
- * - superadmin: the console envelope `{ success, data, error }`, private and uncached;
- * - cron / device / signature: `{ error }`, `Cache-Control: no-store`;
- * - staff / public: `{ error }`.
- */
-export function defaultRefusalResponse(kind: AuthKind, refusal: Refusal): Response {
-  const headers: Record<string, string> = {}
-  if (kind === 'superadmin') headers['Cache-Control'] = 'private, no-store'
-  if (SECRET_KINDS.includes(kind)) headers['Cache-Control'] = 'no-store'
-  if (refusal.retryAfterSec !== undefined) headers['Retry-After'] = String(refusal.retryAfterSec)
-
-  const body = kind === 'superadmin'
-    ? { success: false, data: null, error: refusal.message }
-    : { error: refusal.message }
-  const hasHeaders = Object.keys(headers).length > 0
-  return NextResponse.json(body, hasHeaders ? { status: refusal.status, headers } : { status: refusal.status })
 }

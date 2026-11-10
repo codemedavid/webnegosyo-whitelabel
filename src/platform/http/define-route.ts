@@ -55,7 +55,8 @@ import {
   type RouteAuth,
 } from './entry'
 import { countRouteRequest } from './rate-limit'
-import { defaultRefusalResponse, routeRefusal } from './refusals'
+import { defaultRefusalResponse } from './refusal-response'
+import { routeRefusal } from './refusals'
 import { reportFailure, traceRefusal } from './report'
 
 /** Dynamic segments, as Next hands them to a route handler. */
