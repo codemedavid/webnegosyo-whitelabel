@@ -1,13 +1,15 @@
 import {
   FEATURE_COUNT,
+  FULL_PLAN_AT_MONTHLY,
+  FULL_PLAN_MONTHS,
+  FULL_PLAN_PER_MONTH,
+  FULL_PLAN_SAVINGS,
+  INSTALLMENT_BALANCE,
+  INSTALLMENT_PRICE,
+  INSTALLMENT_SAVINGS,
   MONTHLY_PRICE,
   SETUP_FEE_WAIVED,
-  SIX_MONTH_BALANCE,
-  SIX_MONTH_DOWN,
-  SIX_MONTH_PER_MONTH,
   SIX_MONTH_PRICE,
-  SIX_MONTH_SAVINGS,
-  SIX_MONTHS_AT_MONTHLY,
   formatPeso,
 } from './funnel-offer'
 
@@ -15,18 +17,21 @@ import {
  * Every word on /funnel, in Taglish: English for the promise, outcomes and
  * feature names, Tagalog for the transitions and feelings.
  *
- * The page pushes the six-month plan (₱5,499, about ₱917 a month) over the
- * ₱1,499 monthly plan. Only real claims: no invented results, names, ratings
- * or review counts.
+ * The page pushes the six-month plan over the ₱1,499 monthly plan. The
+ * headline price is ₱999 a month (the six-month plan paid monthly, what
+ * anyone can start on today); paying in full is the best deal: 6 + 1 free
+ * month for ₱5,499, about ₱786 a month. Only real claims: no invented
+ * results, names, ratings or review counts.
  */
 
 const MONTHLY = formatPeso(MONTHLY_PRICE)
 const SIX = formatPeso(SIX_MONTH_PRICE)
-const SIX_PER_MONTH = formatPeso(SIX_MONTH_PER_MONTH)
-const SAVINGS = formatPeso(SIX_MONTH_SAVINGS)
-const ANCHOR = formatPeso(SIX_MONTHS_AT_MONTHLY)
-const DOWN = formatPeso(SIX_MONTH_DOWN)
-const BALANCE = formatPeso(SIX_MONTH_BALANCE)
+const FULL_PER_MONTH = formatPeso(FULL_PLAN_PER_MONTH)
+const FULL_SAVINGS = formatPeso(FULL_PLAN_SAVINGS)
+const FULL_ANCHOR = formatPeso(FULL_PLAN_AT_MONTHLY)
+const INSTALLMENT = formatPeso(INSTALLMENT_PRICE)
+const INSTALLMENT_LEFT = formatPeso(INSTALLMENT_BALANCE)
+const INSTALLMENT_SAVE = formatPeso(INSTALLMENT_SAVINGS)
 const SETUP = formatPeso(SETUP_FEE_WAIVED)
 
 export const COUNTDOWN = {
@@ -37,7 +42,7 @@ export const COUNTDOWN = {
 } as const
 
 export const HEADER = {
-  cta: 'Get 6 months',
+  cta: 'Get the deal',
 } as const
 
 export const HERO = {
@@ -49,7 +54,7 @@ export const HERO = {
     { text: 'at', tone: 'plain' },
     { text: 'more regulars', tone: 'highlight' },
     { text: 'sa isang system,', tone: 'red' },
-    { text: `${SIX_PER_MONTH} a month`, tone: 'amber' },
+    { text: `${INSTALLMENT} a month`, tone: 'amber' },
   ],
   lead: `Ordering website, POS, inventory, expense tracker, loyalty, SMS at analytics, magkakasama na. Hindi mo na kailangang mag-subscribe sa lima-limang apps, at 0% commission pa sa sarili mong orders.`,
   stats: [
@@ -57,9 +62,9 @@ export const HERO = {
     { value: '48 hrs', label: 'para mag-live' },
   ],
   demoLabel: 'Watch demo',
-  cta: `Kunin ang 6 months for ${SIX}`,
-  badgeLead: 'Sa 6-month plan, save ka ng',
-  badgeValue: `${SAVINGS} + free setup`,
+  cta: 'Kunin ang 6-month deal',
+  badgeLead: 'Bayad nang buo? 6 months + 1 FREE:',
+  badgeValue: `${FULL_PLAN_MONTHS} months for ${SIX}`,
 } as const
 
 export const FEATURES = {
@@ -98,30 +103,34 @@ export const PLANS = {
   eyebrow: 'Piliin ang plan mo',
   titleLead: 'Mas sulit kapag',
   titleMarker: '6 months',
-  subtitle: `Pareho ang system sa dalawang plan. Ang difference: sa 6 months, ${SIX_PER_MONTH} a month lang, free ang done-for-you setup, at save ka ng ${SAVINGS}.`,
+  subtitle: `Pareho ang system sa dalawang plan. Sa 6-month plan, free ang done-for-you setup at ${INSTALLMENT} a month ka lang. Bayaran mo nang buo, +1 month FREE: ${FULL_PLAN_MONTHS} months for ${SIX}.`,
   sixMonth: {
-    ribbon: `Best value · Save ${SAVINGS}`,
-    name: '6 Months',
+    ribbon: `Best value · 6 + 1 months · Save ${FULL_SAVINGS}`,
+    name: '6 Months + 1 FREE',
     price: SIX,
-    anchor: ANCHOR,
-    perMonth: `≈ ${SIX_PER_MONTH}/month`,
+    anchor: FULL_ANCHOR,
+    perMonth: `${FULL_PLAN_MONTHS} months · ≈ ${FULL_PER_MONTH}/month`,
     points: [
       `Lahat ng ${FEATURE_COUNT} tools + SmartMenu University`,
+      `+1 month FREE kapag bayad nang buo (${MONTHLY} value)`,
       `FREE done-for-you setup (${SETUP} value)`,
       'Live in 48 hours after namin matanggap ang menu at logo mo',
-      `Pwedeng ${DOWN} downpayment lang today`,
+      `O ${INSTALLMENT} a month lang, 6 months`,
     ],
   },
   monthly: {
     name: 'Monthly',
     price: MONTHLY,
     unit: '/month',
-    points: [`Lahat ng ${FEATURE_COUNT} tools + SmartMenu University`, 'Month to month, cancel anytime'],
+    points: [
+      `Lahat ng ${FEATURE_COUNT} tools + SmartMenu University`,
+      'Month to month, cancel anytime: isang message lang sa amin',
+    ],
     missing: ['Free done-for-you setup (6-month plan only)'],
   },
   paymentLegend: 'Paano mo babayaran ang 6 months?',
-  payFull: { label: 'Bayad nang buo', amount: SIX },
-  payDown: { label: 'Downpayment muna', amount: DOWN, note: `${BALANCE} balance` },
+  payFull: { label: 'Bayad nang buo', amount: SIX, note: `today · ${FULL_PLAN_MONTHS} months (+1 FREE)` },
+  payInstallment: { label: `${INSTALLMENT} a month`, amount: INSTALLMENT, note: `today · then ${INSTALLMENT}/month × 5` },
   sixMonthCta: 'Kunin ang 6 months',
   monthlyCta: 'Piliin ang monthly',
 } as const
@@ -133,9 +142,12 @@ export const ORDER = {
   balance: 'Balance',
   setupLine: 'Done-for-you setup',
   sixMonthLine: 'SmartMenu · 6 months',
+  bonusMonthLine: '+1 month FREE',
+  installmentLine: 'SmartMenu · month 1 of 6',
+  installmentBalance: 'Next 5 months',
   monthlyLine: 'SmartMenu · first month',
-  sixMonthNote: `Sakop ang 6 months ng SmartMenu, ${SIX_PER_MONTH} a month lang.`,
-  downNote: `Ang natitirang ${BALANCE} ay babayaran mo sa team namin. Ime-message ka namin ng details.`,
+  sixMonthNote: `Sakop ang ${FULL_PLAN_MONTHS} months ng SmartMenu (6 + 1 FREE), mga ${FULL_PER_MONTH} a month lang.`,
+  installmentNote: `${INSTALLMENT} today para sa first month, tapos ${INSTALLMENT} every month for 5 more months (${INSTALLMENT_LEFT}). Ime-message ka namin bago ang bawat bayad.`,
   monthlyNote: `Renews at ${MONTHLY}/month. Walang lock-in, cancel anytime.`,
   submitSixMonth: 'Kunin ang 6-month plan',
   submitMonthly: 'Start monthly',
@@ -167,21 +179,37 @@ export const ORDER_FORM = {
   connectionFailed: 'May connection problem. Check your internet then try again.',
 } as const
 
-export const GUARANTEE = {
-  title: 'Live in 48 Hours, or Your First Month Is Free',
-  body: 'Pag natanggap na namin ang menu at logo mo, kami na ang bahala sa build. Kapag hindi live ang SmartMenu mo within 48 hours, libre ang first month mo.',
-} as const
+export interface Guarantee {
+  title: string
+  body: string
+}
+
+/** Two promises the team honors by hand: one on speed, one on results. */
+export const GUARANTEES: readonly Guarantee[] = [
+  {
+    title: 'Live in 48 Hours, or Your First Month Is Free',
+    body: 'Pag natanggap na namin ang menu at logo mo, kami na ang bahala sa build. Kapag hindi live ang SmartMenu mo within 48 hours, libre ang first month mo.',
+  },
+  {
+    title: 'First Online Order in 30 Days, or We Add a Month Free',
+    body: 'Kapag wala ka pang natanggap na kahit isang online order sa SmartMenu mo within 30 days after mag-live, dadagdagan namin ng isang buwan ang plan mo, libre.',
+  },
+] as const
 
 export const FAQ = {
   title: 'Baka ito rin ang tanong mo',
   items: [
     {
       q: 'Ano ang difference ng monthly at 6-month plan?',
-      a: `Pareho ang system at features. Sa 6-month plan, ${SIX} para sa 6 months (mga ${SIX_PER_MONTH} a month instead of ${MONTHLY}), kaya save ka ng ${SAVINGS}, at free pa ang done-for-you setup.`,
+      a: `Pareho ang system at features. Sa 6-month plan, free ang done-for-you setup at ${INSTALLMENT} a month ka lang instead of ${MONTHLY} (save ${INSTALLMENT_SAVE}). Kapag binayaran mo nang buo (${SIX}), +1 month FREE: ${FULL_PLAN_MONTHS} months, mga ${FULL_PER_MONTH} a month, save ka ng ${FULL_SAVINGS}.`,
     },
     {
-      q: 'Paano gumagana ang downpayment?',
-      a: `Pwede kang magbayad ng ${DOWN} lang today para makuha ang 6-month deal at masimulan na namin ang setup. Ang natitirang ${BALANCE} ay babayaran mo sa team namin, at ime-message ka namin ng details.`,
+      q: `Paano gumagana ang ${INSTALLMENT} a month?`,
+      a: `${INSTALLMENT} lang today para sa first month, at masisimulan na namin ang setup mo. Tapos ${INSTALLMENT} every month for 5 more months. Ime-message ka namin bago ang bawat bayad.`,
+    },
+    {
+      q: 'Ano ang guarantee ninyo?',
+      a: 'Dalawa. Live ka within 48 hours after namin matanggap ang menu at logo mo, or libre ang first month mo. At kapag wala ka pang online order within 30 days after mag-live, dadagdagan namin ng isang buwan ang plan mo, libre.',
     },
     {
       q: 'May commission ba bawat order?',
@@ -193,7 +221,7 @@ export const FAQ = {
     },
     {
       q: 'May contract o lock-in ba?',
-      a: 'Ang monthly plan ay month to month lang, cancel anytime. Ang 6-month plan ay prepaid para sa 6 months, kaya mas mura.',
+      a: `Ang monthly plan ay month to month lang: cancel anytime, isang message lang sa amin. Ang 6-month plan ay 6-month commitment (bayad nang buo, o ${INSTALLMENT} a month), kaya mas mura.`,
     },
     {
       q: 'Kailangan ko bang maging techy?',
@@ -221,14 +249,14 @@ export const FAQ = {
 export const CLOSE = {
   label: 'Huling tawag',
   title: 'I-claim ang 6-month deal mo',
-  body: `${SIX} para sa 6 months, free done-for-you setup, at live in 48 hours. O kaya ${DOWN} downpayment lang today.`,
+  body: `${FULL_PLAN_MONTHS} months for ${SIX} (6 + 1 FREE), free done-for-you setup, at live in 48 hours. O kaya ${INSTALLMENT} a month lang.`,
   cta: 'Kunin ang 6 months',
 } as const
 
 export const STICKY = {
   title: '6 months',
-  price: SIX,
-  note: `${SIX_PER_MONTH}/mo · free setup`,
+  price: `${INSTALLMENT}/mo`,
+  note: `o ${FULL_PLAN_MONTHS} months for ${SIX} · free setup`,
   cta: 'Get the deal',
 } as const
 

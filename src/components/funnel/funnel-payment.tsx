@@ -8,7 +8,7 @@ import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation
 import { getPaymentTermLabel } from '@/lib/checkout-leads/payment-term-labels'
 import { getCheckoutBalanceDue, isCheckoutPaymentTerm, isFunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
 import { trackMetaEvent } from '@/lib/meta-pixel'
-import { GUARANTEE } from './funnel-copy'
+import { GUARANTEES } from './funnel-copy'
 import { formatPeso } from './funnel-offer'
 import { PAYMENT } from './funnel-payment-copy'
 import { FunnelPaymentMethod } from './funnel-payment-method'
@@ -57,7 +57,7 @@ function ProgressSteps() {
   )
 }
 
-/** Reference (copyable), amount due and, on a downpayment, what is left. */
+/** Reference (copyable), amount due and, on a downpayment or installments, what is left. */
 function ReceiptStrip({ lead, balanceDue }: { lead: CheckoutLeadConfirmation; balanceDue: number }) {
   return (
     <div className="fn-card fn-card--amber mx-auto mt-8 grid max-w-[760px] gap-px overflow-hidden sm:grid-cols-[1.4fr_1fr]">
@@ -105,12 +105,16 @@ function NextSteps({ isPlan }: { isPlan: boolean }) {
         {isPlan && <p className="mt-4 text-[12.5px] leading-relaxed text-[#A99C8D]">{PAYMENT.haveReady}</p>}
       </div>
       {isPlan && (
-        <div className="flex gap-3 border-t border-white/10 pt-5">
-          <ShieldCheck aria-hidden className="h-5 w-5 shrink-0 text-[#3CC47C]" strokeWidth={1.75} />
-          <p className="text-[12.5px] leading-relaxed text-[#A99C8D]">
-            <span className="font-semibold text-white">{GUARANTEE.title}.</span> {GUARANTEE.body}
-          </p>
-        </div>
+        <ul className="space-y-4 border-t border-white/10 pt-5">
+          {GUARANTEES.map((guarantee) => (
+            <li key={guarantee.title} className="flex gap-3">
+              <ShieldCheck aria-hidden className="h-5 w-5 shrink-0 text-[#3CC47C]" strokeWidth={1.75} />
+              <p className="text-[12.5px] leading-relaxed text-[#A99C8D]">
+                <span className="font-semibold text-white">{guarantee.title}.</span> {guarantee.body}
+              </p>
+            </li>
+          ))}
+        </ul>
       )}
       <div className="border-t border-white/10 pt-5">
         <p className="text-[13px] text-[#A99C8D]">{PAYMENT.help}</p>

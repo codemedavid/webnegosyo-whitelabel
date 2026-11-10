@@ -15,7 +15,8 @@ import {
 } from 'lucide-react'
 import {
   MONTHLY_SUBSCRIPTION_PRICE,
-  SIX_MONTH_DOWNPAYMENT,
+  SIX_MONTH_FULL_MONTHS,
+  SIX_MONTH_INSTALLMENT_PRICE,
   SIX_MONTH_PLAN_MONTHS,
   SIX_MONTH_PLAN_PRICE,
   getCheckoutBalanceDue,
@@ -30,23 +31,30 @@ import {
 export const MONTHLY_PRICE = MONTHLY_SUBSCRIPTION_PRICE
 export const SIX_MONTH_PRICE = SIX_MONTH_PLAN_PRICE
 export const SIX_MONTH_MONTHS = SIX_MONTH_PLAN_MONTHS
-export const SIX_MONTH_DOWN = SIX_MONTH_DOWNPAYMENT
 
-/** Six months paid monthly, the anchor the six-month price is struck against. */
-export const SIX_MONTHS_AT_MONTHLY = MONTHLY_PRICE * SIX_MONTH_MONTHS
-export const SIX_MONTH_SAVINGS = SIX_MONTHS_AT_MONTHLY - SIX_MONTH_PRICE
-export const SIX_MONTH_PER_MONTH = Math.round(SIX_MONTH_PRICE / SIX_MONTH_MONTHS)
-export const SIX_MONTH_BALANCE = getCheckoutBalanceDue('six_month_downpayment')
+/** Paid in full: six months plus a free one (6 + 1), struck against seven monthly payments. */
+export const FULL_PLAN_MONTHS = SIX_MONTH_FULL_MONTHS
+export const FULL_PLAN_AT_MONTHLY = MONTHLY_PRICE * FULL_PLAN_MONTHS
+export const FULL_PLAN_SAVINGS = FULL_PLAN_AT_MONTHLY - SIX_MONTH_PRICE
+export const FULL_PLAN_PER_MONTH = Math.round(SIX_MONTH_PRICE / FULL_PLAN_MONTHS)
+/** The free month is worth one month of the monthly plan. */
+export const BONUS_MONTH_VALUE = MONTHLY_PRICE
+
+/** Paid month by month: ₱999 today, then ₱999 for each month left. */
+export const INSTALLMENT_PRICE = SIX_MONTH_INSTALLMENT_PRICE
+export const INSTALLMENT_TOTAL = INSTALLMENT_PRICE * SIX_MONTH_MONTHS
+export const INSTALLMENT_BALANCE = getCheckoutBalanceDue('six_month_installment')
+export const INSTALLMENT_SAVINGS = MONTHLY_PRICE * SIX_MONTH_MONTHS - INSTALLMENT_TOTAL
 
 /** The real done-for-you setup fee, waived on the six-month plan only. */
 export const SETUP_FEE_WAIVED = 3499
 
 /**
- * The six-month deal's countdown runs to this instant (Manila end of day, seven
- * days after launch). It is a fixed date, never a timer that restarts per
- * visit: once it passes the countdown simply disappears.
+ * The six-month deal's countdown runs to this instant (Manila end of day). It
+ * is a fixed date, never a timer that restarts per visit: once it passes the
+ * countdown simply disappears. Extended once, from 11 Nov to 18 Nov 2026.
  */
-export const SIX_MONTH_DEAL_ENDS_AT = '2026-11-11T23:59:59+08:00'
+export const SIX_MONTH_DEAL_ENDS_AT = '2026-11-18T23:59:59+08:00'
 export const SIX_MONTH_DEAL_ENDS_MS = Date.parse(SIX_MONTH_DEAL_ENDS_AT)
 
 /** The order section's id. Every CTA on the page scrolls here. */
@@ -61,12 +69,12 @@ export function formatPeso(amount: number): string {
 }
 
 export type FunnelPlanId = 'six_month' | 'monthly'
-export type SixMonthPayment = 'full' | 'downpayment'
+export type SixMonthPayment = 'full' | 'installment'
 
 /** The checkout term a plan choice files. */
 export function termForPlan(plan: FunnelPlanId, payment: SixMonthPayment): FunnelPlanTerm {
   if (plan === 'monthly') return 'monthly_subscription'
-  return payment === 'downpayment' ? 'six_month_downpayment' : 'six_month_full'
+  return payment === 'installment' ? 'six_month_installment' : 'six_month_full'
 }
 
 export function dueTodayFor(term: FunnelPlanTerm): number {
@@ -214,6 +222,14 @@ export interface FunnelBonus {
 export const BONUSES: readonly FunnelBonus[] = [
   {
     label: 'Bonus 1',
+    title: '+1 month FREE',
+    detail: `Bayaran mo nang buo ang 6 months, gagamitin mo nang ${SIX_MONTH_FULL_MONTHS} months. Isang buong buwan ng SmartMenu, libre.`,
+    value: BONUS_MONTH_VALUE,
+    tag: 'Kapag bayad nang buo',
+    isSixMonthOnly: true,
+  },
+  {
+    label: 'Bonus 2',
     title: 'Done-for-you setup',
     detail: "Kami ang mag-aayos ng menu, branding, combos, upsells, stamp card at payment options mo, para ready ka na agad.",
     value: SETUP_FEE_WAIVED,
@@ -221,7 +237,7 @@ export const BONUSES: readonly FunnelBonus[] = [
     isSixMonthOnly: true,
   },
   {
-    label: 'Bonus 2',
+    label: 'Bonus 3',
     title: 'SmartMenu University',
     detail: 'Step-by-step video lessons sa pricing, menu at marketing, napapanood mismo sa admin mo para alam mo ang next move.',
     tag: 'Kasama sa lahat ng plans',

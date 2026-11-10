@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, ShieldCheck } from 'lucide-react'
 import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
-import { getCheckoutBalanceDue } from '@/lib/checkout-leads/payment-terms'
+import { getCheckoutBalanceDue, type FunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
 import { CountdownChip } from './funnel-countdown'
-import { GUARANTEE, ORDER, PLANS } from './funnel-copy'
+import { GUARANTEES, ORDER, PLANS } from './funnel-copy'
 import {
+  BONUS_MONTH_VALUE,
   FUNNEL_ORDER_ANCHOR,
   SETUP_FEE_WAIVED,
   dueTodayFor,
@@ -141,8 +142,8 @@ function MonthlyCard() {
 
 function PaymentChoice({ payment, onChange }: { payment: SixMonthPayment; onChange: (payment: SixMonthPayment) => void }) {
   const options = [
-    { value: 'full' as const, ...PLANS.payFull, note: undefined },
-    { value: 'downpayment' as const, ...PLANS.payDown },
+    { value: 'full' as const, ...PLANS.payFull },
+    { value: 'installment' as const, ...PLANS.payInstallment },
   ]
   return (
     <fieldset>
@@ -161,7 +162,7 @@ function PaymentChoice({ payment, onChange }: { payment: SixMonthPayment; onChan
               <span className="block text-[14.5px] font-semibold text-white">{option.label}</span>
               <span className="block text-[13px] text-[#A99C8D]">
                 <span className="fn-tabular font-semibold text-[#F5A623]">{option.amount}</span>
-                {option.note && ` today · ${option.note}`}
+                {` ${option.note}`}
               </span>
             </span>
           </label>
@@ -180,19 +181,37 @@ function SummaryRow({ label, children, isMuted = false }: { label: string; child
   )
 }
 
+function summaryNote(term: FunnelPlanTerm): string {
+  if (term === 'six_month_installment') return ORDER.installmentNote
+  if (term === 'monthly_subscription') return ORDER.monthlyNote
+  return ORDER.sixMonthNote
+}
+
+function planLine(term: FunnelPlanTerm): string {
+  if (term === 'six_month_installment') return ORDER.installmentLine
+  if (term === 'monthly_subscription') return ORDER.monthlyLine
+  return ORDER.sixMonthLine
+}
+
 function OrderSummary({ plan, payment }: { plan: FunnelPlanId; payment: SixMonthPayment }) {
   const term = termForPlan(plan, payment)
   const isSixMonth = plan === 'six_month'
+  const isPaidInFull = term === 'six_month_full'
   const balance = getCheckoutBalanceDue(term)
-  const note = isSixMonth ? (balance > 0 ? ORDER.downNote : ORDER.sixMonthNote) : ORDER.monthlyNote
 
   return (
     <aside className="fn-card h-fit p-6 lg:sticky lg:top-24">
       <h3 className="fn-worth">{ORDER.summaryTitle}</h3>
       <dl className="mt-4 space-y-3 text-[14.5px]">
-        <SummaryRow label={isSixMonth ? ORDER.sixMonthLine : ORDER.monthlyLine}>
-          <span className="font-semibold text-white">{formatPeso(isSixMonth ? dueTodayFor('six_month_full') : dueTodayFor(term))}</span>
+        <SummaryRow label={planLine(term)}>
+          <span className="font-semibold text-white">{formatPeso(dueTodayFor(term))}</span>
         </SummaryRow>
+        {isPaidInFull && (
+          <SummaryRow label={ORDER.bonusMonthLine}>
+            <span className="fn-worth-old mr-2 !text-[14px]">{formatPeso(BONUS_MONTH_VALUE)}</span>
+            <span className="font-semibold text-[#3CC47C]">₱0</span>
+          </SummaryRow>
+        )}
         {isSixMonth && (
           <SummaryRow label={ORDER.setupLine}>
             <span className="fn-worth-old mr-2 !text-[14px]">{formatPeso(SETUP_FEE_WAIVED)}</span>
@@ -200,7 +219,7 @@ function OrderSummary({ plan, payment }: { plan: FunnelPlanId; payment: SixMonth
           </SummaryRow>
         )}
         {balance > 0 && (
-          <SummaryRow label={ORDER.balance} isMuted>
+          <SummaryRow label={term === 'six_month_installment' ? ORDER.installmentBalance : ORDER.balance} isMuted>
             {formatPeso(balance)}
           </SummaryRow>
         )}
@@ -211,13 +230,17 @@ function OrderSummary({ plan, payment }: { plan: FunnelPlanId; payment: SixMonth
           </dd>
         </div>
       </dl>
-      <p className="mt-3 text-[12.5px] leading-relaxed text-[#A99C8D]">{note}</p>
-      <div className="mt-6 flex gap-3 border-t border-white/10 pt-5">
-        <ShieldCheck aria-hidden className="h-5 w-5 shrink-0 text-[#3CC47C]" strokeWidth={1.75} />
-        <p className="text-[12.5px] leading-relaxed text-[#A99C8D]">
-          <span className="font-semibold text-white">{GUARANTEE.title}.</span> {GUARANTEE.body}
-        </p>
-      </div>
+      <p className="mt-3 text-[12.5px] leading-relaxed text-[#A99C8D]">{summaryNote(term)}</p>
+      <ul className="mt-6 space-y-4 border-t border-white/10 pt-5">
+        {GUARANTEES.map((guarantee) => (
+          <li key={guarantee.title} className="flex gap-3">
+            <ShieldCheck aria-hidden className="h-5 w-5 shrink-0 text-[#3CC47C]" strokeWidth={1.75} />
+            <p className="text-[12.5px] leading-relaxed text-[#A99C8D]">
+              <span className="font-semibold text-white">{guarantee.title}.</span> {guarantee.body}
+            </p>
+          </li>
+        ))}
+      </ul>
     </aside>
   )
 }
@@ -266,7 +289,7 @@ function PaymentTakeover({ lead }: { lead: CheckoutLeadConfirmation }) {
 
 /**
  * Plans and the order form in one section: the six-month plan starts chosen,
- * its payment (in full or a downpayment) sits right under the cards, and the
+ * its payment (in full, or ₱999 a month) sits right under the cards, and the
  * form files whichever term the visitor ends up on.
  */
 export function FunnelOrder() {

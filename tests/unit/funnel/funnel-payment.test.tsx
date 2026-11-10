@@ -66,7 +66,14 @@ describe('FunnelPayment', () => {
     expect(await navigator.clipboard.readText()).toBe('09928214519')
   })
 
-  it('shows the balance still owed on a downpayment', async () => {
+  it('shows what is still owed on the ₱999-a-month plan', async () => {
+    await renderPayment({ ...GCASH_LEAD, amount: 999, payment_term: 'six_month_installment' })
+
+    expect(screen.getAllByText('₱999').length).toBeGreaterThan(0)
+    expect(screen.getByText('₱4,995')).toBeTruthy()
+  })
+
+  it('shows the balance still owed on an older downpayment lead', async () => {
     await renderPayment({ ...GCASH_LEAD, amount: 2000, payment_term: 'six_month_downpayment' })
 
     expect(screen.getAllByText('₱2,000').length).toBeGreaterThan(0)
