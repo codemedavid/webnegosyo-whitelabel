@@ -259,7 +259,7 @@ How it is used:
 
 ### 8. Database (one migration per release, applied + probed on platform)
 
-**Release 1 (`20261110120000_messenger_automations.sql`):**
+**Release 1 (`20261110000421_messenger_automations.sql`):**
 - `messenger_sessions`:
   - add `page_id text`, `last_inbound_at timestamptz`, `bot_paused_until timestamptz`
   - add UNIQUE `(tenant_id, psid)`

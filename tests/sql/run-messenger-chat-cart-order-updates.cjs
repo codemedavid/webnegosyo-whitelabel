@@ -1,5 +1,5 @@
-// Messenger automations release 2 (20261111090000 + 090100 + 090200) in
-// PGlite over release 1 (20261110120000), as the role that really runs each
+// Messenger automations release 2 (20261110080757 + 20261111090100 + 090200) in
+// PGlite over release 1 (20261110000421), as the role that really runs each
 // query. Every write asserts affected rows or the SQLSTATE.
 //
 //   - the 'cart' rule action is accepted, unknown kinds still refused
@@ -151,9 +151,9 @@ async function main() {
     await db.exec(STUB_SCHEMA)
     await db.exec(ORDERS_AND_NET)
     await db.exec(SEED)
-    await db.exec(readMigration('20261110120000_messenger_automations.sql'))
+    await db.exec(readMigration('20261110000421_messenger_automations.sql'))
     for (let pass = 0; pass < 2; pass += 1) {
-      await db.exec(readMigration('20261111090000_messenger_chat_cart_order_updates.sql'))
+      await db.exec(readMigration('20261110080757_messenger_chat_cart_order_updates.sql'))
       await db.exec(readMigration('20261111090100_orders_messenger_psid_idx.sql'))
     }
     await reset(db)

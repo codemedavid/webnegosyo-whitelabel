@@ -64,7 +64,7 @@ export async function touchSession(input: {
   return toSession(data as SessionRow)
 }
 
-/** Undefined column / no (tenant_id, psid) unique index: 20261110120000 is not applied yet. */
+/** Undefined column / no (tenant_id, psid) unique index: 20261110000421 is not applied yet. */
 const PRE_MIGRATION_CODES = new Set(['42703', '42P10', 'PGRST204'])
 
 /**

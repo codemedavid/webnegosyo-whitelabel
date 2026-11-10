@@ -1,4 +1,4 @@
-// Messenger automations (20261110120000) in PGlite, as the role that really
+// Messenger automations (20261110000421) in PGlite, as the role that really
 // runs each query: anon (no access at all), authenticated staff with and
 // without `settings`, branch-locked, another store, superadmin, service role.
 // Loads the REAL migration over the live slice of app_users,
@@ -186,8 +186,8 @@ async function main() {
     await installPlatformAuth(db)
     await db.exec(STUB_SCHEMA)
     await db.exec(SEED)
-    await db.exec(readMigration('20261110120000_messenger_automations.sql'))
-    await db.exec(readMigration('20261110120000_messenger_automations.sql'))
+    await db.exec(readMigration('20261110000421_messenger_automations.sql'))
+    await db.exec(readMigration('20261110000421_messenger_automations.sql'))
     await reset(db)
     await checkManagers(db)
     await checkRefusals(db)
