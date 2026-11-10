@@ -33,7 +33,7 @@ jest.mock('next/script', () => ({
 
 import RootLayout from '@/app/layout'
 
-describe('RootLayout Meta Pixel', () => {
+describe('Meta Pixel placement', () => {
   const originalMetaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID
 
   beforeAll(() => {
@@ -44,12 +44,23 @@ describe('RootLayout Meta Pixel', () => {
     process.env.NEXT_PUBLIC_META_PIXEL_ID = originalMetaPixelId
   })
 
-  it('renders the Meta Pixel snippet and noscript beacon from the configured pixel id', () => {
+  // The pixel used to live here and fired on every merchant storefront and
+  // admin page (2026-11-10). It now belongs to the marketing pages only.
+  it('does not render the Meta Pixel on every page', () => {
     const html = renderToStaticMarkup(
       <RootLayout>
         <div>content</div>
       </RootLayout>
     )
+
+    expect(html).not.toContain('fbevents.js')
+    expect(html).not.toContain("fbq('init'")
+    expect(html).not.toContain('facebook.com/tr?id=')
+  })
+
+  it('the marketing pixel renders the snippet and noscript beacon from the configured pixel id', async () => {
+    const { MarketingPixel } = await import('@/components/tracking/marketing-pixel')
+    const html = renderToStaticMarkup(<MarketingPixel />)
 
     expect(html).toContain('https://connect.facebook.net/en_US/fbevents.js')
     expect(html).toContain("fbq('init', '123456789')")
