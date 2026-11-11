@@ -82,18 +82,36 @@ const CONVERTED_ROUTES = [
 // platform staff outright; these doors go through canAccessStoreAdmin instead.
 const INLINE_STORE_CHECK = /===\s*'superadmin'\s*\|\|\s*\(\s*\w+\??\.role\s*===\s*'admin'\s*&&\s*\w+\.tenant_id\s*===/
 
+/**
+ * A route declared through `defineRoute` as an app-token staff entry that
+ * names its store: the wrapper hands that claim to the shared Bearer prologue
+ * (pinned below), so the route file itself holds no check to grep for.
+ */
+function isDeclaredBearerStoreDoor(source: string): boolean {
+  return /=\s*defineRoute\(\{/.test(source) && /session: 'bearer'/.test(source) && /storeClaim:/.test(source)
+}
+
 describe('converted store doors use canAccessStoreAdmin', () => {
   it.each(CONVERTED_ROUTES)('%s', (file) => {
     const source = read(file)
     expect(source).not.toMatch(INLINE_STORE_CHECK)
-    // Directly, or through the shared Bearer prologue (pinned below).
+    // Directly, through the shared Bearer prologue, or declared (both pinned below).
+    if (isDeclaredBearerStoreDoor(source)) return
     expect(source).toMatch(/canAccessStoreAdmin\(|requireBearerStoreCaller\(/)
   })
 
   it('reads the platform grants through the resilient app_users helper', () => {
     for (const file of CONVERTED_ROUTES.filter((path) => path.startsWith('src/app/api/'))) {
-      expect(read(file)).toMatch(/fetchAppUserScope\(|requireBearerStoreCaller\(/)
+      const source = read(file)
+      if (isDeclaredBearerStoreDoor(source)) continue
+      expect(source).toMatch(/fetchAppUserScope\(|requireBearerStoreCaller\(/)
     }
+  })
+
+  it('a declared app-token entry that names its store is checked by the shared Bearer prologue', () => {
+    const source = read('src/platform/http/access-session.ts')
+    expect(source).toMatch(/tenant = auth\.storeClaim\(input\)\s+const result = await requireBearerStoreCaller\(request, tenant, access\)/)
+    expect(CONVERTED_ROUTES.some((file) => isDeclaredBearerStoreDoor(read(file)))).toBe(true)
   })
 
   it('the shared Bearer prologue itself checks the store through both helpers', () => {

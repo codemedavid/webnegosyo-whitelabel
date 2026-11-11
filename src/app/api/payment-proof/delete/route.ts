@@ -45,15 +45,14 @@ const REPLACE_WINDOW_MS = 2 * 60 * 60 * 1000
 const DELETE_RATE_LIMIT = { limit: 30, windowSec: 600 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`payment-proof-delete:${ip}`, DELETE_RATE_LIMIT)
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { success: false, error: 'Too many requests' },
-        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
-      )
-    }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`payment-proof-delete:${ip}`, DELETE_RATE_LIMIT)
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
+    )
   }
 
   let parsed: z.infer<typeof bodySchema>

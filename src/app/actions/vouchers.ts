@@ -1,7 +1,7 @@
 'use server'
 
 /**
- * Voucher preview for the checkout and the register.
+ * Voucher preview for the storefront checkout.
  *
  * Read-only and non-authoritative: it decides what the customer is SHOWN while
  * they are still typing. The amount actually charged is recomputed inside
@@ -40,6 +40,7 @@ export interface ValidateVoucherInput {
   }>
   deliveryFee?: number | null
   serviceCharge?: number | null
+  /** Ignored: this action has no session, so it only ever previews the checkout channel. */
   channel?: VoucherChannel
   outletId?: string | null
   customerKey?: string | null
@@ -53,7 +54,13 @@ export interface ValidateVoucherResult {
   error?: string
 }
 
-const VALID_CHANNELS: readonly VoucherChannel[] = ['checkout', 'pos', 'admin']
+/**
+ * The one channel this action previews. Nothing here identifies the caller, so
+ * a voucher limited to the register or the admin is never previewed for them:
+ * staff look codes up through their own signed-in routes
+ * (`/api/vouchers/lookup`, `/api/vouchers/list`).
+ */
+const PREVIEW_CHANNEL: VoucherChannel = 'checkout'
 
 /**
  * This action is anonymous and answers "is this a real code?", so it is a
@@ -152,9 +159,6 @@ export async function validateVoucherAction(
       return { success: false, error: 'Your cart has too many items to check a voucher.' }
     }
 
-    const channel =
-      input.channel && VALID_CHANNELS.includes(input.channel) ? input.channel : 'checkout'
-
     const admin = createAdminClient()
 
     // Category-scoped vouchers need a category per line, and the caller cannot
@@ -173,7 +177,7 @@ export async function validateVoucherAction(
         lines: pricedLines,
         deliveryFee: toFiniteNumber(input.deliveryFee),
         serviceCharge: toFiniteNumber(input.serviceCharge),
-        channel,
+        channel: PREVIEW_CHANNEL,
         // Server clock. A browser with a shifted clock must not be able to
         // revive an expired voucher.
         now: new Date(),

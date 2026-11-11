@@ -1,8 +1,14 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}))
-jest.mock('@/lib/admin-service', () => ({ verifyTenantAdmin: jest.fn(), verifySuperadmin: jest.fn() }))
+jest.mock('@/lib/admin-service', () => ({
+  verifyTenantAdmin: jest.fn(async () => ({ user: { id: 'user-1' }, userRole: { role: 'admin' } })),
+  verifySuperadmin: jest.fn(async () => ({ user: { id: 'root-0' }, userRole: { role: 'superadmin' } })),
+}))
 jest.mock('@/lib/maps/apple/mapkit-token', () => ({ readMapKitConfig: jest.fn() }))
 jest.mock('@/lib/maps/apple/maps-server-api', () => ({ createAppleMapsClient: jest.fn() }))
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: jest.fn(async () => ({ allowed: true, remaining: 10, retryAfterSec: 0 })),
+}))
 
 const TENANT = '3f1c2b9e-1111-4a4a-9999-123456789abc'
 const PIN = { lat: 14.6255, lng: 121.0672 }
@@ -11,8 +17,9 @@ async function load() {
   const adminService = await import('@/lib/admin-service')
   const token = await import('@/lib/maps/apple/mapkit-token')
   const api = await import('@/lib/maps/apple/maps-server-api')
+  const limiter = await import('@/lib/distributed-rate-limit')
   const { checkStorePinAddressAction } = await import('@/app/actions/store-pin')
-  return { adminService, token, api, checkStorePinAddressAction }
+  return { adminService, token, api, checkRateLimit: jest.mocked(limiter.checkRateLimit), checkStorePinAddressAction }
 }
 
 function geocodeTo(api: Awaited<ReturnType<typeof load>>['api'], result: unknown) {
@@ -59,6 +66,66 @@ describe('checkStorePinAddressAction', () => {
     geocodeTo(api, new Error('apple down'))
     expect(await checkStorePinAddressAction(TENANT, 'Lucena', PIN.lat, PIN.lng)).toEqual({ mismatchKm: null })
     expect(await checkStorePinAddressAction(TENANT, '   ', PIN.lat, PIN.lng)).toEqual({ mismatchKm: null })
+  })
+
+  // Each check is one geocode against the map quota every store shares.
+  describe('how often one person may check', () => {
+    const signedIn = { user: { id: 'user-7' }, userRole: { role: 'admin' } }
+    const config = { teamId: 't', keyId: 'k', privateKey: 'p' }
+    const farAway = [{ coordinates: { lat: 10.31, lng: 123.89 }, isStreetLevel: true }]
+
+    it('counts each geocode per person, by the minute and by the day', async () => {
+      const { adminService, token, api, checkRateLimit, checkStorePinAddressAction } = await load()
+      jest.mocked(adminService.verifyTenantAdmin).mockResolvedValue(signedIn as never)
+      jest.mocked(token.readMapKitConfig).mockReturnValue(config)
+      geocodeTo(api, farAway)
+
+      await checkStorePinAddressAction(TENANT, 'Lucena', PIN.lat, PIN.lng)
+
+      expect(checkRateLimit.mock.calls).toEqual([
+        ['store-pin-check:user-7', { limit: 20, windowSec: 60, onRedisFailure: 'instance' }],
+        ['store-pin-check-day:user-7', { limit: 300, windowSec: 86_400, onRedisFailure: 'instance' }],
+      ])
+    })
+
+    it('counts a superadmin placing a new store the same way', async () => {
+      const { adminService, token, api, checkRateLimit, checkStorePinAddressAction } = await load()
+      jest.mocked(adminService.verifySuperadmin).mockResolvedValue({ user: { id: 'root-1' }, userRole: { role: 'superadmin' } } as never)
+      jest.mocked(token.readMapKitConfig).mockReturnValue(config)
+      geocodeTo(api, farAway)
+
+      await checkStorePinAddressAction(null, 'Lucena', PIN.lat, PIN.lng)
+
+      expect(checkRateLimit.mock.calls[0][0]).toBe('store-pin-check:root-1')
+    })
+
+    it.each([[0], [1]])('over the limit answers "no mismatch" without asking the map service (limit %#)', async (refusedCall) => {
+      const { adminService, token, api, checkRateLimit, checkStorePinAddressAction } = await load()
+      jest.mocked(adminService.verifyTenantAdmin).mockResolvedValue(signedIn as never)
+      jest.mocked(token.readMapKitConfig).mockReturnValue(config)
+      const geocode = geocodeTo(api, farAway)
+      for (let call = 0; call < refusedCall; call += 1) {
+        checkRateLimit.mockResolvedValueOnce({ allowed: true, remaining: 1, retryAfterSec: 0 })
+      }
+      checkRateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 30 })
+
+      const result = await checkStorePinAddressAction(TENANT, 'Lucena', PIN.lat, PIN.lng)
+
+      expect(result).toEqual({ mismatchKm: null })
+      expect(geocode).not.toHaveBeenCalled()
+    })
+
+    it('counts nothing when there is nothing to ask the map service', async () => {
+      const { adminService, token, checkRateLimit, checkStorePinAddressAction } = await load()
+      jest.mocked(adminService.verifyTenantAdmin).mockResolvedValue(signedIn as never)
+
+      jest.mocked(token.readMapKitConfig).mockReturnValue(null)
+      await checkStorePinAddressAction(TENANT, 'Lucena', PIN.lat, PIN.lng)
+      jest.mocked(token.readMapKitConfig).mockReturnValue(config)
+      await checkStorePinAddressAction(TENANT, '   ', PIN.lat, PIN.lng)
+
+      expect(checkRateLimit).not.toHaveBeenCalled()
+    })
   })
 
   it('refuses a caller who is not an admin of the store', async () => {

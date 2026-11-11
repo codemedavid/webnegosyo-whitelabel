@@ -89,11 +89,10 @@ async function readLogoColor(bytes: Uint8Array): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`onboarding-upload:${ip}`, UPLOAD_RATE_LIMIT)
-    if (!rate.allowed) return respond({ error: 'Too many uploads. Please wait a moment.' }, 429)
-  }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`onboarding-upload:${ip}`, UPLOAD_RATE_LIMIT)
+  if (!rate.allowed) return respond({ error: 'Too many uploads. Please wait a moment.' }, 429)
 
   const found = await resolve(context).catch(() => null)
   if (!found) return respond({ error: 'This set-up link is not valid.' }, 404)
@@ -124,11 +123,10 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`onboarding-upload-remove:${ip}`, UPLOAD_RATE_LIMIT)
-    if (!rate.allowed) return respond({ error: 'Too many changes. Please wait a moment.' }, 429)
-  }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`onboarding-upload-remove:${ip}`, UPLOAD_RATE_LIMIT)
+  if (!rate.allowed) return respond({ error: 'Too many changes. Please wait a moment.' }, 429)
 
   const found = await resolve(context).catch(() => null)
   if (!found) return respond({ error: 'This set-up link is not valid.' }, 404)

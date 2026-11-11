@@ -7,10 +7,13 @@ Every API route and server action that is declared through `defineRoute` / `defi
 which inputs it validates. Entry points that still check access by hand are listed in
 `tests/unit/guardrails/entry-point-exceptions.json`; that list can only shrink.
 
-## Declared entry points (3)
+## Declared entry points (6)
 
 | Entry | Who may call | Store | Branch | Rate limit | Validates |
 |---|---|---|---|---|---|
+| checkQuotationValidity (src/app/actions/lalamove.ts) | anyone | — | — | 10 per 1m per ip (`lalamove-quote-check-client`) | args |
 | saveReceiptLayoutAction (src/app/actions/receipt.ts) | staff: `store_setup` (edit, session) | named, checked | any | not stated | args |
+| POST /api/customers/sync-order-lifecycle | staff: `ORDER_READ_KEYS` (edit, app token) | named, checked | own | not stated | body |
 | GET /api/gov-discounts/approvers | staff: `pos` (view, app token) | named, checked | any | not stated | query |
 | GET /api/loyalty/maintenance | cron secret | — | — | not stated | — |
+| POST /api/staff/order-activity | staff: `ORDER_READ_KEYS` (create, app token) | named, checked | own | not stated | body |
