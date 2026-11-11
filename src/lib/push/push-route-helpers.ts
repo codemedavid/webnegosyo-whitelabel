@@ -19,6 +19,13 @@ type AdminClient = ReturnType<typeof createAdminClient>
 export const PG_NET_IP_LIMIT = { limit: 1200, windowSec: 60 }
 
 /**
+ * A trigger call whose address could not be read is let through uncounted, as
+ * it always was: pg_net fires once, so a refused call is a push that is never
+ * sent. The routes a browser or a phone calls count such a request instead.
+ */
+export const PG_NET_WITHOUT_ADDRESS = { withoutAddress: 'allow' as const }
+
+/**
  * Forgets the devices Expo says no longer have the app, in BOTH token tables:
  * one physical device that has uninstalled is equally dead for order pushes
  * and for platform messages, and a token left behind inflates every

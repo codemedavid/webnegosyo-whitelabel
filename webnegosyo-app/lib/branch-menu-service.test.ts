@@ -36,13 +36,58 @@ const EXISTING = {
 function chain(result: { data: unknown; error: unknown }) {
   const settled = Promise.resolve(result);
   const builder: Record<string, unknown> = {};
-  ["select", "eq", "in", "order", "limit", "upsert", "delete", "update", "insert"].forEach((method) => {
+  ["select", "eq", "in", "order", "range", "limit", "upsert", "delete", "update", "insert"].forEach((method) => {
     builder[method] = jest.fn(() => builder);
   });
   builder.maybeSingle = jest.fn(() => settled);
   builder.single = jest.fn(() => settled);
   builder.then = settled.then.bind(settled);
   return builder;
+}
+
+/**
+ * A table that answers like the platform database: `.range(from, to)` is
+ * honoured, and one response never carries more than 1,000 rows, whatever was
+ * asked for. A read that does not page stops there and says nothing. (The same
+ * stand-in as `products-branch.test.ts`: the web's `fake-supabase-tables`
+ * fixture lives outside this project and its install.)
+ */
+const MAX_ROWS_PER_RESPONSE = 1000;
+
+function cappedTable(rows: unknown[]) {
+  const windows: [number, number][] = [];
+  const orderedBy: string[] = [];
+  const table = () => {
+    let window = { from: 0, to: Number.POSITIVE_INFINITY };
+    const builder: Record<string, unknown> = {};
+    ["select", "eq"].forEach((method) => {
+      builder[method] = jest.fn(() => builder);
+    });
+    builder.order = jest.fn((column: string) => {
+      orderedBy.push(column);
+      return builder;
+    });
+    builder.range = jest.fn((from: number, to: number) => {
+      window = { from, to };
+      windows.push([from, to]);
+      return builder;
+    });
+    builder.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => {
+      const end = Math.min(window.to + 1, window.from + MAX_ROWS_PER_RESPONSE);
+      return Promise.resolve({ data: rows.slice(window.from, end), error: null }).then(resolve, reject);
+    };
+    return builder;
+  };
+  return { table, windows, orderedBy };
+}
+
+/** `count` branch differences, each a different dish at one of five branches. */
+function manyOverrides(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...EXISTING,
+    outlet_id: `branch-${index % 5}`,
+    menu_item_id: `dish-${index}`,
+  }));
 }
 
 beforeEach(() => {
@@ -59,6 +104,57 @@ describe("listBranchMenuOverrides", () => {
 
     // Assert
     expect(rows).toEqual([EXISTING]);
+  });
+
+  it("reads every difference past the first 1,000: an unread one would show the dish as carried", async () => {
+    // Arrange
+    const { table } = cappedTable(manyOverrides(2500));
+    from.mockImplementation(table);
+
+    // Act
+    const rows = await listBranchMenuOverrides("t1");
+
+    // Assert
+    expect(rows).toHaveLength(2500);
+    expect(new Set(rows.map((row) => `${row.outlet_id}/${row.menu_item_id}`)).size).toBe(2500);
+  });
+
+  it("pages in a unique order (branch, then dish), one request for a small store and six for 5,000 rows", async () => {
+    // Arrange
+    const small = cappedTable(manyOverrides(40));
+    from.mockImplementation(small.table);
+
+    // Act
+    await listBranchMenuOverrides("t1");
+
+    // Assert
+    expect(small.windows).toEqual([[0, 999]]);
+    expect(small.orderedBy).toEqual(["outlet_id", "menu_item_id"]);
+
+    // Arrange
+    const large = cappedTable(manyOverrides(5000));
+    from.mockImplementation(large.table);
+
+    // Act
+    await listBranchMenuOverrides("t1");
+
+    // Assert
+    expect(large.windows).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+      [3000, 3999],
+      [4000, 4999],
+      [5000, 5999],
+    ]);
+  });
+
+  it("fails rather than answering with part of the rows past its ceiling", async () => {
+    // Arrange
+    from.mockImplementation(cappedTable(manyOverrides(20001)).table);
+
+    // Act + Assert
+    await expect(listBranchMenuOverrides("t1")).rejects.toThrow(/more than 20,000/);
   });
 
   it("throws rather than reporting a store with no branch differences", async () => {

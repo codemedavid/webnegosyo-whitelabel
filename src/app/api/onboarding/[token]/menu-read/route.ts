@@ -33,11 +33,10 @@ function respond(body: unknown, status = 200): NextResponse {
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`onboarding-menu-read:${ip}`, READ_RATE_LIMIT)
-    if (!rate.allowed) return respond({ error: 'Too many requests. Please wait a moment.' }, 429)
-  }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`onboarding-menu-read:${ip}`, READ_RATE_LIMIT)
+  if (!rate.allowed) return respond({ error: 'Too many requests. Please wait a moment.' }, 429)
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return respond({ error: 'Expected the menu text.' }, 400)

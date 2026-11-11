@@ -37,11 +37,10 @@ type Resolved =
   | { ok: true; admin: SupabaseClient; tenant: { id: string; slug: string } }
 
 async function resolveStore(request: NextRequest, context: RouteContext): Promise<Resolved> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`onboarding-launch-offers:${ip}`, RATE_LIMIT)
-    if (!rate.allowed) return { ok: false, response: respond({ error: 'Too many requests. Please wait a moment.' }, 429) }
-  }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`onboarding-launch-offers:${ip}`, RATE_LIMIT)
+  if (!rate.allowed) return { ok: false, response: respond({ error: 'Too many requests. Please wait a moment.' }, 429) }
   const { token } = await context.params
   const admin = createAdminClient()
   const onboarding = await findOnboardingForToken(admin, token)
