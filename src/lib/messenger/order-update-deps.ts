@@ -1,6 +1,7 @@
 /** The real side effects behind `runOrderUpdate` (service role: the caller is a database trigger). */
 
 import 'server-only'
+import { writeChatLog } from './chat-log-store'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
@@ -83,13 +84,16 @@ export function createOrderUpdateDeps(): OrderUpdateDeps {
     readSession: async (tenantId, psid) => {
       const { data, error } = await admin
         .from('messenger_sessions')
-        .select('last_inbound_at, bot_paused_until')
+        // `*`: the profile (20261111224021) when present; an older database still answers.
+        .select('*')
         .eq('tenant_id', tenantId)
         .eq('psid', psid)
         .maybeSingle()
       if (error || !data) return null
-      const row = data as { last_inbound_at: string | null; bot_paused_until: string | null }
+      const row = data as { id: string; last_inbound_at: string | null; bot_paused_until: string | null; first_name?: string | null }
       return {
+        id: row.id,
+        firstName: row.first_name ?? null,
         lastInboundAt: row.last_inbound_at ? new Date(row.last_inbound_at) : null,
         botPausedUntil: row.bot_paused_until ? new Date(row.bot_paused_until) : null,
       }
@@ -97,6 +101,7 @@ export function createOrderUpdateDeps(): OrderUpdateDeps {
     readOrderTypeKind: async (orderTypeId) => (await readOrderTypeKinds([orderTypeId])).get(orderTypeId) ?? null,
     findPageToken: async (tenantId, pageRowId) => (await getTenantActivePageById(tenantId, pageRowId))?.page_access_token ?? null,
     trackingUrl,
+    logChat: writeChatLog,
     send: async (token, psid, messages) => {
       const result = await sendMessages(token, psid, messages, fetch, 'UPDATE')
       if (!result.ok) console.error('[Messenger order update] not sent', { psid: maskPsid(psid), code: result.error.code })

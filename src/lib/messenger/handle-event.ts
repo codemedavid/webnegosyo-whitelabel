@@ -14,6 +14,12 @@
  *      messages get no bot answer; taps on our own buttons still do.
  *      A reply that shows the cart or orders has them read (and a cart tap
  *      applied) first, so the pure builders only ever format.
+ *
+ * Every event that reaches a store also leaves a line in the chat log
+ * (`chat-log.ts`): what the customer did, what staff typed, a summary of what
+ * the bot sent. Our own echoes and the owner's test code are never logged.
+ * The customer's Messenger name is fetched once a month (`needsProfile`) for
+ * `{name}` and the merchant app; a failed fetch only means no name.
  */
 
 import type { OutgoingMessage } from './graph-message'
@@ -28,6 +34,8 @@ import { orderIdFromRef } from './ref'
 import type { MessengerSession } from './session'
 import type { SendResult } from './send'
 import { isTesterCodeValid, readTesterCode } from './tester'
+import { botLine, customerLine, needsProfile, staffLine, type ChatLogLine } from './chat-log'
+import { greetingName } from './messages/fill'
 
 // The pure decision lives in `decide.ts` (also run in the browser by the Studio's chat simulator).
 export { decideReply, readStaffCommand, type ReplyDecision, type ReplyNeeds } from './decide'
@@ -59,6 +67,24 @@ export interface WebhookDeps {
   changeCart(input: { sessionId: string; op: CartOp | null; store: ReplyStore }): Promise<ChatCartView | null>
   /** This customer's newest orders at this store (platform orders only). */
   loadRecentOrders(input: { tenantId: string; psid: string; store: ReplyStore; now: Date }): Promise<ReplyOrder[]>
+  /** Store this event's chat lines. Never throws. */
+  logChat(input: { tenantId: string; sessionId: string; lines: readonly ChatLogLine[] }): Promise<void>
+  /** Fetch + store the customer's Messenger profile; the raw first name, or null. Never throws. */
+  refreshProfile(input: { sessionId: string; token: string; psid: string; now: Date }): Promise<string | null>
+}
+
+/** The chat lines one event leaves, written once when it is handled. */
+interface ChatRecord {
+  session: MessengerSession | null
+  lines: ChatLogLine[]
+}
+
+/** Lines keep the order they happened in, even when two share a clock tick. */
+function record(chat: ChatRecord, line: ChatLogLine | null) {
+  if (!line) return
+  const previous = chat.lines[chat.lines.length - 1]
+  const sentAt = previous && line.sentAt.getTime() <= previous.sentAt.getTime() ? new Date(previous.sentAt.getTime() + 1) : line.sentAt
+  chat.lines.push({ ...line, sentAt })
 }
 
 export type EventOutcome =
@@ -70,7 +96,10 @@ export type EventOutcome =
 const MIN_STAFF_PAUSE_MINUTES = 60
 const MINUTE_MS = 60 * 1000
 
-async function handleEcho(event: Extract<InboundEvent, { kind: 'echo' }>, page: PageOwner, deps: WebhookDeps, now: Date): Promise<EventOutcome> {
+async function handleEcho(
+  event: Extract<InboundEvent, { kind: 'echo' }>, page: PageOwner, deps: WebhookDeps, now: Date, chat: ChatRecord,
+): Promise<EventOutcome> {
+  // Our own sends are logged as a summary when they go out, not as their echoes.
   const isOurs = event.metadata === deps.botMetadata || (deps.ourAppId !== null && event.appId === deps.ourAppId)
   if (isOurs) return 'own_echo'
 
@@ -79,18 +108,34 @@ async function handleEcho(event: Extract<InboundEvent, { kind: 'echo' }>, page: 
     const bundle = await deps.loadBundle(page.tenantId, now)
     if (!bundle?.store) return 'no_store'
     const session = await deps.touchSession({ tenantId: page.tenantId, pageId: event.pageId, psid: event.psid, now, isInbound: false })
-    const ctx: ReplyContext = { store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null, messages: bundle.settings.messages }
-    const result = await deps.send(page.token, event.psid, buildReply(command, ctx))
+    chat.session = session
+    record(chat, staffLine(event, now))
+    const ctx: ReplyContext = {
+      store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null, messages: bundle.settings.messages,
+      customerName: greetingName(session?.firstName),
+    }
+    const messages = buildReply(command, ctx)
+    const result = await deps.send(page.token, event.psid, messages)
+    if (result.ok) record(chat, botLine(messages, deps.now()))
     return result.ok ? 'staff_command' : 'send_failed'
   }
 
   // A person (Page Inbox, Business Suite) or another tool replied: step back.
-  const minutes = await deps.loadTakeoverMinutes(page.tenantId)
-  if (minutes <= 0) return 'staff_ignored'
   const session = await deps.touchSession({ tenantId: page.tenantId, pageId: event.pageId, psid: event.psid, now, isInbound: false })
-  if (!session) return 'staff_ignored'
+  chat.session = session
+  record(chat, staffLine(event, now))
+  const minutes = await deps.loadTakeoverMinutes(page.tenantId)
+  if (minutes <= 0 || !session) return 'staff_ignored'
   await deps.setBotPause(session.id, new Date(now.getTime() + minutes * MINUTE_MS))
   return 'staff_paused'
+}
+
+/** The customer's first name for `{name}`: stored, else fetched when due. */
+async function customerFirstName(session: MessengerSession | null, page: PageOwner, psid: string, now: Date, deps: WebhookDeps): Promise<string> {
+  if (!session) return ''
+  if (!needsProfile(session, now)) return greetingName(session.firstName)
+  const fetched = await deps.refreshProfile({ sessionId: session.id, token: page.token, psid, now }).catch(() => null)
+  return greetingName(fetched ?? session.firstName)
 }
 
 /** Fill the context with what the reply shows. A failed read leaves it out; the builders say so. */
@@ -123,18 +168,36 @@ export async function handleEvent(event: InboundEvent, deps: WebhookDeps): Promi
   if (!page) return 'unknown_page'
   const now = deps.now()
 
+  const chat: ChatRecord = { session: null, lines: [] }
+  try {
+    return await answer(event, page, deps, now, chat)
+  } finally {
+    if (chat.session && chat.lines.length > 0) {
+      await deps.logChat({ tenantId: page.tenantId, sessionId: chat.session.id, lines: chat.lines }).catch(() => undefined)
+    }
+  }
+}
+
+async function answer(event: InboundEvent, page: PageOwner, deps: WebhookDeps, now: Date, chat: ChatRecord): Promise<EventOutcome> {
   if (event.kind === 'referral') {
     const orderId = orderIdFromRef(event.ref)
     if (orderId) {
-      await deps.answerOrderReferral({ orderId, pageId: event.pageId, senderId: event.psid })
-      await deps.touchSession({ tenantId: page.tenantId, pageId: event.pageId, psid: event.psid, now, isInbound: true })
+      const answered = await deps.answerOrderReferral({ orderId, pageId: event.pageId, senderId: event.psid })
+      const session = await deps.touchSession({ tenantId: page.tenantId, pageId: event.pageId, psid: event.psid, now, isInbound: true })
+      chat.session = session
+      record(chat, customerLine(event, now))
+      if (answered.outcome === 'sent') record(chat, botLine([{ kind: 'text', text: '🧾 Sent the order summary' }], deps.now()))
+      await customerFirstName(session, page, event.psid, now, deps)
       return 'referral'
     }
   }
 
-  if (event.kind === 'echo') return handleEcho(event, page, deps, now)
+  if (event.kind === 'echo') return handleEcho(event, page, deps, now, chat)
 
   const session = await deps.touchSession({ tenantId: page.tenantId, pageId: event.pageId, psid: event.psid, now, isInbound: true })
+  chat.session = session
+  record(chat, customerLine(event, now))
+  const customerName = await customerFirstName(session, page, event.psid, now, deps)
   if (event.kind === 'other') return 'nothing_to_answer'
 
   const bundle = await deps.loadBundle(page.tenantId, now)
@@ -145,6 +208,8 @@ export async function handleEvent(event: InboundEvent, deps: WebhookDeps): Promi
     if (code && bundle.settings.testerCodeHash && await deps.allowTesterAttempt(page.tenantId) && isTesterCodeValid({
       tenantId: page.tenantId, code, storedHash: bundle.settings.testerCodeHash, expiresAt: bundle.settings.testerCodeExpiresAt, now,
     })) {
+      // The owner linking their own Messenger: not part of any customer chat.
+      chat.lines.length = 0
       const linked = await deps.linkTester(page.tenantId, event.psid)
       await deps.send(page.token, event.psid, [{
         kind: 'text',
@@ -164,7 +229,9 @@ export async function handleEvent(event: InboundEvent, deps: WebhookDeps): Promi
   const isPaused = session?.botPausedUntil !== null && session?.botPausedUntil !== undefined && session.botPausedUntil.getTime() > now.getTime()
   if (isPaused && decision.isTyped) return 'paused'
 
-  const ctx: ReplyContext = { store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null, messages: bundle.settings.messages }
+  const ctx: ReplyContext = {
+    store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null, messages: bundle.settings.messages, customerName,
+  }
   await loadNeeds(ctx, decision.needs, { session, bundle, psid: event.psid, now, deps })
   const messages = decision.build(ctx)
   if (decision.pausesBot && session) {
@@ -172,5 +239,6 @@ export async function handleEvent(event: InboundEvent, deps: WebhookDeps): Promi
     await deps.setBotPause(session.id, new Date(now.getTime() + minutes * MINUTE_MS))
   }
   const result = await deps.send(page.token, event.psid, messages)
+  if (result.ok) record(chat, botLine(messages, deps.now()))
   return result.ok ? 'replied' : 'send_failed'
 }

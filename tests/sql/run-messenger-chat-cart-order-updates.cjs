@@ -80,7 +80,7 @@ async function checkOrderUpdatesSetting(db) {
   await refused(db.query('select order_updates from messenger_settings'), '42501', 'anon cannot read them')
 }
 
-// 20261112090000: the Studio's wording column rides the same grants and policies.
+// 20261111212438: the Studio's wording column rides the same grants and policies.
 async function checkMessagesSetting(db) {
   const words = { lang: 'tl', 'cart.added': 'Nadagdag {item}!', 'cart.show_empty_cart': false }
   for (const [uid, label] of [[U.owner, 'owner'], [U.settings, 'settings staff']]) {
@@ -182,7 +182,7 @@ async function main() {
     for (let pass = 0; pass < 2; pass += 1) {
       await db.exec(readMigration('20261110080757_messenger_chat_cart_order_updates.sql'))
       await db.exec(readMigration('20261111090100_orders_messenger_psid_idx.sql'))
-      await db.exec(readMigration('20261112090000_messenger_settings_messages.sql'))
+      await db.exec(readMigration('20261111212438_messenger_settings_messages.sql'))
     }
     await reset(db)
     await checkCartAction(db)

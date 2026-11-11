@@ -122,6 +122,17 @@ describe('runOrderUpdate', () => {
     expect(h.sent[0].messages[0]).toMatchObject({ text: 'Hi! #07 from Karamotan Grill is ready 🎉' })
   })
 
+  it('logs the status message in the customer\'s chat and greets by Messenger name', async () => {
+    const h = harness()
+    const logs: Array<{ sessionId: string; bodies: string[] }> = []
+    h.deps.readSession = async () => ({ id: 'session-1', firstName: 'Juan Carlo', lastInboundAt: new Date(NOW.getTime() - 60_000), botPausedUntil: null })
+    h.deps.loadStore = async () => store({ messages: readMessages({ 'orders.update.ready': '{name}, order {order} is ready!' }) })
+    h.deps.logChat = async ({ sessionId, lines }) => { logs.push({ sessionId, bodies: lines.map((line) => `${line.direction}:${line.body}`) }) }
+    expect(await runOrderUpdate(ORDER_ID, h.deps)).toEqual({ outcome: 'sent', status: 'ready' })
+    expect(JSON.stringify(h.sent[0].messages)).toContain('Juan, order #07 is ready!')
+    expect(logs).toEqual([{ sessionId: 'session-1', bodies: ['bot:Juan, order #07 is ready!'] }])
+  })
+
   it('a refused send is recorded as send_failed', async () => {
     const h = harness({ sendOk: false })
     expect(await runOrderUpdate(ORDER_ID, h.deps)).toMatchObject({ outcome: 'send_failed' })

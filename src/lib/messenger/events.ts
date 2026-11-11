@@ -63,9 +63,31 @@ export type InboundEvent =
   /** Something the Page sent: our bot, Page Inbox staff, or another tool. */
   | (EventBase & { kind: 'echo'; text: string; appId: string | null; metadata: string | null })
   /** A sticker, photo, like… The customer reached out (it opens the window) but there is nothing to match. */
-  | (EventBase & { kind: 'other' })
+  | (EventBase & { kind: 'other'; attachment: AttachmentKind })
 
 export type InboundEventKind = InboundEvent['kind']
+
+/** What a message without text carried (the chat log says "📷 Photo"; media is never stored). */
+export type AttachmentKind = 'photo' | 'sticker' | 'video' | 'audio' | 'file' | 'location' | 'other'
+
+const attachmentSchema = z.object({
+  type: z.string().optional(),
+  payload: z.object({ sticker_id: z.union([z.number(), z.string()]).optional() }).passthrough().nullish(),
+}).passthrough()
+
+function attachmentKind(attachments: unknown[] | undefined): AttachmentKind {
+  const parsed = attachmentSchema.safeParse(attachments?.[0])
+  if (!parsed.success) return 'other'
+  if (parsed.data.payload?.sticker_id !== undefined) return 'sticker'
+  switch (parsed.data.type) {
+    case 'image': return 'photo'
+    case 'video': return 'video'
+    case 'audio': return 'audio'
+    case 'file': return 'file'
+    case 'location': return 'location'
+    default: return 'other'
+  }
+}
 
 function dedupeKeyFor(mid: string | undefined, fallback: string): string {
   return mid ? `mid:${mid}` : fallback
@@ -117,7 +139,7 @@ function toEvent(pageId: string, raw: unknown): InboundEvent | null {
     if (message.text && message.text.trim().length > 0) {
       return { ...base, kind: 'text', text: message.text, dedupeKey }
     }
-    return { ...base, kind: 'other', dedupeKey }
+    return { ...base, kind: 'other', attachment: attachmentKind(message.attachments), dedupeKey }
   }
 
   // Reads, deliveries, reactions: not something to answer.
