@@ -47,6 +47,13 @@ export interface OrderBackendTenantFields {
   convex_deploy_key?: string | null;
 }
 
+/**
+ * The columns to select when a server reader only needs to route: exactly what
+ * `resolveOrderBackend` reads. Kept here so a reader asks the store's row and
+ * this function, and never works the backend out from a request.
+ */
+export const ORDER_BACKEND_TENANT_COLUMNS = "order_backend, convex_deployment_url";
+
 function isNonEmpty(value: string | null | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
