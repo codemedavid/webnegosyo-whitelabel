@@ -5,6 +5,8 @@ import { redeemVoucher } from '@/lib/vouchers/repository'
 import type { VoucherChannel } from '@/lib/vouchers/types'
 import { callerHasFeature } from '@/lib/gov-discount-ledger/caller-scope'
 import { outletRefusal, resolveRouteOutlet } from '@/lib/gov-discount-ledger/route-guards'
+import { checkCallerOrder } from '@/lib/auth/caller-order'
+import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 
 /**
  * POST /api/vouchers/redeem
@@ -31,6 +33,17 @@ import { outletRefusal, resolveRouteOutlet } from '@/lib/gov-discount-ledger/rou
  * it did not either. `redeemVoucher` returns `redeemed: false` rather than
  * throwing for exactly this reason, and swallowing that here would tell a
  * merchant their usage limit is being enforced when it is not.
+ *
+ * A redemption is recorded against an order, so the order is checked first:
+ *
+ * - A platform store (decided by the store's row): the order must be the
+ *   store's and, for a branch account, its own branch's, or the burn is
+ *   refused (404). The register writes the order before it burns, online and
+ *   on an offline replay alike, so a real sale always passes.
+ * - A store on its own deployment: its orders cannot be read from this
+ *   server, so the order id is recorded as sent, as it always was. The caller
+ *   still has to be a member of the store holding `pos`, and the burn is still
+ *   keyed on (voucher, order), so one order spends a code once.
  */
 
 /** One voucher to burn against this order. */
@@ -135,6 +148,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   if (!outlet.ok && outlet.status !== 400) return outletRefusal(outlet)
   const outletId = outlet.ok ? outlet.outletId : null
+
+  const scope = resolveBranchScope(appUser)
+  try {
+    const check = await checkCallerOrder(admin, {
+      tenantId,
+      orderId,
+      callerOutletId: scope.kind === 'branch' ? scope.outletId : null,
+    })
+    if (check.backend === 'platform' && !check.order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+  } catch (error) {
+    console.error('[vouchers/redeem] order lookup failed:', error instanceof Error ? error.message : error)
+    return NextResponse.json({ error: 'Could not check the order. Try again.' }, { status: 503 })
+  }
 
   const customerKey =
     typeof body?.customerKey === 'string' && body.customerKey.trim() !== ''
