@@ -1,0 +1,13485 @@
+// GENERATED FILE: do not edit by hand. Generated from the live platform schema.
+// Regenerate: npm run db:types (scripts/db-types.mjs runs
+//   supabase gen types typescript --project-id <platform ref> --schema public)
+// Drift check: npm run db:types:check
+// New code types rows from here: Tables<'orders'>, TablesInsert<'orders'>, ...
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      addon_library: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          id: string
+          image_url: string | null
+          is_active: boolean
+          name: string
+          price: number
+          source_menu_item_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name: string
+          price?: number
+          source_menu_item_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name?: string
+          price?: number
+          source_menu_item_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addon_library_source_menu_item_id_fkey"
+            columns: ["source_menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_library_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analytics_events: {
+        Row: {
+          created_at: string
+          id: string
+          metadata: Json
+          session_id: string | null
+          tenant_id: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          session_id?: string | null
+          tenant_id: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          session_id?: string | null
+          tenant_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analytics_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_signup_requests: {
+        Row: {
+          business_name: string
+          business_type: string | null
+          contact_name: string
+          created_at: string
+          email: string
+          id: string
+          message: string | null
+          phone: string | null
+          source: string
+          status: string
+        }
+        Insert: {
+          business_name: string
+          business_type?: string | null
+          contact_name: string
+          created_at?: string
+          email: string
+          id?: string
+          message?: string | null
+          phone?: string | null
+          source?: string
+          status?: string
+        }
+        Update: {
+          business_name?: string
+          business_type?: string | null
+          contact_name?: string
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string | null
+          phone?: string | null
+          source?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      app_users: {
+        Row: {
+          created_at: string
+          default_tab: string | null
+          display_name: string | null
+          email: string | null
+          is_owner: boolean
+          outlet_id: string | null
+          permissions: string[] | null
+          platform_permissions: string[] | null
+          role: string
+          tenant_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_tab?: string | null
+          display_name?: string | null
+          email?: string | null
+          is_owner?: boolean
+          outlet_id?: string | null
+          permissions?: string[] | null
+          platform_permissions?: string[] | null
+          role: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          default_tab?: string | null
+          display_name?: string | null
+          email?: string | null
+          is_owner?: boolean
+          outlet_id?: string | null
+          permissions?: string[] | null
+          platform_permissions?: string[] | null
+          role?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_users_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_users_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_requests: {
+        Row: {
+          amount: number
+          approved_amount: number | null
+          backend: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decided_by_name: string | null
+          decision_note: string | null
+          decision_reason_code: string | null
+          error: string | null
+          executed_at: string | null
+          expires_at: string
+          external_order_id: string | null
+          id: string
+          idempotency_key: string
+          is_direct: boolean
+          kind: string
+          note: string | null
+          order_number: string | null
+          order_snapshot: Json | null
+          outlet_id: string | null
+          payload: Json
+          payload_hash: string | null
+          reason_code: string
+          requested_by: string
+          requested_by_name: string | null
+          requester_shift_id: string | null
+          result: Json | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          approved_amount?: number | null
+          backend?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decided_by_name?: string | null
+          decision_note?: string | null
+          decision_reason_code?: string | null
+          error?: string | null
+          executed_at?: string | null
+          expires_at: string
+          external_order_id?: string | null
+          id?: string
+          idempotency_key: string
+          is_direct?: boolean
+          kind: string
+          note?: string | null
+          order_number?: string | null
+          order_snapshot?: Json | null
+          outlet_id?: string | null
+          payload?: Json
+          payload_hash?: string | null
+          reason_code: string
+          requested_by: string
+          requested_by_name?: string | null
+          requester_shift_id?: string | null
+          result?: Json | null
+          status: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          approved_amount?: number | null
+          backend?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decided_by_name?: string | null
+          decision_note?: string | null
+          decision_reason_code?: string | null
+          error?: string | null
+          executed_at?: string | null
+          expires_at?: string
+          external_order_id?: string | null
+          id?: string
+          idempotency_key?: string
+          is_direct?: boolean
+          kind?: string
+          note?: string | null
+          order_number?: string | null
+          order_snapshot?: Json | null
+          outlet_id?: string | null
+          payload?: Json
+          payload_hash?: string | null
+          reason_code?: string
+          requested_by?: string
+          requested_by_name?: string | null
+          requester_shift_id?: string | null
+          result?: Json | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_rules: {
+        Row: {
+          direct_refund_cap: number
+          discount_pct_needs_approval: number
+          expiry_minutes: number
+          manager_approve_cap: number
+          max_pending_per_staff: number
+          staff_refund_window: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          updated_by_name: string | null
+          writeoff_cost_needs_approval: number
+        }
+        Insert: {
+          direct_refund_cap?: number
+          discount_pct_needs_approval?: number
+          expiry_minutes?: number
+          manager_approve_cap?: number
+          max_pending_per_staff?: number
+          staff_refund_window?: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_name?: string | null
+          writeoff_cost_needs_approval?: number
+        }
+        Update: {
+          direct_refund_cap?: number
+          discount_pct_needs_approval?: number
+          expiry_minutes?: number
+          manager_approve_cap?: number
+          max_pending_per_staff?: number
+          staff_refund_window?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_name?: string | null
+          writeoff_cost_needs_approval?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assistant_actions: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          created_by: string
+          decided_at: string | null
+          decided_by: string | null
+          error: string | null
+          expires_at: string
+          id: string
+          kind: string
+          payload: Json
+          result_ref: string | null
+          status: string
+          summary: string
+          tenant_id: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          created_by: string
+          decided_at?: string | null
+          decided_by?: string | null
+          error?: string | null
+          expires_at?: string
+          id?: string
+          kind: string
+          payload: Json
+          result_ref?: string | null
+          status?: string
+          summary: string
+          tenant_id: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          error?: string | null
+          expires_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          result_ref?: string | null
+          status?: string
+          summary?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_actions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "assistant_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_actions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assistant_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          ref_map: Json
+          tenant_id: string
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ref_map?: Json
+          tenant_id: string
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ref_map?: Json
+          tenant_id?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assistant_messages: {
+        Row: {
+          cached_input_tokens: number | null
+          conversation_id: string
+          cost_usd: number | null
+          created_at: string
+          id: string
+          input_tokens: number | null
+          message_id: string
+          model: string | null
+          output_tokens: number | null
+          parts: Json
+          role: string
+          tenant_id: string
+        }
+        Insert: {
+          cached_input_tokens?: number | null
+          conversation_id: string
+          cost_usd?: number | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          message_id: string
+          model?: string | null
+          output_tokens?: number | null
+          parts: Json
+          role: string
+          tenant_id: string
+        }
+        Update: {
+          cached_input_tokens?: number | null
+          conversation_id?: string
+          cost_usd?: number | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          message_id?: string
+          model?: string | null
+          output_tokens?: number | null
+          parts?: Json
+          role?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "assistant_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assistant_usage_daily: {
+        Row: {
+          cost_usd: number
+          day: string
+          messages: number
+          tenant_id: string
+          total_tokens: number
+        }
+        Insert: {
+          cost_usd?: number
+          day: string
+          messages?: number
+          tenant_id: string
+          total_tokens?: number
+        }
+        Update: {
+          cost_usd?: number
+          day?: string
+          messages?: number
+          tenant_id?: string
+          total_tokens?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_usage_daily_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      boost_ai_generations: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          data_source: string | null
+          error: string | null
+          id: string
+          model: string | null
+          orders_analyzed: number
+          source: string
+          status: string
+          summary: string | null
+          tenant_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          data_source?: string | null
+          error?: string | null
+          id?: string
+          model?: string | null
+          orders_analyzed?: number
+          source?: string
+          status?: string
+          summary?: string | null
+          tenant_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          data_source?: string | null
+          error?: string | null
+          id?: string
+          model?: string | null
+          orders_analyzed?: number
+          source?: string
+          status?: string
+          summary?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boost_ai_generations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      boost_ai_proposals: {
+        Row: {
+          applied_at: string | null
+          applied_ref: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          generation_id: string
+          id: string
+          kind: string
+          payload: Json
+          position: number
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          applied_ref?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          generation_id: string
+          id?: string
+          kind: string
+          payload: Json
+          position?: number
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          applied_ref?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          generation_id?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          position?: number
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boost_ai_proposals_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "boost_ai_generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_ai_proposals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bundle_slot_price_overrides: {
+        Row: {
+          created_at: string
+          id: string
+          menu_item_id: string
+          price_override: number
+          slot_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          menu_item_id: string
+          price_override: number
+          slot_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          menu_item_id?: string
+          price_override?: number
+          slot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bundle_slot_price_overrides_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bundle_slot_price_overrides_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "bundle_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bundle_slots: {
+        Row: {
+          bundle_id: string
+          category_id: string
+          created_at: string
+          id: string
+          included_item_ids: string[] | null
+          name: string
+          pick_count: number
+          sort_order: number
+        }
+        Insert: {
+          bundle_id: string
+          category_id: string
+          created_at?: string
+          id?: string
+          included_item_ids?: string[] | null
+          name: string
+          pick_count?: number
+          sort_order?: number
+        }
+        Update: {
+          bundle_id?: string
+          category_id?: string
+          created_at?: string
+          id?: string
+          included_item_ids?: string[] | null
+          name?: string
+          pick_count?: number
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bundle_slots_bundle_id_fkey"
+            columns: ["bundle_id"]
+            isOneToOne: false
+            referencedRelation: "bundles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bundle_slots_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bundles: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          discount_percent: number | null
+          display_order: number | null
+          fixed_price: number | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          name: string
+          pricing_type: string
+          show_as_upsell: boolean | null
+          show_on_menu: boolean | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          display_order?: number | null
+          fixed_price?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name: string
+          pricing_type?: string
+          show_as_upsell?: boolean | null
+          show_on_menu?: boolean | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          display_order?: number | null
+          fixed_price?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name?: string
+          pricing_type?: string
+          show_as_upsell?: boolean | null
+          show_on_menu?: boolean | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bundles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_day_closes: {
+        Row: {
+          business_day: string
+          closed_at: string
+          closed_by: string | null
+          closed_by_name: string
+          deposit_cents: number | null
+          deposit_proof_url: string | null
+          deposit_recorded_at: string | null
+          deposit_recorded_by: string | null
+          deposit_ref: string | null
+          deposit_to: string | null
+          forced_shift_ids: string[]
+          id: string
+          note: string | null
+          outlet_id: string | null
+          reopen_reason: string | null
+          reopened_at: string | null
+          reopened_by: string | null
+          reopened_by_name: string | null
+          sales_source: string
+          snapshot: Json
+          snapshot_version: number
+          status: string
+          tenant_id: string
+          unsettled_remittance_ids: string[]
+          version: number
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          business_day: string
+          closed_at?: string
+          closed_by?: string | null
+          closed_by_name: string
+          deposit_cents?: number | null
+          deposit_proof_url?: string | null
+          deposit_recorded_at?: string | null
+          deposit_recorded_by?: string | null
+          deposit_ref?: string | null
+          deposit_to?: string | null
+          forced_shift_ids?: string[]
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          reopen_reason?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          reopened_by_name?: string | null
+          sales_source: string
+          snapshot: Json
+          snapshot_version: number
+          status?: string
+          tenant_id: string
+          unsettled_remittance_ids?: string[]
+          version?: number
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          business_day?: string
+          closed_at?: string
+          closed_by?: string | null
+          closed_by_name?: string
+          deposit_cents?: number | null
+          deposit_proof_url?: string | null
+          deposit_recorded_at?: string | null
+          deposit_recorded_by?: string | null
+          deposit_ref?: string | null
+          deposit_to?: string | null
+          forced_shift_ids?: string[]
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          reopen_reason?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          reopened_by_name?: string | null
+          sales_source?: string
+          snapshot?: Json
+          snapshot_version?: number
+          status?: string
+          tenant_id?: string
+          unsettled_remittance_ids?: string[]
+          version?: number
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_day_closes_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_day_closes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_day_cutoffs: {
+        Row: {
+          cutoff_minutes: number
+          effective_from: string
+          set_at: string
+          set_by: string | null
+          set_by_name: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cutoff_minutes: number
+          effective_from: string
+          set_at?: string
+          set_by?: string | null
+          set_by_name?: string | null
+          tenant_id: string
+        }
+        Update: {
+          cutoff_minutes?: number
+          effective_from?: string
+          set_at?: string
+          set_by?: string | null
+          set_by_name?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_day_cutoffs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_drawers: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          id: string
+          is_zero_balance: boolean
+          name: string
+          outlet_id: string | null
+          sort_order: number
+          starting_cash: number
+          tenant_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          id?: string
+          is_zero_balance?: boolean
+          name: string
+          outlet_id?: string | null
+          sort_order?: number
+          starting_cash?: number
+          tenant_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          id?: string
+          is_zero_balance?: boolean
+          name?: string
+          outlet_id?: string | null
+          sort_order?: number
+          starting_cash?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_drawers_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_drawers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_remittances: {
+        Row: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        Insert: {
+          accept_method?: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id?: string | null
+          created_at?: string
+          dispute_reason?: string | null
+          handed_over_cents?: number | null
+          id?: string
+          is_self_received?: boolean
+          kind: string
+          movement_id?: string | null
+          outlet_id?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          received_by_name?: string | null
+          received_cents?: number | null
+          receiver_note?: string | null
+          remitted_to?: string | null
+          remitted_to_name?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_by_name?: string | null
+          resolved_note?: string | null
+          shift_id: string
+          status?: string
+          tenant_id: string
+          to_safe?: boolean
+        }
+        Update: {
+          accept_method?: string | null
+          business_day?: string
+          cashier_name?: string
+          cashier_user_id?: string | null
+          created_at?: string
+          dispute_reason?: string | null
+          handed_over_cents?: number | null
+          id?: string
+          is_self_received?: boolean
+          kind?: string
+          movement_id?: string | null
+          outlet_id?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          received_by_name?: string | null
+          received_cents?: number | null
+          receiver_note?: string | null
+          remitted_to?: string | null
+          remitted_to_name?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_by_name?: string | null
+          resolved_note?: string | null
+          shift_id?: string
+          status?: string
+          tenant_id?: string
+          to_safe?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_remittances_movement_id_fkey"
+            columns: ["movement_id"]
+            isOneToOne: false
+            referencedRelation: "shift_cash_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_remittances_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_remittances_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_remittances_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      categories: {
+        Row: {
+          card_template: string | null
+          created_at: string
+          default_addons: Json | null
+          description: string | null
+          display_layout: string | null
+          gov_discount_eligible: boolean
+          icon: string | null
+          icon_color: string | null
+          id: string
+          is_active: boolean
+          name: string
+          order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          card_template?: string | null
+          created_at?: string
+          default_addons?: Json | null
+          description?: string | null
+          display_layout?: string | null
+          gov_discount_eligible?: boolean
+          icon?: string | null
+          icon_color?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          order?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          card_template?: string | null
+          created_at?: string
+          default_addons?: Json | null
+          description?: string | null
+          display_layout?: string | null
+          gov_discount_eligible?: boolean
+          icon?: string | null
+          icon_color?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checkout_leads: {
+        Row: {
+          amount: number
+          business_name: string
+          created_at: string
+          email: string
+          id: string
+          live_at: string | null
+          meta_attribution: Json | null
+          meta_purchase_sent_at: string | null
+          name: string
+          notes: string | null
+          paid_at: string | null
+          payment_proof_uploaded_at: string | null
+          payment_proof_url: string | null
+          payment_term: string | null
+          phone: string
+          reference_number: string
+          selected_payment_method_id: string | null
+          status: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          business_name: string
+          created_at?: string
+          email: string
+          id?: string
+          live_at?: string | null
+          meta_attribution?: Json | null
+          meta_purchase_sent_at?: string | null
+          name: string
+          notes?: string | null
+          paid_at?: string | null
+          payment_proof_uploaded_at?: string | null
+          payment_proof_url?: string | null
+          payment_term?: string | null
+          phone: string
+          reference_number: string
+          selected_payment_method_id?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          business_name?: string
+          created_at?: string
+          email?: string
+          id?: string
+          live_at?: string | null
+          meta_attribution?: Json | null
+          meta_purchase_sent_at?: string | null
+          name?: string
+          notes?: string | null
+          paid_at?: string | null
+          payment_proof_uploaded_at?: string | null
+          payment_proof_url?: string | null
+          payment_term?: string | null
+          phone?: string
+          reference_number?: string
+          selected_payment_method_id?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkout_leads_selected_payment_method_id_fkey"
+            columns: ["selected_payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "platform_payment_methods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkout_leads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      complementary_pairs: {
+        Row: {
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          source_category_id: string | null
+          source_item_id: string | null
+          source_type: string
+          target_item_id: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          source_category_id?: string | null
+          source_item_id?: string | null
+          source_type: string
+          target_item_id: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          source_category_id?: string | null
+          source_item_id?: string | null
+          source_type?: string
+          target_item_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "complementary_pairs_source_category_id_fkey"
+            columns: ["source_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "complementary_pairs_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "complementary_pairs_target_item_id_fkey"
+            columns: ["target_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "complementary_pairs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_orders: {
+        Row: {
+          app_id: string
+          backend: string
+          created_at: string
+          customer_id: string
+          id: string
+          idempotency_key: string
+          last_status: string | null
+          last_status_at: string | null
+          order_id: string | null
+          placed_at: string | null
+          state: string
+          summary: Json | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          app_id: string
+          backend: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          idempotency_key: string
+          last_status?: string | null
+          last_status_at?: string | null
+          order_id?: string | null
+          placed_at?: string | null
+          state?: string
+          summary?: Json | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          app_id?: string
+          backend?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          idempotency_key?: string
+          last_status?: string | null
+          last_status_at?: string | null
+          order_id?: string | null
+          placed_at?: string | null
+          state?: string
+          summary?: Json | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_profiles: {
+        Row: {
+          created_at: string
+          customer_id: string
+          display_name: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          display_name?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          display_name?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_profiles_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_review_logins: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          outcome: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          outcome: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          outcome?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_review_logins_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_sessions: {
+        Row: {
+          absolute_expires_at: string
+          created_at: string
+          customer_id: string
+          expires_at: string
+          id: string
+          last_used_at: string
+          phone_hash: string
+          revoked_at: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Insert: {
+          absolute_expires_at: string
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          id?: string
+          last_used_at?: string
+          phone_hash: string
+          revoked_at?: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Update: {
+          absolute_expires_at?: string
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          id?: string
+          last_used_at?: string
+          phone_hash?: string
+          revoked_at?: string | null
+          tenant_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_external_orders: {
+        Row: {
+          address: string | null
+          backend: string
+          channel: string | null
+          completed_at: string | null
+          created_at: string
+          customer_id: string
+          external_order_id: string
+          id: string
+          items: Json
+          ordered_at: string
+          outlet_id: string | null
+          payment_status: string | null
+          sms_consent: boolean
+          source: string
+          status: string | null
+          tenant_id: string
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          backend: string
+          channel?: string | null
+          completed_at?: string | null
+          created_at?: string
+          customer_id: string
+          external_order_id: string
+          id?: string
+          items?: Json
+          ordered_at: string
+          outlet_id?: string | null
+          payment_status?: string | null
+          sms_consent?: boolean
+          source?: string
+          status?: string | null
+          tenant_id: string
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          backend?: string
+          channel?: string | null
+          completed_at?: string | null
+          created_at?: string
+          customer_id?: string
+          external_order_id?: string
+          id?: string
+          items?: Json
+          ordered_at?: string
+          outlet_id?: string | null
+          payment_status?: string | null
+          sms_consent?: boolean
+          source?: string
+          status?: string | null
+          tenant_id?: string
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_external_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_external_orders_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_external_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_form_fields: {
+        Row: {
+          created_at: string
+          field_label: string
+          field_name: string
+          field_type: string
+          id: string
+          is_required: boolean
+          options: Json | null
+          order_index: number
+          order_type_id: string
+          placeholder: string | null
+          tenant_id: string
+          updated_at: string
+          validation_rules: Json | null
+        }
+        Insert: {
+          created_at?: string
+          field_label: string
+          field_name: string
+          field_type: string
+          id?: string
+          is_required?: boolean
+          options?: Json | null
+          order_index?: number
+          order_type_id: string
+          placeholder?: string | null
+          tenant_id: string
+          updated_at?: string
+          validation_rules?: Json | null
+        }
+        Update: {
+          created_at?: string
+          field_label?: string
+          field_name?: string
+          field_type?: string
+          id?: string
+          is_required?: boolean
+          options?: Json | null
+          order_index?: number
+          order_type_id?: string
+          placeholder?: string | null
+          tenant_id?: string
+          updated_at?: string
+          validation_rules?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_form_fields_order_type_id_fkey"
+            columns: ["order_type_id"]
+            isOneToOne: false
+            referencedRelation: "order_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_form_fields_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_login_issuance_events: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          phone_hash?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_login_issuance_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          average_order_value: number | null
+          channels_used: string[]
+          created_at: string
+          created_source: string
+          email: string | null
+          first_order_at: string | null
+          id: string
+          last_order_at: string | null
+          name: string | null
+          notes: string | null
+          order_count: number
+          phone_e164: string | null
+          sms_consent: boolean
+          sms_consent_at: string | null
+          sms_opt_out: boolean
+          sms_opt_out_at: string | null
+          tenant_id: string
+          top_items: Json
+          total_spent: number
+          updated_at: string
+        }
+        Insert: {
+          average_order_value?: number | null
+          channels_used?: string[]
+          created_at?: string
+          created_source?: string
+          email?: string | null
+          first_order_at?: string | null
+          id?: string
+          last_order_at?: string | null
+          name?: string | null
+          notes?: string | null
+          order_count?: number
+          phone_e164?: string | null
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          sms_opt_out?: boolean
+          sms_opt_out_at?: string | null
+          tenant_id: string
+          top_items?: Json
+          total_spent?: number
+          updated_at?: string
+        }
+        Update: {
+          average_order_value?: number | null
+          channels_used?: string[]
+          created_at?: string
+          created_source?: string
+          email?: string | null
+          first_order_at?: string | null
+          id?: string
+          last_order_at?: string | null
+          name?: string | null
+          notes?: string | null
+          order_count?: number
+          phone_e164?: string | null
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          sms_opt_out?: boolean
+          sms_opt_out_at?: string | null
+          tenant_id?: string
+          top_items?: Json
+          total_spent?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_order_counters: {
+        Row: {
+          last_number: number
+          order_date: string
+          tenant_id: string
+        }
+        Insert: {
+          last_number: number
+          order_date: string
+          tenant_id: string
+        }
+        Update: {
+          last_number?: number
+          order_date?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_order_counters_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_stats: {
+        Row: {
+          avg_order_value: number
+          created_at: string
+          date: string
+          id: string
+          tenant_id: string
+          top_items: Json
+          total_orders: number
+          total_revenue: number
+          updated_at: string
+          upsell_conversion_rate: number | null
+        }
+        Insert: {
+          avg_order_value?: number
+          created_at?: string
+          date: string
+          id?: string
+          tenant_id: string
+          top_items?: Json
+          total_orders?: number
+          total_revenue?: number
+          updated_at?: string
+          upsell_conversion_rate?: number | null
+        }
+        Update: {
+          avg_order_value?: number
+          created_at?: string
+          date?: string
+          id?: string
+          tenant_id?: string
+          top_items?: Json
+          total_orders?: number
+          total_revenue?: number
+          updated_at?: string
+          upsell_conversion_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_stats_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dining_tables: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          outlet_id: string | null
+          pos_x: number
+          pos_y: number
+          rotation: number
+          seats: number
+          shape: string
+          size: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+          zone: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          outlet_id?: string | null
+          pos_x?: number
+          pos_y?: number
+          rotation?: number
+          seats?: number
+          shape?: string
+          size?: string
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+          zone?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          outlet_id?: string | null
+          pos_x?: number
+          pos_y?: number
+          rotation?: number
+          seats?: number
+          shape?: string
+          size?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+          zone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dining_tables_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dining_tables_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_bill_marks: {
+        Row: {
+          bill_id: string
+          created_at: string
+          created_by: string | null
+          due_on: string
+          id: string
+          kind: string
+          snoozed_until: string | null
+          tenant_id: string
+        }
+        Insert: {
+          bill_id: string
+          created_at?: string
+          created_by?: string | null
+          due_on: string
+          id?: string
+          kind: string
+          snoozed_until?: string | null
+          tenant_id: string
+        }
+        Update: {
+          bill_id?: string
+          created_at?: string
+          created_by?: string | null
+          due_on?: string
+          id?: string
+          kind?: string
+          snoozed_until?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_bill_marks_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "expense_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bill_marks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_bills: {
+        Row: {
+          amount_cents: number | null
+          category_id: string
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          ends_on: string | null
+          id: string
+          name: string
+          outlet_id: string | null
+          paid_from: string
+          paid_to_name: string | null
+          paused_on: string | null
+          paused_until: string | null
+          remind_days_before: number
+          repeat_days: number[] | null
+          repeat_every: number
+          repeat_kind: string
+          repeat_weekday: number | null
+          starts_on: string
+          status: string
+          supplier_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          ends_on?: string | null
+          id?: string
+          name: string
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          paused_on?: string | null
+          paused_until?: string | null
+          remind_days_before?: number
+          repeat_days?: number[] | null
+          repeat_every?: number
+          repeat_kind: string
+          repeat_weekday?: number | null
+          starts_on: string
+          status?: string
+          supplier_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number | null
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          ends_on?: string | null
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          paused_on?: string | null
+          paused_until?: string | null
+          remind_days_before?: number
+          repeat_days?: number[] | null
+          repeat_every?: number
+          repeat_kind?: string
+          repeat_weekday?: number | null
+          starts_on?: string
+          status?: string
+          supplier_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_bills_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_bills_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_categories: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          grp: string
+          icon: string | null
+          id: string
+          name: string
+          needs_note: boolean
+          sort_order: number
+          system_key: string | null
+          tenant_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          grp: string
+          icon?: string | null
+          id?: string
+          name: string
+          needs_note?: boolean
+          sort_order?: number
+          system_key?: string | null
+          tenant_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          grp?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          needs_note?: boolean
+          sort_order?: number
+          system_key?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_categories_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_receipts: {
+        Row: {
+          bytes: number
+          created_at: string
+          expense_id: string
+          id: string
+          mime: string
+          object_path: string
+          outlet_id: string | null
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          bytes: number
+          created_at?: string
+          expense_id: string
+          id?: string
+          mime: string
+          object_path: string
+          outlet_id?: string | null
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          bytes?: number
+          created_at?: string
+          expense_id?: string
+          id?: string
+          mime?: string
+          object_path?: string
+          outlet_id?: string | null
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_receipts_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_receipts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount_cents: number
+          bill_due_on: string | null
+          bill_id: string | null
+          category_id: string
+          client_request_id: string | null
+          created_at: string
+          created_by: string | null
+          created_by_name: string
+          doc_type: string | null
+          ewt_cents: number | null
+          ewt_rate: number | null
+          form_2307_given: boolean
+          id: string
+          invoice_no: string | null
+          is_stock_purchase: boolean
+          note: string | null
+          outlet_id: string | null
+          paid_from: string
+          paid_to_name: string | null
+          replaces_expense_id: string | null
+          shift_cash_movement_id: string | null
+          spent_on: string
+          staff_user_id: string | null
+          status: string
+          supplier_id: string | null
+          supplier_tin: string | null
+          tenant_id: string
+          updated_at: string
+          vat_cents: number | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount_cents: number
+          bill_due_on?: string | null
+          bill_id?: string | null
+          category_id: string
+          client_request_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_name: string
+          doc_type?: string | null
+          ewt_cents?: number | null
+          ewt_rate?: number | null
+          form_2307_given?: boolean
+          id?: string
+          invoice_no?: string | null
+          is_stock_purchase?: boolean
+          note?: string | null
+          outlet_id?: string | null
+          paid_from: string
+          paid_to_name?: string | null
+          replaces_expense_id?: string | null
+          shift_cash_movement_id?: string | null
+          spent_on?: string
+          staff_user_id?: string | null
+          status?: string
+          supplier_id?: string | null
+          supplier_tin?: string | null
+          tenant_id: string
+          updated_at?: string
+          vat_cents?: number | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          bill_due_on?: string | null
+          bill_id?: string | null
+          category_id?: string
+          client_request_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string
+          doc_type?: string | null
+          ewt_cents?: number | null
+          ewt_rate?: number | null
+          form_2307_given?: boolean
+          id?: string
+          invoice_no?: string | null
+          is_stock_purchase?: boolean
+          note?: string | null
+          outlet_id?: string | null
+          paid_from?: string
+          paid_to_name?: string | null
+          replaces_expense_id?: string | null
+          shift_cash_movement_id?: string | null
+          spent_on?: string
+          staff_user_id?: string | null
+          status?: string
+          supplier_id?: string | null
+          supplier_tin?: string | null
+          tenant_id?: string
+          updated_at?: string
+          vat_cents?: number | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "expense_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_replaces_expense_id_fkey"
+            columns: ["replaces_expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_shift_cash_movement_id_fkey"
+            columns: ["shift_cash_movement_id"]
+            isOneToOne: false
+            referencedRelation: "shift_cash_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      facebook_pages: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          page_access_token: string
+          page_id: string
+          page_name: string
+          tenant_id: string
+          updated_at: string
+          user_access_token: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          page_access_token: string
+          page_id: string
+          page_name: string
+          tenant_id: string
+          updated_at?: string
+          user_access_token?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          page_access_token?: string
+          page_id?: string
+          page_name?: string
+          tenant_id?: string
+          updated_at?: string
+          user_access_token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facebook_pages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gov_discount_approvals: {
+        Row: {
+          approved_reduction: number
+          approver_name: string
+          approver_user_id: string | null
+          cashier_name: string
+          cashier_user_id: string | null
+          consumed_at: string | null
+          consumed_order: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          outlet_id: string | null
+          sale_fingerprint: string | null
+          summary: Json
+          tenant_id: string
+        }
+        Insert: {
+          approved_reduction: number
+          approver_name: string
+          approver_user_id?: string | null
+          cashier_name: string
+          cashier_user_id?: string | null
+          consumed_at?: string | null
+          consumed_order?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          outlet_id?: string | null
+          sale_fingerprint?: string | null
+          summary?: Json
+          tenant_id: string
+        }
+        Update: {
+          approved_reduction?: number
+          approver_name?: string
+          approver_user_id?: string | null
+          cashier_name?: string
+          cashier_user_id?: string | null
+          consumed_at?: string | null
+          consumed_order?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          outlet_id?: string | null
+          sale_fingerprint?: string | null
+          summary?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gov_discount_approvals_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gov_discount_approvals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gov_discount_claims: {
+        Row: {
+          allocation_mode: string
+          approval_id: string | null
+          approved_by: string | null
+          approved_by_name: string | null
+          backend: string
+          claimant_name: string
+          claimant_ref: string
+          created_at: string
+          diners: number | null
+          discount: number
+          event: string
+          external_order_id: string
+          flags: string[]
+          granted_by: string | null
+          granted_by_name: string
+          gross_share: number
+          id: string
+          id_number: string
+          kind: string
+          net_due: number
+          occurred_at: string
+          order_created_at: string | null
+          order_label: string | null
+          order_total: number | null
+          outlet_id: string | null
+          reduction: number
+          reversed_by: string | null
+          reversed_by_name: string | null
+          revision: number
+          server_reduction: number | null
+          source: string
+          tenant_id: string
+          vat_exempt_sales: number
+          vat_removed: number
+          vat_status: string
+          verification: string
+        }
+        Insert: {
+          allocation_mode: string
+          approval_id?: string | null
+          approved_by?: string | null
+          approved_by_name?: string | null
+          backend: string
+          claimant_name: string
+          claimant_ref: string
+          created_at?: string
+          diners?: number | null
+          discount: number
+          event?: string
+          external_order_id: string
+          flags?: string[]
+          granted_by?: string | null
+          granted_by_name: string
+          gross_share: number
+          id?: string
+          id_number: string
+          kind: string
+          net_due: number
+          occurred_at: string
+          order_created_at?: string | null
+          order_label?: string | null
+          order_total?: number | null
+          outlet_id?: string | null
+          reduction: number
+          reversed_by?: string | null
+          reversed_by_name?: string | null
+          revision?: number
+          server_reduction?: number | null
+          source?: string
+          tenant_id: string
+          vat_exempt_sales?: number
+          vat_removed?: number
+          vat_status: string
+          verification: string
+        }
+        Update: {
+          allocation_mode?: string
+          approval_id?: string | null
+          approved_by?: string | null
+          approved_by_name?: string | null
+          backend?: string
+          claimant_name?: string
+          claimant_ref?: string
+          created_at?: string
+          diners?: number | null
+          discount?: number
+          event?: string
+          external_order_id?: string
+          flags?: string[]
+          granted_by?: string | null
+          granted_by_name?: string
+          gross_share?: number
+          id?: string
+          id_number?: string
+          kind?: string
+          net_due?: number
+          occurred_at?: string
+          order_created_at?: string | null
+          order_label?: string | null
+          order_total?: number | null
+          outlet_id?: string | null
+          reduction?: number
+          reversed_by?: string | null
+          reversed_by_name?: string | null
+          revision?: number
+          server_reduction?: number | null
+          source?: string
+          tenant_id?: string
+          vat_exempt_sales?: number
+          vat_removed?: number
+          vat_status?: string
+          verification?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gov_discount_claims_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "gov_discount_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gov_discount_claims_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gov_discount_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gov_discount_id_photos: {
+        Row: {
+          backend: string
+          captured_at: string
+          claimant_ref: string
+          created_at: string
+          expires_at: string
+          external_order_id: string
+          id: string
+          object_path: string
+          outlet_id: string | null
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          backend: string
+          captured_at: string
+          claimant_ref: string
+          created_at?: string
+          expires_at: string
+          external_order_id: string
+          id?: string
+          object_path: string
+          outlet_id?: string | null
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          backend?: string
+          captured_at?: string
+          claimant_ref?: string
+          created_at?: string
+          expires_at?: string
+          external_order_id?: string
+          id?: string
+          object_path?: string
+          outlet_id?: string | null
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gov_discount_id_photos_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gov_discount_id_photos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gov_discount_reviews: {
+        Row: {
+          claim_id: string
+          created_at: string
+          id: string
+          note: string | null
+          reviewer_name: string
+          reviewer_user_id: string | null
+          tenant_id: string
+          verdict: string
+        }
+        Insert: {
+          claim_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          reviewer_name?: string
+          reviewer_user_id?: string | null
+          tenant_id: string
+          verdict: string
+        }
+        Update: {
+          claim_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          reviewer_name?: string
+          reviewer_user_id?: string | null
+          tenant_id?: string
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gov_discount_reviews_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "gov_discount_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gov_discount_reviews_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_audit_log: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          detail: string | null
+          event: string
+          id: number
+          is_suspected_duplicate: boolean
+          lines: Json
+          movement_count: number
+          order_id: string | null
+          outcome: string
+          outlet_id: string | null
+          revision: number | null
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          detail?: string | null
+          event: string
+          id?: never
+          is_suspected_duplicate?: boolean
+          lines?: Json
+          movement_count?: number
+          order_id?: string | null
+          outcome: string
+          outlet_id?: string | null
+          revision?: number | null
+          source: string
+          tenant_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          detail?: string | null
+          event?: string
+          id?: never
+          is_suspected_duplicate?: boolean
+          lines?: Json
+          movement_count?: number
+          order_id?: string | null
+          outcome?: string
+          outlet_id?: string | null
+          revision?: number | null
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_counts: {
+        Row: {
+          business_day: string
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          expected_item_count: number
+          id: string
+          note: string | null
+          outlet_id: string | null
+          started_at: string
+          started_by: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          business_day: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          expected_item_count?: number
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          business_day?: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          expected_item_count?: number
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_counts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_counts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_items: {
+        Row: {
+          category: string | null
+          counted_at: string | null
+          created_at: string | null
+          current_qty: number
+          id: string
+          image_url: string | null
+          is_active: boolean
+          is_prep: boolean
+          name: string
+          reorder_level: number
+          sku: string | null
+          stock_unit_id: string
+          tenant_id: string
+          unit_cost: number
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          counted_at?: string | null
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          is_prep?: boolean
+          name: string
+          reorder_level?: number
+          sku?: string | null
+          stock_unit_id: string
+          tenant_id: string
+          unit_cost?: number
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          counted_at?: string | null
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          is_prep?: boolean
+          name?: string
+          reorder_level?: number
+          sku?: string | null
+          stock_unit_id?: string
+          tenant_id?: string
+          unit_cost?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_items_stock_unit_id_fkey"
+            columns: ["stock_unit_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_stock: {
+        Row: {
+          counted_at: string | null
+          created_at: string | null
+          current_qty: number
+          id: string
+          inventory_item_id: string
+          outlet_id: string | null
+          reorder_level: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          counted_at?: string | null
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          inventory_item_id: string
+          outlet_id?: string | null
+          reorder_level?: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          counted_at?: string | null
+          created_at?: string | null
+          current_qty?: number
+          id?: string
+          inventory_item_id?: string
+          outlet_id?: string | null
+          reorder_level?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_stock_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_stock_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_stock_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_units: {
+        Row: {
+          abbreviation: string
+          created_at: string | null
+          dimension: string
+          id: string
+          is_active: boolean
+          is_base: boolean
+          name: string
+          tenant_id: string
+          to_base_factor: number
+          updated_at: string | null
+        }
+        Insert: {
+          abbreviation: string
+          created_at?: string | null
+          dimension: string
+          id?: string
+          is_active?: boolean
+          is_base?: boolean
+          name: string
+          tenant_id: string
+          to_base_factor?: number
+          updated_at?: string | null
+        }
+        Update: {
+          abbreviation?: string
+          created_at?: string | null
+          dimension?: string
+          id?: string
+          is_active?: boolean
+          is_base?: boolean
+          name?: string
+          tenant_id?: string
+          to_base_factor?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_units_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_notes: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          lead_id: string
+          note: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          lead_id: string
+          note: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          lead_id?: string
+          note?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_status_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string | null
+          id: string
+          lead_id: string
+          new_status: string
+          note: string | null
+          old_status: string | null
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string | null
+          id?: string
+          lead_id: string
+          new_status: string
+          note?: string | null
+          old_status?: string | null
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string | null
+          id?: string
+          lead_id?: string
+          new_status?: string
+          note?: string | null
+          old_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_status_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          booking_date: string
+          booking_time: string
+          converted_tenant_id: string | null
+          created_at: string | null
+          email: string
+          id: string
+          name: string
+          phone: string
+          source: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          booking_date: string
+          booking_time: string
+          converted_tenant_id?: string | null
+          created_at?: string | null
+          email: string
+          id?: string
+          name: string
+          phone: string
+          source?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          booking_date?: string
+          booking_time?: string
+          converted_tenant_id?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string
+          phone?: string
+          source?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_converted_tenant_id_fkey"
+            columns: ["converted_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_activity: {
+        Row: {
+          actor_id: string | null
+          customer_key: string
+          delta: number | null
+          event_key: string
+          external_order_id: string | null
+          id: string
+          kind: string
+          note: string | null
+          occurred_at: string
+          order_backend: string | null
+          outlet_id: string | null
+          previous_status: string | null
+          program_id: string
+          program_name: string
+          reward_id: string | null
+          reward_terms: Json | null
+          source_id: string
+          status: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          customer_key: string
+          delta?: number | null
+          event_key: string
+          external_order_id?: string | null
+          id?: string
+          kind: string
+          note?: string | null
+          occurred_at?: string
+          order_backend?: string | null
+          outlet_id?: string | null
+          previous_status?: string | null
+          program_id: string
+          program_name: string
+          reward_id?: string | null
+          reward_terms?: Json | null
+          source_id: string
+          status?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          customer_key?: string
+          delta?: number | null
+          event_key?: string
+          external_order_id?: string | null
+          id?: string
+          kind?: string
+          note?: string | null
+          occurred_at?: string
+          order_backend?: string | null
+          outlet_id?: string | null
+          previous_status?: string | null
+          program_id?: string
+          program_name?: string
+          reward_id?: string | null
+          reward_terms?: Json | null
+          source_id?: string
+          status?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_activity_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_balances: {
+        Row: {
+          balance: number
+          created_at: string
+          customer_id: string | null
+          customer_key: string
+          cycle: number
+          id: string
+          lifetime_earned: number
+          program_id: string
+          rewards_issued: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          customer_id?: string | null
+          customer_key: string
+          cycle?: number
+          id?: string
+          lifetime_earned?: number
+          program_id: string
+          rewards_issued?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          customer_id?: string | null
+          customer_key?: string
+          cycle?: number
+          id?: string
+          lifetime_earned?: number
+          program_id?: string
+          rewards_issued?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_balances_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_balances_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_balances_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_earning_jobs: {
+        Row: {
+          attempts: number
+          backend: string
+          created_at: string
+          external_order_id: string
+          id: string
+          last_checked_at: string | null
+          last_result: string | null
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          revision: number
+          tenant_id: string
+        }
+        Insert: {
+          attempts?: number
+          backend: string
+          created_at?: string
+          external_order_id: string
+          id?: string
+          last_checked_at?: string | null
+          last_result?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          revision?: number
+          tenant_id: string
+        }
+        Update: {
+          attempts?: number
+          backend?: string
+          created_at?: string
+          external_order_id?: string
+          id?: string
+          last_checked_at?: string | null
+          last_result?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          revision?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_earning_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_entitlements: {
+        Row: {
+          consumed_at: string | null
+          consumed_order_backend: string | null
+          consumed_order_id: string | null
+          created_at: string
+          customer_key: string
+          cycle: number | null
+          expires_at: string | null
+          id: string
+          issued_at: string
+          milestone_at: number | null
+          program_id: string
+          resolution_note: string | null
+          resolved_by: string | null
+          source_ledger_id: string | null
+          status: string
+          tenant_id: string
+          terms: Json
+          threshold_spent: number | null
+          updated_at: string
+          version_id: string | null
+        }
+        Insert: {
+          consumed_at?: string | null
+          consumed_order_backend?: string | null
+          consumed_order_id?: string | null
+          created_at?: string
+          customer_key: string
+          cycle?: number | null
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          milestone_at?: number | null
+          program_id: string
+          resolution_note?: string | null
+          resolved_by?: string | null
+          source_ledger_id?: string | null
+          status?: string
+          tenant_id: string
+          terms: Json
+          threshold_spent?: number | null
+          updated_at?: string
+          version_id?: string | null
+        }
+        Update: {
+          consumed_at?: string | null
+          consumed_order_backend?: string | null
+          consumed_order_id?: string | null
+          created_at?: string
+          customer_key?: string
+          cycle?: number | null
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          milestone_at?: number | null
+          program_id?: string
+          resolution_note?: string | null
+          resolved_by?: string | null
+          source_ledger_id?: string | null
+          status?: string
+          tenant_id?: string
+          terms?: Json
+          threshold_spent?: number | null
+          updated_at?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_entitlements_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_entitlements_source_ledger_id_fkey"
+            columns: ["source_ledger_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_entitlements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_entitlements_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_program_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_issuance_rate_events: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          phone_hash?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_ledger: {
+        Row: {
+          actor: string | null
+          created_at: string
+          customer_key: string
+          delta: number
+          external_order_id: string | null
+          id: string
+          is_shadow: boolean
+          kind: string
+          note: string | null
+          order_backend: string | null
+          program_id: string
+          request_id: string | null
+          tenant_id: string
+          version_id: string | null
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          customer_key: string
+          delta: number
+          external_order_id?: string | null
+          id?: string
+          is_shadow?: boolean
+          kind: string
+          note?: string | null
+          order_backend?: string | null
+          program_id: string
+          request_id?: string | null
+          tenant_id: string
+          version_id?: string | null
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          customer_key?: string
+          delta?: number
+          external_order_id?: string | null
+          id?: string
+          is_shadow?: boolean
+          kind?: string
+          note?: string | null
+          order_backend?: string | null
+          program_id?: string
+          request_id?: string | null
+          tenant_id?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_ledger_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_ledger_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_ledger_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_program_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_lookup_rate_events: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          phone_hash?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_otp_challenges: {
+        Row: {
+          attempts: number
+          code_hash: string
+          created_at: string
+          entitlement_id: string | null
+          expires_at: string
+          id: string
+          issuance_expires_at: string | null
+          issuance_ip_hash: string | null
+          issuance_request_hash: string | null
+          max_attempts: number
+          phone_hash: string
+          purpose: string
+          tenant_id: string
+          verified_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          created_at?: string
+          entitlement_id?: string | null
+          expires_at: string
+          id?: string
+          issuance_expires_at?: string | null
+          issuance_ip_hash?: string | null
+          issuance_request_hash?: string | null
+          max_attempts?: number
+          phone_hash: string
+          purpose?: string
+          tenant_id: string
+          verified_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          created_at?: string
+          entitlement_id?: string | null
+          expires_at?: string
+          id?: string
+          issuance_expires_at?: string | null
+          issuance_ip_hash?: string | null
+          issuance_request_hash?: string | null
+          max_attempts?: number
+          phone_hash?: string
+          purpose?: string
+          tenant_id?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_otp_challenges_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_otp_challenges_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_pos_projection_jobs: {
+        Row: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          external_order_id: string | null
+          id: string
+          last_error: string | null
+          last_retry_at: string | null
+          last_retry_by: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          order_backend: string
+          refund_checked_at: string | null
+          settlement_id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          external_order_id?: string | null
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string | null
+          last_retry_by?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          order_backend: string
+          refund_checked_at?: string | null
+          settlement_id: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          external_order_id?: string | null
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string | null
+          last_retry_by?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          order_backend?: string
+          refund_checked_at?: string | null
+          settlement_id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_pos_projection_jobs_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_pos_settlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_projection_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_pos_quotes: {
+        Row: {
+          created_at: string
+          created_by: string
+          customer_key: string
+          expires_at: string
+          id: string
+          order_backend: string
+          order_snapshot: Json
+          outlet_id: string | null
+          reservation_id: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          customer_key: string
+          expires_at: string
+          id?: string
+          order_backend: string
+          order_snapshot: Json
+          outlet_id?: string | null
+          reservation_id: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          customer_key?: string
+          expires_at?: string
+          id?: string
+          order_backend?: string
+          order_snapshot?: Json
+          outlet_id?: string | null
+          reservation_id?: string
+          tenant_id?: string
+          total_centavos?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_pos_quotes_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_quotes_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_quotes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_pos_settlements: {
+        Row: {
+          cashier_id: string
+          client_order_id: string
+          id: string
+          order_snapshot: Json
+          payment: Json
+          quote_id: string
+          reservation_id: string
+          settled_at: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Insert: {
+          cashier_id: string
+          client_order_id: string
+          id?: string
+          order_snapshot: Json
+          payment: Json
+          quote_id: string
+          reservation_id: string
+          settled_at?: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Update: {
+          cashier_id?: string
+          client_order_id?: string
+          id?: string
+          order_snapshot?: Json
+          payment?: Json
+          quote_id?: string
+          reservation_id?: string
+          settled_at?: string
+          tenant_id?: string
+          total_centavos?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_pos_settlements_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_pos_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_settlements_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_settlements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_program_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          program_id: string
+          rules: Json
+          tenant_id: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          program_id: string
+          rules: Json
+          tenant_id: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          program_id?: string
+          rules?: Json
+          tenant_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_program_versions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_program_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_programs: {
+        Row: {
+          activates_at: string | null
+          created_at: string
+          created_by: string | null
+          current_version_id: string | null
+          description: string | null
+          earn_mode: string
+          ends_at: string | null
+          id: string
+          name: string
+          outlet_id: string | null
+          scope: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          activates_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_version_id?: string | null
+          description?: string | null
+          earn_mode: string
+          ends_at?: string | null
+          id?: string
+          name: string
+          outlet_id?: string | null
+          scope?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          activates_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_version_id?: string | null
+          description?: string | null
+          earn_mode?: string
+          ends_at?: string | null
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          scope?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_programs_current_version_fk"
+            columns: ["current_version_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_program_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_programs_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_programs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_projected_receipts: {
+        Row: {
+          created_at: string
+          order_id: string
+          receipt: Json
+          settlement_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          receipt: Json
+          settlement_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          receipt?: Json
+          settlement_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_projected_receipts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_quote_cancellations: {
+        Row: {
+          actor: string
+          created_at: string
+          quote_id: string
+          tenant_id: string
+        }
+        Insert: {
+          actor: string
+          created_at?: string
+          quote_id: string
+          tenant_id: string
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          quote_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_quote_cancellations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_refund_restorations: {
+        Row: {
+          created_at: string
+          disposition: string
+          entitlement_id: string
+          settlement_id: string
+        }
+        Insert: {
+          created_at?: string
+          disposition: string
+          entitlement_id: string
+          settlement_id: string
+        }
+        Update: {
+          created_at?: string
+          disposition?: string
+          entitlement_id?: string
+          settlement_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_refund_restorations_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_refund_restorations_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_pos_settlements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_reservations: {
+        Row: {
+          created_at: string
+          entitlement_id: string
+          expires_at: string
+          external_order_id: string | null
+          id: string
+          order_backend: string | null
+          outlet_id: string | null
+          reserved_by: string | null
+          status: string
+          tenant_id: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entitlement_id: string
+          expires_at: string
+          external_order_id?: string | null
+          id?: string
+          order_backend?: string | null
+          outlet_id?: string | null
+          reserved_by?: string | null
+          status?: string
+          tenant_id: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entitlement_id?: string
+          expires_at?: string
+          external_order_id?: string | null
+          id?: string
+          order_backend?: string | null
+          outlet_id?: string | null
+          reserved_by?: string | null
+          status?: string
+          tenant_id?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_reservations_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_reservations_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_reservations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_sms_device_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          device_id: string
+          id: string
+          job_id: string | null
+          reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          device_id: string
+          id?: string
+          job_id?: string | null
+          reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          device_id?: string
+          id?: string
+          job_id?: string | null
+          reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_sms_device_heartbeats: {
+        Row: {
+          device_id: string
+          last_seen_at: string
+          tenant_id: string
+        }
+        Insert: {
+          device_id: string
+          last_seen_at: string
+          tenant_id: string
+        }
+        Update: {
+          device_id?: string
+          last_seen_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_sms_device_heartbeats_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_sms_devices: {
+        Row: {
+          actor_id: string
+          credential_hash: string
+          device_id: string
+          enabled: boolean
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          credential_hash: string
+          device_id: string
+          enabled?: boolean
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          credential_hash?: string
+          device_id?: string
+          enabled?: boolean
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_sms_devices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_sms_outbox: {
+        Row: {
+          challenge_id: string
+          claimed_at: string | null
+          claimed_by_actor: string | null
+          claimed_by_device: string | null
+          created_at: string
+          dispatch_started_at: string | null
+          error: string | null
+          id: string
+          lease_expires_at: string | null
+          lease_token: string | null
+          payload_encrypted: string
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          transport: string
+          updated_at: string
+        }
+        Insert: {
+          challenge_id: string
+          claimed_at?: string | null
+          claimed_by_actor?: string | null
+          claimed_by_device?: string | null
+          created_at?: string
+          dispatch_started_at?: string | null
+          error?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          payload_encrypted: string
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+          transport?: string
+          updated_at?: string
+        }
+        Update: {
+          challenge_id?: string
+          claimed_at?: string | null
+          claimed_by_actor?: string | null
+          claimed_by_device?: string | null
+          created_at?: string
+          dispatch_started_at?: string | null
+          error?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          payload_encrypted?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          transport?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_sms_outbox_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_otp_challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_sms_outbox_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_store_settings: {
+        Row: {
+          tenant_id: string
+          updated_at: string
+          wallet_otp_required: boolean
+        }
+        Insert: {
+          tenant_id: string
+          updated_at?: string
+          wallet_otp_required?: boolean
+        }
+        Update: {
+          tenant_id?: string
+          updated_at?: string
+          wallet_otp_required?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_store_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_verification_rate_events: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          phone_hash?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_verified_claims: {
+        Row: {
+          app_session_id: string | null
+          challenge_id: string | null
+          created_at: string
+          entitlement_id: string
+          expires_at: string
+          id: string
+          tenant_id: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          app_session_id?: string | null
+          challenge_id?: string | null
+          created_at?: string
+          entitlement_id: string
+          expires_at: string
+          id?: string
+          tenant_id: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          app_session_id?: string | null
+          challenge_id?: string | null
+          created_at?: string
+          entitlement_id?: string
+          expires_at?: string
+          id?: string
+          tenant_id?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_verified_claims_app_session_id_fkey"
+            columns: ["app_session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_app_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_verified_claims_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_otp_challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_verified_claims_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_verified_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_wallet_apple_registrations: {
+        Row: {
+          created_at: string
+          device_library_id: string
+          pass_id: string
+          push_token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          device_library_id: string
+          pass_id: string
+          push_token: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          device_library_id?: string
+          pass_id?: string
+          push_token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_wallet_apple_registrations_pass_id_fkey"
+            columns: ["pass_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_wallet_passes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_wallet_issuance_events: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          phone_hash?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_wallet_passes: {
+        Row: {
+          apple_pushed_hash: string | null
+          content_hash: string | null
+          content_updated_at: string
+          created_at: string
+          customer_key: string
+          google_synced_hash: string | null
+          id: string
+          program_id: string
+          serial_number: string
+          tenant_id: string
+        }
+        Insert: {
+          apple_pushed_hash?: string | null
+          content_hash?: string | null
+          content_updated_at?: string
+          created_at?: string
+          customer_key: string
+          google_synced_hash?: string | null
+          id?: string
+          program_id: string
+          serial_number: string
+          tenant_id: string
+        }
+        Update: {
+          apple_pushed_hash?: string | null
+          content_hash?: string | null
+          content_updated_at?: string
+          created_at?: string
+          customer_key?: string
+          google_synced_hash?: string | null
+          id?: string
+          program_id?: string
+          serial_number?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_wallet_passes_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_wallet_passes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_wallet_sessions: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          phone_hash: string
+          tenant_id: string
+          token_hash: string
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          phone_hash: string
+          tenant_id: string
+          token_hash: string
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          phone_hash?: string
+          tenant_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_wallet_sessions_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_otp_challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_wallet_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyverse_item_map: {
+        Row: {
+          created_at: string
+          id: string
+          in_stock: number | null
+          kind: string
+          last_synced_at: string
+          local_key: string
+          loyverse_item_id: string | null
+          loyverse_modifier_id: string | null
+          loyverse_modifier_option_id: string | null
+          loyverse_sku: string | null
+          loyverse_variant_id: string | null
+          menu_item_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          in_stock?: number | null
+          kind: string
+          last_synced_at?: string
+          local_key?: string
+          loyverse_item_id?: string | null
+          loyverse_modifier_id?: string | null
+          loyverse_modifier_option_id?: string | null
+          loyverse_sku?: string | null
+          loyverse_variant_id?: string | null
+          menu_item_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          in_stock?: number | null
+          kind?: string
+          last_synced_at?: string
+          local_key?: string
+          loyverse_item_id?: string | null
+          loyverse_modifier_id?: string | null
+          loyverse_modifier_option_id?: string | null
+          loyverse_sku?: string | null
+          loyverse_variant_id?: string | null
+          menu_item_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyverse_item_map_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyverse_item_map_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcp_api_keys: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          key_hash: string
+          key_prefix: string
+          label: string
+          last_used_at: string | null
+          revoked_at: string | null
+          scopes: string[]
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          key_hash: string
+          key_prefix: string
+          label: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          label?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcp_oauth_clients: {
+        Row: {
+          client_id: string
+          client_name: string
+          created_at: string | null
+          redirect_uris: string[]
+        }
+        Insert: {
+          client_id: string
+          client_name: string
+          created_at?: string | null
+          redirect_uris: string[]
+        }
+        Update: {
+          client_id?: string
+          client_name?: string
+          created_at?: string | null
+          redirect_uris?: string[]
+        }
+        Relationships: []
+      }
+      mcp_oauth_codes: {
+        Row: {
+          client_id: string
+          code_challenge: string
+          code_challenge_method: string
+          code_hash: string
+          consumed_at: string | null
+          created_at: string | null
+          created_by: string | null
+          expires_at: string
+          id: string
+          redirect_uri: string
+          scope: string
+          tenant_id: string | null
+        }
+        Insert: {
+          client_id: string
+          code_challenge: string
+          code_challenge_method?: string
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          redirect_uri: string
+          scope?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          code_challenge?: string
+          code_challenge_method?: string
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          redirect_uri?: string
+          scope?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_oauth_codes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcp_oauth_tokens: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          expires_at: string
+          id: string
+          revoked_at: string | null
+          scope: string
+          subject: string | null
+          tenant_id: string | null
+          token_hash: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          revoked_at?: string | null
+          scope?: string
+          subject?: string | null
+          tenant_id?: string | null
+          token_hash: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          revoked_at?: string | null
+          scope?: string
+          subject?: string | null
+          tenant_id?: string | null
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_oauth_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_item_tags: {
+        Row: {
+          menu_item_id: string
+          tag_definition_id: string
+          tenant_id: string
+        }
+        Insert: {
+          menu_item_id: string
+          tag_definition_id: string
+          tenant_id: string
+        }
+        Update: {
+          menu_item_id?: string
+          tag_definition_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_item_tags_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_tags_tag_definition_id_fkey"
+            columns: ["tag_definition_id"]
+            isOneToOne: false
+            referencedRelation: "tag_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_tags_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_items: {
+        Row: {
+          addons: Json
+          auto_86_snoozed_until: string | null
+          auto_disabled_at: string | null
+          badge_text: string | null
+          bcg_classification: string | null
+          boost_priority: number | null
+          category_id: string | null
+          created_at: string
+          description: string
+          discounted_price: number | null
+          gov_discount_eligible: boolean
+          id: string
+          image_url: string
+          is_available: boolean
+          is_featured: boolean
+          loyverse_item_id: string | null
+          modifier_groups: Json
+          name: string
+          order: number
+          presell_enabled: boolean
+          price: number
+          show_in_checkout_upsell: boolean
+          tenant_id: string
+          updated_at: string
+          variation_types: Json
+          variations: Json
+        }
+        Insert: {
+          addons?: Json
+          auto_86_snoozed_until?: string | null
+          auto_disabled_at?: string | null
+          badge_text?: string | null
+          bcg_classification?: string | null
+          boost_priority?: number | null
+          category_id?: string | null
+          created_at?: string
+          description: string
+          discounted_price?: number | null
+          gov_discount_eligible?: boolean
+          id?: string
+          image_url: string
+          is_available?: boolean
+          is_featured?: boolean
+          loyverse_item_id?: string | null
+          modifier_groups?: Json
+          name: string
+          order?: number
+          presell_enabled?: boolean
+          price: number
+          show_in_checkout_upsell?: boolean
+          tenant_id: string
+          updated_at?: string
+          variation_types?: Json
+          variations?: Json
+        }
+        Update: {
+          addons?: Json
+          auto_86_snoozed_until?: string | null
+          auto_disabled_at?: string | null
+          badge_text?: string | null
+          bcg_classification?: string | null
+          boost_priority?: number | null
+          category_id?: string | null
+          created_at?: string
+          description?: string
+          discounted_price?: number | null
+          gov_discount_eligible?: boolean
+          id?: string
+          image_url?: string
+          is_available?: boolean
+          is_featured?: boolean
+          loyverse_item_id?: string | null
+          modifier_groups?: Json
+          name?: string
+          order?: number
+          presell_enabled?: boolean
+          price?: number
+          show_in_checkout_upsell?: boolean
+          tenant_id?: string
+          updated_at?: string
+          variation_types?: Json
+          variations?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_notification_seen: {
+        Row: {
+          seen_at: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          seen_at?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          seen_at?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_notification_seen_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_notifications: {
+        Row: {
+          cash_cents: number | null
+          created_at: string
+          drawer_name: string | null
+          id: string
+          inventory_item_id: string | null
+          item_name: string
+          kind: string
+          outlet_id: string | null
+          outlet_name: string | null
+          push_claimed_at: string | null
+          quantity: number | null
+          remittance_id: string | null
+          reorder_level: number | null
+          shift_id: string | null
+          stock_alert_id: string | null
+          tenant_id: string
+          unit: string | null
+        }
+        Insert: {
+          cash_cents?: number | null
+          created_at?: string
+          drawer_name?: string | null
+          id?: string
+          inventory_item_id?: string | null
+          item_name: string
+          kind: string
+          outlet_id?: string | null
+          outlet_name?: string | null
+          push_claimed_at?: string | null
+          quantity?: number | null
+          remittance_id?: string | null
+          reorder_level?: number | null
+          shift_id?: string | null
+          stock_alert_id?: string | null
+          tenant_id: string
+          unit?: string | null
+        }
+        Update: {
+          cash_cents?: number | null
+          created_at?: string
+          drawer_name?: string | null
+          id?: string
+          inventory_item_id?: string | null
+          item_name?: string
+          kind?: string
+          outlet_id?: string | null
+          outlet_name?: string | null
+          push_claimed_at?: string | null
+          quantity?: number | null
+          remittance_id?: string | null
+          reorder_level?: number | null
+          shift_id?: string | null
+          stock_alert_id?: string | null
+          tenant_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_notifications_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_remittance_id_fkey"
+            columns: ["remittance_id"]
+            isOneToOne: false
+            referencedRelation: "cash_remittances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_stock_alert_id_fkey"
+            columns: ["stock_alert_id"]
+            isOneToOne: false
+            referencedRelation: "stock_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messenger_messages: {
+        Row: {
+          body: string
+          created_at: string
+          direction: string
+          id: string
+          kind: string
+          mid: string | null
+          sent_at: string
+          session_id: string
+          tenant_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          direction: string
+          id?: string
+          kind: string
+          mid?: string | null
+          sent_at: string
+          session_id: string
+          tenant_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          kind?: string
+          mid?: string | null
+          sent_at?: string
+          session_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_messages_session_fkey"
+            columns: ["session_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "messenger_sessions"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "messenger_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messenger_order_updates: {
+        Row: {
+          created_at: string
+          order_id: string
+          outcome: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          outcome?: string
+          status: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          outcome?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_order_updates_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messenger_order_updates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messenger_rules: {
+        Row: {
+          action: Json
+          created_at: string
+          id: string
+          is_enabled: boolean
+          name: string
+          position: number
+          tenant_id: string
+          trigger: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          action: Json
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          name: string
+          position?: number
+          tenant_id: string
+          trigger: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          action?: Json
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          position?: number
+          tenant_id?: string
+          trigger?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messenger_sessions: {
+        Row: {
+          bot_paused_until: string | null
+          cart_data: Json | null
+          cart_version: number
+          checkout_state: Json | null
+          created_at: string
+          first_name: string | null
+          id: string
+          last_inbound_at: string | null
+          last_message_at: string | null
+          last_message_preview: string | null
+          last_name: string | null
+          page_id: string | null
+          profile_fetched_at: string | null
+          profile_pic_url: string | null
+          psid: string
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          bot_paused_until?: string | null
+          cart_data?: Json | null
+          cart_version?: number
+          checkout_state?: Json | null
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_name?: string | null
+          page_id?: string | null
+          profile_fetched_at?: string | null
+          profile_pic_url?: string | null
+          psid: string
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          bot_paused_until?: string | null
+          cart_data?: Json | null
+          cart_version?: number
+          checkout_state?: Json | null
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_name?: string | null
+          page_id?: string | null
+          profile_fetched_at?: string | null
+          profile_pic_url?: string | null
+          psid?: string
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messenger_settings: {
+        Row: {
+          bot_enabled: boolean
+          messages: Json | null
+          order_updates: Json | null
+          profile_error: string | null
+          profile_fields: string[]
+          profile_hash: string | null
+          profile_synced_at: string | null
+          rules_customized_at: string | null
+          rules_version: number
+          takeover_minutes: number
+          tenant_id: string
+          tester_code_expires_at: string | null
+          tester_code_hash: string | null
+          tester_psid: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          bot_enabled?: boolean
+          messages?: Json | null
+          order_updates?: Json | null
+          profile_error?: string | null
+          profile_fields?: string[]
+          profile_hash?: string | null
+          profile_synced_at?: string | null
+          rules_customized_at?: string | null
+          rules_version?: number
+          takeover_minutes?: number
+          tenant_id: string
+          tester_code_expires_at?: string | null
+          tester_code_hash?: string | null
+          tester_psid?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          bot_enabled?: boolean
+          messages?: Json | null
+          order_updates?: Json | null
+          profile_error?: string | null
+          profile_fields?: string[]
+          profile_hash?: string | null
+          profile_synced_at?: string | null
+          rules_customized_at?: string | null
+          rules_version?: number
+          takeover_minutes?: number
+          tenant_id?: string
+          tester_code_expires_at?: string | null
+          tester_code_hash?: string | null
+          tester_psid?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      modifier_group_library: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          max_select: number | null
+          min_select: number
+          name: string
+          options: Json
+          selection_mode: string
+          source_menu_item_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          max_select?: number | null
+          min_select?: number
+          name: string
+          options?: Json
+          selection_mode?: string
+          source_menu_item_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          max_select?: number | null
+          min_select?: number
+          name?: string
+          options?: Json
+          selection_mode?: string
+          source_menu_item_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modifier_group_library_source_menu_item_id_fkey"
+            columns: ["source_menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "modifier_group_library_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_events: {
+        Row: {
+          created_at: string
+          event: string
+          onboarding_id: string
+        }
+        Insert: {
+          created_at?: string
+          event: string
+          onboarding_id: string
+        }
+        Update: {
+          created_at?: string
+          event?: string
+          onboarding_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_events_onboarding_id_fkey"
+            columns: ["onboarding_id"]
+            isOneToOne: false
+            referencedRelation: "store_onboardings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_invites: {
+        Row: {
+          checkout_lead_id: string | null
+          claimed_at: string | null
+          code_hash: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          label: string
+          notes: string | null
+          payment_term: string
+          revoked_at: string | null
+        }
+        Insert: {
+          checkout_lead_id?: string | null
+          claimed_at?: string | null
+          code_hash: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          label: string
+          notes?: string | null
+          payment_term: string
+          revoked_at?: string | null
+        }
+        Update: {
+          checkout_lead_id?: string | null
+          claimed_at?: string | null
+          code_hash?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          label?: string
+          notes?: string | null
+          payment_term?: string
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_invites_checkout_lead_id_fkey"
+            columns: ["checkout_lead_id"]
+            isOneToOne: true
+            referencedRelation: "checkout_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_deletion_archive: {
+        Row: {
+          deletion_id: string
+          items: Json
+          order_id: string
+          order_row: Json
+          payments: Json
+          revisions: Json
+          tenant_id: string
+        }
+        Insert: {
+          deletion_id: string
+          items?: Json
+          order_id: string
+          order_row: Json
+          payments?: Json
+          revisions?: Json
+          tenant_id: string
+        }
+        Update: {
+          deletion_id?: string
+          items?: Json
+          order_id?: string
+          order_row?: Json
+          payments?: Json
+          revisions?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_deletion_archive_deletion_id_fkey"
+            columns: ["deletion_id"]
+            isOneToOne: false
+            referencedRelation: "order_deletions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_deletion_archive_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_deletion_audit: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          deletion_id: string | null
+          detail: Json
+          id: number
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          deletion_id?: string | null
+          detail?: Json
+          id?: never
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          deletion_id?: string | null
+          detail?: Json
+          id?: never
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_deletion_audit_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_deletions: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          deleted_order_count: number | null
+          deleted_total: number | null
+          export_expires_at: string
+          export_sha256: string
+          exported_at: string
+          id: string
+          include_active: boolean
+          order_count: number
+          order_ids: string[]
+          order_total: number
+          purge_after: string | null
+          purged_at: string | null
+          requested_by: string
+          restored_at: string | null
+          restored_by: string | null
+          scope: Json
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          deleted_order_count?: number | null
+          deleted_total?: number | null
+          export_expires_at: string
+          export_sha256: string
+          exported_at: string
+          id?: string
+          include_active?: boolean
+          order_count: number
+          order_ids: string[]
+          order_total: number
+          purge_after?: string | null
+          purged_at?: string | null
+          requested_by: string
+          restored_at?: string | null
+          restored_by?: string | null
+          scope: Json
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          deleted_order_count?: number | null
+          deleted_total?: number | null
+          export_expires_at?: string
+          export_sha256?: string
+          exported_at?: string
+          id?: string
+          include_active?: boolean
+          order_count?: number
+          order_ids?: string[]
+          order_total?: number
+          purge_after?: string | null
+          purged_at?: string | null
+          requested_by?: string
+          restored_at?: string | null
+          restored_by?: string | null
+          scope?: Json
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_deletions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_item_costs: {
+        Row: {
+          costed_at: string
+          order_item_id: string
+          source: string
+          tenant_id: string
+          unit_cost: number
+        }
+        Insert: {
+          costed_at?: string
+          order_item_id: string
+          source: string
+          tenant_id: string
+          unit_cost: number
+        }
+        Update: {
+          costed_at?: string
+          order_item_id?: string
+          source?: string
+          tenant_id?: string
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_item_costs_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: true
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_item_costs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_items: {
+        Row: {
+          addon_details: Json | null
+          addons: string[]
+          bundle_id: string | null
+          bundle_name: string | null
+          category_name: string | null
+          discount_amount: number
+          id: string
+          is_bundle_item: boolean
+          is_upsell_item: boolean
+          menu_item_id: string | null
+          menu_item_name: string
+          order_id: string
+          price: number
+          quantity: number
+          slot_name: string | null
+          special_instructions: string | null
+          subtotal: number
+          variation: string | null
+          variation_selections: Json | null
+        }
+        Insert: {
+          addon_details?: Json | null
+          addons?: string[]
+          bundle_id?: string | null
+          bundle_name?: string | null
+          category_name?: string | null
+          discount_amount?: number
+          id?: string
+          is_bundle_item?: boolean
+          is_upsell_item?: boolean
+          menu_item_id?: string | null
+          menu_item_name: string
+          order_id: string
+          price: number
+          quantity?: number
+          slot_name?: string | null
+          special_instructions?: string | null
+          subtotal: number
+          variation?: string | null
+          variation_selections?: Json | null
+        }
+        Update: {
+          addon_details?: Json | null
+          addons?: string[]
+          bundle_id?: string | null
+          bundle_name?: string | null
+          category_name?: string | null
+          discount_amount?: number
+          id?: string
+          is_bundle_item?: boolean
+          is_upsell_item?: boolean
+          menu_item_id?: string | null
+          menu_item_name?: string
+          order_id?: string
+          price?: number
+          quantity?: number
+          slot_name?: string | null
+          special_instructions?: string | null
+          subtotal?: number
+          variation?: string | null
+          variation_selections?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          kind: string
+          note: string | null
+          order_id: string
+          outlet_id: string | null
+          payment_method_id: string | null
+          payment_method_name: string | null
+          proof_public_id: string | null
+          proof_url: string | null
+          recorded_by: string | null
+          reference: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          kind: string
+          note?: string | null
+          order_id: string
+          outlet_id?: string | null
+          payment_method_id?: string | null
+          payment_method_name?: string | null
+          proof_public_id?: string | null
+          proof_url?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          order_id?: string
+          outlet_id?: string | null
+          payment_method_id?: string | null
+          payment_method_name?: string | null
+          proof_public_id?: string | null
+          proof_url?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_push_notifications: {
+        Row: {
+          created_at: string
+          order_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_push_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_refund_counters: {
+        Row: {
+          last_number: number
+          tenant_id: string
+        }
+        Insert: {
+          last_number?: number
+          tenant_id: string
+        }
+        Update: {
+          last_number?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_refund_counters_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_refunds: {
+        Row: {
+          amount: number
+          approval_id: string
+          approved_by: string | null
+          approved_by_name: string | null
+          cancelled_order: boolean
+          created_at: string
+          id: string
+          issued_by: string
+          issued_by_name: string | null
+          lines: Json
+          method: string | null
+          note: string | null
+          opening_payment_id: string | null
+          order_id: string
+          outlet_id: string | null
+          payment_row_ids: string[]
+          reason: string | null
+          reason_code: string | null
+          refund_number: number
+          restock: boolean
+          revision_id: string | null
+          scope: string
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          approval_id: string
+          approved_by?: string | null
+          approved_by_name?: string | null
+          cancelled_order?: boolean
+          created_at?: string
+          id?: string
+          issued_by: string
+          issued_by_name?: string | null
+          lines?: Json
+          method?: string | null
+          note?: string | null
+          opening_payment_id?: string | null
+          order_id: string
+          outlet_id?: string | null
+          payment_row_ids?: string[]
+          reason?: string | null
+          reason_code?: string | null
+          refund_number: number
+          restock?: boolean
+          revision_id?: string | null
+          scope: string
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          approval_id?: string
+          approved_by?: string | null
+          approved_by_name?: string | null
+          cancelled_order?: boolean
+          created_at?: string
+          id?: string
+          issued_by?: string
+          issued_by_name?: string | null
+          lines?: Json
+          method?: string | null
+          note?: string | null
+          opening_payment_id?: string | null
+          order_id?: string
+          outlet_id?: string | null
+          payment_row_ids?: string[]
+          reason?: string | null
+          reason_code?: string | null
+          refund_number?: number
+          restock?: boolean
+          revision_id?: string | null
+          scope?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_refunds_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_revisions: {
+        Row: {
+          created_at: string
+          id: string
+          items_after: Json
+          items_before: Json
+          order_id: string
+          outlet_id: string | null
+          reason: string | null
+          revised_by: string | null
+          revision_number: number
+          tenant_id: string
+          total_after: number
+          total_before: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items_after: Json
+          items_before: Json
+          order_id: string
+          outlet_id?: string | null
+          reason?: string | null
+          revised_by?: string | null
+          revision_number: number
+          tenant_id: string
+          total_after: number
+          total_before: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items_after?: Json
+          items_before?: Json
+          order_id?: string
+          outlet_id?: string | null
+          reason?: string | null
+          revised_by?: string | null
+          revision_number?: number
+          tenant_id?: string
+          total_after?: number
+          total_before?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_revisions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_revisions_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_revisions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_status_events: {
+        Row: {
+          actor_name: string
+          actor_user_id: string | null
+          backend: string
+          created_at: string
+          event: string
+          external_order_id: string
+          id: string
+          note: string | null
+          occurred_at: string
+          order_total: number | null
+          outlet_id: string | null
+          previous_status: string | null
+          reason: string | null
+          source: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_name: string
+          actor_user_id?: string | null
+          backend: string
+          created_at?: string
+          event: string
+          external_order_id: string
+          id?: string
+          note?: string | null
+          occurred_at?: string
+          order_total?: number | null
+          outlet_id?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          source?: string | null
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          actor_name?: string
+          actor_user_id?: string | null
+          backend?: string
+          created_at?: string
+          event?: string
+          external_order_id?: string
+          id?: string
+          note?: string | null
+          occurred_at?: string
+          order_total?: number | null
+          outlet_id?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          source?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_status_events_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_stock_applications: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          order_id: string
+          reason: string
+          restored: Json | null
+          revision: number
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind?: string
+          order_id: string
+          reason: string
+          restored?: Json | null
+          revision?: number
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          order_id?: string
+          reason?: string
+          restored?: Json | null
+          revision?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_stock_applications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_type_item_prices: {
+        Row: {
+          created_at: string
+          id: string
+          menu_item_id: string
+          order_type_id: string
+          price: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          menu_item_id: string
+          order_type_id: string
+          price: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          menu_item_id?: string
+          order_type_id?: string
+          price?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_type_item_prices_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_type_item_prices_order_type_id_fkey"
+            columns: ["order_type_id"]
+            isOneToOne: false
+            referencedRelation: "order_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_type_item_prices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_types: {
+        Row: {
+          advance_order_allow_asap: boolean
+          advance_order_enabled: boolean
+          advance_order_lead_time_minutes: number
+          advance_order_max_days_ahead: number
+          advance_order_slot_interval_minutes: number
+          after_billing_payment_enabled: boolean
+          available_on_pos: boolean
+          available_on_web: boolean
+          created_at: string
+          description: string | null
+          id: string
+          is_enabled: boolean
+          messenger_enabled: boolean
+          minimum_order_amount: number
+          name: string
+          note: string | null
+          order_index: number
+          pos_markup_percent: number | null
+          service_charge_enabled: boolean
+          service_charge_type: string | null
+          service_charge_value: number | null
+          tenant_id: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          advance_order_allow_asap?: boolean
+          advance_order_enabled?: boolean
+          advance_order_lead_time_minutes?: number
+          advance_order_max_days_ahead?: number
+          advance_order_slot_interval_minutes?: number
+          after_billing_payment_enabled?: boolean
+          available_on_pos?: boolean
+          available_on_web?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          messenger_enabled?: boolean
+          minimum_order_amount?: number
+          name: string
+          note?: string | null
+          order_index?: number
+          pos_markup_percent?: number | null
+          service_charge_enabled?: boolean
+          service_charge_type?: string | null
+          service_charge_value?: number | null
+          tenant_id: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          advance_order_allow_asap?: boolean
+          advance_order_enabled?: boolean
+          advance_order_lead_time_minutes?: number
+          advance_order_max_days_ahead?: number
+          advance_order_slot_interval_minutes?: number
+          after_billing_payment_enabled?: boolean
+          available_on_pos?: boolean
+          available_on_web?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          messenger_enabled?: boolean
+          minimum_order_amount?: number
+          name?: string
+          note?: string | null
+          order_index?: number
+          pos_markup_percent?: number | null
+          service_charge_enabled?: boolean
+          service_charge_type?: string | null
+          service_charge_value?: number | null
+          tenant_id?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_types_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          amount_paid: number
+          cancel_reason: string | null
+          client_order_id: string | null
+          created_at: string
+          customer_contact: string | null
+          customer_data: Json | null
+          customer_id: string | null
+          customer_name: string | null
+          daily_number: number | null
+          delivery_fee: number | null
+          discount_data: Json | null
+          discount_total: number
+          edited_at: string | null
+          edited_by: string | null
+          has_bundle_items: boolean
+          has_upsell_items: boolean
+          id: string
+          item_count: number | null
+          lalamove_driver_id: string | null
+          lalamove_driver_name: string | null
+          lalamove_driver_phone: string | null
+          lalamove_order_id: string | null
+          lalamove_quotation_id: string | null
+          lalamove_status: string | null
+          lalamove_tracking_url: string | null
+          loyverse_push_error: string | null
+          loyverse_push_status: string | null
+          loyverse_pushed_at: string | null
+          loyverse_receipt_number: string | null
+          order_date: string | null
+          order_token_expires_at: string | null
+          order_token_hash: string | null
+          order_type: string | null
+          order_type_id: string | null
+          outlet_id: string | null
+          payment_method_details: string | null
+          payment_method_id: string | null
+          payment_method_name: string | null
+          payment_method_qr_code_url: string | null
+          payment_proof_public_id: string | null
+          payment_proof_reference: string | null
+          payment_proof_uploaded_at: string | null
+          payment_proof_url: string | null
+          payment_status: string | null
+          prep_minutes: number | null
+          promised_ready_at: string | null
+          revision_number: number
+          scheduled_for: string | null
+          service_charge_amount: number | null
+          source: string
+          status: string
+          tenant_id: string
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          amount_paid?: number
+          cancel_reason?: string | null
+          client_order_id?: string | null
+          created_at?: string
+          customer_contact?: string | null
+          customer_data?: Json | null
+          customer_id?: string | null
+          customer_name?: string | null
+          daily_number?: number | null
+          delivery_fee?: number | null
+          discount_data?: Json | null
+          discount_total?: number
+          edited_at?: string | null
+          edited_by?: string | null
+          has_bundle_items?: boolean
+          has_upsell_items?: boolean
+          id?: string
+          item_count?: number | null
+          lalamove_driver_id?: string | null
+          lalamove_driver_name?: string | null
+          lalamove_driver_phone?: string | null
+          lalamove_order_id?: string | null
+          lalamove_quotation_id?: string | null
+          lalamove_status?: string | null
+          lalamove_tracking_url?: string | null
+          loyverse_push_error?: string | null
+          loyverse_push_status?: string | null
+          loyverse_pushed_at?: string | null
+          loyverse_receipt_number?: string | null
+          order_date?: string | null
+          order_token_expires_at?: string | null
+          order_token_hash?: string | null
+          order_type?: string | null
+          order_type_id?: string | null
+          outlet_id?: string | null
+          payment_method_details?: string | null
+          payment_method_id?: string | null
+          payment_method_name?: string | null
+          payment_method_qr_code_url?: string | null
+          payment_proof_public_id?: string | null
+          payment_proof_reference?: string | null
+          payment_proof_uploaded_at?: string | null
+          payment_proof_url?: string | null
+          payment_status?: string | null
+          prep_minutes?: number | null
+          promised_ready_at?: string | null
+          revision_number?: number
+          scheduled_for?: string | null
+          service_charge_amount?: number | null
+          source?: string
+          status?: string
+          tenant_id: string
+          total: number
+          updated_at?: string
+        }
+        Update: {
+          amount_paid?: number
+          cancel_reason?: string | null
+          client_order_id?: string | null
+          created_at?: string
+          customer_contact?: string | null
+          customer_data?: Json | null
+          customer_id?: string | null
+          customer_name?: string | null
+          daily_number?: number | null
+          delivery_fee?: number | null
+          discount_data?: Json | null
+          discount_total?: number
+          edited_at?: string | null
+          edited_by?: string | null
+          has_bundle_items?: boolean
+          has_upsell_items?: boolean
+          id?: string
+          item_count?: number | null
+          lalamove_driver_id?: string | null
+          lalamove_driver_name?: string | null
+          lalamove_driver_phone?: string | null
+          lalamove_order_id?: string | null
+          lalamove_quotation_id?: string | null
+          lalamove_status?: string | null
+          lalamove_tracking_url?: string | null
+          loyverse_push_error?: string | null
+          loyverse_push_status?: string | null
+          loyverse_pushed_at?: string | null
+          loyverse_receipt_number?: string | null
+          order_date?: string | null
+          order_token_expires_at?: string | null
+          order_token_hash?: string | null
+          order_type?: string | null
+          order_type_id?: string | null
+          outlet_id?: string | null
+          payment_method_details?: string | null
+          payment_method_id?: string | null
+          payment_method_name?: string | null
+          payment_method_qr_code_url?: string | null
+          payment_proof_public_id?: string | null
+          payment_proof_reference?: string | null
+          payment_proof_uploaded_at?: string | null
+          payment_proof_url?: string | null
+          payment_status?: string | null
+          prep_minutes?: number | null
+          promised_ready_at?: string | null
+          revision_number?: number
+          scheduled_for?: string | null
+          service_charge_amount?: number | null
+          source?: string
+          status?: string
+          tenant_id?: string
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_order_type_id_fkey"
+            columns: ["order_type_id"]
+            isOneToOne: false
+            referencedRelation: "order_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_payment_method_id_fkey"
+            columns: ["payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "payment_methods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outlet_menu_items: {
+        Row: {
+          created_at: string
+          discount_cleared: boolean
+          discounted_price: number | null
+          id: string
+          is_available: boolean
+          is_listed: boolean
+          menu_item_id: string
+          outlet_id: string
+          price: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discount_cleared?: boolean
+          discounted_price?: number | null
+          id?: string
+          is_available?: boolean
+          is_listed?: boolean
+          menu_item_id: string
+          outlet_id: string
+          price?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discount_cleared?: boolean
+          discounted_price?: number | null
+          id?: string
+          is_available?: boolean
+          is_listed?: boolean
+          menu_item_id?: string
+          outlet_id?: string
+          price?: number | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlet_menu_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_menu_items_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_menu_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outlets: {
+        Row: {
+          address: string | null
+          created_at: string
+          delivery_radius_km: number | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          latitude: number | null
+          longitude: number | null
+          name: string
+          operating_hours: Json | null
+          phone: string | null
+          slug: string
+          sort_order: number
+          supports_delivery: boolean
+          supports_dine_in: boolean
+          supports_pickup: boolean
+          tenant_id: string
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          delivery_radius_km?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          operating_hours?: Json | null
+          phone?: string | null
+          slug: string
+          sort_order?: number
+          supports_delivery?: boolean
+          supports_dine_in?: boolean
+          supports_pickup?: boolean
+          tenant_id: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          delivery_radius_km?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          operating_hours?: Json | null
+          phone?: string | null
+          slug?: string
+          sort_order?: number
+          supports_delivery?: boolean
+          supports_dine_in?: boolean
+          supports_pickup?: boolean
+          tenant_id?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_path_ticks: {
+        Row: {
+          step_id: string
+          tenant_id: string
+          ticked_at: string
+          ticked_by: string | null
+        }
+        Insert: {
+          step_id: string
+          tenant_id: string
+          ticked_at?: string
+          ticked_by?: string | null
+        }
+        Update: {
+          step_id?: string
+          tenant_id?: string
+          ticked_at?: string
+          ticked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_path_ticks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pairing_rule_target_items: {
+        Row: {
+          display_order: number
+          menu_item_id: string
+          target_id: string
+        }
+        Insert: {
+          display_order?: number
+          menu_item_id: string
+          target_id: string
+        }
+        Update: {
+          display_order?: number
+          menu_item_id?: string
+          target_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pairing_rule_target_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rule_target_items_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "pairing_rule_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pairing_rule_targets: {
+        Row: {
+          display_order: number
+          id: string
+          rule_id: string
+          selection_mode: string
+          target_category_id: string | null
+          target_tag_id: string | null
+          target_type: string
+        }
+        Insert: {
+          display_order?: number
+          id?: string
+          rule_id: string
+          selection_mode?: string
+          target_category_id?: string | null
+          target_tag_id?: string | null
+          target_type: string
+        }
+        Update: {
+          display_order?: number
+          id?: string
+          rule_id?: string
+          selection_mode?: string
+          target_category_id?: string | null
+          target_tag_id?: string | null
+          target_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pairing_rule_targets_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "pairing_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rule_targets_target_category_id_fkey"
+            columns: ["target_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rule_targets_target_tag_id_fkey"
+            columns: ["target_tag_id"]
+            isOneToOne: false
+            referencedRelation: "tag_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pairing_rules: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          max_suggestions: number
+          name: string
+          source_category_id: string | null
+          source_tag_id: string | null
+          source_type: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_suggestions?: number
+          name: string
+          source_category_id?: string | null
+          source_tag_id?: string | null
+          source_type: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_suggestions?: number
+          name?: string
+          source_category_id?: string | null
+          source_tag_id?: string | null
+          source_type?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pairing_rules_source_category_id_fkey"
+            columns: ["source_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rules_source_tag_id_fkey"
+            columns: ["source_tag_id"]
+            isOneToOne: false
+            referencedRelation: "tag_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pairing_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_method_order_types: {
+        Row: {
+          created_at: string
+          id: string
+          order_type_id: string
+          payment_method_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          order_type_id: string
+          payment_method_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          order_type_id?: string
+          payment_method_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_method_order_types_order_type_id_fkey"
+            columns: ["order_type_id"]
+            isOneToOne: false
+            referencedRelation: "order_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_method_order_types_payment_method_id_fkey"
+            columns: ["payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "payment_methods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_methods: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          is_active: boolean
+          loyverse_payment_type_id: string | null
+          name: string
+          order_index: number
+          qr_code_url: string | null
+          require_payment_proof: boolean
+          skip_payment_details: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          is_active?: boolean
+          loyverse_payment_type_id?: string | null
+          name: string
+          order_index?: number
+          qr_code_url?: string | null
+          require_payment_proof?: boolean
+          skip_payment_details?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          is_active?: boolean
+          loyverse_payment_type_id?: string | null
+          name?: string
+          order_index?: number
+          qr_code_url?: string | null
+          require_payment_proof?: boolean
+          skip_payment_details?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_methods_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_announcement_reads: {
+        Row: {
+          announcement_id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_announcement_reads_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "platform_announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_announcements: {
+        Row: {
+          audience_tenant_ids: string[] | null
+          blocks: Json
+          cover_image_url: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          published_at: string | null
+          push_body: string | null
+          push_recipient_count: number | null
+          push_sent_at: string | null
+          push_title: string | null
+          show_popup: boolean
+          status: string
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience_tenant_ids?: string[] | null
+          blocks?: Json
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          published_at?: string | null
+          push_body?: string | null
+          push_recipient_count?: number | null
+          push_sent_at?: string | null
+          push_title?: string | null
+          show_popup?: boolean
+          status?: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience_tenant_ids?: string[] | null
+          blocks?: Json
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          published_at?: string | null
+          push_body?: string | null
+          push_recipient_count?: number | null
+          push_sent_at?: string | null
+          push_title?: string | null
+          show_popup?: boolean
+          status?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_app_releases: {
+        Row: {
+          latest_version: string
+          minimum_version: string
+          platform: string
+          release_notes: string | null
+          store_url: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          latest_version: string
+          minimum_version: string
+          platform: string
+          release_notes?: string | null
+          store_url: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          latest_version?: string
+          minimum_version?: string
+          platform?: string
+          release_notes?: string | null
+          store_url?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      platform_device_tokens: {
+        Row: {
+          channels: string[]
+          created_at: string
+          last_seen_at: string
+          platform: string
+          tenant_id: string | null
+          token: string
+          user_id: string
+        }
+        Insert: {
+          channels?: string[]
+          created_at?: string
+          last_seen_at?: string
+          platform: string
+          tenant_id?: string | null
+          token: string
+          user_id: string
+        }
+        Update: {
+          channels?: string[]
+          created_at?: string
+          last_seen_at?: string
+          platform?: string
+          tenant_id?: string | null
+          token?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_device_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_payment_methods: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          is_active: boolean
+          name: string
+          order_index: number
+          qr_code_url: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          order_index?: number
+          qr_code_url?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          order_index?: number
+          qr_code_url?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      presell_stock: {
+        Row: {
+          created_at: string | null
+          id: string
+          menu_item_id: string
+          presell_date: string
+          sold_qty: number
+          stock_qty: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          menu_item_id: string
+          presell_date: string
+          sold_qty?: number
+          stock_qty: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string
+          presell_date?: string
+          sold_qty?: number
+          stock_qty?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presell_stock_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presell_stock_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presell_stock_applications: {
+        Row: {
+          created_at: string | null
+          id: string
+          order_id: string
+          reason: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          order_id: string
+          reason: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          order_id?: string
+          reason?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presell_stock_applications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_analytics: {
+        Row: {
+          avg_daily_units: number
+          bcg_classification: string
+          computed_at: string
+          id: string
+          last_order_date: string | null
+          margin_percent: number | null
+          menu_item_id: string
+          menu_item_name: string | null
+          pairing_item_id: string | null
+          pairing_reason: string | null
+          pairing_recommendation: string | null
+          period: string
+          recommendation: string | null
+          revenue_trend: string
+          tenant_id: string
+          total_cost: number
+          total_profit: number
+          total_revenue: number
+          total_units_sold: number
+        }
+        Insert: {
+          avg_daily_units?: number
+          bcg_classification?: string
+          computed_at?: string
+          id?: string
+          last_order_date?: string | null
+          margin_percent?: number | null
+          menu_item_id: string
+          menu_item_name?: string | null
+          pairing_item_id?: string | null
+          pairing_reason?: string | null
+          pairing_recommendation?: string | null
+          period: string
+          recommendation?: string | null
+          revenue_trend?: string
+          tenant_id: string
+          total_cost?: number
+          total_profit?: number
+          total_revenue?: number
+          total_units_sold?: number
+        }
+        Update: {
+          avg_daily_units?: number
+          bcg_classification?: string
+          computed_at?: string
+          id?: string
+          last_order_date?: string | null
+          margin_percent?: number | null
+          menu_item_id?: string
+          menu_item_name?: string | null
+          pairing_item_id?: string | null
+          pairing_reason?: string | null
+          pairing_recommendation?: string | null
+          period?: string
+          recommendation?: string | null
+          revenue_trend?: string
+          tenant_id?: string
+          total_cost?: number
+          total_profit?: number
+          total_revenue?: number
+          total_units_sold?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_analytics_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_analytics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_costs: {
+        Row: {
+          cost_notes: string | null
+          cost_price: number
+          created_at: string
+          id: string
+          menu_item_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cost_notes?: string | null
+          cost_price?: number
+          created_at?: string
+          id?: string
+          menu_item_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cost_notes?: string | null
+          cost_price?: number
+          created_at?: string
+          id?: string
+          menu_item_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_costs_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_costs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_detail_settings: {
+        Row: {
+          add_to_cart_button_background: string | null
+          add_to_cart_button_label: string | null
+          add_to_cart_button_shadow_color: string | null
+          add_to_cart_button_text_color: string | null
+          addon_background_color: string | null
+          addon_border_color: string | null
+          addon_optional_text: string | null
+          addon_price_color: string | null
+          addon_price_free_text: string | null
+          addon_section_title_color: string | null
+          addon_section_title_font_size: string | null
+          addon_selected_background_color: string | null
+          addon_selected_border_color: string | null
+          addon_selected_check_color: string | null
+          addon_selected_text_color: string | null
+          addon_text_color: string | null
+          animation_speed: string | null
+          breadcrumb_active_color: string | null
+          breadcrumb_color: string | null
+          button_border_radius: string | null
+          buy_now_button_background: string | null
+          buy_now_button_border_color: string | null
+          buy_now_button_label: string | null
+          buy_now_button_text_color: string | null
+          card_border_radius: string | null
+          checkout_modal_background_color: string | null
+          checkout_modal_border_color: string | null
+          checkout_modal_button_color: string | null
+          checkout_modal_button_text_color: string | null
+          checkout_modal_description_color: string | null
+          checkout_modal_price_color: string | null
+          checkout_modal_title_color: string | null
+          created_at: string | null
+          description_color: string | null
+          description_font_size: string | null
+          dietary_tag_background_color: string | null
+          dietary_tag_border_color: string | null
+          dietary_tag_text_color: string | null
+          enable_animations: boolean | null
+          font_family_body: string | null
+          font_family_heading: string | null
+          footer_background_color: string | null
+          footer_border_color: string | null
+          footer_empty_summary_text: string | null
+          footer_shadow_color: string | null
+          header_background_color: string | null
+          header_button_background_color: string | null
+          header_button_icon_color: string | null
+          id: string
+          image_background_color: string | null
+          image_placeholder_color: string | null
+          mobile_overrides: Json
+          modal_background_color: string | null
+          modal_close_button_background: string | null
+          modal_close_button_color: string | null
+          original_price_color: string | null
+          page_background_color: string | null
+          page_background_gradient: string | null
+          popup_modal_background_color: string | null
+          popup_modal_border_color: string | null
+          popup_modal_button_color: string | null
+          popup_modal_button_text_color: string | null
+          popup_modal_description_color: string | null
+          popup_modal_price_color: string | null
+          popup_modal_title_color: string | null
+          product_name_color: string | null
+          product_name_font_size: string | null
+          product_name_font_weight: string | null
+          quantity_button_color: string | null
+          quantity_controls_background: string | null
+          quantity_text_color: string | null
+          related_item_background_color: string | null
+          related_item_name_color: string | null
+          related_item_price_color: string | null
+          related_section_title_color: string | null
+          related_section_title_font_size: string | null
+          sale_badge_background_color: string | null
+          sale_badge_text_color: string | null
+          section_padding: string | null
+          summary_text_color: string | null
+          tenant_id: string
+          total_price_color: string | null
+          updated_at: string | null
+          variation_option_background_color: string | null
+          variation_option_border_color: string | null
+          variation_option_selected_background_color: string | null
+          variation_option_selected_border_color: string | null
+          variation_option_selected_text_color: string | null
+          variation_option_text_color: string | null
+          variation_optional_text: string | null
+          variation_price_modifier_color: string | null
+          variation_required_badge_color: string | null
+          variation_required_text: string | null
+          variation_section_title_color: string | null
+          variation_section_title_font_size: string | null
+        }
+        Insert: {
+          add_to_cart_button_background?: string | null
+          add_to_cart_button_label?: string | null
+          add_to_cart_button_shadow_color?: string | null
+          add_to_cart_button_text_color?: string | null
+          addon_background_color?: string | null
+          addon_border_color?: string | null
+          addon_optional_text?: string | null
+          addon_price_color?: string | null
+          addon_price_free_text?: string | null
+          addon_section_title_color?: string | null
+          addon_section_title_font_size?: string | null
+          addon_selected_background_color?: string | null
+          addon_selected_border_color?: string | null
+          addon_selected_check_color?: string | null
+          addon_selected_text_color?: string | null
+          addon_text_color?: string | null
+          animation_speed?: string | null
+          breadcrumb_active_color?: string | null
+          breadcrumb_color?: string | null
+          button_border_radius?: string | null
+          buy_now_button_background?: string | null
+          buy_now_button_border_color?: string | null
+          buy_now_button_label?: string | null
+          buy_now_button_text_color?: string | null
+          card_border_radius?: string | null
+          checkout_modal_background_color?: string | null
+          checkout_modal_border_color?: string | null
+          checkout_modal_button_color?: string | null
+          checkout_modal_button_text_color?: string | null
+          checkout_modal_description_color?: string | null
+          checkout_modal_price_color?: string | null
+          checkout_modal_title_color?: string | null
+          created_at?: string | null
+          description_color?: string | null
+          description_font_size?: string | null
+          dietary_tag_background_color?: string | null
+          dietary_tag_border_color?: string | null
+          dietary_tag_text_color?: string | null
+          enable_animations?: boolean | null
+          font_family_body?: string | null
+          font_family_heading?: string | null
+          footer_background_color?: string | null
+          footer_border_color?: string | null
+          footer_empty_summary_text?: string | null
+          footer_shadow_color?: string | null
+          header_background_color?: string | null
+          header_button_background_color?: string | null
+          header_button_icon_color?: string | null
+          id?: string
+          image_background_color?: string | null
+          image_placeholder_color?: string | null
+          mobile_overrides?: Json
+          modal_background_color?: string | null
+          modal_close_button_background?: string | null
+          modal_close_button_color?: string | null
+          original_price_color?: string | null
+          page_background_color?: string | null
+          page_background_gradient?: string | null
+          popup_modal_background_color?: string | null
+          popup_modal_border_color?: string | null
+          popup_modal_button_color?: string | null
+          popup_modal_button_text_color?: string | null
+          popup_modal_description_color?: string | null
+          popup_modal_price_color?: string | null
+          popup_modal_title_color?: string | null
+          product_name_color?: string | null
+          product_name_font_size?: string | null
+          product_name_font_weight?: string | null
+          quantity_button_color?: string | null
+          quantity_controls_background?: string | null
+          quantity_text_color?: string | null
+          related_item_background_color?: string | null
+          related_item_name_color?: string | null
+          related_item_price_color?: string | null
+          related_section_title_color?: string | null
+          related_section_title_font_size?: string | null
+          sale_badge_background_color?: string | null
+          sale_badge_text_color?: string | null
+          section_padding?: string | null
+          summary_text_color?: string | null
+          tenant_id: string
+          total_price_color?: string | null
+          updated_at?: string | null
+          variation_option_background_color?: string | null
+          variation_option_border_color?: string | null
+          variation_option_selected_background_color?: string | null
+          variation_option_selected_border_color?: string | null
+          variation_option_selected_text_color?: string | null
+          variation_option_text_color?: string | null
+          variation_optional_text?: string | null
+          variation_price_modifier_color?: string | null
+          variation_required_badge_color?: string | null
+          variation_required_text?: string | null
+          variation_section_title_color?: string | null
+          variation_section_title_font_size?: string | null
+        }
+        Update: {
+          add_to_cart_button_background?: string | null
+          add_to_cart_button_label?: string | null
+          add_to_cart_button_shadow_color?: string | null
+          add_to_cart_button_text_color?: string | null
+          addon_background_color?: string | null
+          addon_border_color?: string | null
+          addon_optional_text?: string | null
+          addon_price_color?: string | null
+          addon_price_free_text?: string | null
+          addon_section_title_color?: string | null
+          addon_section_title_font_size?: string | null
+          addon_selected_background_color?: string | null
+          addon_selected_border_color?: string | null
+          addon_selected_check_color?: string | null
+          addon_selected_text_color?: string | null
+          addon_text_color?: string | null
+          animation_speed?: string | null
+          breadcrumb_active_color?: string | null
+          breadcrumb_color?: string | null
+          button_border_radius?: string | null
+          buy_now_button_background?: string | null
+          buy_now_button_border_color?: string | null
+          buy_now_button_label?: string | null
+          buy_now_button_text_color?: string | null
+          card_border_radius?: string | null
+          checkout_modal_background_color?: string | null
+          checkout_modal_border_color?: string | null
+          checkout_modal_button_color?: string | null
+          checkout_modal_button_text_color?: string | null
+          checkout_modal_description_color?: string | null
+          checkout_modal_price_color?: string | null
+          checkout_modal_title_color?: string | null
+          created_at?: string | null
+          description_color?: string | null
+          description_font_size?: string | null
+          dietary_tag_background_color?: string | null
+          dietary_tag_border_color?: string | null
+          dietary_tag_text_color?: string | null
+          enable_animations?: boolean | null
+          font_family_body?: string | null
+          font_family_heading?: string | null
+          footer_background_color?: string | null
+          footer_border_color?: string | null
+          footer_empty_summary_text?: string | null
+          footer_shadow_color?: string | null
+          header_background_color?: string | null
+          header_button_background_color?: string | null
+          header_button_icon_color?: string | null
+          id?: string
+          image_background_color?: string | null
+          image_placeholder_color?: string | null
+          mobile_overrides?: Json
+          modal_background_color?: string | null
+          modal_close_button_background?: string | null
+          modal_close_button_color?: string | null
+          original_price_color?: string | null
+          page_background_color?: string | null
+          page_background_gradient?: string | null
+          popup_modal_background_color?: string | null
+          popup_modal_border_color?: string | null
+          popup_modal_button_color?: string | null
+          popup_modal_button_text_color?: string | null
+          popup_modal_description_color?: string | null
+          popup_modal_price_color?: string | null
+          popup_modal_title_color?: string | null
+          product_name_color?: string | null
+          product_name_font_size?: string | null
+          product_name_font_weight?: string | null
+          quantity_button_color?: string | null
+          quantity_controls_background?: string | null
+          quantity_text_color?: string | null
+          related_item_background_color?: string | null
+          related_item_name_color?: string | null
+          related_item_price_color?: string | null
+          related_section_title_color?: string | null
+          related_section_title_font_size?: string | null
+          sale_badge_background_color?: string | null
+          sale_badge_text_color?: string | null
+          section_padding?: string | null
+          summary_text_color?: string | null
+          tenant_id?: string
+          total_price_color?: string | null
+          updated_at?: string | null
+          variation_option_background_color?: string | null
+          variation_option_border_color?: string | null
+          variation_option_selected_background_color?: string | null
+          variation_option_selected_border_color?: string | null
+          variation_option_selected_text_color?: string | null
+          variation_option_text_color?: string | null
+          variation_optional_text?: string | null
+          variation_price_modifier_color?: string | null
+          variation_required_badge_color?: string | null
+          variation_required_text?: string | null
+          variation_section_title_color?: string | null
+          variation_section_title_font_size?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_detail_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          outlet_id: string | null
+          platform: string
+          tenant_id: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          outlet_id?: string | null
+          platform: string
+          tenant_id: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          outlet_id?: string | null
+          platform?: string
+          tenant_id?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recipe_components: {
+        Row: {
+          created_at: string | null
+          id: string
+          inventory_item_id: string
+          quantity: number
+          recipe_id: string
+          sort_order: number
+          tenant_id: string
+          unit_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id: string
+          quantity?: number
+          recipe_id: string
+          sort_order?: number
+          tenant_id: string
+          unit_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id?: string
+          quantity?: number
+          recipe_id?: string
+          sort_order?: number
+          tenant_id?: string
+          unit_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipe_components_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipe_components_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipe_components_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipe_components_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recipes: {
+        Row: {
+          addon_id: string | null
+          created_at: string | null
+          id: string
+          menu_item_id: string | null
+          modifier_option_id: string | null
+          notes: string | null
+          prep_item_id: string | null
+          target_type: string
+          tenant_id: string
+          updated_at: string | null
+          variation_option_id: string | null
+          yield_quantity: number | null
+          yield_unit_id: string | null
+        }
+        Insert: {
+          addon_id?: string | null
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string | null
+          modifier_option_id?: string | null
+          notes?: string | null
+          prep_item_id?: string | null
+          target_type: string
+          tenant_id: string
+          updated_at?: string | null
+          variation_option_id?: string | null
+          yield_quantity?: number | null
+          yield_unit_id?: string | null
+        }
+        Update: {
+          addon_id?: string | null
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string | null
+          modifier_option_id?: string | null
+          notes?: string | null
+          prep_item_id?: string | null
+          target_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+          variation_option_id?: string | null
+          yield_quantity?: number | null
+          yield_unit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipes_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipes_prep_item_id_fkey"
+            columns: ["prep_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recipes_yield_unit_id_fkey"
+            columns: ["yield_unit_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_periods: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          ends_minutes: number
+          id: string
+          name: string
+          outlet_id: string | null
+          sort: number
+          starts_minutes: number
+          tenant_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_minutes: number
+          id?: string
+          name: string
+          outlet_id?: string | null
+          sort?: number
+          starts_minutes: number
+          tenant_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_minutes?: number
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          sort?: number
+          starts_minutes?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_periods_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_periods_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_cash_movements: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          kind: string
+          outlet_id: string | null
+          reason: string | null
+          recorded_by: string | null
+          recorded_by_name: string
+          shift_id: string
+          taken_by: string | null
+          taken_by_name: string | null
+          tenant_id: string
+          to_safe: boolean
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          kind: string
+          outlet_id?: string | null
+          reason?: string | null
+          recorded_by?: string | null
+          recorded_by_name: string
+          shift_id: string
+          taken_by?: string | null
+          taken_by_name?: string | null
+          tenant_id: string
+          to_safe?: boolean
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          outlet_id?: string | null
+          reason?: string | null
+          recorded_by?: string | null
+          recorded_by_name?: string
+          shift_id?: string
+          taken_by?: string | null
+          taken_by_name?: string | null
+          tenant_id?: string
+          to_safe?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_cash_movements_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_cash_movements_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_cash_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_counts: {
+        Row: {
+          attempt: number
+          counted_at: string
+          counted_by: string | null
+          counted_by_name: string | null
+          counted_cents: number
+          denominations: Json | null
+          device_expected_cents: number | null
+          expected_cents: number | null
+          expected_source: string
+          id: string
+          outlet_id: string | null
+          server_expected_cents: number | null
+          shift_id: string
+          tenant_id: string
+        }
+        Insert: {
+          attempt: number
+          counted_at?: string
+          counted_by?: string | null
+          counted_by_name?: string | null
+          counted_cents: number
+          denominations?: Json | null
+          device_expected_cents?: number | null
+          expected_cents?: number | null
+          expected_source: string
+          id?: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id: string
+          tenant_id: string
+        }
+        Update: {
+          attempt?: number
+          counted_at?: string
+          counted_by?: string | null
+          counted_by_name?: string | null
+          counted_cents?: number
+          denominations?: Json | null
+          device_expected_cents?: number | null
+          expected_cents?: number | null
+          expected_source?: string
+          id?: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_counts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_counts_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_counts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_expectations: {
+        Row: {
+          breakdown: Json
+          computed_at: string
+          device_expected_cents: number | null
+          engine_version: number
+          expected_cents: number | null
+          mode: string
+          outlet_id: string | null
+          server_expected_cents: number | null
+          shift_id: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          breakdown?: Json
+          computed_at?: string
+          device_expected_cents?: number | null
+          engine_version: number
+          expected_cents?: number | null
+          mode: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id: string
+          source: string
+          tenant_id: string
+        }
+        Update: {
+          breakdown?: Json
+          computed_at?: string
+          device_expected_cents?: number | null
+          engine_version?: number
+          expected_cents?: number | null
+          mode?: string
+          outlet_id?: string | null
+          server_expected_cents?: number | null
+          shift_id?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_expectations_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_expectations_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: true
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_expectations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      simple_option_stock_applications: {
+        Row: {
+          action: string
+          created_at: string
+          order_id: string
+          revision: number
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          order_id: string
+          revision: number
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          order_id?: string
+          revision?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simple_option_stock_applications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      simple_option_stock_movements: {
+        Row: {
+          action: string
+          created_at: string
+          id: number
+          menu_item_id: string
+          option_id: string
+          order_id: string
+          outlet_id: string | null
+          quantity_delta: number
+          revision: number
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: never
+          menu_item_id: string
+          option_id: string
+          order_id: string
+          outlet_id?: string | null
+          quantity_delta: number
+          revision: number
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: never
+          menu_item_id?: string
+          option_id?: string
+          order_id?: string
+          outlet_id?: string | null
+          quantity_delta?: number
+          revision?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simple_option_stock_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_automations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          message_template: string
+          name: string
+          params: Json
+          recipe: string
+          reentry_days: number | null
+          run_mode: string
+          source: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message_template: string
+          name: string
+          params?: Json
+          recipe: string
+          reentry_days?: number | null
+          run_mode?: string
+          source?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message_template?: string
+          name?: string
+          params?: Json
+          recipe?: string
+          reentry_days?: number | null
+          run_mode?: string
+          source?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_automations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_campaign_runs: {
+        Row: {
+          audience_summary: Json | null
+          campaign_id: string
+          claimed_at: string | null
+          claimed_by_device: string | null
+          completed_at: string | null
+          created_at: string
+          delivery: string
+          due_at: string
+          error: string | null
+          id: string
+          planned_count: number | null
+          report: Json | null
+          report_final_at: string | null
+          started_at: string | null
+          status: string
+          tenant_id: string
+          trigger: string
+        }
+        Insert: {
+          audience_summary?: Json | null
+          campaign_id: string
+          claimed_at?: string | null
+          claimed_by_device?: string | null
+          completed_at?: string | null
+          created_at?: string
+          delivery?: string
+          due_at: string
+          error?: string | null
+          id?: string
+          planned_count?: number | null
+          report?: Json | null
+          report_final_at?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          trigger?: string
+        }
+        Update: {
+          audience_summary?: Json | null
+          campaign_id?: string
+          claimed_at?: string | null
+          claimed_by_device?: string | null
+          completed_at?: string | null
+          created_at?: string
+          delivery?: string
+          due_at?: string
+          error?: string | null
+          id?: string
+          planned_count?: number | null
+          report?: Json | null
+          report_final_at?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_campaign_runs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "sms_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_campaign_runs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_campaigns: {
+        Row: {
+          audience: Json
+          created_at: string
+          created_by: string | null
+          delivery: string
+          ends_on: string | null
+          id: string
+          max_per_run: number
+          message_template: string
+          name: string
+          pause_reason: string | null
+          quiet_hours_end: string
+          quiet_hours_start: string
+          schedule_date: string | null
+          schedule_interval_days: number | null
+          schedule_kind: string
+          schedule_time: string
+          schedule_weekdays: number[]
+          scheduled_from: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: Json
+          created_at?: string
+          created_by?: string | null
+          delivery?: string
+          ends_on?: string | null
+          id?: string
+          max_per_run?: number
+          message_template: string
+          name: string
+          pause_reason?: string | null
+          quiet_hours_end?: string
+          quiet_hours_start?: string
+          schedule_date?: string | null
+          schedule_interval_days?: number | null
+          schedule_kind?: string
+          schedule_time?: string
+          schedule_weekdays?: number[]
+          scheduled_from?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: Json
+          created_at?: string
+          created_by?: string | null
+          delivery?: string
+          ends_on?: string | null
+          id?: string
+          max_per_run?: number
+          message_template?: string
+          name?: string
+          pause_reason?: string | null
+          quiet_hours_end?: string
+          quiet_hours_start?: string
+          schedule_date?: string | null
+          schedule_interval_days?: number | null
+          schedule_kind?: string
+          schedule_time?: string
+          schedule_weekdays?: number[]
+          scheduled_from?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_campaigns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_outbox: {
+        Row: {
+          automation_id: string | null
+          body: string
+          campaign_run_id: string | null
+          claimed_at: string | null
+          claimed_by_actor: string | null
+          claimed_by_device: string | null
+          created_at: string
+          customer_id: string | null
+          dispatch_started_at: string | null
+          entitlement_id: string | null
+          error: string | null
+          exit_if_ordered_after: string | null
+          expires_at: string
+          family: string
+          id: string
+          lease_token: string | null
+          not_before: string
+          occurrence_key: string
+          phone_e164: string
+          priority: number
+          recipe: string
+          sent_at: string | null
+          skip_reason: string | null
+          source: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          automation_id?: string | null
+          body: string
+          campaign_run_id?: string | null
+          claimed_at?: string | null
+          claimed_by_actor?: string | null
+          claimed_by_device?: string | null
+          created_at?: string
+          customer_id?: string | null
+          dispatch_started_at?: string | null
+          entitlement_id?: string | null
+          error?: string | null
+          exit_if_ordered_after?: string | null
+          expires_at: string
+          family: string
+          id?: string
+          lease_token?: string | null
+          not_before: string
+          occurrence_key: string
+          phone_e164: string
+          priority: number
+          recipe: string
+          sent_at?: string | null
+          skip_reason?: string | null
+          source: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          automation_id?: string | null
+          body?: string
+          campaign_run_id?: string | null
+          claimed_at?: string | null
+          claimed_by_actor?: string | null
+          claimed_by_device?: string | null
+          created_at?: string
+          customer_id?: string | null
+          dispatch_started_at?: string | null
+          entitlement_id?: string | null
+          error?: string | null
+          exit_if_ordered_after?: string | null
+          expires_at?: string
+          family?: string
+          id?: string
+          lease_token?: string | null
+          not_before?: string
+          occurrence_key?: string
+          phone_e164?: string
+          priority?: number
+          recipe?: string
+          sent_at?: string | null
+          skip_reason?: string | null
+          source?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_outbox_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "sms_automations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_outbox_campaign_run_id_fkey"
+            columns: ["campaign_run_id"]
+            isOneToOne: false
+            referencedRelation: "sms_campaign_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_outbox_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_outbox_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_outbox_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_sender_devices: {
+        Row: {
+          app_version: string | null
+          created_at: string
+          device_id: string
+          ignoring_battery_opt: boolean | null
+          info_reported_at: string | null
+          label: string | null
+          manufacturer: string | null
+          model: string | null
+          os_version: string | null
+          sms_permission: boolean | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string
+          device_id: string
+          ignoring_battery_opt?: boolean | null
+          info_reported_at?: string | null
+          label?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          os_version?: string | null
+          sms_permission?: boolean | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string
+          device_id?: string
+          ignoring_battery_opt?: boolean | null
+          info_reported_at?: string | null
+          label?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          os_version?: string | null
+          sms_permission?: boolean | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_sender_devices_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_sms_devices"
+            referencedColumns: ["device_id"]
+          },
+          {
+            foreignKeyName: "sms_sender_devices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_sends: {
+        Row: {
+          customer_id: string | null
+          error_code: string | null
+          error_message: string | null
+          id: string
+          message_body: string
+          phone_e164: string
+          result: string
+          run_id: string
+          sent_at: string
+          tenant_id: string
+        }
+        Insert: {
+          customer_id?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          message_body: string
+          phone_e164: string
+          result: string
+          run_id: string
+          sent_at?: string
+          tenant_id: string
+        }
+        Update: {
+          customer_id?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          message_body?: string
+          phone_e164?: string
+          result?: string
+          run_id?: string
+          sent_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_sends_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_sends_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "sms_campaign_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_sends_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_settings: {
+        Row: {
+          daily_limit: number
+          guest_cap_days: number
+          opt_out_line: string | null
+          quiet_hours_end: string
+          quiet_hours_start: string
+          review_url: string | null
+          tenant_id: string
+          updated_at: string
+          waiting_alert_at: string | null
+        }
+        Insert: {
+          daily_limit?: number
+          guest_cap_days?: number
+          opt_out_line?: string | null
+          quiet_hours_end?: string
+          quiet_hours_start?: string
+          review_url?: string | null
+          tenant_id: string
+          updated_at?: string
+          waiting_alert_at?: string | null
+        }
+        Update: {
+          daily_limit?: number
+          guest_cap_days?: number
+          opt_out_line?: string | null
+          quiet_hours_end?: string
+          quiet_hours_start?: string
+          review_url?: string | null
+          tenant_id?: string
+          updated_at?: string
+          waiting_alert_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_suppressions: {
+        Row: {
+          created_at: string
+          id: string
+          phone_e164: string
+          reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          phone_e164: string
+          reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          phone_e164?: string
+          reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_suppressions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_approval_pins: {
+        Row: {
+          failed_attempts: number
+          lock_count: number
+          locked_until: string | null
+          pin_hash: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          failed_attempts?: number
+          lock_count?: number
+          locked_until?: string | null
+          pin_hash: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          failed_attempts?: number
+          lock_count?: number
+          locked_until?: string | null
+          pin_hash?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_approval_pins_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_shifts: {
+        Row: {
+          business_day: string
+          close_kind: string | null
+          closed_at: string | null
+          closed_by: string | null
+          closed_by_name: string | null
+          closing_count: number | null
+          closing_denominations: Json | null
+          closing_non_cash: Json | null
+          created_at: string
+          device_expected_cash: number | null
+          drawer_id: string | null
+          drawer_name: string | null
+          expected_cash: number | null
+          float_kept_cents: number | null
+          id: string
+          is_blind: boolean
+          is_zero_balance: boolean
+          note: string | null
+          opened_at: string
+          opening_denominations: Json | null
+          opening_float: number
+          outlet_id: string | null
+          service_period_id: string | null
+          staff_name: string
+          staff_user_id: string | null
+          status: string
+          tenant_id: string
+          variance_reason: string | null
+        }
+        Insert: {
+          business_day: string
+          close_kind?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          closed_by_name?: string | null
+          closing_count?: number | null
+          closing_denominations?: Json | null
+          closing_non_cash?: Json | null
+          created_at?: string
+          device_expected_cash?: number | null
+          drawer_id?: string | null
+          drawer_name?: string | null
+          expected_cash?: number | null
+          float_kept_cents?: number | null
+          id?: string
+          is_blind?: boolean
+          is_zero_balance?: boolean
+          note?: string | null
+          opened_at?: string
+          opening_denominations?: Json | null
+          opening_float?: number
+          outlet_id?: string | null
+          service_period_id?: string | null
+          staff_name: string
+          staff_user_id?: string | null
+          status?: string
+          tenant_id: string
+          variance_reason?: string | null
+        }
+        Update: {
+          business_day?: string
+          close_kind?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          closed_by_name?: string | null
+          closing_count?: number | null
+          closing_denominations?: Json | null
+          closing_non_cash?: Json | null
+          created_at?: string
+          device_expected_cash?: number | null
+          drawer_id?: string | null
+          drawer_name?: string | null
+          expected_cash?: number | null
+          float_kept_cents?: number | null
+          id?: string
+          is_blind?: boolean
+          is_zero_balance?: boolean
+          note?: string | null
+          opened_at?: string
+          opening_denominations?: Json | null
+          opening_float?: number
+          outlet_id?: string | null
+          service_period_id?: string | null
+          staff_name?: string
+          staff_user_id?: string | null
+          status?: string
+          tenant_id?: string
+          variance_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_shifts_drawer_id_fkey"
+            columns: ["drawer_id"]
+            isOneToOne: false
+            referencedRelation: "cash_drawers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_shifts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_shifts_service_period_id_fkey"
+            columns: ["service_period_id"]
+            isOneToOne: false
+            referencedRelation: "service_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_shifts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_alerts: {
+        Row: {
+          created_at: string | null
+          id: string
+          inventory_item_id: string
+          level: string
+          outlet_id: string | null
+          quantity: number
+          reorder_level: number
+          resolved_at: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id: string
+          level: string
+          outlet_id?: string | null
+          quantity: number
+          reorder_level?: number
+          resolved_at?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inventory_item_id?: string
+          level?: string
+          outlet_id?: string | null
+          quantity?: number
+          reorder_level?: number
+          resolved_at?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_alerts_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_alerts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_movements: {
+        Row: {
+          balance_after: number
+          client_request_id: string | null
+          created_at: string | null
+          created_by: string | null
+          entered_quantity: number | null
+          entered_unit_id: string | null
+          id: string
+          inventory_count_id: string | null
+          inventory_item_id: string
+          note: string | null
+          opens_tracking: boolean
+          order_id: string | null
+          outlet_id: string | null
+          quantity_delta: number
+          reason: string
+          stock_transfer_id: string | null
+          target_qty: number | null
+          tenant_id: string
+          unit_cost: number | null
+        }
+        Insert: {
+          balance_after?: number
+          client_request_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          entered_quantity?: number | null
+          entered_unit_id?: string | null
+          id?: string
+          inventory_count_id?: string | null
+          inventory_item_id: string
+          note?: string | null
+          opens_tracking?: boolean
+          order_id?: string | null
+          outlet_id?: string | null
+          quantity_delta: number
+          reason: string
+          stock_transfer_id?: string | null
+          target_qty?: number | null
+          tenant_id: string
+          unit_cost?: number | null
+        }
+        Update: {
+          balance_after?: number
+          client_request_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          entered_quantity?: number | null
+          entered_unit_id?: string | null
+          id?: string
+          inventory_count_id?: string | null
+          inventory_item_id?: string
+          note?: string | null
+          opens_tracking?: boolean
+          order_id?: string | null
+          outlet_id?: string | null
+          quantity_delta?: number
+          reason?: string
+          stock_transfer_id?: string | null
+          target_qty?: number | null
+          tenant_id?: string
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_entered_unit_id_fkey"
+            columns: ["entered_unit_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_inventory_count_id_fkey"
+            columns: ["inventory_count_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_counts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_stock_transfer_id_fkey"
+            columns: ["stock_transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfer_lines: {
+        Row: {
+          created_at: string
+          id: string
+          inventory_item_id: string
+          received_quantity: number | null
+          sent_quantity: number
+          tenant_id: string
+          transfer_id: string
+          unit_cost: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inventory_item_id: string
+          received_quantity?: number | null
+          sent_quantity: number
+          tenant_id: string
+          transfer_id: string
+          unit_cost?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inventory_item_id?: string
+          received_quantity?: number | null
+          sent_quantity?: number
+          tenant_id?: string
+          transfer_id?: string
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_lines_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_lines_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_lines_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          from_outlet_id: string | null
+          id: string
+          note: string | null
+          received_at: string | null
+          received_by: string | null
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          tenant_id: string
+          to_outlet_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          from_outlet_id?: string | null
+          id?: string
+          note?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          tenant_id: string
+          to_outlet_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          from_outlet_id?: string | null
+          id?: string
+          note?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          tenant_id?: string
+          to_outlet_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_from_outlet_id_fkey"
+            columns: ["from_outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_outlet_id_fkey"
+            columns: ["to_outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_activity: {
+        Row: {
+          actor_name: string | null
+          actor_user_id: string | null
+          after: Json | null
+          amount: number | null
+          approved_by: string | null
+          approved_by_name: string | null
+          backend: string | null
+          before: Json | null
+          category: string
+          created_at: string
+          event_key: string
+          external_order_id: string | null
+          flags: string[]
+          id: string
+          is_routine: boolean
+          kind: string
+          note: string | null
+          occurred_at: string
+          order_number: string | null
+          outlet_id: string | null
+          quantity: number | null
+          reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewed_by_name: string | null
+          source_id: string
+          source_table: string
+          subject_ref: string | null
+          subject_type: string | null
+          summary: Json
+          tenant_id: string
+          unit: string | null
+        }
+        Insert: {
+          actor_name?: string | null
+          actor_user_id?: string | null
+          after?: Json | null
+          amount?: number | null
+          approved_by?: string | null
+          approved_by_name?: string | null
+          backend?: string | null
+          before?: Json | null
+          category: string
+          created_at?: string
+          event_key: string
+          external_order_id?: string | null
+          flags?: string[]
+          id?: string
+          is_routine?: boolean
+          kind: string
+          note?: string | null
+          occurred_at?: string
+          order_number?: string | null
+          outlet_id?: string | null
+          quantity?: number | null
+          reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewed_by_name?: string | null
+          source_id: string
+          source_table: string
+          subject_ref?: string | null
+          subject_type?: string | null
+          summary?: Json
+          tenant_id: string
+          unit?: string | null
+        }
+        Update: {
+          actor_name?: string | null
+          actor_user_id?: string | null
+          after?: Json | null
+          amount?: number | null
+          approved_by?: string | null
+          approved_by_name?: string | null
+          backend?: string | null
+          before?: Json | null
+          category?: string
+          created_at?: string
+          event_key?: string
+          external_order_id?: string | null
+          flags?: string[]
+          id?: string
+          is_routine?: boolean
+          kind?: string
+          note?: string | null
+          occurred_at?: string
+          order_number?: string | null
+          outlet_id?: string | null
+          quantity?: number | null
+          reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewed_by_name?: string | null
+          source_id?: string
+          source_table?: string
+          subject_ref?: string | null
+          subject_type?: string | null
+          summary?: Json
+          tenant_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_activity_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_onboardings: {
+        Row: {
+          assets: Json
+          attempts: number
+          checkout_lead_id: string
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          input: Json | null
+          launch_requested_at: string | null
+          started_at: string | null
+          status: string
+          steps: Json
+          summary: Json | null
+          tenant_id: string | null
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          assets?: Json
+          attempts?: number
+          checkout_lead_id: string
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          launch_requested_at?: string | null
+          started_at?: string | null
+          status?: string
+          steps?: Json
+          summary?: Json | null
+          tenant_id?: string | null
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          assets?: Json
+          attempts?: number
+          checkout_lead_id?: string
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          launch_requested_at?: string | null
+          started_at?: string | null
+          status?: string
+          steps?: Json
+          summary?: Json | null
+          tenant_id?: string | null
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_onboardings_checkout_lead_id_fkey"
+            columns: ["checkout_lead_id"]
+            isOneToOne: true
+            referencedRelation: "checkout_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_onboardings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_tax_profile_changes: {
+        Row: {
+          after: Json
+          before: Json | null
+          changed_at: string
+          changed_by: string | null
+          id: string
+          tenant_id: string
+        }
+        Insert: {
+          after: Json
+          before?: Json | null
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          tenant_id: string
+        }
+        Update: {
+          after?: Json
+          before?: Json | null
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_tax_profile_changes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_tax_profiles: {
+        Row: {
+          allow_shared_table: boolean
+          approval_rule: string
+          approval_threshold: number
+          business_address: string | null
+          created_at: string
+          enabled_kinds: string[]
+          id_photo_mode: string
+          is_bir_registered_pos: boolean
+          online_claims_enabled: boolean
+          pos_min: string | null
+          pos_ptu_no: string | null
+          pos_serial_no: string | null
+          registered_name: string | null
+          service_charge_mode: string
+          tenant_id: string
+          tin: string | null
+          tin_branch_code: string | null
+          updated_at: string
+          updated_by: string | null
+          vat_status: string
+        }
+        Insert: {
+          allow_shared_table?: boolean
+          approval_rule?: string
+          approval_threshold?: number
+          business_address?: string | null
+          created_at?: string
+          enabled_kinds?: string[]
+          id_photo_mode?: string
+          is_bir_registered_pos?: boolean
+          online_claims_enabled?: boolean
+          pos_min?: string | null
+          pos_ptu_no?: string | null
+          pos_serial_no?: string | null
+          registered_name?: string | null
+          service_charge_mode?: string
+          tenant_id: string
+          tin?: string | null
+          tin_branch_code?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vat_status: string
+        }
+        Update: {
+          allow_shared_table?: boolean
+          approval_rule?: string
+          approval_threshold?: number
+          business_address?: string | null
+          created_at?: string
+          enabled_kinds?: string[]
+          id_photo_mode?: string
+          is_bir_registered_pos?: boolean
+          online_claims_enabled?: boolean
+          pos_min?: string | null
+          pos_ptu_no?: string | null
+          pos_serial_no?: string | null
+          registered_name?: string | null
+          service_charge_mode?: string
+          tenant_id?: string
+          tin?: string | null
+          tin_branch_code?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vat_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_tax_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      storefront_visits: {
+        Row: {
+          day: string
+          tenant_id: string
+          visits: number
+        }
+        Insert: {
+          day: string
+          tenant_id: string
+          visits?: number
+        }
+        Update: {
+          day?: string
+          tenant_id?: string
+          visits?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storefront_visits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_payments: {
+        Row: {
+          amount_php: number
+          created_at: string
+          id: string
+          method: string | null
+          note: string | null
+          paid_at: string
+          period_end: string
+          period_start: string
+          recorded_by: string | null
+          reference: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount_php: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          paid_at?: string
+          period_end: string
+          period_start: string
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount_php?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          paid_at?: string
+          period_end?: string
+          period_start?: string
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          default_category_id: string | null
+          id: string
+          kind: string
+          name: string
+          note: string | null
+          phone: string | null
+          tenant_id: string
+          tin: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_category_id?: string | null
+          id?: string
+          kind?: string
+          name: string
+          note?: string | null
+          phone?: string | null
+          tenant_id: string
+          tin?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_category_id?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          note?: string | null
+          phone?: string | null
+          tenant_id?: string
+          tin?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppliers_default_category_id_fkey"
+            columns: ["default_category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "suppliers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      table_seatings: {
+        Row: {
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          id: string
+          note: string | null
+          outlet_id: string | null
+          party_size: number
+          seated_at: string
+          seated_by: string | null
+          table_id: string
+          tenant_id: string
+        }
+        Insert: {
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          party_size: number
+          seated_at?: string
+          seated_by?: string | null
+          table_id: string
+          tenant_id: string
+        }
+        Update: {
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          party_size?: number
+          seated_at?: string
+          seated_by?: string | null
+          table_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_seatings_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_seatings_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "dining_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_seatings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tag_definitions: {
+        Row: {
+          created_at: string
+          group_name: string
+          id: string
+          is_preset: boolean
+          tag_value: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          group_name: string
+          id?: string
+          is_preset?: boolean
+          tag_value: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          group_name?: string
+          id?: string
+          is_preset?: boolean
+          tag_value?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tag_definitions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_app_configs: {
+        Row: {
+          draft: Json
+          published: Json | null
+          published_at: string | null
+          published_version: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          draft?: Json
+          published?: Json | null
+          published_at?: string | null
+          published_version?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          draft?: Json
+          published?: Json | null
+          published_at?: string | null
+          published_version?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_app_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_apps: {
+        Row: {
+          android_package: string
+          app_store_url: string | null
+          asc_app_id: string | null
+          bundle_id: string
+          created_at: string
+          display_name: string
+          icon_url: string | null
+          latest_version_android: string | null
+          latest_version_ios: string | null
+          listing: Json
+          min_version_android: string | null
+          min_version_ios: string | null
+          play_store_url: string | null
+          play_track: string
+          review_code_hash: string | null
+          review_phone_e164: string | null
+          splash_background: string | null
+          splash_url: string | null
+          status: string
+          store_account: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          android_package: string
+          app_store_url?: string | null
+          asc_app_id?: string | null
+          bundle_id: string
+          created_at?: string
+          display_name: string
+          icon_url?: string | null
+          latest_version_android?: string | null
+          latest_version_ios?: string | null
+          listing?: Json
+          min_version_android?: string | null
+          min_version_ios?: string | null
+          play_store_url?: string | null
+          play_track?: string
+          review_code_hash?: string | null
+          review_phone_e164?: string | null
+          splash_background?: string | null
+          splash_url?: string | null
+          status?: string
+          store_account?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          android_package?: string
+          app_store_url?: string | null
+          asc_app_id?: string | null
+          bundle_id?: string
+          created_at?: string
+          display_name?: string
+          icon_url?: string | null
+          latest_version_android?: string | null
+          latest_version_ios?: string | null
+          listing?: Json
+          min_version_android?: string | null
+          min_version_ios?: string | null
+          play_store_url?: string | null
+          play_track?: string
+          review_code_hash?: string | null
+          review_phone_e164?: string | null
+          splash_background?: string | null
+          splash_url?: string | null
+          status?: string
+          store_account?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_apps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_cash_settings: {
+        Row: {
+          blind_close: boolean
+          default_float_cents: number | null
+          overdue_grace_minutes: number
+          remittance_mode: string
+          require_denominations: boolean
+          require_shift_to_sell: boolean
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          updated_by_name: string | null
+          variance_reason_from_cents: number
+        }
+        Insert: {
+          blind_close?: boolean
+          default_float_cents?: number | null
+          overdue_grace_minutes?: number
+          remittance_mode?: string
+          require_denominations?: boolean
+          require_shift_to_sell?: boolean
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_name?: string | null
+          variance_reason_from_cents?: number
+        }
+        Update: {
+          blind_close?: boolean
+          default_float_cents?: number | null
+          overdue_grace_minutes?: number
+          remittance_mode?: string
+          require_denominations?: boolean
+          require_shift_to_sell?: boolean
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_name?: string | null
+          variance_reason_from_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_cash_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_secrets: {
+        Row: {
+          convex_deploy_key: string | null
+          lalamove_api_key: string | null
+          lalamove_secret_key: string | null
+          loyverse_access_token: string | null
+          messenger_page_access_token: string | null
+          semaphore_api_key: string | null
+          semaphore_sender_name: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          convex_deploy_key?: string | null
+          lalamove_api_key?: string | null
+          lalamove_secret_key?: string | null
+          loyverse_access_token?: string | null
+          messenger_page_access_token?: string | null
+          semaphore_api_key?: string | null
+          semaphore_sender_name?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          convex_deploy_key?: string | null
+          lalamove_api_key?: string | null
+          lalamove_secret_key?: string | null
+          loyverse_access_token?: string | null
+          messenger_page_access_token?: string | null
+          semaphore_api_key?: string | null
+          semaphore_sender_name?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_secrets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_subscriptions: {
+        Row: {
+          billing_anchor_date: string | null
+          cancelled_at: string | null
+          grace_days: number
+          monthly_price_php: number
+          notes: string | null
+          paid_through: string | null
+          started_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          billing_anchor_date?: string | null
+          cancelled_at?: string | null
+          grace_days?: number
+          monthly_price_php?: number
+          notes?: string | null
+          paid_through?: string | null
+          started_at?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          billing_anchor_date?: string | null
+          cancelled_at?: string | null
+          grace_days?: number
+          monthly_price_php?: number
+          notes?: string | null
+          paid_through?: string | null
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenants: {
+        Row: {
+          accent_color: string | null
+          admin_email: string | null
+          android_package_name: string | null
+          announcement_bg_color: string | null
+          announcement_text: string | null
+          announcement_text_color: string | null
+          app_enabled: boolean | null
+          assistant_enabled: boolean
+          auto_86_enabled: boolean
+          background_color: string | null
+          background_image_attachment: string | null
+          background_image_fit: string | null
+          background_image_opacity: number | null
+          background_image_position: string | null
+          background_image_url: string | null
+          background_overlay_color: string | null
+          background_overlay_opacity: number | null
+          beta_designs_enabled: boolean
+          border_color: string | null
+          brand_color: string | null
+          bundles_enabled: boolean | null
+          button_primary_color: string | null
+          button_primary_text_color: string | null
+          button_secondary_color: string | null
+          button_secondary_text_color: string | null
+          card_add_button: string | null
+          card_density: string | null
+          card_description: string | null
+          card_description_color: string | null
+          card_image_fit: string | null
+          card_image_ratio: string | null
+          card_price_color: string | null
+          card_roundness: string | null
+          card_template: string | null
+          card_text_align: string | null
+          card_title_color: string | null
+          cards_border_color: string | null
+          cards_color: string | null
+          cart_accent_color: string | null
+          cart_background_color: string | null
+          cart_border_color: string | null
+          cart_button_color: string | null
+          cart_button_text_color: string | null
+          cart_card_background_color: string | null
+          cart_muted_text_color: string | null
+          cart_summary_background_color: string | null
+          cart_template: string | null
+          cart_text_color: string | null
+          category_nav_style: string | null
+          checkout_accent_color: string | null
+          checkout_background_color: string | null
+          checkout_border_color: string | null
+          checkout_button_color: string | null
+          checkout_button_text_color: string | null
+          checkout_card_background_color: string | null
+          checkout_design: string | null
+          checkout_design_enabled: boolean
+          checkout_modal_background_color: string | null
+          checkout_modal_border_color: string | null
+          checkout_modal_button_color: string | null
+          checkout_modal_button_text_color: string | null
+          checkout_modal_description_color: string | null
+          checkout_modal_price_color: string | null
+          checkout_modal_title_color: string | null
+          checkout_muted_text_color: string | null
+          checkout_summary_background_color: string | null
+          checkout_template: string | null
+          checkout_text_color: string | null
+          checkout_upsell_enabled: boolean | null
+          checkout_upsell_max_items: number | null
+          checkout_upsell_subtitle: string | null
+          checkout_upsell_title: string | null
+          confirmation_design: string | null
+          confirmation_design_enabled: boolean
+          confirmation_redirect: string
+          confirmation_redirect_seconds: number
+          convex_auth_enforced: boolean
+          convex_deployment_url: string | null
+          convex_public_reads: boolean
+          convex_schema_version: string | null
+          created_at: string
+          customer_hub_enabled: boolean
+          delivery_min_fee: number | null
+          delivery_price_per_km: number | null
+          delivery_radius_km: number | null
+          distance_delivery_enabled: boolean
+          domain: string | null
+          domain_vercel_names: string[]
+          domain_verified_at: string | null
+          email_notifications_enabled: boolean | null
+          enable_order_management: boolean | null
+          enforce_operating_hours: boolean
+          error_color: string | null
+          facebook_page_id: string | null
+          flash_screen_background_color: string | null
+          flash_screen_duration_ms: number | null
+          flash_screen_feature_enabled: boolean | null
+          flash_screen_image_url: string | null
+          flash_screen_is_active: boolean | null
+          flash_screen_subtitle: string | null
+          flash_screen_text_color: string | null
+          flash_screen_title: string | null
+          font_pair: string | null
+          footer_about_us: string | null
+          footer_address: string | null
+          footer_background_color: string | null
+          footer_border_color: string | null
+          footer_business_name: string | null
+          footer_copyright_text: string | null
+          footer_email: string | null
+          footer_enabled: boolean
+          footer_facebook_name: string | null
+          footer_facebook_url: string | null
+          footer_heading_color: string | null
+          footer_icon_background_color: string | null
+          footer_icon_color: string | null
+          footer_instagram_name: string | null
+          footer_instagram_url: string | null
+          footer_link_color: string | null
+          footer_logo_url: string | null
+          footer_muted_color: string | null
+          footer_phone: string | null
+          footer_powered_by_text: string | null
+          footer_privacy_policy: string | null
+          footer_refund_policy: string | null
+          footer_show_powered_by: boolean
+          footer_tagline: string | null
+          footer_terms_of_service: string | null
+          footer_text_color: string | null
+          footer_theme: string
+          footer_tiktok_name: string | null
+          footer_tiktok_url: string | null
+          footer_twitter_name: string | null
+          footer_twitter_url: string | null
+          footer_viber: string | null
+          footer_whatsapp: string | null
+          footer_youtube_name: string | null
+          footer_youtube_url: string | null
+          free_delivery_min_order: number | null
+          header_blur: boolean
+          header_cart_style: string
+          header_color: string | null
+          header_font_color: string | null
+          header_height: string
+          header_logo_shape: string
+          header_shadow: boolean
+          header_show_cart: boolean
+          header_show_logo: boolean
+          header_show_name: boolean
+          header_show_search: boolean
+          header_sticky: boolean
+          header_tagline: string | null
+          header_tagline_color: string | null
+          header_template: string
+          hero_background_color: string | null
+          hero_cta_primary_color: string | null
+          hero_cta_primary_label: string | null
+          hero_cta_primary_text_color: string | null
+          hero_cta_secondary_label: string | null
+          hero_cta_secondary_text_color: string | null
+          hero_description: string | null
+          hero_description_color: string | null
+          hero_design: string | null
+          hero_featured_product_id: string | null
+          hero_image_url: string | null
+          hero_kicker: string | null
+          hero_kicker_color: string | null
+          hero_link_url: string | null
+          hero_preset: string | null
+          hero_section_enabled: boolean
+          hero_title: string | null
+          hero_title_color: string | null
+          hide_currency_symbol: boolean | null
+          id: string
+          inventory_enabled: boolean
+          ios_app_store_id: string | null
+          is_active: boolean
+          is_announcement_visible: boolean | null
+          is_prelaunch: boolean
+          is_promotion_visible: boolean | null
+          lalamove_enabled: boolean | null
+          lalamove_market: string | null
+          lalamove_sandbox: boolean | null
+          lalamove_sender_name: string | null
+          lalamove_sender_phone: string | null
+          lalamove_service_type: string | null
+          link_color: string | null
+          logo_url: string
+          low_stock_alerts_enabled: boolean
+          loyalty_enabled: boolean
+          loyalty_shadow: boolean
+          loyverse_enabled: boolean
+          loyverse_last_synced_at: string | null
+          loyverse_payment_type_id: string | null
+          loyverse_push_mode: string
+          loyverse_store_id: string | null
+          loyverse_webhook_error: string | null
+          loyverse_webhooks_registered_at: string | null
+          mapbox_enabled: boolean | null
+          max_outlets: number
+          max_staff_per_branch: number
+          mcp_enabled: boolean
+          menu_cart_badge_background_color: string | null
+          menu_cart_badge_text_color: string | null
+          menu_category_active_color: string | null
+          menu_category_header_color: string | null
+          menu_category_inactive_color: string | null
+          menu_engineering_enabled: boolean | null
+          menu_main_header_subtitle_color: string | null
+          menu_main_header_text_color: string | null
+          messenger_page_id: string
+          messenger_page_name: string | null
+          messenger_redirect_enabled: boolean
+          messenger_redirect_mode: string | null
+          messenger_username: string | null
+          mobile_card_template: string | null
+          mobile_grid_columns: number | null
+          mobile_header_template: string | null
+          mobile_overrides: Json
+          mobile_page_layout: string | null
+          modal_background_color: string | null
+          modal_description_color: string | null
+          modal_price_color: string | null
+          modal_title_color: string | null
+          modifier_groups_enabled: boolean
+          multi_branch_enabled: boolean
+          name: string
+          operating_hours: Json | null
+          order_backend: string
+          outlet_selection_timing: string
+          page_layout: string | null
+          pairing_rules_enabled: boolean | null
+          pending_domain: string | null
+          pending_domain_claimed_at: string | null
+          pending_domain_token: string | null
+          pickup_scan_enabled: boolean
+          pos_stock_policy: string
+          presell_enabled: boolean
+          primary_color: string
+          promotion_banners: Json | null
+          promotion_image_url: string | null
+          qr_handoff_enabled: boolean
+          receipt_layout: Json | null
+          restaurant_address: string | null
+          restaurant_latitude: number | null
+          restaurant_longitude: number | null
+          search_bar_background: string | null
+          search_bar_border: string | null
+          search_bar_enabled: boolean
+          search_bar_focus_ring: string | null
+          search_bar_icon: string | null
+          search_bar_placeholder: string | null
+          search_bar_radius: string | null
+          search_bar_style: string | null
+          search_bar_text: string | null
+          secondary_color: string
+          section_schemes: Json
+          senior_friendly_mode: boolean
+          shadow_color: string | null
+          slug: string
+          storefront_labels: Json
+          storefront_pack: string
+          storefront_pack_settings: Json
+          storefront_palette: string | null
+          success_color: string | null
+          supabase_order_anon_key: string | null
+          supabase_order_db_url: string | null
+          supabase_order_schema_version: number | null
+          supabase_order_service_key: string | null
+          supabase_order_url: string | null
+          text_muted_color: string | null
+          text_primary_color: string | null
+          text_secondary_color: string | null
+          timezone: string
+          tracking_design: string | null
+          tracking_design_enabled: boolean
+          tracking_style: Json
+          updated_at: string
+          warning_color: string | null
+          welcome_background_color: string | null
+          welcome_cta_background_color: string | null
+          welcome_cta_text: string | null
+          welcome_cta_text_color: string | null
+          welcome_design: string | null
+          welcome_design_enabled: boolean
+          welcome_entry_mode: string
+          welcome_heading_color: string | null
+          welcome_heading_text: string | null
+          welcome_page_banners: Json
+          welcome_show_copy: boolean
+          welcome_show_header: boolean
+          welcome_show_logo: boolean
+          welcome_show_order_types: boolean
+          welcome_subheading_text: string | null
+          welcome_subtext_color: string | null
+          welcome_text_align: string
+          welcome_tile_background_color: string | null
+          welcome_tile_icon_color: string | null
+          welcome_tile_text_color: string | null
+        }
+        Insert: {
+          accent_color?: string | null
+          admin_email?: string | null
+          android_package_name?: string | null
+          announcement_bg_color?: string | null
+          announcement_text?: string | null
+          announcement_text_color?: string | null
+          app_enabled?: boolean | null
+          assistant_enabled?: boolean
+          auto_86_enabled?: boolean
+          background_color?: string | null
+          background_image_attachment?: string | null
+          background_image_fit?: string | null
+          background_image_opacity?: number | null
+          background_image_position?: string | null
+          background_image_url?: string | null
+          background_overlay_color?: string | null
+          background_overlay_opacity?: number | null
+          beta_designs_enabled?: boolean
+          border_color?: string | null
+          brand_color?: string | null
+          bundles_enabled?: boolean | null
+          button_primary_color?: string | null
+          button_primary_text_color?: string | null
+          button_secondary_color?: string | null
+          button_secondary_text_color?: string | null
+          card_add_button?: string | null
+          card_density?: string | null
+          card_description?: string | null
+          card_description_color?: string | null
+          card_image_fit?: string | null
+          card_image_ratio?: string | null
+          card_price_color?: string | null
+          card_roundness?: string | null
+          card_template?: string | null
+          card_text_align?: string | null
+          card_title_color?: string | null
+          cards_border_color?: string | null
+          cards_color?: string | null
+          cart_accent_color?: string | null
+          cart_background_color?: string | null
+          cart_border_color?: string | null
+          cart_button_color?: string | null
+          cart_button_text_color?: string | null
+          cart_card_background_color?: string | null
+          cart_muted_text_color?: string | null
+          cart_summary_background_color?: string | null
+          cart_template?: string | null
+          cart_text_color?: string | null
+          category_nav_style?: string | null
+          checkout_accent_color?: string | null
+          checkout_background_color?: string | null
+          checkout_border_color?: string | null
+          checkout_button_color?: string | null
+          checkout_button_text_color?: string | null
+          checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
+          checkout_modal_background_color?: string | null
+          checkout_modal_border_color?: string | null
+          checkout_modal_button_color?: string | null
+          checkout_modal_button_text_color?: string | null
+          checkout_modal_description_color?: string | null
+          checkout_modal_price_color?: string | null
+          checkout_modal_title_color?: string | null
+          checkout_muted_text_color?: string | null
+          checkout_summary_background_color?: string | null
+          checkout_template?: string | null
+          checkout_text_color?: string | null
+          checkout_upsell_enabled?: boolean | null
+          checkout_upsell_max_items?: number | null
+          checkout_upsell_subtitle?: string | null
+          checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
+          convex_auth_enforced?: boolean
+          convex_deployment_url?: string | null
+          convex_public_reads?: boolean
+          convex_schema_version?: string | null
+          created_at?: string
+          customer_hub_enabled?: boolean
+          delivery_min_fee?: number | null
+          delivery_price_per_km?: number | null
+          delivery_radius_km?: number | null
+          distance_delivery_enabled?: boolean
+          domain?: string | null
+          domain_vercel_names?: string[]
+          domain_verified_at?: string | null
+          email_notifications_enabled?: boolean | null
+          enable_order_management?: boolean | null
+          enforce_operating_hours?: boolean
+          error_color?: string | null
+          facebook_page_id?: string | null
+          flash_screen_background_color?: string | null
+          flash_screen_duration_ms?: number | null
+          flash_screen_feature_enabled?: boolean | null
+          flash_screen_image_url?: string | null
+          flash_screen_is_active?: boolean | null
+          flash_screen_subtitle?: string | null
+          flash_screen_text_color?: string | null
+          flash_screen_title?: string | null
+          font_pair?: string | null
+          footer_about_us?: string | null
+          footer_address?: string | null
+          footer_background_color?: string | null
+          footer_border_color?: string | null
+          footer_business_name?: string | null
+          footer_copyright_text?: string | null
+          footer_email?: string | null
+          footer_enabled?: boolean
+          footer_facebook_name?: string | null
+          footer_facebook_url?: string | null
+          footer_heading_color?: string | null
+          footer_icon_background_color?: string | null
+          footer_icon_color?: string | null
+          footer_instagram_name?: string | null
+          footer_instagram_url?: string | null
+          footer_link_color?: string | null
+          footer_logo_url?: string | null
+          footer_muted_color?: string | null
+          footer_phone?: string | null
+          footer_powered_by_text?: string | null
+          footer_privacy_policy?: string | null
+          footer_refund_policy?: string | null
+          footer_show_powered_by?: boolean
+          footer_tagline?: string | null
+          footer_terms_of_service?: string | null
+          footer_text_color?: string | null
+          footer_theme?: string
+          footer_tiktok_name?: string | null
+          footer_tiktok_url?: string | null
+          footer_twitter_name?: string | null
+          footer_twitter_url?: string | null
+          footer_viber?: string | null
+          footer_whatsapp?: string | null
+          footer_youtube_name?: string | null
+          footer_youtube_url?: string | null
+          free_delivery_min_order?: number | null
+          header_blur?: boolean
+          header_cart_style?: string
+          header_color?: string | null
+          header_font_color?: string | null
+          header_height?: string
+          header_logo_shape?: string
+          header_shadow?: boolean
+          header_show_cart?: boolean
+          header_show_logo?: boolean
+          header_show_name?: boolean
+          header_show_search?: boolean
+          header_sticky?: boolean
+          header_tagline?: string | null
+          header_tagline_color?: string | null
+          header_template?: string
+          hero_background_color?: string | null
+          hero_cta_primary_color?: string | null
+          hero_cta_primary_label?: string | null
+          hero_cta_primary_text_color?: string | null
+          hero_cta_secondary_label?: string | null
+          hero_cta_secondary_text_color?: string | null
+          hero_description?: string | null
+          hero_description_color?: string | null
+          hero_design?: string | null
+          hero_featured_product_id?: string | null
+          hero_image_url?: string | null
+          hero_kicker?: string | null
+          hero_kicker_color?: string | null
+          hero_link_url?: string | null
+          hero_preset?: string | null
+          hero_section_enabled?: boolean
+          hero_title?: string | null
+          hero_title_color?: string | null
+          hide_currency_symbol?: boolean | null
+          id?: string
+          inventory_enabled?: boolean
+          ios_app_store_id?: string | null
+          is_active?: boolean
+          is_announcement_visible?: boolean | null
+          is_prelaunch?: boolean
+          is_promotion_visible?: boolean | null
+          lalamove_enabled?: boolean | null
+          lalamove_market?: string | null
+          lalamove_sandbox?: boolean | null
+          lalamove_sender_name?: string | null
+          lalamove_sender_phone?: string | null
+          lalamove_service_type?: string | null
+          link_color?: string | null
+          logo_url?: string
+          low_stock_alerts_enabled?: boolean
+          loyalty_enabled?: boolean
+          loyalty_shadow?: boolean
+          loyverse_enabled?: boolean
+          loyverse_last_synced_at?: string | null
+          loyverse_payment_type_id?: string | null
+          loyverse_push_mode?: string
+          loyverse_store_id?: string | null
+          loyverse_webhook_error?: string | null
+          loyverse_webhooks_registered_at?: string | null
+          mapbox_enabled?: boolean | null
+          max_outlets?: number
+          max_staff_per_branch?: number
+          mcp_enabled?: boolean
+          menu_cart_badge_background_color?: string | null
+          menu_cart_badge_text_color?: string | null
+          menu_category_active_color?: string | null
+          menu_category_header_color?: string | null
+          menu_category_inactive_color?: string | null
+          menu_engineering_enabled?: boolean | null
+          menu_main_header_subtitle_color?: string | null
+          menu_main_header_text_color?: string | null
+          messenger_page_id?: string
+          messenger_page_name?: string | null
+          messenger_redirect_enabled?: boolean
+          messenger_redirect_mode?: string | null
+          messenger_username?: string | null
+          mobile_card_template?: string | null
+          mobile_grid_columns?: number | null
+          mobile_header_template?: string | null
+          mobile_overrides?: Json
+          mobile_page_layout?: string | null
+          modal_background_color?: string | null
+          modal_description_color?: string | null
+          modal_price_color?: string | null
+          modal_title_color?: string | null
+          modifier_groups_enabled?: boolean
+          multi_branch_enabled?: boolean
+          name: string
+          operating_hours?: Json | null
+          order_backend?: string
+          outlet_selection_timing?: string
+          page_layout?: string | null
+          pairing_rules_enabled?: boolean | null
+          pending_domain?: string | null
+          pending_domain_claimed_at?: string | null
+          pending_domain_token?: string | null
+          pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
+          presell_enabled?: boolean
+          primary_color?: string
+          promotion_banners?: Json | null
+          promotion_image_url?: string | null
+          qr_handoff_enabled?: boolean
+          receipt_layout?: Json | null
+          restaurant_address?: string | null
+          restaurant_latitude?: number | null
+          restaurant_longitude?: number | null
+          search_bar_background?: string | null
+          search_bar_border?: string | null
+          search_bar_enabled?: boolean
+          search_bar_focus_ring?: string | null
+          search_bar_icon?: string | null
+          search_bar_placeholder?: string | null
+          search_bar_radius?: string | null
+          search_bar_style?: string | null
+          search_bar_text?: string | null
+          secondary_color?: string
+          section_schemes?: Json
+          senior_friendly_mode?: boolean
+          shadow_color?: string | null
+          slug: string
+          storefront_labels?: Json
+          storefront_pack?: string
+          storefront_pack_settings?: Json
+          storefront_palette?: string | null
+          success_color?: string | null
+          supabase_order_anon_key?: string | null
+          supabase_order_db_url?: string | null
+          supabase_order_schema_version?: number | null
+          supabase_order_service_key?: string | null
+          supabase_order_url?: string | null
+          text_muted_color?: string | null
+          text_primary_color?: string | null
+          text_secondary_color?: string | null
+          timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
+          tracking_style?: Json
+          updated_at?: string
+          warning_color?: string | null
+          welcome_background_color?: string | null
+          welcome_cta_background_color?: string | null
+          welcome_cta_text?: string | null
+          welcome_cta_text_color?: string | null
+          welcome_design?: string | null
+          welcome_design_enabled?: boolean
+          welcome_entry_mode?: string
+          welcome_heading_color?: string | null
+          welcome_heading_text?: string | null
+          welcome_page_banners?: Json
+          welcome_show_copy?: boolean
+          welcome_show_header?: boolean
+          welcome_show_logo?: boolean
+          welcome_show_order_types?: boolean
+          welcome_subheading_text?: string | null
+          welcome_subtext_color?: string | null
+          welcome_text_align?: string
+          welcome_tile_background_color?: string | null
+          welcome_tile_icon_color?: string | null
+          welcome_tile_text_color?: string | null
+        }
+        Update: {
+          accent_color?: string | null
+          admin_email?: string | null
+          android_package_name?: string | null
+          announcement_bg_color?: string | null
+          announcement_text?: string | null
+          announcement_text_color?: string | null
+          app_enabled?: boolean | null
+          assistant_enabled?: boolean
+          auto_86_enabled?: boolean
+          background_color?: string | null
+          background_image_attachment?: string | null
+          background_image_fit?: string | null
+          background_image_opacity?: number | null
+          background_image_position?: string | null
+          background_image_url?: string | null
+          background_overlay_color?: string | null
+          background_overlay_opacity?: number | null
+          beta_designs_enabled?: boolean
+          border_color?: string | null
+          brand_color?: string | null
+          bundles_enabled?: boolean | null
+          button_primary_color?: string | null
+          button_primary_text_color?: string | null
+          button_secondary_color?: string | null
+          button_secondary_text_color?: string | null
+          card_add_button?: string | null
+          card_density?: string | null
+          card_description?: string | null
+          card_description_color?: string | null
+          card_image_fit?: string | null
+          card_image_ratio?: string | null
+          card_price_color?: string | null
+          card_roundness?: string | null
+          card_template?: string | null
+          card_text_align?: string | null
+          card_title_color?: string | null
+          cards_border_color?: string | null
+          cards_color?: string | null
+          cart_accent_color?: string | null
+          cart_background_color?: string | null
+          cart_border_color?: string | null
+          cart_button_color?: string | null
+          cart_button_text_color?: string | null
+          cart_card_background_color?: string | null
+          cart_muted_text_color?: string | null
+          cart_summary_background_color?: string | null
+          cart_template?: string | null
+          cart_text_color?: string | null
+          category_nav_style?: string | null
+          checkout_accent_color?: string | null
+          checkout_background_color?: string | null
+          checkout_border_color?: string | null
+          checkout_button_color?: string | null
+          checkout_button_text_color?: string | null
+          checkout_card_background_color?: string | null
+          checkout_design?: string | null
+          checkout_design_enabled?: boolean
+          checkout_modal_background_color?: string | null
+          checkout_modal_border_color?: string | null
+          checkout_modal_button_color?: string | null
+          checkout_modal_button_text_color?: string | null
+          checkout_modal_description_color?: string | null
+          checkout_modal_price_color?: string | null
+          checkout_modal_title_color?: string | null
+          checkout_muted_text_color?: string | null
+          checkout_summary_background_color?: string | null
+          checkout_template?: string | null
+          checkout_text_color?: string | null
+          checkout_upsell_enabled?: boolean | null
+          checkout_upsell_max_items?: number | null
+          checkout_upsell_subtitle?: string | null
+          checkout_upsell_title?: string | null
+          confirmation_design?: string | null
+          confirmation_design_enabled?: boolean
+          confirmation_redirect?: string
+          confirmation_redirect_seconds?: number
+          convex_auth_enforced?: boolean
+          convex_deployment_url?: string | null
+          convex_public_reads?: boolean
+          convex_schema_version?: string | null
+          created_at?: string
+          customer_hub_enabled?: boolean
+          delivery_min_fee?: number | null
+          delivery_price_per_km?: number | null
+          delivery_radius_km?: number | null
+          distance_delivery_enabled?: boolean
+          domain?: string | null
+          domain_vercel_names?: string[]
+          domain_verified_at?: string | null
+          email_notifications_enabled?: boolean | null
+          enable_order_management?: boolean | null
+          enforce_operating_hours?: boolean
+          error_color?: string | null
+          facebook_page_id?: string | null
+          flash_screen_background_color?: string | null
+          flash_screen_duration_ms?: number | null
+          flash_screen_feature_enabled?: boolean | null
+          flash_screen_image_url?: string | null
+          flash_screen_is_active?: boolean | null
+          flash_screen_subtitle?: string | null
+          flash_screen_text_color?: string | null
+          flash_screen_title?: string | null
+          font_pair?: string | null
+          footer_about_us?: string | null
+          footer_address?: string | null
+          footer_background_color?: string | null
+          footer_border_color?: string | null
+          footer_business_name?: string | null
+          footer_copyright_text?: string | null
+          footer_email?: string | null
+          footer_enabled?: boolean
+          footer_facebook_name?: string | null
+          footer_facebook_url?: string | null
+          footer_heading_color?: string | null
+          footer_icon_background_color?: string | null
+          footer_icon_color?: string | null
+          footer_instagram_name?: string | null
+          footer_instagram_url?: string | null
+          footer_link_color?: string | null
+          footer_logo_url?: string | null
+          footer_muted_color?: string | null
+          footer_phone?: string | null
+          footer_powered_by_text?: string | null
+          footer_privacy_policy?: string | null
+          footer_refund_policy?: string | null
+          footer_show_powered_by?: boolean
+          footer_tagline?: string | null
+          footer_terms_of_service?: string | null
+          footer_text_color?: string | null
+          footer_theme?: string
+          footer_tiktok_name?: string | null
+          footer_tiktok_url?: string | null
+          footer_twitter_name?: string | null
+          footer_twitter_url?: string | null
+          footer_viber?: string | null
+          footer_whatsapp?: string | null
+          footer_youtube_name?: string | null
+          footer_youtube_url?: string | null
+          free_delivery_min_order?: number | null
+          header_blur?: boolean
+          header_cart_style?: string
+          header_color?: string | null
+          header_font_color?: string | null
+          header_height?: string
+          header_logo_shape?: string
+          header_shadow?: boolean
+          header_show_cart?: boolean
+          header_show_logo?: boolean
+          header_show_name?: boolean
+          header_show_search?: boolean
+          header_sticky?: boolean
+          header_tagline?: string | null
+          header_tagline_color?: string | null
+          header_template?: string
+          hero_background_color?: string | null
+          hero_cta_primary_color?: string | null
+          hero_cta_primary_label?: string | null
+          hero_cta_primary_text_color?: string | null
+          hero_cta_secondary_label?: string | null
+          hero_cta_secondary_text_color?: string | null
+          hero_description?: string | null
+          hero_description_color?: string | null
+          hero_design?: string | null
+          hero_featured_product_id?: string | null
+          hero_image_url?: string | null
+          hero_kicker?: string | null
+          hero_kicker_color?: string | null
+          hero_link_url?: string | null
+          hero_preset?: string | null
+          hero_section_enabled?: boolean
+          hero_title?: string | null
+          hero_title_color?: string | null
+          hide_currency_symbol?: boolean | null
+          id?: string
+          inventory_enabled?: boolean
+          ios_app_store_id?: string | null
+          is_active?: boolean
+          is_announcement_visible?: boolean | null
+          is_prelaunch?: boolean
+          is_promotion_visible?: boolean | null
+          lalamove_enabled?: boolean | null
+          lalamove_market?: string | null
+          lalamove_sandbox?: boolean | null
+          lalamove_sender_name?: string | null
+          lalamove_sender_phone?: string | null
+          lalamove_service_type?: string | null
+          link_color?: string | null
+          logo_url?: string
+          low_stock_alerts_enabled?: boolean
+          loyalty_enabled?: boolean
+          loyalty_shadow?: boolean
+          loyverse_enabled?: boolean
+          loyverse_last_synced_at?: string | null
+          loyverse_payment_type_id?: string | null
+          loyverse_push_mode?: string
+          loyverse_store_id?: string | null
+          loyverse_webhook_error?: string | null
+          loyverse_webhooks_registered_at?: string | null
+          mapbox_enabled?: boolean | null
+          max_outlets?: number
+          max_staff_per_branch?: number
+          mcp_enabled?: boolean
+          menu_cart_badge_background_color?: string | null
+          menu_cart_badge_text_color?: string | null
+          menu_category_active_color?: string | null
+          menu_category_header_color?: string | null
+          menu_category_inactive_color?: string | null
+          menu_engineering_enabled?: boolean | null
+          menu_main_header_subtitle_color?: string | null
+          menu_main_header_text_color?: string | null
+          messenger_page_id?: string
+          messenger_page_name?: string | null
+          messenger_redirect_enabled?: boolean
+          messenger_redirect_mode?: string | null
+          messenger_username?: string | null
+          mobile_card_template?: string | null
+          mobile_grid_columns?: number | null
+          mobile_header_template?: string | null
+          mobile_overrides?: Json
+          mobile_page_layout?: string | null
+          modal_background_color?: string | null
+          modal_description_color?: string | null
+          modal_price_color?: string | null
+          modal_title_color?: string | null
+          modifier_groups_enabled?: boolean
+          multi_branch_enabled?: boolean
+          name?: string
+          operating_hours?: Json | null
+          order_backend?: string
+          outlet_selection_timing?: string
+          page_layout?: string | null
+          pairing_rules_enabled?: boolean | null
+          pending_domain?: string | null
+          pending_domain_claimed_at?: string | null
+          pending_domain_token?: string | null
+          pickup_scan_enabled?: boolean
+          pos_stock_policy?: string
+          presell_enabled?: boolean
+          primary_color?: string
+          promotion_banners?: Json | null
+          promotion_image_url?: string | null
+          qr_handoff_enabled?: boolean
+          receipt_layout?: Json | null
+          restaurant_address?: string | null
+          restaurant_latitude?: number | null
+          restaurant_longitude?: number | null
+          search_bar_background?: string | null
+          search_bar_border?: string | null
+          search_bar_enabled?: boolean
+          search_bar_focus_ring?: string | null
+          search_bar_icon?: string | null
+          search_bar_placeholder?: string | null
+          search_bar_radius?: string | null
+          search_bar_style?: string | null
+          search_bar_text?: string | null
+          secondary_color?: string
+          section_schemes?: Json
+          senior_friendly_mode?: boolean
+          shadow_color?: string | null
+          slug?: string
+          storefront_labels?: Json
+          storefront_pack?: string
+          storefront_pack_settings?: Json
+          storefront_palette?: string | null
+          success_color?: string | null
+          supabase_order_anon_key?: string | null
+          supabase_order_db_url?: string | null
+          supabase_order_schema_version?: number | null
+          supabase_order_service_key?: string | null
+          supabase_order_url?: string | null
+          text_muted_color?: string | null
+          text_primary_color?: string | null
+          text_secondary_color?: string | null
+          timezone?: string
+          tracking_design?: string | null
+          tracking_design_enabled?: boolean
+          tracking_style?: Json
+          updated_at?: string
+          warning_color?: string | null
+          welcome_background_color?: string | null
+          welcome_cta_background_color?: string | null
+          welcome_cta_text?: string | null
+          welcome_cta_text_color?: string | null
+          welcome_design?: string | null
+          welcome_design_enabled?: boolean
+          welcome_entry_mode?: string
+          welcome_heading_color?: string | null
+          welcome_heading_text?: string | null
+          welcome_page_banners?: Json
+          welcome_show_copy?: boolean
+          welcome_show_header?: boolean
+          welcome_show_logo?: boolean
+          welcome_show_order_types?: boolean
+          welcome_subheading_text?: string | null
+          welcome_subtext_color?: string | null
+          welcome_text_align?: string
+          welcome_tile_background_color?: string | null
+          welcome_tile_icon_color?: string | null
+          welcome_tile_text_color?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenants_hero_featured_product_id_fkey"
+            columns: ["hero_featured_product_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      university_courses: {
+        Row: {
+          category: string | null
+          cover_image_url: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          level: string
+          published_at: string | null
+          slug: string
+          sort_order: number
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          level?: string
+          published_at?: string | null
+          slug: string
+          sort_order?: number
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          level?: string
+          published_at?: string | null
+          slug?: string
+          sort_order?: number
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      university_lesson_progress: {
+        Row: {
+          lesson_id: string
+          tenant_id: string | null
+          user_id: string
+          watched_at: string
+        }
+        Insert: {
+          lesson_id: string
+          tenant_id?: string | null
+          user_id: string
+          watched_at?: string
+        }
+        Update: {
+          lesson_id?: string
+          tenant_id?: string | null
+          user_id?: string
+          watched_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "university_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "university_lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "university_lesson_progress_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      university_lessons: {
+        Row: {
+          blocks: Json
+          course_id: string
+          created_at: string
+          duration_minutes: number | null
+          id: string
+          module_id: string
+          resources: Json
+          slug: string
+          sort_order: number
+          status: string
+          summary: string | null
+          title: string
+          updated_at: string
+          video_url: string | null
+        }
+        Insert: {
+          blocks?: Json
+          course_id: string
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          module_id: string
+          resources?: Json
+          slug: string
+          sort_order?: number
+          status?: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Update: {
+          blocks?: Json
+          course_id?: string
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          module_id?: string
+          resources?: Json
+          slug?: string
+          sort_order?: number
+          status?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "university_lessons_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "university_courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "university_lessons_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "university_modules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      university_modules: {
+        Row: {
+          course_id: string
+          created_at: string
+          description: string | null
+          id: string
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "university_modules_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "university_courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      upsell_pairs: {
+        Row: {
+          bcg_strategy: string | null
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          is_auto_generated: boolean | null
+          max_suggestions: number | null
+          pair_type: string
+          source_item_id: string
+          source_label: string | null
+          target_item_id: string
+          target_label: string | null
+          tenant_id: string
+          updated_at: string | null
+          upgrade_display_style: string | null
+          upgrade_header: string | null
+        }
+        Insert: {
+          bcg_strategy?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          is_auto_generated?: boolean | null
+          max_suggestions?: number | null
+          pair_type: string
+          source_item_id: string
+          source_label?: string | null
+          target_item_id: string
+          target_label?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          upgrade_display_style?: string | null
+          upgrade_header?: string | null
+        }
+        Update: {
+          bcg_strategy?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          is_auto_generated?: boolean | null
+          max_suggestions?: number | null
+          pair_type?: string
+          source_item_id?: string
+          source_label?: string | null
+          target_item_id?: string
+          target_label?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          upgrade_display_style?: string | null
+          upgrade_header?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upsell_pairs_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "upsell_pairs_target_item_id_fkey"
+            columns: ["target_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "upsell_pairs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voucher_redemptions: {
+        Row: {
+          amount_discounted: number
+          channel: string
+          created_at: string
+          customer_key: string | null
+          id: string
+          order_id: string
+          outlet_id: string | null
+          redeemed_by: string | null
+          tenant_id: string
+          voucher_id: string
+        }
+        Insert: {
+          amount_discounted: number
+          channel: string
+          created_at?: string
+          customer_key?: string | null
+          id?: string
+          order_id: string
+          outlet_id?: string | null
+          redeemed_by?: string | null
+          tenant_id: string
+          voucher_id: string
+        }
+        Update: {
+          amount_discounted?: number
+          channel?: string
+          created_at?: string
+          customer_key?: string | null
+          id?: string
+          order_id?: string
+          outlet_id?: string | null
+          redeemed_by?: string | null
+          tenant_id?: string
+          voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voucher_redemptions_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voucher_redemptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voucher_redemptions_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "vouchers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voucher_targets: {
+        Row: {
+          created_at: string
+          id: string
+          target_id: string
+          target_type: string
+          voucher_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          target_id: string
+          target_type: string
+          voucher_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          target_id?: string
+          target_type?: string
+          voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voucher_targets_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "vouchers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vouchers: {
+        Row: {
+          channels: string[]
+          code: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          discount_type: string
+          discount_value: number
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          is_stackable: boolean
+          max_discount_amount: number | null
+          max_discounted_units: number | null
+          min_order_amount: number
+          name: string
+          outlet_ids: string[] | null
+          scope: string
+          starts_at: string | null
+          tenant_id: string
+          updated_at: string
+          usage_limit_per_customer: number | null
+          usage_limit_total: number | null
+          used_count: number
+        }
+        Insert: {
+          channels?: string[]
+          code: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_type: string
+          discount_value?: number
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          is_stackable?: boolean
+          max_discount_amount?: number | null
+          max_discounted_units?: number | null
+          min_order_amount?: number
+          name: string
+          outlet_ids?: string[] | null
+          scope?: string
+          starts_at?: string | null
+          tenant_id: string
+          updated_at?: string
+          usage_limit_per_customer?: number | null
+          usage_limit_total?: number | null
+          used_count?: number
+        }
+        Update: {
+          channels?: string[]
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_type?: string
+          discount_value?: number
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          is_stackable?: boolean
+          max_discount_amount?: number | null
+          max_discounted_units?: number | null
+          min_order_amount?: number
+          name?: string
+          outlet_ids?: string[] | null
+          scope?: string
+          starts_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+          usage_limit_per_customer?: number | null
+          usage_limit_total?: number | null
+          used_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vouchers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      _tmp_import_baristro_convex: { Args: { payload: Json }; Returns: Json }
+      abandon_loyalty_sms_dispatch: {
+        Args: {
+          p_actor_id: string
+          p_device_id: string
+          p_job_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      accept_remittance: {
+        Args: { p_id: string; p_note?: string; p_received_cents: number }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      accept_remittance_as: {
+        Args: {
+          p_entered_by?: string
+          p_id: string
+          p_note?: string
+          p_received_cents: number
+          p_receiver: string
+        }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      allow_loyalty_verification_attempt: {
+        Args: { p_ip_hash: string; p_phone_hash: string; p_tenant_id: string }
+        Returns: Json
+      }
+      app_customer_loyalty: {
+        Args: { p_session_token_hash: string; p_tenant_id: string }
+        Returns: Json
+      }
+      app_release_version_key: { Args: { version: string }; Returns: number[] }
+      app_user_admin_outlet_id: { Args: never; Returns: string }
+      app_user_admin_tenant_id: { Args: never; Returns: string }
+      app_user_belongs_to_store: {
+        Args: { p_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_has_permission: {
+        Args: { p_permission: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_has_permission_of: {
+        Args: { p_permission: string; p_tenant_id: string; p_user: string }
+        Returns: boolean
+      }
+      app_user_holds_any_permission: {
+        Args: { p_keys: string[]; p_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_is_store_owner: {
+        Args: { p_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_is_superadmin: { Args: never; Returns: boolean }
+      app_user_manages_cash: {
+        Args: { target_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_manages_messenger: {
+        Args: { target_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_may_reach_branch: {
+        Args: { target_outlet_id: string; target_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_may_read_merchant_notifications:
+        | {
+            Args: { target_outlet_id: string; target_tenant_id: string }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              target_kind: string
+              target_outlet_id: string
+              target_tenant_id: string
+            }
+            Returns: boolean
+          }
+      app_user_may_read_messenger_chat: {
+        Args: { p_psid: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_may_see_order: {
+        Args: { order_outlet_id: string; order_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_platform_can: {
+        Args: { p_permissions: string[] }
+        Returns: boolean
+      }
+      apply_loyalty_earning: {
+        Args: {
+          p_actor?: string
+          p_customer_id: string
+          p_customer_key: string
+          p_delta: number
+          p_external_order_id: string
+          p_kind: string
+          p_milestones?: Json
+          p_note?: string
+          p_order_backend: string
+          p_program_id: string
+          p_request_id?: string
+          p_reward_expires_at: string
+          p_reward_terms: Json
+          p_shadow: boolean
+          p_tenant_id: string
+          p_threshold: number
+          p_version_id: string
+        }
+        Returns: Json
+      }
+      apply_order_stock_claim: {
+        Args: {
+          p_kind: string
+          p_mode?: string
+          p_movements?: Json
+          p_order_id: string
+          p_reason: string
+          p_revision: number
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      apply_presell_order: {
+        Args: {
+          p_direction: string
+          p_lines: Json
+          p_order_id: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      apply_simple_option_order_stock: {
+        Args: {
+          p_action: string
+          p_items?: Json
+          p_order_id: string
+          p_outlet_id?: string
+          p_revision?: number
+          p_tenant_id: string
+        }
+        Returns: number
+      }
+      approval_approver_cap: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: number
+      }
+      approval_direct_allowed: {
+        Args: {
+          p_amount: number
+          p_discount_pct?: number
+          p_kind: string
+          p_order_created_at: string
+          p_order_id?: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      approval_direct_lock_key: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: number
+      }
+      approval_finish: {
+        Args: {
+          p_error: string
+          p_ok: boolean
+          p_req: Database["public"]["Tables"]["approval_requests"]["Row"]
+          p_result: Json
+        }
+        Returns: {
+          amount: number
+          approved_amount: number | null
+          backend: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decided_by_name: string | null
+          decision_note: string | null
+          decision_reason_code: string | null
+          error: string | null
+          executed_at: string | null
+          expires_at: string
+          external_order_id: string | null
+          id: string
+          idempotency_key: string
+          is_direct: boolean
+          kind: string
+          note: string | null
+          order_number: string | null
+          order_snapshot: Json | null
+          outlet_id: string | null
+          payload: Json
+          payload_hash: string | null
+          reason_code: string
+          requested_by: string
+          requested_by_name: string | null
+          requester_shift_id: string | null
+          result: Json | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "approval_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      approval_implicit_method: {
+        Args: { p_customer_data: Json; p_method_name: string }
+        Returns: string
+      }
+      approval_line_value: {
+        Args: {
+          p_discount: number
+          p_quantity: number
+          p_subtotal: number
+          p_take: number
+        }
+        Returns: number
+      }
+      approval_may_request: {
+        Args: { p_kind: string; p_tenant_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      approval_open_shift: {
+        Args: { p_outlet_id: string; p_tenant_id: string; p_user_id: string }
+        Returns: string
+      }
+      approval_order_items_json: { Args: { p_order_id: string }; Returns: Json }
+      approval_order_ledger: { Args: { p_order_id: string }; Returns: Json }
+      approval_order_line_ratio: {
+        Args: { p_order_id: string }
+        Returns: number
+      }
+      approval_order_refunded: { Args: { p_order_id: string }; Returns: number }
+      approval_order_snapshot: { Args: { p_order_id: string }; Returns: Json }
+      approval_quote: {
+        Args: {
+          p_external_order_id: string
+          p_kind: string
+          p_payload: Json
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      approval_refund_allocation: {
+        Args: { p_amount: number; p_ledger: Json }
+        Returns: Json
+      }
+      approval_refund_within_own_limit: {
+        Args: {
+          p_already: number
+          p_amount: number
+          p_kind: string
+          p_order_created_at: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      approval_refusal: {
+        Args: { p_code: string; p_message: string }
+        Returns: Json
+      }
+      approval_requester_direct_today: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: number
+      }
+      approval_rules_effective: { Args: { p_tenant_id: string }; Returns: Json }
+      approval_scaled_line_value: {
+        Args: {
+          p_discount: number
+          p_order_id: string
+          p_quantity: number
+          p_subtotal: number
+          p_take: number
+        }
+        Returns: number
+      }
+      approval_transition_allowed: {
+        Args: { p_from: string; p_to: string }
+        Returns: boolean
+      }
+      approval_user_can: {
+        Args: { p_permission: string; p_tenant_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      approval_user_is_owner: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      approval_user_reaches: {
+        Args: { p_outlet_id: string; p_tenant_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      approvals_activity: {
+        Args: {
+          p_actor_user_id?: string
+          p_after?: Json
+          p_amount?: number
+          p_approved_by?: string
+          p_before?: Json
+          p_event_key: string
+          p_external_order_id?: string
+          p_flags?: string[]
+          p_kind: string
+          p_note?: string
+          p_order_number?: string
+          p_outlet_id?: string
+          p_reason?: string
+          p_source_id: string
+          p_source_table: string
+          p_strict?: boolean
+          p_subject_ref?: string
+          p_subject_type?: string
+          p_summary?: Json
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
+      approvals_activity_for: {
+        Args: {
+          p_actor: string
+          p_kind: string
+          p_req: Database["public"]["Tables"]["approval_requests"]["Row"]
+        }
+        Returns: undefined
+      }
+      authorize_loyalty_sms_dispatch: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_job_id: string
+          p_lease_token: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      begin_loyalty_sms_server_dispatch: {
+        Args: { p_challenge_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      business_day_bounds: {
+        Args: { p_day: string; p_tenant: string }
+        Returns: Record<string, unknown>
+      }
+      business_day_cutoff_for: {
+        Args: { p_day: string; p_tenant: string }
+        Returns: string
+      }
+      business_day_cutoff_label: {
+        Args: { p_minutes: number }
+        Returns: string
+      }
+      business_day_cutoff_starts_on: {
+        Args: {
+          p_at: string
+          p_cutoff_minutes: number
+          p_tenant: string
+          p_today_closed: boolean
+        }
+        Returns: string
+      }
+      business_day_of: {
+        Args: { p_at: string; p_tenant: string }
+        Returns: string
+      }
+      claim_approval_side_effects: {
+        Args: { p_limit?: number; p_tenant_id?: string }
+        Returns: {
+          amount: number
+          approved_amount: number | null
+          backend: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decided_by_name: string | null
+          decision_note: string | null
+          decision_reason_code: string | null
+          error: string | null
+          executed_at: string | null
+          expires_at: string
+          external_order_id: string | null
+          id: string
+          idempotency_key: string
+          is_direct: boolean
+          kind: string
+          note: string | null
+          order_number: string | null
+          order_snapshot: Json | null
+          outlet_id: string | null
+          payload: Json
+          payload_hash: string | null
+          reason_code: string
+          requested_by: string
+          requested_by_name: string | null
+          requester_shift_id: string | null
+          result: Json | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "approval_requests"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_assistant_turn: {
+        Args: {
+          p_max_cost_usd: number
+          p_max_messages: number
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
+      claim_boost_ai_generation: {
+        Args: {
+          p_limit: number
+          p_stale_after?: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: string
+      }
+      claim_loyalty_earning_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          backend: string
+          created_at: string
+          external_order_id: string
+          id: string
+          last_checked_at: string | null
+          last_result: string | null
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          revision: number
+          tenant_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "loyalty_earning_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_loyalty_pos_projections: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          external_order_id: string | null
+          id: string
+          last_error: string | null
+          last_retry_at: string | null
+          last_retry_by: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          order_backend: string
+          refund_checked_at: string | null
+          settlement_id: string
+          status: string
+          tenant_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "loyalty_pos_projection_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_loyalty_refund_checks: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          external_order_id: string | null
+          id: string
+          last_error: string | null
+          last_retry_at: string | null
+          last_retry_by: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          order_backend: string
+          refund_checked_at: string | null
+          settlement_id: string
+          status: string
+          tenant_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "loyalty_pos_projection_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_loyalty_sms_job: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      claim_sms_outbox_message: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      cleanup_loyalty_data: { Args: never; Returns: Json }
+      close_business_day: {
+        Args: {
+          p_day: string
+          p_force?: boolean
+          p_note?: string
+          p_outlet: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
+      close_shift: {
+        Args: {
+          p_closed_by_name?: string
+          p_float_kept_cents?: number
+          p_non_cash?: Json
+          p_note?: string
+          p_remit_to?: string
+          p_remit_to_safe?: boolean
+          p_shift_id: string
+          p_variance_reason?: string
+        }
+        Returns: Json
+      }
+      consume_discount_approval: {
+        Args: { p_order_id: string; p_tenant_id: string; p_token: string }
+        Returns: Json
+      }
+      count_shift: {
+        Args: {
+          p_counted_cents: number
+          p_denominations?: Json
+          p_device_expected_cents?: number
+          p_shift_id: string
+        }
+        Returns: Json
+      }
+      create_and_execute_approval: {
+        Args: {
+          p_external_order_id: string
+          p_idempotency_key: string
+          p_kind: string
+          p_note: string
+          p_payload: Json
+          p_reason_code: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      create_approval_request: {
+        Args: {
+          p_direct?: boolean
+          p_external_order_id: string
+          p_idempotency_key: string
+          p_kind: string
+          p_note: string
+          p_payload: Json
+          p_reason_code: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      customer_app_open_session: {
+        Args: {
+          p_opened_at: string
+          p_phone_e164: string
+          p_phone_hash: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      customer_login_issuance_retry_at: {
+        Args: {
+          p_ip_hash: string
+          p_now: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      customer_login_rate_limited: {
+        Args: {
+          p_ip_hash: string
+          p_now: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      decide_approval: {
+        Args: {
+          p_actor: string
+          p_approved_amount?: number
+          p_decision: string
+          p_id: string
+          p_note?: string
+          p_reason_code?: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      delete_customer_app_account: {
+        Args: { p_customer_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      delete_inventory_item: {
+        Args: { p_dry_run?: boolean; p_item_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      dispute_remittance: {
+        Args: { p_id: string; p_reason: string; p_received_cents?: number }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      enroll_loyalty_sms_device: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      ensure_expense_categories: {
+        Args: { p_tenant_id: string }
+        Returns: undefined
+      }
+      execute_approval: {
+        Args: { p_approval_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      execute_discount_approval: {
+        Args: { p_approval_id: string }
+        Returns: Json
+      }
+      execute_order_deletion: {
+        Args: { p_actor: string; p_deletion_id: string }
+        Returns: Json
+      }
+      execute_refund: { Args: { p_approval_id: string }; Returns: Json }
+      execute_stock_writeoff: { Args: { p_approval_id: string }; Returns: Json }
+      expense_actor_name: { Args: never; Returns: string }
+      expense_category_for: {
+        Args: { p_category_id: string; p_note: string; p_tenant_id: string }
+        Returns: string
+      }
+      expire_approval_requests: {
+        Args: { p_limit?: number; p_tenant_id?: string }
+        Returns: number
+      }
+      expire_loyalty_reservations: {
+        Args: { p_tenant_id?: string }
+        Returns: number
+      }
+      finish_loyalty_earning_job: {
+        Args: {
+          p_id: string
+          p_lease: string
+          p_result: string
+          p_revision: number
+        }
+        Returns: boolean
+      }
+      finish_loyalty_pos_projection: {
+        Args: {
+          p_error?: string
+          p_external_order_id: string
+          p_job_id: string
+          p_lease_token: string
+        }
+        Returns: boolean
+      }
+      finish_loyalty_sms_job: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_job_id: string
+          p_lease_token: string
+          p_outcome: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      finish_loyalty_sms_server_dispatch: {
+        Args: { p_job_id: string; p_outcome: string; p_tenant_id: string }
+        Returns: Json
+      }
+      finish_sms_outbox_message: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_error: string
+          p_lease_token: string
+          p_message_id: string
+          p_outcome: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      force_close_shift: {
+        Args: { p_note: string; p_shift_id: string }
+        Returns: Json
+      }
+      get_business_day_close: { Args: { p_close_id: string }; Returns: Json }
+      get_cash_settings: { Args: { p_tenant: string }; Returns: Json }
+      get_customer_order: {
+        Args: { p_order_id: string }
+        Returns: {
+          customer_name: string
+          daily_number: number
+          id: string
+          status: string
+          total: number
+        }[]
+      }
+      get_day_close_status: {
+        Args: { p_day: string; p_outlet: string; p_tenant: string }
+        Returns: Json
+      }
+      get_store_activity: {
+        Args: {
+          p_actor_user_id?: string
+          p_before_id?: string
+          p_before_occurred_at?: string
+          p_categories?: string[]
+          p_flagged_only?: boolean
+          p_include_routine?: boolean
+          p_limit?: number
+          p_outlet_id?: string
+          p_search?: string
+          p_since?: string
+          p_subject_ref?: string
+          p_subject_type?: string
+          p_tenant_id: string
+          p_until?: string
+        }
+        Returns: {
+          actor_name: string
+          actor_user_id: string
+          after: Json
+          amount: number
+          approved_by_name: string
+          before: Json
+          category: string
+          flags: string[]
+          id: string
+          is_routine: boolean
+          kind: string
+          note: string
+          occurred_at: string
+          order_number: string
+          outlet_id: string
+          outlet_name: string
+          quantity: number
+          reason: string
+          reviewed_at: string
+          reviewed_by_name: string
+          subject_ref: string
+          subject_type: string
+          summary: Json
+          unit: string
+        }[]
+      }
+      get_store_activity_summary: {
+        Args: {
+          p_outlet_id?: string
+          p_since: string
+          p_tenant_id: string
+          p_until: string
+        }
+        Returns: Json
+      }
+      growth_coach_openrouter_key: { Args: never; Returns: string }
+      initialize_order_types_for_tenant: {
+        Args: { tenant_uuid: string }
+        Returns: undefined
+      }
+      inventory_convert_quantity: {
+        Args: {
+          p_from_unit_id: string
+          p_quantity: number
+          p_to_unit_id: string
+        }
+        Returns: number
+      }
+      inventory_costs_for_tenant: {
+        Args: { p_after?: string; p_item_ids?: string[]; p_tenant_id: string }
+        Returns: {
+          inventory_item_id: string
+          unit_cost: number
+        }[]
+      }
+      inventory_effective_unit_cost: {
+        Args: { p_item_id: string; p_path?: string[]; p_tenant_id: string }
+        Returns: number
+      }
+      inventory_may_act_for_branch: {
+        Args: { p_outlet_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      inventory_movement_costs: {
+        Args: { p_movement_ids: string[]; p_tenant_id: string }
+        Returns: {
+          movement_id: string
+          unit_cost: number
+        }[]
+      }
+      inventory_recent_own_movements: {
+        Args: { p_tenant_id: string }
+        Returns: number
+      }
+      inventory_recipe_cost: {
+        Args: { p_path?: string[]; p_recipe_id: string; p_tenant_id: string }
+        Returns: number
+      }
+      issue_app_loyalty_claim: {
+        Args: {
+          p_claim_token_hash: string
+          p_entitlement_id: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      issue_customer_login_challenge: {
+        Args: {
+          p_challenge_id: string
+          p_code_hash: string
+          p_ip_hash: string
+          p_payload_encrypted: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      issue_loyalty_challenge: {
+        Args: {
+          p_challenge_id: string
+          p_code_hash: string
+          p_entitlement_id: string
+          p_expected_customer_key: string
+          p_ip_hash: string
+          p_payload_encrypted: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      issue_loyalty_pos_quote: {
+        Args: {
+          p_actor: string
+          p_backend: string
+          p_claim_hash: string
+          p_outlet_id: string
+          p_quote_id: string
+          p_snapshot: Json
+          p_tenant_id: string
+          p_total_centavos: number
+        }
+        Returns: Json
+      }
+      issue_loyalty_wallet_challenge: {
+        Args: {
+          p_challenge_id: string
+          p_code_hash: string
+          p_expected_customer_key: string
+          p_ip_hash: string
+          p_payload_encrypted: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      list_cash_receivers: {
+        Args: { p_outlet?: string; p_tenant: string }
+        Returns: {
+          has_pin: boolean
+          is_on_shift: boolean
+          is_owner: boolean
+          last_seen_at: string
+          name: string
+          outlet_id: string
+          user_id: string
+        }[]
+      }
+      list_sms_sender_devices: {
+        Args: { p_day_start: string; p_tenant_id: string }
+        Returns: Json
+      }
+      lookup_loyalty_wallet: {
+        Args: {
+          p_customer_key: string
+          p_ip_hash: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      loyalty_has_permission: {
+        Args: { p_permission: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      loyalty_sms_delivery_allowed: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
+      loyalty_sms_job_delivery_allowed: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_purpose: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
+      loyalty_sms_sender_status: {
+        Args: { p_tenant_id: string; p_window_seconds: number }
+        Returns: Json
+      }
+      loyalty_wallet_issuance_retry_at: {
+        Args: {
+          p_ip_hash: string
+          p_now: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      loyalty_wallet_session_valid: {
+        Args: {
+          p_phone_hash: string
+          p_tenant_id: string
+          p_token_hash: string
+        }
+        Returns: boolean
+      }
+      loyalty_wallet_sync_secret: { Args: never; Returns: string }
+      manage_loyalty_program: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_expected_version?: number
+          p_input: Json
+          p_program_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      mark_store_activity_reviewed: { Args: { p_id: string }; Returns: string }
+      messenger_chat_for_order: {
+        Args: { p_limit?: number; p_order_id: string }
+        Returns: Json
+      }
+      messenger_chats: {
+        Args: { p_before?: string; p_limit?: number; p_tenant_id: string }
+        Returns: {
+          bot_paused_until: string
+          first_name: string
+          last_inbound_at: string
+          last_message_at: string
+          last_message_preview: string
+          last_name: string
+          order_created_at: string
+          order_daily_number: number
+          order_id: string
+          order_status: string
+          profile_pic_url: string
+          session_id: string
+        }[]
+      }
+      next_daily_order_number: {
+        Args: { p_order_date: string; p_tenant_id: string }
+        Returns: number
+      }
+      note_customer_login_review_request: {
+        Args: { p_ip_hash: string; p_phone_hash: string; p_tenant_id: string }
+        Returns: Json
+      }
+      onboarding_email_taken: { Args: { p_email: string }; Returns: boolean }
+      open_customer_app_review_session: {
+        Args: {
+          p_candidate_code_hash: string
+          p_ip_hash: string
+          p_phone_e164: string
+          p_phone_hash: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      open_shift: {
+        Args: {
+          p_drawer_id: string
+          p_opening_denominations?: Json
+          p_opening_float_cents: number
+          p_outlet: string
+          p_service_period_id?: string
+          p_staff_name?: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
+      order_accepts_anon_items: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
+      order_discount_payload_total: {
+        Args: { p_customer_data: Json; p_discount_data: Json }
+        Returns: number
+      }
+      order_items_anon_line_ok: {
+        Args: { p_menu_item_id: string; p_order_id: string }
+        Returns: boolean
+      }
+      order_refund_insert_check: {
+        Args: { p_amount: number; p_is_client: boolean; p_order_id: string }
+        Returns: undefined
+      }
+      platform_tenant_order_activity: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          cancelled: number
+          last_order_at: string
+          orders: number
+          revenue: number
+          tenant_id: string
+        }[]
+      }
+      pos_create_customer: {
+        Args: {
+          p_email?: string
+          p_name?: string
+          p_phone_e164?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          email: string
+          id: string
+          name: string
+          phone_e164: string
+        }[]
+      }
+      pos_find_customer: {
+        Args: { p_email?: string; p_phone_e164?: string; p_tenant_id: string }
+        Returns: {
+          email: string
+          id: string
+          name: string
+          phone_e164: string
+        }[]
+      }
+      preview_shift_close: { Args: { p_shift_id: string }; Returns: Json }
+      project_loyalty_pos_receipt: {
+        Args: { p_receipt: Json; p_settlement_id: string; p_tenant_id: string }
+        Returns: string
+      }
+      purge_messenger_messages: { Args: never; Returns: number }
+      purge_order_deletions: { Args: never; Returns: Json }
+      read_loyalty_refund_evidence: {
+        Args: { p_settlement_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      receive_stock_transfer: {
+        Args: { p_counts: Json; p_legs: Json; p_transfer_id: string }
+        Returns: undefined
+      }
+      record_approval_side_effects: {
+        Args: { p_id: string; p_side_effects: Json; p_tenant_id: string }
+        Returns: boolean
+      }
+      record_assistant_usage: {
+        Args: { p_cost_usd: number; p_tenant_id: string; p_tokens: number }
+        Returns: undefined
+      }
+      record_cash_pickup: {
+        Args: {
+          p_amount_cents: number
+          p_note?: string
+          p_shift_id: string
+          p_taken_by?: string
+          p_to_safe?: boolean
+        }
+        Returns: Json
+      }
+      record_day_deposit: {
+        Args: {
+          p_cents: number
+          p_close_id: string
+          p_proof_url?: string
+          p_ref?: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      record_drawer_expense: {
+        Args: {
+          p_amount_cents: number
+          p_category_id: string
+          p_client_request_id: string
+          p_is_stock_purchase?: boolean
+          p_note: string
+          p_paid_to_name: string
+          p_recorded_by_name: string
+          p_shift_id: string
+          p_supplier_id: string
+        }
+        Returns: string
+      }
+      record_sms_sender_info: {
+        Args: {
+          p_app: string
+          p_bat: boolean
+          p_device_id: string
+          p_manufacturer: string
+          p_model: string
+          p_os: string
+          p_sms: boolean
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
+      record_storefront_visit: {
+        Args: { p_tenant_id: string }
+        Returns: undefined
+      }
+      recover_loyalty_sms_ack: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_job_id: string
+          p_lease_token: string
+          p_outcome: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      redeem_voucher: {
+        Args: {
+          p_amount: number
+          p_channel: string
+          p_customer_key?: string
+          p_order_id: string
+          p_outlet_id?: string
+          p_redeemed_by?: string
+          p_tenant_id: string
+          p_voucher_id: string
+        }
+        Returns: string
+      }
+      release_loyalty_pos_quote: {
+        Args: { p_actor: string; p_quote_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      release_voucher_redemptions: {
+        Args: { p_order_id: string; p_tenant_id: string }
+        Returns: number
+      }
+      reopen_business_day: {
+        Args: { p_close_id: string; p_reason: string }
+        Returns: Json
+      }
+      replace_expense: {
+        Args: { p_expense_id: string; p_patch: Json; p_reason: string }
+        Returns: string
+      }
+      report_cash_by_staff: {
+        Args: {
+          p_from_day: string
+          p_outlet?: string
+          p_tenant: string
+          p_to_day: string
+        }
+        Returns: {
+          counted_shifts: number
+          forced_closes: number
+          over_cents: number
+          over_count: number
+          over_short_cents: number
+          recount_changed: number
+          shifts: number
+          short_cents: number
+          short_count: number
+          staff_name: string
+          staff_user_id: string
+        }[]
+      }
+      report_cash_summary: {
+        Args: {
+          p_from_day: string
+          p_outlet?: string
+          p_tenant: string
+          p_to_day: string
+        }
+        Returns: {
+          business_day: string
+          close_kind: string
+          closed_at: string
+          count_attempts: number
+          counted_cents: number
+          difference_cents: number
+          discrepancy_cents: number
+          drawer_name: string
+          expected_cents: number
+          expected_source: string
+          final_count_cents: number
+          first_count_cents: number
+          float_cents: number
+          handed_over_cents: number
+          is_blind: boolean
+          opened_at: string
+          outlet_id: string
+          received_by_name: string
+          received_cents: number
+          recount_changed: boolean
+          remittance_id: string
+          remittance_status: string
+          shift_id: string
+          staff_name: string
+          staff_user_id: string
+          status: string
+          variance_reason: string
+        }[]
+      }
+      report_expenses_by_category: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          category_group: string
+          category_id: string
+          cents: number
+          expenses: number
+          icon: string
+          name: string
+          stock_purchase_cents: number
+          system_key: string
+        }[]
+      }
+      report_payments: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          cents: number
+          label: string
+          method_id: string
+          method_key: string
+          orders: number
+        }[]
+      }
+      report_period_sales: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      report_profit_by_period: {
+        Args: {
+          p_from: string
+          p_grain: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          bucket: string
+          cash_out_cents: number
+          collected_cents: number
+          count_variance_cents: number
+          expenses_cents: number
+          fallback_cogs_cents: number
+          ingredient_direct_cents: number
+          ingredient_stock_cents: number
+          ledger_cogs_cents: number
+          net_sales_cents: number
+          orders: number
+          sale_movements: number
+          waste_cents: number
+        }[]
+      }
+      report_profit_summary: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          admin_cents: number
+          capex_cents: number
+          collected_cents: number
+          costed_dishes: number
+          costed_quantity: number
+          count_variance_cents: number
+          dish_costs_visible: boolean
+          expense_count: number
+          fallback_cogs_cents: number
+          fallback_orders: number
+          ingredient_stock_cents: number
+          ingredients_cents: number
+          ledger_cogs_cents: number
+          net_sales_cents: number
+          not_expense_cents: number
+          occupancy_cents: number
+          operating_cents: number
+          orders: number
+          other_cents: number
+          sale_movements: number
+          sold_dishes: number
+          sold_quantity: number
+          staff_cents: number
+          store_wide_expense_cents: number
+          uncosted_movements: number
+          unsorted_payout_cents: number
+          unsorted_payouts: number
+          utilities_cents: number
+          waste_cents: number
+        }[]
+      }
+      report_sales_by_category: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          category_key: string
+          discount_cents: number
+          from_current_menu: boolean
+          gross_cents: number
+          label: string
+          net_cents: number
+          orders: number
+          quantity: number
+        }[]
+      }
+      report_sales_by_dimension: {
+        Args: {
+          p_dimension: string
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          discount_cents: number
+          gross_cents: number
+          key: string
+          net_cents: number
+          orders: number
+          quantity: number
+        }[]
+      }
+      report_sales_by_hour: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_tz?: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          hour: number
+          net_cents: number
+          orders: number
+          weekday: number
+        }[]
+      }
+      report_sales_by_item: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          category_label: string
+          discount_cents: number
+          gross_cents: number
+          is_unrecorded: boolean
+          item_key: string
+          label: string
+          menu_item_id: string
+          net_cents: number
+          orders: number
+          quantity: number
+        }[]
+      }
+      report_sales_by_period: {
+        Args: {
+          p_from: string
+          p_grain: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_tz?: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          billed_cents: number
+          bucket: string
+          collected_cents: number
+          discount_cents: number
+          gross_cents: number
+          net_cents: number
+          orders: number
+        }[]
+      }
+      report_sales_summary: {
+        Args: {
+          p_from: string
+          p_outlet?: string
+          p_tenant: string
+          p_to: string
+          p_unassigned?: boolean
+        }
+        Returns: {
+          billed_cents: number
+          collected_cents: number
+          delivery_cents: number
+          delivery_discount_cents: number
+          discount_cents: number
+          gross_cents: number
+          line_gap_cents: number
+          net_cents: number
+          orders: number
+          orders_lines_mismatch: number
+          orders_without_lines: number
+          overpaid_cents: number
+          refund_cents: number
+          service_cents: number
+          unpaid_cents: number
+          void_billed_cents: number
+          void_orders: number
+        }[]
+      }
+      report_shift_nets: { Args: { p_shift_ids: string[] }; Returns: Json }
+      report_shift_sales: {
+        Args: { p_scope?: string; p_shift_id: string }
+        Returns: Json
+      }
+      resolve_loyalty_entitlement: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_entitlement_id: string
+          p_note: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      resolve_remittance: {
+        Args: { p_id: string; p_note: string }
+        Returns: {
+          accept_method: string | null
+          business_day: string
+          cashier_name: string
+          cashier_user_id: string | null
+          created_at: string
+          dispute_reason: string | null
+          handed_over_cents: number | null
+          id: string
+          is_self_received: boolean
+          kind: string
+          movement_id: string | null
+          outlet_id: string | null
+          received_at: string | null
+          received_by: string | null
+          received_by_name: string | null
+          received_cents: number | null
+          receiver_note: string | null
+          remitted_to: string | null
+          remitted_to_name: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_name: string | null
+          resolved_note: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          to_safe: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_remittances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      restore_loyalty_refunded_receipt: {
+        Args: { p_settlement_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      restore_order_deletion: {
+        Args: { p_actor: string; p_deletion_id: string }
+        Returns: Json
+      }
+      retry_loyalty_pos_projection: {
+        Args: { p_actor: string; p_job_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      revoke_customer_app_session: {
+        Args: { p_tenant_id: string; p_token_hash: string }
+        Returns: Json
+      }
+      revoke_customer_app_sessions_for_customer: {
+        Args: { p_customer_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      revoke_loyalty_sms_device: {
+        Args: { p_actor_id: string; p_device_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      save_cash_settings: {
+        Args: { p_settings: Json; p_tenant: string }
+        Returns: Json
+      }
+      save_messenger_rules: {
+        Args: {
+          p_bot_enabled: boolean
+          p_expected_version: number
+          p_rules: Json
+          p_takeover_minutes: number
+          p_tenant_id: string
+        }
+        Returns: number
+      }
+      send_stock_transfer: {
+        Args: { p_legs: Json; p_transfer_id: string }
+        Returns: undefined
+      }
+      set_approval_rules: {
+        Args: { p_actor: string; p_rules: Json; p_tenant_id: string }
+        Returns: Json
+      }
+      set_business_day_cutoff: {
+        Args: { p_cutoff_minutes: number; p_tenant: string }
+        Returns: string
+      }
+      set_staff_approval_pin: {
+        Args: { p_pin: string; p_tenant_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      settle_loyalty_pos_sale: {
+        Args: {
+          p_actor: string
+          p_client_order_id: string
+          p_payment: Json
+          p_quote_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      sms_campaign_run_progress: {
+        Args: { p_run_ids: string[]; p_tenant: string }
+        Returns: {
+          campaign_run_id: string
+          n: number
+          status: string
+        }[]
+      }
+      sms_campaigns_is_trusted_writer: { Args: never; Returns: boolean }
+      sms_is_quiet_at: {
+        Args: { p_at: string; p_end: string; p_start: string }
+        Returns: boolean
+      }
+      sms_outbox_delivery_allowed: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
+      sms_sender_clean_text: {
+        Args: { p_max: number; p_value: string }
+        Returns: string
+      }
+      sms_texts_came_back: {
+        Args: {
+          p_exact: boolean
+          p_since: string
+          p_tenant: string
+          p_window_days: number
+        }
+        Returns: {
+          came_back: number
+          sales: number
+        }[]
+      }
+      sort_drawer_payout: {
+        Args: {
+          p_category_id: string
+          p_movement_id: string
+          p_note: string
+          p_paid_to_name: string
+          p_recorded_by_name: string
+          p_supplier_id: string
+        }
+        Returns: string
+      }
+      stock_movement_frozen_cost: {
+        Args: {
+          p_item_id: string
+          p_order_id: string
+          p_outlet_id: string
+          p_reason: string
+          p_tenant_id: string
+          p_transfer_id: string
+        }
+        Returns: number
+      }
+      store_activity_actor: { Args: never; Returns: string }
+      store_activity_actor_name: {
+        Args: { p_user_id: string }
+        Returns: string
+      }
+      store_activity_backend_of: {
+        Args: { p_event_backend: string }
+        Returns: string
+      }
+      store_activity_backfill_batch: {
+        Args: {
+          p_after_id?: string
+          p_after_ts?: string
+          p_limit?: number
+          p_source: string
+        }
+        Returns: {
+          done: boolean
+          next_id: string
+          next_ts: string
+          rows_scanned: number
+          rows_written: number
+        }[]
+      }
+      store_activity_caller_scope: {
+        Args: { p_tenant_id: string }
+        Returns: Record<string, unknown>
+      }
+      store_activity_capture_expense: {
+        Args: {
+          p_event: string
+          r: Database["public"]["Tables"]["expenses"]["Row"]
+        }
+        Returns: undefined
+      }
+      store_activity_capture_inventory_audit_log: {
+        Args: { r: Database["public"]["Tables"]["inventory_audit_log"]["Row"] }
+        Returns: undefined
+      }
+      store_activity_capture_inventory_count: {
+        Args: { r: Database["public"]["Tables"]["inventory_counts"]["Row"] }
+        Returns: undefined
+      }
+      store_activity_capture_loyalty_activity: {
+        Args: { r: Database["public"]["Tables"]["loyalty_activity"]["Row"] }
+        Returns: undefined
+      }
+      store_activity_capture_order_deletion_audit: {
+        Args: { r: Database["public"]["Tables"]["order_deletion_audit"]["Row"] }
+        Returns: undefined
+      }
+      store_activity_capture_order_payments: {
+        Args: { r: Database["public"]["Tables"]["order_payments"]["Row"] }
+        Returns: undefined
+      }
+      store_activity_capture_order_revisions: {
+        Args: {
+          p_history?: boolean
+          r: Database["public"]["Tables"]["order_revisions"]["Row"]
+        }
+        Returns: undefined
+      }
+      store_activity_capture_order_status_events: {
+        Args: {
+          p_include_platform?: boolean
+          r: Database["public"]["Tables"]["order_status_events"]["Row"]
+        }
+        Returns: undefined
+      }
+      store_activity_capture_shift_cash_movements: {
+        Args: { r: Database["public"]["Tables"]["shift_cash_movements"]["Row"] }
+        Returns: undefined
+      }
+      store_activity_capture_staff_shift: {
+        Args: {
+          p_event: string
+          r: Database["public"]["Tables"]["staff_shifts"]["Row"]
+        }
+        Returns: undefined
+      }
+      store_activity_capture_stock_alert: {
+        Args: {
+          p_escalated?: boolean
+          r: Database["public"]["Tables"]["stock_alerts"]["Row"]
+        }
+        Returns: undefined
+      }
+      store_activity_capture_stock_movements: {
+        Args: { r: Database["public"]["Tables"]["stock_movements"]["Row"] }
+        Returns: undefined
+      }
+      store_activity_capture_voucher_redemption: {
+        Args: {
+          v_released: boolean
+          v_row: Database["public"]["Tables"]["voucher_redemptions"]["Row"]
+        }
+        Returns: undefined
+      }
+      store_activity_category_of: { Args: { p_kind: string }; Returns: string }
+      store_activity_diff: {
+        Args: { p_keys: string[]; p_new: Json; p_old: Json }
+        Returns: Record<string, unknown>
+      }
+      store_activity_discount_split: {
+        Args: { p_discount_data: Json; p_discount_total: number }
+        Returns: {
+          manual: number
+          statutory: number
+        }[]
+      }
+      store_activity_flag_cash_refund_noncash: {
+        Args: {
+          p_order_id: string
+          p_refund_id: string
+          p_refund_method: string
+        }
+        Returns: boolean
+      }
+      store_activity_flag_count_variance: {
+        Args: { p_count_id: string }
+        Returns: boolean
+      }
+      store_activity_flag_drawer_variance: {
+        Args: { p_closing_count: number; p_expected_cash: number }
+        Returns: boolean
+      }
+      store_activity_flag_duplicate_deduction: {
+        Args: { p_outcome: string }
+        Returns: boolean
+      }
+      store_activity_flag_paid_then_cancelled: {
+        Args: { p_amount_paid: number; p_payment_status: string }
+        Returns: boolean
+      }
+      store_activity_flag_removed_after_kitchen: {
+        Args: { p_order_status: string; p_removed: Json }
+        Returns: boolean
+      }
+      store_activity_flag_repeat_cancels: {
+        Args: { p_actor: string; p_at: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      store_activity_in_window: {
+        Args: { p_day: Json; p_min: number; p_spill: boolean }
+        Returns: boolean
+      }
+      store_activity_ingredient: {
+        Args: { p_item_id: string }
+        Returns: Record<string, unknown>
+      }
+      store_activity_is_after_hours: {
+        Args: { p_at: string; p_outlet_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      store_activity_is_routine: { Args: { p_kind: string }; Returns: boolean }
+      store_activity_is_statutory_label: {
+        Args: { p_label: string }
+        Returns: boolean
+      }
+      store_activity_items_removed: {
+        Args: { p_after: Json; p_before: Json }
+        Returns: Json
+      }
+      store_activity_loyalty_kind: { Args: { p_kind: string }; Returns: string }
+      store_activity_manila_day_start: {
+        Args: { p_at: string }
+        Returns: string
+      }
+      store_activity_mask_name: { Args: { p_name: string }; Returns: string }
+      store_activity_mask_phone: { Args: { p_phone: string }; Returns: string }
+      store_activity_order_label: {
+        Args: { p_daily_number: number; p_ref: string }
+        Returns: string
+      }
+      store_activity_peso: { Args: { p_amount: number }; Returns: string }
+      store_activity_platform_order_label: {
+        Args: { p_order_ref: string; p_tenant_id: string }
+        Returns: string
+      }
+      store_activity_qty: { Args: { p_qty: number }; Returns: string }
+      store_activity_record: {
+        Args: {
+          p_actor_name?: string
+          p_actor_user_id?: string
+          p_after?: Json
+          p_amount?: number
+          p_backend?: string
+          p_before?: Json
+          p_event_key: string
+          p_external_order_id?: string
+          p_flags?: string[]
+          p_kind: string
+          p_note?: string
+          p_occurred_at?: string
+          p_order_number?: string
+          p_outlet_id?: string
+          p_quantity?: number
+          p_reason?: string
+          p_source_id: string
+          p_source_table: string
+          p_subject_ref?: string
+          p_subject_type?: string
+          p_summary?: Json
+          p_tenant_id: string
+          p_unit?: string
+        }
+        Returns: undefined
+      }
+      store_activity_record_marketing: {
+        Args: {
+          p_id: string
+          p_keys: string[]
+          p_kind: string
+          p_name: string
+          p_new: Json
+          p_old: Json
+          p_op: string
+          p_outlet_id: string
+          p_subject: string
+          p_table: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
+      store_activity_record_menu_change: {
+        Args: {
+          p_is_auto: boolean
+          p_item_id: string
+          p_item_name: string
+          p_new_available: boolean
+          p_new_listed: boolean
+          p_new_price: number
+          p_new_sale: number
+          p_old_available: boolean
+          p_old_listed: boolean
+          p_old_price: number
+          p_old_sale: number
+          p_outlet_id: string
+          p_source_id: string
+          p_source_table: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
+      store_activity_record_order_discounts: {
+        Args: {
+          p_actor: string
+          p_new: Database["public"]["Tables"]["orders"]["Row"]
+          p_old: Database["public"]["Tables"]["orders"]["Row"]
+          p_stamp: string
+        }
+        Returns: undefined
+      }
+      store_activity_record_settings: {
+        Args: {
+          p_keys: string[]
+          p_new: Json
+          p_old: Json
+          p_outlet_id: string
+          p_redact?: string[]
+          p_source_id: string
+          p_source_table: string
+          p_subject_label: string
+          p_subject_ref: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
+      store_activity_reward_label: { Args: { p_reward: Json }; Returns: string }
+      store_activity_scrub: { Args: { p_text: string }; Returns: string }
+      store_activity_setting_label: { Args: { p_key: string }; Returns: string }
+      store_activity_settings_title: {
+        Args: { p_after: Json; p_before: Json; p_subject: string }
+        Returns: string
+      }
+      store_activity_status_kind: {
+        Args: { p_previous: string; p_status: string }
+        Returns: string
+      }
+      store_activity_status_word: {
+        Args: { p_status: string }
+        Returns: string
+      }
+      store_activity_top_lines: {
+        Args: { p_lines: Json; p_max: number }
+        Returns: Json
+      }
+      store_activity_try_uuid: { Args: { p_text: string }; Returns: string }
+      store_activity_write: {
+        Args: {
+          p_actor_name?: string
+          p_actor_user_id?: string
+          p_after?: Json
+          p_amount?: number
+          p_backend?: string
+          p_before?: Json
+          p_event_key: string
+          p_external_order_id?: string
+          p_flags?: string[]
+          p_kind: string
+          p_note?: string
+          p_occurred_at?: string
+          p_order_number?: string
+          p_outlet_id?: string
+          p_quantity?: number
+          p_reason?: string
+          p_source_id: string
+          p_source_table: string
+          p_subject_ref?: string
+          p_subject_type?: string
+          p_summary?: Json
+          p_tenant_id: string
+          p_unit?: string
+        }
+        Returns: boolean
+      }
+      superadmin_mcp_access_token_hook: { Args: { event: Json }; Returns: Json }
+      sweep_sms_outbox: { Args: { p_tenant_id: string }; Returns: Json }
+      touch_customer_app_session: {
+        Args: { p_tenant_id: string; p_token_hash: string }
+        Returns: Json
+      }
+      transition_approval: {
+        Args: {
+          p_actor: string
+          p_approved_amount?: number
+          p_id: string
+          p_note?: string
+          p_reason_code?: string
+          p_tenant_id: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      verify_customer_login_challenge: {
+        Args: {
+          p_candidate_code_hash: string
+          p_challenge_id: string
+          p_expected_phone_hash: string
+          p_phone_e164: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      verify_loyalty_claim: {
+        Args: {
+          p_candidate_code_hash: string
+          p_challenge_id: string
+          p_claim_token_hash: string
+          p_expected_customer_key: string
+          p_expected_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      verify_loyalty_wallet_challenge: {
+        Args: {
+          p_candidate_code_hash: string
+          p_challenge_id: string
+          p_expected_phone_hash: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      verify_staff_approval_pin: {
+        Args: { p_pin: string; p_tenant_id: string; p_user_id: string }
+        Returns: string
+      }
+      void_expense: {
+        Args: { p_actor_name?: string; p_expense_id: string; p_reason: string }
+        Returns: undefined
+      }
+      withdraw_approval: {
+        Args: { p_actor: string; p_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const

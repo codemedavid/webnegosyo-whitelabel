@@ -1,9 +1,9 @@
 // Database Types for Smart Restaurant Menu System
 // Re-export the auto-generated Database type used by Supabase client
-import type { Database as SupabaseDatabase } from './supabase'
+import type { Database as SupabaseDatabase, Tables } from './database.generated'
 import type { WelcomeBanner } from '@/lib/outlets/welcome-page'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
-export type { Database } from './supabase'
+export type { Database } from './database.generated'
 export type { WelcomeBanner } from '@/lib/outlets/welcome-page'
 
 export type BcgClassification = 'star' | 'plowhorse' | 'puzzle' | 'dog' | 'unclassified';
@@ -658,19 +658,10 @@ export interface MenuItem {
 /**
  * One per-date presell allocation for a menu item (migration 20260830120000).
  * Remaining = stock_qty - sold_qty; sold_qty moves only through the
- * apply_presell_order() SQL function.
+ * apply_presell_order() SQL function. `presell_date` is a plain YYYY-MM-DD
+ * business day (no instant, no timezone).
  */
-export interface PresellStock {
-  id: string;
-  tenant_id: string;
-  menu_item_id: string;
-  /** Plain YYYY-MM-DD in the store's business day sense — no instant, no timezone. */
-  presell_date: string;
-  stock_qty: number;
-  sold_qty: number;
-  created_at: string;
-  updated_at: string;
-}
+export type PresellStock = Tables<'presell_stock'>;
 
 export interface MenuItemWithCategory extends MenuItem {
   category: { id: string; name: string } | null;
@@ -726,13 +717,7 @@ export interface BundleSlot {
   price_overrides?: BundleSlotPriceOverride[];
 }
 
-export interface BundleSlotPriceOverride {
-  id: string;
-  slot_id: string;
-  menu_item_id: string;
-  price_override: number;
-  created_at: string;
-}
+export type BundleSlotPriceOverride = Tables<'bundle_slot_price_overrides'>;
 
 export type BundleWithSlots = Bundle & {
   slots: BundleSlot[];
@@ -859,15 +844,7 @@ export interface OrderType {
 }
 
 /** Exact per-item base-price override for one order type (register only). No row = markup / store price. */
-export interface OrderTypeItemPrice {
-  id: string;
-  tenant_id: string;
-  order_type_id: string;
-  menu_item_id: string;
-  price: number;
-  created_at: string;
-  updated_at: string;
-}
+export type OrderTypeItemPrice = Tables<'order_type_item_prices'>;
 
 export interface CustomerFormField {
   id: string;
@@ -1177,7 +1154,8 @@ export interface ComplementaryPairWithDetails extends ComplementaryPair {
   source_category?: Category
 }
 
-// Note: Database type is now auto-generated in ./supabase.ts and re-exported above.
+// Note: Database is generated in ./database.generated.ts (npm run db:types) and re-exported above;
+// table types move onto it one at a time (Tables<'x'> aliases).
 // Convenience type aliases above are kept for backward compatibility throughout the codebase.
 
 // Lead Management (platform-level, no tenant_id)
@@ -1217,14 +1195,7 @@ export interface LeadNote {
 // Pairing Rules Types
 // ============================================================
 
-export interface TagDefinition {
-  id: string;
-  tenant_id: string | null;
-  group_name: string;
-  tag_value: string;
-  is_preset: boolean;
-  created_at: string;
-}
+export type TagDefinition = Tables<'tag_definitions'>;
 
 export interface MenuItemTag {
   menu_item_id: string;
@@ -1298,14 +1269,7 @@ export interface CheckoutLeadWithPaymentMethod extends CheckoutLead {
   platform_payment_methods: PlatformPaymentMethod | null
 }
 
-export interface PlatformPaymentMethod {
-  id: string
-  name: string
+/** `type` is plain text in the schema; its CHECK constraint allows only these three. */
+export type PlatformPaymentMethod = Omit<Tables<'platform_payment_methods'>, 'type'> & {
   type: 'qr_code' | 'bank_transfer' | 'other'
-  details: string | null
-  qr_code_url: string | null
-  is_active: boolean
-  order_index: number
-  created_at: string
-  updated_at: string
 }
