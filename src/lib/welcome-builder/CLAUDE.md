@@ -1,0 +1,15 @@
+# Welcome Builder: rules for this folder
+
+<!-- Moved verbatim from the root CLAUDE.md on 2026-11-11. The root file's rules for every change
+     (Platform Supabase First, verification, conventions) still apply here. -->
+
+## Welcome Builder (custom welcome page)
+
+`/[tenant]/admin/welcome-designer` (sidebar: Store Setup → "Welcome Builder", full-screen) is the SAME editor as the Hero Builder, driven by a `BuilderSurface` (`components/hero-builder/editor/surface.ts`: title, templates, Add groups, section presets, publish/unpublish, link surface). A change to the shared editor ships to both builders.
+
+- **Stored** in `tenants.welcome_design` (TEXT, v5 JSON, read via `loadHeroDesign`) + `welcome_design_enabled` (published = true; "Turn off welcome page" clears it, keeps the design). Both need `store_setup` in the database too (`tenants_guard_design_columns`, `20261109120000`, NOT yet applied), like every builder column. `resolveCustomWelcomeDesign` (`lib/welcome-builder/welcome-mode.ts`) is the one reader.
+- **Welcome-only blocks** (engine-wide kinds, offered only in the welcome Add panel except Slideshow): `order-entry` ("How to order": tiles / list / one button; shows only the order types actually on offer, falls back to the button when none), `store-logo` (branding logo; name or nothing as fallback), `slideshow`. They read the live store from `WelcomeRuntimeProvider` (`renderer/welcome-runtime.tsx`); outside a provider they render a sample store. `{store}` in heading/text becomes the store name only under a provider.
+- **Links**: `#welcome-start` and `#welcome-mode-<dine_in|pickup|delivery>`. On the welcome page menu/category/product links ALSO start an order (no menu exists before a branch is chosen); on the menu they scroll to the menu.
+- **A way in is guaranteed**: `publishWelcomeDesignAction` refuses a design with no visible entry on any device (`entryProblem`), and the storefront appends a device-scoped start button to any stored design that lacks one (`withGuaranteedEntry`).
+- **Where it shows**: multi-branch stores with the branch picked BEFORE the menu → it replaces the classic first screen of `OutletSplash` (tiles carry the mode to the branch list; start = mode-less). Every other store (single location, or branch at checkout) → `WelcomeLanding` over the menu once per browser session (`sessionStorage wn-welcome-seen:<slug>`), skipped for `?table=` links; a tile sets the cart's order type. The server always renders it open; an inline pre-paint script (`hideIfSeenScript`) hides it for a returning visitor before hydration, and while order types load the tiles render as a non-tappable placeholder (`isLoadingModes`) so the start button never swaps to tiles under a thumb.
+- **Templates** `lib/welcome-builder/templates*.ts` (12, phone-first, every one publishable as-is — pinned by `tests/unit/welcome-builder/templates.test.ts`); section presets in `section-presets.ts`. Thumbnails render at 390px with `viewportHeight` so "fill the screen" sections don't use the real viewport.
