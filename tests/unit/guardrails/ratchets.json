@@ -1,5 +1,5 @@
 {
-  "looseLibFiles": 261,
+  "looseLibFiles": 255,
   "looseAdminComponentFiles": 110,
   "filesOver800Lines": [
     "src/actions/tenants.ts",
@@ -23,7 +23,7 @@
   "adminClientImporters": {
     "src/app/api": 71,
     "src/app/actions": 32,
-    "src/lib": 106,
+    "src/lib": 105,
     "src/components": 2,
     "elsewhere": 18
   },
