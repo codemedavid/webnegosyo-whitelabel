@@ -110,3 +110,6 @@ __pycache__/
 
 # Evidence a verify run leaves next to the skill (runs from inside the skill dir)
 /.claude/skills/verify-webnegosyo/test-results/
+
+# Client working folders (photos, spreadsheets): never product code
+/Lolys-cafe/

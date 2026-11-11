@@ -19,6 +19,7 @@
     "test:superadmin": "node scripts/test-superadmin.mjs",
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "db:check": "node scripts/check-database.mjs",
+    "db:status": "node scripts/db-status.mjs",
     "db:check-stock-contract": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/check-platform-stock-contract.ts --require",
     "db:create-test-tenant": "node scripts/create-test-tenant.mjs",
     "db:backfill-customers": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers.ts",
