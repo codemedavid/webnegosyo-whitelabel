@@ -1,6 +1,5 @@
 /**
- * Sale records from a Supabase `orders` table — the shared platform project or
- * a tenant's own order project (same schema).
+ * Sale records from the shared platform project's `orders` table.
  *
  * Two independent reads, run concurrently, both paged past PostgREST's
  * 1000-row cap (`paged-read.ts`):

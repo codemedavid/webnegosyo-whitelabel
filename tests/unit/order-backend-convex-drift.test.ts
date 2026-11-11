@@ -28,10 +28,6 @@ function makeTenant(
     order_backend: null,
     convex_deployment_url: null,
     convex_deploy_key: null,
-    supabase_order_url: null,
-    supabase_order_anon_key: null,
-    supabase_order_service_key: null,
-    supabase_order_db_url: null,
     ...overrides,
   }
 }

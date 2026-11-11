@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createConvexServerClient } from '@/lib/convex/server'
-import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import { resolveOrderBackend } from '@/lib/order-backend'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import {
@@ -136,9 +135,7 @@ async function projectOne(
       .maybeSingle(),
     admin
       .from('tenants')
-      .select(
-        'order_backend,convex_deployment_url,supabase_order_url,supabase_order_service_key',
-      )
+      .select('order_backend,convex_deployment_url')
       .eq('id', job.tenant_id)
       .maybeSingle(),
   ])
@@ -208,12 +205,15 @@ async function projectOne(
     })),
   }
   const resolved = resolveOrderBackend(tenant.data)
+  // A `tenant_supabase` job (the retired own-database backend; the column's
+  // CHECK still allows the word) has no destination left: it matches neither
+  // backend and is refused here.
   const expected =
     job.order_backend === 'platform_supabase'
       ? 'platform'
-      : job.order_backend === 'tenant_supabase'
-        ? 'supabase'
-        : 'convex'
+      : job.order_backend === 'convex'
+        ? 'convex'
+        : null
   if (resolved !== expected)
     throw new Error('Order backend changed during projection')
   let externalId: string
@@ -232,11 +232,7 @@ async function projectOne(
         .digest('hex'),
     })
   } else {
-    const destination =
-      expected === 'platform'
-        ? admin
-        : createTenantOrderWriteClient(tenant.data)
-    const { data, error } = await destination.rpc(
+    const { data, error } = await admin.rpc(
       'project_loyalty_pos_receipt',
       {
         p_tenant_id: job.tenant_id,

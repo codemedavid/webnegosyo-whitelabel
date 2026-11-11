@@ -1,10 +1,9 @@
 /**
  * Today-at-a-glance order figures for the admin dashboard.
  *
- * Pure, and shared by every order backend: the platform database
- * (`orders-service`) and a tenant's own Supabase project
- * (`tenant-supabase-orders-read`) must report the same numbers from the same
- * rows, or merchants comparing screens would see two different "today".
+ * Pure: every reader of the platform database (`orders-service`) must report
+ * the same numbers from the same rows, or merchants comparing screens would
+ * see two different "today".
  */
 
 import { tradingDayStart } from "@/lib/dashboard/periods";

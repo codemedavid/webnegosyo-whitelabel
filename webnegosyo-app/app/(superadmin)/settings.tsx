@@ -89,7 +89,7 @@ export default function SuperadminSettingsScreen() {
           {/* Named explicitly so the console never looks broken — these are
               deliberately not on mobile, not missing. */}
           <InfoRow label="Branding Studio" value="Web console" />
-          <InfoRow label="Convex / Supabase deploys" value="Web console" />
+          <InfoRow label="Convex deploys" value="Web console" />
           <InfoRow label="MCP API keys" value="Web console" isLast />
         </View>
 

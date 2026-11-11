@@ -1,10 +1,9 @@
 /**
  * Per-item sales aggregation for the MCP's menu-engineering surface.
  *
- * The platform stores a tenant's orders in one of THREE backends (platform
- * Supabase, the tenant's own Supabase project, or the tenant's own Convex
- * deployment). Every one of them is normalized into the same `ItemSalesRow`
- * before it reaches this module, so the arithmetic below is the single place
+ * The platform stores a tenant's orders in one of TWO backends (platform
+ * Supabase or the tenant's own Convex deployment). Each is normalized into the
+ * same `ItemSalesRow` before it reaches this module, so the arithmetic below is the single place
  * "how popular is this item" is decided — and the only place that has to be
  * right.
  *
@@ -135,12 +134,12 @@ describe('buildMenuPerformance', () => {
 
   it('reports the backend that answered, so a Convex tenant is never read as a platform tenant', () => {
     const result = buildMenuPerformance({
-      dataSource: 'tenant_supabase',
+      dataSource: 'convex',
       windowDays: 7,
       rows: [row()],
     })
 
-    expect(result.dataSource).toBe('tenant_supabase')
+    expect(result.dataSource).toBe('convex')
   })
 })
 

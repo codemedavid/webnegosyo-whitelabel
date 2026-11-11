@@ -108,7 +108,7 @@ function isQueuedOrderEdit(value: unknown): value is QueuedOrderEdit {
     isNonEmptyString(value.editId) &&
     isNonEmptyString(value.tenantId) &&
     isNonEmptyString(value.orderId) &&
-    ["platform", "convex", "supabase"].includes(String(value.backend)) &&
+    ["platform", "convex"].includes(String(value.backend)) &&
     isOrderEditRef(String(value.ref)) &&
     isRecord(value.args) &&
     typeof value.createdAt === "number" && Number.isFinite(value.createdAt) &&

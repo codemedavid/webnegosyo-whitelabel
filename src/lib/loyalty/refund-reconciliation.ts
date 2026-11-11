@@ -1,7 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createConvexServerClient } from '@/lib/convex/server'
-import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import { resolveOrderBackend } from '@/lib/order-backend'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { earnLoyaltyForFact } from './apply'
@@ -60,9 +59,7 @@ export async function reconcileLoyaltyRefunds(
       ] = await Promise.all([
         admin
           .from('tenants')
-          .select(
-            'order_backend,convex_deployment_url,supabase_order_url,supabase_order_service_key',
-          )
+          .select('order_backend,convex_deployment_url')
           .eq('id', job.tenant_id)
           .maybeSingle(),
         admin
@@ -75,12 +72,14 @@ export async function reconcileLoyaltyRefunds(
       if (tenantError || receiptError || !tenant || !receipt)
         throw new Error('Refund context unavailable')
       const backend = resolveOrderBackend(tenant)
+      // A `tenant_supabase` job (the retired own-database backend) matches
+      // neither backend and stays unconfirmed.
       const expected =
         job.order_backend === 'platform_supabase'
           ? 'platform'
           : job.order_backend === 'convex'
             ? 'convex'
-            : 'supabase'
+            : null
       if (backend !== expected) throw new Error('Order backend changed')
       let evidence: unknown
       if (backend === 'convex') {
@@ -94,9 +93,7 @@ export async function reconcileLoyaltyRefunds(
           settlementId: job.settlement_id,
         })
       } else {
-        const destination =
-          backend === 'platform' ? admin : createTenantOrderWriteClient(tenant)
-        const result = await destination.rpc('read_loyalty_refund_evidence', {
+        const result = await admin.rpc('read_loyalty_refund_evidence', {
           p_tenant_id: job.tenant_id,
           p_settlement_id: job.settlement_id,
         })

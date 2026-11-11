@@ -6,9 +6,9 @@
  * A Convex order is read through the deployment's internal query with the
  * deploy key only the platform holds; that query returns the lines and the
  * order's edit counter but not its edits, so `hasRevisionHistory` is false. A
- * store with no deploy key, or an order held in the tenant's own Supabase
- * project, cannot be checked at all and answers `unverifiable`: the route then
- * keeps the behaviour it had before lines were checked, and says so in its log.
+ * store with no deploy key cannot be checked at all and answers
+ * `unverifiable`: the route then keeps the behaviour it had before lines were
+ * checked, and says so in its log.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -165,7 +165,6 @@ export async function readOrderLineEvidence(
   orderId: string,
   dishIds: readonly string[],
 ): Promise<OrderLineRead> {
-  if (backend === 'platform') return readPlatform(tenantId, orderId, dishIds)
   if (backend === 'convex') return readConvex(tenantId, orderId, dishIds)
-  return { kind: 'unverifiable', reason: 'own_supabase_backend' }
+  return readPlatform(tenantId, orderId, dishIds)
 }

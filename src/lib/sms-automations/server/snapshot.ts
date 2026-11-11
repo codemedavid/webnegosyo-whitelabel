@@ -36,7 +36,7 @@ const REVIEW_VALID_HOURS = 24
 const REVIEW_SKIPPED_STATUSES = '("cancelled","pending")'
 
 const TENANT_COLUMNS =
-  'id, name, slug, domain, loyalty_enabled, loyalty_shadow, order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key'
+  'id, name, slug, domain, loyalty_enabled, loyalty_shadow, order_backend, convex_deployment_url'
 
 export class SnapshotError extends Error {
   constructor(message: string) {

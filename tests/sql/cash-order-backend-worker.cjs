@@ -26,6 +26,8 @@ async function main() {
   await db.exec(readMigration('20261013120050_staff_permission_keys.sql'))
   await db.exec(readMigration('20261027120100_cash_manage_permission.sql'))
   await db.exec(readMigration('20261027120200_cash_settings.sql'))
+  // The current body: 'supabase' is no longer a recognised pin (2026-11-10).
+  await db.exec(readMigration('20261110150100_cash_order_backend_two_backends.sql'))
   // One round trip: every case becomes a tenant row, then one read in case order.
   await db.query(`insert into tenants (id, order_backend, convex_deployment_url)
     select ('00000000-0000-4000-8000-' || lpad(c.ord::text, 12, '0'))::uuid, c.v ->> 'order_backend', c.v ->> 'convex_deployment_url'

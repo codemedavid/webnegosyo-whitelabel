@@ -1,19 +1,16 @@
-import { z } from "zod";
-
 /**
  * Where a tenant's orders are stored and served in real time.
  *
  * - `convex`   — the tenant's own dedicated Convex deployment.
- * - `supabase` — the tenant's own dedicated, fully separate Supabase project.
- * - `platform` — the shared platform Supabase (the legacy default; used by
- *                tenants that never configured a per-tenant backend).
+ * - `platform` — the shared platform Supabase (where most stores live).
  *
- * Keeping `platform` distinct from `supabase` is deliberate: a bare tenant with
- * no Convex credentials has always written to the shared platform database, and
- * collapsing that into `supabase` would silently reroute those tenants to a
- * per-tenant project they do not have.
+ * A third backend, `supabase` (the tenant's own, fully separate Supabase
+ * project), was removed on 2026-11-10: no store ever used it. The
+ * `order_backend` column's CHECK constraint still accepts the word, so a stale
+ * row or a stale client may still present it; it is never a routing target and
+ * resolves exactly like `auto` (see `resolveOrderBackend`).
  */
-export type OrderBackend = "convex" | "supabase" | "platform";
+export type OrderBackend = "convex" | "platform";
 
 /**
  * What the `order_backend` column stores. `auto` is the default and means
@@ -27,13 +24,9 @@ export type OrderBackend = "convex" | "supabase" | "platform";
  */
 export type OrderBackendPreference = OrderBackend | "auto";
 
-const ORDER_BACKENDS: readonly OrderBackend[] = ["convex", "supabase", "platform"];
+const ORDER_BACKENDS: readonly OrderBackend[] = ["convex", "platform"];
 
-/**
- * The options a superadmin can pick in the tenant form. `supabase` is absent on
- * purpose: it is provisioned by the separate Supabase deploy flow, not chosen
- * from a dropdown.
- */
+/** The options a superadmin can pick in the tenant form. */
 export const ORDER_BACKEND_PREFERENCES = ["auto", "platform", "convex"] as const;
 
 export type SelectableOrderBackend = (typeof ORDER_BACKEND_PREFERENCES)[number];
@@ -44,13 +37,14 @@ export type SelectableOrderBackend = (typeof ORDER_BACKEND_PREFERENCES)[number];
  * trivially testable.
  */
 export interface OrderBackendTenantFields {
+  /**
+   * Typed as the values this code writes. The column itself is free text with
+   * a CHECK that still allows the retired `supabase`; `resolveOrderBackend`
+   * validates whatever arrives at run time.
+   */
   order_backend?: OrderBackendPreference | null;
   convex_deployment_url?: string | null;
   convex_deploy_key?: string | null;
-  supabase_order_url?: string | null;
-  supabase_order_anon_key?: string | null;
-  supabase_order_service_key?: string | null;
-  supabase_order_db_url?: string | null;
 }
 
 function isNonEmpty(value: string | null | undefined): value is string {
@@ -60,10 +54,11 @@ function isNonEmpty(value: string | null | undefined): value is string {
 /**
  * Resolve the effective order backend for a tenant.
  *
- * A recognized pin (`convex`, `supabase`, `platform`) is a deliberate superadmin
- * choice and always wins. Anything else — `auto`, null, or an unrecognized value
- * from a row written before this column existed — derives from the credentials:
- * a Convex deployment URL means Convex, otherwise the shared platform database.
+ * A recognized pin (`convex`, `platform`) is a deliberate superadmin choice and
+ * always wins. Anything else — `auto`, null, the retired `supabase`, or an
+ * unrecognized value from a row written before this column existed — derives
+ * from the credentials: a Convex deployment URL means Convex, otherwise the
+ * shared platform database.
  *
  * Deriving on the default is what keeps reads and writes in agreement: checkout
  * routes through this same function, so an unwritten column cannot send orders
@@ -78,11 +73,9 @@ export function resolveOrderBackend(tenant: OrderBackendTenantFields): OrderBack
 }
 
 /**
- * The preference to show as selected in the tenant form.
- *
- * A tenant on its own Supabase project reports `auto` because that option is
- * not on the dropdown; `orderBackendForSave` refuses to overwrite it, so the form can
- * never demote such a tenant by re-saving an unrelated field.
+ * The preference to show as selected in the tenant form. Anything that is not
+ * a pin this code recognizes (including the retired `supabase`) shows as
+ * `auto`, which is how it routes.
  */
 export function orderBackendPreferenceOf(
   tenant: OrderBackendTenantFields
@@ -100,10 +93,6 @@ export function orderBackendForSave(
   preference: SelectableOrderBackend | null | undefined,
   tenant: OrderBackendTenantFields
 ): OrderBackendPreference {
-  // Tenants on their own Supabase project are routed by the deploy flow, not by
-  // this form. Re-saving any other field must leave that selection alone.
-  if (tenant.order_backend === "supabase") return "supabase";
-
   // Pinning to Convex without a deployment to pin to would strand the tenant's
   // orders, so fall back to auto and let the credentials decide.
   if (preference === "convex" && !isNonEmpty(tenant.convex_deployment_url)) return "auto";
@@ -142,20 +131,6 @@ export function previewBackendChange(
   return from === to ? null : { from, to };
 }
 
-/**
- * True when the tenant has every credential required to reach its own Supabase
- * project for order reads/writes (URL, anon key, service-role key).
- */
-export function hasTenantSupabaseOrderCredentials(
-  tenant: OrderBackendTenantFields
-): boolean {
-  return (
-    isNonEmpty(tenant.supabase_order_url) &&
-    isNonEmpty(tenant.supabase_order_anon_key) &&
-    isNonEmpty(tenant.supabase_order_service_key)
-  );
-}
-
 function hasConvexCredentials(tenant: OrderBackendTenantFields): boolean {
   return (
     isNonEmpty(tenant.convex_deployment_url) && isNonEmpty(tenant.convex_deploy_key)
@@ -176,35 +151,4 @@ export function assertOrderBackendReady(tenant: OrderBackendTenantFields): void 
       "Order backend is set to Convex but the Convex deployment URL and deploy key are missing."
     );
   }
-
-  if (backend === "supabase" && !hasTenantSupabaseOrderCredentials(tenant)) {
-    throw new Error(
-      "Order backend is set to Supabase but the tenant Supabase URL, anon key, or service-role key is missing."
-    );
-  }
 }
-
-/**
- * Validates the per-tenant Supabase credentials pasted in the superadmin form.
- * The anon key alone cannot run DDL, so the service-role key and a Postgres
- * connection string are both required for the auto-deploy step to work.
- */
-export const supabaseOrderCredentialsSchema = z.object({
-  supabase_order_url: z
-    .string()
-    .url()
-    .refine((value) => value.startsWith("https://"), {
-      message: "Supabase project URL must use https://",
-    }),
-  supabase_order_anon_key: z.string().min(1, "Anon key is required"),
-  supabase_order_service_key: z.string().min(1, "Service-role key is required"),
-  supabase_order_db_url: z
-    .string()
-    .min(1, "Database connection string is required")
-    .refine(
-      (value) => value.startsWith("postgres://") || value.startsWith("postgresql://"),
-      { message: "Database URL must be a postgres:// connection string" }
-    ),
-});
-
-export type SupabaseOrderCredentials = z.infer<typeof supabaseOrderCredentialsSchema>;

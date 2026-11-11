@@ -19,7 +19,6 @@ type SortKey = 'orders' | 'revenue' | 'avg' | 'lastOrder' | 'name'
 const BACKEND_LABELS: Record<TenantActivityRow['backend'], string> = {
   platform: 'Platform',
   convex: 'Convex',
-  supabase: 'Own Supabase',
 }
 
 function compareBy(key: SortKey): (a: TenantActivityRow, b: TenantActivityRow) => number {
@@ -177,9 +176,7 @@ export function ActivityTable({ rows, nowIso }: ActivityTableProps) {
                     </>
                   ) : (
                     <td colSpan={4} className="px-4 py-3 text-right text-xs text-amber-300/90">
-                      {row.source === 'unsupported'
-                        ? 'Not readable here (own Supabase project)'
-                        : `Couldn't reach backend${row.error ? ` — ${row.error}` : ''}`}
+                      {`Couldn't reach backend${row.error ? ` — ${row.error}` : ''}`}
                     </td>
                   )}
                   <td

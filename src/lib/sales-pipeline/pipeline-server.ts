@@ -35,7 +35,7 @@ type AdminClient = ReturnType<typeof createAdminClient>
 
 export interface PipelineData {
   leads: PipelineLead[]
-  /** Lead stores on Convex / their own Supabase, whose orders were not read. */
+  /** Lead stores on Convex, whose orders were not read. */
   storesWithUnreadOrders: number
   generatedAt: string
 }

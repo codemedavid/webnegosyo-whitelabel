@@ -288,8 +288,8 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     );
   }
 
-  // No backend the app can reach — a per-tenant Supabase project, for which it
-  // ships no adapter. Show what is known and say where the merchant CAN act,
+  // No backend the app can reach (no platform pin and no Convex deployment).
+  // Show what is known and say where the merchant CAN act,
   // rather than offering buttons that would fail on every tap.
   if (transport === "unavailable") {
     return (

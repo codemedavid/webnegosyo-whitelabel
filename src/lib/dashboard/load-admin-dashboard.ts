@@ -11,13 +11,8 @@ import 'server-only'
 
 import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
-import {
-  hasTenantSupabaseOrderCredentials,
-  resolveOrderBackend,
-  type OrderBackendTenantFields,
-} from '@/lib/order-backend'
+import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { buildVisitIndex } from '@/lib/growth/classify-sale'
 import { buildGrowth, type DashboardGrowth } from '@/lib/growth/growth-metrics'
 import { buildCustomerSummary, type CustomerSummary } from '@/lib/growth/customer-summary'
@@ -44,8 +39,7 @@ const GROWTH_LOOKBACK_DAYS = 31
 type DashboardTenant = OrderBackendTenantFields & { id: string }
 
 /** Tenant columns that decide where the orders are and how to reach them. */
-const TENANT_ROUTING_SELECT =
-  'id, order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key, supabase_order_service_key'
+const TENANT_ROUTING_SELECT = 'id, order_backend, convex_deployment_url'
 
 export interface LoadAdminDashboardParams {
   range: DashboardRange
@@ -99,12 +93,6 @@ export async function readTenantSales(tenantId: string, window: SalesReadWindow)
       return unreadable('This store is on Convex but its credentials are missing.')
     }
     return readConvexSales({ url, key }, window)
-  }
-  if (backend === 'supabase') {
-    if (!hasTenantSupabaseOrderCredentials(full)) {
-      return unreadable("This store's own order database is not configured.")
-    }
-    return readSupabaseSales(createTenantOrderWriteClient(full), tenantId, window)
   }
   return readSupabaseSales(admin, tenantId, window)
 }

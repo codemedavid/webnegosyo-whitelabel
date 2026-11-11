@@ -30,17 +30,6 @@ describe("planLifecycleSync", () => {
     });
   });
 
-  it("translates the app's `supabase` into the platform's `tenant_supabase`", () => {
-    const plan = planLifecycleSync({
-      ...BASE,
-      orderBackend: "supabase",
-      refName: "orders:updateOrderStatus",
-      args: { orderId: "order-1", status: "ready" },
-    });
-
-    expect(plan?.backend).toBe("tenant_supabase");
-  });
-
   it("names the platform's own orders table for a platform-backed tenant, so loyalty still hears the change", () => {
     const plan = planLifecycleSync({
       ...BASE,

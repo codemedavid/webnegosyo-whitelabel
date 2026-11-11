@@ -190,7 +190,7 @@ function isQueuedSale(value: unknown): value is QueuedSale {
     typeof value.localId === "string" && value.localId.length > 0 &&
     typeof value.tenantId === "string" && value.tenantId.length > 0 &&
     typeof value.clientOrderId === "string" && value.clientOrderId.length > 0 &&
-    ["platform", "convex", "supabase"].includes(String(value.backend)) &&
+    ["platform", "convex"].includes(String(value.backend)) &&
     typeof value.createdAt === "number" && Number.isFinite(value.createdAt) &&
     typeof value.attempts === "number" && Number.isInteger(value.attempts) && value.attempts >= 0 &&
     (value.lastError === null || typeof value.lastError === "string") &&

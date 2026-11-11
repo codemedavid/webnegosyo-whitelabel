@@ -34,10 +34,10 @@ describe("reportReceiptReprint", () => {
   beforeEach(() => mockedPost.mockClear());
 
   test("posts to the reprint route with the cashier's token", async () => {
-    await reportReceiptReprint("t1", { backend: "supabase", orderId: "o1" });
+    await reportReceiptReprint("t1", { backend: "platform", orderId: "o1" });
     expect(mockedPost).toHaveBeenCalledWith(RECEIPT_REPRINTED_PATH, {
       tenantId: "t1",
-      backend: "tenant_supabase",
+      backend: "platform_supabase",
       orderId: "o1",
     });
   });

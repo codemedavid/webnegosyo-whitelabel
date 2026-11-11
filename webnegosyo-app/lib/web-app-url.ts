@@ -23,5 +23,30 @@ export function getWebAppUrl(): string {
 
   // Callers all append `/api/...`, so a configured value ending in a slash
   // would build `//api/...` — which Next's router does not treat as the route.
-  return url.replace(/\/+$/, "");
+  return followMetroHost(url).replace(/\/+$/, "");
+}
+
+/** localhost, 127.x, 10.x, 172.16–31.x, 192.168.x: this Mac as a dev build sees it. */
+const LOCAL_HOST_PATTERN =
+  /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/;
+const LOCAL_HTTP_URL_PATTERN = /^http:\/\/([^/:]+)(:\d+)?(\/.*)?$/;
+
+/**
+ * A dev build pointed at this Mac's `next dev` has that address baked into its
+ * bundle, and the address changes whenever the Mac joins another network —
+ * then every web call runs into its deadline. Metro's host is the Mac's
+ * CURRENT address (the phone just loaded its bundle from it), so a local dev
+ * server follows it. Release builds, deployed hosts and tunnels are untouched.
+ */
+function followMetroHost(url: string): string {
+  const isDev = typeof __DEV__ !== "undefined" && __DEV__;
+  if (!isDev) return url;
+
+  const metroHost = Constants.expoConfig?.hostUri?.split(":")[0] ?? "";
+  if (!LOCAL_HOST_PATTERN.test(metroHost)) return url;
+
+  const match = LOCAL_HTTP_URL_PATTERN.exec(url);
+  if (!match || !LOCAL_HOST_PATTERN.test(match[1])) return url;
+
+  return `http://${metroHost}${match[2] ?? ""}${match[3] ?? ""}`;
 }

@@ -31,6 +31,22 @@ it('reverses earning and restores only after an authoritative destination ledger
   expect(earnLoyaltyForFact).toHaveBeenCalledWith(expect.objectContaining({ status: 'refunded' }), { tenantId: 'tenant', isShadow: false }, expect.anything())
   expect(rpc).toHaveBeenLastCalledWith('restore_loyalty_refunded_receipt', { p_tenant_id: 'tenant', p_settlement_id: 'receipt' })
 })
+it("leaves a job filed under the retired own-project backend unconfirmed: no evidence is read from anywhere", async () => {
+  // `tenant_supabase` is still a legal value of the job's order_backend column; the
+  // store's own Supabase project it named is gone, and the platform is not its ledger.
+  const rpc = jest.fn(async (name: string) => {
+    if (name === 'claim_loyalty_refund_checks') return { data: [{ tenant_id: 'tenant', settlement_id: 'receipt', external_order_id: 'order', order_backend: 'tenant_supabase' }], error: null }
+    return { data: true, error: null }
+  })
+  const from = (table: string) => {
+    const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: table === 'tenants' ? { order_backend: 'supabase', convex_deployment_url: null } : { total_centavos: 5000 }, error: null }) }
+    return query
+  }
+  const outcome = await reconcileLoyaltyRefunds({ rpc, from } as unknown as SupabaseClient)
+  expect(outcome).toEqual({ checked: 0, restored: 0, unconfirmed: 1 })
+  expect(rpc).toHaveBeenCalledTimes(1)
+  expect(rpc).not.toHaveBeenCalledWith('read_loyalty_refund_evidence', expect.anything())
+})
 it('restores a zero-payable reward sale only after cancellation, never during ordinary fulfillment', () => {
   expect(isFullyRefundedRewardSale({ status: 'cancelled', totalCentavos: 0, chargedCentavos: 0, refundedCentavos: 0 }, 0)).toBe(true)
   expect(isFullyRefundedRewardSale({ status: 'confirmed', totalCentavos: 0, chargedCentavos: 0, refundedCentavos: 0 }, 0)).toBe(false)

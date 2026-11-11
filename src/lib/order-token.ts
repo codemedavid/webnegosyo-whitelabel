@@ -51,10 +51,8 @@ export interface OrderTokenPair {
 /**
  * Mint a token without touching any database.
  *
- * Split out so the per-tenant Supabase order path can write the hash directly
- * into its INSERT (see `src/lib/tenant-supabase-orders.ts`) instead of issuing a
- * follow-up UPDATE against the platform project, which is the wrong database
- * entirely for those orders.
+ * Split out so a writer can put the hash directly into its INSERT instead of
+ * issuing a follow-up UPDATE.
  */
 export function generateOrderTokenPair(): OrderTokenPair {
     // Generate a random 32-byte token

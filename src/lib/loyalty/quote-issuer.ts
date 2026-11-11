@@ -252,12 +252,7 @@ export async function issueLoyaltyQuote(
     p_claim_hash: claimHash,
     p_outlet_id: outletId,
     p_quote_id: input.requestId,
-    p_backend:
-      backend === 'platform'
-        ? 'platform_supabase'
-        : backend === 'supabase'
-          ? 'tenant_supabase'
-          : 'convex',
+    p_backend: backend === 'platform' ? 'platform_supabase' : 'convex',
     p_total_centavos: priced.totals.grandTotalCentavos,
     p_snapshot: snapshot,
   })
