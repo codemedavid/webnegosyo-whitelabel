@@ -11,9 +11,13 @@ import { supabase } from "../../lib/supabase";
 import { signOutThisDevice } from "../../lib/sign-out";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
+import { GlobalKitchenConfirmAlerts } from "../../components/GlobalKitchenConfirmAlerts";
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
 import { PrinterWarmUp } from "../../components/PrinterWarmUp";
 import { OfflineSalesSync } from "../../components/OfflineSalesSync";
+import { ExpenseSync } from "../../components/expenses/ExpenseSync";
+import { ExpenseUndoHost } from "../../components/expenses/ExpenseUndoHost";
+import { BillReminderSync } from "../../components/expenses/BillReminderSync";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
@@ -90,6 +94,12 @@ export default function MainLayout() {
       <PrinterWarmUp />
       {/* Watches the connection and replays counter sales taken offline. */}
       <OfflineSalesSync />
+      {/* Sends expenses (and their receipts) this phone kept while offline. */}
+      <ExpenseSync />
+      {/* Keeps the owner's morning bill reminders in line with Bills to pay. */}
+      <BillReminderSync />
+      {/* The Undo bar after an expense save, on whatever screen the sheet closed onto. */}
+      <ExpenseUndoHost />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}
@@ -172,7 +182,7 @@ export default function MainLayout() {
         <Tabs.Screen name="pos-sales" options={{ href: show("pos-sales"), title: "Drawer" }} />
 
         {/* ── Reports ─────────────────────────────────────────────────── */}
-        <Tabs.Screen name="analytics" options={{ href: show("analytics"), title: "Analytics" }} />
+        <Tabs.Screen name="analytics" options={{ href: show("analytics"), title: "Sales" }} />
         <Tabs.Screen name="trends" options={{ href: show("trends"), title: "Trends" }} />
         <Tabs.Screen name="growth" options={{ href: show("growth"), title: "Growth" }} />
         <Tabs.Screen name="customers" options={{ href: show("customers"), title: "Guest list" }} />
@@ -184,6 +194,12 @@ export default function MainLayout() {
         />
         <Tabs.Screen name="daily-report" options={{ href: show("daily-report"), title: "Stock report" }} />
         <Tabs.Screen name="branches" options={{ href: show("branches"), title: "Compare branches" }} />
+        {/* Money: the expense book — what the store spent (`expenses` key). */}
+        <Tabs.Screen name="expenses" options={{ href: show("expenses"), title: "Expenses" }} />
+        {/* Money: Bills to pay — rent, kuryente, sahod (`expenses`), entered from Expenses. */}
+        <Tabs.Screen name="expense-bills" options={{ href: show("expense-bills"), title: "Bills to pay" }} />
+        {/* Money: Profit = Sales − Ingredients − Expenses (`reports`; the screen re-checks expenses + costs). */}
+        <Tabs.Screen name="profit" options={{ href: show("profit"), title: "Profit" }} />
         {/* Store activity — the store's view (owners, activity_view, approve_requests). */}
         <Tabs.Screen name="activity" options={{ href: show("activity"), title: "Activity" }} />
 
@@ -207,6 +223,8 @@ export default function MainLayout() {
         <Tabs.Screen name="ingredient/edit/[ingredientId]" options={{ href: null, title: "Edit ingredient" }} />
         <Tabs.Screen name="payment/[methodId]" options={{ href: null, title: "Payment Method" }} />
         <Tabs.Screen name="voucher/[voucherId]" options={{ href: null, title: "Voucher" }} />
+        {/* One expense: receipt, history, Fix / Void — pushed from Expenses. */}
+        <Tabs.Screen name="expense/[expenseId]" options={{ href: null, title: "Expense" }} />
         <Tabs.Screen name="category/[categoryId]" options={{ href: null, title: "Category" }} />
         <Tabs.Screen name="campaign/[campaignId]" options={{ href: null, title: "Campaign" }} />
         {/* One automatic text's settings and message — pushed from Texts. */}
@@ -238,6 +256,18 @@ export default function MainLayout() {
         <Tabs.Screen name="approval-rules" options={{ href: null, title: "Approval rules" }} />
         {/* Tills (Cashier 1, Cashier 2, zero-balance) — pushed from Manage or the Drawer. */}
         <Tabs.Screen name="cash-drawers" options={{ href: null, title: "Cash drawers" }} />
+        {/* Cashier shifts & remittance (docs/plans/cashier-remittance, CONTRACTS §7) — every
+            one a utility screen with its own gate; doors and hrefs live in lib/cash-routes.ts.
+            Registered together, ahead of the screens that later waves add: until a file
+            lands, expo-router only warns in development and nothing links to it. */}
+        <Tabs.Screen name="cash-rules" options={{ href: null, title: "Shift & remit rules" }} />
+        <Tabs.Screen name="shift-sales" options={{ href: null, title: "Shift sales" }} />
+        <Tabs.Screen name="my-shifts" options={{ href: null, title: "My shifts" }} />
+        {/* The 4-step count and remit needs the whole screen; ExpenseUndoHost lists it too. */}
+        <Tabs.Screen name="end-shift" options={{ href: null, title: "End shift", tabBarStyle: { display: "none" } }} />
+        <Tabs.Screen name="remittance" options={{ href: null, title: "Remittance" }} />
+        <Tabs.Screen name="remittances" options={{ href: null, title: "Remittances" }} />
+        <Tabs.Screen name="day-close" options={{ href: null, title: "Day close" }} />
         {/* VAT status, BIR details, Senior/PWD rules — pushed from Manage or the register. */}
         <Tabs.Screen name="tax-settings" options={{ href: null, title: "Tax & discounts" }} />
         {/* The Senior/PWD sales book and its reviews — pushed from Reports or Tax & discounts. */}
@@ -268,6 +298,8 @@ export default function MainLayout() {
       </Tabs>
       {/* The floating Owl assistant — only for stores with it switched on. */}
       <OwlLauncher bottomOffset={tabBarHeight} />
+      {/* "Kitchen confirmed #07" for the counter — after the tabs so it sits on top. */}
+      {canSeeOrders && <GlobalKitchenConfirmAlerts />}
     </>
   );
 }

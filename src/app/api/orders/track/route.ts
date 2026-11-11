@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchOrderTrackingData } from '@/lib/order-tracking-service'
-import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
+
+/**
+ * Counted across every instance now, so the number had to change: a tracking page
+ * polls every 5-10 s, and the old 20 a minute would refuse the third diner behind
+ * one Wi-Fi or carrier IP. Every read still needs the order's HMAC token.
+ */
+const TRACK_IP_LIMIT = { limit: 300, windowSec: 60 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -18,7 +26,7 @@ export async function GET(request: NextRequest) {
 
   // Rate limit
   const ip = getClientIP(request) ?? 'unknown'
-  const limit = checkRateLimit(`order-track:${ip}`, { maxRequests: 20, windowMs: 60000 })
+  const limit = await checkRateLimit(`order-track:${ip}`, TRACK_IP_LIMIT)
   if (!limit.allowed) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }

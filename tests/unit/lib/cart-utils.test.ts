@@ -322,7 +322,8 @@ describe('cart-utils', () => {
         },
       ]
       const result = generateMessengerMessage(items, 'Test')
-      expect(result).toContain('Add-ons: Extra Cheese, Bacon')
+      // The merchant reads what each add-on added, not just its name.
+      expect(result).toContain('Add-ons: Extra Cheese (+₱10.00), Bacon (+₱15.00)')
     })
 
     test('generates message with special instructions', () => {

@@ -22,6 +22,7 @@ const eslintConfig = [
       // Node CJS SQL harnesses, run with `node`, not bundled — same class as scripts/**
       "tests/sql/**",
       ".worktrees/**",
+      ".claude/worktrees/**",
       "webnegosyo-desktop/out/**",
       // Remotion marketing videos — standalone package with its own deps
       "videos/**",

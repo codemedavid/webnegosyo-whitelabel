@@ -10,6 +10,7 @@ import {
 } from '@/app/actions/product-detail'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import { STOREFRONT_LAYERS } from './overlay-layers'
+import { isModifierGroupsEnabled } from '@/lib/modifier-groups-flag'
 import type { MenuItem, Category, Tenant } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { SelectedTenant } from '@/lib/product-detail-data'
@@ -241,7 +242,7 @@ export function ProductDetailSheet({
                             menuEngineeringEnabled={menuEngineeringEnabled}
                             pairingRulesEnabled={pairingRulesEnabled}
                             bundlesEnabled={bundlesEnabled}
-                            modifierGroupsEnabled={!!tenant.modifier_groups_enabled}
+                            modifierGroupsEnabled={isModifierGroupsEnabled(tenant)}
                             linkedModifierItems={linkedModifierItems}
                             hideCurrencySymbol={hideCurrencySymbol}
                             isBrandAdmin={false}

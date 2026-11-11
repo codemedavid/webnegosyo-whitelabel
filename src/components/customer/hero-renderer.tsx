@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { safeHref } from '@/lib/hero-builder/safe-values'
 import { motion } from 'framer-motion'
 import {
   Star,
@@ -154,7 +155,7 @@ function RenderImage({ props }: { props: ImageProps }) {
 function RenderButton({ props }: { props: ButtonProps }) {
   return (
     <a
-      href={props.linkUrl}
+      href={safeHref(props.linkUrl) ?? undefined}
       target={props.linkTarget}
       rel={props.linkTarget === '_blank' ? 'noopener noreferrer' : undefined}
       className="hero-button"

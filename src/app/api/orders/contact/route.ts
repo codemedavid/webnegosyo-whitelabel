@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseContactSubmission } from '@/lib/order-contact'
 import { updateOrderContact } from '@/lib/order-contact-service'
-import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
+
+/** One write per receipt, counted across instances; a floor can share one IP. */
+const CONTACT_IP_LIMIT = { limit: 20, windowSec: 60, onRedisFailure: 'instance' as const }
 
 /**
  * POST /api/orders/contact
@@ -13,7 +17,7 @@ import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIP(request) ?? 'unknown'
-  const limit = checkRateLimit(`order-contact:${ip}`, { maxRequests: 5, windowMs: 60000 })
+  const limit = await checkRateLimit(`order-contact:${ip}`, CONTACT_IP_LIMIT)
   if (!limit.allowed) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }

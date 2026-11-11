@@ -4,7 +4,7 @@
  * whole sequence stays unit-testable by injecting `share`.
  */
 
-import { resolveDateWindow, type DateRangePreset } from "../product-analytics-filters";
+import { resolveDateWindow, type DateRangePreset, type DateWindow } from "../product-analytics-filters";
 import {
   buildAnalyticsReportCsv,
   type AnalyticsReportInput,
@@ -45,6 +45,10 @@ export interface RunOrdersExportInput {
   nowMs: number;
   /** The page cap the order fetch was issued with, for honest coverage. */
   fetchLimit: number;
+  /** Days the merchant picked on the Orders tab: exported instead of `preset`. */
+  window?: DateWindow;
+  /** File name for a picked period (named from its business days). */
+  fileName?: string;
   share?: ShareFn;
 }
 
@@ -55,9 +59,11 @@ export async function runOrdersExport({
   status,
   nowMs,
   fetchLimit,
+  window: pickedWindow,
+  fileName,
   share = shareCsv,
 }: RunOrdersExportInput): Promise<ExportCoverage> {
-  const window = resolveDateWindow(preset, nowMs);
+  const window = pickedWindow ?? resolveDateWindow(preset, nowMs);
   const coverage = resolveExportCoverage({
     fetchedCount: orders.length,
     fetchLimit,
@@ -66,7 +72,7 @@ export async function runOrdersExport({
   });
   const filtered = filterOrdersForExport(orders, { window, status });
   const csv = buildOrdersCsv(filtered, groupItemsByOrder(items));
-  await share({ fileName: exportFileName("orders", window), csv });
+  await share({ fileName: fileName ?? exportFileName("orders", window), csv });
   return coverage;
 }
 

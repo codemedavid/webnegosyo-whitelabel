@@ -31,6 +31,26 @@ export function storefrontTenantIdTag(tenantId: string): string {
   return `storefront-tenant:${tenantId}`
 }
 
+const FNV_OFFSET_BASIS = 0x811c9dc5
+const FNV_PRIME = 0x01000193
+
+/**
+ * A short fingerprint of a select projection, for a read's key parts. Next
+ * keys `unstable_cache` on the key parts + the wrapper's source, so adding a
+ * column to a projection kept serving the old rows for the whole window after
+ * a deploy (2026-11-05: `inventory_enabled` read as missing). With this in
+ * the key, a changed projection starts from a fresh entry by itself.
+ * FNV-1a over the whitespace-normalised text: deterministic and edge-safe.
+ */
+export function projectionCacheKey(select: string): string {
+  const normalised = select.replace(/\s+/g, ' ').trim()
+  let hash = FNV_OFFSET_BASIS
+  for (let index = 0; index < normalised.length; index += 1) {
+    hash = Math.imul(hash ^ normalised.charCodeAt(index), FNV_PRIME) >>> 0
+  }
+  return `cols-${hash.toString(36)}`
+}
+
 const UNCACHED = Symbol('storefront.uncached')
 
 export interface Uncached<T> {

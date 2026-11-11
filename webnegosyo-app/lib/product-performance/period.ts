@@ -1,13 +1,15 @@
 /**
- * The four periods product performance offers, as Manila calendar windows.
+ * The four periods product performance offers, as business-day windows
+ * (Manila calendar days with no cutoff schedule).
  *
  * Four, not a calendar: the question a merchant brings to this screen is
  * "how did it go today / yesterday / this week / this month?". Each period is
  * compared against the one of equal length right before it.
  */
 
-import { previousBusinessDayKey, toBusinessDayKey } from "../daily-report/business-day";
+import { previousBusinessDayKey } from "../daily-report/business-day";
 import { previousReportWindow, resolveReportWindow, type ReportWindow } from "../report-window";
+import { MIDNIGHT_SCHEDULE, tradingDayOf, type CutoffSchedule } from "../business-day/trading-day";
 
 export type PerformancePeriodKey = "today" | "yesterday" | "7d" | "30d";
 
@@ -34,13 +36,13 @@ export function isPerformancePeriod(value: unknown): value is PerformancePeriodK
   return PERFORMANCE_PERIODS.some((period) => period.key === value);
 }
 
-function windowOf(key: PerformancePeriodKey, nowMs: number): ReportWindow {
+function windowOf(key: PerformancePeriodKey, nowMs: number, schedule: CutoffSchedule): ReportWindow {
   if (key === "yesterday") {
-    const todayKey = toBusinessDayKey(new Date(nowMs).toISOString());
-    return resolveReportWindow({ kind: "day", dayKey: previousBusinessDayKey(todayKey) }, nowMs);
+    const todayKey = tradingDayOf(new Date(nowMs).toISOString(), schedule);
+    return resolveReportWindow({ kind: "day", dayKey: previousBusinessDayKey(todayKey) }, nowMs, schedule);
   }
   const days = key === "today" ? 1 : key === "7d" ? 7 : 30;
-  return resolveReportWindow({ kind: "preset", days }, nowMs);
+  return resolveReportWindow({ kind: "preset", days }, nowMs, schedule);
 }
 
 const COMPARISON_LABELS: Record<PerformancePeriodKey, string> = {
@@ -50,8 +52,12 @@ const COMPARISON_LABELS: Record<PerformancePeriodKey, string> = {
   "30d": "the 30 days before",
 };
 
-export function resolvePerformancePeriod(key: PerformancePeriodKey, nowMs: number): ResolvedPerformancePeriod {
-  const window = windowOf(key, nowMs);
+export function resolvePerformancePeriod(
+  key: PerformancePeriodKey,
+  nowMs: number,
+  schedule: CutoffSchedule = MIDNIGHT_SCHEDULE
+): ResolvedPerformancePeriod {
+  const window = windowOf(key, nowMs, schedule);
   const label = PERFORMANCE_PERIODS.find((period) => period.key === key)?.label ?? key;
   return {
     key,

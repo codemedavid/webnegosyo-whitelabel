@@ -1,5 +1,11 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
 
+// iOS purpose strings must name every use (App Review 5.1.1): the camera scans
+// order QR codes and photographs expense receipts, Senior/PWD IDs and menus
+// (Owl); the library supplies product, receipt and menu photos.
+const CAMERA_PURPOSE = "Scan order QR codes and take photos of receipts, ID cards and menus for your store records.";
+const PHOTOS_PURPOSE = "Choose photos of products, receipts and menus to add to your store.";
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   // Home-screen name on both platforms. The store *listing* names are set in
@@ -66,7 +72,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // on 2026-10-15; the 1.0.14 record already exists (made 2026-10-12 to carry
   // the new screenshots). Hence 1.0.14 — signed-out welcome, split tender,
   // store activity and approvals, the stock bell and SMS automations.
-  version: "1.0.14",
+  //
+  // 1.0.15 (2026-10-27): Expenses + Profit + Bills to pay, cashier shifts,
+  // remittance and business day, and the camera/photo purpose strings that
+  // now name receipts and IDs (a native change, so a new binary). 1.0.14 was
+  // in review on 10-15; a bump is safe whether or not it was approved.
+  //
+  // 1.0.16 (2026-10-29): kitchen display rings until a cook taps Confirm and
+  // the cashier is told; SMS phone keep-awake steps and SIM failure reasons.
+  // 1.0.15 went READY_FOR_SALE, closing that train.
+  //
+  // 1.0.17 (2026-11-05): kitchen notes per item, Order History date ranges +
+  // item summary, per-cashier shift report, register stock warnings, reprint
+  // from finished orders. 1.0.16 went READY_FOR_SALE, closing that train.
+  //
+  // 1.0.18 (2026-11-05): the new Sales screen (Reports → Sales) on the one
+  // sales definition, and the first build on an EAS Update channel — every
+  // earlier binary was built without one, so no over-the-air update could
+  // reach it. 1.0.17 went READY_FOR_SALE, closing that train.
+  version: "1.0.18",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the
@@ -106,7 +130,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       // costs Split View and Slide Over, which a full-screen register in a
       // stand never used.
       UIRequiresFullScreen: true,
-      NSCameraUsageDescription: "Scan customer order QR codes",
+      NSCameraUsageDescription: CAMERA_PURPOSE,
       NSBluetoothAlwaysUsageDescription:
         "This app uses Bluetooth to connect to thermal receipt printers for printing customer orders.",
       NSBluetoothPeripheralUsageDescription:
@@ -164,14 +188,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       "expo-camera",
       {
-        cameraPermission: "Scan customer order QR codes",
+        cameraPermission: CAMERA_PURPOSE,
         recordAudioAndroid: false,
       },
     ],
     [
       "expo-image-picker",
       {
-        photosPermission: "Allow SmartMenu to access your photos to add product images.",
+        photosPermission: PHOTOS_PURPOSE,
+        cameraPermission: CAMERA_PURPOSE,
       },
     ],
     "./plugins/withThermalPrinterSimulatorFix.js",

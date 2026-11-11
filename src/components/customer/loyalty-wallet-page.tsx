@@ -147,7 +147,18 @@ function WalletSession({
     [phone, tenantId],
   )
   const sendWalletCode = useCallback(async (current: number) => {
-    const data = await post('wallet/code', { tenantId, phone })
+    let data
+    try {
+      data = await post('wallet/code', { tenantId, phone })
+    } catch (e) {
+      // No stamp card for this number: there is nothing to verify, so give
+      // the number form back (with the server's message) instead of a code box.
+      if (reasonOf(e) === 'not_member' && current === generation.current) {
+        setIsVerifying(false)
+        setWalletChallenge(null)
+      }
+      throw e
+    }
     if (current !== generation.current) return
     setWalletCode('')
     setWalletChallenge({ id: data.challengeId, expires: Date.now() + 300000, resend: Date.now() + 60000 })

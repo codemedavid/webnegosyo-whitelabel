@@ -135,10 +135,8 @@ function choosePayment(request: OrderRequestInput): PaymentChoice {
     ok: true,
     name: method.name,
     fields: {
+      // Only the id: the engine records the STORED name, details and QR.
       paymentMethodId: method.id,
-      paymentMethodName: method.name || undefined,
-      paymentMethodDetails: method.details || undefined,
-      paymentMethodQrCodeUrl: method.qr_code_url || undefined,
       ...(proof.proof ? { paymentProof: proof.proof } : {}),
     },
   }

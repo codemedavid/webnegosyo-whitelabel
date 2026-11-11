@@ -12,7 +12,7 @@ const NOW = new Date('2026-10-14T02:00:00Z') // 10:00 AM Manila
 
 function phone(overrides: Partial<SendingPhone> = {}): SendingPhone {
   return {
-    deviceId: 'dev-1', name: "Juan's Galaxy A15", hasCustomName: true, model: 'SM-A155F', appVersion: '1.0.13',
+    deviceId: 'dev-1', name: "Juan's Galaxy A15", hasCustomName: true, manufacturer: null, model: 'SM-A155F', appVersion: '1.0.13',
     isAppOld: false, state: 'ready', lastSeenAt: NOW.toISOString(), ageSeconds: 5, isInactive: false,
     connectedAt: null, connectedBy: null, sentToday: 0, failedToday: 0, sendingNow: 0, smsPermission: true,
     isBatteryUnrestricted: true, ...overrides,

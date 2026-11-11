@@ -178,3 +178,20 @@ describe("daily product analytics presentation", () => {
     expect(breakdown).not.toMatch(/\.filter\(/);
   });
 });
+
+describe("product cost editor permission", () => {
+  const row = read("components", "ProductLifetimeRow.tsx");
+
+  it("opens the cost editor only for accounts holding the costs key", () => {
+    // product_costs writes need "costs" in the database; an analytics-only
+    // account would otherwise open the editor and hit a refusal.
+    expect(screen).toMatch(/useHasPermission\("costs"\)/);
+    expect(screen).toMatch(/onPress=\{canEditCosts \? openCostEditor : undefined\}/);
+    expect(screen).toMatch(/if \(!editing \|\| !canEditCosts\) return/);
+  });
+
+  it("renders a read-only row without the cost hint when it has no editor", () => {
+    expect(row).toMatch(/onPress\?: \(item: ProductLifetimeItem\) => void/);
+    expect(row).toMatch(/disabled=\{!isEditable\}/);
+  });
+});

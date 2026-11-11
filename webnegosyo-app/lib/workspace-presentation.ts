@@ -41,7 +41,7 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   // Under POS
   "pos-sales": { label: "Drawer", icon: "drawer", hint: "Open or close your shift and count the till" },
   // Reports
-  analytics: { label: "Analytics", icon: "analytics", hint: "Sales by type and payment method" },
+  analytics: { label: "Sales", icon: "analytics", hint: "Sales, orders and what sold, by day or month" },
   trends: { label: "Trends", icon: "trends", hint: "Daily revenue and order trends" },
   growth: { label: "Growth", icon: "growth", hint: "A growth plan built from your numbers" },
   customers: { label: "Guest list", icon: "customers", hint: "Every guest, and follow-up campaigns" },
@@ -51,6 +51,9 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   "daily-report": { label: "Stock report", icon: "report", hint: "Whether today's stock added up" },
   branches: { label: "Compare branches", icon: "compare", hint: "Branch against branch" },
   activity: { label: "Activity", icon: "clock", hint: "Refunds, cancels, stock and drawers — and who did them" },
+  expenses: { label: "Expenses", icon: "receipt", hint: "What the store spent, and on what" },
+  "expense-bills": { label: "Bills to pay", icon: "calendar", hint: "Rent, kuryente, sahod: what is due, and when" },
+  profit: { label: "Profit", icon: "wallet", hint: "Sales minus ingredients minus expenses: what you kept" },
   // Manage
   "product-management": { label: "Products", icon: "manage", hint: "Products, prices, availability" },
   categories: { label: "Categories", icon: "list", hint: "Menu sections, their order and icons" },

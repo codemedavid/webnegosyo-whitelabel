@@ -48,8 +48,9 @@ import { requeueSignedOutRefusals } from "../lib/offline/order-outbox";
 import { requeueSignedOutEditRefusals } from "../lib/offline/order-edits";
 
 // Every sign-out first deletes this device's platform push token row, so a
-// shared tablet stops receiving the previous person's approval pushes.
-setBeforeSignOut(forgetPlatformDeviceToken);
+// shared tablet stops receiving the previous person's approval pushes, and
+// clears every bill reminder scheduled on this phone (they are the owner's).
+setBeforeSignOut(withBillAlertsCleared(forgetPlatformDeviceToken, clearBillRemindersOnDevice));
 
 // Bound once for the life of the process: a sign-out anywhere drops the
 // offline session snapshot, so the next launch cannot open the old store.
@@ -75,11 +76,20 @@ bindSessionLossToAuth({
     });
   },
 });
-import { fetchWithTimeout } from "../lib/fetch-timeout";
+import { postConvexMutation } from "../lib/convex-http";
+import { getAccessTokenBounded } from "../lib/authorized-post";
 import * as Notifications from "expo-notifications";
-import { registerForPushNotifications, ensureOrdersChannel, ensureStockAlertsChannel, deviceChannels } from "../lib/notifications";
+import {
+  registerForPushNotifications,
+  ensureOrdersChannel,
+  ensureStockAlertsChannel,
+  ensureCashAlertsChannel,
+  deviceChannels,
+} from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
 import { forgetPlatformDeviceToken, upsertPlatformDeviceToken } from "../lib/announcements/service";
+import { withBillAlertsCleared } from "../lib/expenses/bill-alerts";
+import { clearBillRemindersOnDevice } from "../lib/expenses/bill-alerts-device";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { planPushRoute, readConsumed, rememberConsumed } from "../lib/approvals/push-consumed";
 import {
@@ -311,6 +321,11 @@ function useAuthRedirect() {
   ]);
 }
 
+// The store's deployment gates these writes on the session token, read with a
+// deadline: a stalled auth refresh must not hold up order alerts.
+const PUSH_AUTH_TOKEN_TIMEOUT_MS = 5_000;
+const readPushAuthToken = () => getAccessTokenBounded(PUSH_AUTH_TOKEN_TIMEOUT_MS);
+
 function usePushNotifications() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const convexUrl = useAuthStore((s) => s.convexUrl);
@@ -323,6 +338,7 @@ function usePushNotifications() {
   useEffect(() => {
     ensureOrdersChannel().catch(() => {});
     ensureStockAlertsChannel().catch(() => {});
+    ensureCashAlertsChannel().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -358,15 +374,16 @@ function usePushNotifications() {
 
     const stale = pushTokenCleanup(session);
     if (stale) {
-      fetchWithTimeout(`${stale.convexUrl}/api/mutation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      postConvexMutation(
+        {
+          convexUrl: stale.convexUrl,
           path: "notifications:removePushToken",
           args: { userId: stale.userId },
-          format: "json",
-        }),
-      }).catch(() => {});
+        },
+        { getToken: readPushAuthToken }
+      ).then((result) => {
+        if (!result.ok) console.warn("Failed to remove push token:", result.error);
+      });
     }
 
     // Platform messages (What's New posts, on-command notices) are filed in
@@ -423,25 +440,23 @@ function usePushNotifications() {
           return;
         }
         if (!convexUrl) return;
-        try {
-          await fetchWithTimeout(`${convexUrl}/api/mutation`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              path: "notifications:registerPushToken",
-              args: {
-                userId,
-                token,
-                platform: Platform.OS === "ios" ? "ios" : "android",
-                // Binds this device to its branch so it is only rung for that
-                // branch's orders. Omitted for an owner, who hears every one.
-                outletId: pushRegistrationOutletId(session),
-              },
-              format: "json",
-            }),
-          });
-        } catch (e) {
-          console.warn("Failed to register push token:", e);
+        const registered = await postConvexMutation(
+          {
+            convexUrl,
+            path: "notifications:registerPushToken",
+            args: {
+              userId,
+              token,
+              platform: Platform.OS === "ios" ? "ios" : "android",
+              // Binds this device to its branch so it is only rung for that
+              // branch's orders. Omitted for an owner, who hears every one.
+              outletId: pushRegistrationOutletId(session),
+            },
+          },
+          { getToken: readPushAuthToken }
+        );
+        if (!registered.ok) {
+          console.warn("Failed to register push token:", registered.error);
         }
       }).catch((e) => {
         console.warn("Push notification registration failed:", e);

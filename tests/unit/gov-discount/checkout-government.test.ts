@@ -12,7 +12,8 @@ const input = (overrides: Partial<CheckoutGovInput> = {}): CheckoutGovInput => (
     { menu_item_id: 'm-sisig', menu_item_name: 'Sisig', quantity: 1, subtotal: 560 },
     { menu_item_id: 'm-mug', menu_item_name: 'Mug', quantity: 1, subtotal: 300 },
   ],
-  profile: defaultTaxProfile('vat'),
+  // The owner switched online claims on; off is pinned in online-claims.test.ts.
+  profile: { ...defaultTaxProfile('vat'), onlineClaimsEnabled: true },
   excludedMenuItemIds: new Set(['m-mug']),
   serviceCharge: 0,
   deliveryFee: 49,

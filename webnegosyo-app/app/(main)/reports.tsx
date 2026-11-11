@@ -35,6 +35,13 @@ import { HeroRevenueCard } from "../../components/HeroRevenueCard";
 import { CustomerInsights } from "../../components/reports/CustomerInsights";
 import { InsightsNotice } from "../../components/reports/InsightsNotice";
 import { ReportsColumns, useIsWideReports } from "../../components/reports/ReportsColumns";
+import { ReportsMoneySection } from "../../components/money/ReportsMoneySection";
+import { moneyAccess } from "../../lib/expenses/money-glance";
+import { PastShiftsSheet } from "../../components/cash-rules/PastShiftsSheet";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
+import { REMITTANCES_ROUTE, periodSalesHref } from "../../lib/cash-routes";
+import { useServicePeriods } from "../../lib/cash/use-cash-rules";
+import { hasPermission, isTabAllowed } from "../../lib/staff-permissions";
 
 const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
 
@@ -49,6 +56,8 @@ interface SalesSnapshot {
 const DEFAULT_DAYS = 30;
 const PERIOD_OPTIONS = DASHBOARD_WINDOWS.map((days) => ({ label: `${days} days`, value: days as number }));
 const canText = isSmsCampaignsAvailable(Platform.OS);
+/** The REPORTS_SECTIONS entry drawn as ReportsMoneySection instead of plain rows. */
+const MONEY_SECTION = "Money";
 
 /**
  * Reports: the store's customers first, every other report one tap below.
@@ -73,8 +82,19 @@ export default function ReportsScreen() {
   const canSeeRewards = isTabReachable("loyalty", ctx);
   const canSeeSales = isTabReachable("analytics", ctx);
   const canSeeTexts = isTabReachable("texts", ctx);
-  const sections = hubSections(REPORTS_SECTIONS, ctx);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  // Money has its own section with live figures; Dig deeper keeps the rest.
+  const money = useMemo(() => moneyAccess(ctx, orderBackend), [ctx, orderBackend]);
+  const sections = hubSections(REPORTS_SECTIONS, ctx).filter((section) => section.title !== MONEY_SECTION);
   const isWide = useIsWideReports();
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  // Past shifts read report_period_sales, which needs the sales-report key.
+  const canSeeShifts = !isDemo && hasPermission(ctx.caller, "reports");
+  const [isShiftsOpen, setShiftsOpen] = useState(false);
+  // The receiver's inbox rides cash_manage (TAB_PERMISSIONS "remittances").
+  const canSeeRemittances = !isDemo && isTabAllowed(ctx.caller, "remittances");
+  const tradingDay = useTradingDay();
+  const periodsQuery = useServicePeriods(canSeeShifts && isShiftsOpen ? tenantId : null);
 
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const dashboardQuery = useCustomerDashboard(canSeeCustomers);
@@ -141,9 +161,39 @@ export default function ReportsScreen() {
     </>
   ) : null;
 
-  const digDeeper =
-    sections.length > 0 || complianceDoor ? (
+  const cashDoor =
+    canSeeShifts || canSeeRemittances ? (
       <>
+        <SectionHeader title="Cash" hint="Shifts, and the cash handed over after them" />
+        <View style={styles.group}>
+          {canSeeRemittances ? (
+            <ListRow
+              icon="wallet"
+              title="Remittances"
+              subtitle="Accept cash, see pickups"
+              onPress={() => router.push(REMITTANCES_ROUTE)}
+              grouped={canSeeShifts}
+            />
+          ) : null}
+          {canSeeShifts ? (
+            <ListRow
+              icon="clock"
+              title="Shifts"
+              subtitle="Sales by business day and by shift"
+              onPress={() => setShiftsOpen(true)}
+            />
+          ) : null}
+        </View>
+      </>
+    ) : null;
+
+  const moneySection = <ReportsMoneySection access={money} onOpen={open} />;
+  const hasMoney = money.canSeeExpenses || money.canSeeProfitRow;
+
+  const digDeeper =
+    sections.length > 0 || complianceDoor || cashDoor || hasMoney ? (
+      <>
+        {moneySection}
         {sections.length > 0 ? (
           <>
             <SectionHeader title="Dig deeper" hint="Sales, products, branches and store activity" />
@@ -164,6 +214,7 @@ export default function ReportsScreen() {
             </View>
           </>
         ) : null}
+        {cashDoor}
         {complianceDoor}
       </>
     ) : null;
@@ -261,6 +312,19 @@ export default function ReportsScreen() {
       >
         {body}
       </ScrollView>
+      {canSeeShifts ? (
+        <PastShiftsSheet
+          visible={isShiftsOpen}
+          todayKey={tradingDay.todayKey}
+          schedule={tradingDay.schedule}
+          periods={periodsQuery.data ?? []}
+          onOpen={(target) => {
+            setShiftsOpen(false);
+            router.push(periodSalesHref(target));
+          }}
+          onClose={() => setShiftsOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

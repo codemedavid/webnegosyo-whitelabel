@@ -5,14 +5,16 @@ import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft, Sparkles } from
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
-import type { CheckoutLeadWithPaymentMethod } from '@/types/database'
+import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
 import { trackMetaEvent } from '@/lib/meta-pixel'
 import { uploadPaymentProofImage, isImageKitConfigured } from '@/lib/imagekit-upload'
+import { getPaymentTermLabel } from '@/lib/checkout-leads/payment-term-labels'
+import { getCheckoutBalanceDue, isCheckoutPaymentTerm, isFunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
 
 const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 
 interface ConfirmationContentProps {
-  lead: CheckoutLeadWithPaymentMethod
+  lead: CheckoutLeadConfirmation
 }
 
 /**
@@ -49,19 +51,6 @@ function NextStepsCard() {
   )
 }
 
-function getPaymentTermLabel(paymentTerm: CheckoutLeadWithPaymentMethod['payment_term']) {
-  switch (paymentTerm) {
-    case 'downpayment_50':
-      return '50% Downpayment'
-    case 'full_payment':
-      return 'Full Payment'
-    case 'monthly_subscription':
-      return 'Monthly (₱999/buwan)'
-    default:
-      return paymentTerm
-  }
-}
-
 export function ConfirmationContent({ lead }: ConfirmationContentProps) {
   const [copied, setCopied] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -70,6 +59,8 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
   const [proofUrl, setProofUrl] = useState(lead.payment_proof_url ?? '')
 
   const paymentMethod = lead.platform_payment_methods
+  const balanceDue =
+    lead.payment_term && isCheckoutPaymentTerm(lead.payment_term) ? getCheckoutBalanceDue(lead.payment_term) : 0
 
   const handleCopyRef = async () => {
     try {
@@ -172,9 +163,14 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
           <p className="mt-1 text-sm text-gray-500">
             Payment term: <span className="font-semibold text-gray-900">{getPaymentTermLabel(lead.payment_term)}</span>
           </p>
+          {balanceDue > 0 && (
+            <p className="mt-1 text-sm text-gray-500">
+              Balance after this payment: <span className="font-semibold text-gray-900">P{balanceDue.toLocaleString()}</span>
+            </p>
+          )}
         </div>
 
-        {lead.payment_term === 'monthly_subscription' && <NextStepsCard />}
+        {isFunnelPlanTerm(lead.payment_term) && <NextStepsCard />}
 
         {paymentMethod && (
           <div className="rounded-xl bg-white p-6 shadow-sm">

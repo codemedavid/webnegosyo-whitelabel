@@ -15,29 +15,11 @@ import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-sta
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
 import type { OrderTypeRead } from '@/lib/checkout/load-order-tenant-context'
+import type { OriginOutletFields } from '@/lib/delivery/delivery-origin'
 import type { AdminClient, ResolvedOutlet, TenantConfig, TenantSecrets } from './context'
 import { lost, refused, type PlaceOrderFailure, type PlaceOrderLineInput } from './types'
 
 type Gate<T> = { ok: true; value: T } | { ok: false; failure: PlaceOrderFailure }
-
-export async function checkSimpleOptionStock(
-  tenantConfig: TenantConfig,
-  tenantId: string,
-  lines: readonly PlaceOrderLineInput[]
-): Promise<PlaceOrderFailure | null> {
-  if (tenantConfig.inventory_enabled !== true) return null
-  if (!lines.some((item) => item.option_ids?.length || item.addon_ids?.length)) return null
-  const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
-  try {
-    await assertSimpleOptionStockAvailable(tenantId, lines.map((item) => ({
-      menuItemId: item.menu_item_id, quantity: item.quantity,
-      optionIds: item.option_ids, addonIds: item.addon_ids, addonQuantities: item.addon_quantities,
-    })))
-    return null
-  } catch (error) {
-    return refused(error instanceof Error ? error.message : 'Could not check add-on stock')
-  }
-}
 
 /**
  * ── The order type: ONE tenant-scoped read serves every consumer below ──
@@ -155,21 +137,25 @@ export async function resolveBranch(
   tenantConfig: TenantConfig,
   tenantId: string,
   outletId: string | undefined
-): Promise<Gate<ResolvedOutlet | null>> {
-  if (!isMultiBranchEnabled(tenantConfig)) return { ok: true, value: null }
+): Promise<Gate<{ outlet: ResolvedOutlet | null; origin: OriginOutletFields | null }>> {
+  if (!isMultiBranchEnabled(tenantConfig)) return { ok: true, value: { outlet: null, origin: null } }
 
   const { data: outletRows, error: outletError } = await db
     .from('outlets')
-    .select('id, name, is_active')
+    .select('id, name, is_active, address, latitude, longitude, delivery_radius_km')
     .eq('tenant_id', tenantId)
   if (outletError) return { ok: false, failure: lost('Unable to verify your branch. Please try again.') }
+  const branchRows = (outletRows ?? []) as Array<OriginOutletFields & { name: string; is_active: boolean }>
   try {
     const outlet = requireCheckoutOutlet({
       isEnabled: true,
       requestedOutletId: outletId,
-      outlets: (outletRows ?? []) as Array<{ id: string; name: string; is_active: boolean }>,
+      outlets: branchRows,
     })
-    return { ok: true, value: outlet }
+    // The resolved branch's own pin and radius: a delivery starts THERE when
+    // it is pinned (fee, Lalamove signature check), else at the store.
+    const origin = outlet ? branchRows.find((row) => row.id === outlet.id) ?? null : null
+    return { ok: true, value: { outlet, origin } }
   } catch (error) {
     return {
       ok: false,

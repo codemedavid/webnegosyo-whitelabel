@@ -8,6 +8,7 @@ import type { createOrder, createOrderConvex } from '@/lib/orders-service'
 import type { TenantOrderWriteResult } from '@/lib/tenant-supabase-orders'
 import type { OrderBackend } from '@/lib/order-backend'
 import type { OnlineOrderSource } from '@/lib/order-parity'
+import type { FieldValidationError } from '@/lib/checkout/required-answers'
 
 /** One cart line as a caller submits it. Every money field is only a claim. */
 export interface PlaceOrderLineInput {
@@ -66,10 +67,11 @@ export interface PlaceOrderInput {
   customerData?: Record<string, unknown>
   deliveryFee?: number
   lalamoveQuotationId?: string
+  /**
+   * Only the id is believed: the order records the STORED method's name,
+   * account details and QR (see `judgeOrderPaymentMethod`).
+   */
   paymentMethodId?: string
-  paymentMethodName?: string
-  paymentMethodDetails?: string
-  paymentMethodQrCodeUrl?: string
   scheduledForISO?: string
   paymentProof?: PlaceOrderPaymentProof
   /**
@@ -171,6 +173,8 @@ export interface PlacedOrder {
 export interface RefusedOrder {
   kind: 'refused'
   error: string
+  /** Required checkout questions left blank, one per field (shown beside it). */
+  fieldErrors?: FieldValidationError[]
 }
 
 /**
@@ -187,8 +191,8 @@ export type PlaceOrderFailure = RefusedOrder | LostOrder
 
 export type PlaceOrderResult = PlacedOrder | PlaceOrderFailure
 
-export function refused(error: string): RefusedOrder {
-  return { kind: 'refused', error }
+export function refused(error: string, fieldErrors?: FieldValidationError[]): RefusedOrder {
+  return fieldErrors ? { kind: 'refused', error, fieldErrors } : { kind: 'refused', error }
 }
 
 export function lost(error: string): LostOrder {

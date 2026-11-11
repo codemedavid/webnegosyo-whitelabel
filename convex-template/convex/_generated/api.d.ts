@@ -10,6 +10,7 @@
 
 import type * as analytics from "../analytics.js";
 import type * as auth from "../auth.js";
+import type * as businessDayConfig from "../businessDayConfig.js";
 import type * as config from "../config.js";
 import type * as crons from "../crons.js";
 import type * as lalamove from "../lalamove.js";
@@ -29,6 +30,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   auth: typeof auth;
+  businessDayConfig: typeof businessDayConfig;
   config: typeof config;
   crons: typeof crons;
   lalamove: typeof lalamove;

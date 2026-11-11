@@ -8,12 +8,12 @@
 import { DEFAULT_THEME } from './defaults'
 import { LIMITS } from './constants'
 import { isV4Design, migrateV4Design } from './migrate-v4'
-import type { Column, HeroDesignV5, NodeStyle, Section, Theme, Widget, WidgetKind } from './types'
+import type { Column, HeroDesignV5, NodeStyle, OrderKindChoice, PageLayout, PageSettings, Section, Theme, Widget, WidgetKind } from './types'
 
 const WIDGET_KINDS: readonly WidgetKind[] = [
   'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
   'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
-  'order-entry', 'store-logo', 'slideshow',
+  'order-entry', 'store-logo', 'slideshow', 'page-block', 'copy-text',
 ]
 
 type Loose = Record<string, unknown>
@@ -51,6 +51,22 @@ function layers(node: Loose): Pick<Section, 'style' | 'tablet' | 'mobile'> {
   }
 }
 
+/** Known-shape page states only; anything else reads as "always shown". */
+function showWhen(value: unknown): { showWhen?: string[] } {
+  if (!Array.isArray(value)) return {}
+  const states = value.filter((v): v is string => typeof v === 'string' && /^[a-z_]{1,32}$/.test(v)).slice(0, 12)
+  return states.length ? { showWhen: states } : {}
+}
+
+const ORDER_KIND_CHOICES: readonly OrderKindChoice[] = ['dine_in', 'pickup', 'delivery']
+
+/** Known order types only; anything else reads as "every order". */
+function showFor(value: unknown): { showFor?: OrderKindChoice[] } {
+  if (!Array.isArray(value)) return {}
+  const kinds = ORDER_KIND_CHOICES.filter((kind) => value.includes(kind))
+  return kinds.length ? { showFor: kinds } : {}
+}
+
 function widget(value: unknown): Widget | null {
   if (!isObject(value)) return null
   const id = asId(value.id)
@@ -64,6 +80,8 @@ function widget(value: unknown): Widget | null {
     content: content as unknown as Widget['content'],
     ...layers(value),
     ...(isObject(value.animation) ? { animation: value.animation as unknown as Widget['animation'] } : {}),
+    ...showWhen(value.showWhen),
+    ...showFor(value.showFor),
   }
 }
 
@@ -90,7 +108,29 @@ function section(value: unknown): Section | null {
     ...(typeof value.anchor === 'string' ? { anchor: value.anchor } : {}),
     columns,
     ...layers(value),
+    ...showWhen(value.showWhen),
+    ...showFor(value.showFor),
+    ...(value.pin === 'bottom' ? { pin: 'bottom' as const } : {}),
   }
+}
+
+const PAGE_LAYOUTS: readonly PageLayout[] = ['scroll', 'steps', 'accordion']
+const PAGE_PROGRESS = ['bar', 'numbers', 'dots', 'none'] as const
+
+/** Page Designer whole-page settings, shape-checked (values are re-validated where they are used). */
+function pageSettings(value: unknown): { page?: PageSettings } {
+  if (!isObject(value)) return {}
+  const page: PageSettings = {}
+  if (isObject(value.parts)) {
+    const parts = Object.entries(value.parts)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+      .slice(0, LIMITS.pageParts)
+    if (parts.length) page.parts = Object.fromEntries(parts)
+  }
+  if (PAGE_LAYOUTS.includes(value.layout as PageLayout)) page.layout = value.layout as PageLayout
+  if ((PAGE_PROGRESS as readonly unknown[]).includes(value.progress)) page.progress = value.progress as PageSettings['progress']
+  if (typeof value.nextLabel === 'string') page.nextLabel = value.nextLabel.slice(0, 40)
+  return Object.keys(page).length ? { page } : {}
 }
 
 function theme(value: unknown): Theme {
@@ -125,5 +165,5 @@ export function loadHeroDesign(raw: unknown): HeroDesignV5 | null {
     .slice(0, LIMITS.sections)
     .map(section)
     .filter((s): s is Section => !!s)
-  return { version: 5, theme: theme(parsed.theme), sections }
+  return { version: 5, theme: theme(parsed.theme), sections, ...pageSettings(parsed.page) }
 }

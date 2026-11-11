@@ -61,7 +61,6 @@ describe('buildPlaceOrderInput', () => {
         orderTypeId: PICKUP_TYPE,
         customerData: { customer_name: 'Ana', customer_phone: '+639171234567', notes: 'no ice' },
         paymentMethodId: CASH,
-        paymentMethodName: 'Cash',
         outletId: 'branch-1',
         voucherCodes: ['SAVE10'],
         clientOrderId: KEY,
@@ -109,14 +108,11 @@ describe('buildPlaceOrderInput', () => {
     expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH }) }))).toEqual({ ok: false, message: PROOF_NEEDED })
   })
 
-  it('passes the method as the web does, with the typed reference as proof', () => {
+  it('passes only the method id (the engine records the stored method), with the typed reference as proof', () => {
     const built = buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH, paymentReference: 'REF123' }) }))
-    expect(built.ok && built.input).toMatchObject({
-      paymentMethodName: 'GCash',
-      paymentMethodDetails: '0917 000 0000',
-      paymentMethodQrCodeUrl: 'https://qr',
-      paymentProof: { reference: 'REF123' },
-    })
+    expect(built.ok && built.input).toMatchObject({ paymentMethodId: GCASH, paymentProof: { reference: 'REF123' } })
+    expect(built.ok && built.input).not.toHaveProperty('paymentMethodName')
+    expect(built.ok && built.input).not.toHaveProperty('paymentMethodDetails')
   })
 
   it('requires a picked place for delivery and writes the web address keys', () => {

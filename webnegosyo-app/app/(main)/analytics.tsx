@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useMemo } from "react";
+import { SalesOverview } from "../../components/sales-report/SalesOverview";
+import { useAuthStore } from "../../stores/auth-store";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
@@ -93,11 +95,21 @@ const BAR_COLORS = [colors.primary, colors.accent, colors.warning, colors.textSe
 
 const FUNNEL_COLORS = [colors.primary, colors.warning, colors.accent];
 
-export default function AnalyticsScreen() {
+/**
+ * Platform stores read the new Sales report (one sales definition, served by
+ * the web); stores whose orders live in Convex keep the analytics below until
+ * the reports reach them (plan 2026-11-05, Convex coverage is a later phase).
+ */
+export default function SalesScreen() {
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  return orderBackend === "platform" ? <SalesOverview /> : <AnalyticsScreen />;
+}
+
+function AnalyticsScreen() {
   // One selection drives every query on this screen. `windowArgs` is spread
   // into each; `useReportWindow` decides whether the backend can take the
   // calendar days the label names, and moves "today" at Manila midnight.
-  const { selection, setSelection, nowMs, windowArgs, periodLabel } = useReportWindow(7);
+  const { selection, setSelection, nowMs, windowArgs, periodLabel, schedule } = useReportWindow(7);
   const [refreshing, setRefreshing] = useState(false);
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
@@ -228,6 +240,7 @@ export default function AnalyticsScreen() {
         selection={selection}
         presets={REPORT_PRESETS}
         nowMs={nowMs}
+        schedule={schedule}
         onChange={setSelection}
       />
 

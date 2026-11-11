@@ -11,13 +11,14 @@ import type { NodeStyleBinding } from './node-style'
 const FONT_CHOICES = Object.entries(FONT_OPTIONS).map(([value, f]) => ({ value, label: f.label }))
 const WEIGHTS = [300, 400, 500, 600, 700, 800, 900].map((w) => ({ value: String(w), label: String(w) }))
 
-const TEXT_KINDS: readonly WidgetKind[] = ['heading', 'text', 'buttons', 'icon-list', 'badge', 'countdown', 'order-entry', 'store-logo']
+const TEXT_KINDS: readonly WidgetKind[] = ['heading', 'text', 'buttons', 'icon-list', 'badge', 'countdown', 'order-entry', 'store-logo', 'copy-text']
 const ACCENT_LABEL: Partial<Record<WidgetKind, string>> = {
   buttons: 'Button color',
   'icon-list': 'Icon color',
   icon: 'Badge fill',
   badge: 'Icon color',
   countdown: 'Box color',
+  'copy-text': 'Button color',
   divider: 'Line color',
   'order-entry': 'Tile / button color',
   slideshow: 'Dot color',
@@ -25,6 +26,7 @@ const ACCENT_LABEL: Partial<Record<WidgetKind, string>> = {
 const ACCENT_TEXT_LABEL: Partial<Record<WidgetKind, string>> = {
   buttons: 'Button text',
   countdown: 'Box text',
+  'copy-text': 'Button text',
   'order-entry': 'Tile / button text',
 }
 /** Kinds whose "text color" paints something else. */

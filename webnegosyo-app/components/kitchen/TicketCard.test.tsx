@@ -60,10 +60,14 @@ function renderCard(props: Partial<React.ComponentProps<typeof TicketCard>> = {}
   const onBump = jest.fn();
   const onPrint = jest.fn();
   const onSetPrepTime = jest.fn();
+  const onConfirm = jest.fn();
   render(
     <TicketCard
       ticket={ticket()}
       isNew={false}
+      kitchenStatus="waiting"
+      rangAtMs={null}
+      onConfirm={onConfirm}
       onBump={onBump}
       onPrint={onPrint}
       canPrint
@@ -72,7 +76,7 @@ function renderCard(props: Partial<React.ComponentProps<typeof TicketCard>> = {}
       {...props}
     />,
   );
-  return { onBump, onPrint, onSetPrepTime };
+  return { onBump, onPrint, onSetPrepTime, onConfirm };
 }
 
 describe("ticket content", () => {
@@ -97,6 +101,37 @@ describe("ticket content", () => {
   it("shows the customer's note — the line that prevents an allergy incident", () => {
     renderCard();
     expect(screen.getByText("✱ no onions")).toBeTruthy();
+  });
+
+  it("boxes the item note so it reads from across the line", () => {
+    renderCard();
+    expect(screen.getByTestId("ticket-item-note-0")).toBeTruthy();
+    expect(screen.queryByTestId("ticket-item-note-1")).toBeNull();
+  });
+
+  it("shows the order's own checkout note as a NOTE banner", () => {
+    renderCard({
+      ticket: {
+        ...ticket(),
+        order: {
+          ...ticket().order,
+          customerData: { "Special Instructions ": "birthday — add a candle", table_number: "4" },
+        },
+      },
+    });
+    expect(screen.getByText("NOTE")).toBeTruthy();
+    expect(screen.getByText("birthday — add a candle")).toBeTruthy();
+  });
+
+  it("shows no banner without an order note, nor for the rider's note", () => {
+    renderCard({
+      ticket: {
+        ...ticket(),
+        order: { ...ticket().order, customerData: { delivery_rider_note: "call at the gate" } },
+      },
+    });
+    expect(screen.queryByText("NOTE")).toBeNull();
+    expect(screen.queryByText("call at the gate")).toBeNull();
   });
 
   it("shows the cook time elapsed, not a wall clock", () => {
@@ -247,5 +282,46 @@ describe("TicketCard table number", () => {
       }),
     });
     expect(screen.getByText("Table 7")).toBeTruthy();
+  });
+});
+
+/**
+ * Kitchen Confirm — the cook's "we have it", which the cashier hears about.
+ * A ticket that rings must say so on the card (so a muted tablet is noticed)
+ * and offer one big button that stops it.
+ */
+describe("kitchen confirm", () => {
+  it("says a new ticket is ringing, and when it rang", () => {
+    renderCard({ kitchenStatus: "ringing", rangAtMs: NOW - 2 * MINUTE });
+    expect(screen.getByText(/RINGING/)).toBeTruthy();
+    expect(screen.getByText(/Rang 11:58/)).toBeTruthy();
+  });
+
+  it("confirms the order it is showing", () => {
+    const { onConfirm } = renderCard({ kitchenStatus: "ringing", rangAtMs: NOW });
+    fireEvent.press(screen.getByRole("button", { name: "Confirm order" }));
+    expect(onConfirm).toHaveBeenCalledWith("j57abc123xyz789ef");
+  });
+
+  it("offers Confirm on a backlog ticket without claiming it rang", () => {
+    renderCard({ kitchenStatus: "waiting" });
+    expect(screen.getByText(/NOT CONFIRMED YET/)).toBeTruthy();
+    expect(screen.queryByText(/RINGING/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Confirm order" })).toBeTruthy();
+  });
+
+  it("shows a confirmed ticket as confirmed, with no Confirm button left to tap", () => {
+    renderCard({
+      kitchenStatus: "confirmed",
+      ticket: { ...ticket(), order: { ...ticket().order, status: "preparing" } },
+    });
+    expect(screen.getByText(/KITCHEN CONFIRMED/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Confirm order" })).toBeNull();
+  });
+
+  it("still lets a cook bump an unconfirmed ticket straight to ready", () => {
+    const { onBump } = renderCard({ kitchenStatus: "ringing", rangAtMs: NOW });
+    fireEvent.press(screen.getByText("Bump · Ready"));
+    expect(onBump).toHaveBeenCalledWith("j57abc123xyz789ef");
   });
 });

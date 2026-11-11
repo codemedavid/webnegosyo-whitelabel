@@ -3,13 +3,15 @@
  *
  * The proof URL is rendered as a link and an image on the merchant's order
  * screens. The checkout only ever uploads to ImageKit (`PaymentProofField` →
- * `uploadImageToImageKit`), so anything that is not an https URL on the
- * ImageKit host — or the configured custom endpoint's host — is dropped rather
+ * `uploadImageToImageKit`) or, after the storage move, Cloudflare R2, so
+ * anything that is not an https URL on the ImageKit host, the configured custom
+ * endpoint's host or the R2 media host (`MEDIA_HOST`) is dropped rather
  * than stored. Dropped, not refused: no real checkout sends one, and the
  * reference number (the other half of a proof) still goes through.
  */
 
 import { getImageKitEndpoint } from '@/lib/imagekit-utils'
+import { MEDIA_HOST } from '@/lib/storage/media-url'
 
 export const IMAGEKIT_DELIVERY_HOST = 'ik.imagekit.io'
 const MAX_PROOF_URL_LENGTH = 2048
@@ -39,6 +41,10 @@ function isAllowedProofUrl(value: string, endpoint: string): boolean {
     return false
   }
   if (parsed.protocol !== 'https:' || parsed.username !== '' || parsed.password !== '') return false
+
+  // A stored proof is always the plain original: on the media host a
+  // `/cdn-cgi/` path is a transformation (and can name a remote origin).
+  if (parsed.host === MEDIA_HOST) return !parsed.pathname.startsWith('/cdn-cgi/')
 
   const allowedHosts = [IMAGEKIT_DELIVERY_HOST, endpoint ? hostOf(endpoint) : null]
   return allowedHosts.includes(parsed.host)

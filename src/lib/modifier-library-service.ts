@@ -15,6 +15,7 @@ import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { ModifierGroupLibraryEntry } from '@/types/database'
+import { isSameLibraryGroup } from '@/lib/addon-groups/library-duplicates'
 import {
   modifierGroupLibraryEntrySchema,
   type ModifierGroupLibraryInput,
@@ -58,6 +59,18 @@ export async function createModifierGroupLibraryEntry(
   if (!ctx) await verifyTenantPermission(tenantId, 'menu', 'create')
   const validated = modifierGroupLibraryEntrySchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
+
+  // "Save to library" used to file a new row per tap (one store had 27 copies
+  // of one group). An identical saved group is returned instead of copied.
+  const { data: existing, error: readError } = await supabase
+    .from('modifier_group_library')
+    .select('*')
+    .eq('tenant_id', tenantId)
+  if (readError) throw readError
+  const twin = ((existing ?? []) as unknown as ModifierGroupLibraryEntry[]).find(
+    (entry) => entry.is_active && isSameLibraryGroup(entry, validated)
+  )
+  if (twin) return twin
 
   const { data, error } = await supabase
     .from('modifier_group_library')

@@ -6,14 +6,23 @@
  * data fetching of its own. The live page (order-tracking-client) and the
  * Branding Studio's sample page (tracking-studio-preview) both render it, so
  * the preview is the real page.
+ *
+ * With a published Page Designer design (`designedPage`) the body is the
+ * owner's design built from the same parts (designed-tracking.tsx); without
+ * one it is exactly today's page.
  */
 
 import { useMemo, type CSSProperties, type ReactNode } from 'react'
-import { ArrowLeft, Bell, BellRing } from 'lucide-react'
-import { StoreLabel, StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
+import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
+import { DesignedTracking } from '@/components/page-designer/tracking/designed-tracking'
+import type { TrackingBlocksValue, TrackingPaint } from '@/components/page-designer/tracking/tracking-blocks-context'
+import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import type { TrackingData } from '@/lib/order-tracking-service'
 import type { PrepPromiseView } from '@/lib/prep-time'
+import { readStorefrontLabels } from '@/lib/storefront-labels'
 import type { TrackingOptions } from '@/lib/tracking-style/keys'
+import { BackToMenuButton } from './back-to-menu-button'
+import { RingMeButton } from './ring-me-button'
 import { TrackingHeader } from './tracking-header'
 import { StatusHero } from './status-hero'
 import { StatusTimeline } from './status-timeline'
@@ -46,6 +55,10 @@ export interface TrackingDashboardProps {
   onBack: () => void
   /** The ready alert takes focus when it opens (off in the Studio preview, where the owner is typing). */
   shouldFocusAlert?: boolean
+  /** The owner's published tracking design (Page Designer); null/absent = the standard page. */
+  designedPage?: { design: HeroDesignV5; tenantSlug: string; storeAddress?: string } | null
+  /** What `theme` was built from; lets a designed page's blocks use their own colours. */
+  paint?: TrackingPaint
 }
 
 export function TrackingDashboard({
@@ -68,9 +81,9 @@ export function TrackingDashboard({
   onAcknowledgeReady,
   onBack,
   shouldFocusAlert = true,
+  designedPage = null,
+  paint,
 }: TrackingDashboardProps) {
-  const isCancelled = data.status === 'cancelled'
-  const canRing = !data.isTerminal && data.status !== 'ready' && !isCancelled
   const labelSource = useMemo(() => ({ storefront_labels: storefrontLabels }), [storefrontLabels])
   const loyaltyBlock = (
     <>
@@ -78,6 +91,22 @@ export function TrackingDashboard({
       {loyalty}
     </>
   )
+  const labels = useMemo(() => readStorefrontLabels(labelSource), [labelSource])
+  const blocks: TrackingBlocksValue = {
+    storeName,
+    logoUrl,
+    data,
+    shortId,
+    currentIndex,
+    placedLabel,
+    prepPromise,
+    isAlarmArmed,
+    onArmAlarm,
+    loyalty: loyaltyNotice || loyalty ? loyaltyBlock : null,
+    pickup,
+    onBack,
+    paint,
+  }
 
   return (
     <StorefrontLabelsProvider tenant={labelSource}>
@@ -92,58 +121,11 @@ export function TrackingDashboard({
             color: 'var(--trk-text)',
           }}
         >
-          <TrackingHeader
-            storeName={storeName}
-            logoUrl={logoUrl}
-            shortId={shortId}
-            isLive={!data.isTerminal}
-            onBack={onBack}
-            showLiveBadge={options.show_live_badge}
-          />
-
-          <main className="container mx-auto max-w-lg px-4 py-5">
-            <div className="space-y-4">
-              <StatusHero
-                status={data.status}
-                currentIndex={currentIndex}
-                customerName={data.customerName}
-                placedLabel={placedLabel}
-                orderTypeLabel={data.orderType}
-                scheduledLabel={data.scheduledLabel}
-                prepPromise={prepPromise}
-              />
-
-              {/* Ready-alert opt-in — audio needs a tap, so it can't be automatic */}
-              {canRing && <RingMeButton isArmed={isAlarmArmed} onArm={onArmAlarm} />}
-
-              {options.loyalty_position === 'top' && loyaltyBlock}
-
-              {pickup}
-
-              {!isCancelled && options.show_timeline && <StatusTimeline currentIndex={currentIndex} />}
-
-              <OrderSummaryCard
-                items={data.items}
-                total={data.total}
-                deliveryFee={data.deliveryFee}
-                serviceChargeAmount={data.serviceChargeAmount}
-              />
-
-              {options.loyalty_position === 'bottom' && loyaltyBlock}
-
-              <div className="pb-8 pt-2">
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition-opacity hover:opacity-80"
-                  style={{ color: 'var(--trk-text-muted)' }}
-                >
-                  <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-                  <StoreLabel name="tracking.back" fallback="Back to menu" />
-                </button>
-              </div>
-            </div>
-          </main>
+          {designedPage ? (
+            <DesignedTracking design={designedPage.design} tenantSlug={designedPage.tenantSlug} blocks={blocks} labels={labels} storeAddress={designedPage.storeAddress} />
+          ) : (
+            <StandardTracking blocks={blocks} options={options} />
+          )}
 
           {readyNotice && (
             <ReadyAlertOverlay title={readyNotice.title} body={readyNotice.body} onAcknowledge={onAcknowledgeReady} shouldFocus={shouldFocusAlert} />
@@ -154,38 +136,55 @@ export function TrackingDashboard({
   )
 }
 
-function RingMeButton({ isArmed, onArm }: { isArmed: boolean; onArm: () => void }) {
+/** Today's page, top to bottom — what every store without a published design renders. */
+function StandardTracking({ blocks, options }: { blocks: TrackingBlocksValue; options: TrackingOptions }) {
+  const { data, loyalty, onBack } = blocks
+  const isCancelled = data.status === 'cancelled'
+  const canRing = !data.isTerminal && data.status !== 'ready' && !isCancelled
   return (
-    <div className="space-y-1.5" data-branding-scope="tracking/ring">
-      <button
-        type="button"
-        onClick={onArm}
-        disabled={isArmed}
-        className="flex h-12 w-full items-center justify-center gap-2 border-2 text-sm font-semibold transition-colors disabled:cursor-default"
-        style={{
-          borderRadius: 'var(--trk-radius-pill)',
-          ...(isArmed
-            ? { borderColor: 'var(--trk-ring-armed)', backgroundColor: 'var(--trk-ring-armed-soft)', color: 'var(--trk-ring-armed)' }
-            : { borderColor: 'var(--trk-ring-border)', backgroundColor: 'var(--trk-ring-bg)', color: 'var(--trk-ring-text)' }),
-        }}
-      >
-        {isArmed ? (
-          <>
-            <BellRing className="h-4 w-4" aria-hidden="true" />
-            <StoreLabel name="tracking.ring_armed" fallback="We'll ring & vibrate when it's ready" />
-          </>
-        ) : (
-          <>
-            <Bell className="h-4 w-4" aria-hidden="true" />
-            <StoreLabel name="tracking.ring_me" fallback="Ring me when my order is ready" />
-          </>
-        )}
-      </button>
-      {isArmed && (
-        <p className="text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
-          Keep this page open and your volume up.
-        </p>
-      )}
-    </div>
+    <>
+      <TrackingHeader
+        storeName={blocks.storeName}
+        logoUrl={blocks.logoUrl}
+        shortId={blocks.shortId}
+        isLive={!data.isTerminal}
+        onBack={onBack}
+        showLiveBadge={options.show_live_badge}
+      />
+
+      <main className="container mx-auto max-w-lg px-4 py-5">
+        <div className="space-y-4">
+          <StatusHero
+            status={data.status}
+            currentIndex={blocks.currentIndex}
+            customerName={data.customerName}
+            placedLabel={blocks.placedLabel}
+            orderTypeLabel={data.orderType}
+            scheduledLabel={data.scheduledLabel}
+            prepPromise={blocks.prepPromise}
+          />
+
+          {/* Ready-alert opt-in — audio needs a tap, so it can't be automatic */}
+          {canRing && <RingMeButton isArmed={blocks.isAlarmArmed} onArm={blocks.onArmAlarm} />}
+
+          {options.loyalty_position === 'top' && loyalty}
+
+          {blocks.pickup}
+
+          {!isCancelled && options.show_timeline && <StatusTimeline currentIndex={blocks.currentIndex} />}
+
+          <OrderSummaryCard
+            items={data.items}
+            total={data.total}
+            deliveryFee={data.deliveryFee}
+            serviceChargeAmount={data.serviceChargeAmount}
+          />
+
+          {options.loyalty_position === 'bottom' && loyalty}
+
+          <BackToMenuButton onBack={onBack} />
+        </div>
+      </main>
+    </>
   )
 }

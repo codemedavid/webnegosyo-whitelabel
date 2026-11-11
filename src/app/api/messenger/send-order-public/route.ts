@@ -5,7 +5,8 @@ import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { sendMessage } from '@/lib/facebook-api'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 import { verifyOrderToken } from '@/lib/order-token'
-import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
 
 /**
  * Hash an IP address for privacy-preserving logging
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             )
         }
-        const rateLimit = checkRateLimit(clientIP, { maxRequests: 20, windowMs: 60000 })
+        const rateLimit = await checkRateLimit(`send-order-public:${clientIP}`, { limit: 20, windowSec: 60 })
 
         if (!rateLimit.allowed) {
             const hashedIP = hashIP(clientIP)
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
                 {
                     status: 429,
                     headers: {
-                        'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+                        'Retry-After': String(rateLimit.retryAfterSec),
                     },
                 }
             )
@@ -214,10 +215,16 @@ export async function POST(request: NextRequest) {
         const page = pageData as { page_access_token: string }
 
         // Get order items
-        const { data: orderItemsData } = await supabase
+        const { data: orderItemsData, error: orderItemsError } = await supabase
             .from('order_items')
             .select('*')
             .eq('order_id', orderId)
+
+        // Never hand the merchant an order message with no dishes on it.
+        if (orderItemsError) {
+            console.error('[Send Order Public] Could not read order items', { orderId, code: orderItemsError.code })
+            return NextResponse.json({ success: false, message: 'Could not read the order items' })
+        }
 
         const orderItems = (orderItemsData || []) as Array<{
             menu_item_name: string

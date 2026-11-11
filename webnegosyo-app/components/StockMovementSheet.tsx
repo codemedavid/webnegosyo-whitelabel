@@ -30,6 +30,7 @@ import { formatStockQuantity, type StockItemView } from "../lib/inventory-stock"
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { Icon, type IconName } from "./Icon";
 import { useHasPermission } from "../lib/use-has-permission";
+import type { RecordedMovement } from "../lib/expenses/money-glance";
 
 /** Chips under the amount for a delivery or waste; a count is typed exactly. */
 const QUICK_STEPS: readonly number[] = [1, 5, 10];
@@ -67,8 +68,11 @@ interface StockMovementSheetProps {
   /** Which tab the sheet opens on — set by the shortcut that opened it. */
   initialReason?: ManualMovementReason;
   onClose: () => void;
-  /** Fired once the ledger has settled, so the shelf reloads from the server. */
-  onRecorded: () => void;
+  /**
+   * Fired once the ledger has settled, so the shelf reloads from the server —
+   * with what was recorded, so a delivery can offer "Paid for this delivery?".
+   */
+  onRecorded: (movement: RecordedMovement) => void;
 }
 
 /**
@@ -148,7 +152,12 @@ export function StockMovementSheet({
         clientRequestId: requestIdRef.current,
       });
       close();
-      onRecorded();
+      onRecorded({
+        reason: payload.reason,
+        quantity: payload.quantity,
+        unitCost: payload.unit_cost ?? null,
+        itemName: item.name,
+      });
     } catch (submitError) {
       // Surfaced, never swallowed: the merchant is watching and a false
       // confirmation would only be discovered at the next stocktake.

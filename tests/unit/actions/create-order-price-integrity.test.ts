@@ -79,6 +79,7 @@ jest.mock('@/lib/orders-service', () => ({
 
 jest.mock('@/lib/vouchers/order-pricing', () => ({
   priceOrderWithVouchers: async () => ({
+    totals: { grandTotal: 0 },
     application: { discountLines: [] },
     discountPayload: null,
     redemptions: [],
@@ -160,6 +161,7 @@ function orderArgs(over: {
   scheduledForISO?: string
   paymentProof?: unknown
   lalamoveQuoteSignature?: string
+  outletId?: string
 } = {}): AnyArgs {
   return [
     TENANT_ID,
@@ -176,7 +178,7 @@ function orderArgs(over: {
     over.serviceChargeAmount,
     over.scheduledForISO,
     over.paymentProof,
-    undefined, // outletId
+    over.outletId,
     undefined, // voucherCodes
     undefined, // clientOrderId
     over.lalamoveQuoteSignature,
@@ -346,6 +348,14 @@ describe('createOrderAction — price integrity', () => {
       expect(createOrder).not.toHaveBeenCalled()
     })
 
+    test('refuses a pinless "can\'t find my place" order instead of saving it at no fee', async () => {
+      // Turned off 2026-11-09: the mark used to let any order skip the fee and the radius.
+      const result = await place(orderArgs({ customerData: { delivery_address: 'Purok 3', delivery_pin_skipped: 'true' } }))
+
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
     test('refuses delivery when both quotation and fee are omitted', async () => {
       const result = await place(orderArgs())
 
@@ -441,6 +451,14 @@ describe('createOrderAction — price integrity', () => {
     }
     const nearby = { delivery_lat: 14.6, delivery_lng: 120.99 }
 
+    test('never saves a pinless per-km delivery at no fee, mark or not', async () => {
+      distanceStore(null)
+      const result = await place(orderArgs({ deliveryFee: 0, customerData: { delivery_address: 'Purok 3', delivery_pin_skipped: 'true' } }))
+
+      expect(result).toMatchObject({ success: false })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
     test('waives the distance fee when the item subtotal meets the minimum', async () => {
       distanceStore(300)
       await place(orderArgs({ deliveryFee: 50, customerData: nearby }))
@@ -465,6 +483,95 @@ describe('createOrderAction — price integrity', () => {
       await place(orderArgs({ items: [line({ subtotal: 2000 })], deliveryFee: 0, customerData: nearby }))
       expect(savedArg(5)).toBe(50)
     })
+  })
+
+  describe('delivery from a branch', () => {
+    // The store's own pin is ~15 km from the customer (outside its 5 km
+    // radius); the branch is ~0.6 km away.
+    const branch = {
+      id: 'b1', name: 'Malate', is_active: true,
+      address: 'Malate', latitude: 14.5995, longitude: 120.9842, delivery_radius_km: null,
+    }
+    const nearBranch = { delivery_address: 'Home', delivery_lat: 14.6, delivery_lng: 120.99 }
+    const previousSecret = process.env.API_SECRET
+    afterEach(() => {
+      if (previousSecret === undefined) delete process.env.API_SECRET
+      else process.env.API_SECRET = previousSecret
+    })
+
+    function branchStore(overrides: Record<string, unknown> = {}) {
+      tableRows = {
+        ...tableRows,
+        tenants: platformTenant({
+          multi_branch_enabled: true,
+          distance_delivery_enabled: true,
+          delivery_price_per_km: 10,
+          delivery_min_fee: 50,
+          delivery_radius_km: 5,
+          restaurant_latitude: 14.7360,
+          restaurant_longitude: 121.0570,
+          ...overrides,
+        }),
+        order_types: { ...pickup, name: 'Delivery', type: 'delivery' },
+        outlets: [branch],
+      }
+    }
+
+    test('prices distance delivery from the branch pin, not the store pin', async () => {
+      branchStore()
+      const result = await place(orderArgs({ deliveryFee: 50, customerData: nearBranch, outletId: 'b1' }))
+      expect(result.success).toBe(true)
+      expect(savedArg(5)).toBe(50)
+    })
+
+    test('accepts a Lalamove quote signed for the order\'s branch and refuses one priced from the store', async () => {
+      process.env.API_SECRET = 'test-secret'
+      branchStore({ lalamove_enabled: true, distance_delivery_enabled: false })
+      const { signDeliveryQuote } = await import('@/lib/checkout/delivery-quote-signature')
+      const sign = (originOutletId: string | null) => signDeliveryQuote({
+        tenantId: TENANT_ID, quotationId: 'q-1', fee: 120, originOutletId,
+        destination: { address: 'Home', lat: 14.6, lng: 120.99 }, expiresAt: Date.now() + 60_000,
+      }) as string
+
+      const fromBranch = await place(orderArgs({ lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: sign('b1'), customerData: nearBranch, outletId: 'b1' }))
+      expect(fromBranch.success).toBe(true)
+      expect(savedArg(5)).toBe(120)
+
+      createOrder.mockClear()
+      const fromStore = await place(orderArgs({ lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: sign(null), customerData: nearBranch, outletId: 'b1' }))
+      expect(fromStore).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+  })
+
+  test('refuses a delivery pinned outside the Philippines', async () => {
+    tableRows = {
+      ...tableRows,
+      tenants: platformTenant({
+        distance_delivery_enabled: true, delivery_price_per_km: 10, delivery_min_fee: 50, delivery_radius_km: 5000,
+        restaurant_latitude: 14.5995, restaurant_longitude: 120.9842,
+      }),
+      order_types: { ...pickup, name: 'Delivery', type: 'delivery' },
+    }
+    const result = await place(orderArgs({ deliveryFee: 50, customerData: { delivery_address: 'Kowloon', delivery_lat: 22.3, delivery_lng: 114.17 } }))
+    expect(result).toMatchObject({ success: false, refused: true })
+    expect(result.error).toMatch(/Philippines/)
+    expect(createOrder).not.toHaveBeenCalled()
+  })
+
+  test('reads a stale Lalamove market on a store without Lalamove as the Philippines', async () => {
+    tableRows = {
+      ...tableRows,
+      tenants: platformTenant({
+        lalamove_enabled: false, lalamove_market: 'HK',
+        distance_delivery_enabled: true, delivery_price_per_km: 10, delivery_min_fee: 50, delivery_radius_km: 5000,
+        restaurant_latitude: 14.5995, restaurant_longitude: 120.9842,
+      }),
+      order_types: { ...pickup, name: 'Delivery', type: 'delivery' },
+    }
+    const result = await place(orderArgs({ deliveryFee: 50, customerData: { delivery_address: 'Kowloon', delivery_lat: 22.3, delivery_lng: 114.17 } }))
+    expect(result).toMatchObject({ success: false, refused: true })
+    expect(result.error).toMatch(/Philippines/)
   })
 
   test('reads the order type once, even when every consumer needs it', async () => {

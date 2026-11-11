@@ -43,6 +43,7 @@ const PORTED_MODULES = [
   "count-panel",
   "count-session",
   "daily-report",
+  "day-counts",
   "daily-report-view",
   "food-cost",
   "variance-verdict",

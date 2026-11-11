@@ -30,6 +30,8 @@ export interface AppliedCheckoutGovernment {
 export async function applyCheckoutGovernment(args: {
   db: SupabaseClient<Database>
   tenantId: string
+  /** The already-validated branch, so that branch's own accounts see the grant. */
+  outletId?: string | null
   claim: unknown
   items: readonly CheckoutGovItem[]
   serviceCharge: number
@@ -88,7 +90,7 @@ export async function applyCheckoutGovernment(args: {
             backend: LEDGER_BACKEND[backend],
             externalOrderId: orderId,
             orderLabel: null,
-            outletId: null,
+            outletId: args.outletId ?? null,
             revision: 0,
             occurredAt: new Date().toISOString(),
             orderTotal: pricing.totals.grandTotal,

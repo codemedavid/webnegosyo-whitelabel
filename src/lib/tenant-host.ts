@@ -5,8 +5,12 @@
  * then a `<slug>.<PLATFORM_ROOT_DOMAIN>` subdomain, then nothing.
  */
 
-/** Subdomains that are platform surfaces, never tenant slugs. */
-const RESERVED_SUBDOMAINS = new Set(['www', 'superadmin', 'app', 'admin'])
+/**
+ * Subdomains that are platform surfaces, never tenant slugs. `media` is the R2
+ * image host and `cf-bounce` Cloudflare Email Sending's bounce domain; `cdn`,
+ * `img` and `mail` are held for the same services.
+ */
+const RESERVED_SUBDOMAINS = new Set(['www', 'superadmin', 'app', 'admin', 'media', 'cdn', 'img', 'mail', 'cf-bounce'])
 
 const LOCAL_SUFFIX = '.localhost'
 const VERCEL_SUFFIX = '.vercel.app'
@@ -22,7 +26,7 @@ const VERCEL_SUFFIX = '.vercel.app'
  * on Postgres until Vercel returned 504. Listing the roots here keeps tenant
  * subdomains as pure string parsing even when the env var is absent.
  */
-const WELL_KNOWN_PLATFORM_ROOTS = ['webnegosyo.com', 'webnegosyo.app', 'smartmenu.ph'] as const
+const WELL_KNOWN_PLATFORM_ROOTS = ['webnegosyo.com', 'webnegosyo.app', 'smartmenu.ph', 'smartmenuph.com'] as const
 
 function platformRoots(rootDomain: string | null): string[] {
   const configured = rootDomain?.toLowerCase().trim()
@@ -73,7 +77,7 @@ export function getRootDomain(): string | null {
  * `shop.webnegosyo.com` → `shop`; `shop.localhost` → `shop` in development;
  * reserved subdomains and hosts outside the root domain give null. Vercel
  * preview URLs are never a tenant. Every well-known production root
- * (`webnegosyo.com`, `webnegosyo.app`, `smartmenu.ph`) parses, with or
+ * (`webnegosyo.com`, `webnegosyo.app`, `smartmenu.ph`, `smartmenuph.com`) parses, with or
  * without the env root.
  */
 export function extractSubdomain(host: string, rootDomain: string | null): string | null {

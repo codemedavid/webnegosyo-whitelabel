@@ -14,7 +14,7 @@ export type OrderStockRepairDecision =
   | { action: 'apply_sale'; reason: 'eligible' }
   | { action: 'skip'; reason: 'order_not_found' | 'inventory_disabled' | 'terminal_order' | 'revision_changed' | 'no_replayable_items' | 'selection_snapshot_missing' }
 
-const TERMINAL = new Set(['cancelled', 'canceled', 'voided', 'refunded'])
+export const TERMINAL_ORDER_STATES: ReadonlySet<string> = new Set(['cancelled', 'canceled', 'voided', 'refunded'])
 
 function normalized(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? ''
@@ -24,7 +24,7 @@ function normalized(value: string | null | undefined): string {
 export function decideOrderStockRepair(state: OrderStockRepairState): OrderStockRepairDecision {
   if (!state.exists) return { action: 'skip', reason: 'order_not_found' }
   if (!state.inventoryEnabled) return { action: 'skip', reason: 'inventory_disabled' }
-  if (TERMINAL.has(normalized(state.status)) || TERMINAL.has(normalized(state.paymentStatus))) {
+  if (TERMINAL_ORDER_STATES.has(normalized(state.status)) || TERMINAL_ORDER_STATES.has(normalized(state.paymentStatus))) {
     return { action: 'skip', reason: 'terminal_order' }
   }
   if (state.currentRevision !== state.capturedRevision) {

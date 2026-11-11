@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+import { SECURITY_HEADERS } from "./src/lib/security-headers";
 
 const SHARP_NATIVE_FILES = "./node_modules/@img/sharp-*/**/*";
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   // Cross-app regression tests import Electron/Expo sources. Their dependencies
   // belong to those projects, not Vercel's web-only install. Keep production
   // typechecking focused on the application; root tsc still checks the tests.
@@ -21,8 +23,6 @@ const nextConfig: NextConfig = {
   },
   images: {
     // Cache optimized images longer to reduce repeated requests
-    
-    domains: ['images.unsplash.com', 'res.cloudinary.com', 'ik.imagekit.io', 'via.placeholder.com'],
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
     formats: ['image/webp', 'image/avif'], // Modern image formats
     deviceSizes: [640, 750, 828, 1080, 1200], // Optimize for common device sizes
@@ -46,6 +46,15 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      // Cloudflare R2 (our image storage since 2026-10-30).
+      {
+        protocol: 'https',
+        hostname: 'media.webnegosyo.com',
+        port: '',
+        pathname: '/**',
+      },
+      // 522 live menu items still point here (2026-11-06). next/image throws on
+      // an unconfigured host, so this stays until those rows are cleaned up.
       {
         protocol: 'https',
         hostname: 'via.placeholder.com',
@@ -121,9 +130,10 @@ const nextConfig: NextConfig = {
     ]
   },
 
-  // Headers for caching
+  // Security headers (every path; frame protection is the middleware's) + caching
   async headers() {
     return [
+      { source: '/:path*', headers: [...SECURITY_HEADERS] },
       // Product detail pages - short browser cache, CDN cache aligned with ISR
       {
         source: '/:tenant/menu/item/:itemId',

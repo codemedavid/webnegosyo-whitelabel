@@ -3,7 +3,7 @@
  *
  * Two people must both say yes, in either order:
  *  - the OWNER presses "Launch my store" (they have reviewed it), and
- *  - the PLATFORM confirms the ₱999 payment.
+ *  - the PLATFORM confirms the plan payment.
  * Whichever comes second opens the store. Neither alone can: a merchant cannot
  * take orders before paying, and staff never open a store its owner has not
  * reviewed. `is_prelaunch` is a privileged column, so this is the only path.

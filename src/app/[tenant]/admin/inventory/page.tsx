@@ -10,6 +10,8 @@ import { getUnits, seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
 import { StockReconciliationBanner } from '@/components/admin/stock-reconciliation-banner'
+import { PosStockPolicyCard } from '@/components/admin/pos-stock-policy-card'
+import { canChangePosStockPolicy, readPosStockPolicy } from '@/lib/inventory/pos-stock-policy'
 import { getStockReconciliationIssues } from '@/lib/inventory/reconciliation'
 import { getOpenStockAlerts } from '@/lib/inventory/stock-alerts-read'
 import { scopeStockAlerts } from '@/lib/inventory/stock-alerts-view'
@@ -93,10 +95,11 @@ async function readDailyReport(
 interface OpenCountState {
   openCountId: string | null
   openCountOutletId: string | null
+  openCountBusinessDay: string | null
   countProgress: CountSessionProgress | null
 }
 
-const NO_OPEN_COUNT: OpenCountState = { openCountId: null, openCountOutletId: null, countProgress: null }
+const NO_OPEN_COUNT: OpenCountState = { openCountId: null, openCountOutletId: null, openCountBusinessDay: null, countProgress: null }
 
 /**
  * The count running on this shelf, if one is. A failure here costs the count
@@ -120,6 +123,7 @@ async function readOpenCount(
     return {
       openCountId: openCount.id,
       openCountOutletId: openCount.outletId,
+      openCountBusinessDay: openCount.businessDay,
       countProgress: await getCountProgress(tenantId, openCount.id),
     }
   } catch (error) {
@@ -200,6 +204,7 @@ export default async function AdminInventoryPage({
     dailyReport,
     branchRevenue,
     openCount,
+    posStockPolicy,
   ] = await Promise.all([
     // Seed the default unit catalog on first visit so ingredients always have
     // a unit to reference. Idempotent — existing units are returned untouched.
@@ -243,6 +248,9 @@ export default async function AdminInventoryPage({
         )
       : undefined,
     readOpenCount(tenant.id, scope, reportScope.outletId),
+    // The register's stock rule, read fresh (the tenant row above is cached).
+    // Store-wide accounts only: it is a store setting, never a branch's.
+    scope.kind === 'all' ? readPosStockPolicy(tenant.id) : null,
   ])
 
   // Only a store-wide account chooses shelves; a branch account's movements are
@@ -326,9 +334,19 @@ export default async function AdminInventoryPage({
         openCountId={openCount.openCountId}
         countProgress={openCount.countProgress}
         openCountOutletId={openCount.openCountOutletId}
+        openCountBusinessDay={openCount.openCountBusinessDay}
         branches={branches}
         access={access}
       />
+
+      {posStockPolicy && (
+        <PosStockPolicyCard
+          tenantId={tenant.id}
+          tenantSlug={tenantSlug}
+          policy={posStockPolicy}
+          canChange={canChangePosStockPolicy(caller, tenant.id)}
+        />
+      )}
     </div>
   )
 }

@@ -15,7 +15,7 @@ export const registerPushToken = mutation({
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "notifications:registerPushToken");
     // Remove existing tokens for this user
     const existing = await ctx.db
       .query("pushTokens")
@@ -44,7 +44,7 @@ export const removePushToken = mutation({
     userId: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAccess(ctx, "write");
+    await requireAccess(ctx, "write", "notifications:removePushToken");
     const existing = await ctx.db
       .query("pushTokens")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))

@@ -54,6 +54,12 @@ describe('issueWalletChallenge', () => {
     expect(untouched.rpc).not.toHaveBeenCalled()
   })
 
+  test('a number with no stamp card comes back as not_member, so the page can say so', async () => {
+    const db = database({ issue_loyalty_wallet_challenge: [{ data: { ok: false, error: 'not_member' }, error: null }] })
+    expect(await issueWalletChallenge({ tenantId: tenant, phone: '09171234567', trustedIp: ip }, { crypto, database: db }))
+      .toEqual({ ok: false, error: 'not_member' })
+  })
+
   test('a rate limit comes back with how long to wait, so the page can say so', async () => {
     const db = database({ issue_loyalty_wallet_challenge: [{ data: { ok: false, error: 'rate_limited', retryAfterSeconds: 412 }, error: null }] })
     expect(await issueWalletChallenge({ tenantId: tenant, phone: '09171234567', trustedIp: ip }, { crypto, database: db }))

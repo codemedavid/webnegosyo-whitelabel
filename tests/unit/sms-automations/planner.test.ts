@@ -98,6 +98,15 @@ describe('planTexts', () => {
     expect(result.reports.get('a-win_back')?.skipped).toEqual({ already_sent: 1 })
   })
 
+  it('ignores an owner test text in the history instead of crashing the plan', () => {
+    const g = guest('1')
+    const testText = history(g, {
+      automation_id: null, recipe: 'test' as HistoryRow['recipe'], customer_id: null, occurrence_key: 'test:1',
+    })
+    const result = planTexts(input({ history: [testText], work: [{ automation: automation('win_back'), candidates: [candidate(g)] }] }))
+    expect(result.drafts).toHaveLength(1)
+  })
+
   it('keeps the re-entry gap for a NEW occurrence in the same family', () => {
     const g = guest('1')
     const earlier = history(g, { occurrence_key: 'lapse:older', created_at: ago(20), sent_at: ago(20) })

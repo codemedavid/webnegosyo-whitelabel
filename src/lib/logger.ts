@@ -24,7 +24,7 @@
  */
 
 /** Debug namespaces. Add the flag here and it is readable everywhere. */
-export type DebugFlagKey = 'DEBUG_TENANT_RESOLUTION' | 'DEBUG_MIDDLEWARE' | 'DEBUG_ASSISTANT' | 'DEBUG_GOV_DISCOUNTS' | 'DEBUG_SMS_AUTOMATIONS' | 'DEBUG_CUSTOMER_APP'
+export type DebugFlagKey = 'DEBUG_TENANT_RESOLUTION' | 'DEBUG_MIDDLEWARE' | 'DEBUG_ASSISTANT' | 'DEBUG_GOV_DISCOUNTS' | 'DEBUG_SMS_AUTOMATIONS' | 'DEBUG_MESSENGER' | 'DEBUG_LALAMOVE' | 'DEBUG_CUSTOMER_APP'
 
 /** The subset of the environment the gate consults. */
 export interface DebugFlags {
@@ -33,6 +33,8 @@ export interface DebugFlags {
   DEBUG_ASSISTANT?: string
   DEBUG_GOV_DISCOUNTS?: string
   DEBUG_SMS_AUTOMATIONS?: string
+  DEBUG_MESSENGER?: string
+  DEBUG_LALAMOVE?: string
   DEBUG_CUSTOMER_APP?: string
   /** Turns on every namespace at once. */
   DEBUG_ALL?: string
@@ -55,6 +57,8 @@ export function readDebugFlags(): DebugFlags {
     DEBUG_ASSISTANT: process.env.DEBUG_ASSISTANT,
     DEBUG_GOV_DISCOUNTS: process.env.DEBUG_GOV_DISCOUNTS,
     DEBUG_SMS_AUTOMATIONS: process.env.DEBUG_SMS_AUTOMATIONS,
+    DEBUG_MESSENGER: process.env.DEBUG_MESSENGER,
+    DEBUG_LALAMOVE: process.env.DEBUG_LALAMOVE,
     DEBUG_CUSTOMER_APP: process.env.DEBUG_CUSTOMER_APP,
     DEBUG_ALL: process.env.DEBUG_ALL,
     NODE_ENV: process.env.NODE_ENV,
@@ -74,6 +78,8 @@ export function isDebugEnabled(key: DebugFlagKey, flags: DebugFlags = readDebugF
 export interface Logger {
   /** Gated tracing. Silent unless the namespace is switched on. */
   debug(message: string, data?: Record<string, unknown>): void
+  /** Never gated: one outcome line for a RARE event (never per-request tracing). */
+  info(message: string, data?: Record<string, unknown>): void
   /** Never gated — always reaches the platform log. */
   error(message: string, data?: unknown): void
 }
@@ -99,6 +105,14 @@ export function createLogger(
         return
       }
       console.log(`${label} ${message}`, data)
+    },
+
+    info(message, data) {
+      if (data === undefined) {
+        console.info(`${label} ${message}`)
+        return
+      }
+      console.info(`${label} ${message}`, data)
     },
 
     error(message, data) {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -11,6 +11,7 @@ import { DayHistoryList } from "../../../components/staff/DayHistoryList";
 import { ListRow } from "../../../components/ListRow";
 import { activityHref } from "../../../lib/activity/activity-links";
 import { ShiftHistoryList } from "../../../components/staff/ShiftHistoryList";
+import { shiftSalesHref } from "../../../lib/cash-routes";
 import { StaffAccessPanel } from "../../../components/staff/StaffAccessPanel";
 import { StaffAvatar } from "../../../components/staff/StaffAvatar";
 import { StaffStatStrip } from "../../../components/staff/StaffStatStrip";
@@ -27,7 +28,8 @@ import {
   updateStaffPermissions,
   type StaffMember,
 } from "../../../lib/staff-service";
-import { listOrderActivity } from "../../../lib/staff-activity/activity-service";
+import { listOrderActivity, loadLastSeenAt } from "../../../lib/staff-activity/activity-service";
+import { staffPeriodWindow } from "../../../lib/staff-activity/period";
 import type { OrderActivityEvent } from "../../../lib/staff-activity/activity";
 import {
   buildStaffDirectory,
@@ -53,8 +55,6 @@ import { colors, radius, spacing, typography } from "../../../theme/colors";
  * screen that makes firing them the default act.
  */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const PERIODS = [
   { label: "Today", value: 1 },
   { label: "7 days", value: 7 },
@@ -63,6 +63,19 @@ const PERIODS = [
 
 export default function StaffProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
+  // A tab screen stays mounted for the life of the app, so without a key the
+  // second profile opened inherits the first one's period, figures and
+  // loading flags — and briefly shows someone else's day under a new name.
+  return <StaffProfile key={userId ?? "none"} userId={userId ?? ""} />;
+}
+
+function laterOf(a: string | null, b: string | null): string | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Date.parse(b) > Date.parse(a) ? b : a;
+}
+
+function StaffProfile({ userId }: { userId: string }) {
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
   const permissions = useAuthStore((s) => s.permissions);
@@ -79,12 +92,24 @@ export default function StaffProfileScreen() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [events, setEvents] = useState<OrderActivityEvent[]>([]);
+  const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isActivityLoading, setIsActivityLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Bumped by a pull or a save so "now" — the window's end — moves too.
+  const [refreshTick, setRefreshTick] = useState(0);
+  // Only the newest read may land: tapping 7 days then Today used to let the
+  // slower answer win, so the chip said one period and the figures another.
+  const activityRequest = useRef(0);
 
-  const window = useMemo(() => ({ startMs: Date.now() - days * DAY_MS, endMs: Date.now() }), [days]);
+  const window = useMemo(
+    () => staffPeriodWindow(days, Date.now()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshTick re-reads the clock
+    [days, refreshTick],
+  );
 
   const outletName = useCallback(
     (outletId: string | null) =>
@@ -92,39 +117,69 @@ export default function StaffProfileScreen() {
     [outlets],
   );
 
-  const reload = useCallback(async () => {
+  /** The account itself — read once, and again after a save or a pull. */
+  const loadRoster = useCallback(async () => {
     try {
       setLoadError(null);
       setStaff(await listStaff(invokeManageStaff));
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Could not load this account");
+    } finally {
       setIsLoading(false);
+    }
+    if (tenantId && !isDemo && userId) {
+      // Supporting detail: a failure leaves the hero on the period's own figure.
+      setLastSeenAt(await loadLastSeenAt(tenantId, userId).catch(() => null));
+    }
+  }, [invokeManageStaff, tenantId, isDemo, userId]);
+
+  /** Their record for the chosen period — never re-asks the roster. */
+  const loadActivity = useCallback(async () => {
+    const request = activityRequest.current + 1;
+    activityRequest.current = request;
+    if (!tenantId || isDemo || !userId) {
+      setIsActivityLoading(false);
       return;
     }
-
-    // The log is supporting detail: a store whose activity cannot be read
-    // still gets the account it came here to manage.
+    setIsActivityLoading(true);
     const sinceIso = new Date(window.startMs).toISOString();
-    if (tenantId && !isDemo && userId) {
-      const [shiftRows, activityRows] = await Promise.all([
-        listShifts(tenantId, { staffUserId: userId, sinceIso }).catch(() => [] as ShiftRecord[]),
-        listOrderActivity(tenantId, { actorUserId: userId, sinceIso }).catch(
-          () => [] as OrderActivityEvent[],
-        ),
-      ]);
-      setShifts(shiftRows);
-      setEvents(activityRows);
-    }
-    setIsLoading(false);
-  }, [invokeManageStaff, tenantId, isDemo, userId, window.startMs]);
+    const [shiftResult, activityResult] = await Promise.allSettled([
+      listShifts(tenantId, { staffUserId: userId, sinceIso }),
+      listOrderActivity(tenantId, { actorUserId: userId, sinceIso }),
+    ]);
+    if (activityRequest.current !== request) return;
+
+    setShifts(shiftResult.status === "fulfilled" ? shiftResult.value : []);
+    setEvents(activityResult.status === "fulfilled" ? activityResult.value : []);
+    // A failed read must not pass for a quiet day.
+    const failure = [shiftResult, activityResult].find((result) => result.status === "rejected");
+    setActivityError(
+      failure && failure.status === "rejected"
+        ? failure.reason instanceof Error
+          ? failure.reason.message
+          : "Their activity could not be read."
+        : null,
+    );
+    setIsActivityLoading(false);
+  }, [tenantId, isDemo, userId, window.startMs]);
+
+  const reload = useCallback(async () => {
+    setRefreshTick((tick) => tick + 1);
+    await loadRoster();
+  }, [loadRoster]);
 
   useEffect(() => {
     if (!allowed) {
       setIsLoading(false);
       return;
     }
-    void reload();
-  }, [allowed, reload]);
+    void loadRoster();
+  }, [allowed, loadRoster]);
+
+  useEffect(() => {
+    if (!allowed) return;
+    void loadActivity();
+  }, [allowed, loadActivity]);
 
   const member = staff.find((row) => row.userId === userId) ?? null;
 
@@ -145,6 +200,7 @@ export default function StaffProfileScreen() {
   );
 
   const days_ = useMemo(() => groupActivityByDay(events, shifts), [events, shifts]);
+  const lastActiveAt = laterOf(entry?.lastActiveAt ?? null, lastSeenAt);
 
   /** Runs a write, reports failure to the merchant, and refreshes. */
   const run = useCallback(
@@ -216,12 +272,14 @@ export default function StaffProfileScreen() {
   const canManage = member !== null && !member.isOwner && (isOwner || member.outletId === myOutletId);
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
+  const periodLabel = PERIODS.find((period) => period.value === days)?.label ?? "this period";
 
   return (
     <View style={styles.screen}>
+      {/* The hero names the person; the header only says where you are. */}
       <BackHeader
-        title={entry.name}
-        subtitle={outlets.length > 0 ? outletName(entry.outletId) : (entry.email ?? undefined)}
+        title="Staff"
+        subtitle={outlets.length > 0 ? outletName(entry.outletId) : undefined}
       />
 
       <ScrollView
@@ -256,7 +314,11 @@ export default function StaffProfileScreen() {
               </View>
             ) : (
               <Text style={styles.heroMeta} numberOfLines={1}>
-                {entry.isFormer ? "Removed from this store" : formatLastActive(entry.lastActiveAt, nowMs)}
+                {entry.isFormer
+                  ? "Removed from this store"
+                  : lastActiveAt
+                    ? `Last active ${formatLastActive(lastActiveAt, nowMs)}`
+                    : "No activity yet"}
               </Text>
             )}
           </View>
@@ -272,6 +334,7 @@ export default function StaffProfileScreen() {
         </View>
 
         <StaffStatStrip
+          layout="grid"
           stats={[
             {
               label: "Rang up",
@@ -315,9 +378,28 @@ export default function StaffProfileScreen() {
         </View>
 
         <View style={styles.pad}>
-          {view === "activity" ? (
+          {view !== "access" && activityError ? (
+            <ErrorState
+              title="Couldn't read their activity"
+              message={activityError}
+              onRetry={() => void loadActivity()}
+            />
+          ) : view !== "access" && isActivityLoading ? (
+            <LoadingState message={`Loading ${periodLabel.toLowerCase()}…`} />
+          ) : view === "activity" ? (
             <>
-              <DayHistoryList days={days_} nowIso={nowIso} nowMs={nowMs} />
+              <DayHistoryList
+                days={days_}
+                nowIso={nowIso}
+                nowMs={nowMs}
+                emptyMessage={
+                  lastActiveAt && Date.parse(lastActiveAt) < window.startMs
+                    ? `Nothing ${days === 1 ? "today" : "in this period"}. Last active ${formatLastActive(lastActiveAt, nowMs)}.`
+                    : undefined
+                }
+                emptyActionLabel={days < 30 && lastActiveAt ? "Show 30 days" : undefined}
+                onEmptyAction={days < 30 && lastActiveAt ? () => setDays(30) : undefined}
+              />
               {/* Everything they did — refunds, stock, drawers — in Store activity. */}
               <ListRow
                 icon="clock"
@@ -333,6 +415,7 @@ export default function StaffProfileScreen() {
               nowMs={nowMs}
               nowIso={nowIso}
               branchName={outlets.length > 0 ? outletName : undefined}
+              onOpenShift={(shiftId) => router.push(shiftSalesHref(shiftId) as never)}
             />
           ) : canManage && member ? (
             <StaffAccessPanel

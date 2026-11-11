@@ -11,12 +11,16 @@
  * carries the signature; it cannot mint one. Stateless (HMAC over API_SECRET,
  * the secret tracking tokens already use), so no store sits between the two
  * actions.
+ *
+ * v3 (2026-10) also binds the branch the quote was priced FROM: a branch's
+ * pickup pin replaced the store's, so a quote for one branch must not place an
+ * order fulfilled by another. `originOutletId` is null for a store-pin quote.
  */
 import crypto from 'crypto'
 import { MAX_DELIVERY_FEE } from './order-delivery-fee'
 
 /** Domain separation: this key signs nothing else. */
-const SIGNATURE_CONTEXT = 'lalamove-quote:v2'
+const SIGNATURE_CONTEXT = 'lalamove-quote:v3'
 
 /**
  * Never extend the provider's expiry. A quotation binds the price and route,
@@ -36,11 +40,18 @@ export interface SignedDeliveryQuote {
   fee: number
   destination: DeliveryDestination
   expiresAt: number
+  /** The branch whose pin the quote started from; null/absent = the store pin. */
+  originOutletId?: string | null
 }
 
-interface SignaturePayload extends Omit<SignedDeliveryQuote, 'expiresAt'> {
+interface SignaturePayload extends Omit<SignedDeliveryQuote, 'expiresAt' | 'originOutletId'> {
   /** Epoch ms after which the signature is refused. */
   exp: number
+  originOutletId: string | null
+}
+
+function outletIdOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null
 }
 
 export type DeliveryQuoteVerification =
@@ -77,6 +88,7 @@ export function signDeliveryQuote(
     fee: quote.fee,
     destination,
     exp: Math.min(quote.expiresAt, now + DELIVERY_QUOTE_SIGNATURE_TTL_MS),
+    originOutletId: outletIdOrNull(quote.originOutletId),
   }
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
   return `${body}.${hmac(secret, body)}`
@@ -99,12 +111,13 @@ function parsePayload(body: string): SignaturePayload | null {
   try {
     const parsed: unknown = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'))
     if (typeof parsed !== 'object' || parsed === null) return null
-    const { tenantId, quotationId, fee, exp, destination: rawDestination } = parsed as Record<string, unknown>
+    const { tenantId, quotationId, fee, exp, destination: rawDestination, originOutletId } = parsed as Record<string, unknown>
     if (typeof tenantId !== 'string' || !tenantId.trim() || typeof quotationId !== 'string' || !quotationId.trim()) return null
     if (typeof fee !== 'number' || !Number.isFinite(fee) || fee < 0 || fee > MAX_DELIVERY_FEE) return null
     if (typeof exp !== 'number' || !Number.isFinite(exp)) return null
     const destination = parseDestination(rawDestination)
-    return destination ? { tenantId, quotationId, fee, exp, destination } : null
+    if (originOutletId !== null && typeof originOutletId !== 'string') return null
+    return destination ? { tenantId, quotationId, fee, exp, destination, originOutletId: outletIdOrNull(originOutletId) } : null
   } catch {
     return null
   }
@@ -123,7 +136,13 @@ function isSameSignature(expected: string, provided: string): boolean {
  */
 export function verifyDeliveryQuote(
   signature: string | null | undefined,
-  expected: { tenantId: string; quotationId: string | null | undefined; destination: unknown },
+  expected: {
+    tenantId: string
+    quotationId: string | null | undefined
+    destination: unknown
+    /** The branch the ORDER starts from (null = the store pin). */
+    originOutletId?: string | null
+  },
   now: number = Date.now(),
   secret: string | null = readSecret()
 ): DeliveryQuoteVerification {
@@ -140,7 +159,8 @@ export function verifyDeliveryQuote(
   const destination = parseDestination(expected.destination)
   if (payload.tenantId !== expected.tenantId || payload.quotationId !== expected.quotationId ||
       !destination || destination.address !== payload.destination.address ||
-      destination.lat !== payload.destination.lat || destination.lng !== payload.destination.lng) {
+      destination.lat !== payload.destination.lat || destination.lng !== payload.destination.lng ||
+      outletIdOrNull(expected.originOutletId) !== payload.originOutletId) {
     return { ok: false, reason: 'mismatch' }
   }
   if (payload.exp <= now) return { ok: false, reason: 'expired' }

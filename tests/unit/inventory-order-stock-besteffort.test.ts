@@ -15,6 +15,11 @@ jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 
+const invalidateStockCeilings = jest.fn(async () => undefined)
+jest.mock('@/lib/inventory/ceilings-cache', () => ({
+  invalidateStockCeilings: (...a: unknown[]) => invalidateStockCeilings(...(a as [])),
+}))
+
 const ITEMS = [{ menuItemId: 'm1', quantity: 1 }]
 
 beforeEach(() => {
@@ -49,6 +54,17 @@ describe('applyOrderStockBestEffort', () => {
     await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBe('failed')
   })
 
+  it('drops the store’s cached diner ceilings once stock may have moved, even after a failure part-way', async () => {
+    from.mockImplementation(() => {
+      throw new Error('connection refused')
+    })
+    invalidateStockCeilings.mockClear()
+
+    await applyOrderStockBestEffort('t1', 'o1', ITEMS)
+
+    expect(invalidateStockCeilings).toHaveBeenCalledWith('t1')
+  })
+
   it('does nothing at all for an order with no lines', async () => {
     await expect(applyOrderStockBestEffort('t1', 'o1', [])).resolves.toBe('settled')
     expect(from).not.toHaveBeenCalled()
@@ -56,38 +72,17 @@ describe('applyOrderStockBestEffort', () => {
 
   it('stops early when the tenant has no recipes for these items', async () => {
     // An uncosted menu is the common case; it must not read further tables.
-    // Four touches are expected: claim the order, check no cancellation has
-    // spoken for it (the cancel-wins guard), find no recipes, then hand the
-    // claim back so a retry after the recipe is added still deducts. The fifth
-    // is the audit row saying "nothing to deduct" — the answer to "why didn't
-    // this sale move my stock?" — and it reads no ingredient tables either.
-    from.mockImplementation((table: string) => {
-      if (table === 'order_stock_applications') {
-        const claimChain = {
-          eq: () => claimChain,
-          then: (resolve: (r: unknown) => unknown) => resolve({ data: [], error: null }),
-        }
-        return {
-          select: () => claimChain,
-          insert: () => Promise.resolve({ data: null, error: null }),
-          delete: () => ({
-            eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
-          }),
-        }
-      }
-      return {
-        select: () => ({ eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) }),
-      }
-    })
+    // Two touches: find no recipes, then the audit row saying "nothing to
+    // deduct" — the answer to "why didn't this sale move my stock?". No claim
+    // is taken (the claim and its rows are one call, and there are no rows),
+    // so a retry after the recipe is added still deducts.
+    from.mockImplementation(() => ({
+      select: () => ({ eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) }),
+      insert: () => Promise.resolve({ data: null, error: null }),
+    }))
 
     await applyOrderStockBestEffort('t1', 'o1', ITEMS)
 
-    expect(from.mock.calls.map((c) => c[0])).toEqual([
-      'order_stock_applications',
-      'order_stock_applications',
-      'recipes',
-      'order_stock_applications',
-      'inventory_audit_log',
-    ])
+    expect(from.mock.calls.map((c) => c[0])).toEqual(['recipes', 'inventory_audit_log'])
   })
 })

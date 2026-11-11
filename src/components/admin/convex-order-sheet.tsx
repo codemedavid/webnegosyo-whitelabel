@@ -18,6 +18,7 @@ import {
   CalendarClock,
   Store,
   Printer,
+  ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
 import { getReceiptContext } from "@/app/actions/receipt";
@@ -59,6 +60,7 @@ import { GovDiscountSummary } from "@/components/admin/gov-discount-summary";
 import { displayCustomerName } from '@/lib/order-display-name'
 import { ConvexLalamovePanel } from "@/components/admin/convex-lalamove-panel";
 import { shouldShowLalamoveControls } from "@/lib/lalamove-order-visibility";
+import { orderMapLink } from "@/lib/delivery/order-map-link";
 
 interface ConvexOrderSheetProps {
   orderId: string | null;
@@ -185,6 +187,10 @@ export function ConvexOrderSheet({
     void notifyConvexLifecycleSync({ tenantId, externalOrderId: orderId, paymentStatus: newStatus });
   }
 
+  const mapHref = order
+    ? orderMapLink({ delivery_lat: order.deliveryLatitude, delivery_lng: order.deliveryLongitude }, order.deliveryAddress)
+    : null;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
@@ -300,11 +306,11 @@ export function ConvexOrderSheet({
                 {order.items?.map((item: OrderItem, index: number) => (
                   <div key={index} className="flex flex-col gap-1">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
+                      <div className="flex min-w-0 items-start gap-2">
                         <Badge variant="secondary" className="mt-0.5 shrink-0 text-xs">
                           {item.quantity}x
                         </Badge>
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex min-w-0 flex-col gap-0.5">
                           <span className="text-sm font-medium">{item.menuItemName}</span>
                           {item.variation && (
                             <span className="text-xs text-muted-foreground">{item.variation}</span>
@@ -320,7 +326,7 @@ export function ConvexOrderSheet({
                             </span>
                           )}
                           {item.specialInstructions && (
-                            <span className="text-xs italic text-amber-600">
+                            <span className="wrap-anywhere text-xs italic text-amber-600">
                               &quot;{item.specialInstructions}&quot;
                             </span>
                           )}
@@ -441,6 +447,17 @@ export function ConvexOrderSheet({
                       <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                       <span>{order.deliveryAddress}</span>
                     </div>
+                  )}
+                  {mapHref && (
+                    <a
+                      href={mapHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                    >
+                      Open in Google Maps
+                      <ExternalLink className="size-3.5" aria-hidden="true" />
+                    </a>
                   )}
                   <ConvexLalamovePanel order={order} lalamoveEnabled={lalamoveEnabled} />
                 </CardContent>

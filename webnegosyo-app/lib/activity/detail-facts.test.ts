@@ -89,4 +89,11 @@ describe("openTarget", () => {
     });
     expect(openTarget(activityEvent("shift.closed", { subjectType: "shift", subjectRef: "s1" }))).toBeNull();
   });
+
+  it("opens the expense an expense row is about", () => {
+    expect(openTarget(activityEvent("expense.recorded", { subjectType: "expense", subjectRef: "e 1" }))).toEqual({
+      label: "Open expense",
+      href: "/(main)/expense/e%201",
+    });
+  });
 });

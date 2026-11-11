@@ -52,6 +52,12 @@ export interface TaxProfile {
   approvalThreshold: number
   serviceChargeMode: ServiceChargeMode
   idPhotoMode: IdPhotoMode
+  /**
+   * Whether a customer may claim Senior/PWD at ONLINE checkout. Off unless the
+   * owner opts in: most stores apply it at the counter, on the register, after
+   * seeing the card. The server refuses an online claim while it is off.
+   */
+  onlineClaimsEnabled: boolean
 }
 
 /** The recommended defaults a new profile starts from. */
@@ -74,6 +80,7 @@ export function defaultTaxProfile(vatStatus: VatStatus): TaxProfile {
     approvalThreshold: DEFAULT_APPROVAL_THRESHOLD,
     serviceChargeMode: 'full',
     idPhotoMode: 'off',
+    onlineClaimsEnabled: false,
   }
 }
 
@@ -105,6 +112,7 @@ export function taxProfileFromRow(row: unknown): TaxProfile | null {
     approvalThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : DEFAULT_APPROVAL_THRESHOLD,
     serviceChargeMode: r.service_charge_mode === 'exempt_share' ? 'exempt_share' : 'full',
     idPhotoMode: idPhotoModeOf(r.id_photo_mode),
+    onlineClaimsEnabled: r.online_claims_enabled === true,
   }
 }
 
@@ -126,6 +134,7 @@ export function taxProfileToRow(profile: TaxProfile): Record<string, unknown> {
     approval_threshold: profile.approvalThreshold,
     service_charge_mode: profile.serviceChargeMode,
     id_photo_mode: profile.idPhotoMode,
+    online_claims_enabled: profile.onlineClaimsEnabled,
   }
 }
 
@@ -146,6 +155,7 @@ export const TAX_PROFILE_COLUMNS = [
   'approval_threshold',
   'service_charge_mode',
   'id_photo_mode',
+  'online_claims_enabled',
 ].join(', ')
 
 /**

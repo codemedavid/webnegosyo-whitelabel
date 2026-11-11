@@ -1,11 +1,11 @@
+import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { sendMessage } from '@/lib/facebook-api'
-import { formatPrice } from '@/lib/cart-utils'
 import { getClientIP } from '@/lib/rate-limit'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
+import { resolveMessengerRecipient } from '@/lib/messenger/recipient'
 
 /**
  * Get CORS headers with origin validation against platform root domain.
@@ -71,8 +71,17 @@ const MAX_ITEM_QUANTITY = 999
 const MAX_ITEM_SUBTOTAL = 10_000_000
 /** Tenant ids are UUIDs and PSIDs ~17 digits; anything longer is not either. */
 const MAX_ID_LENGTH = 64
+/** `psid` is a signed Messenger link token (~130 chars) or, until 2026-11-24, a raw PSID. */
+const MAX_RECIPIENT_LENGTH = 200
 
 const SEND_CART_RATE_LIMIT = { limit: 20, windowSec: 60 }
+/**
+ * Per person, whatever the caller IP: a customer adding dishes triggers one send
+ * per 5 s debounce, so this only ever stops someone aiming at a stranger's PSID.
+ */
+const PER_PERSON_RATE_LIMIT = { limit: 6, windowSec: 300 }
+/** The same count twice in a row says nothing new. */
+const SAME_COUNT_WINDOW = { limit: 1, windowSec: 60 }
 
 function isValidCartItem(item: unknown): item is CartItemForSync {
     if (!item || typeof item !== 'object') return false
@@ -93,40 +102,6 @@ function isValidCartItem(item: unknown): item is CartItemForSync {
             variation === null ||
             (typeof variation === 'string' && variation.length <= MAX_VARIATION_LENGTH))
     )
-}
-
-/**
- * Verify that a PSID is associated with a tenant by checking the messenger_sessions table.
- * This ensures we only send messages to users who have an existing session with the tenant.
- * 
- * @param supabase - Supabase client instance
- * @param psid - The Page-Scoped ID of the user
- * @param tenantId - The tenant ID to verify against
- * @returns true if the PSID has an existing session with the tenant, false otherwise
- */
-async function verifyPSIDForTenant(
-    psid: string,
-    tenantId: string
-): Promise<boolean> {
-    try {
-        // Service role: this route is public, so there is no session to read
-        // the session table with. Scoped to the one psid/tenant pair being
-        // verified, which is the whole question being asked.
-        const { data, error } = await createAdminClient()
-            .from('messenger_sessions')
-            .select('id')
-            .eq('psid', psid)
-            .eq('tenant_id', tenantId)
-            .single()
-
-        if (error || !data) {
-            return false
-        }
-
-        return true
-    } catch {
-        return false
-    }
 }
 
 /**
@@ -187,7 +162,7 @@ export async function POST(request: NextRequest) {
         // Validate required fields
         if (
             typeof tenantId !== 'string' || !tenantId || tenantId.length > MAX_ID_LENGTH ||
-            typeof psid !== 'string' || !psid || psid.length > MAX_ID_LENGTH
+            typeof psid !== 'string' || !psid || psid.length > MAX_RECIPIENT_LENGTH
         ) {
             return corsJson(request,
                 { error: 'Missing tenantId or psid' },
@@ -258,28 +233,44 @@ export async function POST(request: NextRequest) {
 
         const page = pageData as { page_access_token: string }
 
-        // Verify PSID is associated with this tenant before sending message
-        const isPSIDValid = await verifyPSIDForTenant(psid, tenantId)
-        if (!isPSIDValid) {
-            const maskedPsid = psid.length >= 4 ? `**** ${ psid.slice(-4) }` : '****'
-            console.warn(`[Send Cart] ⚠️ PSID ${ maskedPsid } not associated with tenant ${ tenantId } `)
+        // Only a link token for THIS store's customer (or, until 2026-11-24, a raw
+        // PSID that already has a session here) resolves to someone to message.
+        const recipient = await resolveMessengerRecipient(tenantId, psid)
+        if (!recipient) {
+            console.warn(`[Send Cart] ⚠️ Messenger reference not associated with tenant ${ tenantId } `)
             return corsJson(request,
                 { error: 'PSID not associated with tenant page' },
                 { status: 403 }
             )
         }
 
-        // Format cart summary message
+        // Hashed: limiter keys reach the logs on a Redis error, and PSIDs stay masked there.
+        const person = createHash('sha256').update(psid).digest('hex').slice(0, 24)
+        const personLimit = await checkRateLimit(`send-cart-psid:${tenantId}:${person}`, PER_PERSON_RATE_LIMIT)
+        if (!personLimit.allowed) {
+            return corsJson(request,
+                { error: 'Too many requests. Please try again later.' },
+                { status: 429, headers: { 'Retry-After': String(personLimit.retryAfterSec) } }
+            )
+        }
+        const sameCount = await checkRateLimit(
+            `send-cart-same:${tenantId}:${person}:${countItems(cartItems)}`,
+            SAME_COUNT_WINDOW
+        )
+        if (!sameCount.allowed) {
+            return corsJson(request, { success: true, duplicate: true })
+        }
+
         const message = formatCartSummary(cartItems, tenant.name, tenant.slug)
 
         const sent = await sendMessage(
-            psid,
+            recipient,
             page.page_access_token,
             message
         )
 
         if (sent) {
-            const maskedPsid = psid.length >= 4 ? `**** ${ psid.slice(-4) } ` : '****'
+            const maskedPsid = recipient.length >= 4 ? `**** ${ recipient.slice(-4) } ` : '****'
             console.log(`[Send Cart] ✅ Cart summary sent to PSID: ${ maskedPsid } `)
             return corsJson(request, { success: true })
         } else {
@@ -298,35 +289,22 @@ export async function POST(request: NextRequest) {
     }
 }
 
-function formatCartSummary(
-    items: CartItemForSync[],
-    tenantName: string,
-    tenantSlug: string
-): string {
+/**
+ * Only server-known text goes out: the store's name, a count and the checkout
+ * link. This route is public, so naming dishes or prices from the request let
+ * anyone who knows a PSID make the store's Page say whatever they wrote.
+ */
+function formatCartSummary(items: CartItemForSync[], tenantName: string, tenantSlug: string): string {
     if (items.length === 0) {
         return `🛒 Your cart at ${ tenantName } is empty.\n\nBrowse our menu and add some items!`
     }
 
-    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
-    const total = items.reduce((sum, item) => sum + item.subtotal, 0)
-
-    let message = `🛒 Your Cart at ${ tenantName } \n`
-    message += `${ itemCount } item${ itemCount !== 1 ? 's' : '' } \n`
-    message += `─────────────────\n\n`
-
-    for (const item of items) {
-        const variation = item.variation ? ` (${ item.variation })` : ''
-        message += `${ item.quantity }x ${ item.name }${ variation } \n`
-        message += `   ${ formatPrice(item.subtotal) } \n\n`
-    }
-
-    message += `─────────────────\n`
-    message += `💰 Total: ${ formatPrice(total) } \n\n`
-
-    // Build checkout URL
+    const itemCount = countItems(items)
     const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'
     const checkoutUrl = `https://${tenantSlug}.${rootDomain}/checkout`
-    message += `Ready to order?\n${checkoutUrl}`
+    return `🛒 Your cart at ${ tenantName }: ${ itemCount } item${ itemCount !== 1 ? 's' : '' }.\n\nReady to order?\n${checkoutUrl}`
+}
 
-    return message
+function countItems(items: CartItemForSync[]): number {
+    return items.reduce((sum, item) => sum + Math.max(0, Math.round(item.quantity)), 0)
 }

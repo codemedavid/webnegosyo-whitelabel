@@ -10,7 +10,10 @@ const greenbelt: MapKitAutocompleteResult = { displayLines: ['Greenbelt 5', 'Mak
 
 interface FakeMap {
   center: { latitude: number; longitude: number }
+  isScrollEnabled?: boolean
+  mapType: string
   listeners: Record<string, (event: unknown) => void>
+  setCenterAnimated: jest.Mock
   annotations: Array<{ coordinate: { latitude: number; longitude: number } }>
 }
 
@@ -35,10 +38,11 @@ function fakeMapKit(maps: FakeMap[] = []) {
     done(null, { results: [{ coordinate: { latitude: 14.56, longitude: 121.03 }, formattedAddress: '6764 Ayala Avenue, Makati' }] })
     return 3
   })
-  return {
-    Map: function Map(this: FakeMap & Record<string, unknown>, _parent: HTMLElement, options: { center: FakeMap['center'] }) {
+  function Map(this: FakeMap & Record<string, unknown>, _parent: HTMLElement, options: { center: FakeMap['center']; isScrollEnabled?: boolean; mapType?: string }) {
       Object.assign(this, {
         center: options.center,
+        isScrollEnabled: options.isScrollEnabled,
+        mapType: options.mapType ?? 'standard',
         listeners: {},
         annotations: [],
         addEventListener: (type: string, listener: (event: unknown) => void) => (this.listeners[type] = listener),
@@ -49,7 +53,10 @@ function fakeMapKit(maps: FakeMap[] = []) {
         destroy: jest.fn(),
       })
       maps.push(this)
-    },
+  }
+  Map.MapTypes = { Standard: 'standard', MutedStandard: 'muted', Hybrid: 'hybrid', Satellite: 'satellite' }
+  return {
+    Map,
     MarkerAnnotation: function MarkerAnnotation(this: object, coordinate: unknown) {
       Object.assign(this, { coordinate, addEventListener: jest.fn() })
     },
@@ -67,10 +74,26 @@ function fakeMapKit(maps: FakeMap[] = []) {
   } as unknown as MapKit
 }
 
-async function renderField(onChange = jest.fn(), coordinates: { lat: number; lng: number } | null = null) {
+interface RenderOptions {
+  coordinates?: { lat: number; lng: number } | null
+  biasCenter?: { lat: number; lng: number } | null
+  value?: string
+  check?: (point: { lat: number; lng: number }) => { isBlocked: boolean; message: string } | null
+}
+
+async function renderField(onChange = jest.fn(), options: RenderOptions = {}) {
   const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
   function Harness() {
-    return <AppleAddressAutocomplete value="" onChange={onChange} coordinates={coordinates} fallback={<p>mapbox field</p>} />
+    return (
+      <AppleAddressAutocomplete
+        value={options.value ?? ''}
+        onChange={onChange}
+        coordinates={options.coordinates ?? null}
+        biasCenter={options.biasCenter ?? null}
+        check={options.check}
+        fallback={<p>mapbox field</p>}
+      />
+    )
   }
   render(<Harness />)
   return onChange
@@ -78,14 +101,15 @@ async function renderField(onChange = jest.fn(), coordinates: { lat: number; lng
 
 beforeEach(() => jest.clearAllMocks())
 
-it('resolves an autocomplete pick to Apple\'s exact address and coordinates', async () => {
+it('asks the customer to confirm a searched place on the map before storing its pin', async () => {
   // Arrange
+  const maps: FakeMap[] = []
   const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
-  jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit())
+  jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
   const onChange = await renderField()
   await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
 
-  // Act
+  // Act: pick a suggestion
   fireEvent.focus(screen.getByRole('combobox'))
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'greenbelt' } })
   const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
@@ -93,13 +117,84 @@ it('resolves an autocomplete pick to Apple\'s exact address and coordinates', as
     fireEvent.mouseDown(option)
   })
 
-  // Assert
+  // Assert: only text so far, and the confirm map opened on the place
   expect(onChange).toHaveBeenNthCalledWith(1, 'greenbelt')
-  expect(onChange).toHaveBeenNthCalledWith(2, 'Greenbelt 5, Makati, Metro Manila')
-  expect(onChange).toHaveBeenLastCalledWith('Greenbelt 5, Legazpi St, Makati, 1223 Metro Manila, Philippines', {
-    lat: 14.5527,
-    lng: 121.0219,
+  expect(onChange).toHaveBeenLastCalledWith('Greenbelt 5, Makati, Metro Manila')
+  expect(await screen.findByRole('dialog', { name: 'Is this the exact spot?' })).toBeInTheDocument()
+  await waitFor(() => expect(maps.length).toBeGreaterThan(0))
+  expect(maps[maps.length - 1].center).toMatchObject({ latitude: 14.5527, longitude: 121.0219 })
+
+  // Act: confirm without moving the map
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
   })
+
+  // Assert: Apple's exact address, the pin, and that it was confirmed
+  expect(onChange).toHaveBeenLastCalledWith(
+    'Greenbelt 5, Legazpi St, Makati, 1223 Metro Manila, Philippines',
+    { lat: 14.5527, lng: 121.0219 },
+    expect.objectContaining({ isConfirmed: true, source: 'search' }),
+  )
+})
+
+it('uses the address under the pin once the customer moves the map away from the searched place', async () => {
+  // Arrange
+  const maps: FakeMap[] = []
+  const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+  jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+  const onChange = await renderField()
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+  fireEvent.focus(screen.getByRole('combobox'))
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'greenbelt' } })
+  const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+  await act(async () => {
+    fireEvent.mouseDown(option)
+  })
+  await waitFor(() => expect(maps.length).toBeGreaterThan(0))
+  const map = maps[maps.length - 1]
+
+  // Act: the map comes to rest ~900 m away, then Confirm
+  await act(async () => {
+    map.center = { latitude: 14.56, longitude: 121.03 }
+    map.listeners['region-change-end']({})
+  })
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+  })
+
+  // Assert
+  expect(onChange).toHaveBeenLastCalledWith('Ayala Avenue, Makati', { lat: 14.56, lng: 121.03 }, expect.objectContaining({ isConfirmed: true }))
+})
+
+it('opens the map on the store, not Manila, when there is no pin yet', async () => {
+  const maps: FakeMap[] = []
+  const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+  jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+  await renderField(jest.fn(), { biasCenter: { lat: 7.0474, lng: 125.5909 } })
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Pick on the map' }))
+
+  await waitFor(() => expect(maps.length).toBeGreaterThan(0))
+  expect(maps[maps.length - 1].center).toMatchObject({ latitude: 7.0474, longitude: 125.5909 })
+})
+
+it('shows the check\'s warning on the map and asks for an explicit yes, and blocks a refused spot', async () => {
+  const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+  jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit())
+  const check = jest.fn(() => ({ isBlocked: false, message: 'This pin is 34 km from Brew Café. Is that right?' }))
+  await renderField(jest.fn(), { check })
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Pick on the map' }))
+
+  expect(await screen.findByText('This pin is 34 km from Brew Café. Is that right?')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Yes, this is the right spot' })).toBeEnabled()
+
+  check.mockReturnValue({ isBlocked: true, message: 'We only deliver within the Philippines.' })
+  fireEvent.click(screen.getByRole('button', { name: 'Map' }))
+  expect(await screen.findByText('We only deliver within the Philippines.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Confirm this spot' })).toBeDisabled()
 })
 
 it('shows the Mapbox field when this deployment has no Apple Maps key', async () => {
@@ -168,10 +263,8 @@ describe('suggestion list', () => {
     })
 
     // Assert
-    expect(onChange).toHaveBeenLastCalledWith('Greenbelt 5, Legazpi St, Makati, 1223 Metro Manila, Philippines', {
-      lat: 14.5527,
-      lng: 121.0219,
-    })
+    expect(await screen.findByRole('dialog', { name: 'Is this the exact spot?' })).toBeInTheDocument()
+    expect(onChange).toHaveBeenLastCalledWith('Greenbelt 5, Makati, Metro Manila')
     expect(screen.queryByRole('option')).toBeNull()
   })
 
@@ -206,45 +299,331 @@ describe('suggestion list', () => {
   })
 })
 
-describe('inline pin map', () => {
-  it('shows the saved location as a pin on a map under the field', async () => {
-    // Arrange
+describe('pin preview', () => {
+  it('shows the saved location as a fixed, non-interactive preview with a way to change it', async () => {
     const maps: FakeMap[] = []
     const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
     jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
 
-    // Act
-    await renderField(jest.fn(), { lat: 14.5527, lng: 121.0219 })
+    await renderField(jest.fn(), { coordinates: { lat: 14.5527, lng: 121.0219 }, value: 'Greenbelt 5' })
 
-    // Assert
     expect(screen.getByRole('region', { name: 'Your location on the map' })).toBeInTheDocument()
     await waitFor(() => expect(maps).toHaveLength(1))
     expect(maps[0].center).toMatchObject({ latitude: 14.5527, longitude: 121.0219 })
-    expect(maps[0].annotations).toHaveLength(1)
-    expect(maps[0].annotations[0].coordinate).toMatchObject({ latitude: 14.5527, longitude: 121.0219 })
+    expect(maps[0].isScrollEnabled).toBe(false)
+    expect(screen.getByRole('button', { name: 'Change pin' })).toBeInTheDocument()
   })
 
-  it('has no pin before a location is chosen, and a tap drops one with Apple\'s address', async () => {
+  it('asks for a pin when an address was typed but never placed', async () => {
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit())
+
+    await renderField(jest.fn(), { value: 'Purok 3, near the chapel' })
+
+    expect(await screen.findByText('Set your exact spot on the map so the rider finds you.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Set pin on map' }))
+    expect(await screen.findByRole('dialog', { name: 'Is this the exact spot?' })).toBeInTheDocument()
+  })
+})
+
+describe('what a confirmed pin writes into the address', () => {
+  async function renderControlled(onChange = jest.fn(), initialValue = '') {
+    const React = await import('react')
+    const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
+    function Controlled() {
+      const [value, setValue] = React.useState(initialValue)
+      const [pin, setPin] = React.useState<{ lat: number; lng: number } | null>(null)
+      return (
+        <AppleAddressAutocomplete
+          value={value}
+          coordinates={pin}
+          onChange={(address, coordinates, meta) => {
+            setValue(address)
+            setPin(coordinates ?? null)
+            onChange(address, coordinates, meta)
+          }}
+          fallback={<p>mapbox field</p>}
+        />
+      )
+    }
+    render(<Controlled />)
+    return onChange
+  }
+
+  it('keeps an address the customer typed when they set the pin on the map', async () => {
     // Arrange
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const onChange = await renderField(jest.fn(), { value: 'Blk 4 Lot 12, Mabuhay Homes' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Set pin on map' }))
+    await waitFor(() => expect(maps.length).toBeGreaterThan(0))
+    const map = maps[maps.length - 1]
+
+    // Act: drag the map somewhere, then Confirm
+    await act(async () => {
+      map.center = { latitude: 14.56, longitude: 121.03 }
+      map.listeners['region-change-end']({})
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    // Assert: their words, not the reverse-geocoded "6764 Ayala Avenue"
+    expect(onChange).toHaveBeenLastCalledWith('Blk 4 Lot 12, Mabuhay Homes', { lat: 14.56, lng: 121.03 }, expect.objectContaining({ isConfirmed: true }))
+  })
+
+  it('keeps typed words through a later "Change pin" too', async () => {
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const onChange = await renderControlled(jest.fn(), 'Purok 3, near the chapel')
+    fireEvent.click(await screen.findByRole('button', { name: 'Set pin on map' }))
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm this spot' }))
+    })
+    expect(onChange).toHaveBeenLastCalledWith('Purok 3, near the chapel', expect.any(Object), expect.objectContaining({ isConfirmed: true }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Change pin' }))
+    await waitFor(() => expect(maps.length).toBeGreaterThan(1))
+    const map = maps[maps.length - 1]
+    await act(async () => {
+      map.center = { latitude: 14.56, longitude: 121.03 }
+      map.listeners['region-change-end']({})
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+    expect(onChange).toHaveBeenLastCalledWith('Purok 3, near the chapel', { lat: 14.56, lng: 121.03 }, expect.objectContaining({ isConfirmed: true }))
+  })
+
+  it('still names the new spot when the address came from a search, not the customer', async () => {
+    // Arrange: pick a searched place and confirm it
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const onChange = await renderControlled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+    fireEvent.focus(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'greenbelt' } })
+    const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+    await act(async () => {
+      fireEvent.mouseDown(option)
+    })
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm this spot' }))
+    })
+    fireEvent.blur(screen.getByRole('combobox'))
+
+    // Act: Change pin, move ~900 m, Confirm
+    fireEvent.click(await screen.findByRole('button', { name: 'Change pin' }))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Is this the exact spot?' })).toBeInTheDocument())
+    const map = maps[maps.length - 1]
+    await act(async () => {
+      map.center = { latitude: 14.56, longitude: 121.03 }
+      map.listeners['region-change-end']({})
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    // Assert
+    expect(onChange).toHaveBeenLastCalledWith('Ayala Avenue, Makati', { lat: 14.56, lng: 121.03 }, expect.objectContaining({ isConfirmed: true }))
+  })
+})
+
+describe('the map step', () => {
+  async function openPicker(maps: FakeMap[], onChange = jest.fn()) {
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    await renderField(onChange)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Pick on the map' }))
+    await waitFor(() => expect(maps.length).toBeGreaterThan(0))
+    return onChange
+  }
+
+  it('opens on satellite, because the plain map shows empty blocks at door level', async () => {
+    const maps: FakeMap[] = []
+    await openPicker(maps)
+    expect(maps[maps.length - 1].mapType).toBe('hybrid')
+    fireEvent.click(screen.getByRole('button', { name: 'Map' }))
+    expect(maps[maps.length - 1].mapType).toBe('standard')
+  })
+
+  it('names the spot as the map rests, never claiming a house number', async () => {
+    const maps: FakeMap[] = []
+    await openPicker(maps)
+    const map = maps[maps.length - 1]
+    await act(async () => {
+      map.center = { latitude: 14.56, longitude: 121.03 }
+      map.listeners['region-change-end']({})
+    })
+    expect(await screen.findByText('Near Ayala Avenue, Makati')).toBeInTheDocument()
+  })
+
+  it('searches from inside the map and keeps the place name on confirm', async () => {
+    const maps: FakeMap[] = []
+    const onChange = await openPicker(maps)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search on the map' }), { target: { value: 'greenbelt' } })
+    const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+    await act(async () => {
+      fireEvent.mouseDown(option)
+    })
+    const map = maps[maps.length - 1]
+    await waitFor(() => expect(map.setCenterAnimated).toHaveBeenCalled())
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      'Greenbelt 5, Legazpi St, Makati, 1223 Metro Manila, Philippines',
+      { lat: 14.5527, lng: 121.0219 },
+      expect.objectContaining({ isConfirmed: true, source: 'search' }),
+    )
+  })
+
+  it('takes pasted coordinates in the search on the map', async () => {
+    const maps: FakeMap[] = []
+    const onChange = await openPicker(maps)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search on the map' }), { target: { value: '14.56, 121.03' } })
+    const map = maps[maps.length - 1]
+    await waitFor(() => expect(map.setCenterAnimated).toHaveBeenCalled())
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    expect(onChange).toHaveBeenLastCalledWith('Ayala Avenue, Makati', { lat: 14.56, lng: 121.03 }, expect.objectContaining({ source: 'link' }))
+  })
+})
+
+describe('words the customer typed before a search pick', () => {
+  it('keeps their door on the picked place, through the map too', async () => {
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const React = await import('react')
+    const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
+    const onChange = jest.fn()
+    function Controlled() {
+      const [value, setValue] = React.useState('')
+      return <AppleAddressAutocomplete value={value} onChange={(address, coordinates, meta) => { setValue(address); onChange(address, coordinates, meta) }} fallback={null} />
+    }
+    render(<Controlled />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+
+    fireEvent.focus(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Blk 4 Lot 12 greenbelt' } })
+    const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+    await act(async () => {
+      fireEvent.mouseDown(option)
+    })
+    expect(onChange).toHaveBeenLastCalledWith('Blk 4 Lot 12, Greenbelt 5, Makati, Metro Manila', undefined, undefined)
+
+    await screen.findByRole('dialog', { name: 'Is this the exact spot?' })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+    expect(onChange).toHaveBeenLastCalledWith(
+      'Blk 4 Lot 12, Greenbelt 5, Legazpi St, Makati, 1223 Metro Manila, Philippines',
+      { lat: 14.5527, lng: 121.0219 },
+      expect.objectContaining({ isConfirmed: true }),
+    )
+  })
+
+  it('forgets that door once the customer types again', async () => {
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const React = await import('react')
+    const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
+    const onChange = jest.fn()
+    function Controlled() {
+      const [value, setValue] = React.useState('')
+      return <AppleAddressAutocomplete value={value} onChange={(address, coordinates, meta) => { setValue(address); onChange(address, coordinates, meta) }} fallback={null} />
+    }
+    render(<Controlled />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+    fireEvent.focus(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Blk 4 Lot 12 greenbelt' } })
+    const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+    await act(async () => {
+      fireEvent.mouseDown(option)
+    })
+    await screen.findByRole('dialog', { name: 'Is this the exact spot?' })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } })
+    fireEvent.blur(screen.getByRole('combobox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Pick on the map' }))
+    await screen.findByRole('dialog', { name: 'Is this the exact spot?' })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm this spot' }))
+    })
+
+    expect(onChange.mock.lastCall?.[0]).not.toContain('Blk 4')
+  })
+
+  it('opens the confirm map from pasted coordinates and clears the box', async () => {
     const maps: FakeMap[] = []
     const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
     jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
     const onChange = await renderField()
-    await waitFor(() => expect(maps).toHaveLength(1))
-    expect(maps[0].annotations).toHaveLength(0)
-    expect(screen.getByText('Tap the map to drop your pin')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
 
-    // Act
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'https://www.google.com/maps/@15.66,120.58,17z' } })
+
+    await screen.findByRole('dialog', { name: 'Is this the exact spot?' })
+    await waitFor(() => expect(maps.length).toBeGreaterThan(0))
+    expect(maps[maps.length - 1].center).toMatchObject({ latitude: 15.66, longitude: 120.58 })
+    expect(onChange).toHaveBeenLastCalledWith('')
+  })
+})
+
+describe('how the map is offered', () => {
+  async function renderDisplay(mapDisplay: 'buttons' | 'links' | 'map', coordinates: { lat: number; lng: number } | null = null) {
+    const maps: FakeMap[] = []
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit(maps))
+    const { AppleAddressAutocomplete } = await import('@/components/shared/apple-maps/apple-address-autocomplete')
+    render(<AppleAddressAutocomplete value="" onChange={jest.fn()} coordinates={coordinates} biasCenter={{ lat: 15.7, lng: 120.5 }} fallback={null} mapDisplay={mapDisplay} />)
+    return maps
+  }
+
+  it('links: words under the box instead of icons beside it, and they open the map', async () => {
+    const maps = await renderDisplay('links')
+    const pick = await screen.findByRole('button', { name: 'Pick on the map' })
+    await waitFor(() => expect(pick).toBeEnabled())
+    expect(pick).toHaveTextContent('Pick on the map')
+    expect(screen.getByRole('button', { name: 'Use my location' })).toBeInTheDocument()
     await act(async () => {
-      maps[0].listeners['single-tap']({ pointOnPage: { x: 10, y: 10 } })
-      await new Promise((resolve) => setTimeout(resolve, 0))
+      fireEvent.click(pick)
     })
+    await waitFor(() => expect(maps.length).toBe(1))
+    expect(screen.getByRole('button', { name: 'Confirm this spot' })).toBeInTheDocument()
+  })
 
-    // Assert
-    await waitFor(() =>
-      expect(onChange).toHaveBeenLastCalledWith('6764 Ayala Avenue, Makati', { lat: 14.56, lng: 121.03 }),
-    )
-    expect(maps[0].annotations).toHaveLength(1)
-    expect(screen.queryByText('Tap the map to drop your pin')).toBeNull()
+  it('map: shows the map from the start, with no pin implied, and a tap opens the picker', async () => {
+    const maps = await renderDisplay('map')
+    await waitFor(() => expect(maps.length).toBe(1))
+    // A preview: scrolling the page past it must not move it.
+    expect(maps[0].isScrollEnabled).toBe(false)
+    expect(maps[0].center).toMatchObject({ latitude: 15.7, longitude: 120.5 })
+    expect(document.querySelector('.fill-orange-500')).toBeNull()
+    const open = screen.getByRole('button', { name: 'Set your exact spot' })
+    await waitFor(() => expect(open).toBeEnabled())
+    await act(async () => {
+      fireEvent.click(open)
+    })
+    expect(screen.getByRole('button', { name: 'Confirm this spot' })).toBeInTheDocument()
+  })
+
+  it('map: once pinned it shows the pin and offers a change', async () => {
+    await renderDisplay('map', { lat: 15.71, lng: 120.51 })
+    expect(await screen.findByRole('button', { name: 'Change pin' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Set your exact spot' })).toBeNull()
+    expect(document.querySelector('.fill-orange-500')).not.toBeNull()
   })
 })

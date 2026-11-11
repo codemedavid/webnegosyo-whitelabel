@@ -45,6 +45,8 @@ import { IngredientPickerSheet } from "../../components/inventory/IngredientPick
 import { ArchivedIngredientsSheet } from "../../components/inventory/ArchivedIngredientsSheet";
 import { InventoryStockCard } from "../../components/InventoryStockCard";
 import { StockMovementSheet } from "../../components/StockMovementSheet";
+import { DeliveryExpensePrompt } from "../../components/money/DeliveryExpensePrompt";
+import type { RecordedMovement } from "../../lib/expenses/money-glance";
 import { StockCountPanel } from "../../components/StockCountPanel";
 import { TransferBenchPanel } from "../../components/TransferBenchPanel";
 import { TransferComposeSheet } from "../../components/TransferComposeSheet";
@@ -97,6 +99,7 @@ export default function InventoryScreen() {
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
   const [recording, setRecording] = useState<StockItemView | null>(null);
+  const [recordedMovement, setRecordedMovement] = useState<RecordedMovement | null>(null);
   const [count, setCount] = useState<OpenCountSession | null>(null);
   const [countBusy, setCountBusy] = useState(false);
   const [transfers, setTransfers] = useState<TransferSummary[]>([]);
@@ -555,14 +558,17 @@ export default function InventoryScreen() {
         openCountId={count?.id ?? null}
         initialReason={recordingReason}
         onClose={() => setRecording(null)}
-        onRecorded={() => {
+        onRecorded={(movement) => {
           // Both: the entry re-levels the ingredient AND advances the count's
           // coverage, and a panel still reading "0 of 40" after four counts
           // teaches the merchant the figure is decorative.
           load();
           loadCount();
+          setRecordedMovement(movement);
         }}
       />
+      {/* After a delivery: "Paid for this delivery? Record it". */}
+      <DeliveryExpensePrompt movement={recordedMovement} onDismiss={() => setRecordedMovement(null)} />
     </View>
   );
 }

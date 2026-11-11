@@ -28,6 +28,8 @@ export interface ServerPlace {
   countryCode: string | null
   /** Town-level names the place sits in (locality, sub-locality, barangays). */
   towns: string[]
+  /** Apple placed it on a street (or a house number), not just in a town or barangay. */
+  isStreetLevel: boolean
 }
 
 export type FetchLike = (
@@ -39,7 +41,14 @@ interface RawPlace {
   name?: unknown
   coordinate?: { latitude?: unknown; longitude?: unknown }
   formattedAddressLines?: unknown
-  structuredAddress?: { locality?: unknown; subLocality?: unknown; dependentLocalities?: unknown }
+  structuredAddress?: {
+    locality?: unknown
+    subLocality?: unknown
+    dependentLocalities?: unknown
+    thoroughfare?: unknown
+    subThoroughfare?: unknown
+    fullThoroughfare?: unknown
+  }
   countryCode?: unknown
 }
 
@@ -71,6 +80,7 @@ function toServerPlace(raw: RawPlace): ServerPlace | null {
     coordinates: { lat, lng },
     countryCode: text(raw.countryCode),
     towns: [...new Set(towns)],
+    isStreetLevel: [structured.thoroughfare, structured.subThoroughfare, structured.fullThoroughfare].some((part) => text(part) !== null),
   }
 }
 

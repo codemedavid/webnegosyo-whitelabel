@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 
+import { cashierWaiting } from "../lib/cash/remittances";
+import { useRemittances } from "../lib/cash/use-remittances";
 import { loadOpenShift, type ShiftRecord } from "../lib/shift-service";
 import { describeShiftStatus } from "../lib/shift-status";
 import { useAuthStore } from "../stores/auth-store";
@@ -18,10 +20,14 @@ const TICK_MS = 60_000;
  * money is counted — this only reports it, and is the door to that screen.
  * The wording lives in lib/shift-status.ts so Home and the Drawer can never
  * describe the same shift differently.
+ *
+ * Off shift, it also says where the cashier's last remittance stands
+ * ("Remitted ₱6,345 · waiting for Maria") until someone accepts it (06 §3).
  */
 export function ShiftStatusStrip({ onPress }: { onPress: () => void }) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
+  const isDemo = useAuthStore((s) => s.isDemo);
 
   const [shift, setShift] = useState<ShiftRecord | null>(null);
   const [checked, setChecked] = useState(false);
@@ -57,6 +63,9 @@ export function ShiftStatusStrip({ onPress }: { onPress: () => void }) {
   }, [shift]);
 
   const view = useMemo(() => describeShiftStatus(shift, now), [shift, now]);
+  // Only asked once we know the cashier is off shift; their own rows only.
+  const mine = useRemittances(tenantId, checked && !shift && !isDemo, userId);
+  const waiting = useMemo(() => (shift ? null : cashierWaiting(mine.data ?? [], userId)), [shift, mine.data, userId]);
 
   // Nothing is drawn until the first read lands: flashing "Not clocked in" at
   // someone who is on a shift is worse than a beat of empty space.
@@ -68,13 +77,13 @@ export function ShiftStatusStrip({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`${view.title}. ${view.detail}. Open the drawer.`}
+      accessibilityLabel={`${view.title}. ${waiting ?? view.detail}. Open the drawer.`}
     >
       <View style={[styles.dot, view.isOpen ? styles.dotOpen : styles.dotOff]} />
       <View style={styles.text}>
         <Text style={styles.title}>{view.title}</Text>
         <Text style={styles.detail} numberOfLines={1}>
-          {view.detail}
+          {waiting ?? view.detail}
         </Text>
       </View>
       <Icon name="chevron" size={16} color={colors.textTertiary} />

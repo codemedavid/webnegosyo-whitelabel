@@ -40,6 +40,14 @@ const REQUIRED_VARS = [
     'NEXT_PUBLIC_SENTRY_DSN',
 ];
 
+// Cloudflare R2 (docs/plans/2026-10-30-cloudflare-r2-storage-and-email.md):
+// only required once new uploads are switched to it. Without them the app
+// would quietly keep uploading to ImageKit — fail the build instead.
+const R2_VARS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
+if ((process.env.STORAGE_UPLOAD_PROVIDER || '').trim().toLowerCase() === 'r2') {
+    REQUIRED_VARS.push(...R2_VARS);
+}
+
 const missing = [];
 
 for (const varName of REQUIRED_VARS) {

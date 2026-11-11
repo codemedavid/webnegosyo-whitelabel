@@ -106,6 +106,17 @@ test('sends through Semaphore when no phone is online', async () => {
   )
 })
 
+test('a Semaphore send that failed is not reported as a code on its way', async () => {
+  const { handleWalletCodeRequest, issue, dispatch, readFallback } = await load()
+  gateway(false)
+  readFallback.mockResolvedValue(FALLBACK)
+  issue.mockResolvedValue({ ok: true, challengeId: CHALLENGE, expiresAt: 'x' })
+  dispatch.mockResolvedValueOnce('failed')
+  const response = await handleWalletCodeRequest(post('code', codeRequest))
+  expect(response.status).toBe(503)
+  expect((await response.json()).accepted).toBeUndefined()
+})
+
 test('says plainly when the store cannot text anyone, without issuing', async () => {
   const { handleWalletCodeRequest, issue, readFallback } = await load()
   gateway(false)
@@ -139,15 +150,43 @@ test('a short wait is said in seconds', async () => {
   expect(body.error).toMatch(/42 seconds/)
 })
 
-test('a non-member gets the same answer as a member, and nothing is sent', async () => {
+test('a number with no stamp card here is told so, and nothing is sent', async () => {
   const { handleWalletCodeRequest, issue, dispatch, readFallback } = await load()
   gateway(false)
   readFallback.mockResolvedValue(FALLBACK)
-  issue.mockResolvedValue({ ok: false, error: 'request_denied' })
+  issue.mockResolvedValue({ ok: false, error: 'not_member' })
   const response = await handleWalletCodeRequest(post('code', codeRequest))
-  expect(response.status).toBe(202)
-  expect((await response.json()).accepted).toBe(true)
+  expect(response.status).toBe(404)
+  const body = await response.json()
+  expect(body.reason).toBe('not_member')
+  expect(body.error).toMatch(/no stamp card/i)
+  expect(body.challengeId).toBeUndefined()
   expect(dispatch).not.toHaveBeenCalled()
+})
+
+test('a refused or failed issue never says a code is on its way', async () => {
+  const { handleWalletCodeRequest, issue, dispatch } = await load()
+  gateway(true)
+  for (const outcome of [{ ok: false, error: 'request_denied' }, { ok: false, error: 'unavailable' }]) {
+    issue.mockResolvedValueOnce(outcome)
+    const response = await handleWalletCodeRequest(post('code', codeRequest))
+    expect(response.status).toBe(503)
+    expect((await response.json()).accepted).toBeUndefined()
+  }
+  issue.mockRejectedValueOnce(new Error('socket'))
+  expect((await handleWalletCodeRequest(post('code', codeRequest))).status).toBe(503)
+  expect(dispatch).not.toHaveBeenCalled()
+})
+
+test('every code request leaves one outcome line in the log, without the phone', async () => {
+  const { handleWalletCodeRequest, issue } = await load()
+  const info = jest.spyOn(console, 'info').mockImplementation(() => {})
+  gateway(true)
+  issue.mockResolvedValue({ ok: false, error: 'not_member' })
+  await handleWalletCodeRequest(post('code', codeRequest))
+  expect(info).toHaveBeenCalledWith(expect.stringContaining('wallet code'), expect.objectContaining({ tenantId: TENANT, outcome: 'not_member', sender: 'gateway' }))
+  expect(JSON.stringify(info.mock.calls)).not.toMatch(/917123/)
+  info.mockRestore()
 })
 
 test('an unreadable store setting refuses rather than texting', async () => {

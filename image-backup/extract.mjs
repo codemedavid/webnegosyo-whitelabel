@@ -52,24 +52,22 @@ const SOURCES = [
   { table: 'addon_library', text: ['image_url'], json: [] },
   { table: 'inventory_items', text: ['image_url'], json: [] },
   { table: 'outlets', text: ['image_url'], json: [] },
-  {
-    table: 'tenants',
-    text: [
-      'logo_url',
-      'flash_screen_image_url',
-      'promotion_image_url',
-      'background_image_url',
-      'hero_image_url',
-      'footer_logo_url',
-    ],
-    json: ['promotion_banners', 'welcome_page_banners'],
-  },
+  // Every column: branding images also live inside hero_design / welcome_design
+  // (TEXT holding JSON), mobile_overrides, storefront_pack_settings, …
+  { table: 'tenants', all: true },
   { table: 'payment_methods', text: ['qr_code_url'], json: [] },
   { table: 'platform_payment_methods', text: ['qr_code_url'], json: [] },
-  { table: 'orders', text: ['payment_method_qr_code_url', 'payment_proof_url'], json: [] },
+  { table: 'orders', text: ['payment_method_qr_code_url', 'payment_proof_url'], json: ['customer_data'] },
   { table: 'checkout_leads', text: ['payment_proof_url'], json: [] },
   { table: 'order_payments', text: ['proof_url'], json: [] },
   { table: 'platform_announcements', text: ['cover_image_url'], json: ['blocks'] },
+  { table: 'modifier_group_library', text: [], json: ['options'] },
+  { table: 'loyalty_program_versions', text: [], json: ['rules'] },
+  { table: 'store_onboardings', text: [], json: ['assets', 'input'] },
+  { table: 'university_courses', text: ['cover_image_url'], json: [] },
+  { table: 'university_lessons', text: ['video_url'], json: ['blocks', 'resources'] },
+  // Rows removed by the 2026-08-21 Loyverse de-dupe; their photos are kept in case one is restored.
+  { table: 'menu_items_loyverse_dupe_backup_20260821', text: ['image_url'], json: ['addons', 'variation_types', 'variations', 'modifier_groups'] },
 ]
 
 function cleanUrl(raw) {
@@ -158,7 +156,7 @@ async function fetchTable(table, columns) {
   let from = 0
   for (;;) {
     const select = columns.join(',')
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${select}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${select}&order=id`, {
       headers: {
         apikey: SERVICE_KEY,
         Authorization: `Bearer ${SERVICE_KEY}`,
@@ -208,11 +206,18 @@ async function main() {
   const found = new Map()
 
   for (const src of SOURCES) {
-    const columns = [...src.text, ...src.json]
+    const columns = src.all ? ['*'] : [...src.text, ...src.json]
     process.stdout.write(`Fetching ${src.table} (${columns.join(', ')})… `)
     const rows = await fetchTable(src.table, columns)
     console.log(`${rows.length} rows`)
     for (const row of rows) {
+      if (src.all) {
+        for (const [col, val] of Object.entries(row)) {
+          if (val == null) continue
+          collectFromText(typeof val === 'string' ? val : JSON.stringify(val), found, `${src.table}.${col}`)
+        }
+        continue
+      }
       for (const col of src.text) {
         collectFromText(row[col], found, `${src.table}.${col}`)
       }

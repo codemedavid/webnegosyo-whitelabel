@@ -27,6 +27,7 @@ import {
   findCartStockShortfalls,
   describeStockShortfalls,
   type CartStockLine,
+  type CartStockShortfall,
 } from '@/lib/inventory/producible'
 import { readTenantStockGraph, type TenantStockGraph } from '@/lib/inventory/stock-graph-read'
 import { expandLinkedStockItems, recipeOptionNames } from '@/lib/inventory/option-stock'
@@ -62,6 +63,41 @@ function asDepletionWillSpend(
 /** No opinion. Every failure path returns this. */
 const NO_OPINION = ''
 
+/** What the shelf cannot cover, with the store's own dish names. */
+export interface CheckoutStockVerdict {
+  shortfalls: CartStockShortfall[]
+  namesByMenuItemId: ReadonlyMap<string, string>
+}
+
+/**
+ * The cart's shortfalls as depletion would spend it, or `null` for "no
+ * opinion" (inventory off, a failed read, an empty cart). Shared by the web
+ * checkout and the register's stock clearance (`pos-stock-clearance.ts`), so
+ * both refuse on the same arithmetic.
+ *
+ * @param outletId the branch the order is being placed against, if any. It
+ *   comes from the order being built, never from the customer's payload.
+ */
+export async function findCheckoutStockShortfalls(
+  tenantId: string,
+  lines: readonly CartStockLine[],
+  outletId: string | null = null,
+): Promise<CheckoutStockVerdict | null> {
+  if (lines.length === 0) return null
+
+  const graph = await readTenantStockGraph(tenantId, outletId)
+  if (!graph) return null
+
+  const shortfalls = findCartStockShortfalls(
+    asDepletionWillSpend(lines, graph),
+    graph.recipes,
+    graph.components,
+    graph.shelf,
+    graph.units,
+  )
+  return { shortfalls, namesByMenuItemId: graph.namesByMenuItemId }
+}
+
 /**
  * The message to refuse a cart with, or `''` when there is nothing to say.
  *
@@ -73,19 +109,7 @@ export async function findCheckoutStockShortfallMessage(
   lines: readonly CartStockLine[],
   outletId: string | null = null,
 ): Promise<string> {
-  if (lines.length === 0) return NO_OPINION
-
-  const graph = await readTenantStockGraph(tenantId, outletId)
-  if (!graph) return NO_OPINION
-
-  const shortfalls = findCartStockShortfalls(
-    asDepletionWillSpend(lines, graph),
-    graph.recipes,
-    graph.components,
-    graph.shelf,
-    graph.units,
-  )
-  if (shortfalls.length === 0) return NO_OPINION
-
-  return describeStockShortfalls(shortfalls, graph.namesByMenuItemId)
+  const verdict = await findCheckoutStockShortfalls(tenantId, lines, outletId)
+  if (!verdict || verdict.shortfalls.length === 0) return NO_OPINION
+  return describeStockShortfalls(verdict.shortfalls, verdict.namesByMenuItemId)
 }

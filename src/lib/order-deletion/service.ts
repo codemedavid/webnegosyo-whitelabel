@@ -22,6 +22,12 @@ import {
 } from './constants'
 import { isPasswordAttemptAllowed, matchesConfirmationPhrase } from './access'
 import { buildOrderExportCsv, exportFileName } from './export-csv'
+import {
+  giveBackDeletedOrdersStock,
+  readOrdersToRespend,
+  respendRestoredOrdersStock,
+  type StockSettlement,
+} from './stock'
 import type {
   DeletionCaller,
   DeletionRecord,
@@ -44,6 +50,7 @@ export type OrderDeletionErrorCode =
   | 'too_many_attempts'
   | 'recovery_closed'
   | 'not_restorable'
+  | 'try_again'
 
 /** A refusal the owner can act on. Anything else is an unexpected failure. */
 export class OrderDeletionError extends Error {
@@ -191,7 +198,8 @@ export async function confirmDeletion(
   caller: DeletionCaller,
   store: DeletionStore,
   input: ConfirmInput,
-  now: Date
+  now: Date,
+  stock?: StockSettlement
 ): Promise<ExecuteResult> {
   const deletion = await findOwnDeletion(repo, caller, input.deletionId)
   assertExportUsable(deletion, now)
@@ -225,14 +233,26 @@ export async function confirmDeletion(
     throw new OrderDeletionError('wrong_password', 'That password is not correct.')
   }
 
-  return repo.executeDeletion(deletion.id, caller.userId)
+  const result = await repo.executeDeletion(deletion.id, caller.userId)
+  // The orders are gone; their ingredients go back on the shelf (best-effort).
+  if (stock) await giveBackDeletedOrdersStock(repo, stock, caller, deletion.id)
+  return result
+}
+
+async function readOrdersToRespendOrRefuse(repo: OrderDeletionRepo, caller: DeletionCaller, deletionId: string) {
+  try {
+    return await readOrdersToRespend(repo, caller, deletionId)
+  } catch {
+    throw new OrderDeletionError('try_again', 'The orders could not be restored right now. Nothing changed; try again in a moment.')
+  }
 }
 
 export async function restoreDeletion(
   repo: OrderDeletionRepo,
   caller: DeletionCaller,
   deletionId: string,
-  now: Date
+  now: Date,
+  stock?: StockSettlement
 ): Promise<RestoreResult> {
   const deletion = await repo.findDeletion(deletionId, caller.tenantId)
   if (!deletion) {
@@ -244,5 +264,9 @@ export async function restoreDeletion(
   if (new Date(deletion.purge_after).getTime() <= now.getTime()) {
     throw new OrderDeletionError('recovery_closed', 'The recovery window has closed; these orders are gone.')
   }
-  return repo.restoreDeletion(deletion.id, caller.userId)
+  // Read first: restoring empties the archive.
+  const toRespend = stock ? await readOrdersToRespendOrRefuse(repo, caller, deletion.id) : []
+  const result = await repo.restoreDeletion(deletion.id, caller.userId)
+  if (stock) respendRestoredOrdersStock(stock, caller, toRespend)
+  return result
 }

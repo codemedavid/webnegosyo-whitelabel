@@ -28,7 +28,10 @@ export interface AccessInput {
 }
 
 export type AccessDecision =
-  | { allowed: true; reason: "superadmin" | "tenant_admin" | "public_read" | "not_enforced" }
+  | {
+      allowed: true;
+      reason: "superadmin" | "tenant_admin" | "platform_staff" | "public_read" | "not_enforced";
+    }
   | { allowed: false; reason: "unauthenticated" | "wrong_tenant" | "unpinned" };
 
 export function decideAccess(input: AccessInput): AccessDecision {
@@ -55,6 +58,13 @@ export function decideAccess(input: AccessInput): AccessDecision {
     // the store is enforced; before that, a missing config sync must not take
     // the store's registers down.
     if (authEnforced) return { allowed: false, reason: "unpinned" };
+  }
+
+  // Platform staff belong to no store (the database refuses a tenant on their
+  // row) and the web admin opens any store for them. They may look; a change to
+  // a store's orders is never theirs to make.
+  if (identity?.wn_role === "platform_staff" && kind === "read") {
+    return { allowed: true, reason: "platform_staff" };
   }
 
   // Everything below is the unidentified caller's path — no token, or one that

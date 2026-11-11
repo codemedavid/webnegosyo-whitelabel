@@ -314,3 +314,33 @@ describe('generateBrandingClasses', () => {
     })
   })
 })
+
+describe('generateBrandingCSS: a stored colour cannot add declarations', () => {
+  const branding = (overrides: Record<string, unknown>) => getTenantBranding({ primary_color: '#111111', ...overrides })
+
+  it('neutralises a value that would end the declaration', () => {
+    const css = generateBrandingCSS(
+      branding({ background_color: 'red;position:fixed;inset:0', header_color: 'url(https://evil.example/x.png)' })
+    ) as Record<string, string>
+    expect(css['--brand-background']).toBe('inherit')
+    expect(css['--brand-header']).toBe('inherit')
+  })
+
+  it.each([
+    '#abcdef',
+    'rgba(0, 0, 0, 0.5)',
+    'rgb(0 0 0 / 50%)',
+    'hsl(210.5, 40%, 20%)',
+    'color-mix(in srgb, #000 10%, transparent)',
+    'tomato',
+    'var(--brand-primary)',
+  ])('passes %s through untouched', (value) => {
+    const css = generateBrandingCSS(branding({ background_color: value })) as Record<string, string>
+    expect(css['--brand-background']).toBe(value)
+  })
+
+  it('keeps an unset optional colour unset', () => {
+    const css = generateBrandingCSS({ ...getTenantBranding({}), cartAccent: undefined } as never) as Record<string, string | undefined>
+    expect(css['--brand-cart-accent']).toBeUndefined()
+  })
+})

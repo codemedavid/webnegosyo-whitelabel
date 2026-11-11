@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
 import { lalamoveStatusLabel } from "../lib/lalamove-status";
+import { kitchenChipLabel } from "../lib/order-kitchen-chip";
 import {
   displayCustomerName,
   getInitials,
@@ -94,6 +95,7 @@ export const OrderCard = memo(function OrderCard({
   const status = getStatusMeta(order.status);
   const customerName = displayCustomerName(order.customerName);
   const tableNumber = getOrderTableNumber(order.customerData);
+  const kitchenChip = kitchenChipLabel(order.status);
   const typeMeta = getOrderTypeMeta(order.orderType);
   const isActive = order.status !== "delivered" && order.status !== "cancelled";
   const scheduledISO = getScheduledISO(order);
@@ -169,6 +171,11 @@ export const OrderCard = memo(function OrderCard({
         {tableNumber ? (
           <View style={styles.tableChip}>
             <Text style={styles.tableText}>Table {tableNumber}</Text>
+          </View>
+        ) : null}
+        {kitchenChip ? (
+          <View style={styles.kitchenChip}>
+            <Text style={styles.kitchenText}>{kitchenChip}</Text>
           </View>
         ) : null}
         {scheduledLabel ? (
@@ -315,6 +322,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
   },
   tableText: { ...typography.small, color: colors.primary, fontWeight: "700" },
+  kitchenChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.successLight,
+  },
+  kitchenText: { ...typography.small, color: colors.success, fontWeight: "700" },
   presellChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,

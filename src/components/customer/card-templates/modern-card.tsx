@@ -1,11 +1,11 @@
 'use client'
 
-import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { LowStockBadge, UnavailableLabel } from './card-stock'
 
 interface ModernCardProps {
   item: MenuItem
@@ -95,10 +95,11 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, i
           )}
         </div>
 
+        <LowStockBadge branding={branding} placement="above-price" />
         {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
             <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-gray-900">
-              <StoreLabel name="menu.unavailable" fallback="Unavailable" />
+              <UnavailableLabel />
             </span>
           </div>
         )}
@@ -128,7 +129,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, i
 
         {/* Floating Add Button - bottom right */}
         <button
-          className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex h-9 w-9 md:h-12 md:w-12 items-center justify-center rounded-xl md:rounded-2xl shadow-2xl transition-all hover:scale-110"
+          className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex h-9 w-9 md:h-12 md:w-12 items-center justify-center rounded-xl md:rounded-2xl shadow-2xl transition-all hover:scale-110 disabled:pointer-events-none disabled:invisible"
           style={{
             backgroundColor: branding.buttonPrimary,
             color: branding.buttonPrimaryText

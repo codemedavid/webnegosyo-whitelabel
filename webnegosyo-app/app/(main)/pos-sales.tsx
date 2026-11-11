@@ -1,7 +1,6 @@
 import { ShiftCard } from "../../components/ShiftCard";
 import { OrderSettlementReader, type OrderLedger } from "../../components/OrderSettlementReader";
 import React, { useCallback, useMemo, useState } from "react";
-import { DAY_MS, localDayStartMs } from "../../lib/backends/analytics-time";
 import {
   Alert,
   RefreshControl,
@@ -11,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import {
@@ -25,7 +24,8 @@ import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { useAuthStore } from "../../stores/auth-store";
 import { useRegisterSettingsStore } from "../../stores/register-settings-store";
 import { selectShiftSales, summarizeCounterSales } from "../../lib/pos-sales";
-import { idsBeyondPage, ordersSince, pageReachesBack } from "../../lib/drawer-day";
+import { drawerDayWindow, idsBeyondPage, ordersSince, pageReachesBack } from "../../lib/drawer-day";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import {
   DRAWER_COUNTING_OPTIONS,
   countingFromPolicy,
@@ -35,6 +35,7 @@ import {
   describeIntake,
   describeShiftSales,
   drawerBreakdown,
+  dayRowLine,
   type DrawerCounting,
   type DrawerSale,
 } from "../../lib/drawer-view";
@@ -58,6 +59,10 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ListRow } from "../../components/ListRow";
 import { canOpenMyActivity, MY_ACTIVITY_HREF } from "../../lib/activity/my-activity";
+import { usePrinterStore } from "../../stores/printer-store";
+import { reprintGate } from "../../lib/reprint-gate";
+import { reprintOrderHref } from "../../lib/reprint-route";
+import { withReturnTo } from "../../lib/return-to";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -86,14 +91,8 @@ const NO_SALES: DrawerSale[] = [];
  */
 const INTAKE_PREVIEW = 3;
 
-/**
- * Start of today in MANILA — the day every report, the daily order number and
- * the server's own "today" use. The phone's timezone made a drawer on a phone
- * set to another zone count a different day than Home.
- */
-function startOfToday(): number {
-  return localDayStartMs(Date.now());
-}
+/** Where an order opened from the Drawer comes back to (the tabs' own back goes Home). */
+const DRAWER_ROUTE = "/(main)/pos-sales";
 
 function formatSaleTime(at: number): string {
   return new Date(at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
@@ -153,14 +152,18 @@ export default function PosSalesScreen() {
   });
   const page = (mergedSales as DrawerSale[] | undefined) ?? NO_SALES;
 
-  const dayStart = startOfToday();
+  // Today = the store's BUSINESS day (its cutoff), not the phone's calendar
+  // day: with a 4 AM cutoff the 1 AM sales are still tonight's drawer. Midnight
+  // until the schedule loads, as before.
+  const tradingDay = useTradingDay();
+  const { sinceMs: dayStart, untilMs: dayEnd } = drawerDayWindow(tradingDay.anchorMs, tradingDay.schedule);
   const reachesBack = pageReachesBack(page, SHIFT_ORDER_LIMIT, dayStart);
   // Platform only: older Convex deployments refuse the window arguments.
   const canReadDay = orderBackend === "platform" && !isOffline;
   const needsDayRead = canReadDay && !reachesBack;
   const dayResult = useSafeQuery<DrawerSale[]>(
     getOrdersRef,
-    needsDayRead ? { startMs: dayStart, endMs: dayStart + DAY_MS, limit: DAY_ORDER_LIMIT } : "skip",
+    needsDayRead ? { startMs: dayStart, endMs: dayEnd, limit: DAY_ORDER_LIMIT } : "skip",
   );
   const dayRead = needsDayRead ? dayResult.data : undefined;
 
@@ -270,6 +273,8 @@ function JoinedLedger({
 }
 
 function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, savedAt, refetch }: DrawerRead) {
+  // `?pay=1`: the register's "Pay out" — the shift card opens "Pay from the drawer".
+  const { pay } = useLocalSearchParams<{ pay?: string }>();
   // The "Your activity today" door at the foot of the Drawer.
   const activityViewer = {
     userId: useAuthStore((s) => s.userId),
@@ -280,7 +285,13 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
   const includeOnlineOrders = useRegisterSettingsStore((s) => s.drawerIncludesOnlineOrders);
   const setIncludeOnlineOrders = useRegisterSettingsStore((s) => s.setDrawerIncludesOnlineOrders);
   const scope = useBranchScope();
+  // "Reprint" on a sale row opens the order and prints from its full record.
+  const printers = usePrinterStore((s) => s.printers);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // One ink hero per screen (06 §1): on shift, the shift card is the hero and
+  // the day's counter total folds into a row under it.
+  const [isOnShift, setIsOnShift] = useState(false);
+  const [isDayOpen, setIsDayOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const counting: DrawerCounting = countingFromPolicy(includeOnlineOrders);
@@ -358,7 +369,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
     // and the collect sheet are.
     const route = resolveListAdvance({ ...order, status: order.status ?? "pending" }, "confirmed");
     if (route.kind === "open") {
-      router.push(`/(main)/order/${order._id}?intent=${route.intent}`);
+      router.push(withReturnTo(`/(main)/order/${order._id}?intent=${route.intent}`, DRAWER_ROUTE) as never);
       return;
     }
 
@@ -410,8 +421,25 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       >
-        <ShiftCard orders={page} pageLimit={SHIFT_ORDER_LIMIT} ledger={ledger} />
-        {/* The money first: it is the only reason this screen is open. */}
+        <ShiftCard
+          orders={page}
+          pageLimit={SHIFT_ORDER_LIMIT}
+          ledger={ledger}
+          isPayOutRequested={pay === "1"}
+          onPayOutHandled={() => router.setParams({ pay: undefined })}
+          onShiftState={setIsOnShift}
+        />
+        {isOnShift ? (
+          <ListRow
+            icon="drawer"
+            title="Today at this counter"
+            subtitle={dayRowLine(summary)}
+            onPress={() => setIsDayOpen((open) => !open)}
+            style={styles.dayRow}
+          />
+        ) : null}
+        {/* Off shift the day's money is the hero: it is the only reason this screen is open. */}
+        {!isOnShift || isDayOpen ? (
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Today at this counter · Cash</Text>
           <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit>
@@ -429,6 +457,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
             ))}
           </View>
         </View>
+        ) : null}
 
         <Text style={styles.heroNote}>{describeCounting(counting)}</Text>
         {ledgerNote ? <Text style={styles.heroNote}>{ledgerNote}</Text> : null}
@@ -453,7 +482,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
                   <View key={order._id} style={[styles.intake, !isLast && styles.grouped]}>
                     <TouchableOpacity
                       style={styles.intakeText}
-                      onPress={() => router.push(`/(main)/order/${order._id}`)}
+                      onPress={() => router.push(withReturnTo(`/(main)/order/${order._id}`, DRAWER_ROUTE) as never)}
                       accessibilityLabel={`Open order from ${order.customerName ?? "customer"}`}
                     >
                       <Text style={styles.rowTitle}>{describeIncomingOrder(order)}</Text>
@@ -501,7 +530,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
                 <TouchableOpacity
                   key={sale._id}
                   style={[styles.sale, !isLast && styles.grouped]}
-                  onPress={() => router.push(`/(main)/order/${sale._id}`)}
+                  onPress={() => router.push(withReturnTo(`/(main)/order/${sale._id}`, DRAWER_ROUTE) as never)}
                   accessibilityLabel={`${formatSaleTime(sale._creationTime)}, ${row.meta}, ${formatPeso(sale.total)}`}
                 >
                   <View style={styles.saleText}>
@@ -522,6 +551,16 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
                     </Text>
                   </View>
                   <Text style={styles.saleTotal}>{formatPeso(sale.total)}</Text>
+                  {reprintGate({ status: sale.status ?? "confirmed" }, printers).enabled ? (
+                    <Button
+                      label="Reprint"
+                      icon="printer"
+                      tone="secondary"
+                      size="md"
+                      onPress={() => router.push(withReturnTo(reprintOrderHref(sale._id), DRAWER_ROUTE) as never)}
+                      accessibilityLabel={`Reprint the receipt for the ${formatSaleTime(sale._creationTime)} sale`}
+                    />
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -545,6 +584,7 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
 
 const styles = StyleSheet.create({
   myActivity: { marginTop: spacing.lg, borderRadius: radius.lg, overflow: "hidden" },
+  dayRow: { borderRadius: radius.lg, overflow: "hidden", marginBottom: spacing.sm },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,

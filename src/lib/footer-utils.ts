@@ -295,8 +295,8 @@ export function getFooterConfig(tenant: Record<string, unknown>): FooterConfig {
     ? copyrightOverride
     : `© ${new Date().getFullYear()} ${businessName}. All rights reserved.`
 
-  const poweredByText =
-    readString(tenant, 'footer_powered_by_text') || 'Powered by WebNegosyo'
+  // Storefronts are white-labeled: no platform credit unless the owner writes one.
+  const poweredByText = readString(tenant, 'footer_powered_by_text')
 
   return {
     enabled: tenant['footer_enabled'] !== false,
@@ -346,7 +346,7 @@ export function getFooterConfig(tenant: Record<string, unknown>): FooterConfig {
       privacyPolicy: readString(tenant, 'footer_privacy_policy'),
     },
     copyrightText,
-    showPoweredBy: tenant['footer_show_powered_by'] !== false,
+    showPoweredBy: tenant['footer_show_powered_by'] !== false && poweredByText !== '',
     poweredByText,
     colors: getFooterColors(tenant),
   }

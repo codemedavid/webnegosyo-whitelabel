@@ -4,14 +4,15 @@ import { useEffect, useState } from 'react'
 import { Columns3, LayoutPanelTop, Monitor, MousePointerClick, Smartphone, Tablet } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { WIDGET_DEFAULTS } from '@/lib/hero-builder/defaults'
 import { findNode } from '@/lib/hero-builder/tree-ops'
 import type { Device, Section, Widget } from '@/lib/hero-builder/types'
 
 import type { HeroBuilderApi } from '../use-hero-builder'
+import { widgetLabel } from '../widget-label'
 import { ContentPanel } from './content-panel'
 import { LayoutPanel } from './layout-panel'
 import { bindNodeStyle } from './node-style'
+import { PageBlockStyle } from './page-block-style'
 import { StylePanel } from './style-panel'
 
 type Tab = 'content' | 'style' | 'layout'
@@ -51,7 +52,7 @@ export function Inspector({ api, contentRequest }: InspectorProps) {
   const widget = found.kind === 'widget' ? (node as Widget) : undefined
   const title =
     found.kind === 'widget'
-      ? WIDGET_DEFAULTS[(node as Widget).kind]?.label ?? 'Element'
+      ? widgetLabel(node as Widget)
       : found.kind === 'section'
         ? (node as Section).label || 'Section'
         : `Column ${found.index + 1}`
@@ -107,7 +108,12 @@ export function Inspector({ api, contentRequest }: InspectorProps) {
         {tab === 'content' && (
           <ContentPanel api={api} node={found.kind === 'column' ? (node as unknown as Section) : (node as Section | Widget)} nodeKind={found.kind} />
         )}
-        {tab === 'style' && <StylePanel b={b} nodeKind={found.kind} widgetKind={widget?.kind} />}
+        {tab === 'style' &&
+          (widget?.kind === 'page-block' ? (
+            <PageBlockStyle widget={widget} api={api} b={b} />
+          ) : (
+            <StylePanel b={b} nodeKind={found.kind} widgetKind={widget?.kind} />
+          ))}
         {tab === 'layout' && (
           <LayoutPanel b={b} nodeKind={found.kind} widget={widget} device={api.device} onAnimation={(a) => api.editAnimation(node.id, a)} />
         )}

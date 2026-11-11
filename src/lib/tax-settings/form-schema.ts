@@ -52,6 +52,7 @@ export const taxSettingsFormSchema = z
     approvalThreshold: z.string().trim(),
     serviceChargeMode: z.enum(['full', 'exempt_share']),
     idPhotoMode: z.enum(['off', 'optional']),
+    onlineClaimsEnabled: z.boolean(),
   })
   .superRefine((values, ctx) => {
     const typedBranch = TIN_PATTERN.test(values.tin) ? splitTin(values.tin).branch : ''

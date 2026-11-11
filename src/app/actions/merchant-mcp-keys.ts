@@ -47,15 +47,19 @@ async function verifyMerchantAdmin(): Promise<MerchantCaller> {
 
   const { data: roleRow } = await supabase
     .from('app_users')
-    .select('role, tenant_id, is_owner, permissions')
+    .select('role, tenant_id, is_owner, permissions, outlet_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
   const appUser = roleRow as
-    | (PermissionHolder & { tenant_id: string | null })
+    | (PermissionHolder & { tenant_id: string | null; outlet_id: string | null })
     | null
   if (!appUser || appUser.role !== 'admin' || !appUser.tenant_id) {
     throw new Error('Forbidden: Tenant admin access required')
+  }
+  // AI tools act on the whole store, past any one branch's limits.
+  if (appUser.outlet_id) {
+    throw new Error('Forbidden: Only a store-wide account can manage AI keys')
   }
   if (!hasPermission(appUser, 'store_setup')) {
     throw new Error('Forbidden: Store setup permission required to manage AI keys')

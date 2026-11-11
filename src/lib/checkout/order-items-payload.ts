@@ -92,11 +92,14 @@ export function buildOrderItemsPayload(
 /**
  * What the stock preflight asks about: each line in its configuration, mapped
  * exactly as `createOrderAction` hands it to the authoritative guard — option
- * and add-on recipes count, so the preflight cannot pass a cart the order
- * itself then refuses.
+ * and add-on recipes count, and so does every combo dish, so the preflight
+ * cannot pass a cart the order itself then refuses.
  */
-export function toStockPreflightLines(items: readonly CartItem[]): StockPreflightLine[] {
-  return items.map(item => depletionItemFromCheckoutLine(buildCartLineOrderItem(item)))
+export function toStockPreflightLines(
+  items: readonly CartItem[],
+  bundleItems: readonly CartBundleItem[] = []
+): StockPreflightLine[] {
+  return buildOrderItemsPayload(items, bundleItems).map(depletionItemFromCheckoutLine)
 }
 
 /** What the presell preflight asks about: the same, with each line's pickup date. */

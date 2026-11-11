@@ -166,6 +166,17 @@ describe('stores that text a code before showing rewards', () => {
   expect(await screen.findByText(/only numbers that have collected stamps/i)).toBeInTheDocument()
  })
 
+ it('a number with no stamp card is told so and gets the number form back, not a code box', async () => {
+  global.fetch = jest.fn().mockResolvedValueOnce(verifyFirst)
+   .mockResolvedValueOnce({ok:false,status:404,json:async()=>({error:'This number has no stamp card here yet.',reason:'not_member'})})
+  render(<LoyaltyWalletPage tenantId="tenant" tenantSlug="shop" storeName="Coffee shop" />)
+  fireEvent.change(screen.getByLabelText('Mobile number'),{target:{value:'09171234567'}})
+  fireEvent.click(screen.getByRole('button',{name:'Check my rewards'}))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/no stamp card/i)
+  expect(screen.queryByLabelText('SMS code')).not.toBeInTheDocument()
+  expect(screen.getByRole('button',{name:'Check my rewards'})).toBeEnabled()
+ })
+
  it('says so plainly when the store cannot text a code', async () => {
   global.fetch = jest.fn().mockResolvedValueOnce(verifyFirst)
    .mockResolvedValueOnce({ok:false,status:503,json:async()=>({error:"This store can't text verification codes right now. Please ask the cashier for help.",reason:'no_sender'})})

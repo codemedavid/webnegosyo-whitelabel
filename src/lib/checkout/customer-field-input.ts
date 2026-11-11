@@ -11,23 +11,83 @@ export interface AddressCoordinates {
   lng: number
 }
 
+/** Hidden keys the address field keeps beside the coordinates. */
+export const DELIVERY_PIN_ADDRESS_KEY = 'delivery_pin_address'
+export const DELIVERY_PIN_CONFIRMED_KEY = 'delivery_pin_confirmed'
+/** How the pin was found, how long it took and the searches that found nothing: measures, no address in them. */
+export const DELIVERY_PIN_SOURCE_KEY = 'delivery_pin_source'
+export const DELIVERY_PIN_SECONDS_KEY = 'delivery_pin_seconds'
+export const DELIVERY_SEARCH_MISSES_KEY = 'delivery_search_misses'
+/** "I can't find my place": the order goes without a pin and the store calls (`delivery/unpinned-delivery.ts`). */
+export const DELIVERY_PIN_SKIPPED_KEY = 'delivery_pin_skipped'
+
+export type PinSource = 'gps' | 'search' | 'link' | 'map' | 'saved'
+
+export interface AddressChangeMeta {
+  /** The customer confirmed this spot on the map. */
+  isConfirmed?: boolean
+  source?: PinSource
+  /** From first touching the field to confirming the pin. */
+  seconds?: number
+  searchMisses?: number
+}
+
+function normalizeAddressText(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/** A text edit keeps the pin while the label it was picked with is still there ("Unit 5B, " + label). */
+function isEditOfPickedAddress(previous: Readonly<Record<string, string>>, address: string): boolean {
+  const pickedLabel = previous[DELIVERY_PIN_ADDRESS_KEY]
+  if (!pickedLabel || !previous.delivery_lat || !previous.delivery_lng) return false
+  return normalizeAddressText(address).includes(normalizeAddressText(pickedLabel))
+}
+
 /**
- * The customer data after the address field changes. A geocoded pick stores its
- * coordinates; a free-text edit drops them, so the fee path treats the address
- * as "no coordinates" and forces a re-pick rather than quoting a stale pin.
+ * The customer data after the address field changes.
+ *
+ * A pick stores its coordinates and the label it was picked with. A text edit
+ * that keeps that label (adding a unit or a landmark) keeps the pin; any other
+ * edit drops it, so the fee path treats the address as "no coordinates" and
+ * forces a re-pick rather than quoting a pin for a different place.
  */
 export function applyDeliveryAddressChange(
   previous: Readonly<Record<string, string>>,
   fieldName: string,
   address: string,
-  coordinates: AddressCoordinates | null | undefined
+  coordinates: AddressCoordinates | null | undefined,
+  meta: AddressChangeMeta = {},
 ): Record<string, string> {
-  // Strip stale coordinates without mutating the previous map.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { delivery_lat: _lat, delivery_lng: _lng, ...rest } = previous
+  if (!coordinates && isEditOfPickedAddress(previous, address)) return { ...previous, [fieldName]: address }
+
+  // Strip the old pin without mutating the previous map.
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  const {
+    delivery_lat: _lat,
+    delivery_lng: _lng,
+    [DELIVERY_PIN_ADDRESS_KEY]: _label,
+    [DELIVERY_PIN_CONFIRMED_KEY]: _confirmed,
+    [DELIVERY_PIN_SOURCE_KEY]: _source,
+    [DELIVERY_PIN_SECONDS_KEY]: _seconds,
+    [DELIVERY_SEARCH_MISSES_KEY]: _misses,
+    ...rest
+  } = previous
+  /* eslint-enable @typescript-eslint/no-unused-vars */
   const next = { ...rest, [fieldName]: address }
   if (!coordinates) return next
-  return { ...next, delivery_lat: String(coordinates.lat), delivery_lng: String(coordinates.lng) }
+  // A pin answers "I can't find my place".
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+  const { [DELIVERY_PIN_SKIPPED_KEY]: _skipped, ...pinned } = next
+  return {
+    ...pinned,
+    delivery_lat: String(coordinates.lat),
+    delivery_lng: String(coordinates.lng),
+    [DELIVERY_PIN_ADDRESS_KEY]: address,
+    ...(meta.isConfirmed ? { [DELIVERY_PIN_CONFIRMED_KEY]: 'true' } : {}),
+    ...(meta.source ? { [DELIVERY_PIN_SOURCE_KEY]: meta.source } : {}),
+    ...(meta.seconds !== undefined ? { [DELIVERY_PIN_SECONDS_KEY]: String(meta.seconds) } : {}),
+    ...(meta.searchMisses ? { [DELIVERY_SEARCH_MISSES_KEY]: String(meta.searchMisses) } : {}),
+  }
 }
 
 /** Standard PH mobile number length, without the country code. */

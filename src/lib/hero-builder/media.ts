@@ -94,6 +94,8 @@ export function buildEmbedDocument(code: unknown, frameId: string): string {
 /**
  * Sandbox flags for embeds. Deliberately WITHOUT allow-same-origin (would let
  * the code reach the store's cookies/DOM) and WITHOUT allow-top-navigation
- * (would let it redirect the store to a lookalike page).
+ * (would let it redirect the store to a lookalike page), and WITHOUT
+ * allow-popups-to-escape-sandbox (a popup keeps the sandbox, so it can't become
+ * an unsandboxed page on the embed's own terms).
  */
-export const EMBED_SANDBOX = 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation'
+export const EMBED_SANDBOX = 'allow-scripts allow-forms allow-popups allow-presentation'

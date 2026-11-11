@@ -68,6 +68,20 @@ describe("outbox worker", () => {
     expect(deps.api.claim).toHaveBeenCalledTimes(1);
   });
 
+  it("reports the SIM's own reason (no signal) so the owner can fix it", async () => {
+    const deps = setup();
+    deps.transport.send.mockRejectedValue(Object.assign(new Error("No mobile service."), { code: "NO_SERVICE" }));
+    await createOutboxWorker(deps).runOnce();
+    expect(deps.api.finish).toHaveBeenCalledWith({ messageId, leaseToken }, "failed", "no_service");
+  });
+
+  it("never reports an unknown error code verbatim", async () => {
+    const deps = setup();
+    deps.transport.send.mockRejectedValue(Object.assign(new Error("x"), { code: "ERR_Weird Code!" }));
+    await createOutboxWorker(deps).runOnce();
+    expect(deps.api.finish).toHaveBeenCalledWith({ messageId, leaseToken }, "failed", "send_failed");
+  });
+
   it("after a crash mid-send, reports the text as failed instead of sending it again", async () => {
     const deps = setup();
     await deps.journal.write({ jobId: messageId, leaseToken, outcome: "pending" });

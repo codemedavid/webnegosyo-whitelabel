@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { callerHasFeature } from '@/lib/gov-discount-ledger/caller-scope'
 import { parseIdPhotoUploadRequest } from '@/lib/gov-discount-ledger/request-schemas'
 import { requireGovCaller } from '@/lib/gov-discount-ledger/route-guards'
 
-const BURST = { maxRequests: 30, windowMs: 60_000 }
+const BURST = { limit: 30, windowSec: 60, onRedisFailure: 'instance' as const }
 
 /**
  * POST /api/gov-discounts/id-photos
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     mayReplaceAny: callerHasFeature(caller.appUser, 'discount_review'),
   }
 
-  if (!checkRateLimit(`gov-id-photo:${caller.user.id}`, BURST).allowed) {
+  if (!(await checkRateLimit(`gov-id-photo:${caller.user.id}`, BURST)).allowed) {
     return NextResponse.json({ error: 'Too many photos at once. Try again in a minute.' }, { status: 429 })
   }
 

@@ -6,6 +6,7 @@ import {
   AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, readableOn, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
+import { LowStockBadge } from '../card-stock'
 
 const BISTRO_DEFAULTS: CardStyle = {
   imageRatio: 'wide',
@@ -52,6 +53,7 @@ export const BistroCard = memo(function BistroCard({
           priority={priority}
           imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]"
         >
+          <LowStockBadge branding={branding} />
           {!isOrderable && <SoldOutVeil label="Unavailable" />}
         </CardMedia>
         <CardBadges

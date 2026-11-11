@@ -2,6 +2,7 @@
 
 import { QRCodeSVG } from 'qrcode.react'
 import { useTexts } from '../texts-context'
+import { KeepAwakeByBrand } from './keep-awake-steps'
 /** Navigation only, never a credential: opens the app's Texts → Rules screen. */
 export const APP_TEXTS_RULES = 'webnegosyo-admin://texts?tab=rules'
 
@@ -29,7 +30,10 @@ export function ConnectPhoneSteps() {
         </li>
         <li className="flex gap-3">
           <Step n={4} />
-          <span>Turn battery saver off for SmartMenu, so it can send in the background.</span>
+          <div className="min-w-0 flex-1 space-y-2">
+            <span>Stop the phone from putting SmartMenu to sleep, or it quietly stops sending. Find your phone:</span>
+            <KeepAwakeByBrand />
+          </div>
         </li>
       </ol>
       <div className="flex items-center gap-4 rounded-2xl border border-wn-line bg-white p-3">

@@ -92,7 +92,7 @@ describe('trackAnalyticsEventAction', () => {
 
     await trackAnalyticsEventAction('tenant-1', 'upsell_clicked')
 
-    expect(mockConvexMutation).toHaveBeenCalledWith('analytics:trackEvent', {
+    expect(mockConvexMutation).toHaveBeenCalledWith('analytics:trackEventInternal', {
       type: 'upsell_clicked',
       metadata: {},
     })

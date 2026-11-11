@@ -8,7 +8,9 @@
  *
  * The answers are still judged in the original order, so no refusal changes:
  *  1. an inactive (or unknown) store is refused first — a secrets failure
- *     arriving alongside must not turn that refusal into a "lost order";
+ *     arriving alongside must not turn that refusal into a "lost order". A
+ *     failed read of the store is NOT that refusal: it reports `unavailable`, so
+ *     the checkout retries and keeps its Messenger fallback;
  *  2. a secrets failure for an active store throws, as before (the caller's
  *     catch reports the order lost — it cannot be routed);
  *  3. the order type is handed back as a settled-later promise, because the
@@ -23,11 +25,13 @@ import { OPERATING_HOURS_ENFORCEMENT_COLUMNS } from '@/lib/store-open-status'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
+const NO_ROW_CODE = 'PGRST116'
+
 /** Every tenant column the order action consults. Credentials live in tenant_secrets. */
 export const ORDER_TENANT_CONFIG_SELECT = [
   'order_backend', 'supabase_order_url', 'supabase_order_anon_key', 'supabase_order_service_key',
   'inventory_enabled', 'convex_deployment_url', 'admin_email', 'email_notifications_enabled',
-  'name', 'slug', 'is_active', 'lalamove_enabled', 'distance_delivery_enabled',
+  'name', 'slug', 'is_active', 'lalamove_enabled', 'lalamove_market', 'distance_delivery_enabled',
   'delivery_price_per_km', 'delivery_min_fee', 'delivery_radius_km', 'free_delivery_min_order',
   'restaurant_latitude', 'restaurant_longitude', 'multi_branch_enabled',
   'loyverse_enabled', 'loyverse_store_id', 'loyverse_payment_type_id', 'loyverse_push_mode',
@@ -41,7 +45,7 @@ export const ORDER_TENANT_CONFIG_SELECT = [
 export type OrderTypeRead = { ok: true; row: CheckoutOrderTypeRow | null } | { ok: false }
 
 export type OrderTenantContext =
-  | { ok: false }
+  | { ok: false; reason: 'inactive' | 'unavailable' }
   | {
       ok: true
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,8 +90,13 @@ export async function loadOrderTenantContext(
   const secretsRead = deferRejection(getTenantSecrets(client, tenantId))
   const orderType = deferRejection(readOrderType(client, tenantId, orderTypeId))
 
-  const { data: configData } = await configRead
-  if (!configData) return { ok: false }
+  const { data: configData, error: configError } = await configRead
+  if (!configData) {
+    // PostgREST reports "no row" as PGRST116: the store really is unknown/inactive.
+    const isReadFailure = !!configError && configError.code !== NO_ROW_CODE
+    if (isReadFailure) console.error('[checkout] tenant read failed', { tenantId, code: configError.code })
+    return { ok: false, reason: isReadFailure ? 'unavailable' : 'inactive' }
+  }
 
   const tenantSecrets = await secretsRead
   return {

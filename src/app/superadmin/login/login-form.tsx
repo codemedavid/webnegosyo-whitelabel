@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { signOutThisDevice } from '@/lib/supabase/sign-out'
 import { isConsoleUser } from '@/lib/platform-staff/permissions'
 import { cn } from '@/lib/utils'
+import { resolveSuperadminLoginRedirect, SUPERADMIN_HOME_PATH } from '@/lib/login-redirect'
 import { Shield, Loader2, AlertCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react'
 
 /** Dark-on-dark safe field styling — the base Input inherits the light palette. */
@@ -21,13 +22,9 @@ export default function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const unauthorized = params.get('unauthorized') === '1'
-  // Safe internal return path (e.g. the OAuth /authorize URL). Reject anything
-  // that isn't a same-origin absolute path to avoid open-redirects.
+  // Return path (e.g. the MCP consent page). Resolved against this origin at
+  // submit time and kept only inside /superadmin/… to avoid open redirects.
   const rawRedirect = params.get('redirect')
-  const redirectTo =
-    rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')
-      ? rawRedirect
-      : '/superadmin'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -76,8 +73,9 @@ export default function LoginForm() {
 
       // Full navigation (not router.replace) so an external return path like the
       // OAuth /authorize route handler runs on the server with fresh cookies.
-      if (redirectTo === '/superadmin') {
-        router.replace('/superadmin')
+      const redirectTo = resolveSuperadminLoginRedirect(rawRedirect, window.location.origin)
+      if (redirectTo === SUPERADMIN_HOME_PATH) {
+        router.replace(SUPERADMIN_HOME_PATH)
       } else {
         window.location.assign(redirectTo)
       }

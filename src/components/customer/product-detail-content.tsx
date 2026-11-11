@@ -13,6 +13,7 @@ import { useModifierGroups } from '@/hooks/useModifierGroups'
 import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { ProductVariations, ProductAddons } from '@/components/customer/product-detail/product-options'
 import { addonLabel } from '@/lib/addon-quantity'
+import { withCategoryAddons } from '@/lib/category-default-addons'
 import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
 import { useProductDetailModals } from '@/hooks/useProductDetailModals'
 import { formatPrice } from '@/lib/cart-utils'
@@ -40,6 +41,8 @@ import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
 import { resolveProductDetailColors, getProductDetailThemeCSS, computeProductDetailStyles, productMotionSeconds } from '@/lib/product-detail-theme'
 import { modifierLabelsFrom } from '@/lib/product-detail-labels'
+import { ItemNoteField, type ItemNoteColors } from '@/components/customer/item-note-field'
+import { normalizeItemNote } from '@/lib/item-note'
 import { applyPreviewStates, parsePreviewStates, PREVIEW_STATES_KEY } from '@/lib/branding-studio/preview-states'
 
 /** Ids for the Studio's sample "You might also like" cards. */
@@ -73,6 +76,17 @@ const BundleWizard = dynamic(
  * count afterwards.
  */
 const SENIOR_ADDED_TOAST_MS = 3000
+
+/** The kitchen-note box wears the add-on rows' colours (Studio: Add-ons). */
+const NOTE_COLORS: ItemNoteColors = {
+    title: 'var(--pd-addon-title)',
+    muted: 'var(--pd-text-muted)',
+    text: 'var(--pd-addon-text)',
+    background: 'var(--pd-addon-bg)',
+    border: 'var(--pd-addon-border)',
+    focus: 'var(--pd-primary)',
+}
+const NOTE_TITLE_STYLE = { fontFamily: 'var(--pd-font-heading)', fontSize: 'var(--pd-addon-title-font-size)' }
 
 interface ProductDetailContentProps {
     tenant: SelectedTenant
@@ -218,6 +232,14 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // what the diner already ordered is left out, and nothing jumps once a
     // suggestion inside the sheet joins the cart.
     const [addedSheetOffers, setAddedSheetOffers] = useState<MenuItem[]>([])
+    // The diner's note for the kitchen, held per dish: a page that swaps to
+    // another dish in place starts that dish with an empty box.
+    const [noteDraft, setNoteDraft] = useState({ itemId: storeWideItem.id, text: '' })
+    const noteText = noteDraft.itemId === storeWideItem.id ? noteDraft.text : ''
+    const handleNoteChange = useCallback(
+        (text: string) => setNoteDraft({ itemId: storeWideItem.id, text }),
+        [storeWideItem.id]
+    )
 
     const {
         isImageModalOpen,
@@ -265,9 +287,13 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // Options whose own recipe the shelf cannot cover read as sold out — the
     // same answer checkout's stock guard would give (inventory stores only;
     // every other store gets no ceilings and nothing changes).
-    const optionCeilings = useOptionStockCeilings(tenant.id, branchPricing.selectedOutletId).get(item.id)
+    // Only stores that track stock have ceilings; the rest never ask.
+    const stockTenantId = tenant.inventory_enabled === true ? tenant.id : null
+    const optionCeilings = useOptionStockCeilings(stockTenantId, branchPricing.selectedOutletId).get(item.id)
     const soldOutOptions = useMemo(() => soldOutOptionIds(optionCeilings), [optionCeilings])
-    const mg = useModifierGroups({ item, linkedItems: linkedModifierItems, soldOutOptionIds: soldOutOptions })
+    // The category's default add-ons join the dish's groups, as checkout prices them.
+    const groupedItem = useMemo(() => withCategoryAddons(item, category?.default_addons), [item, category?.default_addons])
+    const mg = useModifierGroups({ item: groupedItem, linkedItems: linkedModifierItems, soldOutOptionIds: soldOutOptions })
     const useGroups = modifierGroupsEnabled && mg.active
     const effectiveQuantity = useGroups ? mg.quantity : quantity
     const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice
@@ -280,7 +306,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // ceiling surfaced where the number is chosen, so nobody walks through the
     // whole checkout to be turned away on the last screen. Untracked dishes get
     // `null` and behave exactly as they always have.
-    const ceilings = useStockCeilings(tenant.id, branchPricing.selectedOutletId)
+    const ceilings = useStockCeilings(stockTenantId, branchPricing.selectedOutletId)
     // The configuration being picked: a Large with pearls is capped by the
     // pearls as well as by the base recipe.
     const stockCeiling = useMemo(
@@ -544,13 +570,16 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // `announce: false` when the "Added" sheet confirms the add instead of a toast.
     const addCurrentItemToCart = useCallback(({ announce = true }: { announce?: boolean } = {}): boolean => {
         const presell = isPresell && presellDate ? presellDate : undefined
+        const note = normalizeItemNote(noteText)
         const result = useGroups
-            ? addItem({ ...item, modifier_groups: mg.groups }, mg.cartFormat.selectedVariations, mg.cartFormat.selectedAddons, mg.quantity, undefined, undefined, undefined, presell)
-            : addItem(item, useNewVariations ? selectedVariations : selectedVariation, selectedAddons, quantity, undefined, undefined, undefined, presell)
+            ? addItem({ ...item, modifier_groups: mg.groups }, mg.cartFormat.selectedVariations, mg.cartFormat.selectedAddons, mg.quantity, note, undefined, undefined, presell)
+            : addItem(item, useNewVariations ? selectedVariations : selectedVariation, selectedAddons, quantity, note, undefined, undefined, presell)
         if (!result.ok) {
             toast.error(`Your cart is already for ${formatPresellDateLabel(result.committedDate)}. Pre-orders are placed one date at a time.`)
             return false
         }
+        // The note went with this dish; the next add from this page starts blank.
+        setNoteDraft({ itemId: storeWideItem.id, text: '' })
         if (!announce) return true
         if (isSeniorMode) {
             // Senior mode: a larger worded confirmation (styled by .senior-toast
@@ -562,7 +591,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
         addedToastRef.current = toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
         return true
-    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate, isSeniorMode])
+    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate, isSeniorMode, noteText, storeWideItem.id])
 
     // Only combos that contain this dish — never the store's first combo.
     const itemCombos = useMemo(
@@ -998,6 +1027,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 />
                             )}
                         </div>
+                    )}
+
+                    {/* Optional note for the kitchen ("no onions"), per dish. */}
+                    {isOrderable && (
+                        <ItemNoteField
+                            className="mt-6 mb-6"
+                            brandingScope="product/note"
+                            value={noteText}
+                            onChange={handleNoteChange}
+                            colors={NOTE_COLORS}
+                            titleStyle={NOTE_TITLE_STYLE}
+                        />
                     )}
 
                     {/* Upgrade moment: the meal version and this dish's combos, as a choice — never a takeover */}

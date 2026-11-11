@@ -10,12 +10,14 @@ import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
 import { resolveOrderBackend, assertOrderBackendReady, type OrderBackend } from '@/lib/order-backend'
 import { burnRedemptions } from '@/lib/vouchers/order-voucher-flow'
 import { runOrderFollowUps } from '@/lib/checkout/order-follow-ups'
+import { holdSimpleOptionStock } from '@/lib/checkout/simple-option-hold'
 import type { AdmittedOrder } from './context'
 import type { PricedCharges } from './pricing'
 import type { PresellClaimHolder } from './presell-claim'
-import { ORDER_SOURCE_BY_CHANNEL, type PlacedOrderRow, type PlacedOrderToken } from './types'
+import { ORDER_SOURCE_BY_CHANNEL, refused, type PlacedOrderRow, type PlacedOrderToken, type RefusedOrder } from './types'
 
 export interface WrittenOrder {
+  kind: 'written'
   order: PlacedOrderRow
   orderToken: PlacedOrderToken
   deduped: boolean
@@ -27,6 +29,19 @@ interface WriteOrderInput {
   charges: PricedCharges
   effectiveDeliveryFee: number | undefined
   presell: PresellClaimHolder
+  /** Platform only: the id the order is inserted with (simple-option counters are claimed under it). */
+  platformOrderId: string | null
+}
+
+/** The STORED payment method the order records, as the backends' four positional fields. */
+function paymentFields(order: AdmittedOrder) {
+  const method = order.paymentMethod
+  return {
+    paymentMethodId: method?.id,
+    paymentMethodName: method?.name,
+    paymentMethodDetails: method?.details ?? undefined,
+    paymentMethodQrCodeUrl: method?.qrCodeUrl ?? undefined,
+  }
 }
 
 function createAfterWrite({ order, charges, effectiveDeliveryFee }: WriteOrderInput) {
@@ -78,7 +93,8 @@ function createAfterWrite({ order, charges, effectiveDeliveryFee }: WriteOrderIn
       orderTypeName: order.orderTypeRow?.name ?? null,
       deliveryFee: effectiveDeliveryFee,
       serviceCharge,
-      paymentMethodName: input.paymentMethodName,
+      orderTotal: pricing.totals.grandTotal,
+      paymentMethodName: order.paymentMethod?.name,
       customerData: charges.customerData,
     },
     captureCustomer,
@@ -117,10 +133,7 @@ async function writeTenantSupabaseOrder(write: WriteOrderInput): Promise<Written
     customerData: effectiveCustomerData,
     deliveryFee: effectiveDeliveryFee,
     lalamoveQuotationId: input.lalamoveQuotationId,
-    paymentMethodId: input.paymentMethodId,
-    paymentMethodName: input.paymentMethodName,
-    paymentMethodDetails: input.paymentMethodDetails,
-    paymentMethodQrCodeUrl: input.paymentMethodQrCodeUrl,
+    ...paymentFields(order),
     serviceChargeAmount: serviceCharge,
     scheduledForISO: order.validatedScheduledISO,
     paymentProof: order.paymentProof,
@@ -152,7 +165,7 @@ async function writeTenantSupabaseOrder(write: WriteOrderInput): Promise<Written
       })),
     })
   })
-  return { order: result.order, orderToken: result.orderToken, deduped: false, backend: 'supabase' }
+  return { kind: 'written', order: result.order, orderToken: result.orderToken, deduped: false, backend: 'supabase' }
 }
 
 /**
@@ -182,6 +195,7 @@ async function writeConvexOrder(write: WriteOrderInput): Promise<WrittenOrder> {
     : charges.customerData
 
   // Route to Convex (prices already validated above)
+  const payment = paymentFields(order)
   const result = await createOrderConvex(
     tenantConfig.convex_deployment_url,
     tenantConfig.convex_deploy_key,
@@ -192,10 +206,10 @@ async function writeConvexOrder(write: WriteOrderInput): Promise<WrittenOrder> {
     convexCustomerData,
     effectiveDeliveryFee,
     input.lalamoveQuotationId,
-    input.paymentMethodId,
-    input.paymentMethodName,
-    input.paymentMethodDetails,
-    input.paymentMethodQrCodeUrl,
+    payment.paymentMethodId,
+    payment.paymentMethodName,
+    payment.paymentMethodDetails,
+    payment.paymentMethodQrCodeUrl,
     serviceCharge,
     order.validatedScheduledISO,
     pricing.application.discountLines,
@@ -205,17 +219,35 @@ async function writeConvexOrder(write: WriteOrderInput): Promise<WrittenOrder> {
   presell.markPersisted()
   await burnFor(result.order.id)
   await followUp(result.order.id, null)
-  return { order: result.order, orderToken: result.orderToken, deduped: false, backend: 'convex' }
+  return { kind: 'written', order: result.order, orderToken: result.orderToken, deduped: false, backend: 'convex' }
 }
 
 /** The shared platform database — most stores. */
-async function writePlatformOrder(write: WriteOrderInput): Promise<WrittenOrder> {
-  const { order, charges, effectiveDeliveryFee, presell } = write
+async function writePlatformOrder(write: WriteOrderInput): Promise<WrittenOrder | RefusedOrder> {
+  const { order, charges, effectiveDeliveryFee, presell, platformOrderId } = write
   const { input, lines: items, resolvedOutlet } = order
   const { clientOrderId } = input
   const { pricing, serviceCharge } = charges
   const { burnFor, followUp } = createAfterWrite(write)
 
+  // The option claim (see "Simple-option counters" in index.ts), right before
+  // the insert: nothing that can stall sits between the two.
+  if (order.tenantConfig.inventory_enabled === true && platformOrderId) {
+    const hold = await holdSimpleOptionStock({
+      db: order.db,
+      tenantId: input.tenantId,
+      orderId: platformOrderId,
+      items,
+      outletId: resolvedOutlet?.id ?? null,
+    })
+    if (!hold.ok) {
+      await presell.release()
+      return refused(hold.error)
+    }
+    presell.adoptOptionHold(hold.release)
+  }
+
+  const payment = paymentFields(order)
   const result = await createOrder(
     input.tenantId,
     items,
@@ -224,10 +256,10 @@ async function writePlatformOrder(write: WriteOrderInput): Promise<WrittenOrder>
     charges.customerData,
     effectiveDeliveryFee,
     input.lalamoveQuotationId,
-    input.paymentMethodId,
-    input.paymentMethodName,
-    input.paymentMethodDetails,
-    input.paymentMethodQrCodeUrl,
+    payment.paymentMethodId,
+    payment.paymentMethodName,
+    payment.paymentMethodDetails,
+    payment.paymentMethodQrCodeUrl,
     serviceCharge,
     order.validatedScheduledISO,
     order.paymentProof,
@@ -239,6 +271,8 @@ async function writePlatformOrder(write: WriteOrderInput): Promise<WrittenOrder>
       clientOrderId: typeof clientOrderId === 'string' ? clientOrderId : null,
       discountPayload: pricing.discountPayload,
       source: ORDER_SOURCE_BY_CHANNEL[input.channel ?? 'web'],
+      // The id the simple-option counters were claimed under.
+      orderId: platformOrderId,
     }
   )
   if (result.deduped) {
@@ -249,18 +283,19 @@ async function writePlatformOrder(write: WriteOrderInput): Promise<WrittenOrder>
     // Its presell claim is the one the saved order carries, so the claim THIS
     // retry just took reserved the allocation a second time for an order that
     // already exists. Hand that duplicate back or the shelf shrinks on every
-    // double tap.
+    // double tap. The same goes for the option counters claimed under this
+    // retry's own (never written) order id.
     await presell.release()
-    return { order: result.order, orderToken: result.orderToken, deduped: true, backend: 'platform' }
+    return { kind: 'written', order: result.order, orderToken: result.orderToken, deduped: true, backend: 'platform' }
   }
   // The order row exists and carries the claim; the stock is spent for real.
   presell.markPersisted()
   await burnFor(result.order.id)
   await followUp(result.order.id, result.order.id)
-  return { order: result.order, orderToken: result.orderToken, deduped: false, backend: 'platform' }
+  return { kind: 'written', order: result.order, orderToken: result.orderToken, deduped: false, backend: 'platform' }
 }
 
-export async function writeOrder(write: WriteOrderInput): Promise<WrittenOrder> {
+export async function writeOrder(write: WriteOrderInput): Promise<WrittenOrder | RefusedOrder> {
   const backend = resolveOrderBackend(write.order.tenantConfig)
   if (backend === 'supabase') return writeTenantSupabaseOrder(write)
   if (backend === 'convex') return writeConvexOrder(write)

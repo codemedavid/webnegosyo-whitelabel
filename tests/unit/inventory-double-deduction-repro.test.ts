@@ -20,6 +20,7 @@ import {
   redepleteOrderStockBestEffort,
   reverseOrderStockMovements,
 } from '@/lib/inventory/order-stock-service'
+import { rowStoreStockRpc } from '../fixtures/order-stock-claim-rpc'
 
 const TENANT = '55555555-5555-4555-8555-555555555555'
 const ORDER = 'b0000000-0000-4000-8000-0000000000d1'
@@ -129,7 +130,10 @@ function query(table: string) {
 }
 
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (table: string) => query(table), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({
+    from: (table: string) => query(table),
+    rpc: rowStoreStockRpc({ claims: db.order_stock_applications, movements: db.stock_movements }),
+  }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({

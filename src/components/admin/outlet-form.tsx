@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { MapPin } from 'lucide-react'
 import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
+import { StorePinMismatchNotice, useStorePinCheck } from '@/components/admin/store-pin-check'
 import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 import {
@@ -30,9 +31,12 @@ interface OutletFormProps {
   isSaving: boolean
   onCancel: () => void
   onSubmit: (input: OutletWriteInput) => void
+  /** Lets the form ask "is the pin where the address says?" before saving. */
+  tenantId?: string | null
 }
 
-export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, onSubmit }: OutletFormProps) {
+export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, onSubmit, tenantId = null }: OutletFormProps) {
+  const { mismatchKm, ensurePinMatchesAddress } = useStorePinCheck(tenantId)
   const [draft, setDraft] = useState<OutletDraft>(
     outlet ? outletToDraft(outlet) : EMPTY_OUTLET_DRAFT
   )
@@ -48,16 +52,22 @@ export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, o
   const handleAddressChange = (address: string, coordinates?: PickedCoordinates) =>
     setDraft((current) => applyOutletAddressSelection(current, address, coordinates))
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault()
+  const submit = async () => {
     try {
       // Same validation the repository runs, so the form can never report a
       // problem the server would accept, or accept one the server rejects.
-      onSubmit(buildOutletWriteInput(draft, { sortOrder: outlet?.sort_order }))
+      const input = buildOutletWriteInput(draft, { sortOrder: outlet?.sort_order })
       setError(null)
+      if (tenantId && !(await ensurePinMatchesAddress(draft.address, input.latitude ?? null, input.longitude ?? null))) return
+      onSubmit(input)
     } catch (validationError) {
       setError(validationError instanceof Error ? validationError.message : 'Check the form')
     }
+  }
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    void submit()
   }
 
   return (
@@ -106,6 +116,7 @@ export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, o
               onChange={handleAddressChange}
               placeholder="Search or pin this branch's location"
               mapsEnabled={mapboxEnabled}
+              purpose="store"
             />
             {hasPin ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -191,6 +202,7 @@ export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, o
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
+          <StorePinMismatchNotice mismatchKm={mismatchKm} onSaveAnyway={() => void submit()} isSaving={isSaving} />
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>

@@ -16,8 +16,10 @@ import {
   addLine,
   cartTotals,
   clearCart,
+  lineKeyWithNote,
   removeLine,
   round2,
+  setLineNote,
   updateQty,
   type CartTotals,
   type PosCartLine,
@@ -66,6 +68,14 @@ import {
 } from "../lib/pos-gov-discount";
 import type { StoredGovDiscount } from "../lib/gov-discount";
 import { useGovDiscountContextStore } from "./gov-discount-context-store";
+import {
+  LINE_NOTE_SAVED,
+  hasConflictingItemDiscounts,
+  holdsLineKey,
+  rekeyDiscountSession,
+  rekeyEditDiscount,
+  type LineNoteResult,
+} from "../lib/pos-line-rekey";
 import { govRecordDraft, type GovRecordDraft } from "../lib/gov-ledger/record-request";
 import { previewSessionVoucher, type VoucherEntryVerdict } from "../lib/pos-voucher-entry";
 import type { StaffPermissionHolder } from "../lib/staff-permissions";
@@ -151,6 +161,15 @@ interface PosCartState {
   add: (input: PosLineInput) => void;
   setQty: (key: string, quantity: number) => void;
   remove: (key: string) => void;
+  /**
+   * Write (or, blank, clear) a line's kitchen note. The note is part of the
+   * line's key, so the line is re-keyed (merging into an identical line) and
+   * its item discount, voucher unit picks and Senior/PWD claims move with it.
+   * Refused (nothing changes) when the merge would drop a discount: two
+   * lines discounted on different terms, or — appending to a placed order —
+   * a discounted new line landing on a placed dish's key.
+   */
+  setLineNote: (key: string, note: string) => LineNoteResult;
   reset: () => void;
   setOrderType: (
     orderTypeId: string,
@@ -341,6 +360,50 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       const lines = removeLine(s.lines, key);
       return { lines, discount: discountAfterCartChange(s.discount, lines) };
     }),
+
+  setLineNote: (key, note) => {
+    const s = get();
+    const line = s.lines.find((entry) => entry.key === key);
+    if (!line) return LINE_NOTE_SAVED;
+    const lines = setLineNote(s.lines, key, note);
+    if (lines === s.lines) return LINE_NOTE_SAVED;
+    const nextKey = lineKeyWithNote(line, note);
+    const isAppending = s.editContext?.mode === "append";
+    const isPlaced = (lineKeyToFind: string) =>
+      isAppending && (s.editContext?.appendBaseCart ?? []).some((placed) => placed.key === lineKeyToFind);
+
+    // Appending to a placed order: a new line that shares its key with a
+    // placed one is priced together with it (`effectiveEditCart`), so what
+    // is held under that key belongs to the placed dish and stays put.
+    if (isPlaced(key)) {
+      set({ lines, discount: discountAfterCartChange(s.discount, lines) });
+      return LINE_NOTE_SAVED;
+    }
+    // The reverse: a NEW line whose note gives it a placed dish's key. Moving
+    // its discount onto that key would hand it to the placed dish, and
+    // dropping it would put the new dish back at full price unseen — refuse.
+    if (isPlaced(nextKey) && holdsLineKey(s.discount, key)) {
+      return { ok: false, reason: "placed-line-discount" };
+    }
+    // One item discount per line: merging two lines discounted on different
+    // terms would silently drop one of them.
+    if (hasConflictingItemDiscounts(s.discount, key, nextKey)) {
+      return { ok: false, reason: "conflicting-discounts" };
+    }
+
+    const discount = discountAfterCartChange(rekeyDiscountSession(s.discount, key, nextKey), lines);
+    const storedDiscount = s.editContext
+      ? rekeyEditDiscount(s.editContext.storedDiscount, key, nextKey)
+      : null;
+    set({
+      lines,
+      discount,
+      ...(s.editContext && storedDiscount !== s.editContext.storedDiscount
+        ? { editContext: { ...s.editContext, storedDiscount } }
+        : {}),
+    });
+    return LINE_NOTE_SAVED;
+  },
 
   // Clears the sale but keeps the order type, so a cashier ringing up a queue
   // of dine-in customers does not re-pick it for every single sale.

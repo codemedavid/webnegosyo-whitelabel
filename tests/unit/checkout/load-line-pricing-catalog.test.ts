@@ -3,10 +3,10 @@
  * because the customer app sends every line at price 0 and the web's own price
  * claim can be forged low. Two gaps closed here:
  *
- *  1. Category default add-ons (`categories.default_addons`) are merged into a
- *     legacy-path dish's add-ons with the storefront's rule (item wins on a
- *     case-insensitive name clash) — and NOT on the unified `modifier_groups`
- *     path, which never shows them.
+ *  1. Category default add-ons (`categories.default_addons`) are merged where
+ *     the diner saw them, with the storefront's rule (item wins on a
+ *     case-insensitive name clash): into a unified dish's `modifier_groups`
+ *     (the item page's `withCategoryAddons`), else into its legacy add-ons.
  *  2. Linked options (`menu_item_id` on an option) are priced at the BRANCH
  *     price of the linked dish, read in the same override query as the cart's
  *     own dishes.
@@ -90,7 +90,7 @@ describe('category default add-ons', () => {
     expect(priceOf(result)).toBe(110)
   })
 
-  test('defaults are not offered on the unified modifier-groups path', async () => {
+  test('defaults are offered on both paths, in the shape the store shows the dish', async () => {
     // Arrange
     const dish = burger({ modifier_groups: unifiedGroups([{ id: 'o-bacon', name: 'Bacon', price_modifier: 20 }]) })
     const tables = { menu_items: [dish], categories: [foodCategory([EGG])] }
@@ -103,14 +103,14 @@ describe('category default add-ons', () => {
     const onUnified = await loadAndPriceOrderLines(unified.client, TENANT, [claim], null, UNIFIED_STORE)
     const onLegacy = await loadAndPriceOrderLines(legacy.client, TENANT, [claim], null, LEGACY_STORE)
 
-    // Assert — the flag decides, exactly as modifierGroupsFor decides.
-    expect(priceOf(onUnified)).toBe(100)
-    expect(unified.seen).not.toContain('categories')
+    // Assert — joined to the groups on one, to the add-ons on the other: same charge.
+    expect(priceOf(onUnified)).toBe(115)
+    expect(unified.seen).toContain('categories')
     expect(priceOf(onLegacy)).toBe(115)
   })
 
-  test('a unified dish sharing a category with a legacy dish still gets no defaults', async () => {
-    // Arrange — the legacy dish makes the category read happen; the unified one must ignore it.
+  test('a unified dish and a legacy dish in one category both get the defaults', async () => {
+    // Arrange
     const unifiedDish = burger({
       id: 'wrap', name: 'Wrap', addons: [],
       modifier_groups: unifiedGroups([{ id: 'o-bacon', name: 'Bacon', price_modifier: 20 }]),
@@ -126,7 +126,7 @@ describe('category default add-ons', () => {
 
     // Assert
     if (!result.ok) throw new Error(result.error)
-    expect(result.lines.map((priced) => priced.price)).toEqual([115, 100])
+    expect(result.lines.map((priced) => priced.price)).toEqual([115, 115])
   })
 
   test('reads only this store’s categories, and only those of the cart’s dishes, in one query', async () => {
@@ -251,7 +251,7 @@ describe('linked options at a branch', () => {
 })
 
 describe('query count', () => {
-  test('a unified store-wide cart adds no read', async () => {
+  test('a unified store-wide cart adds exactly one read (its categories)', async () => {
     // Arrange
     const dish = burger({ modifier_groups: unifiedGroups([{ id: 'o-bacon', name: 'Bacon', price_modifier: 20 }]) })
     const { client, seen } = fakeSupabaseTables({ menu_items: [dish], categories: [foodCategory([EGG])] })
@@ -260,7 +260,7 @@ describe('query count', () => {
     await loadAndPriceOrderLines(client, TENANT, [line({ addon_ids: ['o-bacon'] })], null, UNIFIED_STORE)
 
     // Assert
-    expect(seen).toEqual(['menu_items'])
+    expect([...seen].sort()).toEqual(['categories', 'menu_items'])
   })
 
   test('a legacy branch cart adds exactly one read (its categories)', async () => {

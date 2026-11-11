@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
 import { readInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
@@ -10,6 +10,10 @@ import {
 } from '@/lib/inventory/customer-order-items'
 import { applyOrderStockBestEffort } from '@/lib/inventory/order-stock-service'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
+import { TERMINAL_ORDER_STATES } from '@/lib/inventory/order-stock-repair'
+import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
+import type { DepletionOrderItem } from '@/lib/inventory/order-depletion'
 
 /**
  * POST /api/inventory/customer-order-stock
@@ -37,6 +41,22 @@ import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
  * this runs the order is saved and the customer is looking at a confirmation. A
  * stock failure must never turn that into an error they cannot act on.
  *
+ * Beyond reading the lines back, the route only acts on the order the customer
+ * app has just placed. The app calls it within seconds of saving, so an order
+ * older than {@link FRESH_ORDER_MS}, or one placed by another channel, is
+ * answered `skipped: 'order_not_eligible'` — a forged call can no longer reach
+ * back into the store's history. Web checkout and the register deplete on their
+ * own paths (`createOrderAction`, `/api/inventory/order-stock`). Each address
+ * and each order has its own allowance, and one call may not spend more than
+ * {@link MAX_ORDER_UNITS} units.
+ *
+ * What counts as "the customer app": a Convex deployment stamps `source:
+ * 'mobile'`. The app's platform insert names no source, so the column default
+ * `'web'` is what a platform customer-app order carries; `'pos'` and
+ * `'qr_handoff'` are staff-made and have their own stock calls, so only those
+ * are refused there. (Having the app send `source: 'mobile'` would let the
+ * platform side be as strict, but needs a new app build.)
+ *
  * NOT covered: tenants whose orders live in their own Supabase project. Those
  * orders are in neither store this route can read back, so the same guarantee
  * cannot be made without trusting the caller's lines.
@@ -48,11 +68,64 @@ interface TenantStockConfig {
   convex_deploy_key: string | null
 }
 
+/** The app calls within seconds of saving; this allows for a slow connection and a retry. */
+const FRESH_ORDER_MS = 15 * 60 * 1000
+
+/** Far above any real cart (the checkout caps a line at 99), far below a made-up order. */
+const MAX_ORDER_UNITS = 500
+
+/** Per address, across every store: a shop's diners may share one Wi-Fi. */
+const IP_RATE_LIMIT: RateLimitOptions = { limit: 60, windowSec: 60, onRedisFailure: 'instance' }
+
+/** The app sends one call per order (the claim makes a repeat a no-op); a few covers retries. */
+const ORDER_RATE_LIMIT: RateLimitOptions = { limit: 5, windowSec: 600, onRedisFailure: 'instance' }
+
+/** Sources the customer app's orders carry, per backend (see the header). */
+const CUSTOMER_APP_SOURCES: Record<'platform' | 'convex', readonly string[]> = {
+  platform: ['web', 'mobile'],
+  convex: ['mobile'],
+}
+
+function notEligible(): NextResponse {
+  return NextResponse.json({ success: true, skipped: 'order_not_eligible' })
+}
+
+/** Cancelled, voided or refunded already: the sweep skips these, and so does this route. */
+function isFinished(status: unknown, paymentStatus: unknown): boolean {
+  const normalized = (value: unknown) => (typeof value === 'string' ? value.trim().toLowerCase() : '')
+  return TERMINAL_ORDER_STATES.has(normalized(status)) || TERMINAL_ORDER_STATES.has(normalized(paymentStatus))
+}
+
+function isFreshCustomerAppOrder(
+  backend: 'platform' | 'convex',
+  source: unknown,
+  placedAtMs: number,
+  nowMs: number,
+): boolean {
+  if (typeof source !== 'string' || !CUSTOMER_APP_SOURCES[backend].includes(source)) return false
+  return Number.isFinite(placedAtMs) && nowMs - placedAtMs <= FRESH_ORDER_MS && placedAtMs <= nowMs + FRESH_ORDER_MS
+}
+
+function tooManyRequests(retryAfterSec: number): NextResponse {
+  return NextResponse.json(
+    { error: 'Too many requests' },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
+  )
+}
+
+function totalUnits(items: readonly DepletionOrderItem[]): number {
+  return items.reduce((sum, item) => sum + item.quantity, 0)
+}
+
 /** A diner has no account, so the audit log names the path and nobody. */
 const CUSTOMER_APP_AUDIT = { context: { source: 'customer_app' as const } }
 
 /** Shape of `orders:getOrderById` as far as depletion cares. */
 interface ConvexOrderForStock {
+  _creationTime?: number
+  source?: string
+  status?: string
+  paymentStatus?: string
   customerData?: unknown
   outletId?: string | null
   items?: unknown[]
@@ -93,9 +166,16 @@ async function depleteConvexOrder(
   if (!order) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
+  if (
+    isFinished(order.status, order.paymentStatus) ||
+    !isFreshCustomerAppOrder('convex', order.source, Number(order._creationTime), Date.now())
+  ) {
+    return notEligible()
+  }
 
   const savedItems = buildDepletionItemsFromConvexOrderItems(Array.isArray(order.items) ? order.items : [])
   const items = readInventorySelectionSnapshot(order.customerData, savedItems) ?? savedItems
+  if (totalUnits(items) > MAX_ORDER_UNITS) return notEligible()
   if (items.length > 0) {
     // The branch comes off the stored order, never off the request body.
     await applyOrderStockBestEffort(
@@ -126,12 +206,21 @@ async function depletePlatformOrder(
   // shop they have nothing to do with.
   const { data: order } = await supabase
     .from('orders')
-    .select('tenant_id, outlet_id, customer_data')
+    .select('tenant_id, outlet_id, customer_data, source, created_at, status, payment_status')
     .eq('id', orderId)
     .single()
 
   if (!order || order.tenant_id !== tenantId) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
+  const { source, created_at: createdAt, status, payment_status: paymentStatus } = order as {
+    source?: unknown
+    created_at?: unknown
+    status?: unknown
+    payment_status?: unknown
+  }
+  if (isFinished(status, paymentStatus) || !isFreshCustomerAppOrder('platform', source, Date.parse(String(createdAt)), Date.now())) {
+    return notEligible()
   }
 
   const { data: lines } = await supabase
@@ -141,6 +230,7 @@ async function depletePlatformOrder(
 
   const savedItems = buildDepletionItemsFromOrderRows(lines ?? [])
   const items = readInventorySelectionSnapshot((order as { customer_data?: unknown }).customer_data, savedItems) ?? savedItems
+  if (totalUnits(items) > MAX_ORDER_UNITS) return notEligible()
   if (items.length > 0) {
     await applyOrderStockBestEffort(
       tenantId,
@@ -168,8 +258,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
   }
 
+  const ipRate = await checkRateLimit(`customer-order-stock:ip:${getClientIP(request) ?? 'unknown'}`, IP_RATE_LIMIT)
+  if (!ipRate.allowed) return tooManyRequests(ipRate.retryAfterSec)
+  const orderRate = await checkRateLimit(`customer-order-stock:order:${orderId}`, ORDER_RATE_LIMIT)
+  if (!orderRate.allowed) return tooManyRequests(orderRate.retryAfterSec)
+
   try {
-    const supabase = createAdminClient()
+    // Public request path: every read is bounded, so a slow database can't hold the diner's call open.
+    const supabase = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
 
     // Same gate `createOrderAction` applies: a tenant who has not turned
     // inventory on must never accumulate a ledger they did not ask for.

@@ -3,7 +3,7 @@
  *
  * Each stage is read from its own evidence (a stamp or a status). A lead that
  * reached a LATER stage has passed every earlier one, even when that stage
- * left no trace — the ₱999 funnel confirms payment out of band, so "proof
+ * left no trace — the /funnel confirms payment out of band, so "proof
  * uploaded" never happens there. Such an implied stage counts, but has no time
  * and stays out of every median. That keeps the counts monotonic, so each
  * stage's conversion from the one before is a real share.

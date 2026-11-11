@@ -20,9 +20,11 @@ const ORDER = 'ord-audit-1'
 const FLOUR = 'item-flour'
 const GRAM = 'unit-gram'
 
+import { bindOrderStockClaimRpc, routeStockRpc, type SimClaim, type SimMovement } from '../fixtures/order-stock-claim-rpc'
 const from = jest.fn()
+const rpc = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
   processStockLevelChanges: jest.fn(() => Promise.resolve({})),
@@ -48,6 +50,15 @@ interface StubOptions {
 }
 
 function stub(options: StubOptions, audits: Record<string, unknown>[]) {
+  // A taken claim is a sale (or void) claim at revision 0 already on record.
+  const claims: SimClaim[] = [
+    ...((options.claims ?? []) as SimClaim[]),
+    ...(options.claimTaken ? [{ reason: 'sale' as const, revision: 0 }, { reason: 'void' as const, revision: 0 }] : []),
+  ]
+  rpc.mockImplementation(routeStockRpc(bindOrderStockClaimRpc({
+    claims,
+    movements: () => (options.movements ?? []) as SimMovement[],
+  })))
   from.mockImplementation((table: string) => {
     if (table === 'inventory_audit_log') {
       return { insert: (row: Record<string, unknown>) => (audits.push(row), Promise.resolve({ error: null })) }

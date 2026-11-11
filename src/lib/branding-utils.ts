@@ -391,10 +391,22 @@ export const CART_CHECKOUT_PAGE_COLOR_COLUMNS: readonly string[] = [
 ]
 
 /**
+ * A stored colour reaches an inline style, so a value holding `;` could add its
+ * own declarations (and older rows predate the write-time check). Unlike
+ * `sanitizeCSSColor` this keeps every real colour syntax the themes produce
+ * (`color-mix()`, `rgb(0 0 0 / 50%)`, `var()`), refusing only what can end the
+ * declaration or fetch something. Unset stays unset.
+ */
+const UNSAFE_COLOR_DECLARATION = /[<>"';{}\\]|url\(|\/\*/i
+function safeColorDeclaration<T extends string | null | undefined>(value: T): T | 'inherit' {
+  return typeof value === 'string' && UNSAFE_COLOR_DECLARATION.test(value) ? 'inherit' : value
+}
+
+/**
  * Generate CSS custom properties for tenant branding
  */
 export function generateBrandingCSS(branding: BrandingColors): React.CSSProperties {
-  const css: Record<string, string> = {
+  const colors: Record<string, string> = {
     '--brand-background': branding.background,
     '--brand-header': branding.header,
     '--brand-header-font': branding.headerFont,
@@ -440,6 +452,9 @@ export function generateBrandingCSS(branding: BrandingColors): React.CSSProperti
     '--brand-cart-accent': branding.cartAccent,
     '--brand-checkout-accent': branding.checkoutAccent,
   }
+  const css: Record<string, string> = Object.fromEntries(
+    Object.entries(colors).map(([name, value]) => [name, safeColorDeclaration(value)]),
+  )
 
   // Storefront theme knobs — only emit when set so the storefront's existing
   // defaults win when a merchant hasn't opted into a preset (zero regression).

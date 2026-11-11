@@ -1,7 +1,7 @@
 import { allocateLineTotal } from './allocate-line-total'
 /** Authoritative combo pricing. A browser's bundle flag never grants a discount. */
 import { resolveOrderLinePrice, MAX_LINE_PRICE } from '@/lib/order-line-price-floor'
-import { priceLineModifiers } from '@/lib/order-line-modifier-pricing'
+import { priceLineModifiers, unavailablePickMessage, withTextSelectionIds } from '@/lib/order-line-modifier-pricing'
 import { findOutletMenuOverride, resolveItemForOutlet } from '@/lib/outlets/outlet-menu-overrides'
 import type { PriceableOrderLine, PriceOrderLinesContext, PriceOrderLinesResult } from './price-order-lines'
 
@@ -64,14 +64,20 @@ export function priceBundleOrderLines<T extends PriceableOrderLine>(
       if (!availability.ok) return availability
       const modifiers = priceLineModifiers(line, item, context.linkedItems)
       if (modifiers.unknownIds.length || modifiers.unpricedLabels.length) return refused
+      if (modifiers.unavailableNames.length) {
+        return { ok: false, error: unavailablePickMessage(item.name || line.menu_item_name, modifiers.unavailableNames) }
+      }
       const surcharge = Number(slot.price_overrides?.find(row => row.menu_item_id === item.id)?.price_override ?? 0)
       const retail = Number(resolveItemForOutlet(item, override).price)
       if (!Number.isFinite(surcharge) || surcharge < 0 || !Number.isFinite(retail) || retail < 0) return refused
       retailCents += cents(retail) * line.quantity
       extrasCents += cents(surcharge + modifiers.delta) * line.quantity
       weights.push(Math.max(1, cents(retail + surcharge + modifiers.delta)) * line.quantity)
-      canonical.push({ ...line, menu_item_name: item.name || line.menu_item_name,
-        bundleName: bundle.name, slotName: slot.name })
+      // The browser never supplies the add-on breakdown on a combo line either.
+      const { addon_details: _untrusted, ...rest } = withTextSelectionIds(line, modifiers) as typeof line & { addon_details?: unknown }
+      void _untrusted
+      canonical.push({ ...rest, menu_item_name: item.name || line.menu_item_name,
+        bundleName: bundle.name, slotName: slot.name } as typeof line)
     }
     if (bundle.slots.some(slot => !Number.isInteger(slot.pick_count) || slot.pick_count < 1 ||
       slotCounts.get(slot.id) !== slot.pick_count * count)) return refused

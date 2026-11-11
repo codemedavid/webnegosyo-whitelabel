@@ -20,6 +20,7 @@ jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }))
 jest.mock('@/app/actions/menu-items', () => ({
   deleteMenuItemAction: jest.fn(),
   toggleAvailabilityAction: jest.fn(),
+  setDishAvailabilityAction: jest.fn(),
 }))
 
 function item(overrides: Partial<MenuItem>): MenuItem {

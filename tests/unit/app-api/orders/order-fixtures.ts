@@ -74,4 +74,4 @@ export function placedResult(overrides: Partial<PlacedOrder> = {}): PlacedOrder 
   }
 }
 
-export const silentLog = { debug: jest.fn(), error: jest.fn() }
+export const silentLog = { debug: jest.fn(), info: jest.fn(), error: jest.fn() }

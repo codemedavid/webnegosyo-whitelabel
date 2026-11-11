@@ -44,7 +44,10 @@ const COMPONENT = {
 }
 const FLOUR = {
   id: 'ing-flour', name: 'Flour', stock_unit_id: 'unit-gram', current_qty: 1000, is_active: true,
+  // Counted: tracking starts at the first count (20261103120000).
+  counted_at: '2026-10-01T00:00:00.000Z',
 }
+const COUNTED = '2026-10-01T00:00:00.000Z'
 const MENU_ITEM = { id: 'm-pizza', name: 'Margherita' }
 
 interface WireOptions {
@@ -134,8 +137,8 @@ describe('findCheckoutStockShortfallMessage', () => {
     // The store-wide roll-up says 1000 g (5 pizzas); this branch holds 400 g.
     wire({
       branchStock: [
-        { inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400 },
-        { inventory_item_id: 'ing-flour', outlet_id: 'branch-2', current_qty: 600 },
+        { inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400, counted_at: COUNTED },
+        { inventory_item_id: 'ing-flour', outlet_id: 'branch-2', current_qty: 600, counted_at: COUNTED },
       ],
     })
 
@@ -153,7 +156,7 @@ describe('findCheckoutStockShortfallMessage', () => {
     // sale goes through rather than being refused as if the shelf were empty.
     wire({
       branchStock: [
-        { inventory_item_id: 'ing-yeast', outlet_id: 'branch-1', current_qty: 50 },
+        { inventory_item_id: 'ing-yeast', outlet_id: 'branch-1', current_qty: 50, counted_at: COUNTED },
       ],
     })
 
@@ -169,7 +172,7 @@ describe('findCheckoutStockShortfallMessage', () => {
   it('uses the store-wide roll-up when the order names no branch', async () => {
     wire({
       branchStock: [
-        { inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400 },
+        { inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400, counted_at: COUNTED },
       ],
     })
 
@@ -199,7 +202,7 @@ describe('findCheckoutStockShortfallMessage', () => {
       { recipe_id: 'r-pearls', inventory_item_id: 'ing-tapioca', quantity: 50, unit_id: 'unit-gram' },
       { recipe_id: 'r-jelly', inventory_item_id: 'ing-tapioca', quantity: 50, unit_id: 'unit-gram' },
     ]
-    const ingredient = (id: string, qty: number) => ({ id, name: id, stock_unit_id: 'unit-gram', current_qty: qty, is_active: true })
+    const ingredient = (id: string, qty: number) => ({ id, name: id, stock_unit_id: 'unit-gram', current_qty: qty, is_active: true, counted_at: COUNTED })
     const wireTea = (tapioca: number, branchStock: unknown[] = []) => wire({
       recipes: TEA_RECIPES,
       components: TEA_COMPONENTS,
@@ -256,7 +259,7 @@ describe('findCheckoutStockShortfallMessage', () => {
     })
 
     it('passes over an option ingredient the branch has no row for', async () => {
-      wireTea(0, [{ inventory_item_id: 'ing-tea', outlet_id: 'branch-1', current_qty: 1000 }])
+      wireTea(0, [{ inventory_item_id: 'ing-tea', outlet_id: 'branch-1', current_qty: 1000, counted_at: COUNTED }])
 
       expect(await findCheckoutStockShortfallMessage('t1', [pearlsLine(3)], 'branch-1')).toBe('')
     })

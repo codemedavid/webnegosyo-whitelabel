@@ -251,7 +251,9 @@ export async function reorderPaymentMethods(tenantId: string, paymentMethodIds: 
       .eq('tenant_id', tenantId)
   )
 
-  await Promise.all(updates)
+  const results = await Promise.all(updates)
+  const failed = results.find((result) => result.error)
+  if (failed?.error) throw failed.error
 
   return { success: true }
 }

@@ -71,9 +71,15 @@ export async function createOrderAction(
   deliveryFee?: number,
   lalamoveQuotationId?: string,
   paymentMethodId?: string,
-  paymentMethodName?: string,
-  paymentMethodDetails?: string,
-  paymentMethodQrCodeUrl?: string,
+  /**
+   * IGNORED, all three. Kept so the positional signature the checkout calls
+   * stays stable: the order records the STORED method's name, account details
+   * and QR, read by `paymentMethodId` (see `judgeOrderPaymentMethod`). A sent
+   * name or account number used to be stored as-is.
+   */
+  _clientPaymentMethodName?: string,
+  _clientPaymentMethodDetails?: string,
+  _clientPaymentMethodQrCodeUrl?: string,
   /**
    * IGNORED. Kept only so the positional signature the checkout calls stays
    * stable: the service charge is recomputed from the tenant's own order type
@@ -110,9 +116,6 @@ export async function createOrderAction(
     deliveryFee,
     lalamoveQuotationId,
     paymentMethodId,
-    paymentMethodName,
-    paymentMethodDetails,
-    paymentMethodQrCodeUrl,
     scheduledForISO,
     paymentProof,
     outletId,
@@ -133,7 +136,9 @@ export async function createOrderAction(
         trackingToken: result.trackingToken,
       }
     case 'refused':
-      return { success: false, refused: true, error: result.error }
+      return result.fieldErrors
+        ? { success: false, refused: true, error: result.error, fieldErrors: result.fieldErrors }
+        : { success: false, refused: true, error: result.error }
     case 'lost':
       return { success: false, error: result.error }
   }
@@ -193,8 +198,14 @@ export async function updatePaymentStatusAction(
         try {
           const { deleteImageKitAsset, isDeletablePaymentProofPath } = await import('@/lib/imagekit-server')
           const { extractImageKitFilePath } = await import('@/lib/imagekit-utils')
-          const filePath = extractImageKitFilePath(proofUrl)
-          if (filePath && isDeletablePaymentProofPath(filePath) && (await deleteImageKitAsset(fileId))) {
+          const { extractMediaKey } = await import('@/lib/storage/media-url')
+          const { r2KeyFromFileId } = await import('@/lib/storage/object-key')
+          const filePath = extractImageKitFilePath(proofUrl) ?? extractMediaKey(proofUrl)
+          // An R2 id names its own key; it must be THIS proof's key, or a
+          // checkout could point the purge at someone else's screenshot.
+          const r2Key = r2KeyFromFileId(fileId)
+          const idMatchesUrl = r2Key === null || r2Key === filePath
+          if (filePath && idMatchesUrl && isDeletablePaymentProofPath(filePath) && (await deleteImageKitAsset(fileId))) {
             await supabase
               .from('orders')
               // eslint-disable-next-line @typescript-eslint/no-explicit-any

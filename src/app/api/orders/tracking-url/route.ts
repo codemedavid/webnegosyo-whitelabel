@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { z } from 'zod'
 import { generateShortTrackingToken } from '@/lib/tracking-token'
-import { fetchOrderTrackingData } from '@/lib/order-tracking-service'
+import { fetchOrderTrackingContext } from '@/lib/order-tracking-service'
+import { hasAnyPermission, ORDER_READ_KEYS } from '@/lib/staff-permissions'
+import { isOrderInScope, resolveBranchScope } from '@/lib/outlets/branch-scope'
 
 /**
  * POST /api/orders/tracking-url
@@ -22,6 +24,10 @@ import { fetchOrderTrackingData } from '@/lib/order-tracking-service'
  * is not enough: the order itself must be found inside that tenant (on the
  * tenant's own backend) before anything is signed. Otherwise an admin of one
  * store could mint a working token for another store's order id.
+ *
+ * The token reads the order, so the caller must also be allowed to read
+ * orders (`ORDER_READ_KEYS`, as the orders SELECT policy), and a branch-locked
+ * account only gets tokens for its own branch's orders.
  */
 
 const requestSchema = z.object({
@@ -39,6 +45,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const caller = await requireBearerStoreCaller(request, tenantId, 'view')
   if (!caller.ok) return caller.response
+  const appUser = caller.appUser
+  if (!appUser || !hasAnyPermission(appUser, ORDER_READ_KEYS)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const admin = createAdminClient()
@@ -55,8 +65,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const token = generateShortTrackingToken(orderId)
   // Same tenant-scoped, backend-aware read the tracking page uses — so a token
   // is only ever handed out for an order the tracking page would show.
-  const { data: order } = await fetchOrderTrackingData(orderId, token, tenantId)
-  if (!order) {
+  const { data: order } = await fetchOrderTrackingContext(orderId, token, tenantId)
+  const branchScope = resolveBranchScope({
+    role: appUser.role,
+    is_owner: appUser.is_owner,
+    outlet_id: appUser.outlet_id,
+  })
+  // Another branch's order reads as missing, as it would through RLS.
+  if (!order || !isOrderInScope(branchScope, { outletId: order.loyaltyIdentity.outletId })) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 

@@ -8,6 +8,8 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run lint && npm run typecheck && npm run test:sql && jest --config jest.config.cjs --changedSince=origin/main --passWithNoTests",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -21,6 +23,7 @@
     "db:create-test-tenant": "node scripts/create-test-tenant.mjs",
     "db:backfill-customers": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers.ts",
     "convex:bulk-deploy": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/bulk-deploy-convex.ts",
+    "convex:enforcement": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/convex-enforcement.ts",
     "db:backfill-customers-convex": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/backfill-customers-convex.ts",
     "loyalty:reconcile": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/loyalty-shadow-reconcile.ts",
     "inventory:repair-incident": "ts-node -P scripts/tsconfig.json -r ./scripts/register-paths.js scripts/reconcile-order-stock-incident.ts",
@@ -62,11 +65,12 @@
     "@types/mapbox-gl": "^3.4.1",
     "@upstash/redis": "^1.36.1",
     "ai": "6.0.301",
+    "aws4fetch": "1.0.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.32.0",
     "date-fns": "^4.1.0",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "exceljs": "^4.4.0",
     "fflate": "^0.8.3",
     "framer-motion": "^12.23.24",
@@ -74,7 +78,7 @@
     "lz-string": "^1.5.0",
     "mapbox-gl": "^3.16.0",
     "mcp-handler": "^1.1.0",
-    "next": "15.5.27",
+    "next": "15.5.28",
     "next-themes": "^0.4.6",
     "passkit-generator": "^3.6.1",
     "postgres": "^3.4.9",
@@ -103,6 +107,12 @@
     },
     "passkit-generator": {
       "joi": "17.13.8"
+    },
+    "@ai-sdk/provider-utils": {
+      "undici": "6.29.1"
+    },
+    "express": {
+      "body-parser": "2.4.0"
     }
   },
   "devDependencies": {
@@ -123,7 +133,7 @@
     "@types/uuid": "^10.0.0",
     "dotenv": "^17.4.2",
     "eslint": "^9",
-    "eslint-config-next": "15.5.27",
+    "eslint-config-next": "15.5.28",
     "fast-check": "4.10.2",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.2.0",

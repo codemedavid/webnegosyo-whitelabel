@@ -6,6 +6,8 @@ import { POST as verifyCode } from '@/app/api/loyalty/claims/verify/route'
 import { createLoyaltyClaimCrypto } from '@/lib/loyalty/claim-crypto'
 
 const mockRpc = jest.fn()
+const mockFloodLimit = jest.fn()
+jest.mock('@/lib/distributed-rate-limit', () => ({ checkRateLimit: (...args: unknown[]) => mockFloodLimit(...args) }))
 // A gateway phone is online in these tests, so issuance queues for it; sender
 // routing (offline, Semaphore, no sender) is covered in public-claims-routing.
 const ONLINE = { data: { ok: true, gatewayOnline: true, lastSeenAt: null }, error: null }
@@ -41,6 +43,7 @@ function crypto() {
 
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date('2026-09-10T00:00:00Z') })
+  mockFloodLimit.mockReset().mockResolvedValue({ allowed: true, remaining: 10, retryAfterSec: 0 })
   process.env.LOYALTY_PUBLIC_CLAIMS_ENABLED = 'true'
   process.env.LOYALTY_SMS_DELIVERY_ENABLED = 'true'
   process.env.LOYALTY_PUBLIC_TRUSTED_INGRESS = 'vercel'
@@ -169,5 +172,22 @@ it.each([
   { ...verification, token: 'arbitrary' }, { ...verification, entitlementId },
 ])('refuses malformed verification: %j', async input => {
   expect((await run(verifyCode, request(input))).status).toBe(400)
+  expect(mockRpc).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['request', requestCode, issuance],
+  ['verify', verifyCode, verification],
+] as const)('%s: a flood from one IP is refused before any database work', async (_name, handler, body) => {
+  mockFloodLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 11 })
+
+  const response = await run(handler, request(body))
+
+  expect(response.status).toBe(429)
+  expect(response.headers.get('retry-after')).toBe('11')
+  expect(response.headers.get('cache-control')).toBe('no-store')
+  expect(mockFloodLimit.mock.calls[0][0]).toBe('loyalty-claims:203.0.113.4')
+  // Far above the DB's per-IP quotas, which stay the real per-person limit.
+  expect(mockFloodLimit.mock.calls[0][1].limit).toBeGreaterThan(30)
   expect(mockRpc).not.toHaveBeenCalled()
 })

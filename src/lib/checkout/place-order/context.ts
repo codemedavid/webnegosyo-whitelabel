@@ -5,6 +5,8 @@ import type { OrderTenantContext } from '@/lib/checkout/load-order-tenant-contex
 import type { SanitizedPaymentProof } from '@/lib/checkout/payment-proof-guard'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
+import type { OrderPaymentMethod } from '@/lib/checkout/order-payment-method'
+import type { OriginOutletFields } from '@/lib/delivery/delivery-origin'
 import type { PlaceOrderInput, PlaceOrderLineInput } from './types'
 
 export type { TenantSecrets } from '@/lib/tenant-secrets'
@@ -29,6 +31,12 @@ export interface AdmittedOrder {
   lines: PlaceOrderLineInput[]
   itemsSubtotal: number
   resolvedOutlet: ResolvedOutlet | null
+  /** The resolved branch's own pin and radius: a delivery starts THERE when it is pinned. */
+  resolvedOutletOrigin: OriginOutletFields | null
+  /** The STORED method the order records (never the caller's copy); null = none chosen. */
+  paymentMethod: OrderPaymentMethod | null
+  /** The Messenger chat whose link placed this order (its cart is emptied once saved). */
+  chatSessionId: string | null
   validatedScheduledISO: string | undefined
   customerData: Record<string, unknown> | undefined
   paymentProof: SanitizedPaymentProof | undefined

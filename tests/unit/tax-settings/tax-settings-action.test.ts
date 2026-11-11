@@ -17,7 +17,7 @@ const setOwnApprovalPin = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 jest.mock('@/lib/admin-service', () => ({ verifyTenantAdmin }))
 jest.mock('@/lib/supabase/server', () => ({ createClient: async () => ({ from }) }))
 jest.mock('next/cache', () => ({ revalidatePath }))
-jest.mock('@/lib/rate-limit', () => ({ checkRateLimit: () => ({ allowed: true }) }))
+jest.mock('@/lib/distributed-rate-limit', () => ({ checkRateLimit: async () => ({ allowed: true }) }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}), ADMIN_QUERY_TIMEOUT_MS: 8000 }))
 jest.mock('@/lib/gov-discount-ledger/supabase-approval-store', () => ({ createSupabaseApprovalStore: () => ({}) }))
 jest.mock('@/lib/gov-discount-ledger/approval-service', () => ({ setOwnApprovalPin }))
@@ -44,6 +44,7 @@ const values = {
   approvalThreshold: '500',
   serviceChargeMode: 'full',
   idPhotoMode: 'off',
+  onlineClaimsEnabled: false,
 }
 
 const loadActions = () => import('@/app/actions/tax-settings')

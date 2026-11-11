@@ -66,6 +66,7 @@ const CATEGORY_ICONS: Readonly<Record<ActivityCategory, ActivityIcon>> = {
   menu: 'menu',
   team: 'team',
   approvals: 'approval',
+  expenses: 'money',
 }
 
 const KIND_ICONS: Partial<Readonly<Record<ActivityKind, ActivityIcon>>> = {
@@ -73,11 +74,14 @@ const KIND_ICONS: Partial<Readonly<Record<ActivityKind, ActivityIcon>>> = {
   'refund.issued': 'refund',
   'stock.alert': 'alert',
   'stock.duplicate_blocked': 'alert',
+  'stock.oversold': 'alert',
+  'expense.voided': 'cancel',
 }
 
 const WARNING_KINDS: ReadonlySet<ActivityKind> = new Set<ActivityKind>([
   'stock.alert',
   'stock.duplicate_blocked',
+  'stock.oversold',
   'payment.proof_rejected',
   'approval.failed',
 ])
@@ -227,6 +231,8 @@ function stockTitle(event: StoreActivityEvent, who: string | null): string {
       return `${actor} received stock from ${text(event.summary, 'fromOutlet') ?? 'another branch'}`
     case 'stock.duplicate_blocked':
       return `Blocked a second stock deduction${order ? ` for ${order}` : ''}`
+    case 'stock.oversold':
+      return `${actor} sold past the stock count${order ? ` on ${order}` : ''}${item === 'stock' ? '' : ` (${item})`}`
     case 'stock.sale':
       return `${amount} used${order ? ` for ${order}` : ''}`
     default:
@@ -306,6 +312,13 @@ function approvalTitle(event: StoreActivityEvent, who: string | null): string {
   }
 }
 
+function expenseTitle(event: StoreActivityEvent, who: string | null): string {
+  const actor = who ?? 'Someone'
+  const category = text(event.summary, 'categoryName')
+  const what = category ? `an expense: ${category}` : 'an expense'
+  return event.kind === 'expense.voided' ? `${actor} voided ${what}` : `${actor} recorded ${what}`
+}
+
 function titleOf(event: StoreActivityEvent): string {
   const who = actorFirstName(event.actorName)
   const stored = text(event.summary, 'title')
@@ -325,6 +338,8 @@ function titleOf(event: StoreActivityEvent): string {
       return menuTitle(event, who)
     case 'approvals':
       return approvalTitle(event, who)
+    case 'expenses':
+      return expenseTitle(event, who)
     default:
       return event.kind.startsWith('staff.') ? teamTitle(event, who) : stored ?? 'Settings changed'
   }
@@ -379,7 +394,8 @@ function detailOf(event: StoreActivityEvent): string | null {
 
 function amountLabelOf(event: StoreActivityEvent): string | null {
   if (event.amount === null) return null
-  const signed = event.category === 'money' || event.category === 'cash' || SIGNED_KINDS.has(event.kind)
+  const signed =
+    event.category === 'money' || event.category === 'cash' || event.category === 'expenses' || SIGNED_KINDS.has(event.kind)
   return signed || event.amount < 0 ? formatSignedPeso(event.amount) : formatPeso(event.amount)
 }
 

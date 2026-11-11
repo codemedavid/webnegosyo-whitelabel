@@ -18,7 +18,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import type { MenuItem, Category, BcgClassification, ModifierGroup, PresellStock } from '@/types/database'
+import type { AddonLibraryEntry, MenuItem, Category, BcgClassification, ModifierGroup, ModifierGroupLibraryEntry, PresellStock } from '@/types/database'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
 import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
 import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
@@ -27,7 +27,8 @@ import { draftFromRows, diffDraft, type DraftAllocation } from '@/lib/presell/al
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { serializeGroups, splitGroupsToLegacyColumns, omitUnchangedOptionStock } from '@/lib/modifier-groups-form'
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
-import { attachEntriesToGroups, buildLibraryDraftFromGroup } from '@/lib/modifier-library-utils'
+import { buildLibraryDraftFromGroup } from '@/lib/modifier-library-utils'
+import { addSingleAddons, placeLibraryGroup } from '@/lib/addon-groups/place-group'
 import { createModifierGroupLibraryEntryAction } from '@/app/actions/modifier-library'
 import { describeActionError, runServerAction } from '@/components/admin/server-action-safety'
 import { useMenuItemCosts } from '@/hooks/use-menu-item-costs'
@@ -102,6 +103,11 @@ interface EditorSession {
   presellDraft?: DraftAllocation[]
   defaultCategoryId?: string
 }
+
+
+/** Fresh ids for options copied in from the library. */
+const newClientId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `mg_${Math.random().toString(36).slice(2)}`
 
 export function MenuItemForm(props: MenuItemFormProps) {
   const [session, setSession] = useState<EditorSession>(() => ({
@@ -394,16 +400,28 @@ function DishEditor({
     })
   }
 
-  const attachGroupsFromLibrary = (entries: Parameters<typeof attachEntriesToGroups>[1]) => {
-    setModifierGroups((prev) => {
-      const merged = attachEntriesToGroups(prev, entries)
-      if (merged.length === prev.length) {
-        toast.info('Those groups are already on this item')
-      } else {
-        toast.success('Added from library')
-      }
-      return merged
-    })
+  // A saved group REPLACES the dish's group of the same name: the old skip is
+  // why a free imported "Add-ons" group could never be fixed from the library.
+  const attachGroupsFromLibrary = (entries: ModifierGroupLibraryEntry[]) => {
+    const placed = entries.reduce(
+      (state, entry) => {
+        const next = placeLibraryGroup(state.groups, entry, 'replace', newClientId)
+        return { groups: next.groups, replaced: state.replaced + (next.outcome === 'replaced' ? 1 : 0) }
+      },
+      { groups: modifierGroups, replaced: 0 }
+    )
+    setModifierGroups(placed.groups)
+    toast.success(placed.replaced > 0 ? 'Added from library (same-name groups replaced)' : 'Added from library')
+  }
+
+  const attachSingleAddonsFromLibrary = (entries: AddonLibraryEntry[]) => {
+    const result = addSingleAddons(modifierGroups, entries, newClientId)
+    if (result.added === 0) {
+      toast.info('Those add-ons are already on this dish')
+      return
+    }
+    setModifierGroups(result.groups)
+    toast.success(`Added ${result.added} add-on${result.added === 1 ? '' : 's'}`)
   }
 
   const saveGroupToLibrary = async (group: ModifierGroup) => {
@@ -490,7 +508,14 @@ function DishEditor({
                 basePrice={price}
                 recipeContext={recipeContext}
                 optionRecipeCosts={optionRecipeCosts}
-                headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
+                headerAction={
+                  <ModifierLibraryPicker
+                    tenantId={tenantId}
+                    onAttach={attachGroupsFromLibrary}
+                    onAttachAddons={attachSingleAddonsFromLibrary}
+                    existingGroupNames={modifierGroups.map((group) => group.name)}
+                  />
+                }
                 onSaveGroupToLibrary={saveGroupToLibrary}
                 linkableItems={linkableItems?.filter((candidate) => candidate.id !== item?.id)}
               />

@@ -25,8 +25,14 @@ export interface PresellClaimHolder {
     lines: readonly PlaceOrderLineInput[],
     customerData: Record<string, unknown> | undefined
   ): Promise<{ ok: true; customerData: Record<string, unknown> | undefined } | { ok: false; error: string }>
-  /** Hands the reserved stock back. Idempotent, and never throws. */
+  /**
+   * Hands the reserved stock back — the simple-option counters held for this
+   * attempt (see `adoptOptionHold`) first, then the presell claim.
+   * Idempotent, and never throws.
+   */
   release(): Promise<void>
+  /** The simple-option counters held under this attempt's order id; released with the claim. */
+  adoptOptionHold(release: () => Promise<void>): void
   /** The order row exists and carries the claim; the stock is spent for real. */
   markPersisted(): void
   isPersisted(): boolean
@@ -37,6 +43,8 @@ export function createPresellClaimHolder(): PresellClaimHolder {
   /** Release is idempotent: the paths that already gave the stock back must not do it twice. */
   let claimReleased = false
   let orderPersisted = false
+  // The simple-option counters, once held (their release is idempotent too).
+  let releaseOptionHold: () => Promise<void> = async () => {}
 
   return {
     async claim(db, tenantId, lines, customerData) {
@@ -57,6 +65,7 @@ export function createPresellClaimHolder(): PresellClaimHolder {
     // propagate would replace a refusal they can act on ("outside our delivery
     // area") with a generic lost-order message, and bury the real exception.
     async release() {
+      await releaseOptionHold()
       if (!held || claimReleased) return
       try {
         const { releasePresellForOrder } = await import('@/lib/presell/order-claim')
@@ -69,6 +78,10 @@ export function createPresellClaimHolder(): PresellClaimHolder {
           message: releaseError instanceof Error ? releaseError.message : String(releaseError),
         })
       }
+    },
+
+    adoptOptionHold(release) {
+      releaseOptionHold = release
     },
 
     markPersisted() {

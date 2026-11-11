@@ -67,7 +67,9 @@ export const WORKSPACES: readonly Workspace[] = [
     // reward cards it texts about: all three are how a store keeps guests.
     // Activity is the store's own log (refunds, cancels, stock, drawers): read
     // beside the sales it explains.
-    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts", "activity"],
+    // Expenses sit with the reports they explain: what went out beside what came in.
+    // Bills to pay sits right after the expense book it reminds the owner to fill.
+    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts", "activity", "expenses", "expense-bills", "profit"],
     defaultTab: "analytics",
   },
   {

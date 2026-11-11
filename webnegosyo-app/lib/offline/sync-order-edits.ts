@@ -24,7 +24,7 @@
 import type { OrderBackend } from "../order-backend";
 import { reportOffline } from "./connectivity";
 import { withDeadline } from "./deadline";
-import { isNetworkFailure } from "./network-error";
+import { isNetworkFailure, refusalMessageOf } from "./network-error";
 import {
   getOrderEdits,
   isOrderEditStuck,
@@ -79,10 +79,6 @@ export async function runOrderEditSideEffects(edit: QueuedOrderEdit): Promise<vo
   // durably. It never throws.
   await syncStockForStatusChange({ orderId, newStatus: status, previousStatus: edit.previousStatus });
   if (status === "confirmed") await pushConfirmedOrderToLoyverse(orderId);
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function resolveDeps(deps: SyncOrderEditsDeps): Required<SyncOrderEditsDeps> {
@@ -141,7 +137,7 @@ async function runSync(
         break;
       }
       heldBack.add(edit.orderId);
-      await deps.recordFailure(edit.editId, messageOf(error));
+      await deps.recordFailure(edit.editId, refusalMessageOf(error));
       result.refused += 1;
       continue;
     }

@@ -13,6 +13,7 @@ import { colors, spacing, typography } from "../../theme/colors";
 import { useConnectivity } from "../../lib/offline/use-connectivity";
 import { usePendingSaleCounts, type PendingSaleCounts } from "../../lib/offline/use-outbox-sync";
 import { offlineBannerText } from "../../lib/offline/banner-text";
+import { useDeviceExpenseQueue } from "../../lib/expenses/use-expenses";
 
 type Tone = "offline" | "syncing" | "attention";
 
@@ -26,7 +27,10 @@ export function OfflineBanner() {
   // here AND in the header below, doubling the gap while offline).
   const { status } = useConnectivity();
   const counts = usePendingSaleCounts();
-  const text = offlineBannerText(status, counts);
+  // Expenses saved on this phone and not yet sent (refused ones are on Expenses' "Check these").
+  const expenseQueue = useDeviceExpenseQueue();
+  const expensesWaiting = expenseQueue.expenses.filter((entry) => entry.refusedReason === null).length;
+  const text = offlineBannerText(status, counts, expensesWaiting);
   if (text === null) return null;
 
   return (

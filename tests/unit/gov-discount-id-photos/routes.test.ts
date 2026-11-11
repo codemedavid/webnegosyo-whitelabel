@@ -17,7 +17,7 @@ jest.mock('@/lib/auth/bearer-caller', () => ({
   requireBearerStoreCaller: (...args: unknown[]) => mockRequireCaller(...args),
   authenticateBearer: (...args: unknown[]) => mockAuthenticate(...args),
 }))
-jest.mock('@/lib/rate-limit', () => ({ checkRateLimit: () => ({ allowed: true }) }))
+jest.mock('@/lib/distributed-rate-limit', () => ({ checkRateLimit: async () => ({ allowed: true }) }))
 jest.mock('@/lib/supabase/admin', () => ({
   ADMIN_QUERY_TIMEOUT_MS: 1000,
   createAdminClient: () => ({

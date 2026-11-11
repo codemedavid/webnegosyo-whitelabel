@@ -60,9 +60,14 @@ describe('verifyPkce', () => {
     expect(verifyPkce('b'.repeat(64), s256(verifier), 'S256')).toBe(false)
   })
 
-  it('supports the plain method', () => {
-    expect(verifyPkce('xyz', 'xyz', 'plain')).toBe(true)
+  it('rejects the plain method: OAuth 2.1 and the MCP profile require S256', () => {
+    expect(verifyPkce('xyz', 'xyz', 'plain')).toBe(false)
     expect(verifyPkce('xyz', 'abc', 'plain')).toBe(false)
+  })
+
+  it('rejects an unknown method even when the verifier hashes to the challenge', () => {
+    const verifier = 'a'.repeat(64)
+    expect(verifyPkce(verifier, s256(verifier), 's256')).toBe(false)
   })
 })
 
@@ -287,6 +292,8 @@ describe('refreshAccessToken', () => {
       },
       error: null,
     })
+    stub.singleQueue.push({ data: { role: 'admin', tenant_id: 'tenant_1', is_owner: true, permissions: null, outlet_id: null }, error: null })
+    stub.singleQueue.push({ data: { id: 'tok_1' }, error: null })
 
     const result = await refreshAccessToken(
       stub.client,

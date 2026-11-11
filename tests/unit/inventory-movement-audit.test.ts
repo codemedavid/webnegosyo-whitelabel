@@ -13,6 +13,10 @@ import { recordStockMovementWith } from '@/lib/inventory/stock-service'
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
   processStockLevelChanges: jest.fn(() => Promise.resolve({})),
 }))
+const invalidateStockCeilings = jest.fn<Promise<void>, [string]>(async () => undefined)
+jest.mock('@/lib/inventory/ceilings-cache', () => ({
+  invalidateStockCeilings: (tenantId: string) => invalidateStockCeilings(tenantId),
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createClient: () => Promise.resolve({ from: () => ({}) }),
 }))
@@ -98,6 +102,13 @@ beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}))
 afterEach(() => jest.restoreAllMocks())
 
 describe('retried manual movement', () => {
+  test('a recorded movement drops the store’s cached diner ceilings', async () => {
+    const { client } = buildClient()
+    invalidateStockCeilings.mockClear()
+    await recordStockMovementWith(client, TENANT, waste, ACTOR)
+    expect(invalidateStockCeilings).toHaveBeenCalledWith(TENANT)
+  })
+
   test('the retry key travels onto the ledger row', async () => {
     const { client, harness } = buildClient()
     await recordStockMovementWith(client, TENANT, waste, ACTOR)

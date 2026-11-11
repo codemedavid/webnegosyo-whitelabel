@@ -37,6 +37,7 @@ export const RESERVED_OUTLET_SLUGS: ReadonlySet<string> = new Set([
   // Platform-root segments reachable through a tenant subdomain rewrite.
   'api',
   'download',
+  'data-deletion',
   'support',
   'superadmin',
   'www',

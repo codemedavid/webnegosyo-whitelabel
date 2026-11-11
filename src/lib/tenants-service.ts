@@ -1,3 +1,4 @@
+import { cssColorString } from '@/lib/css-value-schema'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -13,6 +14,7 @@ import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secre
 import { checkLalamoveKey, describeLalamoveEnvironmentMismatch } from '@/lib/lalamove-keys'
 import { detachTenantDomains, type TenantDomainColumns } from '@/lib/domains/detach-tenant-domains'
 import { withNewTenantFeatureDefaults } from '@/lib/new-tenant-feature-defaults'
+import { validateStorePin } from '@/lib/delivery/store-pin-rules'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -141,6 +143,34 @@ export function refineDistanceDelivery(
   }
 }
 
+export interface StorePinConfig {
+  restaurant_latitude?: number | null
+  restaurant_longitude?: number | null
+  lalamove_enabled?: boolean | null
+  lalamove_market?: string | null
+  distance_delivery_enabled?: boolean | null
+}
+
+/**
+ * The pickup pin rules (`src/lib/delivery/store-pin-rules.ts`) on the tenant
+ * form. A missing pin for distance pricing is already reported by
+ * `refineDistanceDelivery`, so it is only REQUIRED here for Lalamove — the
+ * owner sees one message per problem, not two.
+ */
+export function refineStorePin(value: StorePinConfig, ctx: z.RefinementCtx): void {
+  // Omitted coordinates keep the stored pin (partial writes: MCP, provisioning),
+  // so there is nothing to judge; only a pin that is sent, or cleared with null, is checked.
+  if (value.restaurant_latitude === undefined && value.restaurant_longitude === undefined) return
+  const message = validateStorePin({
+    lat: value.restaurant_latitude,
+    lng: value.restaurant_longitude,
+    market: value.lalamove_market,
+    lalamoveEnabled: value.lalamove_enabled,
+    isPinRequired: value.lalamove_enabled === true && value.distance_delivery_enabled !== true,
+  })
+  if (message) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message })
+}
+
 /** Keep a long multi-issue report readable; the rest stay in the log. */
 const MAX_REPORTED_VALIDATION_ISSUES = 3
 
@@ -173,40 +203,40 @@ export const tenantSchema = z.object({
   slug: z.string().min(2).regex(/^[a-z0-9\-]+$/),
   domain: domainSchema,
   logo_url: z.string().url().optional().or(z.literal('')).optional(),
-  primary_color: z.string().min(1),
-  secondary_color: z.string().min(1),
-  accent_color: z.string().optional().or(z.literal('')).optional(),
+  primary_color: cssColorString().min(1),
+  secondary_color: cssColorString().min(1),
+  accent_color: cssColorString().optional().or(z.literal('')).optional(),
   // Extended branding colors
-  background_color: z.string().optional().or(z.literal('')).optional(),
-  header_color: z.string().optional().or(z.literal('')).optional(),
-  header_font_color: z.string().optional().or(z.literal('')).optional(),
-  cards_color: z.string().optional().or(z.literal('')).optional(),
-  cards_border_color: z.string().optional().or(z.literal('')).optional(),
-  card_title_color: z.string().optional().or(z.literal('')).optional(),
-  card_price_color: z.string().optional().or(z.literal('')).optional(),
-  card_description_color: z.string().optional().or(z.literal('')).optional(),
-  modal_background_color: z.string().optional().or(z.literal('')).optional(),
-  modal_title_color: z.string().optional().or(z.literal('')).optional(),
-  modal_price_color: z.string().optional().or(z.literal('')).optional(),
-  modal_description_color: z.string().optional().or(z.literal('')).optional(),
-  button_primary_color: z.string().optional().or(z.literal('')).optional(),
-  button_primary_text_color: z.string().optional().or(z.literal('')).optional(),
-  button_secondary_color: z.string().optional().or(z.literal('')).optional(),
-  button_secondary_text_color: z.string().optional().or(z.literal('')).optional(),
-  text_primary_color: z.string().optional().or(z.literal('')).optional(),
-  text_secondary_color: z.string().optional().or(z.literal('')).optional(),
-  text_muted_color: z.string().optional().or(z.literal('')).optional(),
-  border_color: z.string().optional().or(z.literal('')).optional(),
-  success_color: z.string().optional().or(z.literal('')).optional(),
-  warning_color: z.string().optional().or(z.literal('')).optional(),
-  error_color: z.string().optional().or(z.literal('')).optional(),
-  link_color: z.string().optional().or(z.literal('')).optional(),
-  shadow_color: z.string().optional().or(z.literal('')).optional(),
+  background_color: cssColorString().optional().or(z.literal('')).optional(),
+  header_color: cssColorString().optional().or(z.literal('')).optional(),
+  header_font_color: cssColorString().optional().or(z.literal('')).optional(),
+  cards_color: cssColorString().optional().or(z.literal('')).optional(),
+  cards_border_color: cssColorString().optional().or(z.literal('')).optional(),
+  card_title_color: cssColorString().optional().or(z.literal('')).optional(),
+  card_price_color: cssColorString().optional().or(z.literal('')).optional(),
+  card_description_color: cssColorString().optional().or(z.literal('')).optional(),
+  modal_background_color: cssColorString().optional().or(z.literal('')).optional(),
+  modal_title_color: cssColorString().optional().or(z.literal('')).optional(),
+  modal_price_color: cssColorString().optional().or(z.literal('')).optional(),
+  modal_description_color: cssColorString().optional().or(z.literal('')).optional(),
+  button_primary_color: cssColorString().optional().or(z.literal('')).optional(),
+  button_primary_text_color: cssColorString().optional().or(z.literal('')).optional(),
+  button_secondary_color: cssColorString().optional().or(z.literal('')).optional(),
+  button_secondary_text_color: cssColorString().optional().or(z.literal('')).optional(),
+  text_primary_color: cssColorString().optional().or(z.literal('')).optional(),
+  text_secondary_color: cssColorString().optional().or(z.literal('')).optional(),
+  text_muted_color: cssColorString().optional().or(z.literal('')).optional(),
+  border_color: cssColorString().optional().or(z.literal('')).optional(),
+  success_color: cssColorString().optional().or(z.literal('')).optional(),
+  warning_color: cssColorString().optional().or(z.literal('')).optional(),
+  error_color: cssColorString().optional().or(z.literal('')).optional(),
+  link_color: cssColorString().optional().or(z.literal('')).optional(),
+  shadow_color: cssColorString().optional().or(z.literal('')).optional(),
   // Menu hero customization
   hero_title: z.string().optional().or(z.literal('')).optional(),
   hero_description: z.string().optional().or(z.literal('')).optional(),
-  hero_title_color: z.string().optional().or(z.literal('')).optional(),
-  hero_description_color: z.string().optional().or(z.literal('')).optional(),
+  hero_title_color: cssColorString().optional().or(z.literal('')).optional(),
+  hero_description_color: cssColorString().optional().or(z.literal('')).optional(),
   // Optional: an onboarded store connects its Facebook page later, and the
   // checkout hand-off already resolves a missing page to "no Messenger link".
   messenger_page_id: z.string().trim().optional(),
@@ -221,8 +251,10 @@ export const tenantSchema = z.object({
   checkout_upsell_enabled: z.boolean().default(false),
   bundles_enabled: z.boolean().default(false),
   pairing_rules_enabled: z.boolean().default(false),
-  // Unified modifier groups: multi-select options with min/max picks
-  modifier_groups_enabled: z.boolean().default(false),
+  // Unified modifier groups: multi-select options with min/max picks. The one
+  // flag that defaults ON here too: every store runs on option groups, so an
+  // edit that omits it must keep them, not drop the store to the legacy editor.
+  modifier_groups_enabled: z.boolean().default(true),
   // Inventory. All three default false: `inventory_enabled` is the master flag
   // the admin route and sidebar hang off, and auto-86 takes items off a live
   // menu — neither may switch itself on for a tenant that never asked.
@@ -250,13 +282,14 @@ export const tenantSchema = z.object({
   flash_screen_title: z.string().optional().or(z.literal('')).optional(),
   flash_screen_subtitle: z.string().optional().or(z.literal('')).optional(),
   flash_screen_image_url: z.string().url().optional().or(z.literal('')).optional(),
-  flash_screen_background_color: z.string().optional().or(z.literal('')).optional(),
-  flash_screen_text_color: z.string().optional().or(z.literal('')).optional(),
+  flash_screen_background_color: cssColorString().optional().or(z.literal('')).optional(),
+  flash_screen_text_color: cssColorString().optional().or(z.literal('')).optional(),
   flash_screen_duration_ms: z.number().int().min(500).max(15000).optional(),
   // Restaurant address for Lalamove pickup / distance-based delivery store location
   restaurant_address: z.string().optional().or(z.literal('')).optional(),
-  restaurant_latitude: z.number().optional(),
-  restaurant_longitude: z.number().optional(),
+  // null clears the pin; omitted leaves it as it is.
+  restaurant_latitude: z.number().nullable().optional(),
+  restaurant_longitude: z.number().nullable().optional(),
   // Distance-based delivery fee (non-Lalamove path)
   distance_delivery_enabled: z.boolean().default(false),
   delivery_price_per_km: z.number().min(0).nullable().optional(),
@@ -283,10 +316,13 @@ export const tenantSchema = z.object({
   // Where this tenant's orders live. Defaults to auto: Convex when one is
   // configured, otherwise the shared platform database.
   order_backend: z.enum(ORDER_BACKEND_PREFERENCES).optional(),
+  // Explicit "I know the old orders stay behind" for a save that moves the
+  // resolved backend while the store has orders there (order-backend-change-guard).
+  confirm_backend_change: z.boolean().optional(),
   // Email notifications
   admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
   email_notifications_enabled: z.boolean().default(false),
-}).superRefine(refineDistanceDelivery).superRefine(refineLalamoveKeys).superRefine((val, ctx) => {
+}).superRefine(refineDistanceDelivery).superRefine(refineStorePin).superRefine(refineLalamoveKeys).superRefine((val, ctx) => {
   // Loyverse must be fully connected when enabled — a half-configured tenant
   // would silently skip every catalog sync and receipt push.
   if (!val.loyverse_enabled) return
@@ -486,7 +522,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   // edit that does not mention order routing at all.
   const { data: oldTenantData } = await supabase
     .from('tenants')
-    .select('domain, order_backend, slug')
+    .select('domain, order_backend, convex_deployment_url, slug, auto_86_enabled')
     .eq('id', id)
     .maybeSingle()
 
@@ -494,9 +530,24 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     domain: string | null
     slug?: string | null
     order_backend?: OrderBackendPreference | null
+    convex_deployment_url?: string | null
+    auto_86_enabled?: boolean | null
   } | null
 
   const parsed = tenantSchema.parse({ ...input, id })
+  if (oldTenant) {
+    // Counted with the service role: the caller's RLS view could hide orders.
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { refuseUnconfirmedBackendChange } = await import('@/lib/order-backend-change-guard')
+    const refusal = await refuseUnconfirmedBackendChange({
+      supabase: createAdminClient(),
+      tenantId: id,
+      current: oldTenant,
+      input: parsed,
+      confirmed: parsed.confirm_backend_change,
+    })
+    if (refusal) throw new Error(refusal)
+  }
   if (await isSlugTaken(parsed.slug, id, ctx)) {
     throw new Error('Slug is already taken')
   }
@@ -626,6 +677,13 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   // TTL expired.
   const { invalidateTenantCache } = await import('@/lib/cache')
   await invalidateTenantCache(parsed.slug, id, oldTenant?.slug ?? null)
+
+  // Auto-86 only ever ran on a stock movement, so switching it on hid nothing
+  // until each dish's ingredients next moved.
+  if (parsed.auto_86_enabled && !oldTenant?.auto_86_enabled) {
+    const { recheckMenuAvailability } = await import('@/lib/inventory/stock-alerts-service')
+    await recheckMenuAvailability(id)
+  }
 
   return data as unknown as TenantRow
 }

@@ -7,6 +7,7 @@ import {
 } from "../../lib/kitchen-tickets";
 import { displayCustomerName, getUrgency, getOrderTypeMeta, type Urgency } from "../../lib/order-visuals";
 import { getOrderTableNumber } from "../../lib/order-table-number";
+import { kitchenNotesOf } from "../../lib/kitchen-order-note";
 import {
   PREP_MINUTE_PRESETS,
   PREP_MINUTE_EXTENDED,
@@ -14,6 +15,7 @@ import {
   formatClock,
   prepPromiseState,
 } from "../../lib/prep-time";
+import type { KitchenTicketStatus } from "../../lib/kitchen-confirm";
 import { useTickerNow } from "../TickerProvider";
 
 /**
@@ -37,6 +39,13 @@ export const kds = {
   urgent: "#F87171",
   bump: "#047857",
   print: "#27272A",
+  ringing: "#B91C1C",
+  confirm: "#DC2626",
+  /** The order's note banner: black on amber, the loudest thing on the card. */
+  noteBanner: "#FBBF24",
+  noteBannerInk: "#111113",
+  /** An item note's box: amber ink on a dark amber well. */
+  noteBox: "#3B2F0B",
 } as const;
 
 const URGENCY_COLOR: Record<Urgency, string> = {
@@ -48,6 +57,11 @@ const URGENCY_COLOR: Record<Urgency, string> = {
 interface TicketCardProps {
   ticket: KitchenTicket;
   isNew: boolean;
+  /** Ringing / waiting for Confirm / confirmed — decided by lib/kitchen-confirm.ts. */
+  kitchenStatus: KitchenTicketStatus;
+  /** When this ticket first rang on this display; null = it has not. */
+  rangAtMs: number | null;
+  onConfirm: (orderId: string) => void;
   onBump: (orderId: string) => void;
   onPrint: (ticket: KitchenTicket) => void;
   canPrint: boolean;
@@ -69,6 +83,9 @@ interface TicketCardProps {
 export const TicketCard = memo(function TicketCard({
   ticket,
   isNew,
+  kitchenStatus,
+  rangAtMs,
+  onConfirm,
   onBump,
   onPrint,
   canPrint,
@@ -88,6 +105,7 @@ export const TicketCard = memo(function TicketCard({
   const accent = URGENCY_COLOR[urgency];
   const typeLabel = order.orderType ? getOrderTypeMeta(order.orderType).label : null;
   const tableNumber = getOrderTableNumber(order.customerData);
+  const orderNotes = kitchenNotesOf(order.customerData);
 
   const promisedMs = order.promisedReadyAt ? Date.parse(order.promisedReadyAt) : null;
   const promise = prepPromiseState(
@@ -108,7 +126,14 @@ export const TicketCard = memo(function TicketCard({
   };
 
   return (
-    <View style={[styles.card, { borderTopColor: accent }, isNew && styles.cardNew]}>
+    <View
+      style={[
+        styles.card,
+        { borderTopColor: accent },
+        isNew && styles.cardNew,
+        kitchenStatus === "ringing" && styles.cardRinging,
+      ]}
+    >
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.orderRef}>#{order._id.slice(-4).toUpperCase()}</Text>
@@ -123,6 +148,19 @@ export const TicketCard = memo(function TicketCard({
         {order.status === "preparing" ? "  ·  PREPARING" : ""}
       </Text>
       {tableNumber ? <Text style={styles.table}>Table {tableNumber}</Text> : null}
+
+      <KitchenStatusStrip status={kitchenStatus} rangAtMs={rangAtMs} />
+
+      {orderNotes.length > 0 ? (
+        <View style={styles.noteBanner} accessibilityRole="text">
+          <Text style={styles.noteBannerLabel}>NOTE</Text>
+          {orderNotes.map((note, noteIndex) => (
+            <Text key={noteIndex} style={styles.noteBannerText}>
+              {note}
+            </Text>
+          ))}
+        </View>
+      ) : null}
 
       <View style={styles.items}>
         {items.length === 0 ? (
@@ -153,9 +191,14 @@ export const TicketCard = memo(function TicketCard({
                     </Text>
                   ))}
                   {item.specialInstructions ? (
-                    <Text style={[styles.itemNote, isStruck && styles.itemStruck]}>
-                      ✱ {item.specialInstructions}
-                    </Text>
+                    <View
+                      testID={`ticket-item-note-${index}`}
+                      style={[styles.itemNoteBox, isStruck && styles.itemNoteBoxStruck]}
+                    >
+                      <Text style={[styles.itemNote, isStruck && styles.itemStruck]}>
+                        ✱ {item.specialInstructions}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -214,6 +257,18 @@ export const TicketCard = memo(function TicketCard({
         )
       ) : null}
 
+      {kitchenStatus !== "confirmed" ? (
+        <TouchableOpacity
+          style={styles.confirmButton}
+          onPress={() => onConfirm(order._id)}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Confirm order"
+        >
+          <Text style={styles.confirmText}>Confirm</Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={styles.actions}>
         {canPrint ? (
           <TouchableOpacity
@@ -236,6 +291,25 @@ export const TicketCard = memo(function TicketCard({
   );
 });
 
+/**
+ * What the cashier side will see about this ticket. A ringing card says WHEN
+ * it rang, so a cook who heard nothing knows the tablet is muted.
+ */
+function KitchenStatusStrip({ status, rangAtMs }: { status: KitchenTicketStatus; rangAtMs: number | null }) {
+  if (status === "confirmed") {
+    return <Text style={styles.statusConfirmed}>✓ KITCHEN CONFIRMED</Text>;
+  }
+  if (status === "ringing") {
+    const rang = rangAtMs !== null ? ` · Rang ${formatClock(rangAtMs)}` : "";
+    return (
+      <View style={styles.statusRinging} accessibilityRole="alert">
+        <Text style={styles.statusRingingText}>🔔 RINGING{rang}</Text>
+      </View>
+    );
+  }
+  return <Text style={styles.statusWaiting}>NOT CONFIRMED YET</Text>;
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: kds.card,
@@ -248,6 +322,51 @@ const styles = StyleSheet.create({
   },
   cardNew: {
     borderColor: kds.fresh,
+  },
+  cardRinging: {
+    borderColor: kds.urgent,
+    borderWidth: 2,
+  },
+  statusRinging: {
+    marginTop: 8,
+    backgroundColor: kds.ringing,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  statusRingingText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  statusWaiting: {
+    marginTop: 8,
+    color: kds.warning,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  statusConfirmed: {
+    marginTop: 8,
+    color: kds.fresh,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  confirmButton: {
+    marginTop: 12,
+    backgroundColor: kds.confirm,
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   header: {
     flexDirection: "row",
@@ -331,11 +450,45 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 1,
   },
+  itemNoteBox: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    backgroundColor: kds.noteBox,
+    borderWidth: 1,
+    borderColor: kds.warning,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  itemNoteBoxStruck: {
+    backgroundColor: "transparent",
+    borderColor: kds.struck,
+  },
   itemNote: {
     color: kds.warning,
-    fontSize: 14,
-    fontWeight: "700",
-    marginTop: 1,
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 21,
+  },
+  noteBanner: {
+    marginTop: 10,
+    backgroundColor: kds.noteBanner,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  noteBannerLabel: {
+    color: kds.noteBannerInk,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  noteBannerText: {
+    color: kds.noteBannerInk,
+    fontSize: 17,
+    fontWeight: "800",
+    lineHeight: 22,
   },
   itemStruck: {
     textDecorationLine: "line-through",

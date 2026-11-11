@@ -2,6 +2,7 @@ import { orderTime } from './orderTime';
 import { v } from "convex/values";
 import { action, internalAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { requireActionAccess } from "./auth";
 
 const QUERY_LIMIT = 10000;
 const MIN_ORDERS_FOR_CLASSIFICATION = 5;
@@ -483,6 +484,7 @@ export const upsertAnalytics = internalMutation({
 // Manual refresh — callable from admin UI
 export const refreshAnalytics = action({
   handler: async (ctx) => {
+    await requireActionAccess(ctx, "write");
     await ctx.runAction(internal.productAnalyticsAggregator.computeAnalytics, {});
   },
 });

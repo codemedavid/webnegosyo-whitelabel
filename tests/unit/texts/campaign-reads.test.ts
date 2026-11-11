@@ -63,7 +63,11 @@ function seed(tables: Record<string, Record<string, unknown>[]> = {}) {
 describe('previewCampaignAudience', () => {
   test('reach, skipped buckets, masked samples, texts used and the days it takes', async () => {
     const { previewCampaignAudience } = await import('@/lib/texts/server/campaign-reads')
-    const db = seed({ sms_outbox: [{ id: 'w1', tenant_id: T, phone_e164: '+639170000013', status: 'queued', expires_at: '2026-10-20T00:00:00Z', campaign_run_id: null }] })
+    const db = seed({ sms_outbox: [
+      { id: 'w1', tenant_id: T, source: 'auto', phone_e164: '+639170000013', status: 'queued', expires_at: '2026-10-20T00:00:00Z', campaign_run_id: null },
+      // The owner's test text to a guest's number never makes that guest "recently texted".
+      { id: 'w2', tenant_id: T, source: 'test', phone_e164: '+639170000012', status: 'sent', sent_at: '2026-10-14T01:00:00Z', expires_at: '2026-10-20T00:00:00Z', campaign_run_id: null },
+    ] })
 
     const preview = await previewCampaignAudience(db.client, T, { audience: {}, messageTemplate: 'Hi {{firstName}}!' }, NOW)
 

@@ -10,6 +10,7 @@ import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outle
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { getPresellAllocations } from '@/lib/presell/allocations-read'
 import { toBusinessDayKey } from '@/lib/inventory/business-day'
+import { isModifierGroupsEnabled } from '@/lib/modifier-groups-flag'
 import { getLinkedMenuItemIds } from '@/lib/inventory/recipe-link-read'
 import { resolveInventoryAccess } from '@/components/admin/inventory-manager/inventory-access'
 
@@ -33,7 +34,7 @@ export default async function EditMenuItemPage({
   // empty calendar before any dates appeared. This rides along with the
   // queries the page already makes.
   const isPresellTenant = tenant.presell_enabled ?? false
-  const isModifierGroupsTenant = tenant.modifier_groups_enabled ?? false
+  const isModifierGroupsTenant = isModifierGroupsEnabled(tenant)
   const isInventoryTenant = tenant.inventory_enabled ?? false
 
   const [item, categories, linkableItems, outlets, itemOverrides, presellRead, recipeLinks, caller] = await Promise.all([

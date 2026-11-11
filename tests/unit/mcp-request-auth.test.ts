@@ -108,6 +108,39 @@ describe('withSmartMenuAuth', () => {
     expect(handler).not.toHaveBeenCalled()
   })
 
+  it('challenges an anonymous handshake whose body is larger than any real handshake', async () => {
+    const handler = jest.fn(async () => new Response('unexpected'))
+    const wrapped = withSmartMenuAuth(handler, async () => undefined, {
+      resourceMetadataPath: metadataPath,
+      required: false,
+    })
+
+    // A real initialize is a few hundred bytes; this one carries 64 KB of params.
+    const response = await wrapped(jsonRpcRequest('initialize', { params: { padding: 'x'.repeat(64 * 1024) } }), {})
+
+    expect(response.status).toBe(401)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('challenges an anonymous handshake batch with more messages than a client sends', async () => {
+    const handler = jest.fn(async () => new Response('unexpected'))
+    const wrapped = withSmartMenuAuth(handler, async () => undefined, {
+      resourceMetadataPath: metadataPath,
+      required: false,
+    })
+    const batch = Array.from({ length: 50 }, (_, id) => ({ jsonrpc: '2.0', id, method: 'ping' }))
+    const request = new Request('https://example.com/api/mcp/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(batch),
+    })
+
+    const response = await wrapped(request, {})
+
+    expect(response.status).toBe(401)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
   it('allows an anonymous ping during the MCP handshake', async () => {
     const handler = jest.fn(async () => Response.json({ ok: true }))
     const wrapped = withSmartMenuAuth(handler, async () => undefined, {

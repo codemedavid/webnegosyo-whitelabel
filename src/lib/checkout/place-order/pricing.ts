@@ -16,6 +16,9 @@ import { writeOrderDiscount } from '@/lib/order-discount'
 import { resolveOrderContact } from '@/lib/customer-identity'
 import { resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
+import { resolveDeliveryOrigin } from '@/lib/delivery/delivery-origin'
+import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
+import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
 import { computeServiceCharge } from '@/lib/order-service-charge'
 import {
   applyCheckoutGovernment,
@@ -24,6 +27,9 @@ import {
 import type { AdminClient, AdmittedOrder } from './context'
 import { INVALID_DELIVERY_FEE_MESSAGE } from './validate-request'
 import { lost, refused, type PlaceOrderFailure, type PlaceOrderLineInput } from './types'
+
+export const OUTSIDE_COUNTRY_PIN_MESSAGE =
+  'Your delivery pin is outside the Philippines. Please search for your address again and pick the right spot on the map.'
 
 /**
  * ── Delivery fee (authoritative) ──
@@ -38,8 +44,28 @@ export async function resolveTrustedDeliveryFee(
 ): Promise<{ ok: true; fee: number | undefined } | { ok: false; failure: PlaceOrderFailure }> {
   const { input, tenantConfig, orderTypeRow } = order
   const { tenantId } = input
-  const isLalamoveDelivery = orderTypeRow?.type === 'delivery' && tenantConfig.lalamove_enabled === true
+  const isDeliveryOrder = orderTypeRow?.type === 'delivery'
+  const isLalamoveDelivery = isDeliveryOrder && tenantConfig.lalamove_enabled === true
   const deliveryDestination = (order.customerData ?? {}) as Record<string, unknown>
+  const deliveryPin = toLatLng(deliveryDestination.delivery_lat, deliveryDestination.delivery_lng)
+  const deliveryOrigin = resolveDeliveryOrigin(tenantConfig, order.resolvedOutletOrigin)
+
+  // No rider in this market can reach a pin outside the country — the
+  // customer picked a wrong suggestion ("Manila" in another country, a
+  // dropped pin at 0,0). Every other pin oddity is a checkout warning only.
+  if (isDeliveryOrder && assessDeliveryPin({
+    pin: deliveryPin,
+    origin: null,
+    market: (tenantConfig as { lalamove_market?: string | null }).lalamove_market,
+    lalamoveEnabled: tenantConfig.lalamove_enabled === true,
+  }).isBlocked) {
+    return { ok: false, failure: refused(OUTSIDE_COUNTRY_PIN_MESSAGE) }
+  }
+
+  // "I can't find my place" was turned off (owner, 2026-11-09): a stale or forged
+  // `delivery_pin_skipped` mark is ignored, so an order without a pin is priced,
+  // and refused, like any other.
+  const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
   let trustedDeliveryFee = input.deliveryFee
   if (isLalamoveDelivery) {
     const verification = verifyDeliveryQuote(input.lalamoveQuoteSignature, {
@@ -50,6 +76,8 @@ export async function resolveTrustedDeliveryFee(
         lat: deliveryDestination.delivery_lat,
         lng: deliveryDestination.delivery_lng,
       },
+      // A quote is only good for the branch it was priced from.
+      originOutletId: deliveryOrigin?.outletId ?? null,
     })
     if (verification.ok) {
       trustedDeliveryFee = verification.fee
@@ -70,11 +98,11 @@ export async function resolveTrustedDeliveryFee(
 
   const deliveryResolution = await resolveOrderDeliveryFee({
     clientFee: trustedDeliveryFee,
-    isDeliveryOrder: orderTypeRow?.type === 'delivery',
+    isDeliveryOrder,
     lalamoveEnabled: tenantConfig.lalamove_enabled === true,
-    distanceConfig: distanceConfigFromTenant(tenantConfig),
-    store: toLatLng(tenantConfig.restaurant_latitude, tenantConfig.restaurant_longitude),
-    destination: toLatLng(deliveryDestination.delivery_lat, deliveryDestination.delivery_lng),
+    distanceConfig: storeDistanceConfig && withOriginRadius(storeDistanceConfig, deliveryOrigin),
+    store: deliveryOrigin?.point ?? null,
+    destination: deliveryPin,
     measureKm: measureRoadDistanceKm,
   })
   if (deliveryResolution.kind === 'abort') return { ok: false, failure: lost(deliveryResolution.error) }
@@ -192,6 +220,7 @@ export async function priceCharges(
   const checkoutGovernment = await applyCheckoutGovernment({
     db: supabaseAdmin,
     tenantId,
+    outletId: resolvedOutlet?.id ?? null,
     claim: input.governmentClaim,
     items,
     serviceCharge,

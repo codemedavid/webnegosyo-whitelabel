@@ -140,7 +140,11 @@ describe('quoteAppDelivery — Lalamove stores', () => {
     expect(outcome.quote).toMatchObject({ fee: 132, freeDeliveryMinimum: 500, distanceKm: null, expiresAt: '2026-11-04T08:04:00.000Z' })
     expect(decodeAppQuoteToken(outcome.quote.quoteToken)).toEqual({ quotationId: 'Q-9', signature: 'body.mac' })
     expect(appDeliveryQuoteSchema.safeParse(outcome.quote).success).toBe(true)
-    expect(quoteLalamove).toHaveBeenCalledWith(TENANT_ID, { address: NEARBY.address, lat: NEARBY.lat, lng: NEARBY.lng })
+    expect(quoteLalamove).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({ source: 'store', outletId: null, point: { lat: 14.6, lng: 121 } }),
+      { address: NEARBY.address, lat: NEARBY.lat, lng: NEARBY.lng },
+    )
     expect(injected.measureKm).not.toHaveBeenCalled()
   })
 

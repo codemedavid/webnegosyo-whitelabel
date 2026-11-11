@@ -7,6 +7,8 @@ import 'server-only'
  * The web checkout (`createOrderAction`) and the customer app both call it.
  */
 
+import { resolveOrderBackend } from '@/lib/order-backend'
+import { holdSimpleOptionStock } from '@/lib/checkout/simple-option-hold'
 import { admitOrder } from './admit-order'
 import { createPresellClaimHolder, type PresellClaimHolder } from './presell-claim'
 import { priceCharges, resolveTrustedDeliveryFee } from './pricing'
@@ -28,6 +30,21 @@ export type {
 
 export const LOST_ORDER_MESSAGE = 'We could not save your order. Please try again or contact the store.'
 
+/**
+ * Placed with the Messenger chat's link: what they added in Messenger is now
+ * this order. Never throws: the order is already saved, and a failure here
+ * must not read as a failed order.
+ */
+async function finishChatCart(chatSessionId: string | null): Promise<void> {
+  if (!chatSessionId) return
+  try {
+    const { emptyChatCart } = await import('@/lib/messenger/chat-cart-store')
+    await emptyChatCart(chatSessionId)
+  } catch (error) {
+    console.error('[Messenger] chat cart not emptied after order', error instanceof Error ? error.message : error)
+  }
+}
+
 async function runPlaceOrder(input: PlaceOrderInput, presell: PresellClaimHolder): Promise<PlaceOrderResult> {
   const admission = await admitOrder(input)
   if (!admission.ok) return admission.failure
@@ -38,6 +55,30 @@ async function runPlaceOrder(input: PlaceOrderInput, presell: PresellClaimHolder
   const order = { ...admitted, customerData: claim.customerData }
 
   // Any refusal from here on hands the reserved pre-order stock back first.
+
+  // ── Simple-option counters ──
+  // Platform: CLAIMED under the id the order is then inserted with, so the
+  // post-order depletion finds the claim taken and a cancel finds its
+  // movements — as the very last step before the insert (write-order.ts), so
+  // a function killed mid-checkout (road distance, vouchers…) never leaves
+  // counters reduced for an order that was never written (MEDIUM-4). Other
+  // backends: the unlocked courtesy read, here, before anything else.
+  // Lines carry the ids their text was charged for (see priceOrderLines).
+  const platformOrderId = resolveOrderBackend(order.tenantConfig) === 'platform' ? crypto.randomUUID() : null
+  if (order.tenantConfig.inventory_enabled === true && !platformOrderId) {
+    const check = await holdSimpleOptionStock({
+      db: order.db,
+      tenantId: input.tenantId,
+      orderId: null,
+      items: order.lines,
+      outletId: order.resolvedOutlet?.id ?? null,
+    })
+    if (!check.ok) {
+      await presell.release()
+      return refused(check.error)
+    }
+  }
+
   const fee = await resolveTrustedDeliveryFee(order)
   if (!fee.ok) {
     await presell.release()
@@ -45,7 +86,9 @@ async function runPlaceOrder(input: PlaceOrderInput, presell: PresellClaimHolder
   }
 
   const charges = await priceCharges(order, fee.fee)
-  const written = await writeOrder({ order, charges, effectiveDeliveryFee: fee.fee, presell })
+  const written = await writeOrder({ order, charges, effectiveDeliveryFee: fee.fee, presell, platformOrderId })
+  if (written.kind === 'refused') return written
+  await finishChatCart(order.chatSessionId)
   return buildPlacedOrder(order, charges, fee.fee, written)
 }
 

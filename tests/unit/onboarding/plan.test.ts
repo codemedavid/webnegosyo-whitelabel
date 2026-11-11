@@ -19,6 +19,12 @@ describe('baseSlugFromName', () => {
     expect(baseSlugFromName('Admin')).toBe('admin-store')
   })
 
+  test('never takes the platform legal pages Meta App Review links to', () => {
+    expect(baseSlugFromName('Terms')).toBe('terms-store')
+    expect(baseSlugFromName('Data Deletion')).toBe('data-deletion-store')
+    expect(baseSlugFromName('Privacy')).toBe('privacy-store')
+  })
+
   test('falls back when nothing usable is left', () => {
     expect(baseSlugFromName('☕')).toBe('store')
   })

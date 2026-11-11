@@ -156,6 +156,19 @@ describe("profileFromForm", () => {
   });
 });
 
+describe("online Senior/PWD claims", () => {
+  it("start off, so the discount is given on the register", () => {
+    expect(formFromProfile(null).onlineClaimsEnabled).toBe(false);
+    expect(profileFromForm(validForm())?.onlineClaimsEnabled).toBe(false);
+  });
+
+  it("save what the owner switched on", () => {
+    const saved: TaxProfile = { ...defaultTaxProfile("vat"), onlineClaimsEnabled: true };
+    expect(formFromProfile(saved).onlineClaimsEnabled).toBe(true);
+    expect(profileFromForm(formFromProfile(saved))?.onlineClaimsEnabled).toBe(true);
+  });
+});
+
 describe("toggleKind", () => {
   it("offers only the optional kinds as switches", () => {
     expect(OPTIONAL_GOV_KINDS).toEqual(["athlete", "medal_of_valor"]);

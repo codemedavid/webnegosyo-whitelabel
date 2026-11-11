@@ -4,6 +4,7 @@
  * a mistyped URL shows the usual view, not an error.
  */
 
+import { isFunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
 import type { PipelineLead } from './types'
 
 export type PipelineRange = '7d' | '30d' | '90d' | 'all'
@@ -14,7 +15,7 @@ export interface PipelineFilters {
   offer: PipelineOffer
 }
 
-/** The ₱999 funnel is the pipeline being automated; the old one-time leads would swamp it. */
+/** The /funnel plans are the pipeline being automated; the old one-time leads would swamp it. */
 export const DEFAULT_PIPELINE_FILTERS: PipelineFilters = { range: '30d', offer: 'monthly' }
 
 export const PIPELINE_RANGES: Readonly<Record<PipelineRange, { label: string; days: number | null }>> = {
@@ -25,12 +26,11 @@ export const PIPELINE_RANGES: Readonly<Record<PipelineRange, { label: string; da
 }
 
 export const PIPELINE_OFFERS: Readonly<Record<PipelineOffer, string>> = {
-  monthly: '₱999 monthly',
+  monthly: 'Funnel plans',
   one_time: 'One-time checkout',
   all: 'All offers',
 }
 
-const MONTHLY_TERM = 'monthly_subscription'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 type QueryValue = string | string[] | undefined
@@ -52,11 +52,14 @@ export function windowStartMs(range: PipelineRange, nowMs: number): number | nul
   return days === null ? null : nowMs - days * DAY_MS
 }
 
-/** Every term but the monthly one (and a missing term) is the one-time checkout. */
+/**
+ * `monthly` (kept as the URL key) is every /funnel plan: monthly and both
+ * six-month terms. Every other term, and a missing one, is the one-time checkout.
+ */
 export function matchesOffer(paymentTerm: string | null, offer: PipelineOffer): boolean {
   if (offer === 'all') return true
-  const isMonthly = paymentTerm === MONTHLY_TERM
-  return offer === 'monthly' ? isMonthly : !isMonthly
+  const isFunnelPlan = isFunnelPlanTerm(paymentTerm)
+  return offer === 'monthly' ? isFunnelPlan : !isFunnelPlan
 }
 
 export function filterPipelineLeads(

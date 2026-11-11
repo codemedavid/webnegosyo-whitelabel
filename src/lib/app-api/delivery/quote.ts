@@ -5,8 +5,12 @@
  *  - delivery must be one of the store's online order types;
  *  - a multi-branch store's branch is checked like `createOrderAction` checks it
  *    (`requireCheckoutOutlet`), and must deliver;
+ *  - the delivery starts where the order engine starts it: the branch's own
+ *    pin and radius when it has one, else the store's (`resolveDeliveryOrigin`);
+ *  - a pin outside the country is refused, as the engine refuses it;
  *  - Lalamove stores get a signed quotation (`createSignedLalamoveQuote`, the
- *    same path as `createQuotationAction`), handed over as an opaque `quoteToken`;
+ *    same path as `createQuotationAction`, signed for that branch), handed over
+ *    as an opaque `quoteToken`;
  *  - otherwise the distance formula (`quoteDistanceDelivery` + `judgeDistanceQuote`,
  *    the same pair `resolveOrderDeliveryFee` runs), or no fee when the store
  *    has no delivery pricing (as the checkout).
@@ -21,11 +25,18 @@ import { judgeDistanceQuote } from '@/lib/checkout/order-delivery-fee'
 import {
   distanceConfigFromTenant,
   quoteDistanceDelivery,
-  toLatLng,
   type DistanceDeliveryTenantFields,
   type MeasureDistanceKm,
 } from '@/lib/delivery-fee'
 import { DELIVERY_MISCONFIGURED_MESSAGE } from '@/lib/delivery-quote'
+import {
+  resolveDeliveryOrigin,
+  type DeliveryOrigin,
+  type OriginOutletFields,
+  type OriginStoreFields,
+} from '@/lib/delivery/delivery-origin'
+import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
+import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
 import { resolveFreeDeliveryThreshold } from '@/lib/free-delivery'
 import type { SignedLalamoveQuote } from '@/lib/lalamove-signed-quote'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
@@ -42,16 +53,17 @@ export const NO_DELIVERY_MESSAGE = 'This store is not taking delivery orders rig
 export const BRANCH_NO_DELIVERY_MESSAGE = 'This branch does not deliver. Choose another branch or pick up instead.'
 export const QUOTE_UNAVAILABLE_MESSAGE = 'We could not get a delivery fee right now. Please try again in a moment.'
 export const QUOTE_BUSY_MESSAGE = 'Too many delivery quotes right now. Please try again in a moment.'
+export const OUTSIDE_COUNTRY_MESSAGE =
+  'This address is outside the Philippines. Search again and pick the right spot on the map.'
 
-export interface DeliveryQuoteTenant extends DistanceDeliveryTenantFields {
+export interface DeliveryQuoteTenant extends DistanceDeliveryTenantFields, OriginStoreFields {
   id: string
   multi_branch_enabled?: boolean | null
-  restaurant_latitude?: number | string | null
-  restaurant_longitude?: number | string | null
+  lalamove_market?: string | null
   free_delivery_min_order?: number | string | null
 }
 
-export interface DeliveryQuoteOutlet extends OrderOutletCandidate {
+export interface DeliveryQuoteOutlet extends OrderOutletCandidate, OriginOutletFields {
   supports_delivery: boolean
 }
 
@@ -65,7 +77,11 @@ export interface DeliveryQuoteDeps {
   /** `type` of every order type the store offers online. */
   readOrderTypeKinds: (tenantId: string) => Promise<string[]>
   /** Quote + sign with the store's own Lalamove account (throws on a Lalamove failure). */
-  quoteLalamove: (tenantId: string, destination: { address: string; lat: number; lng: number }) => Promise<LalamoveQuoteAttempt>
+  quoteLalamove: (
+    tenantId: string,
+    origin: DeliveryOrigin | null,
+    destination: { address: string; lat: number; lng: number },
+  ) => Promise<LalamoveQuoteAttempt>
   measureKm: MeasureDistanceKm
 }
 
@@ -78,33 +94,38 @@ const unavailable = (message: string): DeliveryQuoteOutcome => ({ ok: false, cod
 
 const roundKm = (km: number): number => Math.round(km * 100) / 100
 
-/** Null when the branch is fine (or the store has one location); otherwise the refusal. */
+/**
+ * The branch row the order engine will resolve (null for a single-location
+ * store), or the refusal. Its pin is where the delivery starts.
+ */
 async function checkBranch(
   tenant: DeliveryQuoteTenant,
   outletId: string | null,
   deps: DeliveryQuoteDeps
-): Promise<DeliveryQuoteOutcome | null> {
-  if (!isMultiBranchEnabled(tenant)) return null
+): Promise<{ ok: true; branch: DeliveryQuoteOutlet | null } | { ok: false; outcome: DeliveryQuoteOutcome }> {
+  if (!isMultiBranchEnabled(tenant)) return { ok: true, branch: null }
   const outlets = await deps.readOutlets(tenant.id)
   let outlet: { id: string } | null
   try {
     outlet = requireCheckoutOutlet({ isEnabled: true, requestedOutletId: outletId, outlets })
   } catch (error) {
-    return refuse(error instanceof Error ? error.message : 'Choose a branch first.')
+    return { ok: false, outcome: refuse(error instanceof Error ? error.message : 'Choose a branch first.') }
   }
-  const branch = outlet ? outlets.find((candidate) => candidate.id === outlet.id) : undefined
-  return branch && branch.supports_delivery !== true ? refuse(BRANCH_NO_DELIVERY_MESSAGE) : null
+  const branch = outlet ? outlets.find((candidate) => candidate.id === outlet.id) ?? null : null
+  if (branch && branch.supports_delivery !== true) return { ok: false, outcome: refuse(BRANCH_NO_DELIVERY_MESSAGE) }
+  return { ok: true, branch }
 }
 
 async function quoteByLalamove(
   tenantId: string,
+  origin: DeliveryOrigin | null,
   request: AppDeliveryQuoteRequest,
   freeDeliveryMinimum: number | null,
   deps: DeliveryQuoteDeps
 ): Promise<DeliveryQuoteOutcome> {
   let attempt: LalamoveQuoteAttempt
   try {
-    attempt = await deps.quoteLalamove(tenantId, { address: request.address, lat: request.lat, lng: request.lng })
+    attempt = await deps.quoteLalamove(tenantId, origin, { address: request.address, lat: request.lat, lng: request.lng })
   } catch (error) {
     // Lalamove said no or was unreachable; its wording is not written for a diner.
     console.error('[app-api:delivery-quote] Lalamove quotation failed', {
@@ -136,18 +157,20 @@ async function quoteByLalamove(
 
 async function quoteByDistance(
   tenant: DeliveryQuoteTenant,
+  origin: DeliveryOrigin | null,
   request: AppDeliveryQuoteRequest,
   freeDeliveryMinimum: number | null,
   deps: DeliveryQuoteDeps
 ): Promise<DeliveryQuoteOutcome> {
   const unpriced = { freeDeliveryMinimum, etaMinutes: null, quoteToken: null, expiresAt: null }
-  const config = distanceConfigFromTenant(tenant)
+  const storeConfig = distanceConfigFromTenant(tenant)
   // No delivery pricing: the checkout bills no fee either.
-  if (!config) return { ok: true, quote: { ...unpriced, fee: 0, distanceKm: null } }
+  if (!storeConfig) return { ok: true, quote: { ...unpriced, fee: 0, distanceKm: null } }
+  const config = withOriginRadius(storeConfig, origin)
 
   const outcome = await quoteDistanceDelivery({
     config,
-    store: toLatLng(tenant.restaurant_latitude, tenant.restaurant_longitude),
+    store: origin?.point ?? null,
     destination: { lat: request.lat, lng: request.lng },
     measureKm: deps.measureKm,
   })
@@ -167,11 +190,21 @@ export async function quoteAppDelivery(
   if (!kinds.includes('delivery')) return refuse(NO_DELIVERY_MESSAGE)
   if (!tenant || tenant.id !== tenantId) return unavailable(QUOTE_UNAVAILABLE_MESSAGE)
 
-  const branchRefusal = await checkBranch(tenant, request.outletId, deps)
-  if (branchRefusal) return branchRefusal
+  if (assessDeliveryPin({
+    pin: { lat: request.lat, lng: request.lng },
+    origin: null,
+    market: tenant.lalamove_market,
+    lalamoveEnabled: tenant.lalamove_enabled === true,
+  }).isBlocked) {
+    return refuse(OUTSIDE_COUNTRY_MESSAGE)
+  }
+
+  const branch = await checkBranch(tenant, request.outletId, deps)
+  if (!branch.ok) return branch.outcome
+  const origin = resolveDeliveryOrigin(tenant, branch.branch)
 
   const freeDeliveryMinimum = resolveFreeDeliveryThreshold(tenant.free_delivery_min_order)
   return tenant.lalamove_enabled === true
-    ? quoteByLalamove(tenantId, request, freeDeliveryMinimum, deps)
-    : quoteByDistance(tenant, request, freeDeliveryMinimum, deps)
+    ? quoteByLalamove(tenantId, origin, request, freeDeliveryMinimum, deps)
+    : quoteByDistance(tenant, origin, request, freeDeliveryMinimum, deps)
 }

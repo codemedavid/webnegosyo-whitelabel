@@ -30,9 +30,15 @@ export interface OrderAuditTarget {
 }
 
 function skippedDetail(result: OrderStockResult): string | null {
-  return result.skipped.length > 0
-    ? `Skipped ${result.skipped.length} ingredient(s) with an unresolvable unit: ${result.skipped.join(', ')}`
-    : null
+  const parts = [
+    ...(result.skipped.length > 0
+      ? [`Skipped ${result.skipped.length} ingredient(s) with an unresolvable unit: ${result.skipped.join(', ')}`]
+      : []),
+    ...(result.shortfalls && result.shortfalls.length > 0
+      ? [`Option stock ran short (counted down to zero): ${result.shortfalls.join('; ')}`]
+      : []),
+  ]
+  return parts.length > 0 ? parts.join('. ') : null
 }
 
 /**

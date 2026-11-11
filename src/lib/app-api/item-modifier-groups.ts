@@ -1,4 +1,5 @@
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
+import { withCategoryAddons } from '@/lib/category-default-addons'
 import { collectLinkedItemIds, resolveLinkedOptions, type LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { resolveMenuForOutlet, type OutletMenuIndex } from '@/lib/outlets/outlet-menu-overrides'
 import type { Addon, Category, MenuItem, ModifierGroup } from '@/types/database'
@@ -23,8 +24,8 @@ function addonNameKey(addon: unknown): string | null {
 /**
  * The dish's add-ons plus its category's default add-ons. Item add-ons win over
  * the category's defaults on a (case-insensitive) name clash, as on the web
- * (`useVariationState`). Shared with server pricing (`load-line-pricing.ts`),
- * so the add-ons a dish is priced with are the ones it was shown with. Takes
+ * (`useVariationState`) and in server pricing (`withCategoryAddons`), so the
+ * add-ons a dish is priced with are the ones it was shown with. Takes
  * untrusted row JSON: a non-array reads as none.
  */
 export function mergeCategoryAddons(
@@ -53,7 +54,9 @@ export function usesUnifiedModifierGroups(item: { modifier_groups?: unknown }, t
 /**
  * The dish's groups, normalised but with linked options still unresolved. The
  * web only reads `modifier_groups` when the store has the feature on; otherwise
- * the legacy columns (plus the category's default add-ons).
+ * the legacy columns. Either way the category's default add-ons are offered:
+ * joined to the groups (`withCategoryAddons`, as the item page and checkout
+ * pricing do) or to the legacy add-ons.
  */
 export function modifierGroupsFor(
   item: ModifierItemRow,
@@ -62,7 +65,7 @@ export function modifierGroupsFor(
 ): ModifierGroup[] {
   return normalizeModifierGroups(
     usesUnifiedModifierGroups(item, tenant)
-      ? { modifier_groups: item.modifier_groups }
+      ? { modifier_groups: withCategoryAddons({ modifier_groups: item.modifier_groups }, category?.default_addons).modifier_groups }
       : { variation_types: item.variation_types, variations: item.variations, addons: mergeCategoryAddons(item, category) },
   )
 }

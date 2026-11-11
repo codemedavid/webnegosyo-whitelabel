@@ -4,8 +4,11 @@
  */
 
 import { createHmac } from 'crypto'
+import { createLogger } from '@/lib/logger'
+import { FACEBOOK_GRAPH_API } from '@/lib/facebook/graph'
 
-const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v20.0'
+/** Tracing is opt-in (DEBUG_MESSENGER): these lines carry PSIDs. */
+const log = createLogger('[Facebook API]', 'DEBUG_MESSENGER')
 
 interface FacebookPage {
   id: string
@@ -91,22 +94,74 @@ export async function getLongLivedToken(shortLivedToken: string): Promise<{
   }
 }
 
+const PAGE_FIELDS = 'id,name,access_token'
+const PAGE_GRANT_SCOPES = new Set(['pages_show_list', 'pages_messaging'])
+
 /**
- * Get user's Facebook Pages
+ * Page ids the person ticked in the Facebook Login for Business dialog, read
+ * from the token's granular scopes. null = the grant could not be read
+ * (no app credentials, Graph refused), so callers fall back to /me/accounts.
+ */
+async function getGrantedPageIds(accessToken: string): Promise<string[] | null> {
+  const appId = process.env.FACEBOOK_APP_ID
+  const appSecret = process.env.FACEBOOK_APP_SECRET
+  if (!appId || !appSecret) return null
+
+  const params = new URLSearchParams({ input_token: accessToken, access_token: `${appId}|${appSecret}` })
+  const response = await fetch(`${FACEBOOK_GRAPH_API}/debug_token?${params}`, { method: 'GET' })
+  if (!response.ok) return null
+
+  const body = (await response.json()) as {
+    data?: { granular_scopes?: { scope: string; target_ids?: string[] }[] }
+  }
+  const scopes = body.data?.granular_scopes
+  if (!scopes) return null
+
+  const ids = scopes
+    .filter((s) => PAGE_GRANT_SCOPES.has(s.scope))
+    .flatMap((s) => s.target_ids ?? [])
+  return [...new Set(ids)]
+}
+
+async function getPageWithToken(pageId: string, accessToken: string): Promise<FacebookPage | null> {
+  const params = new URLSearchParams({ fields: PAGE_FIELDS, access_token: accessToken })
+  const response = await fetch(`${FACEBOOK_GRAPH_API}/${encodeURIComponent(pageId)}?${params}`, { method: 'GET' })
+  if (!response.ok) return null
+
+  const page = (await response.json()) as Partial<FacebookPage>
+  return page.id && page.name && page.access_token
+    ? { id: page.id, name: page.name, access_token: page.access_token }
+    : null
+}
+
+/**
+ * Get the Facebook Pages the person granted this app.
+ *
+ * /me/accounts leaves out pages reached through a business portfolio, and
+ * lists pages the person did NOT tick in Login for Business. When the token's
+ * grant is readable, the granted ids decide; a granted page missing from the
+ * list is fetched directly.
  */
 export async function getUserPages(accessToken: string): Promise<FacebookPage[]> {
-  const response = await fetch(
-    `${FACEBOOK_GRAPH_API}/me/accounts?access_token=${accessToken}`,
-    { method: 'GET' }
-  )
+  const params = new URLSearchParams({ fields: PAGE_FIELDS, limit: '100', access_token: accessToken })
+  const response = await fetch(`${FACEBOOK_GRAPH_API}/me/accounts?${params}`, { method: 'GET' })
 
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Failed to get user pages: ${error}`)
   }
 
-  const data = (await response.json()) as { data: FacebookPage[] }
-  return data.data || []
+  const data = (await response.json()) as { data?: FacebookPage[] }
+  const listed = data.data || []
+
+  const grantedIds = await getGrantedPageIds(accessToken).catch(() => null)
+  if (!grantedIds) return listed
+
+  const listedById = new Map(listed.map((page) => [page.id, page]))
+  const pages = await Promise.all(
+    grantedIds.map((id) => listedById.get(id) ?? getPageWithToken(id, accessToken).catch(() => null))
+  )
+  return pages.filter((page): page is FacebookPage => page !== null)
 }
 
 /**
@@ -132,7 +187,7 @@ export async function subscribePageToWebhook(
       `subscribed_fields=${subscribedFields}` +
       `&access_token=${pageAccessToken}`
 
-    console.log(`[Facebook API] Subscribing page ${pageId} to webhook with fields: ${subscribedFields}`)
+    log.debug(`Subscribing page ${pageId} to webhook with fields: ${subscribedFields}`)
 
     const response = await fetch(url, { method: 'POST' })
 
@@ -146,9 +201,9 @@ export async function subscribePageToWebhook(
     const data = (await response.json()) as { success: boolean }
 
     if (data.success) {
-      console.log(`[Facebook API] ✅ Successfully subscribed page ${pageId} to webhook`)
-      console.log(`[Facebook API] Subscribed fields: ${subscribedFields}`)
-      console.log(`[Facebook API] ⚠️ IMPORTANT: messaging_referrals is required for order tracking via ref parameter`)
+      log.debug(`✅ Successfully subscribed page ${pageId} to webhook`)
+      log.debug(`Subscribed fields: ${subscribedFields}`)
+      log.debug(`⚠️ IMPORTANT: messaging_referrals is required for order tracking via ref parameter`)
     } else {
       console.warn(`[Facebook API] ⚠️ Subscription response for page ${pageId} was not successful`)
       console.warn(`[Facebook API] Response data:`, JSON.stringify(data, null, 2))
@@ -212,7 +267,7 @@ export async function verifyPageWebhookSubscription(
           console.error(`[Facebook API] ⚠️ CRITICAL: messaging_referrals is missing! Order tracking via ref parameter will not work.`)
         }
       } else {
-        console.log(`[Facebook API] ✅ Page ${pageId} has all required webhook fields subscribed`)
+        log.debug(`✅ Page ${pageId} has all required webhook fields subscribed`)
       }
 
       return {
@@ -259,6 +314,25 @@ export async function sendMessage(
   pageAccessToken: string,
   message: string
 ): Promise<boolean> {
+  const first = await postTextMessage(psid, pageAccessToken, message)
+  if (first.ok) return true
+  if (first.errorSubcode !== THREAD_CONTROLLED_BY_ANOTHER_APP) return false
+
+  // Handover protocol: another app (a chatbot, or the Page inbox after a
+  // human reply) holds this conversation. The customer just opened it from
+  // our checkout, so take it back once and resend; never loop.
+  if (!(await takeThreadControl(psid, pageAccessToken))) return false
+  return (await postTextMessage(psid, pageAccessToken, message)).ok
+}
+
+/** Graph error_subcode: "another app is controlling this thread now". */
+const THREAD_CONTROLLED_BY_ANOTHER_APP = 2018300
+
+async function postTextMessage(
+  psid: string,
+  pageAccessToken: string,
+  message: string
+): Promise<{ ok: boolean; errorSubcode?: number }> {
   const response = await fetch(
     `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
     {
@@ -268,7 +342,9 @@ export async function sendMessage(
       },
       body: JSON.stringify({
         recipient: { id: psid },
-        message: { text: message },
+        // Marks the echo as ours, so the automations never read an order
+        // summary as a staff reply and pause the bot (handle-event.ts).
+        message: { text: message, metadata: 'wn' },
       }),
     }
   )
@@ -276,159 +352,36 @@ export async function sendMessage(
   if (!response.ok) {
     const error = await response.text()
     console.error(`Failed to send message: ${error}`)
-    return false
+    return { ok: false, errorSubcode: readErrorSubcode(error) }
   }
 
   const data = (await response.json()) as { recipient_id?: string; message_id?: string }
-  return !!data.message_id
+  return { ok: !!data.message_id }
 }
 
-/**
- * Send a menu card via Messenger using Generic Template
- * Used for auto-reply when customers ask about menu/products
- */
-export async function sendMenuCard(
-  psid: string,
-  pageAccessToken: string,
-  tenant: {
-    name: string
-    logo_url?: string | null
-    domain?: string | null
-    slug: string
-  }
-): Promise<boolean> {
-  // Construct the tenant's website URL with PSID for tracking
-  const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'
-  let baseUrl: string
-
-  if (tenant.domain) {
-    // Use custom domain if set
-    baseUrl = tenant.domain.startsWith('http') ? tenant.domain : `https://${tenant.domain}`
-  } else {
-    // Use subdomain format
-    baseUrl = `https://${tenant.slug}.${rootDomain}`
-  }
-
-  // Append PSID to URL for customer tracking
-  const websiteUrl = `${baseUrl}?psid=${encodeURIComponent(psid)}`
-
-  // Use a default image if no logo is set
-  // Fallback to a configurable internal/CDN-backed image (avoids external service reliability issues)
-  const fallbackImageUrl = process.env.FALLBACK_IMAGE_URL || '/images/default-menu-card.png'
-  const imageUrl = tenant.logo_url || fallbackImageUrl
-
-  const payload = {
-    recipient: { id: psid },
-    message: {
-      attachment: {
-        type: 'template',
-        payload: {
-          template_type: 'generic',
-          elements: [
-            {
-              title: `📍 ${tenant.name}`,
-              image_url: imageUrl,
-              subtitle: '👇 Tap below to view items and order now!',
-              default_action: {
-                type: 'web_url',
-                url: websiteUrl,
-                messenger_extensions: false,
-              },
-              buttons: [
-                {
-                  type: 'web_url',
-                  url: websiteUrl,
-                  title: '🛒 View Items Now',
-                  messenger_extensions: false,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
-  }
-
+function readErrorSubcode(body: string): number | undefined {
   try {
-    // Log payload structure for debugging (without sensitive data)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Facebook API] Sending menu card payload:', JSON.stringify({
-        recipient: { id: '***' },
-        message: payload.message,
-      }, null, 2))
+    return (JSON.parse(body) as { error?: { error_subcode?: number } }).error?.error_subcode
+  } catch {
+    return undefined
+  }
+}
+
+async function takeThreadControl(psid: string, pageAccessToken: string): Promise<boolean> {
+  const response = await fetch(
+    `${FACEBOOK_GRAPH_API}/me/take_thread_control?access_token=${pageAccessToken}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient: { id: psid }, metadata: 'webnegosyo_order_summary' }),
     }
+  )
 
-    const response = await fetch(
-      `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      }
-    )
-
-    const responseText = await response.text()
-
-    if (!response.ok) {
-      console.error(`[Facebook API] Failed to send menu card (HTTP ${response.status}): ${responseText}`)
-      // Try to parse error for more details
-      try {
-        const errorData = JSON.parse(responseText)
-        console.error(`[Facebook API] Error details:`, {
-          code: errorData.error?.code,
-          type: errorData.error?.type,
-          message: errorData.error?.message,
-          fbtrace_id: errorData.error?.fbtrace_id,
-        })
-      } catch {
-        // Response wasn't JSON, already logged above
-      }
-      return false
-    }
-
-    // Parse successful response
-    let data: { recipient_id?: string; message_id?: string }
-    try {
-      data = JSON.parse(responseText)
-    } catch {
-      console.error('[Facebook API] Failed to parse success response:', responseText)
-      return false
-    }
-
-    if (data.message_id) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[Facebook API] ✅ Menu card sent successfully to ${psid}, message_id: ${data.message_id}`)
-      } else {
-        // Mask PSID in production: show only last 4 characters
-        const maskedPsid = psid.length > 4 ? '*'.repeat(psid.length - 4) + psid.slice(-4) : '****'
-        console.log(`[Facebook API] ✅ Menu card sent successfully to ${maskedPsid}`)
-      }
-      // Optionally send a fallback text message with the link
-      // Only sent when ENABLE_FALLBACK_LINK is explicitly enabled to avoid duplicate/noisy messages
-      const enableFallbackLink = process.env.ENABLE_FALLBACK_LINK === 'true'
-      if (enableFallbackLink) {
-        try {
-          await sendMessage(
-            psid,
-            pageAccessToken,
-            `👆 Tap the card above to browse our menu!\n\nOr use this link: ${websiteUrl}`
-          )
-        } catch (fallbackError) {
-          // Non-critical, log but don't fail the overall operation
-          console.warn('[Facebook API] Failed to send fallback link message:', fallbackError)
-        }
-      }
-      return true
-    } else {
-      console.warn(`[Facebook API] ⚠️ Menu card API returned OK but no message_id:`, data)
-      return false
-    }
-  } catch (error) {
-    console.error(`[Facebook API] Exception sending menu card:`, error)
+  if (!response.ok) {
+    console.error(`[Facebook API] take_thread_control refused: ${await response.text()}`)
     return false
   }
+  return true
 }
 
 /**

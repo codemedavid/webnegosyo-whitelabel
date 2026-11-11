@@ -219,8 +219,9 @@ export async function listActivity(db: SupabaseClient, tenantId: string, query: 
   if (runFilter && runFilter.length === 0) return { items: [], nextCursor: null }
   // The default (shipped app) read never touches campaign columns.
   const withCampaigns = Boolean(query.includeCampaigns || runFilter)
+  // Test texts (web Texts → Send a test) report on their own card, never in the guest feed.
   let request = db.from('sms_outbox').select(withCampaigns ? `${ACTIVITY_COLUMNS}, campaign_run_id` : ACTIVITY_COLUMNS)
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', tenantId).neq('source', 'test')
   if (query.cursor) {
     const [createdAt, id] = query.cursor.split('~')
     request = request.or(`created_at.lt.${createdAt},and(created_at.eq.${createdAt},id.gt.${id})`)

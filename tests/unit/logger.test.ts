@@ -105,6 +105,20 @@ describe('createLogger', () => {
     expect(errorSpy).toHaveBeenCalledWith('[Middleware] Session lookup failed:', cause)
   })
 
+  test('info always logs an outcome line, even with every debug flag off', () => {
+    // Arrange — one line per rare event (e.g. a reward code request), not tracing
+    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {})
+    const log = createLogger('[Loyalty SMS]', 'DEBUG_SMS_AUTOMATIONS', () => noFlags)
+
+    // Act
+    log.info('wallet code', { outcome: 'not_member' })
+    log.info('no data')
+
+    // Assert
+    expect(infoSpy).toHaveBeenNthCalledWith(1, '[Loyalty SMS] wallet code', { outcome: 'not_member' })
+    expect(infoSpy.mock.calls[1]).toEqual(['[Loyalty SMS] no data'])
+  })
+
   test('error omits the data argument when none is given', () => {
     // Arrange
     const log = createLogger('[Middleware]', 'DEBUG_MIDDLEWARE', () => noFlags)

@@ -18,6 +18,7 @@ import { collectLinkedItemIds } from '@/lib/modifier-linked-options'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { transformImageUrl as transformCloudinaryUrl, isOptimizableImageUrl as isCloudinaryUrl } from '@/lib/imagekit-utils'
 import { resolveIsBrandAdmin } from '@/lib/storefront/brand-admin'
+import { isModifierGroupsEnabled } from '@/lib/modifier-groups-flag'
 import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -100,7 +101,7 @@ export default async function ProductDetailPage({ params }: Props) {
         // Menu items referenced by linked add-on options ("Add a Coke"). Resolved
         // live at render, so the add-on always shows the item's current name,
         // price, image and availability. Empty map when nothing is linked.
-        const linkedModifierItems = tenant.modifier_groups_enabled
+        const linkedModifierItems = isModifierGroupsEnabled(tenant)
             ? await getCachedLinkedModifierItems(
                 collectLinkedItemIds(normalizeModifierGroups({ modifier_groups: item.modifier_groups })),
                 tenant.id
@@ -202,7 +203,7 @@ export default async function ProductDetailPage({ params }: Props) {
                     hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
                     upsellBundles={upsellBundles}
                     bundlesEnabled={!!tenant.bundles_enabled}
-                    modifierGroupsEnabled={!!tenant.modifier_groups_enabled}
+                    modifierGroupsEnabled={isModifierGroupsEnabled(tenant)}
                     linkedModifierItems={linkedModifierItems}
                     isBrandAdmin={isBrandAdmin}
                 />

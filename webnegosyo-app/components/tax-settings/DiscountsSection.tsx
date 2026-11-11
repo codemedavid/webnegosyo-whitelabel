@@ -7,6 +7,9 @@ import { Icon } from "../Icon";
 import { Note, SettingsCard, SwitchRow } from "./parts";
 import type { TaxSectionProps } from "./RegistrationSection";
 
+const ONLINE_CLAIMS_HINT =
+  "Off: customers ask at the counter or when their order arrives, and your staff apply it on the register after seeing the ID. On: customers type their ID number at online checkout and the discount comes off right away.";
+
 function LockedKindRow({ kind }: { kind: GovDiscountKind }) {
   const rule = GOV_DISCOUNT_RULES[kind];
   return (
@@ -25,10 +28,10 @@ function LockedKindRow({ kind }: { kind: GovDiscountKind }) {
   );
 }
 
-/** Senior/PWD locked on; the optional kinds as switches; the shared-table rule. */
+/** Senior/PWD locked on; the optional kinds as switches; the shared-table and online-claim rules. */
 export function DiscountsSection({ form, onChange, disabled }: TaxSectionProps) {
   return (
-    <SettingsCard title="Discounts you offer" description="These show as buttons on the register and at checkout.">
+    <SettingsCard title="Discounts you offer" description="These show as buttons on the register.">
       <View style={styles.group}>
         {MANDATORY_GOV_KINDS.map((kind) => (
           <LockedKindRow key={kind} kind={kind} />
@@ -65,6 +68,14 @@ export function DiscountsSection({ form, onChange, disabled }: TaxSectionProps) 
         hint="When food is shared, a senior or PWD gets 20% off their equal share: the shared food divided by everyone at the table. Turn off to discount only what they ordered for themselves."
         value={form.allowSharedTable}
         onChange={(allowSharedTable) => onChange({ allowSharedTable })}
+        disabled={disabled}
+      />
+
+      <SwitchRow
+        label="Let customers claim it when ordering online"
+        hint={ONLINE_CLAIMS_HINT}
+        value={form.onlineClaimsEnabled}
+        onChange={(onlineClaimsEnabled) => onChange({ onlineClaimsEnabled })}
         disabled={disabled}
       />
     </SettingsCard>

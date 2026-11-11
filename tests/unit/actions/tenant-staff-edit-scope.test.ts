@@ -153,10 +153,18 @@ describe('updateTenantAction — platform staff edit scope', () => {
     expect(updatedPayload).toBeNull()
   })
 
+  it('refuses a superadmin routing change that leaves orders behind until confirmed', async () => {
+    const updateTenantAction = await loadUpdateTenantAction(SUPERADMIN)
+    const result = await updateTenantAction(TENANT_ID, { ...BASE_INPUT, order_backend: 'platform' } as never)
+
+    expect(result).toEqual({ error: expect.stringMatching(/confirm_backend_change/) })
+    expect(updatedPayload).toBeNull()
+  })
+
   it('lets a superadmin change the order routing', async () => {
     const updateTenantAction = await loadUpdateTenantAction(SUPERADMIN)
 
-    const result = await updateTenantAction(TENANT_ID, { ...BASE_INPUT, order_backend: 'platform' } as never)
+    const result = await updateTenantAction(TENANT_ID, { ...BASE_INPUT, order_backend: 'platform', confirm_backend_change: true } as never)
 
     expect(result).toMatchObject({ success: true })
     expect(updatedPayload).toMatchObject({ order_backend: 'platform' })

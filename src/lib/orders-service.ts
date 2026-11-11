@@ -5,6 +5,7 @@
 import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { readCutoffScheduleForDisplay } from '@/lib/business-day/read-schedule'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { createConvexServerClient } from '@/lib/convex/server'
@@ -36,6 +37,7 @@ import {
   type OnlineOrderSource,
 } from '@/lib/order-parity'
 import type { OrderDiscountPayload } from '@/lib/order-discount'
+import type { OrderLineAddonDetail } from '@/lib/order-line-modifier-pricing'
 
 export interface OrderWithItems extends Order {
   order_items: Array<{
@@ -47,6 +49,10 @@ export interface OrderWithItems extends Order {
     price: number
     subtotal: number
     special_instructions: string | null
+    /** Per add-on {name, price, quantity}; NULL before 20261029121000. Read via `describeOrderItem`. */
+    addon_details?: unknown
+    /** POS register lines keep their sizes and add-ons here instead. */
+    variation_selections?: unknown
   }>
 }
 
@@ -485,6 +491,8 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
   const { userRole } = await verifyTenantPermission(tenantId, 'orders', 'view')
 
   const supabase = await createClient()
+  // "Today" is the store's business day (a display: midnight if the setting can't be read).
+  const { schedule } = await readCutoffScheduleForDisplay(supabase, tenantId)
 
   // A branch account sees its own branch's day, like every other order read
   // here (ACCOUNT scope, never a client-chosen branch).
@@ -493,7 +501,7 @@ export const getOrderStats = cache(async function getOrderStats(tenantId: string
       .from('orders')
       .select('status, total, created_at')
       .eq('tenant_id', tenantId)
-      .gte('created_at', startOfTodayISO()),
+      .gte('created_at', startOfTodayISO(new Date(), schedule)),
     resolveBranchScope(userRole)
   )
 
@@ -531,6 +539,8 @@ export async function createOrder(
     bundleId?: string
     bundleName?: string
     slotName?: string
+    /** Server-priced breakdown from `priceOrderLines`; absent on lines without add-ons. */
+    addon_details?: OrderLineAddonDetail[]
   }>,
   customerInfo?: {
     name?: string
@@ -572,6 +582,12 @@ export async function createOrder(
     discountPayload?: OrderDiscountPayload | null
     /** `orders.source`; absent = 'web'. The customer app sends 'mobile'. */
     source?: OnlineOrderSource
+    /**
+     * The row id, chosen by the caller BEFORE the insert — the checkout claims
+     * simple-option counters under it (see simple-option-hold.ts). Absent =
+     * the database default.
+     */
+    orderId?: string | null
   }
 ) {
   // Input length validation to prevent large-payload abuse and potential DoS
@@ -713,6 +729,7 @@ export async function createOrder(
   const { data: order, error: orderError } = await orderWriter
     .from('orders')
     .insert({
+      ...(parityOptions?.orderId ? { id: parityOptions.orderId } : {}),
       tenant_id: tenantId,
       order_type_id: orderTypeId || null,
       order_type: orderTypeName,
@@ -757,6 +774,22 @@ export async function createOrder(
         .eq('client_order_id', parityOptions!.clientOrderId!.trim())
         .maybeSingle()
       if (existing) {
+        // The first attempt may have written the row and then failed on its
+        // items, or may still be writing them (a double tap). Never report that
+        // as a saved order: it would be success with nothing on it, and writing
+        // the items here could double them against the attempt still in flight.
+        // Failing lets the durable save retry, then fall back to Messenger.
+        // The real fix is an atomic order + items write.
+        const { data: existingItems, error: existingItemsError } = await orderWriter
+          .from('order_items')
+          .select('id')
+          .eq('order_id', (existing as { id: string }).id)
+          .limit(1)
+        if (existingItemsError) throw existingItemsError
+        if (!existingItems || existingItems.length === 0) {
+          throw new Error(`Order ${(existing as { id: string }).id} exists without its items`)
+        }
+
         let dedupedToken: string | undefined
         try {
           const { createOrderToken } = await import('@/lib/order-token')
@@ -793,6 +826,8 @@ export async function createOrder(
     menu_item_name: item.menu_item_name,
     variation: item.variation,
     addons: item.addons,
+    // Lets every order view print what each add-on cost (20261029121000).
+    ...(item.addon_details ? { addon_details: item.addon_details } : {}),
     quantity: item.quantity,
     price: item.price,
     subtotal: item.subtotal,

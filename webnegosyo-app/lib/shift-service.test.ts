@@ -12,12 +12,13 @@
 // module still imports it, and the real one reaches expo-constants.
 jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 
-import { loadOpenShift, openShift, closeShift, listShifts } from "./shift-service";
+import { loadOpenShift, openShift, closeShift, listShifts, fetchShiftById } from "./shift-service";
 
 interface Recorded {
   filters: { table: string; column: string; value: unknown }[];
   isFilters: { table: string; column: string }[];
   gteFilters: { table: string; column: string; value: unknown }[];
+  limits: { table: string; count: number }[];
   inserts: { table: string; row: Record<string, unknown> }[];
   updates: { table: string; row: Record<string, unknown> }[];
 }
@@ -31,6 +32,7 @@ function makeDb(results: Record<string, unknown>) {
     filters: [],
     isFilters: [],
     gteFilters: [],
+    limits: [],
     inserts: [],
     updates: [],
   };
@@ -49,7 +51,10 @@ function makeDb(results: Record<string, unknown>) {
 
     chain.select = () => chain;
     chain.order = () => chain;
-    chain.limit = () => chain;
+    chain.limit = (count: number) => {
+      recorded.limits.push({ table, count });
+      return chain;
+    };
     chain.eq = (column: string, value: unknown) => {
       recorded.filters.push({ table, column, value });
       return chain;
@@ -219,6 +224,23 @@ describe("openShift", () => {
       ),
     ).rejects.toThrow(/row-level security/);
   });
+
+  it("says the business day is closed when the day close refuses the shift", async () => {
+    const { db } = makeDb({
+      staff_shifts: [
+        { data: null, error: null },
+        { data: null, error: { code: "55000", message: "day_closed: this business day is closed." } },
+      ],
+    });
+
+    await expect(
+      openShift(
+        "t1",
+        { outletId: null, staffUserId: "u1", staffName: "Ana", openingFloat: 0 },
+        db,
+      ),
+    ).rejects.toThrow(/business day is already closed/);
+  });
 });
 
 describe("closeShift", () => {
@@ -304,6 +326,27 @@ describe("listShifts", () => {
     });
   });
 
+  it("carries each pay-out's reason onto the history row, oldest first", async () => {
+    const withMoves = {
+      ...OPEN_SHIFT,
+      shift_cash_movements: [
+        { kind: "collect", amount: "1000.00", reason: null, created_at: "2026-08-20T05:00:00Z" },
+        { kind: "pay_out", amount: "85.50", reason: " Ice ", created_at: "2026-08-20T03:00:00Z" },
+        { kind: "pay_out", amount: "450.00", reason: "LPG", created_at: "2026-08-20T02:00:00Z" },
+        { kind: "pay_in", amount: "100.00", reason: "Coins", created_at: "2026-08-20T01:00:00Z" },
+      ],
+    };
+    const { db } = makeDb({ staff_shifts: { data: [withMoves], error: null } });
+
+    const [shift] = await listShifts("t1", {}, db);
+
+    expect(shift.moves).toEqual({ payIn: 100, payOut: 535.5, collected: 1000 });
+    expect(shift.payOuts).toEqual([
+      { amount: 450, reason: "LPG", createdAt: "2026-08-20T02:00:00Z" },
+      { amount: 85.5, reason: "Ice", createdAt: "2026-08-20T03:00:00Z" },
+    ]);
+  });
+
   it("narrows to one staff member when asked", async () => {
     const { db, recorded } = makeDb({ staff_shifts: { data: [], error: null } });
 
@@ -314,6 +357,15 @@ describe("listShifts", () => {
       column: "staff_user_id",
       value: "u1",
     });
+  });
+
+  it("reads at most `limit` shifts when asked (My shifts), and no limit otherwise", async () => {
+    const { db, recorded } = makeDb({ staff_shifts: [{ data: [], error: null }, { data: [], error: null }] });
+
+    await listShifts("t1", { staffUserId: "u1", limit: 30 }, db);
+    await listShifts("t1", {}, db);
+
+    expect(recorded.limits).toEqual([{ table: "staff_shifts", count: 30 }]);
   });
 
   it("throws when the read fails — an empty history would read as a clean one", async () => {
@@ -328,4 +380,30 @@ describe("listShifts", () => {
 it("refuses a close that did not update an open, authorized shift", async () => {
   const { db } = makeDb({ staff_shifts: { data: null, error: null } });
   await expect(closeShift("t1", "s1", { closingCount: 0, expectedCash: 0, note: null }, db)).rejects.toThrow("could not be closed");
+});
+
+describe("fetchShiftById (Shift sales)", () => {
+  it("reads one shift of this store by id, whatever its status", async () => {
+    const { db, recorded } = makeDb({ staff_shifts: { data: { ...OPEN_SHIFT, status: "closed" }, error: null } });
+    const shift = await fetchShiftById("t1", "s1", db);
+    expect(shift).toMatchObject({ id: "s1", status: "closed", staffName: "Ana", isBlind: false, businessDay: null });
+    expect(recorded.filters).toEqual([
+      { table: "staff_shifts", column: "tenant_id", value: "t1" },
+      { table: "staff_shifts", column: "id", value: "s1" },
+    ]);
+  });
+
+  it("picks up the business-day columns once the database has them", async () => {
+    const { db } = makeDb({
+      staff_shifts: { data: { ...OPEN_SHIFT, is_blind: true, business_day: "2026-08-19", float_kept_cents: "200000" }, error: null },
+    });
+    expect(await fetchShiftById("t1", "s1", db)).toMatchObject({ isBlind: true, businessDay: "2026-08-19", floatKeptCents: 200000 });
+  });
+
+  it("answers null for a shift it cannot see, and throws on a failed read", async () => {
+    expect(await fetchShiftById("t1", "s1", makeDb({ staff_shifts: { data: null, error: null } }).db)).toBeNull();
+    await expect(
+      fetchShiftById("t1", "s1", makeDb({ staff_shifts: { data: null, error: { message: "boom" } } }).db),
+    ).rejects.toThrow(/could not be read\. \(boom\)/);
+  });
 });

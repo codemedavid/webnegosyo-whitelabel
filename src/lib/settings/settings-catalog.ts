@@ -181,6 +181,7 @@ const CATALOG: readonly GroupDef[] = [
       tool('branding', 'Branding Studio', 'Colours, menu cards, page layout and your welcome page.', 'paintbrush', '/branding'),
       tool('hero', 'Hero Builder', 'The banner at the top of your menu.', 'layout', '/hero-designer'),
       tool('welcome', 'Welcome Builder', 'Design the page customers see before your menu — templates included.', 'layout', '/welcome-designer'),
+      tool('page-designer', 'Page Designer', 'Design your checkout, thank-you and order-tracking pages — your words, your layout.', 'layout', '/page-designer'),
       section('footer', 'Footer & pages', 'Contact details, social links, and your About, Terms and Privacy pages.', 'panel-bottom'),
       section('splash', 'Splash screen', 'What customers see while your app opens.', 'smartphone'),
     ],

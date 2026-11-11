@@ -42,6 +42,9 @@ export const SUBSCREEN_PARENTS: Readonly<Record<string, readonly string[]>> = {
   // reward cards that keep them coming, and the texts that bring them back
   // are its follow-ups.
   [REPORTS_TAB]: REPORTS_DOORS,
+  // The bills the store pays every month hang under the book that records
+  // their payments (the hero line, the Bills to pay card, the set-up door).
+  expenses: ["expense-bills"],
 };
 
 export interface SubscreenLink extends TabPresentation {

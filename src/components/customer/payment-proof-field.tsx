@@ -26,8 +26,8 @@ interface PaymentProofFieldProps {
   required: boolean
   screenshotUrl: string
   reference: string
-  /** Called with the uploaded screenshot URL and its ImageKit file id. */
-  onUploaded: (url: string, fileId: string) => void
+  /** Called with the uploaded screenshot URL, its ImageKit file id and delete token. */
+  onUploaded: (url: string, fileId: string, deleteToken?: string) => void
   onRemove: () => void
   onReferenceChange: (value: string) => void
   /** Brand accent for the attached state and focus rings. */
@@ -71,7 +71,7 @@ export function PaymentProofField({
     try {
       // Through the server: it picks the folder and name and checks the bytes.
       const result = await uploadPaymentProofImage(file)
-      onUploaded(result.url, result.fileId)
+      onUploaded(result.url, result.fileId, result.deleteToken)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to upload screenshot.')
     } finally {

@@ -14,7 +14,7 @@
  */
 import { readFileSync } from 'fs'
 import path from 'path'
-import { IMPLIED_BY, ORDER_READ_KEYS, PAYMENT_READ_KEYS } from '@/lib/staff-permissions'
+import { IMPLIED_BY, OPT_IN_PERMISSION_KEYS, ORDER_READ_KEYS, PAYMENT_READ_KEYS } from '@/lib/staff-permissions'
 
 const migration = (name: string): string =>
   readFileSync(path.join(process.cwd(), 'supabase', 'migrations', name), 'utf8')
@@ -64,6 +64,25 @@ describe('20261013120050 app_user_has_permission', () => {
 
   it('backfills nobody: it only teaches the rule', () => {
     expect(KEYS).not.toMatch(/update public\.app_users/)
+  })
+})
+
+describe('20261022130200 expenses is opt-in', () => {
+  const OPT_IN = code(migration('20261022130200_expenses_opt_in.sql'))
+  const body = functionBody(OPT_IN, 'app_user_has_permission')
+
+  it('keeps the opt-in keys of its day out of legacy full access (cash_manage joined in 20261027120100)', () => {
+    expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(['activity_view', 'approve_requests', 'expenses'])})`)
+    expect(OPT_IN_PERMISSION_KEYS).toContain('expenses')
+  })
+
+  it('keeps the containments, the definer shape and the grants', () => {
+    expect(body).toContain("(p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))")
+    expect(body).toContain("(p_permission = 'reports' and 'analytics' = any (au.permissions))")
+    expect(OPT_IN).toMatch(/security definer\s+set search_path = ''/)
+    expect(OPT_IN).toContain('revoke all on function public.app_user_has_permission(uuid, text) from public, anon;')
+    expect(OPT_IN).toContain('grant execute on function public.app_user_has_permission(uuid, text) to authenticated, service_role;')
+    expect(OPT_IN).not.toMatch(/update public\.app_users/)
   })
 })
 
@@ -149,5 +168,36 @@ describe('20261013120200 order reads need a permission (HIGH-3)', () => {
 
   it('lets anon call the check so an anonymous read stays empty instead of failing', () => {
     expect(ORDERS).toContain('grant execute on function public.app_user_holds_any_permission(uuid, text[]) to anon, authenticated, service_role;')
+  })
+})
+
+describe('20261027120100 cash_manage carved out of store_setup', () => {
+  const CASH = code(migration('20261027120100_cash_manage_permission.sql'))
+
+  it('backfills only scoped, non-owner store_setup holders, once, with triggers off for that statement', () => {
+    const backfill = CASH.slice(CASH.indexOf('set session_replication_role = replica;'), CASH.indexOf('set session_replication_role = origin;'))
+    expect(backfill).toContain("array['cash_manage']")
+    expect(backfill).toContain("au.role = 'admin'")
+    expect(backfill).toContain('au.is_owner is not true')
+    expect(backfill).toContain('au.permissions is not null')
+    expect(backfill).toContain("'store_setup' = any (au.permissions)")
+    expect(backfill).toContain("not ('cash_manage' = any (au.permissions))")
+  })
+
+  it('makes app_user_manages_cash the registry key, the same rule as canManageCash', () => {
+    const body = functionBody(CASH, 'app_user_manages_cash')
+    expect(body).toContain("public.app_user_has_permission(target_tenant_id, 'cash_manage')")
+    expect(body).not.toContain('store_setup')
+    expect(CASH).toMatch(/security invoker\s+set search_path = ''/)
+  })
+
+  it('makes cash_manage opt-in (release review D1): the newest app_user_has_permission keeps every registry opt-in key out of legacy full access', () => {
+    expect(OPT_IN_PERMISSION_KEYS).toContain('cash_manage')
+    expect(Object.keys(IMPLIED_BY)).not.toContain('cash_manage')
+    const body = functionBody(CASH, 'app_user_has_permission')
+    expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(OPT_IN_PERMISSION_KEYS)})`)
+    expect(body).toContain("(p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))")
+    expect(body).toContain("(p_permission = 'reports' and 'analytics' = any (au.permissions))")
+    expect(CASH).toContain('revoke all on function public.app_user_has_permission(uuid, text) from public, anon;')
   })
 })

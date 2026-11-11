@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { DELIVERY_QUOTE_SIGNATURE_TTL_MS, signDeliveryQuote, verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
+import { DELIVERY_QUOTE_SIGNATURE_TTL_MS, signDeliveryQuote, verifyDeliveryQuote, type SignedDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 
 const SECRET = 'test-secret'
 const NOW = 1_800_000_000_000
@@ -9,7 +9,7 @@ const DESTINATION = { address: 'Home', lat: 14.7, lng: 121.1 }
 const QUOTE = { tenantId: 'tenant-1', quotationId: 'q-123', fee: 180, destination: DESTINATION, expiresAt: NOW + 60_000 }
 const EXPECTED = { tenantId: 'tenant-1', quotationId: 'q-123', destination: DESTINATION }
 
-function sign(quote = QUOTE): string {
+function sign(quote: SignedDeliveryQuote = QUOTE): string {
   const signature = signDeliveryQuote(quote, NOW, SECRET)
   if (!signature) throw new Error('expected a signature')
   return signature
@@ -45,6 +45,16 @@ describe('Lalamove quote signature', () => {
     const later = NOW + DELIVERY_QUOTE_SIGNATURE_TTL_MS + 1
 
     expect(verifyDeliveryQuote(sign(), EXPECTED, later, SECRET)).toEqual({ ok: false, reason: 'expired' })
+  })
+
+  it('binds the branch the quote was priced from', () => {
+    const branchQuote = sign({ ...QUOTE, originOutletId: 'branch-a' })
+
+    expect(verifyDeliveryQuote(branchQuote, { ...EXPECTED, originOutletId: 'branch-a' }, NOW, SECRET)).toEqual({ ok: true, fee: 180 })
+    expect(verifyDeliveryQuote(branchQuote, { ...EXPECTED, originOutletId: 'branch-b' }, NOW, SECRET)).toEqual({ ok: false, reason: 'mismatch' })
+    expect(verifyDeliveryQuote(branchQuote, EXPECTED, NOW, SECRET)).toEqual({ ok: false, reason: 'mismatch' })
+    // A store-pin quote cannot place a branch order either.
+    expect(verifyDeliveryQuote(sign(), { ...EXPECTED, originOutletId: 'branch-a' }, NOW, SECRET)).toEqual({ ok: false, reason: 'mismatch' })
   })
 
   it('refuses reuse for a different delivery address or map pin', () => {

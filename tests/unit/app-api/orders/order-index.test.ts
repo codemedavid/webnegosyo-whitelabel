@@ -147,7 +147,7 @@ function createFake(seed: Row[] = []): Fake {
   return { client: client as unknown as SupabaseClient, rows, refuseNextUpdate: () => { refuse = true } }
 }
 
-const silentLog = () => ({ debug: jest.fn(), error: jest.fn() })
+const silentLog = () => ({ debug: jest.fn(), info: jest.fn(), error: jest.fn() })
 const claimInput = (overrides: Partial<{ customerId: string; idempotencyKey: string }> = {}) => ({
   tenantId: STORE,
   appId: STORE,

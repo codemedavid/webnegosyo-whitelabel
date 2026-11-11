@@ -7,7 +7,8 @@ import { format, formatDistance } from 'date-fns'
 import { discountItemsText, orderSummaryRows } from '@/lib/order-summary-rows'
 import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { readOrderDiscount } from '@/lib/order-discount'
-import { buildCustomerDetailRows } from '@/lib/customer-details'
+import { buildCustomerDetailRows, DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
+import { orderMapLink } from '@/lib/delivery/order-map-link'
 import {
   Package,
   UtensilsCrossed,
@@ -22,7 +23,8 @@ import {
   ShoppingBag,
   CalendarClock,
   Store,
-  Printer
+  Printer,
+  ExternalLink
 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -47,6 +49,10 @@ import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { getOrderOutletLabel } from '@/lib/outlets/order-outlet-display'
 import type { OrderWithItems } from '@/lib/orders-service'
 import { displayCustomerName } from '@/lib/order-display-name'
+
+const OrderDeliveryCard = dynamic(
+  () => import('@/components/admin/order-delivery-card').then(mod => ({ default: mod.OrderDeliveryCard })),
+)
 
 // Lazy-load LalamoveDeliveryPanel since it's only shown conditionally
 const LalamoveDeliveryPanel = dynamic(
@@ -109,6 +115,21 @@ function getOrderTypeConfig(orderType: string | undefined | null) {
   return configs[normalized] || null
 }
 
+function MapLink({ href }: { href: string | null }) {
+  if (!href) return null
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+    >
+      Open in Google Maps
+      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+    </a>
+  )
+}
+
 export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: OrderDetailDialogProps) {
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false)
 
@@ -140,6 +161,11 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
   // keys — resolved by the module the receipt prints from, so the dialog and
   // the paper never disagree about what an order captured.
   const customerDetailRows = buildCustomerDetailRows(order.customer_data)
+  // ONE row carries the map link: the address widget's own field, else the
+  // first row that reads as an address (a store that renamed the question).
+  const mapRowKey =
+    customerDetailRows.find((row) => row.key === DELIVERY_ADDRESS_FIELD_NAME)?.key ??
+    customerDetailRows.find((row) => row.key.toLowerCase().includes('address'))?.key
   // Keyed on the order TYPE, not on "has a quotation": a delivery whose
   // quotation was never stored or has been cleared still needs the tab, or
   // there is no way to get a new quote for it.
@@ -158,13 +184,13 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="w-[98vw] max-w-7xl max-h-[95vh] overflow-hidden p-0">
+      <DialogContent className="w-[98vw] max-w-7xl max-h-[95vh] overflow-hidden p-0 [&>*]:min-w-0">
         {/* Header Section */}
         <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 border-b">
           <DialogHeader className="space-y-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
                   <DialogTitle className="text-2xl font-bold">
                     Order {formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}
                   </DialogTitle>
@@ -173,7 +199,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                     {currentStatus.label}
                   </Badge>
                 </div>
-                <DialogDescription className="flex items-center gap-4 text-base">
+                <DialogDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 text-base">
                   <span className="flex items-center gap-1.5">
                     <Clock className="h-4 w-4" />
                     {formatDistance(new Date(order.created_at), new Date(), { addSuffix: true })}
@@ -229,7 +255,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
             )}
 
             {/* Quick Stats */}
-            <div className="flex gap-4 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2 sm:gap-4">
               <div className="flex items-center gap-2 text-sm bg-white/50 dark:bg-slate-800/50 px-3 py-1.5 rounded-md">
                 <ShoppingBag className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">{itemsCount}</span>
@@ -255,20 +281,20 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
           <Tabs defaultValue="details" className="w-full">
             <div className="px-6 pt-4 border-b">
               <TabsList className="grid w-full max-w-2xl grid-cols-4 mb-4">
-                <TabsTrigger value="details" className="flex items-center gap-2">
+                <TabsTrigger value="details" aria-label="Details" className="flex items-center gap-2">
                   <FileText className="h-4 w-4" />
                   <span className="hidden sm:inline">Details</span>
                 </TabsTrigger>
-                <TabsTrigger value="items" className="flex items-center gap-2">
+                <TabsTrigger value="items" aria-label="Items" className="flex items-center gap-2">
                   <ShoppingBag className="h-4 w-4" />
                   <span className="hidden sm:inline">Items</span>
                 </TabsTrigger>
-                <TabsTrigger value="customer" className="flex items-center gap-2">
+                <TabsTrigger value="customer" aria-label="Customer" className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span className="hidden sm:inline">Customer</span>
                 </TabsTrigger>
                 {hasDeliveryTab && (
-                  <TabsTrigger value="delivery" className="flex items-center gap-2">
+                  <TabsTrigger value="delivery" aria-label="Delivery" className="flex items-center gap-2">
                     <Truck className="h-4 w-4" />
                     <span className="hidden sm:inline">Delivery</span>
                   </TabsTrigger>
@@ -397,6 +423,9 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                                     {row.label}
                                   </div>
                                   <div className="font-medium break-words">{row.value}</div>
+                                  {row.key === mapRowKey && (
+                                    <MapLink href={orderMapLink(order.customer_data, row.value)} />
+                                  )}
                                 </div>
                               </div>
                             )
@@ -410,7 +439,8 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
 
               {/* Delivery Tab */}
               {hasDeliveryTab && (
-                <TabsContent value="delivery" className="mt-0">
+                <TabsContent value="delivery" className="mt-0 space-y-4">
+                  <OrderDeliveryCard key={order.id} tenantId={tenantId} order={order} />
                   <LalamoveDeliveryPanel order={order} tenantId={tenantId} />
                 </TabsContent>
               )}

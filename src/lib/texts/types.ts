@@ -206,6 +206,8 @@ export interface SendingPhone {
   name: string
   /** True when `name` is the owner's label. */
   hasCustomName: boolean
+  /** As the phone reports it ("INFINIX MOBILITY LIMITED", "samsung"); picks its keep-awake steps. */
+  manufacturer: string | null
   model: string | null
   appVersion: string | null
   /** The app is older than the version the web expects. */

@@ -16,6 +16,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { syncTenantConfig } from '@/lib/convex-deploy'
+import { readBusinessDayConfigEntry } from '@/lib/business-day/convex-config'
 import {
   buildTenantConfigPayload,
   CONVEX_CONFIG_TENANT_COLUMNS,
@@ -37,7 +38,8 @@ type TenantConfigRow = ConvexTenantConfigSource & {
 
 /**
  * Sync one tenant. Safe to call after any save that touches the Lalamove
- * settings, the store address, or the store's phone numbers.
+ * settings, the store address, the store's phone numbers or the business-day
+ * cutoff.
  */
 export async function syncTenantConvexConfig(tenantId: string): Promise<ConvexConfigSyncResult> {
   try {
@@ -63,7 +65,12 @@ export async function syncTenantConvexConfig(tenantId: string): Promise<ConvexCo
       return { status: 'skipped', reason: 'No Convex deploy key' }
     }
 
-    const payload = buildTenantConfigPayload(mergeTenantSecrets(tenant, secrets))
+    // The business-day cutoff rides along (order numbers reset at it). A
+    // schedule that cannot be read fails the sync, never pushes midnight.
+    const payload = {
+      ...buildTenantConfigPayload(mergeTenantSecrets(tenant, secrets)),
+      ...(await readBusinessDayConfigEntry(supabase, tenantId)),
+    }
     const synced = await syncTenantConfig(
       tenant.convex_deployment_url,
       secrets.convex_deploy_key,

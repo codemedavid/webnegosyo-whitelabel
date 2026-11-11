@@ -21,8 +21,17 @@ export function defaultTenantLoginRedirect(tenantSlug: string): string {
   return `/${tenantSlug}/admin`
 }
 
-export function resolveTenantLoginRedirect(redirect: unknown, tenantSlug: string, origin: string): string {
-  const fallback = defaultTenantLoginRedirect(tenantSlug)
+/**
+ * Keep `redirect` only when the browser would resolve it to a path on
+ * `origin` that starts with `prefix`; anything else gives `fallback`.
+ * Returns the normalized path + search + hash.
+ */
+export function resolveSameOriginRedirect(
+  redirect: unknown,
+  prefix: string,
+  origin: string,
+  fallback: string,
+): string {
   if (typeof redirect !== 'string' || redirect === '') return fallback
   // Only a single-slash site path, typed without anything the browser would rewrite.
   if (!redirect.startsWith('/') || redirect.startsWith('//') || redirect.includes('\\')) return fallback
@@ -37,7 +46,23 @@ export function resolveTenantLoginRedirect(redirect: unknown, tenantSlug: string
 
   if (resolved.origin !== new URL(origin).origin) return fallback
   // Checked on the NORMALIZED path, so `/cafe/%2e%2e/other` (→ `/other`) fails.
-  if (!resolved.pathname.startsWith(`/${tenantSlug}/`)) return fallback
+  if (!resolved.pathname.startsWith(prefix)) return fallback
 
   return `${resolved.pathname}${resolved.search}${resolved.hash}`
+}
+
+export function resolveTenantLoginRedirect(redirect: unknown, tenantSlug: string, origin: string): string {
+  return resolveSameOriginRedirect(redirect, `/${tenantSlug}/`, origin, defaultTenantLoginRedirect(tenantSlug))
+}
+
+export const SUPERADMIN_HOME_PATH = '/superadmin'
+
+/**
+ * Where the superadmin login form may send the user after sign-in: a path
+ * inside `/superadmin/…` (e.g. the MCP consent page
+ * `/superadmin/mcp/authorize?authorization_id=…`), else `/superadmin`. Exactly
+ * `/superadmin` resolves to the fallback, which is the same page.
+ */
+export function resolveSuperadminLoginRedirect(redirect: unknown, origin: string): string {
+  return resolveSameOriginRedirect(redirect, `${SUPERADMIN_HOME_PATH}/`, origin, SUPERADMIN_HOME_PATH)
 }

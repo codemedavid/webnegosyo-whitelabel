@@ -3,6 +3,7 @@ import { getConsoleCaller } from '@/lib/platform-staff/guard'
 import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { isSameOriginRequest } from '@/lib/http/same-origin'
 
 /**
  * DELETE /api/tenants/[id]
@@ -13,6 +14,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // The console session is a cookie, sent by the browser from any page.
+  if (!isSameOriginRequest(request.headers)) {
+    return NextResponse.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 })
+  }
+
   try {
     const { id: tenantId } = await params
 

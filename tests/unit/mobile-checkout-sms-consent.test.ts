@@ -50,9 +50,9 @@ describe('mobile checkout screen', () => {
 
   it('applies consent to the Supabase order path', () => {
     const source = screen()
-    const supabasePath = source.slice(source.indexOf('customer_data:'))
+    const supabasePath = source.slice(source.indexOf('submitPlatformOrder('))
 
-    expect(supabasePath.slice(0, 400)).toMatch(/withSmsConsent/)
+    expect(supabasePath.slice(0, 900)).toMatch(/withSmsConsent/)
   })
 
   it('asks the customer rather than assuming', () => {

@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
-import { printForRole, type PrintSegment } from "../lib/printer";
+import { printForRole, printToPrinter, type PrintSegment, type RolePrintResult } from "../lib/printer";
 import { getAccessTokenBounded } from "../lib/authorized-post";
-import { printersForRole, DEFAULT_PAPER_WIDTH } from "../lib/printer-registry";
+import { printersForRole, DEFAULT_PAPER_WIDTH, type RegisteredPrinter } from "../lib/printer-registry";
 import { charsForPaperWidth } from "../lib/receipt-escpos";
 import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
 import { fetchTrackingUrl, getCachedTrackingUrl } from "../lib/receipt-tracking";
@@ -43,6 +43,11 @@ export interface PrintOptions {
   printKey?: string;
   /** A bill spans orders, so it has no tracking page to point a QR at. */
   withQr?: boolean;
+  /**
+   * Print on this one saved receipt printer (the reprint picker) instead of
+   * the first cashier printer. An id no longer saved falls back to the first.
+   */
+  printerId?: string;
 }
 
 export interface PrintFeedback {
@@ -70,8 +75,6 @@ export function useOrderPrint() {
   // kitchen-role has nothing to print it on.
   const cashierPrinter = printersForRole(printers, "cashier")[0];
   const hasCashierPrinter = cashierPrinter !== undefined;
-  // The receipt goes to the first cashier printer, so its paper sets the columns.
-  const paperColumns = charsForPaperWidth(cashierPrinter?.paperWidth ?? DEFAULT_PAPER_WIDTH);
   const [feedback, setFeedback] = useState<PrintFeedback | null>(null);
   // One print per order at a time: a double tap joins the print in flight
   // instead of queueing a second receipt behind it.
@@ -115,8 +118,10 @@ export function useOrderPrint() {
     [tenantId, receiptLayout],
   );
 
+  // The printer's own paper sets the columns: the first cashier printer's,
+  // or the one the reprint picker chose.
   const buildSegments = useCallback(
-    async (order: PrintableOrder, withQr: boolean): Promise<PrintSegment[]> => {
+    async (order: PrintableOrder, withQr: boolean, target: RegisteredPrinter | undefined): Promise<PrintSegment[]> => {
       const trackingUrl = withQr ? await resolveTrackingUrl(order._id) : null;
       return buildReceiptSegments(
         order,
@@ -124,11 +129,28 @@ export function useOrderPrint() {
         receiptLayout,
         trackingUrl,
         receiptLogoUrl,
-        paperColumns,
+        charsForPaperWidth(target?.paperWidth ?? DEFAULT_PAPER_WIDTH),
         receiptTaxIdentity(taxProfile),
       );
     },
-    [resolveTrackingUrl, tenantName, receiptLayout, receiptLogoUrl, paperColumns, taxProfile],
+    [resolveTrackingUrl, tenantName, receiptLayout, receiptLogoUrl, taxProfile],
+  );
+
+  /** One chosen printer, or the role's usual routing (the first cashier printer). */
+  const sendToPrinter = useCallback(
+    async (order: PrintableOrder, options: PrintOptions): Promise<RolePrintResult> => {
+      const withQr = options.withQr ?? true;
+      // Read from the stored list (a stable reference), not a per-render copy,
+      // so printOrder keeps its identity between renders.
+      const receiptPrinters = printersForRole(printers, "cashier");
+      const chosen = options.printerId
+        ? receiptPrinters.find((p) => p.id === options.printerId)
+        : undefined;
+      if (!chosen) return printForRole("cashier", buildSegments(order, withQr, receiptPrinters[0]));
+      const result = await printToPrinter(chosen, buildSegments(order, withQr, chosen));
+      return { results: [{ printerId: chosen.id, printerName: chosen.name, result }], anySuccess: result.success };
+    },
+    [printers, buildSegments],
   );
 
   const showFeedback = useCallback((next: PrintFeedback) => {
@@ -155,7 +177,7 @@ export function useOrderPrint() {
           // Bluetooth handshake; the queue connects first and only then
           // waits for the receipt to finish building.
           prefetchLogo(receiptLogoUrl);
-          const outcome = await printForRole("cashier", buildSegments(order, options.withQr ?? true));
+          const outcome = await sendToPrinter(order, options);
           if (!outcome.anySuccess) {
             const firstError = outcome.results[0]?.result.error;
             console.warn("[useOrderPrint] Print failed:", firstError ?? "no cashier printer");
@@ -173,7 +195,7 @@ export function useOrderPrint() {
       inFlightRef.current.set(key, job);
       return job;
     },
-    [hasCashierPrinter, receiptLogoUrl, buildSegments, showFeedback],
+    [hasCashierPrinter, receiptLogoUrl, sendToPrinter, showFeedback],
   );
 
   /**

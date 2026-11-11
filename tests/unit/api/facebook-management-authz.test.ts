@@ -41,6 +41,7 @@ function mockCaller(appUser: unknown, signedIn = true) {
 function postRequest(path: string) {
   return new NextRequest(`https://example.test${path}`, {
     method: 'POST',
+    headers: { origin: 'https://example.test', host: 'example.test' },
     body: JSON.stringify({
       tenant_id: 'store-1', page_id: 'page-1', page_name: 'Page',
       page_access_token: 'page-token', user_access_token: 'user-token', temp_id: 'temp-1',
@@ -114,8 +115,9 @@ describe('Facebook management authorization', () => {
     mockCaller(user)
     const response = await GET(new NextRequest('https://example.test/api/facebook/pages?tenant_id=store-1&temp_id=temp-1'))
     expect(response.status).toBe(200)
+    // Page tokens never reach the browser; the connect route reads them itself.
     expect(await response.json()).toEqual({ success: true, data: [
-      { id: 'page-1', name: 'Merchant page', access_token: 'page-access-token' },
+      { id: 'page-1', name: 'Merchant page' },
     ] })
   })
 

@@ -13,7 +13,7 @@
 import { useId, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react'
-import { addonLabel } from '@/lib/addon-quantity'
+import { addonPriceLabel } from '@/lib/addon-quantity'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolvePlaceOrderLabel } from '@/lib/checkout/checkout-cta'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
@@ -99,7 +99,7 @@ function itemOptions(item: CartItem): string[] {
     ? Object.values(item.selected_variations).map((option) => option.name)
     : []
   const legacy = item.selected_variation ? [item.selected_variation.name] : []
-  const addons = item.selected_addons.map(addonLabel)
+  const addons = item.selected_addons.map((addon) => addonPriceLabel(addon, formatPrice))
   return [...legacy, ...grouped, ...addons]
 }
 
@@ -137,7 +137,7 @@ function OrderLine({ item }: { item: CartItem }) {
           <p className="mt-0.5 text-sm text-[var(--bs-text-muted)]">{options.join(', ')}</p>
         )}
         {item.special_instructions && (
-          <p className="mt-0.5 text-sm italic text-[var(--bs-text-muted)]">Note: {item.special_instructions}</p>
+          <p className="mt-0.5 min-w-0 wrap-anywhere text-sm italic text-[var(--bs-text-muted)]">Note: {item.special_instructions}</p>
         )}
         <span className="mt-1.5 inline-flex rounded-full bg-[var(--bs-surface-high)] px-2.5 py-0.5 text-xs font-bold tabular-nums">
           ×{item.quantity}

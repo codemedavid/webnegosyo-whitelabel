@@ -29,7 +29,7 @@ const AT_NORTH: BranchScope = { kind: 'branch', outletId: NORTH }
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/server', () => ({
-  createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a) }),
+  createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: [], error: null }) }),
 }))
 
 const ingredients = [

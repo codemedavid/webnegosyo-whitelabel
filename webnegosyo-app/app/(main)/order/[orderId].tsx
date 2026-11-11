@@ -1,6 +1,6 @@
 import { formatDailyOrderNumber } from "../../../lib/order-number";
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Share } from "react-native";
 import { openExternalUrl } from "../../../lib/safe-url";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
@@ -13,7 +13,14 @@ import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
 import { receiptAmountPaid } from "../../../lib/receipt-settlement";
-import { ReprintButton } from "../../../components/order/ReprintButton";
+import { OrderPrintActions } from "../../../components/order/OrderPrintActions";
+import { useReceiptReprint } from "../../../hooks/useReceiptReprint";
+import { kitchenChitGate, reprintGate } from "../../../lib/reprint-gate";
+import { printManualKitchenChit } from "../../../lib/kitchen-chit-reprint";
+import { useReprintLedgerWait } from "../../../lib/use-reprint-ledger-wait";
+import { buildKitchenChitSegments } from "../../../lib/kitchen-chit";
+import { printForRole } from "../../../lib/printer";
+import { usePrintedLedger } from "../../../lib/printed-ledger";
 import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { displayCustomerName, getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
@@ -21,6 +28,7 @@ import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { syncStockForStatusChange } from "../../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../../lib/loyverse-confirm";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
+import { useHasPermission } from "../../../lib/use-has-permission";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
 import { CollectPaymentSheet } from "../../../components/order/CollectPaymentSheet";
 import { PaymentDecisionSheet } from "../../../components/order/PaymentDecisionSheet";
@@ -54,11 +62,18 @@ import {
 } from "../../../lib/modifier-groups";
 import type { ModifierCatalog } from "../../../lib/order-edit-cart";
 import { goTo } from "../../../lib/tab-navigation";
+import { withReturnTo } from "../../../lib/return-to";
+import { useReturnTo } from "../../../hooks/use-return-to";
 import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
 import { discountItemsText, orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
+import { buildDeliveryCard, isDeliveryDetailRow } from "../../../lib/delivery-card";
+import { DeliveryDetailsSheet } from "../../../components/DeliveryDetailsSheet";
+import { requestPinLink } from "../../../lib/delivery-details-service";
+import { canFixDelivery, deliveryPinNotice } from "../../../lib/delivery-fix";
+import { buildRiderMessage, buildRiderRemarks } from "../../../lib/rider-remarks";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
 import { GovDiscountCard } from "../../../components/order/GovDiscountCard";
@@ -111,9 +126,9 @@ const NEXT_ACTION_LABEL: Partial<Record<OrderStatus, string>> = {
  * Drawer send an unpaid order here to be confirmed or handed over, because the
  * payment question needs the order's payment details and the collect sheet.
  */
-type OrderIntent = "confirm" | "deliver" | "collect";
+type OrderIntent = "confirm" | "deliver" | "collect" | "reprint";
 
-const INTENT_STATUS: Record<Exclude<OrderIntent, "collect">, OrderStatus> = {
+const INTENT_STATUS: Record<Exclude<OrderIntent, "collect" | "reprint">, OrderStatus> = {
   confirm: "confirmed",
   deliver: "delivered",
 };
@@ -154,6 +169,9 @@ interface OrderDetail {
   source: string;
   total: number;
   deliveryAddress?: string;
+  /** A Convex order's own pin; platform orders keep it in customerData. */
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
   deliveryFee?: number;
   /**
    * The service charge already inside `total`, when the backend stored one.
@@ -408,7 +426,17 @@ const bundleStyles = StyleSheet.create({
 });
 
 export default function OrderDetailScreen() {
-  const { orderId, intent } = useLocalSearchParams<{ orderId: string; intent?: OrderIntent }>();
+  const { orderId, intent, returnTo } = useLocalSearchParams<{
+    orderId: string;
+    intent?: OrderIntent;
+    returnTo?: string;
+  }>();
+  // Opened from the Drawer (or back from Printer settings): Back returns
+  // there, not Home — the tabs' own back goes to the first tab.
+  const { returnTo: orderReturnTo, leave } = useReturnTo(returnTo);
+  const orderHrefWithReturn = withReturnTo(`/(main)/order/${encodeURIComponent(String(orderId))}`, orderReturnTo);
+  const openPrinterSettings = () =>
+    router.push(withReturnTo("/(main)/printer-settings", orderHrefWithReturn) as never);
   // A sale rung up offline is not on the server yet: the order comes from
   // this device, and changes made here wait for it (lib/offline/).
   const offlineDetail = useOfflineOrderDetail(orderId);
@@ -418,6 +446,7 @@ export default function OrderDetailScreen() {
     data: serverOrder,
     isLoading: isServerLoading,
     error: serverError,
+    refetch: refetchOrder,
   } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, serverArgs);
   const order: (OrderDetail & { offlineSync?: string }) | null | undefined = serverOrder
     ? offlineDetail.withEdits(serverOrder)
@@ -433,7 +462,12 @@ export default function OrderDetailScreen() {
   const isLoading = !isFromDevice && !isOffline && isServerLoading;
   const error = isFromDevice ? null : isOffline ? null : serverError;
   const updateStatus = useOfflineOrderMutation(updateOrderStatusRef);
-  const { printOrder, printAt, hasPrinter, feedback: printFeedback } = useOrderPrint();
+  const { printAt } = useOrderPrint();
+  // Reprint: marked REPRINT on paper, a printer picker when there are two or
+  // more, and a Store Activity line once the paper is out.
+  const { reprint, feedback: reprintFeedback, targets: reprintPrinters, printers } = useReceiptReprint();
+  const kitchenLedger = usePrintedLedger("kitchen");
+  const [isChitPrinting, setChitPrinting] = useState(false);
 
   // The settlement ledger. A backend that cannot serve these refs reports an
   // error rather than an empty list — which is the point: an empty ledger and
@@ -528,6 +562,11 @@ export default function OrderDetailScreen() {
   const [isCancelSheetOpen, setCancelSheetOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const activityTenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  // Booking, syncing and cancelling a rider need "orders" (the web route
+  // refuses everyone else), so other staff do not see buttons that cannot work.
+  const canManageRider = useHasPermission("orders");
+  const [isDeliverySheetOpen, setIsDeliverySheetOpen] = useState(false);
+  const [isSendingPinLink, setIsSendingPinLink] = useState(false);
 
   const gateRequest = order
     ? {
@@ -674,7 +713,74 @@ export default function OrderDetailScreen() {
     .map((it) => it.menuItemId)
     .filter((id): id is string => !!id);
   const { images: itemImages } = useOrderItemImages(itemImageIds);
-  const customerDetailRows = buildCustomerDetailRows(order?.customerData);
+  // The Delivery card shows the unit, landmark and rider note itself, so the
+  // generic details list leaves them out rather than printing them twice.
+  const customerDetailRows = buildCustomerDetailRows(order?.customerData).filter(
+    (row) => !isDeliveryDetailRow(row.key, order?.customerData),
+  );
+  const riderRemarks = buildRiderRemarks({
+    ...order?.customerData,
+    delivery_address: order?.customerData?.delivery_address ?? order?.deliveryAddress,
+    delivery_lat: order?.customerData?.delivery_lat ?? order?.deliveryLatitude,
+    delivery_lng: order?.customerData?.delivery_lng ?? order?.deliveryLongitude,
+  });
+  const fixOrder = {
+    status: order?.status,
+    lalamoveOrderId: order?.lalamoveOrderId,
+    lalamoveStatus: order?.lalamoveStatus,
+    customerData: order?.customerData,
+    latitude: order?.deliveryLatitude,
+    longitude: order?.deliveryLongitude,
+  };
+  const deliveryNotice = deliveryPinNotice(fixOrder);
+  const isDeliveryFixable = canManageRider && !isDemo && !!order && canFixDelivery(fixOrder, orderBackend);
+  const pinLat = Number(order?.customerData?.delivery_lat ?? order?.deliveryLatitude);
+  const pinLng = Number(order?.customerData?.delivery_lng ?? order?.deliveryLongitude);
+  const deliveryLocation = Number.isFinite(pinLat) && Number.isFinite(pinLng) && (pinLat !== 0 || pinLng !== 0) ? { lat: pinLat, lng: pinLng } : null;
+
+  async function shareForRider() {
+    try {
+      await Share.share({
+        message: buildRiderMessage({
+          customerName: order?.customerName,
+          customerContact: order?.customerContact,
+          customerData: {
+            ...order?.customerData,
+            delivery_address: order?.customerData?.delivery_address ?? order?.deliveryAddress,
+            delivery_lat: order?.customerData?.delivery_lat ?? order?.deliveryLatitude,
+            delivery_lng: order?.customerData?.delivery_lng ?? order?.deliveryLongitude,
+          },
+        }),
+      });
+    } catch (error) {
+      console.warn("[order] could not open the share sheet:", error);
+      Alert.alert("Could not share", "Please try again.");
+    }
+  }
+
+  async function sendPinLink() {
+    if (!tenantId || !order) return;
+    setIsSendingPinLink(true);
+    const result = await requestPinLink(tenantId, order._id);
+    setIsSendingPinLink(false);
+    if (!result.ok) {
+      Alert.alert("Could not get the link", result.error);
+      return;
+    }
+    try {
+      await Share.share({ message: `Please set your exact delivery spot here: ${result.url}` });
+    } catch (error) {
+      console.warn("[order] could not open the share sheet:", error);
+      Alert.alert("Could not share", "Please try again.");
+    }
+  }
+
+  const deliveryCard = buildDeliveryCard({
+    address: order?.deliveryAddress,
+    customerData: order?.customerData,
+    latitude: order?.deliveryLatitude,
+    longitude: order?.deliveryLongitude,
+  });
 
   /** Resolves true once the new status is saved; every refusal is shown. */
   const handleUpdateStatus = async (newStatus: OrderStatus, why?: OrderEventReason): Promise<boolean> => {
@@ -788,7 +894,7 @@ export default function OrderDetailScreen() {
   // visit to this still-mounted tab screen does not replay it.
   const { requestStatusChange, openCollect } = paymentFlow;
   const runIntent = useCallback(
-    (wanted: OrderIntent) => {
+    (wanted: Exclude<OrderIntent, "reprint">) => {
       if (wanted === "collect") openCollect();
       else requestStatusChange(INTENT_STATUS[wanted]);
     },
@@ -797,10 +903,84 @@ export default function OrderDetailScreen() {
   const isOrderLoaded =
     order != null && (order._id === orderId || order._id === offlineDetail.serverOrderId);
   useEffect(() => {
-    if (!intent || !isOrderLoaded) return;
+    if (!intent || intent === "reprint" || !isOrderLoaded) return;
     router.setParams({ intent: undefined });
     runIntent(intent);
   }, [intent, isOrderLoaded, runIntent]);
+
+  const receiptGate = reprintGate(order, printers);
+  const handleReprint = useCallback(
+    async (printerId?: string) => {
+      if (!order) return;
+      const isPrinted = await reprint(
+        {
+          ...order,
+          amountPaid: receiptAmountPaid({ isUnpaid, total: order.total, ledgerPaid: collectedFromLedger }),
+        },
+        { dailyNumber: order.dailyNumber, outletId: order.outletId ?? order.outlet_id ?? null },
+        printerId,
+      );
+      if (!isPrinted) Alert.alert("Print failed", "Check the receipt printer in Printer settings, then try again.");
+    },
+    [order, reprint, isUnpaid, collectedFromLedger],
+  );
+
+  // "Reprint" from the Drawer's sales list lands here: print once the order
+  // AND its ledger have loaded, so the copy says what was paid.
+  // Offline the ledger may never answer: after ~5 s the copy prints without
+  // it (lib/use-reprint-ledger-wait.ts) instead of waiting forever.
+  const isLedgerSettled = payments !== undefined || paymentsError != null;
+  const hasLedgerWaitExpired = useReprintLedgerWait(intent === "reprint" && isOrderLoaded && !isLedgerSettled);
+  const canRunReprintIntent = intent === "reprint" && isOrderLoaded && (isLedgerSettled || hasLedgerWaitExpired);
+  const reprintTargetId = reprintPrinters.length === 1 ? reprintPrinters[0]?.id : undefined;
+  useEffect(() => {
+    if (!canRunReprintIntent) return;
+    router.setParams({ intent: undefined });
+    if (!receiptGate.show) return;
+    if (!receiptGate.enabled) {
+      Alert.alert("Can't reprint here", `${receiptGate.reason}. Add one in Printer settings.`);
+      return;
+    }
+    // Two or more receipt printers: the picker on this screen asks which.
+    if (reprintPrinters.length >= 2) return;
+    void handleReprint(reprintTargetId);
+    // Runs once per arrival; the intent is cleared above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRunReprintIntent]);
+
+  const handleKitchenChit = async () => {
+    if (!order) return;
+    setChitPrinting(true);
+    try {
+      // A chit this device already printed comes out marked REPRINT; a first
+      // chit that never came out is given back so the retry is not.
+      let failure: string | undefined;
+      const isPrinted = await printManualKitchenChit(String(order._id), Date.now(), async (chitOptions) => {
+        const outcome = await printForRole(
+          "kitchen",
+          buildKitchenChitSegments(
+            {
+              _id: String(order._id),
+              _creationTime: order._creationTime,
+              customerName: displayCustomerName(order.customerName),
+              orderType: order.orderType,
+              items: order.items ?? [],
+              // The order-level NOTE (allergies, requests) prints from here.
+              customerData: order.customerData,
+            },
+            chitOptions,
+          ),
+        );
+        failure = outcome.results[0]?.result.error;
+        return outcome.anySuccess;
+      });
+      if (!isPrinted) {
+        Alert.alert("Print failed", failure ?? "Could not reach the kitchen printer.");
+      }
+    } finally {
+      setChitPrinting(false);
+    }
+  };
 
   if (error) {
     return (
@@ -834,6 +1014,7 @@ export default function OrderDetailScreen() {
   return (
     <View style={styles.screen}>
       <BackHeader
+        onBack={leave}
         title={`Order ${formatDailyOrderNumber(order.dailyNumber, order._id)}`}
         subtitle={displayCustomerName(order.customerName)}
         actions={<Badge label={order.status} variant={order.status} />}
@@ -855,6 +1036,30 @@ export default function OrderDetailScreen() {
           />
         </View>
       )}
+
+      {/*
+        The order's paper, near the top and outside the status actions: those
+        are gone on a delivered order, and a finished sale is exactly the one
+        a customer comes back to ask a receipt for.
+      */}
+      <View style={styles.section}>
+        <OrderPrintActions
+          gate={receiptGate}
+          status={reprintFeedback?.orderId === order._id ? reprintFeedback.status : null}
+          targets={reprintPrinters}
+          onReprint={(printerId) => void handleReprint(printerId)}
+          onOpenPrinterSettings={openPrinterSettings}
+          kitchenChit={
+            kitchenChitGate(order, printers)
+              ? {
+                  label: kitchenLedger?.includes(String(order._id)) ? "Reprint kitchen chit" : "Print kitchen chit",
+                  isPrinting: isChitPrinting,
+                  onPress: () => void handleKitchenChit(),
+                }
+              : null
+          }
+        />
+      </View>
 
       {/* Refunds and paid cancels (approvals): the live request card and the entries. */}
       {!isFromDevice && (
@@ -1002,11 +1207,54 @@ export default function OrderDetailScreen() {
       {(order.deliveryAddress || (order.deliveryFee ?? 0) > 0) && (
         <Card title="Delivery" style={styles.section}>
           {order.deliveryAddress ? <Text style={styles.value}>{order.deliveryAddress}</Text> : null}
+          {deliveryCard.lines.map((line) => (
+            <Text key={line.label} style={styles.sub}>
+              {line.label}: {line.value}
+            </Text>
+          ))}
+          {order.deliveryAddress && deliveryNotice ? <Text style={styles.deliveryNotice}>{deliveryNotice}</Text> : null}
           {order.deliveryFee != null && <Text style={styles.sub}>Fee: ₱{order.deliveryFee.toFixed(2)}</Text>}
+          {deliveryCard.mapUrl ? (
+            <TouchableOpacity
+              onPress={() => void openExternalUrl(deliveryCard.mapUrl)}
+              accessibilityRole="link"
+              accessibilityLabel="Open the delivery address in Google Maps"
+            >
+              <Text style={styles.proofLink}>Open in Google Maps</Text>
+            </TouchableOpacity>
+          ) : null}
+          {order.deliveryAddress ? (
+            <TouchableOpacity onPress={() => void shareForRider()} accessibilityRole="button" disabled={!riderRemarks}>
+              <Text style={styles.proofLink}>Share with rider</Text>
+            </TouchableOpacity>
+          ) : null}
+          {order.deliveryAddress && isDeliveryFixable ? (
+            <>
+              <TouchableOpacity onPress={() => setIsDeliverySheetOpen(true)} accessibilityRole="button">
+                <Text style={styles.proofLink}>Edit delivery details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void sendPinLink()} accessibilityRole="button" disabled={isSendingPinLink}>
+                <Text style={styles.proofLink}>{isSendingPinLink ? "Getting link…" : "Send pin link"}</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
         </Card>
       )}
 
-      <LalamoveDeliveryCard order={order} />
+      {isDeliveryFixable ? (
+        <DeliveryDetailsSheet
+          visible={isDeliverySheetOpen}
+          onClose={() => setIsDeliverySheetOpen(false)}
+          onSaved={() => void refetchOrder()}
+          tenantId={tenantId}
+          orderId={order._id}
+          address={order.deliveryAddress ?? ""}
+          location={deliveryLocation}
+          customerData={order.customerData}
+        />
+      ) : null}
+
+      {canManageRider && <LalamoveDeliveryCard order={order} />}
 
       {order.paymentMethod && (() => {
         const paymentRef = order.customerData?.payment_proof_reference;
@@ -1140,24 +1388,6 @@ export default function OrderDetailScreen() {
                 {NEXT_ACTION_LABEL[nextStatus] ?? `Mark as ${nextStatus}`}
               </Text>
             </TouchableOpacity>
-          )}
-          {order.status !== "pending" && order.status !== "cancelled" && hasPrinter && (
-            <ReprintButton
-              status={printFeedback?.orderId === order._id ? printFeedback.status : null}
-              onPress={async () => {
-                const printed = await printOrder({
-                  ...order,
-                  amountPaid: receiptAmountPaid({
-                    isUnpaid,
-                    total: order.total,
-                    ledgerPaid: collectedFromLedger,
-                  }),
-                });
-                if (!printed) {
-                  Alert.alert("Print Failed", "Could not print receipt.");
-                }
-              }}
-            />
           )}
           {order.status !== "cancelled" && !isFromDevice && (
             <TouchableOpacity
@@ -1326,6 +1556,7 @@ const styles = StyleSheet.create({
     borderColor: colors.separator,
     backgroundColor: colors.surfaceSubtle,
   },
+  deliveryNotice: { ...typography.caption, color: colors.warning, marginTop: spacing.xs },
   proofLink: {
     ...typography.body,
     color: colors.accent,

@@ -16,7 +16,9 @@ it('allocates per Manila day and recovers the same number for a retried order', 
         let field: string; let value: unknown
         build({ eq: (f, v) => { field = f; value = v } })
         const find = async () => tables.get(table)?.find(row => row[field] === value) ?? null
-        return { first: find, unique: find, collect: async () => tables.get(table)?.filter(row => row[field] === value) ?? [] }
+        const matching = () => tables.get(table)?.filter(row => row[field] === value) ?? []
+        // `take` is how the business-day schedule is read (tenantConfig, convex/businessDayConfig.ts).
+        return { first: find, unique: find, collect: async () => matching(), take: async (n: number) => matching().slice(0, n) }
       } }),
       insert: async (table: string, value: Record<string, unknown>) => {
         const row = { ...value, _id: String(++nextId) }
@@ -45,7 +47,9 @@ it('allocates per Manila day and recovers the same number for a retried order', 
       { dailyNumber: 2, orderDate: '2026-09-15' },
       { dailyNumber: 1, orderDate: '2026-09-16' },
     ])
-    expect(ctx.scheduler.runAfter).toHaveBeenCalledTimes(3)
+    // One new-order push per new order; the gate's audit rows are scheduled too.
+    const pushes = ctx.scheduler.runAfter.mock.calls.filter(([, , args]) => !(args as { fn?: string } | undefined)?.fn)
+    expect(pushes).toHaveLength(3)
     // Rebuilding a missing counter must continue after existing daily numbers.
     tables.set('dailyOrderCounters', [])
     await handler(ctx, { ...input, clientOrderId: 'after-recovery' })

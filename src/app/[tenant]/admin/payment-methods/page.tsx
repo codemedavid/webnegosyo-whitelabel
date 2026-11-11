@@ -2,6 +2,7 @@ import { LearnChip } from '@/components/admin/learn/learn-chip'
 import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { getPaymentMethodsAction } from '@/app/actions/payment-methods'
 import type { OrderType } from '@/types/database'
@@ -11,11 +12,13 @@ interface PaymentMethodsPageProps {
   params: Promise<{ tenant: string }>
 }
 
-/** Only the boolean reaches the client; the token itself stays server-side. */
+/**
+ * Only the boolean reaches the client; the token itself stays server-side.
+ * Read with the service role: tenant_secrets has no client read.
+ */
 async function hasLoyverseToken(tenantId: string): Promise<boolean> {
   try {
-    const supabase = await createClient()
-    const secrets = await getTenantSecrets(supabase, tenantId)
+    const secrets = await getTenantSecrets(createAdminClient(), tenantId)
     return Boolean(secrets?.loyverse_access_token)
   } catch (error) {
     console.error('[payment-methods] could not read Loyverse token:', error instanceof Error ? error.message : error)

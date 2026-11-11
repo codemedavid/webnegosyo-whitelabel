@@ -39,6 +39,9 @@
 /image-backup/failures.json
 /image-backup/restore-result.json
 /image-backup/relink.sql
+/image-backup/run.log
+/image-backup/r2-result.json
+/image-backup/r2-verify-failures.json
 
 # testing
 /coverage
@@ -80,8 +83,12 @@ next-env.d.ts
 # from here — /download links them as Release assets (see src/lib/downloads.ts).
 public/downloads/
 
-# Local Claude Code agent config / session state (machine-local, not product code)
-/.claude/
+# Local Claude Code agent config / session state (machine-local, not product code),
+# except the project verification skill (tracked so every worktree has it).
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/verify-webnegosyo/
 
 # Apple auth keys (never commit)
 *.p8
@@ -93,3 +100,13 @@ public/downloads/
 
 # Design-tooling scratch (screenshots + critiques), regenerated on demand
 /.impeccable/
+
+# Python bytecode (scripts/mascot tooling)
+__pycache__/
+*.pyc
+
+# QA seed: pre-seed tenant values, restored by teardown (machine-local)
+/scripts/seed/.sample-demo-snapshot.json
+
+# Evidence a verify run leaves next to the skill (runs from inside the skill dir)
+/.claude/skills/verify-webnegosyo/test-results/

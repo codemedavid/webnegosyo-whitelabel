@@ -165,6 +165,8 @@ describe('refreshAccessToken — tenant binding', () => {
         },
         error: null,
       })
+      singleQueue.push({ data: { role: 'admin', tenant_id: TENANT_ID, is_owner: true, permissions: null, outlet_id: null }, error: null })
+      singleQueue.push({ data: { id: 'token_1' }, error: null })
 
       await refreshAccessToken(
         client,
@@ -207,6 +209,72 @@ describe('refreshAccessToken — tenant binding', () => {
     )).rejects.toThrow(/invalid_grant/i)
 
     expect(updates).toEqual([])
+    expect(inserts).toEqual([])
+  })
+})
+
+describe('refreshAccessToken — the holder must still belong to the store', () => {
+  const tokenRow = (overrides: Record<string, unknown> = {}) => ({
+    data: {
+      id: 'token_1',
+      client_id: 'client_1',
+      subject: 'user_1',
+      scope: 'tenant_admin offline_access',
+      revoked_at: null,
+      expires_at: new Date(NOW + 60_000).toISOString(),
+      tenant_id: TENANT_ID,
+      ...overrides,
+    },
+    error: null,
+  })
+  const holder = (overrides: Record<string, unknown> = {}) => ({
+    data: { role: 'admin', tenant_id: TENANT_ID, is_owner: false, permissions: ['store_setup'], outlet_id: null, ...overrides },
+    error: null,
+  })
+  const refresh = (client: never) =>
+    refreshAccessToken(client, { refreshToken: 'refresh-1', clientId: 'client_1' }, TOKEN_OPTS)
+
+  it.each([
+    ['removed from the store (no row)', { data: null, error: null }],
+    ['moved to another store', holder({ tenant_id: 'other-tenant' })],
+    ['no longer an admin', holder({ role: 'customer' })],
+    ['without store_setup', holder({ permissions: ['orders'] })],
+    ['locked to one branch', holder({ outlet_id: 'outlet-1' })],
+  ])('revokes the token and issues nothing when the holder is %s', async (_label, row) => {
+    const { client, inserts, singleQueue, updates } = makeClient()
+    singleQueue.push(tokenRow(), row)
+
+    await expect(refresh(client)).rejects.toThrow(/invalid_grant/i)
+
+    expect(updates.map((u) => u.table)).toEqual(['mcp_oauth_tokens'])
+    expect(inserts).toEqual([])
+  })
+
+  it('rejects a token whose user was deleted (subject set to null)', async () => {
+    const { client, inserts, singleQueue } = makeClient()
+    singleQueue.push(tokenRow({ subject: null }))
+
+    await expect(refresh(client)).rejects.toThrow(/invalid_grant/i)
+
+    expect(inserts).toEqual([])
+  })
+
+  it('a failed membership read neither issues nor revokes (a retry may succeed)', async () => {
+    const { client, inserts, singleQueue, updates } = makeClient()
+    singleQueue.push(tokenRow(), { data: null, error: { message: 'timeout' } })
+
+    await expect(refresh(client)).rejects.toThrow(/membership/i)
+
+    expect(updates).toEqual([])
+    expect(inserts).toEqual([])
+  })
+
+  it('only one of two racing refreshes wins the rotation', async () => {
+    const { client, inserts, singleQueue } = makeClient()
+    singleQueue.push(tokenRow(), holder(), { data: null, error: null })
+
+    await expect(refresh(client)).rejects.toThrow(/invalid_grant/i)
+
     expect(inserts).toEqual([])
   })
 })

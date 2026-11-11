@@ -6,6 +6,10 @@
  * delivery. An online order is the claimant's own purchase, so the whole
  * eligible order is theirs (take-out / delivery never splits a table).
  *
+ * Only when the owner switched online claims on (`onlineClaimsEnabled`, off by
+ * default): otherwise the discount is given on the register after the staff
+ * see the card, and an online claim is refused here whatever the browser sent.
+ *
  * The browser sends WHO is claiming — never an amount. The server prices it
  * here with the shared engine against the server-priced lines, and applies
  * the government discount OR the customer's vouchers, whichever saves more
@@ -28,6 +32,10 @@ import type { OrderDiscountPayload } from '@/lib/order-discount'
 
 /** The one claimant an online order carries. */
 export const ONLINE_CLAIMANT_ID = 'online-1'
+
+/** Said when the store applies Senior/PWD only at the counter (the default). */
+export const ONLINE_CLAIMS_OFF_MESSAGE =
+  'This store applies Senior Citizen and PWD discounts in person. Show your ID when you receive your order.'
 
 const claimSchema = z
   .object({
@@ -77,6 +85,7 @@ export type CheckoutGovOutcome =
 
 export function priceCheckoutGovernment(input: CheckoutGovInput): CheckoutGovOutcome {
   const { claim, items, profile } = input
+  if (!profile.onlineClaimsEnabled) return { status: 'refused', message: ONLINE_CLAIMS_OFF_MESSAGE }
   const lines = items.map((item, index) => ({
     key: `line-${index}`,
     name: item.menu_item_name ?? 'Item',

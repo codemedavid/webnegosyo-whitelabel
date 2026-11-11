@@ -6,8 +6,8 @@ import { readAppJson } from '@/lib/app-api/request-body'
 import { appFail, appOk } from '@/lib/app-api/respond'
 import { AppReadError, readAppOrderTypes } from '@/lib/app-api/store-reads'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
+import { ORIGIN_OUTLET_COLUMNS, ORIGIN_TENANT_COLUMNS } from '@/lib/delivery/delivery-origin-server'
 import {
-  LALAMOVE_PICKUP_COLUMNS,
   LALAMOVE_TENANT_COLUMNS,
   LALAMOVE_TENANT_QUOTE_LIMIT,
   createSignedLalamoveQuote,
@@ -38,8 +38,8 @@ const BAD_ADDRESS = 'Choose your delivery address from the suggestions.'
 
 /** Named columns only: the Lalamove ones plus pricing. Never `*` (secrets). */
 const QUOTE_TENANT_COLUMNS =
-  `${LALAMOVE_TENANT_COLUMNS}, ${LALAMOVE_PICKUP_COLUMNS}, multi_branch_enabled, ` +
-  'distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, free_delivery_min_order'
+  `${LALAMOVE_TENANT_COLUMNS}, ${ORIGIN_TENANT_COLUMNS}, ` +
+  'distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, free_delivery_min_order'
 
 const MAX_OUTLETS = 500
 
@@ -54,7 +54,7 @@ async function readQuoteTenant(tenantId: string): Promise<(DeliveryQuoteTenant &
 async function readQuoteOutlets(tenantId: string): Promise<DeliveryQuoteOutlet[]> {
   const { data, error } = await admin()
     .from('outlets')
-    .select('id, name, is_active, supports_delivery')
+    .select(`${ORIGIN_OUTLET_COLUMNS}, name, is_active, supports_delivery`)
     .eq('tenant_id', tenantId)
     .limit(MAX_OUTLETS)
   if (error) throw new AppReadError('branches', error.message)
@@ -70,12 +70,12 @@ function liveDeps(): DeliveryQuoteDeps {
     readOutlets: readQuoteOutlets,
     readOrderTypeKinds: async (tenantId) => (await readAppOrderTypes(tenantId)).map((orderType) => orderType.type),
     measureKm: measureRoadDistanceKm,
-    quoteLalamove: async (tenantId, destination) => {
+    quoteLalamove: async (tenantId, origin, destination) => {
       const rate = await checkRateLimit(lalamoveQuoteRateKey(tenantId), { ...LALAMOVE_TENANT_QUOTE_LIMIT, onRedisFailure: 'instance' })
       if (!rate.allowed) return { ok: false, reason: 'rate-limited', retryAfterSec: rate.retryAfterSec }
       const row = await readTenant(tenantId)
       if (!row) throw new AppReadError('delivery pricing', 'store row vanished')
-      return createSignedLalamoveQuote(await withLalamoveKeys(row as unknown as Tenant), destination)
+      return createSignedLalamoveQuote(await withLalamoveKeys(row as unknown as Tenant), origin, destination)
     },
   }
 }

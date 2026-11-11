@@ -1,7 +1,7 @@
 'use client'
 
 import { Controller, useFormContext } from 'react-hook-form'
-import { BadgePercent, Lock, TriangleAlert, Users } from 'lucide-react'
+import { BadgePercent, Globe, Lock, TriangleAlert, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -70,7 +70,7 @@ export function DiscountsOfferedCard() {
       id="tax-discounts"
       icon={BadgePercent}
       title="Discounts you offer"
-      description="These show as buttons on the register and at checkout."
+      description="These show as buttons on the register."
     >
       <div className="space-y-2">
         <ul className="divide-y rounded-lg border">
@@ -125,6 +125,29 @@ export function DiscountsOfferedCard() {
               </div>
             </div>
             <Switch id="allowSharedTable" ref={field.ref} checked={field.value} onCheckedChange={field.onChange} />
+          </div>
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="onlineClaimsEnabled"
+        render={({ field }) => (
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+            <div className="flex min-w-0 gap-3">
+              <Globe className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <div className="min-w-0">
+                <Label htmlFor="onlineClaimsEnabled" className="font-medium">
+                  Let customers claim it when ordering online
+                </Label>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Off: customers ask at the counter or when their order arrives, and your staff apply it on the
+                  register after seeing the ID. On: customers type their ID number at online checkout and the
+                  discount comes off right away.
+                </p>
+              </div>
+            </div>
+            <Switch id="onlineClaimsEnabled" ref={field.ref} checked={field.value} onCheckedChange={field.onChange} />
           </div>
         )}
       />

@@ -14,6 +14,8 @@ interface UndoBarProps {
   onCommit: () => void;
   durationMs?: number;
   actionLabel?: string;
+  /** A coral "do this" button before Undo ("Repeat"). It never settles the countdown. */
+  secondaryAction?: { label: string; onPress: () => void } | null;
 }
 
 /**
@@ -22,7 +24,14 @@ interface UndoBarProps {
  * decision is only posted once the seconds run out. One at a time; the
  * caller decides where it docks.
  */
-export function UndoBar({ message, onUndo, onCommit, durationMs = DEFAULT_DURATION_MS, actionLabel = "Undo" }: UndoBarProps) {
+export function UndoBar({
+  message,
+  onUndo,
+  onCommit,
+  durationMs = DEFAULT_DURATION_MS,
+  actionLabel = "Undo",
+  secondaryAction = null,
+}: UndoBarProps) {
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(durationMs / TICK_MS));
   const isSettled = useRef(false);
   const commit = useRef(onCommit);
@@ -52,9 +61,20 @@ export function UndoBar({ message, onUndo, onCommit, durationMs = DEFAULT_DURATI
       <View style={styles.ring} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Text style={styles.ringText}>{secondsLeft}</Text>
       </View>
-      <Text style={styles.message} numberOfLines={2} accessibilityRole="alert" accessibilityLiveRegion="polite">
+      <Text style={styles.message} numberOfLines={secondaryAction ? 3 : 2} accessibilityRole="alert" accessibilityLiveRegion="polite">
         {message}
       </Text>
+      {secondaryAction ? (
+        <TouchableOpacity
+          onPress={secondaryAction.onPress}
+          style={styles.secondary}
+          accessibilityRole="button"
+          accessibilityLabel={secondaryAction.label}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        >
+          <Text style={styles.secondaryText}>{secondaryAction.label}</Text>
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity
         onPress={undo}
         style={styles.action}
@@ -92,5 +112,14 @@ const styles = StyleSheet.create({
   ringText: { ...typography.caption, fontWeight: "800", color: colors.heroInkText },
   message: { ...typography.body, fontWeight: "600", color: colors.heroInkText, flex: 1 },
   action: { minHeight: 48, minWidth: 64, alignItems: "center", justifyContent: "center" },
+  secondary: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryText: { ...typography.caption, fontWeight: "800", color: colors.textOnDark },
   actionText: { ...typography.body, fontWeight: "800", color: colors.tabBarActive },
 });

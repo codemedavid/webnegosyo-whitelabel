@@ -73,6 +73,7 @@ jest.mock('@/lib/orders-service', () => ({
 
 jest.mock('@/lib/vouchers/order-pricing', () => ({
   priceOrderWithVouchers: async () => ({
+    totals: { grandTotal: 0 },
     application: { discountLines: [] },
     discountPayload: null,
     redemptions: [],

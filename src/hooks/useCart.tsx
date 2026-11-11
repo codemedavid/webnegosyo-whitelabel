@@ -12,8 +12,10 @@ import {
   replaceCartItem,
   getEffectiveItemPrice,
   MAX_CART_ITEM_QUANTITY,
+  rekeyLegacyNoteLines,
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
+import { repriceCartSelections } from '@/lib/cart-selection-reprice'
 import { fetchFreshCartItemData } from '@/lib/cart-refresh'
 import { shouldRefreshCartOnPath } from '@/lib/cart-refresh-scope'
 import { readOutletSelection } from '@/lib/outlets/outlet-selection'
@@ -134,7 +136,8 @@ function loadCartFromStorage(tenantSlug?: string | null): CartItem[] {
     if (stored) {
       const parsed: unknown = JSON.parse(stored)
       if (isValidCartItems(parsed)) {
-        return parsed
+        // Saved before line ids carried the note: re-key so a plain add stays apart.
+        return rekeyLegacyNoteLines(parsed)
       }
       console.warn('[useCart] Cart data in localStorage failed validation, resetting cart')
       localStorage.removeItem(key)
@@ -390,14 +393,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
             image_url: fresh.image_url,
           }
 
+          // Options and add-ons too: the server bills today's prices for them.
+          const repriced = repriceCartSelections(item, fresh.modifiers)
           const newSubtotal = calculateCartItemSubtotal(
             getEffectiveItemPrice(updatedMenuItem),
-            item.selected_variations || item.selected_variation,
-            item.selected_addons,
+            repriced.selected_variations || repriced.selected_variation,
+            repriced.selected_addons,
             item.quantity
           )
 
           if (
+            repriced !== item ||
             updatedMenuItem.name !== item.menu_item.name ||
             updatedMenuItem.price !== item.menu_item.price ||
             updatedMenuItem.discounted_price !== item.menu_item.discounted_price ||
@@ -405,7 +411,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             newSubtotal !== item.subtotal
           ) {
             hasChanges = true
-            return { ...item, menu_item: updatedMenuItem, subtotal: newSubtotal }
+            return { ...repriced, menu_item: updatedMenuItem, subtotal: newSubtotal }
           }
 
           return item
@@ -598,6 +604,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }),
       })
         .then(async response => {
+          // 403 = the Messenger link expired or belongs to another store:
+          // forget it instead of retrying on every cart change.
+          if (response.status === 403) {
+            setMessengerPsidState(null)
+            return
+          }
           if (!response.ok) return
 
           const data = await response.json()
@@ -679,11 +691,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
             newQuantity
           )
 
+          // Same id = same kitchen note (it is part of the id), so the
+          // line keeps its own note; a different note is a different line.
           updatedItems[existingItemIndex] = {
             ...existingItem,
             quantity: newQuantity,
             subtotal: newSubtotal,
-            special_instructions: specialInstructions || existingItem.special_instructions,
           }
 
           return updatedItems

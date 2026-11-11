@@ -7,22 +7,48 @@ import {
 
 describe('applyDeliveryAddressChange', () => {
   const previous = Object.freeze({ customer_name: 'Juan', delivery_address: 'Old', delivery_lat: '1', delivery_lng: '2' })
+  const picked = Object.freeze({
+    customer_name: 'Juan',
+    delivery_address: '12 Mabini St, Antipolo',
+    delivery_lat: '14.58',
+    delivery_lng: '121.17',
+    delivery_pin_address: '12 Mabini St, Antipolo',
+    delivery_pin_confirmed: 'true',
+  })
 
-  it('stores a geocoded pick with its coordinates', () => {
+  it('stores a pick with its coordinates and remembers the picked label', () => {
     expect(applyDeliveryAddressChange(previous, 'delivery_address', 'Manila', { lat: 14.5, lng: 121 })).toEqual({
       customer_name: 'Juan',
       delivery_address: 'Manila',
       delivery_lat: '14.5',
       delivery_lng: '121',
+      delivery_pin_address: 'Manila',
     })
   })
 
-  it('drops stale coordinates on a free-text edit so the fee path forces a re-pick', () => {
-    const next = applyDeliveryAddressChange(previous, 'delivery_address', 'Manil', undefined)
+  it('marks a pin the customer confirmed on the map', () => {
+    expect(
+      applyDeliveryAddressChange(previous, 'delivery_address', 'Manila', { lat: 14.5, lng: 121 }, { isConfirmed: true }),
+    ).toMatchObject({ delivery_pin_confirmed: 'true' })
+  })
 
-    expect(next).toEqual({ customer_name: 'Juan', delivery_address: 'Manil' })
-    expect(next).not.toHaveProperty('delivery_lat')
-    expect(next).not.toHaveProperty('delivery_lng')
+  it('keeps the pin when the customer adds to the picked address', () => {
+    expect(applyDeliveryAddressChange(picked, 'delivery_address', 'Unit 5B, 12 Mabini St,  antipolo (blue gate)', undefined)).toEqual({
+      ...picked,
+      delivery_address: 'Unit 5B, 12 Mabini St,  antipolo (blue gate)',
+    })
+  })
+
+  it('drops the pin when the picked address is rewritten, so the fee path forces a re-pick', () => {
+    const next = applyDeliveryAddressChange(picked, 'delivery_address', '12 Mabini', undefined)
+
+    expect(next).toEqual({ customer_name: 'Juan', delivery_address: '12 Mabini' })
+  })
+
+  it('drops coordinates that were never tied to a picked label', () => {
+    const next = applyDeliveryAddressChange(previous, 'delivery_address', 'Old place', undefined)
+
+    expect(next).toEqual({ customer_name: 'Juan', delivery_address: 'Old place' })
   })
 
   it('writes to whichever field the merchant named, never mutating the previous map', () => {

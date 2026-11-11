@@ -1,9 +1,7 @@
 import {
   STAFF_PERMISSION_KEYS,
-  MAX_STAFF_PER_TENANT,
   hasPermission,
   canManageStaff,
-  canAddStaff,
   validatePermissionKeys,
   IMPLIED_BY,
   OPT_IN_PERMISSION_KEYS,
@@ -61,11 +59,12 @@ describe('staff permission registry', () => {
       'reports',
       'inventory',
       'costs',
+      // The expense book: record, fix and void expenses. Implied by nothing.
+      'expenses',
+      // Cash & day close: drawers, pickups, others' shifts, remittances, day
+      // close. Not opt-in; backfilled from store_setup, not implied by it.
+      'cash_manage',
     ])
-  })
-
-  it('caps staff at 3 per tenant', () => {
-    expect(MAX_STAFF_PER_TENANT).toBe(3)
   })
 })
 
@@ -122,8 +121,8 @@ describe('hasPermission', () => {
 })
 
 describe('opt-in permissions (activity_view, approve_requests)', () => {
-  it('names exactly the two store-activity keys', () => {
-    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests'])
+  it('names exactly the two store-activity keys and the expense book', () => {
+    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests', 'expenses', 'cash_manage'])
   })
 
   it('labels them for the owner picking them', () => {
@@ -199,18 +198,6 @@ describe('canManageStaff', () => {
     expect(canManageStaff(superadmin)).toBe(true)
     expect(canManageStaff(ordersOnlyStaff)).toBe(false)
     expect(canManageStaff(legacyAdmin)).toBe(false)
-  })
-})
-
-describe('canAddStaff', () => {
-  it('allows adding staff below the limit', () => {
-    expect(canAddStaff(0)).toBe(true)
-    expect(canAddStaff(2)).toBe(true)
-  })
-
-  it('rejects adding staff at or above the limit', () => {
-    expect(canAddStaff(3)).toBe(false)
-    expect(canAddStaff(4)).toBe(false)
   })
 })
 

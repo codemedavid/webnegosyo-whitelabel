@@ -14,6 +14,7 @@ import { printersForRole } from "./printer-registry";
 import { printForRole } from "./printer";
 import { buildKitchenChitSegments } from "./kitchen-chit";
 import { claimPrinted } from "./printed-ledger";
+import { printClaimed } from "./claimed-print";
 import type { PosOrderArgs } from "./pos-order";
 
 export interface PosKitchenPrintDeps {
@@ -54,29 +55,35 @@ export async function printPosKitchenChit(
     const claimed = await claimPrinted("kitchen", [orderId]);
     if (claimed.length === 0) return false;
 
-    const outcome = await printForRole(
-      "kitchen",
-      buildKitchenChitSegments({
-        _id: orderId,
-        _creationTime: createdAt,
-        customerName: args.customerName,
-        orderType: args.orderType,
-        items: args.items.map((item) => ({
-          menuItemName: item.menuItemName,
-          quantity: item.quantity,
-          variationSelections: item.variationSelections,
-          specialInstructions: item.specialInstructions,
-        })),
-      }),
-    );
-    if (!outcome.anySuccess) {
-      console.warn(
-        "[pos] Kitchen chit failed for sale",
-        orderId,
-        outcome.results[0]?.result.error ?? "no kitchen printer",
+    // A chit that never came out gives its claim back (claimed-print.ts), so
+    // the cashier's manual retry is a first chit, not a REPRINT.
+    return await printClaimed("kitchen", orderId, async () => {
+      const outcome = await printForRole(
+        "kitchen",
+        buildKitchenChitSegments({
+          _id: orderId,
+          _creationTime: createdAt,
+          customerName: args.customerName,
+          orderType: args.orderType,
+          // Checkout answers ("Notes", …): the chit prints the note-like ones.
+          customerData: args.customerData,
+          items: args.items.map((item) => ({
+            menuItemName: item.menuItemName,
+            quantity: item.quantity,
+            variationSelections: item.variationSelections,
+            specialInstructions: item.specialInstructions,
+          })),
+        }),
       );
-    }
-    return outcome.anySuccess;
+      if (!outcome.anySuccess) {
+        console.warn(
+          "[pos] Kitchen chit failed for sale",
+          orderId,
+          outcome.results[0]?.result.error ?? "no kitchen printer",
+        );
+      }
+      return outcome.anySuccess;
+    });
   } catch (err: unknown) {
     console.warn("[pos] Kitchen chit failed:", err instanceof Error ? err.message : err);
     return false;
