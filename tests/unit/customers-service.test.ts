@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import {
+  createSupabaseCustomerStore,
   upsertCustomerFromOrder,
   rowToFacts,
   type CustomerStore,
@@ -7,6 +8,7 @@ import {
   type CustomerProfilePatch,
   type CustomerOrderFacts,
 } from '@/lib/customers-service'
+import { fakeSupabaseTables } from '../fixtures/fake-supabase-tables'
 
 /**
  * In-memory CustomerStore for exercising the upsert orchestration without a live
@@ -235,5 +237,53 @@ describe('rowToFacts', () => {
         order_items: [],
       }).smsConsent
     ).toBe(false)
+  })
+})
+
+describe("createSupabaseCustomerStore.listCustomerOrders: a regular's whole history", () => {
+  // One response from the platform database stops at 1,000 rows and says
+  // nothing about the rest. The profile is recomputed from this list, so a
+  // regular's order count and spend froze at their first 1,000 orders.
+  function history(count: number) {
+    return [
+      ...Array.from({ length: count }, (_, index) => ({
+        id: `order-${String(index).padStart(5, '0')}`,
+        customer_id: 'cust-1',
+        total: 100,
+        created_at: new Date(Date.UTC(2026, 0, 1) + index * 3_600_000).toISOString(),
+        order_type: 'Pickup',
+        customer_data: null,
+      })),
+      { id: 'order-theirs', customer_id: 'cust-2', total: 999, created_at: '2026-01-01T00:00:00.000Z', order_type: 'Pickup', customer_data: null },
+    ]
+  }
+
+  it('reads every order past the 1,000-row cap, each once', async () => {
+    const fake = fakeSupabaseTables({ orders: history(2300) })
+
+    const orders = await createSupabaseCustomerStore(fake.client).listCustomerOrders('cust-1')
+
+    expect(orders).toHaveLength(2300)
+    expect(new Set(orders.map((order) => order.createdAt)).size).toBe(2300)
+    expect(orders.reduce((sum, order) => sum + order.total, 0)).toBe(230_000)
+  })
+
+  it('reads a short history in one request', async () => {
+    const fake = fakeSupabaseTables({ orders: history(12) })
+
+    expect(await createSupabaseCustomerStore(fake.client).listCustomerOrders('cust-1')).toHaveLength(12)
+    expect(fake.requests).toHaveLength(1)
+  })
+
+  it('fails rather than recompute a profile from part of a history longer than it will read', async () => {
+    const fake = fakeSupabaseTables({ orders: history(10_001) })
+
+    await expect(createSupabaseCustomerStore(fake.client).listCustomerOrders('cust-1')).rejects.toThrow(/more than 10,000 orders/)
+  })
+
+  it('throws the database error of any page', async () => {
+    const fake = fakeSupabaseTables({ orders: history(5) }, { orders: 'statement timeout' })
+
+    await expect(createSupabaseCustomerStore(fake.client).listCustomerOrders('cust-1')).rejects.toMatchObject({ message: 'statement timeout' })
   })
 })

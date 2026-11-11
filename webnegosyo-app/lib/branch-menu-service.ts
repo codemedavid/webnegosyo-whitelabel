@@ -14,6 +14,7 @@
  */
 
 import { supabase } from "./supabase";
+import { NOTHING_CHANGED_MESSAGE, assertRowsChangedOrGone } from "./assert-rows-changed";
 import { planBranchListingWrite } from "./branch-menu";
 import type { OutletMenuOverrideRow } from "./outlet-menu-overrides";
 
@@ -74,14 +75,29 @@ export async function setBranchListing(
   if (plan.kind === "noop") return;
 
   if (plan.kind === "delete") {
-    const { error } = await supabase
-      .from("outlet_menu_items")
-      .delete()
-      .eq("tenant_id", tenantId)
-      .eq("outlet_id", outletId)
-      .eq("menu_item_id", menuItemId);
-
-    if (error) throw new Error(error.message);
+    // Zero rows removed with the row still there = row-level security refused
+    // it (the branch still does not carry the dish); zero rows with it gone
+    // means someone else put the dish back first.
+    const result = await assertRowsChangedOrGone(
+      await supabase
+        .from("outlet_menu_items")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("outlet_id", outletId)
+        .eq("menu_item_id", menuItemId)
+        .select("menu_item_id"),
+      () =>
+        supabase
+          .from("outlet_menu_items")
+          .select("menu_item_id")
+          .eq("tenant_id", tenantId)
+          .eq("outlet_id", outletId)
+          .eq("menu_item_id", menuItemId)
+          .limit(1),
+    );
+    if (!result.ok) {
+      throw new Error(result.reason === "error" ? result.error.message : NOTHING_CHANGED_MESSAGE);
+    }
     return;
   }
 

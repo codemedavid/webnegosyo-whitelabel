@@ -21,6 +21,8 @@ import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/p
 import { assertSubscriptionActive } from '@/lib/billing/subscription-gate'
 import { z } from 'zod'
 import { isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-icon-catalog'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 
 // ============================================
 // Types & Schemas
@@ -455,13 +457,13 @@ export async function deleteCategory(categoryId: string, tenantId: string) {
   
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('categories')
-    .delete()
-    .eq('id', categoryId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the category still there = row-level security
+  // refused the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('categories').delete().eq('id', categoryId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('categories').select('id').eq('id', categoryId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function reorderCategories(tenantId: string, categoryIds: string[]) {
@@ -882,13 +884,12 @@ export async function deleteMenuItem(itemId: string, tenantId: string) {
   
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('menu_items')
-    .delete()
-    .eq('id', itemId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // As deleteCategory: a refused delete is reported, an item already gone is not.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('menu_items').delete().eq('id', itemId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('menu_items').select('id').eq('id', itemId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function toggleMenuItemAvailability(itemId: string, tenantId: string, isAvailable: boolean) {

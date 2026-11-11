@@ -46,7 +46,7 @@ interface Recorded {
  * this one records the FILTERS, and a scoping assertion that cannot see them
  * proves nothing.
  */
-function makeDb(results: Record<string, unknown>) {
+function makeDb(results: Record<string, unknown>, paged: Record<string, unknown[]> = {}) {
   const recorded: Recorded = { filters: [], isFilters: [], inserts: [], updates: [] };
   const queues: Record<string, unknown[]> = {};
   for (const [table, value] of Object.entries(results)) {
@@ -61,9 +61,23 @@ function makeDb(results: Record<string, unknown>) {
       return Promise.resolve(results[table] ?? { data: null, error: null });
     };
 
+    // A table in `paged` answers like the platform database: `.range()` is
+    // honoured and one response never carries more than 1,000 rows.
+    let window = { from: 0, to: Number.POSITIVE_INFINITY };
+    const settleList = () => {
+      const rows = paged[table];
+      if (!rows) return settle();
+      const end = Math.min(window.to + 1, window.from + 1000);
+      return Promise.resolve({ data: rows.slice(window.from, end), error: null });
+    };
+
     chain.select = () => chain;
     chain.order = () => chain;
     chain.limit = () => chain;
+    chain.range = (from: number, to: number) => {
+      window = { from, to };
+      return chain;
+    };
     chain.eq = (column: string, value: unknown) => {
       recorded.filters.push({ table, column, value });
       return chain;
@@ -82,7 +96,7 @@ function makeDb(results: Record<string, unknown>) {
     };
     chain.single = settle;
     chain.maybeSingle = settle;
-    chain.then = (resolve: (value: unknown) => unknown) => settle().then(resolve);
+    chain.then = (resolve: (value: unknown) => unknown) => settleList().then(resolve);
 
     return chain;
   };
@@ -219,7 +233,7 @@ describe("openCount", () => {
       // The stale open count, then the row the insert returned.
       inventory_counts: [
         { data: OPEN_COUNT, error: null },
-        { data: null, error: null },
+        { data: [{ id: "c1" }], error: null },
         { data: { ...OPEN_COUNT, id: "c2" }, error: null },
       ],
       inventory_items: { data: [], error: null },
@@ -295,5 +309,88 @@ describe("closeCount", () => {
     });
 
     await expect(closeCount("t1", "c1", "u1", db)).rejects.toThrow();
+  });
+
+  it("reports a close the database refused, instead of showing the count as finished", async () => {
+    // Row-level security refuses silently: no error, zero rows. The count is
+    // still open when read back.
+    const { db } = makeDb({
+      inventory_counts: [
+        { data: [], error: null },
+        { data: OPEN_COUNT, error: null },
+      ],
+    });
+
+    await expect(closeCount("t1", "c1", "u1", db)).rejects.toThrow(
+      "The stock count could not be closed. You may not have access to do this.",
+    );
+  });
+
+  it("reports a count it can no longer see as not closed", async () => {
+    const { db } = makeDb({
+      inventory_counts: [
+        { data: [], error: null },
+        { data: null, error: null },
+      ],
+    });
+
+    await expect(closeCount("t1", "c1", "u1", db)).rejects.toThrow(/could not be closed/);
+  });
+
+  it("is fine when someone else closed it first: the same count, already over", async () => {
+    const { db } = makeDb({
+      inventory_counts: [
+        { data: [], error: null },
+        { data: { ...OPEN_COUNT, closed_at: "2026-07-31T10:00:00Z" }, error: null },
+      ],
+    });
+
+    await expect(closeCount("t1", "c1", "u1", db)).resolves.toBeUndefined();
+  });
+});
+
+describe("a store with more than 1,000 ingredients", () => {
+  // One response from the platform database stops at 1,000 rows and says
+  // nothing about the rest, so both sides of a count's coverage stopped there.
+  const ids = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `i${index}` }));
+  const lines = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ inventory_item_id: `i${index}` }));
+
+  it("opens a count expecting every active ingredient, not the first 1,000", async () => {
+    const { db, recorded } = makeDb(
+      {
+        inventory_counts: [{ data: null, error: null }, { data: OPEN_COUNT, error: null }],
+      },
+      { inventory_items: ids(1200), stock_movements: [] },
+    );
+
+    await openCount("t1", { outletId: null, startedBy: "u1" }, db);
+
+    const insert = recorded.inserts.find((entry) => entry.table === "inventory_counts");
+    expect(insert?.row.expected_item_count).toBe(1200);
+  });
+
+  it("reports every ingredient a count reached, so a full count is not shown as partial", async () => {
+    const { db } = makeDb(
+      { inventory_counts: { data: { ...OPEN_COUNT, expected_item_count: 1200 }, error: null } },
+      { stock_movements: lines(1200) },
+    );
+
+    const session = await loadOpenCount("t1", null, db);
+
+    expect(session?.progress.countedCount).toBe(1200);
+    expect(session?.progress.coveragePercent).toBe(100);
+  });
+
+  it("refuses to open a count with a wrong denominator when there are too many ingredients to read", async () => {
+    const { db, recorded } = makeDb(
+      { inventory_counts: [{ data: null, error: null }] },
+      { inventory_items: ids(10_001), stock_movements: [] },
+    );
+
+    await expect(openCount("t1", { outletId: null, startedBy: "u1" }, db)).rejects.toThrow(
+      /more than 10,000/,
+    );
+    expect(recorded.inserts).toHaveLength(0);
   });
 });

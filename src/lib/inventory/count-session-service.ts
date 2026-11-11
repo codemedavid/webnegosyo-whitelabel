@@ -13,6 +13,8 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { assertRowsChanged, writeFailure } from '@/platform/db/assert-rows-changed'
+import { readAllRows } from '@/platform/db/read-all-rows'
 import { resolveActingBranchScope } from '@/lib/inventory/acting-branch-scope'
 import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import { resolveMovementBranch } from '@/lib/inventory/branch-stock-view'
@@ -49,6 +51,14 @@ interface CountRow {
 }
 
 type CountClient = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Ceilings for the two reads behind a count's coverage. Far above any real
+ * store; past them the read fails rather than report a coverage figure worked
+ * out from part of the rows.
+ */
+const MAX_INGREDIENTS_IN_SCOPE = 10_000
+const MAX_COUNTED_LINES = 20_000
 
 function toRecord(row: CountRow): CountSessionRecord {
   return {
@@ -107,13 +117,22 @@ async function countIngredientsInScope(
   supabase: CountClient,
   tenantId: string,
 ): Promise<number> {
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-  if (error) throw error
-  return (data ?? []).length
+  // Paged: one response stops at 1,000 rows, which froze the denominator of
+  // every count at 1,000 on a store with more ingredients than that.
+  const result = await readAllRows(
+    (from, to) =>
+      supabase
+        .from('inventory_items')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .order('id', { ascending: true })
+        .range(from, to),
+    { maxRows: MAX_INGREDIENTS_IN_SCOPE },
+  )
+  if (result.ok) return result.rows.length
+  if (result.reason === 'error') throw result.error
+  throw new Error('This store has more than 10,000 ingredients, too many for one stock count.')
 }
 
 async function closeStaleCount(supabase: CountClient, tenantId: string, countId: string): Promise<void> {
@@ -217,16 +236,21 @@ export async function closeCount(tenantId: string, countId: string): Promise<voi
   // evidence for when this shelf was last accounted for.
   if (count.status === 'closed') throw new Error('That stock count is already closed')
 
-  const { error } = await supabase
-    .from('inventory_counts')
-    .update({
-      status: 'closed',
-      closed_at: new Date().toISOString(),
-      closed_by: await actingUserId(supabase),
-    } as never)
-    .eq('tenant_id', tenantId)
-    .eq('id', countId)
-  if (error) throw error
+  // The open count was read a moment ago, so zero rows here is never "nothing
+  // to do": row-level security refused the change and the count is still open.
+  const result = assertRowsChanged(
+    await supabase
+      .from('inventory_counts')
+      .update({
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+        closed_by: await actingUserId(supabase),
+      } as never)
+      .eq('tenant_id', tenantId)
+      .eq('id', countId)
+      .select('id'),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 /** The count running on a shelf right now, if any. */
@@ -266,15 +290,24 @@ async function loadCountedItemIds(
   tenantId: string,
   countId: string,
 ): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('stock_movements')
-    .select('inventory_item_id')
-    .eq('tenant_id', tenantId)
-    .eq('inventory_count_id', countId)
-  if (error) throw error
-  return ((data ?? []) as unknown as Array<{ inventory_item_id: string }>).map(
-    (row) => row.inventory_item_id,
+  // Paged: one response stops at 1,000 rows, so a count that reached more
+  // ingredients than that read as partial however thorough it was.
+  const result = await readAllRows(
+    (from, to) =>
+      supabase
+        .from('stock_movements')
+        .select('inventory_item_id')
+        .eq('tenant_id', tenantId)
+        .eq('inventory_count_id', countId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    { maxRows: MAX_COUNTED_LINES },
   )
+  if (result.ok) {
+    return (result.rows as unknown as Array<{ inventory_item_id: string }>).map((row) => row.inventory_item_id)
+  }
+  if (result.reason === 'error') throw result.error
+  throw new Error('This stock count has more than 20,000 lines, too many to work out its progress.')
 }
 
 /**

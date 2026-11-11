@@ -16,6 +16,12 @@
  */
 
 import { supabase } from "./supabase";
+import {
+  NOTHING_CHANGED_MESSAGE,
+  assertRowsChanged,
+  assertRowsChangedOrGone,
+  writeFailure,
+} from "./assert-rows-changed";
 
 /** A payment method as the management screens see it. */
 export interface ManagedPaymentMethod {
@@ -365,13 +371,13 @@ export async function deletePaymentMethod(
   methodId: string,
   tenantId: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("payment_methods")
-    .delete()
-    .eq("id", methodId)
-    .eq("tenant_id", tenantId);
-
-  if (error) throw error;
+  // Zero rows deleted with the method still there = row-level security refused
+  // the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from("payment_methods").delete().eq("id", methodId).eq("tenant_id", tenantId).select("id"),
+    () => supabase.from("payment_methods").select("id").eq("id", methodId).eq("tenant_id", tenantId).limit(1),
+  );
+  if (!result.ok) throw writeFailure(result);
 }
 
 /** Persist the positions produced by {@link moveMethod}. */
@@ -379,13 +385,31 @@ export async function reorderPaymentMethods(
   tenantId: string,
   methods: readonly ManagedPaymentMethod[],
 ): Promise<void> {
+  const unchangedIds: string[] = [];
   for (const method of methods) {
-    const { error } = await supabase
-      .from("payment_methods")
-      .update({ order_index: method.order_index })
-      .eq("id", method.id)
-      .eq("tenant_id", tenantId);
-
-    if (error) throw error;
+    const result = assertRowsChanged(
+      await supabase
+        .from("payment_methods")
+        .update({ order_index: method.order_index })
+        .eq("id", method.id)
+        .eq("tenant_id", tenantId)
+        .select("id"),
+    );
+    if (result.ok) continue;
+    if (result.reason !== "no-rows-changed") throw writeFailure(result);
+    unchangedIds.push(method.id);
   }
+  if (unchangedIds.length === 0) return;
+
+  // A method that changed nothing was either deleted on another device or its
+  // write was refused by row-level security. Only one that is still here was
+  // refused.
+  const { data: stillHere, error } = await supabase
+    .from("payment_methods")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .in("id", unchangedIds)
+    .limit(1);
+  if (error) throw error;
+  if ((stillHere ?? []).length > 0) throw new Error(NOTHING_CHANGED_MESSAGE);
 }

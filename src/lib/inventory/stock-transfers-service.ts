@@ -22,6 +22,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { assertRowsChanged, writeFailure } from '@/platform/db/assert-rows-changed'
 import { INVENTORY_ITEM_COLUMNS } from '@/lib/inventory/cost-columns'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import type { InventoryItem } from '@/types/database'
@@ -389,10 +390,15 @@ export async function cancelTransferWith(
     throw new Error(NOT_YOUR_BRANCH)
   }
 
-  const { error } = await supabase
-    .from('stock_transfers')
-    .update({ status: 'cancelled' } as never)
-    .eq('tenant_id', tenantId)
-    .eq('id', transferId)
-  if (error) throw error
+  // The draft was read a moment ago, so zero rows here is never "nothing to
+  // do": row-level security refused the change and the transfer is still open.
+  const result = assertRowsChanged(
+    await supabase
+      .from('stock_transfers')
+      .update({ status: 'cancelled' } as never)
+      .eq('tenant_id', tenantId)
+      .eq('id', transferId)
+      .select('id'),
+  )
+  if (!result.ok) throw writeFailure(result)
 }

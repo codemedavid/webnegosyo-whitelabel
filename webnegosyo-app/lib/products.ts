@@ -1,4 +1,6 @@
 import { supabase } from "./supabase";
+import { assertRowsChangedOrGone, writeFailure } from "./assert-rows-changed";
+import { readAllPages, type PageResponse } from "./gov-reports/paging";
 import { listManagedCategories, type ManagedCategory } from "./categories";
 import { nextProductOrder, readMovedProductOrder } from "./product-arrangement";
 import {
@@ -235,6 +237,28 @@ function toMenuItemRow(input: ProductInput): Record<string, unknown> {
 }
 
 /**
+ * One response from the platform database carries at most 1,000 rows and says
+ * nothing about the rest. The register's menu is read a page at a time up to
+ * this many rows; a longer menu fails loudly instead of arriving short.
+ */
+const MENU_PAGE_SIZE = 1000;
+const MAX_MENU_ROWS = 10_000;
+
+/** Every row of a menu read, or an error: never the first part as if it were all. */
+async function readWholeMenu<Row>(
+  fetchPage: (from: number, to: number) => PromiseLike<PageResponse<Row>>,
+): Promise<Row[]> {
+  const { rows, isTruncated } = await readAllPages(fetchPage, {
+    pageSize: MENU_PAGE_SIZE,
+    maxRows: MAX_MENU_ROWS,
+  });
+  if (isTruncated) {
+    throw new Error("This store has more than 10,000 dishes, too many to load on the register.");
+  }
+  return rows;
+}
+
+/**
  * The store's products, priced for one branch when the register belongs to one.
  *
  * Without `outletId` this is the store-wide menu, which is what a
@@ -251,40 +275,42 @@ export async function listProducts(
 ): Promise<Product[]> {
   // Neither read depends on the other. Start both together so a branch
   // register waits for the slower read, rather than two network round trips.
-  const [{ data, error }, overrides] = await Promise.all([
-    supabase
-      .from("menu_items")
-      .select("*, category:categories(*)")
-      .eq("tenant_id", tenantId)
-      .order("order", { ascending: true })
-      // Ties are common on live stores; `id` breaks them the way the
-      // storefront does, so the register lists dishes in the web's order.
-      .order("id", { ascending: true }),
+  //
+  // Both are paged. Unpaged, a dish past the first 1,000 never reached the
+  // register, and a branch price past the first 1,000 overrides fell back to
+  // the store-wide price. A failed page throws: an empty override set is the
+  // claim "this branch sells at the store-wide price", which after a failed
+  // query rings up the wrong money.
+  const [products, overrideRows] = await Promise.all([
+    readWholeMenu<Product>((from, to) =>
+      supabase
+        .from("menu_items")
+        .select("*, category:categories(*)")
+        .eq("tenant_id", tenantId)
+        .order("order", { ascending: true })
+        // Ties are common on live stores; `id` breaks them the way the
+        // storefront does, so the register lists dishes in the web's order.
+        // It also makes the order unique, so pages never overlap or skip.
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PageResponse<Product>>,
+    ),
     outletId
-      ? supabase
-          .from("outlet_menu_items")
-          .select("*")
-          .eq("tenant_id", tenantId)
-          .eq("outlet_id", outletId)
-      : Promise.resolve({ data: [], error: null }),
+      ? readWholeMenu<OutletMenuOverrideRow>((from, to) =>
+          supabase
+            .from("outlet_menu_items")
+            .select("*")
+            .eq("tenant_id", tenantId)
+            .eq("outlet_id", outletId)
+            // One row per dish per branch, so this order is unique.
+            .order("menu_item_id", { ascending: true })
+            .range(from, to) as unknown as PromiseLike<PageResponse<OutletMenuOverrideRow>>,
+        )
+      : Promise.resolve<OutletMenuOverrideRow[]>([]),
   ]);
-
-  if (error) throw error;
-  const products = (data ?? []) as unknown as Product[];
 
   if (!outletId) return products;
 
-  const { data: overrideRows, error: overrideError } = overrides;
-
-  // Not swallowed: an empty override set is the claim "this branch sells at the
-  // store-wide price", which after a failed query rings up the wrong money.
-  if (overrideError) throw overrideError;
-
-  const index = buildOutletMenuIndex(
-    (overrideRows ?? []) as unknown as OutletMenuOverrideRow[],
-  );
-
-  return resolveMenuForOutlet(products, index, outletId) as Product[];
+  return resolveMenuForOutlet(products, buildOutletMenuIndex(overrideRows), outletId) as Product[];
 }
 
 export async function createProduct(
@@ -332,13 +358,13 @@ export async function deleteProduct(
   productId: string,
   tenantId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("menu_items")
-    .delete()
-    .eq("id", productId)
-    .eq("tenant_id", tenantId);
-
-  if (error) throw error;
+  // Zero rows deleted with the dish still there = row-level security refused
+  // the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from("menu_items").delete().eq("id", productId).eq("tenant_id", tenantId).select("id"),
+    () => supabase.from("menu_items").select("id").eq("id", productId).eq("tenant_id", tenantId).limit(1),
+  );
+  if (!result.ok) throw writeFailure(result);
 }
 
 // The on/off switch is NOT a row write from here: it goes through the web

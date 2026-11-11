@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 import {
   loyverseListAll,
   LoyverseApiError,
@@ -227,13 +229,13 @@ export async function deletePaymentMethod(paymentMethodId: string, tenantId: str
   
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('payment_methods')
-    .delete()
-    .eq('id', paymentMethodId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the method still there = row-level security refused
+  // the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('payment_methods').delete().eq('id', paymentMethodId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('payment_methods').select('id').eq('id', paymentMethodId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
   return { success: true }
 }
 

@@ -37,10 +37,10 @@
  * error on any page as `ok: false, reason: 'error'` with no partial rows (a
  * table with a hole in it is worse than no table).
  *
- * Not adopted anywhere yet. `texts/server/paged.ts#readAll` (throws) and
+ * `texts/server/paged.ts#readAll` (throws) and
  * `storefront/paged-select.ts#selectAllPages` (counts first, reads in
- * parallel, de-duplicates by id) are the two shared pagers that exist today;
- * both can become thin adapters over this.
+ * parallel, de-duplicates by id) are the two older shared pagers; both can
+ * become thin adapters over this.
  */
 
 /** PostgREST's `max-rows` on the platform project. A larger page comes back short without saying so. */

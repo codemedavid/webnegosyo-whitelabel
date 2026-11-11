@@ -56,6 +56,8 @@ function stub(options: {
   transfer?: Record<string, unknown> | null
   lines?: Array<Record<string, unknown>>
   items?: Array<Record<string, unknown>>
+  /** Row-level security turned the status change away: no error, no rows. */
+  updateRefused?: boolean
 }): Writes {
   const writes: Writes = { rpcs: [], inserts: [], updates: [] }
   rpc.mockImplementation((fn: string, args: Record<string, unknown>) => {
@@ -96,7 +98,14 @@ function stub(options: {
       },
       update: (patch: unknown) => {
         writes.updates.push({ table, patch })
-        return chain
+        // What PostgREST answers to the write: the rows it changed.
+        const changed = { data: options.updateRefused ? [] : [{ id: XFER }], error: null }
+        const written: Record<string, unknown> = {
+          eq: () => written,
+          select: () => written,
+          then: (resolve: (v: unknown) => void) => resolve(changed),
+        }
+        return written
       },
     }
     return chain
@@ -350,5 +359,13 @@ describe('cancelTransfer', () => {
 
     await expect(cancelTransfer(TENANT, XFER)).rejects.toThrow()
     expect(writes.updates).toHaveLength(0)
+  })
+
+  it('reports a cancel the database refused, instead of saying it was cancelled', async () => {
+    // Row-level security refuses silently: no error, zero rows. The transfer
+    // is still a draft, so "cancelled" on screen would be untrue.
+    stub({ updateRefused: true })
+
+    await expect(cancelTransfer(TENANT, XFER)).rejects.toThrow('Nothing was changed. You may not have access to do this.')
   })
 })

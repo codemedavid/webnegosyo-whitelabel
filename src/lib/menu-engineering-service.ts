@@ -7,6 +7,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { BcgClassification, MenuItem, UpsellPair, UpsellPairWithItems } from '@/types/database'
@@ -248,13 +250,13 @@ export async function deleteUpsellPair(pairId: string, tenantId: string) {
   await verifyTenantPermission(tenantId, 'analytics', 'delete')
 
   const supabase = await createClient()
-  const { error } = await supabase
-    .from('upsell_pairs')
-    .delete()
-    .eq('id', pairId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the pair still there = row-level security refused
+  // the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('upsell_pairs').delete().eq('id', pairId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('upsell_pairs').select('id').eq('id', pairId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function getUpsellPairsByTenant(tenantId: string): Promise<UpsellPairWithItems[]> {
