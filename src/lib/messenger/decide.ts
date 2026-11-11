@@ -12,7 +12,7 @@ import {
   type ReplyContext,
 } from './replies'
 import type { CartOp } from './chat-cart'
-import { findEnabledRule, pickRuleForText, type MessengerRule, type RuleAction } from './rules'
+import { findEnabledRule, pickOnceRule, pickRuleForText, type MessengerRule, type RuleAction } from './rules'
 
 /** Staff shortcuts typed in Page Inbox (they never pause the bot). `/menu` etc. kept from the old webhook. */
 const STAFF_COMMANDS: Record<string, RuleAction> = {
@@ -67,15 +67,15 @@ function tap(build: ReplyDecision['build'], needs?: ReplyNeeds): ReplyDecision {
   return { build, pausesBot: false, isTyped: false, needs }
 }
 
-function getStarted(rules: readonly MessengerRule[]): ReplyDecision {
-  const rule = findEnabledRule(rules, (entry) => entry.trigger.kind === 'get_started')
+function getStarted(rules: readonly MessengerRule[], isOpen: boolean): ReplyDecision {
+  const rule = pickOnceRule(rules, 'get_started', isOpen)
   return fromAction(rule?.action ?? { kind: 'menu_card' }, false, rule?.id)
 }
 
-function fromPayload(payload: MessengerPayload, rules: readonly MessengerRule[]): ReplyDecision {
+function fromPayload(payload: MessengerPayload, rules: readonly MessengerRule[], isOpen: boolean): ReplyDecision {
   switch (payload.verb) {
     case 'start':
-      return getStarted(rules)
+      return getStarted(rules, isOpen)
     case 'rule': {
       // A starter question or menu button whose rule was since removed still gets an answer.
       const rule = findEnabledRule(rules, (entry) => entry.id === payload.ruleId)
@@ -105,26 +105,30 @@ function fromPayload(payload: MessengerPayload, rules: readonly MessengerRule[])
   }
 }
 
-/** What to answer, or null for nothing. Pure. */
-export function decideReply(event: InboundEvent, rules: readonly MessengerRule[]): ReplyDecision | null {
+/**
+ * What to answer, or null for nothing. Pure. `isOpen` = the store's hours say
+ * open right now (stores without hours count as open); it picks between
+ * "Only when open / closed" automations.
+ */
+export function decideReply(event: InboundEvent, rules: readonly MessengerRule[], isOpen = true): ReplyDecision | null {
   switch (event.kind) {
     case 'text': {
-      const rule = pickRuleForText(rules, event.text)
+      const rule = pickRuleForText(rules, event.text, isOpen)
       return rule ? fromAction(rule.action, true, rule.id) : null
     }
     case 'quick_reply': {
       const payload = decodePayload(event.payload)
-      if (payload) return fromPayload(payload, rules)
-      const rule = pickRuleForText(rules, event.text)
+      if (payload) return fromPayload(payload, rules, isOpen)
+      const rule = pickRuleForText(rules, event.text, isOpen)
       return rule ? fromAction(rule.action, true, rule.id) : null
     }
     case 'postback': {
       const payload = decodePayload(event.payload)
-      return payload ? fromPayload(payload, rules) : null
+      return payload ? fromPayload(payload, rules, isOpen) : null
     }
     case 'referral':
       // A link into the chat that is not an order: greet like Get Started.
-      return getStarted(rules)
+      return getStarted(rules, isOpen)
     default:
       return null
   }

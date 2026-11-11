@@ -39,6 +39,8 @@ export interface ScenarioInput {
   rules: readonly MessengerRule[]
   messages: MessageSettings
   customerName: string
+  /** Store open / closed for "Only when" automations. Absent = the store's hours now. */
+  isOpen?: boolean
 }
 
 const SAMPLE_ORDER_LABEL = '#07'
@@ -67,7 +69,7 @@ function update(input: ScenarioInput, status: UpdateStatus, kind: ReplyOrder['ki
 }
 
 function helloTurns(input: ScenarioInput): Turn[] {
-  const decision = decideReply({ kind: 'postback', payload: encodePayload({ verb: 'start' }), title: 'Get Started', pageId: 'p', psid: 's', timestamp: 0, dedupeKey: 'k' }, input.rules)
+  const decision = decideReply({ kind: 'postback', payload: encodePayload({ verb: 'start' }), title: 'Get Started', pageId: 'p', psid: 's', timestamp: 0, dedupeKey: 'k' }, input.rules, input.isOpen ?? input.store.isOpenNow ?? true)
   return [{ from: 'customer', text: 'Get Started' }, { from: 'bot', messages: decision ? decision.build(context(input)) : buildReply({ kind: 'menu_card' }, context(input)) }]
 }
 

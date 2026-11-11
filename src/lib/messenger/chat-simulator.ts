@@ -25,6 +25,8 @@ export interface SimEnv {
   messages: MessageSettings
   botEnabled: boolean
   customerName?: string
+  /** Pretend the store is open / closed (the "Only when" automations). Absent = the store's hours now. */
+  isOpen?: boolean
 }
 
 export interface SimResult {
@@ -46,7 +48,7 @@ function toEvent(input: SimInput): InboundEvent {
 
 export function simulate(input: SimInput, cart: readonly ChatCartLine[], env: SimEnv): SimResult {
   if (!env.botEnabled) return { reply: [], ruleId: null, cart: [...cart], silence: 'bot_off' }
-  const decision = decideReply(toEvent(input), env.rules)
+  const decision = decideReply(toEvent(input), env.rules, env.isOpen ?? env.store.isOpenNow ?? true)
   if (!decision) return { reply: [], ruleId: null, cart: [...cart], silence: 'no_match' }
 
   let ctx: ReplyContext = { store: env.store, linkToken: null, messages: env.messages, customerName: env.customerName ?? '' }

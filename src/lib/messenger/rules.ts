@@ -24,16 +24,26 @@ const optionalText = (max: number) => z.string().trim().max(max).optional()
 const buttonLabel = z.string().trim().min(1).max(MESSENGER_LIMITS.buttonTitle)
 const rowId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)
 
+/**
+ * "Only when" on a typed-message trigger (plan A5): absent = always, else only
+ * while the store is open / closed by its own hours. Starter questions and
+ * menu buttons live in Meta's profile and always answer.
+ */
+export const RULE_WHEN = ['open', 'closed'] as const
+export type RuleWhen = (typeof RULE_WHEN)[number]
+const when = z.enum(RULE_WHEN).optional()
+
 export const triggerSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('keyword'),
     keywords: z.array(keyword).min(1).max(MAX_KEYWORDS),
     match: z.enum(['contains', 'exact']),
+    when,
   }).strict(),
-  z.object({ kind: z.literal('get_started') }).strict(),
+  z.object({ kind: z.literal('get_started'), when }).strict(),
   z.object({ kind: z.literal('ice_breaker'), question: z.string().trim().min(1).max(MESSENGER_LIMITS.iceBreakerQuestion) }).strict(),
   z.object({ kind: z.literal('menu_button'), label: z.string().trim().min(1).max(MESSENGER_LIMITS.persistentMenuTitle) }).strict(),
-  z.object({ kind: z.literal('fallback') }).strict(),
+  z.object({ kind: z.literal('fallback'), when }).strict(),
 ])
 
 /** A button under the owner's own text. Links must be https. */
@@ -154,9 +164,19 @@ export const DEFAULT_RULES: readonly MessengerRule[] = Object.freeze([
 export function ruleSetProblems(rules: readonly MessengerRule[]): string[] {
   const problems: string[] = []
   const count = (kind: TriggerKind) => rules.filter((rule) => rule.trigger.kind === kind).length
+  // Get Started and the fallback: one per "Only when" choice (always / open / closed).
+  const crowded = (kind: TriggerKind) => {
+    const seen = new Map<string, number>()
+    for (const rule of rules) {
+      if (rule.trigger.kind !== kind) continue
+      const key = triggerWhen(rule.trigger) ?? 'always'
+      seen.set(key, (seen.get(key) ?? 0) + 1)
+    }
+    return [...seen.values()].some((n) => n > 1)
+  }
   if (rules.length > MAX_RULES) problems.push(`At most ${MAX_RULES} automations.`)
-  if (count('get_started') > 1) problems.push('Only one automation can answer Get Started.')
-  if (count('fallback') > 1) problems.push('Only one automation can be the "didn\'t understand" reply.')
+  if (crowded('get_started')) problems.push('Only one automation can answer Get Started (one per "Only when" choice).')
+  if (crowded('fallback')) problems.push('Only one automation can be the "didn\'t understand" reply (one per "Only when" choice).')
   if (count('ice_breaker') > MAX_ICE_BREAKER_RULES) problems.push(`Messenger shows at most ${MAX_ICE_BREAKER_RULES} starter questions.`)
   if (count('menu_button') > MAX_MENU_BUTTON_RULES) problems.push(`At most ${MAX_MENU_BUTTON_RULES} menu buttons.`)
   if (new Set(rules.map((rule) => rule.id)).size !== rules.length) problems.push('Two automations share an id.')
@@ -173,13 +193,37 @@ export function parseStoredRules(rows: readonly unknown[]): MessengerRule[] {
   return rules
 }
 
-/** First enabled keyword rule the text matches, else the enabled fallback, else null. */
-export function pickRuleForText(rules: readonly MessengerRule[], text: string): MessengerRule | null {
+/** A trigger's "Only when", or null for always. */
+export function triggerWhen(trigger: RuleTrigger): RuleWhen | null {
+  return 'when' in trigger && trigger.when ? trigger.when : null
+}
+
+/** Does this rule answer right now? `isOpen` = the store's hours say open. */
+export function appliesNow(rule: MessengerRule, isOpen: boolean): boolean {
+  const only = triggerWhen(rule.trigger)
+  return only === null || (only === 'open') === isOpen
+}
+
+/**
+ * The enabled Get Started / fallback rule for right now: one limited to the
+ * current state ("only when closed" at night) beats an always-on one.
+ */
+export function pickOnceRule(
+  rules: readonly MessengerRule[],
+  kind: 'get_started' | 'fallback',
+  isOpen = true,
+): MessengerRule | null {
+  const candidates = rules.filter((rule) => rule.isEnabled && rule.trigger.kind === kind && appliesNow(rule, isOpen))
+  return candidates.find((rule) => triggerWhen(rule.trigger) !== null) ?? candidates[0] ?? null
+}
+
+/** First enabled keyword rule the text matches right now, else the fallback, else null. */
+export function pickRuleForText(rules: readonly MessengerRule[], text: string, isOpen = true): MessengerRule | null {
   for (const rule of rules) {
-    if (!rule.isEnabled || rule.trigger.kind !== 'keyword') continue
+    if (!rule.isEnabled || rule.trigger.kind !== 'keyword' || !appliesNow(rule, isOpen)) continue
     if (matchesAnyKeyword(text, rule.trigger.keywords, rule.trigger.match)) return rule
   }
-  return rules.find((rule) => rule.isEnabled && rule.trigger.kind === 'fallback') ?? null
+  return pickOnceRule(rules, 'fallback', isOpen)
 }
 
 export function findEnabledRule(

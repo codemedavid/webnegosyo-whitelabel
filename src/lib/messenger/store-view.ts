@@ -11,7 +11,7 @@
 import type { Category, MenuItem } from '@/types/database'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { listStoreAddresses } from '@/lib/qr-print/qr-links'
-import { getZonedNow, formatTimeLabel } from '@/lib/store-open-status'
+import { getStoreOpenStatus, getZonedNow, formatTimeLabel } from '@/lib/store-open-status'
 import { normalizeOperatingHours, parseHHMM } from '@/lib/operating-hours'
 
 export interface ReplyCategory {
@@ -39,6 +39,12 @@ export interface ReplyStore {
   logoUrl: string | null
   /** "Open today 9:00 AM – 9:00 PM", or null when the store set no hours. */
   hoursText: string | null
+  /**
+   * The store's own hours say open right now (no hours = open). Read by the
+   * "Only when open / closed" automations; independent of whether the
+   * storefront enforces hours or has launched. Absent = open.
+   */
+  isOpenNow?: boolean
   address: string | null
   categories: ReplyCategory[]
   items: ReplyItem[]
@@ -90,6 +96,10 @@ function hoursText(tenant: StoreViewTenant, now: Date): string | null {
   return `Open today ${formatTimeLabel(open)} – ${formatTimeLabel(close)}`
 }
 
+function isOpenByHours(tenant: StoreViewTenant, now: Date): boolean {
+  return getStoreOpenStatus({ operating_hours: tenant.operating_hours, timezone: tenant.timezone, enforce_operating_hours: true, is_prelaunch: false }, now).isOpen
+}
+
 function toReplyItem(item: MenuItem): ReplyItem {
   const discounted = typeof item.discounted_price === 'number' && item.discounted_price > 0 && item.discounted_price < item.price
     ? item.discounted_price
@@ -134,6 +144,7 @@ export function buildReplyStore(input: StoreViewInput): ReplyStore | null {
     baseUrl,
     logoUrl: safeImageUrl(input.tenant.logo_url),
     hoursText: hoursText(input.tenant, input.now),
+    isOpenNow: isOpenByHours(input.tenant, input.now),
     address: address || null,
     categories: activeCategories
       .filter((category) => withItems.has(category.id))

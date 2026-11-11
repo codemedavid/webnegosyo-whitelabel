@@ -1,5 +1,5 @@
 /**
- * What the automations editor opens with. Rules and settings are read through
+ * What the Messenger Studio opens with. Rules and settings are read through
  * the caller's session client (RLS decides); only "is a test chat linked" is
  * read with the service role, as a yes/no — never the PSID.
  */
@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
 import type { Tenant } from '@/types/database'
-import type { AutomationsEditorProps } from '@/components/admin/messenger-automations/automations-editor'
+import type { MessengerStudioProps } from '@/components/admin/messenger-studio/messenger-studio'
 import { DEFAULT_RULES } from './rules'
 import { rowsToRules, type RuleRow } from './settings'
 import { buildReplyStore } from './store-view'
@@ -17,7 +17,7 @@ import { readOrderUpdates } from './order-view'
 import { readMessages } from './messages/stored'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 
-type EditorData = { ok: true; props: Omit<AutomationsEditorProps, 'tenantId'> } | { ok: false; error: string }
+type EditorData = { ok: true; props: Omit<MessengerStudioProps, 'tenantId' | 'tenantSlug'> } | { ok: false; error: string }
 
 const UNAVAILABLE = 'Messenger automations aren’t available for this store yet. Please try again later.'
 

@@ -5,8 +5,8 @@
 
 import type { OrderUpdatesConfig } from './order-view'
 import { statusLabel } from './order-view'
-import { ACTION_LABELS } from './rule-labels'
-import type { MessengerRule } from './rules'
+import { ACTION_LABELS, whenSuffix } from './rule-labels'
+import { triggerWhen, type MessengerRule } from './rules'
 import type { PreviewMoment } from './studio-scenarios'
 
 export type JourneyStepId = PreviewMoment | 'fallback'
@@ -39,13 +39,21 @@ function takeoverText(minutes: number): string {
 
 export function journeySteps(input: JourneyInput): JourneyStep[] {
   const enabled = input.rules.filter((rule) => rule.isEnabled)
-  const getStarted = enabled.find((rule) => rule.trigger.kind === 'get_started')
+  const getStarted = enabled.filter((rule) => rule.trigger.kind === 'get_started')
   const starters = enabled.filter((rule) => rule.trigger.kind === 'ice_breaker').length
   const menuButtons = enabled.filter((rule) => rule.trigger.kind === 'menu_button').length
-  const fallback = enabled.find((rule) => rule.trigger.kind === 'fallback')
+  const fallback = enabled.filter((rule) => rule.trigger.kind === 'fallback')
+  // "menu card · only when open, your own message · only when closed"
+  const sends = (list: readonly MessengerRule[]) =>
+    list.map((rule) => `${ACTION_LABELS[rule.action.kind].title.toLowerCase()}${whenSuffix(rule.trigger)}`).join(', ')
+  // Limited to open or closed only: say what happens the rest of the time.
+  const coversAllDay = (list: readonly MessengerRule[]) => {
+    const whens = new Set(list.map((rule) => triggerWhen(rule.trigger) ?? 'always'))
+    return whens.has('always') || (whens.has('open') && whens.has('closed'))
+  }
 
   const hello = [
-    `Get Started sends ${getStarted ? ACTION_LABELS[getStarted.action.kind].title.toLowerCase() : 'your menu card'}`,
+    `Get Started sends ${getStarted.length > 0 ? `${sends(getStarted)}${coversAllDay(getStarted) ? '' : ', else your menu card'}` : 'your menu card'}`,
     starters > 0 ? plural(starters, 'starter question') : null,
     menuButtons > 0 ? plural(menuButtons, 'chat menu button') : null,
   ].filter(Boolean).join(' · ')
@@ -67,8 +75,8 @@ export function journeySteps(input: JourneyInput): JourneyStep[] {
     {
       id: 'fallback',
       title: 'When the bot doesn’t understand',
-      summary: fallback ? `Sends ${ACTION_LABELS[fallback.action.kind].title.toLowerCase()}` : 'Off. A message that fits nothing gets no answer',
-      isOff: !fallback,
+      summary: fallback.length > 0 ? `Sends ${sends(fallback)}${coversAllDay(fallback) ? '' : ', else no answer'}` : 'Off. A message that fits nothing gets no answer',
+      isOff: fallback.length === 0,
     },
   ]
 }

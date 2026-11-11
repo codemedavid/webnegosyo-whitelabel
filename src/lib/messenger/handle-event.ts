@@ -224,7 +224,7 @@ async function answer(event: InboundEvent, page: PageOwner, deps: WebhookDeps, n
   if (!bundle.settings.botEnabled) return 'bot_off'
   if (!bundle.store) return 'no_store'
 
-  const decision = decideReply(event, bundle.rules)
+  const decision = decideReply(event, bundle.rules, bundle.store.isOpenNow ?? true)
   if (!decision) return 'no_match'
   const isPaused = session?.botPausedUntil !== null && session?.botPausedUntil !== undefined && session.botPausedUntil.getTime() > now.getTime()
   if (isPaused && decision.isTyped) return 'paused'

@@ -1,6 +1,6 @@
 # Messenger Studio + chat inbox foundations
 
-Date: 2026-11-11 · Status: **PLAN, awaiting owner OK** · Builds on release 1 + 2 (`docs/plans/2026-11-10-messenger-automations.md`, PR #118, merged to local main 719f8f91).
+Date: 2026-11-11 · Status: **APPROVED 2026-11-11 ("lets do it", D1–D5 = recommendations); A1–A5 + B1 BUILT 2026-11-12 on `feat/messenger-studio`; B2 app screens await a separate go-ahead** · Builds on release 1 + 2 (`docs/plans/2026-11-10-messenger-automations.md`, PR #118, merged to local main 719f8f91).
 
 Owner ask (2026-11-11): make the Messenger automations editor much better to use, let the owner customize **everything** the bot says (the cart message and the rest), make it feel like building an automation, and **prepare** order management in the merchant app for Messenger orders: who ordered, and the short chat, without leaving the SmartMenu app. The app screens are designed now and built later.
 
@@ -134,6 +134,14 @@ App screens (B2) wait for your go-ahead on a separate build.
 - **D3 — Open/closed hours condition (A5) now?** Recommended: yes, it's small and is the most-asked chatbot rule for restaurants.
 - **D4 — Keep 30 days of chat lines?** Recommended: 30. Shorter = less personal data held; longer = better context for regulars.
 - **D5 — Taglish pack as the default for new stores?** Recommended: no, keep English as the default (today's words) and offer Taglish as one tap.
+
+## 5b. Build notes (2026-11-12)
+
+- **A2** registry: commits 7bf7b7c8 (golden snapshot) + 98abaa25. `messenger_settings.messages` APPLIED as `20261111212438` (file renamed to the recorded version).
+- **A1 + A4**: `src/components/admin/messenger-studio/`, simulator `src/lib/messenger/chat-simulator.ts` (runs the real `decideReply`).
+- **B1**: `20261111224021_messenger_chat_log.sql` APPLIED on platform 2026-11-12 and probed in a rolled-back block as owner (reads own store), another store's owner (0 rows), settings-only staff (0 rows), anon (42501). Branch scoping proved in PGlite only (`tests/sql/run-messenger-chat-log.cjs`, 55 checks): sample-demo has no order at an outlet. Webhook logs in `handle-event.ts` (deps `logChat`, `refreshProfile`), status messages in `order-update.ts`. Types hand-added to `src/types/supabase.ts` in the generator's format.
+- **A5**: `when?: 'open' | 'closed'` on keyword / Get Started / fallback triggers (`rules.ts`; starter questions and chat-menu buttons live in Meta's profile and always answer). Open = the store's OWN hours (`ReplyStore.isOpenNow`, `getStoreOpenStatus` with hours forced on, pre-launch ignored; no hours = open). A Get Started / fallback limited to the current state beats the always one; one of each per "Only when" choice. The Test chat has a Store open / closed switch once a rule uses it.
+- **Verified** on sample-demo (verify-webnegosyo `drive/messenger-studio.spec.ts`): evidence `test-results/verify/messenger-studio-1/` and `…/messenger-studio-hours/`. Rules were never saved from the spec (that would sync sample-demo's real Page profile).
 
 ## 6. Risks
 
