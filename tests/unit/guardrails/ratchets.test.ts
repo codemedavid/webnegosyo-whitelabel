@@ -100,8 +100,10 @@ const measured = {
   ) as Record<AdminClientArea, number>,
   convexDeploymentUrlReaders: filesMatching(
     /convex_deployment_url/,
-    // The one place the backend is chosen, and the table's type declarations.
-    (file) => file === 'src/lib/order-backend.ts' || file.startsWith('src/types/'),
+    // The one place the backend is chosen, the table's type declarations, and
+    // the operator switch SQL, which only checks the URL before clearing it.
+    (file) =>
+      file === 'src/lib/order-backend.ts' || file.startsWith('src/types/') || file === 'src/lib/convex-import/sql.ts',
   ).length,
   handWrittenDatabaseTypeImporters: filesMatching(/['"]@\/types\/database['"]/).length,
   utcDateAsBusinessDay:
