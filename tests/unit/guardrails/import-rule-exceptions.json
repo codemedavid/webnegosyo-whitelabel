@@ -1,0 +1,42 @@
+{
+  "why": "Files that break an import-direction rule (scripts/lib/import-rules.mjs) as of 2026-11-11. ESLint switches the rule off for exactly these files. This list may only shrink: fix the file's imports, then remove it here; never add one.",
+  "rules": {
+    "lib-not-components": [
+      "src/lib/assistant/actions/execute-manage.ts",
+      "src/lib/assistant/insights/menu-import.ts",
+      "src/lib/assistant/tools/propose/menu-item-change.ts",
+      "src/lib/assistant/tools/propose/menu-item.ts",
+      "src/lib/assistant/tools/propose/offer-change.ts",
+      "src/lib/assistant/tools/propose/offer.ts",
+      "src/lib/assistant/tools/propose/voucher.ts",
+      "src/lib/assistant/tools/reads/best-times.ts",
+      "src/lib/assistant/tools/reads/boost-ideas.ts",
+      "src/lib/assistant/tools/reads/campaigns.ts",
+      "src/lib/assistant/tools/reads/customers.ts",
+      "src/lib/assistant/tools/reads/inventory.ts",
+      "src/lib/assistant/tools/reads/live-offers.ts",
+      "src/lib/assistant/tools/reads/loyalty.ts",
+      "src/lib/assistant/tools/reads/menu-insights.ts",
+      "src/lib/assistant/tools/reads/orders-now.ts",
+      "src/lib/assistant/tools/reads/promotions.ts",
+      "src/lib/assistant/tools/reads/sales-overview.ts",
+      "src/lib/assistant/tools/reads/search-menu.ts",
+      "src/lib/assistant/tools/reads/staff-activity.ts",
+      "src/lib/assistant/tools/reads/vouchers.ts",
+      "src/lib/menu-editor/section-nav.ts",
+      "src/lib/page-designer/tracking-colors.ts"
+    ],
+    "lib-not-app": [
+      "src/lib/assistant/actions/execute-manage.ts",
+      "src/lib/assistant/actions/execute.ts",
+      "src/lib/assistant/data/vouchers.ts",
+      "src/lib/orders-service.ts"
+    ],
+    "ui-not-app": [],
+    "components-not-service-role": [
+      "src/components/admin/staff/review-staff-access-nudge.tsx",
+      "src/components/admin/start-here/start-here-nudge.tsx"
+    ],
+    "src-not-sub-projects": []
+  }
+}
