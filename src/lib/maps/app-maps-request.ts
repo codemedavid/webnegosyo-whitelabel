@@ -34,6 +34,8 @@ export interface AppMapsBudgets {
   daily: Budget
   /** Refuse (503) on a deploy without Apple Maps keys. Default true. */
   requiresAppleMaps?: boolean
+  /** Apple calls this request will make; each one is counted. Default 1. */
+  units?: number
 }
 
 export type AppMapsGate =
@@ -42,6 +44,15 @@ export type AppMapsGate =
 
 export function mapsFail(status: number, error: string, headers: Record<string, string> = {}): NextResponse {
   return NextResponse.json({ error }, { status, headers: { ...NO_STORE, ...headers } })
+}
+
+/** One counter step per Apple call; stops at the first refusal. */
+async function chargeUnits(key: string, budget: Budget, units: number) {
+  let verdict = await checkRateLimit(key, { ...budget, onRedisFailure: 'instance' })
+  for (let unit = 1; unit < units && verdict.allowed; unit += 1) {
+    verdict = await checkRateLimit(key, { ...budget, onRedisFailure: 'instance' })
+  }
+  return verdict
 }
 
 export async function gateAppMapsRequest(
@@ -58,11 +69,12 @@ export async function gateAppMapsRequest(
   }
 
   const userId = caller.user.id
+  const units = Math.max(1, Math.floor(budgets.units ?? 1))
   for (const [key, budget] of [
     [`${budgets.bucket}:${userId}`, budgets.burst],
     [`${budgets.bucket}-day:${userId}`, budgets.daily],
   ] as const) {
-    const verdict = await checkRateLimit(key, { ...budget, onRedisFailure: 'instance' })
+    const verdict = await chargeUnits(key, budget, units)
     if (!verdict.allowed) {
       return {
         ok: false,

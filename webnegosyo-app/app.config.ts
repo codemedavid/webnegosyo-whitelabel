@@ -85,7 +85,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 1.0.17 (2026-11-05): kitchen notes per item, Order History date ranges +
   // item summary, per-cashier shift report, register stock warnings, reprint
   // from finished orders. 1.0.16 went READY_FOR_SALE, closing that train.
-  version: "1.0.17",
+  //
+  // 1.0.18 (2026-11-05): the new Sales screen (Reports → Sales) on the one
+  // sales definition, and the first build on an EAS Update channel — every
+  // earlier binary was built without one, so no over-the-air update could
+  // reach it. 1.0.17 went READY_FOR_SALE, closing that train.
+  version: "1.0.18",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the

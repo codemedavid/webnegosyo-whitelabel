@@ -194,6 +194,8 @@ export function describePushFailures(failures: readonly PushFailure[]): string |
   return `${failures.length} failed — ${causes}`
 }
 
+const EXPO_REQUEST_TIMEOUT_MS = 10_000
+
 async function postJson(fetchImpl: FetchLike, url: string, body: unknown): Promise<unknown> {
   const response = await fetchImpl(url, {
     method: 'POST',
@@ -203,6 +205,7 @@ async function postJson(fetchImpl: FetchLike, url: string, body: unknown): Promi
       'Accept-Encoding': 'gzip, deflate',
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(EXPO_REQUEST_TIMEOUT_MS),
   })
   if (!response.ok) throw new Error(`Expo responded ${response.status}`)
   const json = (await response.json()) as { data?: unknown }

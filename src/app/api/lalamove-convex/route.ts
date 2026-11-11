@@ -1,19 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTenantSecrets } from "@/lib/tenant-secrets";
-import { secretsEqual } from "@/lib/loyverse/secret-compare";
+import { checkLalamoveWebhookAuth } from "@/lib/lalamove-webhook-auth";
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate webhook secret to prevent unauthorized access (constant time;
-    // a missing platform secret refuses everything).
-    const webhookSecret = request.nextUrl.searchParams.get("secret");
-    const expectedSecret = process.env.LALAMOVE_WEBHOOK_SECRET;
-    if (!secretsEqual(webhookSecret, expectedSecret)) {
+    // The URL is the credential: a per-tenant `sig`, or during the transition
+    // the old platform `secret` (constant time; a missing platform secret
+    // refuses everything).
+    const auth = checkLalamoveWebhookAuth({
+      platformSecret: process.env.LALAMOVE_WEBHOOK_SECRET,
+      tenantId: request.nextUrl.searchParams.get("tenant_id"),
+      signature: request.nextUrl.searchParams.get("sig"),
+      legacySecret: request.nextUrl.searchParams.get("secret"),
+    });
+    if (!auth) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
+    }
+    if (auth === "legacy") {
+      // console.error: production strips every other console method.
+      console.error("[lalamove-convex] URL still carries the legacy platform secret; re-register it with sig", {
+        tenantId: request.nextUrl.searchParams.get("tenant_id"),
+      });
     }
 
     const body = await request.json().catch(() => null);

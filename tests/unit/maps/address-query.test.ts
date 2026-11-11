@@ -1,4 +1,5 @@
 /** @jest-environment node */
+import { readFileSync } from 'fs'
 import {
   addressAfterPick,
   cleanAddressQuery,
@@ -40,7 +41,7 @@ describe('cleanAddressQuery', () => {
   })
 
   it('parses on browsers without regex lookbehind', () => {
-    const source = require('fs').readFileSync('src/lib/maps/address-query.ts', 'utf8') as string
+    const source = readFileSync('src/lib/maps/address-query.ts', 'utf8') as string
     expect(source).not.toMatch(/\(\?<[=!]/)
   })
 })

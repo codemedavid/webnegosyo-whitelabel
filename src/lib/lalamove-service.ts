@@ -9,6 +9,9 @@ import 'server-only'
 import type { Tenant } from '@/types/database'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import { describeLalamoveCredentialProblem } from '@/lib/lalamove-keys'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('[Lalamove]', 'DEBUG_LALAMOVE')
 
 // Re-export types from SDK for easier access
 export interface LalamoveCoordinates {
@@ -73,7 +76,7 @@ async function initLalamoveClient(tenant: Tenant) {
   const environment = tenant.lalamove_sandbox ? 'sandbox' : 'production'
   
   if (process.env.NODE_ENV === 'development') {
-    console.log('[Lalamove] Initializing client:', {
+    log.debug('Initializing client:', {
       environment,
       hasApiKey: !!tenant.lalamove_api_key,
       hasSecretKey: !!tenant.lalamove_secret_key,
@@ -115,7 +118,7 @@ export async function createLalamoveQuotation(
     const service = serviceType || tenant.lalamove_service_type || 'MOTORCYCLE'
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('[Lalamove] Creating quotation:', {
+      log.debug('Creating quotation:', {
         market,
         service,
         pickupAddress,
@@ -151,9 +154,7 @@ export async function createLalamoveQuotation(
       .withStops([stop1, stop2])
       .build()
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Lalamove] Quotation payload:', JSON.stringify(quotationPayload, null, 2))
-    }
+    log.debug('Quotation payload', { quotationPayload })
 
     // Create quotation
     const quotation = await client.Quotation.create(
@@ -162,7 +163,7 @@ export async function createLalamoveQuotation(
     )
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('[Lalamove] Quotation created:', quotation.id)
+      log.debug('Quotation created', { quotationId: quotation.id })
     }
 
     const total = quotation.priceBreakdown?.total

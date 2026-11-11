@@ -42,12 +42,16 @@ export function CopyTextBlock({ title, text, design, buttonLabel, copiedLabel, i
     if (timer.current) clearTimeout(timer.current)
   }, [])
 
+  // After the render: the "only" design's text exists just once it is blocked.
+  useEffect(() => {
+    if (status === 'blocked') selectContents(textRef.current ?? noteRef.current)
+  }, [status])
+
   const handleCopy = async () => {
     if (isEditor) return
     if (timer.current) clearTimeout(timer.current)
     if (!(await copyText(text))) {
       setStatus('blocked')
-      selectContents(textRef.current ?? noteRef.current)
       return
     }
     setStatus('copied')

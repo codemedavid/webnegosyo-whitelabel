@@ -1,12 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { z } from 'zod'
 import { NO_STORE, errorResponse, readJsonBody } from '@/lib/order-deletion/http'
 import { createOrderDeletionRepo } from '@/lib/order-deletion/repository'
 import { resolveOwnerCaller } from '@/lib/order-deletion/request-caller'
 import { restoreDeletion } from '@/lib/order-deletion/service'
+import { orderStockEffects } from '@/lib/order-deletion/stock-effects'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const maxDuration = 60
+
+/** Stock settles after the response, so a big deletion never waits on it. */
+const stockSettlement = {
+  effects: orderStockEffects,
+  defer: (task: () => Promise<void>) => after(task),
+}
 
 const RESTORE_TIMEOUT_MS = 45_000
 
@@ -25,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const repo = createOrderDeletionRepo(createAdminClient({ timeoutMs: RESTORE_TIMEOUT_MS }))
-    const result = await restoreDeletion(repo, owner.caller, parsed.data.deletionId, new Date())
+    const result = await restoreDeletion(repo, owner.caller, parsed.data.deletionId, new Date(), stockSettlement)
     return NextResponse.json({ result }, { headers: NO_STORE })
   } catch (error) {
     return errorResponse(error, 'restore')

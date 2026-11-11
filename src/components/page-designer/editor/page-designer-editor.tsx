@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { savePageLookAction } from '@/app/actions/page-designer'
 import { generateBrandingCSS, getTenantBranding } from '@/lib/branding-utils'
 import { EMPTY_LINK_CATALOG } from '@/lib/hero-builder/link-catalog'
+import { settleAction } from '@/lib/hero-builder/settle-action'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import { lookValues, previewLookRow, remainingLookChanges, type LookChanges, type PageLookInput } from '@/lib/page-designer/look'
 import type { ConfirmationRedirectSetting } from '@/lib/page-designer/page-mode'
@@ -116,7 +117,7 @@ function usePageLook(tenantId: string, page: PageId, storeRow: Readonly<Record<s
 /** The Hero Builder editor running as the Page Designer for one page. */
 export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, storeRow, redirect, checkoutForm = null, ...editor }: PageDesignerEditorProps) {
   const look = usePageLook(tenantId, page, storeRow)
-  const formSession = useCheckoutFormSession(tenantId, page === 'checkout' ? checkoutForm : null)
+  const formSession = useCheckoutFormSession(tenantId, tenantSlug, page === 'checkout' ? checkoutForm : null)
   const [isSavingLook, startSavingLook] = useTransition()
   const labels = useMemo(() => readStorefrontLabels(look.preview as Record<string, unknown>) as Record<string, string>, [look.preview])
   const brandStyle = useMemo(
@@ -151,7 +152,7 @@ export function PageDesignerEditor({ tenantId, tenantSlug, page, storeName, stor
     startSavingLook(async () => {
       const sent = look.input
       if (!sent) return
-      const result = await savePageLookAction(tenantId, page, sent)
+      const result = await settleAction(() => savePageLookAction(tenantId, page, sent), 'savePageLook')
       if (!result.success) {
         toast.error(result.error ?? 'Could not save the look')
         return

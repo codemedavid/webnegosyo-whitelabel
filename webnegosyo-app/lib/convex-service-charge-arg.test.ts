@@ -9,7 +9,7 @@
  * Same gate as `convexScheduledForArg` on the web side, for the same reason.
  */
 
-import { convexServiceChargeArg } from "./convex-service-charge-arg";
+import { convexServiceChargeArg, serviceChargeArgFor } from "./convex-service-charge-arg";
 
 describe("convexServiceChargeArg", () => {
   it("sends the charge to a deployment that accepts it", () => {
@@ -48,5 +48,26 @@ describe("convexServiceChargeArg", () => {
 
   it("rounds to centavos, matching the total it sits beside", () => {
     expect(convexServiceChargeArg(23.999, 23)).toEqual({ serviceCharge: 24 });
+  });
+});
+
+describe("serviceChargeArgFor", () => {
+  it.each(["platform", "supabase"] as const)(
+    "sends the charge on %s whatever the Convex version says",
+    (backend) => {
+      expect(serviceChargeArgFor(backend, 24, null)).toEqual({ serviceCharge: 24 });
+      expect(serviceChargeArgFor(backend, 24, 5)).toEqual({ serviceCharge: 24 });
+    },
+  );
+
+  it("keeps the version gate on Convex and on a session not resolved yet", () => {
+    expect(serviceChargeArgFor("convex", 24, 22)).toEqual({});
+    expect(serviceChargeArgFor(null, 24, null)).toEqual({});
+    expect(serviceChargeArgFor("convex", 24, 23)).toEqual({ serviceCharge: 24 });
+  });
+
+  it("sends nothing for no charge on any backend", () => {
+    expect(serviceChargeArgFor("platform", 0, null)).toEqual({});
+    expect(serviceChargeArgFor("platform", undefined, null)).toEqual({});
   });
 });

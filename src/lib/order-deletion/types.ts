@@ -120,6 +120,13 @@ export type PasswordVerifier = (
   expectedUserId: string
 ) => Promise<PasswordCheck>
 
+/** One order held in a deletion's archive, as far as stock cares. */
+export interface ArchivedOrderRef {
+  orderId: string
+  status: string
+  customerData: unknown
+}
+
 /** Every database read and write the flow makes, so the service is testable without one. */
 export interface OrderDeletionRepo {
   findOrdersForScope(tenantId: string, scope: DeletionScope, includeActive: boolean): Promise<ExportOrder[]>
@@ -134,4 +141,6 @@ export interface OrderDeletionRepo {
   /** The database re-checks ownership, expiry and store scope itself. */
   executeDeletion(deletionId: string, actorId: string): Promise<ExecuteResult>
   restoreDeletion(deletionId: string, actorId: string): Promise<RestoreResult>
+  /** The orders a deletion archived (gone from `orders` until restored). */
+  listArchivedOrders(deletionId: string, tenantId: string): Promise<ArchivedOrderRef[]>
 }

@@ -150,6 +150,25 @@ describe('POST /api/push/notify-merchant', () => {
     return call ? (JSON.parse((call[1] as { body: string }).body) as Array<Record<string, unknown>>) : []
   }
 
+  test('over the per-IP ceiling: refused before any claim', async () => {
+    jest.doMock('@/lib/distributed-rate-limit', () => ({
+      checkRateLimit: async () => ({ allowed: false, remaining: 0, retryAfterSec: 9 }),
+    }))
+    try {
+      const { POST } = await import('@/app/api/push/notify-merchant/route')
+      const response = await POST(new NextRequest('http://localhost/api/push/notify-merchant', {
+        method: 'POST',
+        headers: { 'x-real-ip': '203.0.113.5' },
+        body: JSON.stringify({ notification_ids: [NOTIFICATION_ID] }),
+      }))
+
+      expect(response.status).toBe(429)
+      expect(claimFilter).toBeNull()
+    } finally {
+      jest.dontMock('@/lib/distributed-rate-limit')
+    }
+  })
+
   test('rejects a malformed payload without touching the database', async () => {
     const response = await post({ notification_ids: ['nope'] })
     expect(response.status).toBe(400)

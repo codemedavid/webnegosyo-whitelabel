@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPresellCalendar } from '@/lib/presell/calendar-read'
+import { refuseOverIpLimit } from '@/lib/http/rate-limit-guard'
+
+/**
+ * Read on each dish page, so a floor sharing one Wi-Fi stays well under this. A
+ * refusal reads as an empty calendar in the browser; checkout stays the authority.
+ */
+const CALENDAR_IP_LIMIT = { limit: 120, windowSec: 60 }
 
 /**
  * GET /api/presell/availability?tenantId=…&menuItemId=…
@@ -17,6 +24,9 @@ import { getPresellCalendar } from '@/lib/presell/calendar-read'
  * checkout stays the authoritative refusal either way.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const overLimit = await refuseOverIpLimit(request, 'presell-availability', CALENDAR_IP_LIMIT)
+  if (overLimit) return overLimit
+
   const tenantId = request.nextUrl.searchParams.get('tenantId')
   const menuItemId = request.nextUrl.searchParams.get('menuItemId')
 

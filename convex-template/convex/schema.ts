@@ -192,6 +192,16 @@ export default defineSchema({
   })
     .index("by_user", ["userId"]),
 
+  // Writes admitted per UTC day and function, split by whether the caller sent
+  // a token: what a store's register fleet would lose if it were enforced today.
+  // Counts only, written from `auth.ts`, read over the deploy key.
+  accessAudit: defineTable({
+    day: v.string(),
+    fn: v.string(),
+    tokenless: v.number(),
+    withToken: v.number(),
+  }).index("by_day_fn", ["day", "fn"]),
+
   productCosts: defineTable({
     menuItemId: v.string(),
     costPrice: v.number(),

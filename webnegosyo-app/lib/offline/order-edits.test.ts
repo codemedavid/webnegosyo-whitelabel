@@ -94,6 +94,19 @@ describe("order edits queue", () => {
     expect(isOrderEditStuck(stored)).toBe(true);
   });
 
+  it("does not count a refusal for want of a session token against the edit", async () => {
+    await enqueueOrderEdit(edit("e1"));
+
+    for (let i = 0; i < MAX_EDIT_ATTEMPTS + 2; i += 1) {
+      await recordOrderEditFailure("e1", "Unauthorized: unauthenticated");
+    }
+
+    const [stored] = getOrderEdits().edits;
+    expect(stored.attempts).toBe(0);
+    expect(stored.lastError).toBe("Unauthorized: unauthenticated");
+    expect(isOrderEditStuck(stored)).toBe(false);
+  });
+
   it("rebinds edits from a device id to the server id, args included", async () => {
     await enqueueOrderEdit(edit("e1", { orderId: "local-1", args: { orderId: "local-1", status: "ready" } }));
     await enqueueOrderEdit(edit("e2", { orderId: "other" }));

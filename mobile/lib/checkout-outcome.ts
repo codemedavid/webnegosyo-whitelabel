@@ -161,6 +161,54 @@ export function classifyConvexOrderResponse(
   }
 }
 
+/** Body of `POST /api/orders/customer-app`. */
+export interface CustomerAppOrderResponseLike {
+  success?: boolean
+  refused?: boolean
+  orderId?: string | null
+  error?: string | null
+}
+
+/**
+ * Classifies the web API's answer to a platform order.
+ *
+ * `refused` is the store saying no on purpose (closed, sold out, below the
+ * minimum, rate limited): the sentence is written for the diner and names what
+ * to change, so it is carried through untouched. Anything else short of a
+ * success with an id is `failed` and keeps the Messenger message open.
+ */
+export function classifyCustomerAppOrderResponse(
+  isHttpOk: boolean,
+  httpStatus: number,
+  body: CustomerAppOrderResponseLike | null | undefined,
+  networkError?: unknown
+): OrderSaveOutcome {
+  if (isHttpOk && body?.success === true) {
+    const orderId = typeof body.orderId === 'string' ? body.orderId.trim() : ''
+    if (orderId) return savedOrder(orderId)
+    return {
+      status: 'failed',
+      orderId: null,
+      message: null,
+      detail: 'Order API succeeded without returning an order id',
+    }
+  }
+
+  const message = body?.error?.trim() || null
+  if (body?.refused === true && message) {
+    return { status: 'refused', orderId: null, message, detail: `Order API refused (HTTP ${httpStatus}): ${message}` }
+  }
+
+  return {
+    status: 'failed',
+    orderId: null,
+    message: null,
+    detail: networkError
+      ? `Order API unreachable: ${describeError(networkError)}`
+      : `Order API returned HTTP ${httpStatus}${message ? `: ${message}` : ''}`,
+  }
+}
+
 export interface OrderOutcomeCopy {
   tone: 'success' | 'warning'
   iconName: 'checkmark-circle' | 'alert-circle'

@@ -96,6 +96,8 @@ interface InventoryManagerProps {
    * branches could be counted.
    */
   openCountOutletId?: string | null
+  /** The Manila business day the running count opened on (`YYYY-MM-DD`). */
+  openCountBusinessDay?: string | null
   /**
    * This tenant's active branches. Empty for a single-shop store, whose stock
    * dialog and count panel then look exactly as they always have. With
@@ -157,6 +159,7 @@ export function InventoryManager({
   openCountId = null,
   countProgress = null,
   openCountOutletId = null,
+  openCountBusinessDay = null,
   branches = [],
   defaultTab,
   stockItemId,
@@ -256,6 +259,7 @@ export function InventoryManager({
             openCountId={openCountId}
             countProgress={countProgress}
             openCountOutletId={openCountOutletId}
+            openCountBusinessDay={openCountBusinessDay}
             branches={branches}
             access={access}
           />

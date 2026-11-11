@@ -18,6 +18,7 @@ export async function loadCheckoutFormSource(tenantId: string): Promise<Checkout
         description: t.description ?? null,
         isEnabled: t.is_enabled,
         advanceOrderEnabled: !!t.advance_order_enabled,
+        isOnWeb: t.available_on_web !== false,
       })),
       saved: formDraftFromRows(orderTypes.map((t) => t.id), rows),
     }

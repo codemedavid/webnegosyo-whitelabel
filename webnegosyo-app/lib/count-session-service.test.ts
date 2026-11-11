@@ -19,6 +19,7 @@
 // module still imports it, and the real one reaches expo-constants.
 jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 
+import { toBusinessDayKey } from "./daily-report/business-day";
 import {
   loadOpenCount,
   openCount,
@@ -203,7 +204,7 @@ describe("openCount", () => {
     // documents, and each would then report partial coverage of a shelf that
     // was in fact counted twice over.
     const { db, recorded } = makeDb({
-      inventory_counts: { data: OPEN_COUNT, error: null },
+      inventory_counts: { data: { ...OPEN_COUNT, business_day: toBusinessDayKey(new Date().toISOString()) }, error: null },
       stock_movements: { data: [], error: null },
     });
 
@@ -211,6 +212,25 @@ describe("openCount", () => {
 
     expect(session.id).toBe("c1");
     expect(recorded.inserts).toHaveLength(0);
+  });
+
+  it("closes a count left open from an earlier day and starts today's", async () => {
+    const { db, recorded } = makeDb({
+      // The stale open count, then the row the insert returned.
+      inventory_counts: [
+        { data: OPEN_COUNT, error: null },
+        { data: null, error: null },
+        { data: { ...OPEN_COUNT, id: "c2" }, error: null },
+      ],
+      inventory_items: { data: [], error: null },
+      stock_movements: { data: [], error: null },
+    });
+
+    const session = await openCount("t1", { outletId: null, startedBy: "u1" }, db);
+
+    expect(recorded.updates[0]?.row.status).toBe("closed");
+    expect(recorded.inserts).toHaveLength(1);
+    expect(session.id).toBe("c2");
   });
 
   it("records who started it", async () => {

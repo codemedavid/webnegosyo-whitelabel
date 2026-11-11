@@ -98,7 +98,12 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   const scope = claimedTenant ?? appUser.tenant_id ?? null
   if (scope ? !mayEditMenu(appUser, scope) : !mayEditAnyStore(appUser)) return refused()
 
-  let query = createAdminClient().from('menu_items').select('tenant_id, tenants(slug)').eq('id', menuItemId)
+  // The FK is named: tenants.hero_featured_product_id also links the two
+  // tables, and a bare `tenants(slug)` embed is ambiguous (PGRST201).
+  let query = createAdminClient()
+    .from('menu_items')
+    .select('tenant_id, tenants!menu_items_tenant_id_fkey(slug)')
+    .eq('id', menuItemId)
   if (scope) query = query.eq('tenant_id', scope)
   const { data: dish, error: dishError } = await query.maybeSingle()
   if (dishError) {

@@ -103,7 +103,7 @@ describe('sanitizeCustomerData — size bounds', () => {
 })
 
 describe('delivery keys only the server writes', () => {
-  it.each(['delivery_store_note', 'delivery_pin_km', 'delivery_pin_updated_by', 'delivery_pin_updated_at'])('drops a forged %s', async (key) => {
+  it.each(['delivery_store_note', 'delivery_pin_skipped', 'delivery_pin_km', 'delivery_pin_updated_by', 'delivery_pin_updated_at'])('drops a forged %s', async (key) => {
     const { sanitizeCustomerData } = await import('@/lib/checkout/customer-data-guard')
     const result = sanitizeCustomerData({ [key]: 'forged', delivery_rider_note: 'Call me' })
     expect(result).toEqual({ ok: true, data: { delivery_rider_note: 'Call me' } })

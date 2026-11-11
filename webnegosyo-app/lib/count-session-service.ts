@@ -23,7 +23,7 @@
 
 import { supabase } from "./supabase";
 import { judgeCountSession, type CountSessionProgress } from "./daily-report/count-session";
-import { toBusinessDayKey } from "./daily-report/business-day";
+import { isFromEarlierBusinessDay, toBusinessDayKey } from "./daily-report/business-day";
 
 /** Injected in tests so no connection is opened. */
 type Db = Pick<typeof supabase, "from">;
@@ -45,6 +45,7 @@ export interface OpenCountInput {
 
 interface CountRow {
   id: string;
+  business_day: string;
   expected_item_count: number;
   closed_at: string | null;
 }
@@ -170,7 +171,11 @@ export async function openCount(
   db: Db = supabase,
 ): Promise<OpenCountSession> {
   const existing = await findOpenCount(db, tenantId, input.outletId);
-  if (existing) return progressOf(db, existing);
+  if (existing && !isFromEarlierBusinessDay(existing.business_day)) return progressOf(db, existing);
+  // A count left open overnight would be joined forever with its business day
+  // frozen, so later lines would miss the daily report of the day they were
+  // counted. Close it and start today's.
+  if (existing) await closeCount(tenantId, existing.id, input.startedBy, db);
 
   const { data, error } = await db
     .from("inventory_counts")

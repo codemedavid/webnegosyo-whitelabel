@@ -15,6 +15,7 @@ const mockRevalidate = jest.fn()
 const mockGetRequestCaller = jest.fn()
 const mockCheckRateLimit = jest.fn()
 const mockAdminEq = jest.fn()
+const mockAdminSelect = jest.fn()
 const calls: string[] = []
 let dishRow: unknown = null
 
@@ -40,7 +41,10 @@ jest.mock('@/lib/supabase/admin', () => ({
     calls.push('admin')
     const chain: Record<string, unknown> = {}
     chain.from = () => chain
-    chain.select = () => chain
+    chain.select = (columns: string) => {
+      mockAdminSelect(columns)
+      return chain
+    }
     chain.eq = (column: string, value: unknown) => {
       mockAdminEq(column, value)
       return chain
@@ -98,6 +102,20 @@ it('saves "sell anyway" and refreshes the storefront menu', async () => {
 
   expect(await response.json()).toMatchObject({ status: 'saved' })
   expect(mockRevalidate).toHaveBeenCalledWith('lolys-cafe')
+})
+
+it('names the menu_items → tenants foreign key when it reads the store slug', async () => {
+  // tenants.hero_featured_product_id also points at menu_items, so a bare
+  // `tenants(slug)` embed is ambiguous: PostgREST answers PGRST201 and every
+  // toggle in the app failed with "Couldn't update availability" (2026-11-09).
+  mockSetDishAvailability.mockResolvedValue({ status: 'saved', isAvailable: false, snoozedUntil: null })
+  const { POST } = await load()
+
+  const response = await POST(post({ menuItemId: DISH, isAvailable: false }) as never)
+
+  expect(response.status).toBe(200)
+  const [columns] = mockAdminSelect.mock.calls[0] as [string]
+  expect(columns).toContain('tenants!menu_items_tenant_id_fkey(slug)')
 })
 
 describe('the caller is settled before any service-role read', () => {

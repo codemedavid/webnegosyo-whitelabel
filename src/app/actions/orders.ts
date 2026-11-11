@@ -35,13 +35,14 @@ import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { requireCheckoutOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 import { parseOrderLines } from '@/lib/checkout/order-line-schema'
 import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
+import { verifyMessengerCustomerData } from '@/lib/messenger/recipient'
+import { emptyChatCart } from '@/lib/messenger/chat-cart-store'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import { judgeOrderPaymentMethod, readOrderPaymentMethod } from '@/lib/checkout/order-payment-method'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
 import { resolveDeliveryOrigin, type OriginOutletFields } from '@/lib/delivery/delivery-origin'
 import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
 import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
-import { isUnpinnedDeliveryOrder, unpinnedDeliveryProblem } from '@/lib/delivery/unpinned-delivery'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
@@ -54,6 +55,11 @@ import { applyCheckoutGovernment } from '@/lib/gov-discount-checkout/apply-check
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 import { checkOrderRateLimit } from '@/lib/action-rate-limit'
 import { holdSimpleOptionStock } from '@/lib/checkout/simple-option-hold'
+import {
+  REQUIRED_QUESTIONS_TIMEOUT_MS,
+  judgeRequiredAnswers,
+  readRequiredQuestions,
+} from '@/lib/checkout/required-answers-server'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
@@ -254,7 +260,21 @@ export async function createOrderAction(
     if (!sanitizedCustomerData.ok) {
       return { success: false, refused: true, error: sanitizedCustomerData.error }
     }
-    const clientCustomerData = sanitizedCustomerData.data
+    // The browser sends back what the Messenger menu link carried (a signed
+    // token, or a raw PSID from before 2026-11-10); only a reference that
+    // resolves to THIS store's customer survives, as the real PSID — the
+    // order's Messenger messages go to it.
+    const { customerData: clientCustomerData, chatSessionId } = await verifyMessengerCustomerData(tenantId, sanitizedCustomerData.data)
+    // Placed with the chat's link: what they added in Messenger is now this order.
+    // Never throws: the order is already saved, and a failure here must not read as a failed order.
+    const finishChatCart = async () => {
+      if (!chatSessionId) return
+      try {
+        await emptyChatCart(chatSessionId)
+      } catch (error) {
+        console.error('[Messenger] chat cart not emptied after order', error instanceof Error ? error.message : error)
+      }
+    }
 
     if (!isValidClientDeliveryFee(deliveryFee)) {
       return { success: false, refused: true, error: INVALID_DELIVERY_FEE_MESSAGE }
@@ -272,9 +292,20 @@ export async function createOrderAction(
     // The chosen payment method, read alongside (one primary-key read; never
     // rejects). Judged once the order type is known, below.
     const paymentMethodRead = readOrderPaymentMethod(supabaseAdmin, tenantId, paymentMethodId)
+    // The store's required checkout questions for this order type, read on a
+    // timed client alongside (never rejects; a failed read has no opinion).
+    const requiredQuestionsRead = readRequiredQuestions(
+      createAdminClient({ timeoutMs: REQUIRED_QUESTIONS_TIMEOUT_MS }),
+      tenantId,
+      orderTypeId,
+    )
     const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
     if (!tenantContext.ok) {
-      return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
+      // A database hiccup is not a verdict on the store: unmarked, so the
+      // checkout retries and the customer keeps the Messenger fallback.
+      return tenantContext.reason === 'unavailable'
+        ? { success: false, error: 'We could not reach the store just now. Please try again.' }
+        : { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
     }
     const { tenantConfig, tenantSecrets } = tenantContext
 
@@ -309,6 +340,27 @@ export async function createOrderAction(
     // An unknown/missing type must not turn off the required delivery gate.
     if (tenantConfig.lalamove_enabled === true && !orderTypeRow) {
       return { success: false, refused: true, error: 'Please select a valid order type before continuing.' }
+    }
+
+    // ── Required checkout questions (authoritative; every backend) ──
+    // The form refuses to submit with a required answer blank, but this is a
+    // public action: a forged request or a tab opened before the owner made a
+    // question required used to be written anyway. Judged with the form's own
+    // `isAnswered` on the answers as received, against the STORE's questions
+    // for this order type, before anything is claimed or written. The checkout
+    // preflights the same verdict (preflightCheckoutAnswersAction) ahead of
+    // its optimistic "Order placed!" screen.
+    const answersVerdict = judgeRequiredAnswers(
+      orderTypeRow ? await requiredQuestionsRead : { ok: true, questions: [] },
+      clientCustomerData,
+    )
+    if (!answersVerdict.ok) {
+      console.warn('[createOrderAction] Refused an order missing required answers', {
+        tenantId,
+        orderTypeId,
+        fields: answersVerdict.fieldErrors.map((error) => error.fieldName),
+      })
+      return { success: false, refused: true, error: answersVerdict.message, fieldErrors: answersVerdict.fieldErrors }
     }
 
     // ── Payment method (authoritative; every backend) ──
@@ -615,25 +667,12 @@ export async function createOrderAction(
       return await refuse(OUTSIDE_COUNTRY_PIN_MESSAGE)
     }
 
-    // "I can't find my place": no pin means no price, so this order carries no
-    // fee and the store calls for the spot and the fee (a pin ends the mark, so
-    // it can never dodge the fee on a pinned order).
+    // "I can't find my place" was turned off (owner, 2026-11-09): a stale or forged
+    // `delivery_pin_skipped` mark is ignored, so an order without a pin is priced,
+    // and refused, like any other.
     const storeDistanceConfig = distanceConfigFromTenant(tenantConfig)
-    const isUnpinnedDelivery = isUnpinnedDeliveryOrder({
-      answers: deliveryDestination,
-      isDeliveryOrder,
-      lalamoveEnabled: tenantConfig.lalamove_enabled === true,
-      hasDistancePricing: storeDistanceConfig !== null,
-    })
-    if (isUnpinnedDelivery) {
-      const problem = unpinnedDeliveryProblem(deliveryDestination, customerInfo?.contact)
-      if (problem) return await refuse(problem)
-      // No quote was signed for this order, so none may ride on it.
-      lalamoveQuotationId = undefined
-    }
-
-    let trustedDeliveryFee = isUnpinnedDelivery ? undefined : deliveryFee
-    if (isLalamoveDelivery && !isUnpinnedDelivery) {
+    let trustedDeliveryFee = deliveryFee
+    if (isLalamoveDelivery) {
       const verification = verifyDeliveryQuote(lalamoveQuoteSignature, {
         tenantId,
         quotationId: lalamoveQuotationId,
@@ -661,7 +700,7 @@ export async function createOrderAction(
 
     const deliveryResolution = await resolveOrderDeliveryFee({
       clientFee: trustedDeliveryFee,
-      isDeliveryOrder: isDeliveryOrder && !isUnpinnedDelivery,
+      isDeliveryOrder,
       lalamoveEnabled: tenantConfig.lalamove_enabled === true,
       distanceConfig: storeDistanceConfig && withOriginRadius(storeDistanceConfig, deliveryOrigin),
       store: deliveryOrigin?.point ?? null,
@@ -728,6 +767,7 @@ export async function createOrderAction(
     const checkoutGovernment = await applyCheckoutGovernment({
       db: supabaseAdmin,
       tenantId,
+      outletId: resolvedOutlet?.id ?? null,
       claim: governmentClaim,
       items,
       serviceCharge,
@@ -790,6 +830,7 @@ export async function createOrderAction(
         orderTypeName: orderTypeRow?.name ?? null,
         deliveryFee: effectiveDeliveryFee,
         serviceCharge,
+        orderTotal: pricing.totals.grandTotal,
         paymentMethodName: trustedPaymentMethodName,
         customerData: effectiveCustomerData,
       },
@@ -865,7 +906,8 @@ export async function createOrderAction(
           })),
         })
       })
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
+      await finishChatCart()
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
     // Route on the same resolver the admin queue reads with, so a write can
@@ -897,7 +939,8 @@ export async function createOrderAction(
       orderPersisted = true
       await burnFor(result.order.id)
       await followUp(result.order.id, null)
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
+      await finishChatCart()
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
     // Otherwise, continue with existing Supabase flow.
@@ -945,13 +988,15 @@ export async function createOrderAction(
       // double tap. The same goes for the option counters claimed under this
       // retry's own (never written) order id.
       await releaseClaim()
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
+      await finishChatCart()
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
     // The order row exists and carries the claim; the stock is spent for real.
     orderPersisted = true
     await burnFor(result.order.id)
     await followUp(result.order.id, result.order.id)
     // Return both order and token for secure public API access
+    await finishChatCart()
     return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
   } catch (error) {
     // Presell stock reserved for an order that never got written is stock that

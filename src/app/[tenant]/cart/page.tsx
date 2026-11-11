@@ -10,7 +10,9 @@
  * that design's chunk ships. Unknown values fall back to 'classic'.
  */
 
+import { Suspense } from 'react'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
+import { MessengerCartImport } from '@/components/customer/messenger-cart-import'
 import { StorefrontLabelsProvider } from '@/components/customer/storefront-labels-provider'
 import { useCartView } from '@/hooks/useCartView'
 import { CartTemplateRenderer } from '@/components/customer/cart-templates'
@@ -45,6 +47,10 @@ export default function CartPage() {
       {/* Shared overlays — rendered for every design */}
       <CartRemoveDialog cart={cart} />
       <CartEditDialog cart={cart} />
+      {/* Arriving from the Messenger chat's Checkout button: load the chat cart */}
+      <Suspense fallback={null}>
+        <MessengerCartImport tenantId={cart.tenant.id} />
+      </Suspense>
       {/* Branding Studio tap-to-edit (dormant outside the editor iframe) */}
       <BrandingInspector />
     </StorefrontLabelsProvider>

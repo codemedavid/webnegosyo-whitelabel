@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSignedUploadToken } from '@/lib/imagekit-server'
-import { resolveImageKitUploader, type UploaderResolution } from '@/lib/imagekit-uploader-auth'
+import { resolveImageKitUploader, type ImageKitUploader, type UploaderResolution } from '@/lib/imagekit-uploader-auth'
 import { sanitizeUploadFileName, sanitizeUploadFolder } from '@/lib/imagekit-signature'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
 import { getUploadProvider } from '@/lib/storage/r2-config'
 import { contentTypeForFileName, maxUploadBytesFor, normalizeUploadContentType } from '@/lib/storage/object-key'
 import { newObjectKey, presignR2Put } from '@/lib/storage/r2-server'
+import { authorizeUploadFolder, isUploadTypeAllowedFor } from '@/lib/storage/upload-policy'
 
 /**
  * Sign ONE staff upload to wherever new uploads go (`STORAGE_UPLOAD_PROVIDER`).
  *
  * POST { folder, fileName, contentType, size } — same callers and same access
  * rule as `/api/imagekit/auth` (tenant admin / superadmin / platform staff with
- * an upload grant; cookie session or Bearer token).
+ * an upload grant; cookie session or Bearer token). Which folder and type each
+ * of them may sign for is `upload-policy.ts`: store staff need the key the
+ * folder's screen is gated on, and land under their own store.
  *
  * Answers `{ provider: 'r2', uploadUrl, method, headers, url, fileId, filePath }`
  * — a presigned PUT bound to the key, type, exact size and no-overwrite — or
@@ -51,11 +54,13 @@ interface SignBody {
   size?: unknown
 }
 
-async function signR2(folder: string, fileName: string, body: SignBody): Promise<NextResponse> {
+async function signR2(uploader: ImageKitUploader, folder: string, fileName: string, body: SignBody): Promise<NextResponse> {
   // Some browsers send no type for documents; then the extension decides.
   const declared = typeof body.contentType === 'string' ? body.contentType.trim() : ''
   const contentType = declared ? normalizeUploadContentType(declared) : contentTypeForFileName(fileName)
-  if (!contentType) return respond({ error: 'This file type cannot be uploaded.' }, 415)
+  if (!contentType || !isUploadTypeAllowedFor(uploader.role, contentType)) {
+    return respond({ error: 'This file type cannot be uploaded.' }, 415)
+  }
 
   const size = typeof body.size === 'number' ? body.size : Number.NaN
   if (!Number.isInteger(size) || size <= 0) return respond({ error: 'Invalid file size.' }, 400)
@@ -80,11 +85,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (resolution.status !== 'authorized') return refusal(resolution)
 
   const body = ((await request.json().catch(() => null)) ?? {}) as SignBody
-  const folder = typeof body.folder === 'string' ? sanitizeUploadFolder(body.folder) : null
-  if (!folder) return respond({ error: 'Invalid upload folder.' }, 400)
+  const requested = typeof body.folder === 'string' ? sanitizeUploadFolder(body.folder) : null
+  if (!requested) return respond({ error: 'Invalid upload folder.' }, 400)
+  const decision = authorizeUploadFolder(resolution.uploader, requested)
+  if (!decision.ok) return respond({ error: 'You do not have permission to upload images here.' }, 403)
+  const { folder } = decision
   const fileName = sanitizeUploadFileName(typeof body.fileName === 'string' ? body.fileName : '')
 
-  if (getUploadProvider() === 'r2') return signR2(folder, fileName, body)
+  if (getUploadProvider() === 'r2') return signR2(resolution.uploader, folder, fileName, body)
 
   const signed = createSignedUploadToken({ folder, fileName })
   if (!signed) return respond({ error: 'Image upload is not configured.' }, 503)

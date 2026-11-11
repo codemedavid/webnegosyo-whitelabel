@@ -14,6 +14,11 @@ jest.mock('@/lib/admin-service', () => ({
 const revalidatePath = jest.fn()
 jest.mock('next/cache', () => ({ revalidatePath: (...a: unknown[]) => revalidatePath(...a) }))
 
+const recheckMenuAvailability = jest.fn()
+jest.mock('@/lib/inventory/stock-alerts-service', () => ({
+  recheckMenuAvailability: (...a: unknown[]) => recheckMenuAvailability(...a),
+}))
+
 const update = jest.fn()
 const eq = jest.fn()
 let writeAnswer: { data: unknown; error: unknown } = { data: [{ id: 't1' }], error: null }
@@ -110,3 +115,22 @@ describe('setPosStockPolicyAction', () => {
 })
 
 export {}
+
+describe('setPosStockPolicyAction and the menu', () => {
+  it('re-judges the menu after a save, because the policy decides which shelves count', async () => {
+    const { setPosStockPolicyAction } = await load()
+
+    await setPosStockPolicyAction(TENANT, 'store', 'block')
+
+    expect(recheckMenuAvailability).toHaveBeenCalledWith(TENANT)
+  })
+
+  it('does not re-judge the menu when the save was refused', async () => {
+    writeAnswer = { data: [], error: null }
+    const { setPosStockPolicyAction } = await load()
+
+    await setPosStockPolicyAction(TENANT, 'store', 'block')
+
+    expect(recheckMenuAvailability).not.toHaveBeenCalled()
+  })
+})

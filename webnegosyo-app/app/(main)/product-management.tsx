@@ -42,6 +42,7 @@ import { PLATFORM_STALE_MS } from "../../lib/query/query-client";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
+import { useHasPermission } from "../../lib/use-has-permission";
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
@@ -108,6 +109,9 @@ export default function ProductManagementScreen() {
     if (!isSavingOrder) setPending(null);
   }
 
+  // Dish costs belong to `costs`: the database returns none without it, so
+  // the "set a cost" nudge would only mislead.
+  const canSeeCosts = useHasPermission("costs");
   const { data: costs } = useSafeQuery<ProductCost[]>(getAllCostsRef, {});
   const costByItem = new Map((costs ?? []).map((c) => [c.menuItemId, c.costPrice]));
 
@@ -404,9 +408,9 @@ export default function ProductManagementScreen() {
                           {margin.marginPercent === null ? "—" : `${margin.marginPercent.toFixed(0)}% margin`}
                         </Text>
                       </View>
-                    ) : (
+                    ) : canSeeCosts ? (
                       <Text style={styles.setCostHint}>Set cost in Products tab</Text>
-                    )}
+                    ) : null}
                   </View>
                 </TouchableOpacity>
                 {canArrange && (

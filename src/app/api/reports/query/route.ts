@@ -67,6 +67,7 @@ async function handleQuery(request: NextRequest): Promise<NextResponse> {
       client: await reportClient(),
       sections: query.sections,
       grain: query.grain,
+      canSeeCosts,
     })
     return NextResponse.json(
       { success: true, context: toContextPayload(page.context), metrics: visibleMetrics(canSeeCosts), sections },

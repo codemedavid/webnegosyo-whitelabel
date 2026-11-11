@@ -11,6 +11,7 @@
 
 import { fetchPosStockCeilings, isFailedStockRead } from "./pos-stock-ceilings";
 import { NO_STOCK_CEILINGS } from "./pos-stock-warning";
+import { forgetStockPolicies, knownStockPolicy } from "./pos-stock-policy-memo";
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -62,6 +63,17 @@ describe("fetchPosStockCeilings", () => {
 
     const ceilings = await fetchPosStockCeilings("t1", null);
     expect(ceilings.stockPolicy).toBe("block");
+    // The tender reads it to know a stock clearance is needed at Charge.
+    expect(knownStockPolicy("t1")).toBe("block");
+  });
+
+  it("remembers only an explicit policy, never the default it reads for an older server", async () => {
+    forgetStockPolicies();
+    await fetchPosStockCeilings("t9", null);
+    expect(knownStockPolicy("t9")).toBeUndefined();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ceilings: {}, stockPolicy: "warn" }) });
+    await fetchPosStockCeilings("t9", null);
+    expect(knownStockPolicy("t9")).toBe("warn");
   });
 
   it("reads warn when an older server sends no policy, or an unknown one", async () => {

@@ -1,4 +1,5 @@
 import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
+import { AutomationsEntryCard } from '@/components/admin/messenger-automations/automations-entry-card'
 import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
 import { SettingsSection } from '@/components/admin/settings/settings-section'
 import { requireSettingsSection } from '@/lib/settings/load-settings-context'
@@ -10,6 +11,8 @@ export default async function MessengerSettingsPage({ params }: { params: Promis
   return (
     <SettingsSection tenantSlug={tenantSlug} section="messenger">
       <FacebookConnectionCard tenant={tenant} />
+
+      <AutomationsEntryCard tenantSlug={tenantSlug} />
 
       <MessengerModeCard
         tenantId={tenant.id}

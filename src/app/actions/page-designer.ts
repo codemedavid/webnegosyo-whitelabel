@@ -41,10 +41,17 @@ function errorMessage(error: unknown): string {
   return error.message
 }
 
-/** The slug comes from the row the update touched, never from the browser. */
+/**
+ * The slug comes from the row the update touched, never from the browser. The
+ * write has landed by now: a cache hiccup must not read as a failed publish.
+ */
 async function refreshStorefront(slug: string, tenantId: string): Promise<void> {
-  await invalidateTenantCache(slug, tenantId)
-  revalidateStorefrontMenu(slug)
+  try {
+    await invalidateTenantCache(slug, tenantId)
+    revalidateStorefrontMenu(slug)
+  } catch (error) {
+    console.error('[refreshStorefront] Could not refresh the storefront:', error)
+  }
 }
 
 type Update = Record<string, string | boolean | number>

@@ -19,7 +19,7 @@ import { normalizeMessengerUsername } from '@/lib/messenger-username'
 import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
 import { invalidateTenantCache } from '@/lib/cache'
-import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-backend'
+import { orderBackendForSave, type OrderBackendPreference, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 import { syncTenantConvexConfig, convexConfigSyncWarning } from '@/lib/convex-config-sync'
 import { requirePlatformPermission } from '@/lib/platform-staff/guard'
@@ -323,7 +323,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   // saving an unrelated field would demote a `supabase` tenant to `platform`.
   const { data: currentBackendRow } = await supabase
     .from('tenants')
-    .select('order_backend, slug, convex_deployment_url')
+    .select('order_backend, slug, convex_deployment_url, auto_86_enabled')
     .eq('id', id)
     .maybeSingle()
 
@@ -332,6 +332,19 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   const backendChanges = superadminOnlyTenantChanges(currentBackendRow, parsed)
   if (!isSuperadmin && backendChanges.length > 0) {
     return { error: superadminOnlyRefusal(backendChanges) }
+  }
+
+  // A save that moves the resolved order backend leaves existing orders behind.
+  if (currentBackendRow) {
+    const { refuseUnconfirmedBackendChange } = await import('@/lib/order-backend-change-guard')
+    const refusal = await refuseUnconfirmedBackendChange({
+      supabase,
+      tenantId: id,
+      current: currentBackendRow as OrderBackendTenantFields,
+      input: parsed,
+      confirmed: parsed.confirm_backend_change,
+    })
+    if (refusal) return { error: refusal }
   }
 
   const previousSlug = (currentBackendRow as { slug?: string } | null)?.slug ?? null
@@ -470,6 +483,13 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   // gates features, so without this a saved change appears to do nothing until
   // the TTL expires.
   await invalidateTenantCache(parsed.slug, id, previousSlug)
+
+  // Auto-86 only ever ran on a stock movement, so switching it on hid nothing
+  // until each dish's ingredients next moved.
+  if (parsed.auto_86_enabled && !(currentBackendRow as { auto_86_enabled?: boolean | null } | null)?.auto_86_enabled) {
+    const { recheckMenuAvailability } = await import('@/lib/inventory/stock-alerts-service')
+    await recheckMenuAvailability(id)
+  }
 
   revalidatePath('/superadmin')
   revalidatePath('/superadmin/tenants')

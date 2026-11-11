@@ -3,13 +3,18 @@
 import { useEffect } from 'react'
 import { useSearchParams, usePathname, useRouter } from 'next/navigation'
 import { useCart } from '@/hooks/useCart'
+import { looksLikeMessengerLinkToken, MESSENGER_LINK_QUERY_PARAM } from '@/lib/messenger/link-token-shape'
+
+/** Menu cards sent before 2026-11-10 carried the raw PSID; the server still honours them for a while. */
+const LEGACY_PSID_PARAM = 'psid'
 
 /**
- * Captures Messenger PSID from URL parameters and stores it in cart context.
- * This component should be rendered inside CartProvider.
- * 
- * When a user clicks "View Menu" from Messenger, the URL includes ?psid=...
- * This component captures that PSID and stores it for order tracking.
+ * Keeps the Messenger reference a link from the store's chat carried, so the
+ * order (and the cart summary) can reach that conversation.
+ *
+ * Links from the bot carry `?m=<signed token>`; the value is opaque here and
+ * the server resolves it to a PSID for THIS store only
+ * (`src/lib/messenger/recipient.ts`). Rendered inside CartProvider.
  */
 export function MessengerPsidCapture() {
     const searchParams = useSearchParams()
@@ -18,28 +23,20 @@ export function MessengerPsidCapture() {
     const { setMessengerPsid } = useCart()
 
     useEffect(() => {
-        const psidFromUrl = searchParams.get('psid')
+        const token = searchParams.get(MESSENGER_LINK_QUERY_PARAM)
+        const legacyPsid = searchParams.get(LEGACY_PSID_PARAM)
+        if (token === null && legacyPsid === null) return
 
-        if (psidFromUrl) {
-            // Store the PSID
-            setMessengerPsid(psidFromUrl)
-            // Only log PSID in development to prevent exposing user identifiers in production
-            if (process.env.NODE_ENV === 'development') {
-                console.log('[Messenger] Captured PSID from URL:', psidFromUrl)
-            }
+        if (looksLikeMessengerLinkToken(token)) setMessengerPsid(token)
+        else if (legacyPsid) setMessengerPsid(legacyPsid)
 
-            // Clean up URL by removing psid parameter
-            const newParams = new URLSearchParams(searchParams.toString())
-            newParams.delete('psid')
-            const newUrl = newParams.toString()
-                ? `${pathname}?${newParams.toString()}`
-                : pathname
-
-            // Replace URL without psid (keeps history clean)
-            router.replace(newUrl, { scroll: false })
-        }
+        // Keep the address bar (and anything shared from it) free of the reference.
+        const newParams = new URLSearchParams(searchParams.toString())
+        newParams.delete(MESSENGER_LINK_QUERY_PARAM)
+        newParams.delete(LEGACY_PSID_PARAM)
+        const query = newParams.toString()
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
     }, [searchParams, pathname, router, setMessengerPsid])
 
-    // This component doesn't render anything visible
     return null
 }

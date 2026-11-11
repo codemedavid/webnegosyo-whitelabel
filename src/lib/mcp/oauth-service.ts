@@ -4,6 +4,7 @@ import { generateOAuthAccessKey, hashApiKey } from '@/lib/mcp-auth'
 import { MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
 import { OAUTH_OFFLINE_SCOPE } from '@/lib/mcp/oauth-config'
 import { signAccessToken } from '@/lib/mcp/oauth-jwt'
+import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
 
 /**
  * OAuth 2.1 authorization-server logic for the merchant MCP, backing the
@@ -380,11 +381,35 @@ async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promis
 interface StoredTokenRow {
   id: string
   client_id: string
-  subject: string
+  /** NULL once the user is deleted (ON DELETE SET NULL). */
+  subject: string | null
   scope: string
   revoked_at: string | null
   expires_at: string
   tenant_id: string | null
+}
+
+/**
+ * Whether the person a grant was issued to may still hold it: an admin of THAT
+ * store, store-wide, with `store_setup` — the same bar authorize applied.
+ * A refresh token outlives a staff removal otherwise, and each rotation grants
+ * another 30 days. A failed read throws (a retry may succeed); it is no verdict.
+ */
+async function isGrantHolderEntitled(
+  client: SupabaseClient,
+  subject: string,
+  tenantId: string | null,
+): Promise<boolean> {
+  if (!tenantId) return false
+  const { data, error } = await client
+    .from('app_users')
+    .select('role, tenant_id, is_owner, permissions, outlet_id')
+    .eq('user_id', subject)
+    .maybeSingle()
+  if (error) throw new Error(`Failed to check store membership: ${error.message}`)
+  const holder = data as (PermissionHolder & { tenant_id: string | null; outlet_id: string | null }) | null
+  if (!holder || holder.role !== 'admin' || holder.tenant_id !== tenantId || holder.outlet_id) return false
+  return hasPermission(holder, 'store_setup')
 }
 
 export async function refreshAccessToken(
@@ -427,13 +452,26 @@ export async function refreshAccessToken(
     throw new Error('invalid_grant: refresh token is not a merchant grant')
   }
 
-  const { error: revokeError } = await client
+  if (!row.subject || !(await isGrantHolderEntitled(client, row.subject, row.tenant_id))) {
+    await client
+      .from('mcp_oauth_tokens')
+      .update({ revoked_at: new Date(now).toISOString() })
+      .eq('id', row.id)
+    throw new Error('invalid_grant: the grant holder no longer has access to this store')
+  }
+
+  // Claim atomically: two racing refreshes must not mint two token families.
+  const { data: rotated, error: revokeError } = await client
     .from('mcp_oauth_tokens')
     .update({ revoked_at: new Date(now).toISOString() })
     .eq('id', row.id)
+    .is('revoked_at', null)
+    .select('id')
+    .maybeSingle()
   if (revokeError) {
     throw new Error(`Failed to rotate refresh token: ${revokeError.message}`)
   }
+  if (!rotated) throw new Error('invalid_grant: refresh token already rotated')
 
   return issueTokens(client, {
     clientId: row.client_id,

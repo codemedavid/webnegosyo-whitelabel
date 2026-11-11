@@ -11,10 +11,12 @@ import { DELIVERY_PIN_ADDRESS_KEY, DELIVERY_PIN_CONFIRMED_KEY, DELIVERY_PIN_SKIP
 import { DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
 import { haversineDistanceKm, toLatLng, type LatLng } from '@/lib/delivery-fee'
 import {
+  classifyDetailKey,
   DELIVERY_LANDMARK_KEY,
   DELIVERY_RIDER_NOTE_KEY,
   DELIVERY_STORE_NOTE_KEY,
   DELIVERY_UNIT_KEY,
+  type DeliveryDetails,
 } from '@/lib/delivery/delivery-details'
 import { isRebookableLalamoveStatus } from '@/lib/lalamove-status'
 
@@ -56,6 +58,34 @@ export const customerDeliveryPatchSchema = z.object({
 
 export type DeliveryPatch = z.infer<typeof merchantDeliveryPatchSchema>
 
+/** The merchant's edit form, as opened and as it stands at Save. */
+export interface MerchantDeliveryDraft {
+  address: string
+  pin: LatLng | null
+  unit: string
+  landmark: string
+  riderNote: string
+  storeNote: string
+}
+
+const DRAFT_TEXT_FIELDS = ['unit', 'landmark', 'riderNote', 'storeNote'] as const
+
+/**
+ * Only what the merchant changed since the form opened. The rest is left out
+ * (absent = leave alone), so a card opened before the customer moved their pin
+ * from a pin link cannot send the old pin and words back over theirs.
+ */
+export function merchantDeliveryChanges(opened: MerchantDeliveryDraft, draft: MerchantDeliveryDraft): DeliveryPatch {
+  const address = draft.address.trim()
+  const isPinMoved = draft.pin !== null && (opened.pin === null || draft.pin.lat !== opened.pin.lat || draft.pin.lng !== opened.pin.lng)
+  const texts = DRAFT_TEXT_FIELDS.filter((field) => draft[field].trim() !== opened[field].trim())
+  return {
+    ...(address !== '' && address !== opened.address.trim() ? { address } : {}),
+    ...(isPinMoved && draft.pin ? { pin: draft.pin } : {}),
+    ...Object.fromEntries(texts.map((field) => [field, draft[field].trim()])),
+  }
+}
+
 export interface DeliveryEditGateInput {
   status: string | null | undefined
   lalamoveOrderId: string | null | undefined
@@ -85,6 +115,18 @@ function withOptional(answers: Record<string, unknown>, key: string, value: stri
   return rest
 }
 
+/**
+ * A detail the merchant cleared, wherever it was answered. The edit form shows a
+ * store's own question ("Nearest Landmark") as the landmark, and the rider's text
+ * falls back to it, so clearing only the built-in key would leave the rider
+ * reading the old words. A changed detail needs none of this: the built-in key wins.
+ */
+function withDetailCleared(answers: Record<string, unknown>, kind: keyof DeliveryDetails, key: string, value: string | undefined): Record<string, unknown> {
+  const next = withOptional(answers, key, value)
+  if (value !== '') return next
+  return Object.fromEntries(Object.entries(next).filter(([name]) => classifyDetailKey(name) !== kind))
+}
+
 export function roundedKm(from: LatLng, to: LatLng): number {
   return Math.round(haversineDistanceKm(from.lat, from.lng, to.lat, to.lng) * 10) / 10
 }
@@ -111,9 +153,9 @@ export function applyDeliveryPatch({ current, patch, editor, now, origin }: Appl
   const isAddressChanged = patch.address !== undefined && patch.address !== current[DELIVERY_ADDRESS_FIELD_NAME]
 
   let answers: Record<string, unknown> = { ...current }
-  answers = withOptional(answers, DELIVERY_UNIT_KEY, patch.unit)
-  answers = withOptional(answers, DELIVERY_LANDMARK_KEY, patch.landmark)
-  answers = withOptional(answers, DELIVERY_RIDER_NOTE_KEY, patch.riderNote)
+  answers = withDetailCleared(answers, 'unit', DELIVERY_UNIT_KEY, patch.unit)
+  answers = withDetailCleared(answers, 'landmark', DELIVERY_LANDMARK_KEY, patch.landmark)
+  answers = withDetailCleared(answers, 'riderNote', DELIVERY_RIDER_NOTE_KEY, patch.riderNote)
   answers = withOptional(answers, DELIVERY_STORE_NOTE_KEY, patch.storeNote)
   if (isAddressChanged) answers = { ...answers, [DELIVERY_ADDRESS_FIELD_NAME]: patch.address }
 

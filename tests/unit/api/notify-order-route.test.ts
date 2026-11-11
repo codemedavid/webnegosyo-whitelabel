@@ -52,6 +52,7 @@ describe('POST /api/push/notify-order', () => {
   let orderRow: Record<string, unknown> | null
   let tokenRows: Array<{ token: string; outlet_id: string | null }>
   let claimInserted: boolean
+  let claimAttempts: number
   let fetchMock: jest.Mock
   let deletedTokens: string[]
   /** What Expo says about a device at send time; ok by default. */
@@ -65,6 +66,7 @@ describe('POST /api/push/notify-order', () => {
     orderRow = { ...ORDER }
     tokenRows = [{ token: 'ExponentPushToken[owner]', outlet_id: null }]
     claimInserted = true
+    claimAttempts = 0
     ticketFor = (token) => ({ status: 'ok', id: `receipt-${token}` })
     receiptFor = () => ({ status: 'ok' })
 
@@ -95,11 +97,13 @@ describe('POST /api/push/notify-order', () => {
         if (table === 'order_push_notifications') {
           return {
             upsert: () => ({
-              select: () =>
-                Promise.resolve({
+              select: () => {
+                claimAttempts += 1
+                return Promise.resolve({
                   data: claimInserted ? [{ order_id: ORDER_ID }] : [],
                   error: null,
-                }),
+                })
+              },
             }),
           }
         }
@@ -172,10 +176,33 @@ describe('POST /api/push/notify-order', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  test('an order the payload lies about is never sent', async () => {
+  test('an order the payload lies about is never sent, and does not burn its real push', async () => {
     const response = await post({ order_id: ORDER_ID, tenant_id: OTHER_TENANT_ID })
     expect(response.status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(claimAttempts).toBe(0)
+  })
+
+  test('over the per-IP ceiling: refused before any read or claim', async () => {
+    jest.doMock('@/lib/distributed-rate-limit', () => ({
+      checkRateLimit: async () => ({ allowed: false, remaining: 0, retryAfterSec: 9 }),
+    }))
+    try {
+      const { POST } = await import('@/app/api/push/notify-order/route')
+      const request = new NextRequest('http://localhost/api/push/notify-order', {
+        method: 'POST',
+        headers: { 'x-real-ip': '203.0.113.5' },
+        body: JSON.stringify({ order_id: ORDER_ID, tenant_id: TENANT_ID }),
+      })
+
+      const response = await POST(request)
+
+      expect(response.status).toBe(429)
+      expect(claimAttempts).toBe(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally {
+      jest.dontMock('@/lib/distributed-rate-limit')
+    }
   })
 
   test('an unknown order is never sent', async () => {
@@ -183,6 +210,7 @@ describe('POST /api/push/notify-order', () => {
     const response = await post({ order_id: ORDER_ID, tenant_id: TENANT_ID })
     expect(response.status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(claimAttempts).toBe(0)
   })
 
   test('a branched order skips devices bound to other branches', async () => {

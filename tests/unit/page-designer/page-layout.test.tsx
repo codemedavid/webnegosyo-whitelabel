@@ -4,7 +4,8 @@
  * editor showing every section with its step badge.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 
 import { createSection, createWidget } from '@/lib/hero-builder/defaults'
 import type { HeroDesignV5, Section } from '@/lib/hero-builder/types'
@@ -52,6 +53,15 @@ describe('step by step', () => {
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
   })
 
+  it('paints upcoming step dots from the text colour, never the store border', () => {
+    // A black store border (sample-demo) turned every upcoming dot black with a
+    // muted number on it; form lines already follow the text colour for this reason.
+    renderPage(design('steps', sections))
+    const upcoming = screen.getByLabelText('You', { selector: '[data-part="step"]' })
+    expect(upcoming.getAttribute('style') ?? '').not.toContain('--co-border')
+    expect(upcoming.getAttribute('style') ?? '').toContain('color-mix')
+  })
+
   it('Next asks the page about the step and shows the reason', () => {
     const stepProblem = jest.fn().mockReturnValueOnce('Please choose how you’ll get your order').mockReturnValue(null)
     renderPage(design('steps', sections), { stepProblem })
@@ -97,6 +107,103 @@ describe('folding panels', () => {
     expect(screen.getByText('Edit')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /How/ }))
     expect(isShown('Pick pickup')).toBe(true)
+  })
+})
+
+describe('a step or panel with nothing to show', () => {
+  // A block that has nothing for this order, the way Schedule does without pre-orders.
+  const nothing = () => null
+  const blankSection = (label: string): Section => {
+    const section = createSection([100], label)
+    return { ...section, columns: [{ ...section.columns[0], widgets: [createPageBlock(pageBlockDef('checkout', 'checkout.schedule')!)] }] }
+  }
+  const blocks = { 'checkout.schedule': nothing }
+
+  it('takes no room on a scrolling page', async () => {
+    const { container } = renderPage({ ...design('steps', [textSection('How', 'Pick pickup'), blankSection('When')]), page: undefined }, { blocks })
+    await waitFor(() => expect(container.querySelector('section[aria-label="When"]')?.parentElement).toHaveStyle({ display: 'none' }))
+    expect(container.querySelector('section[aria-label="How"]')?.parentElement).toHaveStyle({ display: 'contents' })
+  })
+
+  it('keeps an owner’s own band with nothing but a spacer in it', async () => {
+    const band = createSection([100], 'Band')
+    const spaced: Section = { ...band, columns: [{ ...band.columns[0], widgets: [createWidget('spacer')] }] }
+    const { container } = renderPage({ ...design('steps', [spaced]), page: undefined })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(container.querySelector('section[aria-label="Band"]')?.parentElement).toHaveStyle({ display: 'contents' })
+  })
+
+  it('is not a step', async () => {
+    renderPage(design('steps', [textSection('How', 'Pick pickup'), blankSection('When'), textSection('Pay', 'Choose how to pay')]), { blocks })
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(isShown('Choose how to pay')).toBe(true)
+    expect(screen.getByText('Step 2 of 2: Pay')).toBeInTheDocument()
+  })
+
+  it('hands over to the next step, not the first, when the customer’s step comes up empty', async () => {
+    const when = blankSection('When')
+    const sections = [textSection('How', 'Pick pickup'), when, textSection('Pay', 'Choose how to pay')]
+    const page = (block: () => ReactNode) => (
+      <PageRuntimeProvider value={{ page: 'checkout', state: null, tokens: {}, labels: {}, blocks: { 'checkout.schedule': block } }}>
+        <HeroBuilderRenderer design={design('steps', sections)} />
+      </PageRuntimeProvider>
+    )
+    const { rerender } = render(page(() => <p>When to come</p>))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(isShown('When to come')).toBe(true)
+    rerender(page(() => null))
+    await waitFor(() => expect(isShown('Choose how to pay')).toBe(true))
+    expect(isShown('Pick pickup')).toBe(false)
+  })
+
+  it('is not a panel', async () => {
+    const { container } = renderPage(design('accordion', [textSection('How', 'Pick pickup'), blankSection('When'), textSection('Pay', 'Choose how to pay')]), { blocks })
+    await waitFor(() => expect(container.querySelectorAll('[data-layout-section]:not([hidden])')).toHaveLength(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(isShown('Choose how to pay')).toBe(true)
+  })
+})
+
+describe('placing the order from a pinned bar', () => {
+  const Place = () => <button type="button" data-place-order onClick={placed}>Place order</button>
+  const placed = jest.fn()
+  const bar = (): Section => {
+    const section = { ...createSection([100], 'Bar'), pin: 'bottom' as const }
+    return { ...section, columns: [{ ...section.columns[0], widgets: [createPageBlock(pageBlockDef('checkout', 'checkout.place_order')!)] }] }
+  }
+  const blocks = { 'checkout.place_order': Place }
+  const sections = () => [textSection('How', 'Pick pickup'), textSection('You', 'Your name'), bar()]
+  // Only the second step is unfinished: it has no blocks of its own in this page, so ask by call.
+  const onlySecond = () => jest.fn().mockReturnValueOnce(null).mockReturnValueOnce('Please fill in: Name').mockReturnValue(null)
+
+  beforeEach(() => placed.mockReset())
+
+  it('opens the unfinished step with its reason instead of placing it', () => {
+    renderPage(design('steps', sections()), { blocks, stepProblem: onlySecond() })
+    fireEvent.click(screen.getByRole('button', { name: 'Place order' }))
+    expect(placed).not.toHaveBeenCalled()
+    expect(isShown('Your name')).toBe(true)
+    expect(screen.getByRole('alert')).toHaveTextContent('Please fill in: Name')
+  })
+
+  it('opens the unfinished panel with its reason, the last one too', () => {
+    renderPage(design('accordion', sections()), { blocks, stepProblem: onlySecond() })
+    fireEvent.click(screen.getByRole('button', { name: 'Place order' }))
+    expect(placed).not.toHaveBeenCalled()
+    expect(isShown('Your name')).toBe(true)
+    expect(screen.getByRole('alert')).toHaveTextContent('Please fill in: Name')
+  })
+
+  it('keeps the bar’s wrapper out of the box tree, or it could never stick', () => {
+    const { container } = renderPage(design('steps', sections()), { blocks })
+    expect(container.querySelector('section[data-pin="bottom"]')?.parentElement).toHaveClass('contents')
+  })
+
+  it('places it once every step is finished', () => {
+    renderPage(design('steps', sections()), { blocks, stepProblem: () => null })
+    fireEvent.click(screen.getByRole('button', { name: 'Place order' }))
+    expect(placed).toHaveBeenCalledTimes(1)
   })
 })
 

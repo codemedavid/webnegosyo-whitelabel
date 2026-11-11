@@ -20,7 +20,7 @@
 
 import { readCutoffScheduleForDisplay, type SessionClient } from '@/lib/business-day/read-schedule'
 import { tradingDayOf, tradingDayWindow } from '@/lib/business-day/trading-day'
-import { toJudgedShelf, type JudgedShelfRow } from '@/lib/inventory/judged-shelf'
+import { judgesUncounted, toJudgedShelf, type JudgedShelfRow, type JudgeOptions } from '@/lib/inventory/judged-shelf'
 import { resolveProducibleUnits } from '@/lib/inventory/producible'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 import type { Recipe, RecipeComponent } from '@/types/database'
@@ -95,7 +95,7 @@ export async function readDishStockBlockers(
   )
   if (components.length === 0) return []
 
-  const [ingredients, units] = await Promise.all([
+  const [ingredients, units, tenants] = await Promise.all([
     read<IngredientRow>(
       client
         .from('inventory_items')
@@ -113,9 +113,15 @@ export async function readDishStockBlockers(
         .limit(MAX_LINES),
       'inventory_units',
     ),
+    read<{ pos_stock_policy?: string | null }>(
+      client.from('tenants').select('pos_stock_policy').eq('id', tenantId).limit(1),
+      'tenants',
+    ),
   ])
 
-  return findDishStockBlockers(menuItemId, recipes, components, ingredients, units)
+  return findDishStockBlockers(menuItemId, recipes, components, ingredients, units, {
+    judgeUncounted: judgesUncounted(tenants[0]?.pos_stock_policy),
+  })
 }
 
 /** Pure: which judged base ingredients alone make the dish unmakeable. */
@@ -125,6 +131,7 @@ export function findDishStockBlockers(
   components: readonly RecipeComponent[],
   ingredients: readonly IngredientRow[],
   units: readonly InventoryUnit[],
+  options: JudgeOptions = {},
 ): DishStockBlocker[] {
   const unitsById = new Map(units.map((unit) => [unit.id, unit]))
   const byId = new Map(ingredients.map((ingredient) => [ingredient.id, ingredient]))
@@ -134,7 +141,7 @@ export function findDishStockBlockers(
     const row = byId.get(ingredientId)
     if (!row) return []
     // Judged alone: only this ingredient is on the shelf, so only it can limit.
-    const shelf = toJudgedShelf([row], unitsById)
+    const shelf = toJudgedShelf([row], unitsById, options)
     if (shelf.length === 0) return []
     const canMake = resolveProducibleUnits({ menuItemId }, recipes, components, shelf, units)
     if (canMake !== 0) return []

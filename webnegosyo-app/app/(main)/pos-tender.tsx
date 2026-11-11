@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -38,10 +38,20 @@ import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
 import { posReceiptOrder } from "../../lib/pos-receipt";
 import { staleBackendMessage } from "../../lib/stale-backend";
-import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
+import { serviceChargeArgFor } from "../../lib/convex-service-charge-arg";
 import { resolveRegisterOutlet } from "../../lib/register-outlet";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { buildPosStockItems } from "../../lib/pos-stock";
+import {
+  clearanceLines,
+  gateSaleStock,
+  requestStockClearance,
+  withOfflineStockCheck,
+  type ClearanceAsk,
+} from "../../lib/pos-stock-clearance";
+import { StockApprovalSheet, type StockApprovalRequest } from "../../components/pos/StockApprovalSheet";
+import { outletIdFromCustomerData } from "../../lib/backends/supabase-orders";
+import type { ApproverChoice } from "../../lib/gov-ledger/approval-client";
 import { sendStockCall } from "../../lib/offline/drain-stock-calls";
 import { posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
 import { burnPosRedemptions } from "../../lib/voucher-service";
@@ -133,19 +143,9 @@ export default function PosTenderScreen() {
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
 
-  /**
-   * The `serviceCharge` argument to send with an order write, if any.
-   *
-   * The platform backend has a real column and takes it whatever the version;
-   * only Convex validates its arguments strictly, so only Convex is gated.
-   */
+  /** The `serviceCharge` argument to send with an order write, if any. */
   const serviceChargeArg = useCallback(
-    (amount: number | undefined) =>
-      orderBackend === "supabase"
-        ? amount && amount > 0
-          ? { serviceCharge: amount }
-          : {}
-        : convexServiceChargeArg(amount, convexSchemaVersion),
+    (amount: number | undefined) => serviceChargeArgFor(orderBackend, amount, convexSchemaVersion),
     [orderBackend, convexSchemaVersion],
   );
   const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
@@ -180,6 +180,12 @@ export default function PosTenderScreen() {
   const { printOrder, shouldPrint } = useOrderPrint();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A block store's "needs a manager" answer, waiting on a manager's PIN, and
+  // the sale it is for: the same order id is kept across the PIN, because the
+  // server's approval is bound to it (lib/pos-stock-clearance.ts).
+  const [stockApproval, setStockApproval] = useState<(StockApprovalRequest & { ask: ClearanceAsk }) | null>(null);
+  const stockSaleRef = useRef<{ key: string; orderId: string; isApproved: boolean; isApprovalUnreachable?: boolean } | null>(null);
+  const handleCompleteRef = useRef<() => Promise<void>>(async () => {});
   const [tenderedText, setTenderedText] = useState("");
   const [reference, setReference] = useState("");
   const [proof, setProof] = useState<CapturedProof | null>(null);
@@ -634,7 +640,15 @@ export default function PosTenderScreen() {
       });
       const isPlatform = backend === "platform";
       const isPaidNow = tender !== null;
-      const localId = newLocalOrderId();
+      // The server's stock check (block stores): the same lines the stock
+      // deduction will spend, and the id it binds its answer to.
+      const stockLines = clearanceLines(buildPosStockItems(lines));
+      // The branch the row will carry, read the way the insert reads it: the
+      // database binds the clearance to it.
+      const stockOutletId = outletIdFromCustomerData(args.customerData);
+      const stockKey = JSON.stringify([stockOutletId, stockLines]);
+      const pendingStock = stockSaleRef.current?.key === stockKey ? stockSaleRef.current : null;
+      const localId = pendingStock?.orderId ?? newLocalOrderId();
       const createdAt = Date.now();
       // The platform database keeps the id the register prints and the moment
       // the sale was taken, so a sale written later lands on the right day
@@ -680,13 +694,47 @@ export default function PosTenderScreen() {
       // outage). Convex mints its own ids, so it is still written first and
       // only kept locally when the server cannot be reached. A refusal throws
       // to the alert below either way (lib/offline/place-sale.ts).
+      // Asked while the customer is still here: on a block store the database
+      // refuses a sale the server did not clear (or that is not marked as
+      // taken offline), so a refusal now costs nothing and later costs a sale.
+      const stockGate = await gateSaleStock({
+        tenantId,
+        orderId: localId,
+        outletId: stockOutletId,
+        isPlatform,
+        lines: stockLines,
+        isApproved: pendingStock?.isApproved === true,
+        isApprovalUnreachable: pendingStock?.isApprovalUnreachable === true,
+        isOffline,
+      });
+      if (stockGate.kind === "needs_manager") {
+        stockSaleRef.current = { key: stockKey, orderId: localId, isApproved: false };
+        setStockApproval({
+          message: stockGate.message,
+          shortfalls: stockGate.shortfalls,
+          approvers: stockGate.approvers,
+          ask: { tenantId, orderId: localId, outletId: stockOutletId, lines: stockLines },
+        });
+        setIsCompleting(false);
+        return;
+      }
+      if (stockGate.kind === "refused") {
+        Alert.alert("Could not complete the sale", stockGate.message);
+        setIsCompleting(false);
+        return;
+      }
+      stockSaleRef.current = null;
+      const saleOrderArgs = stockGate.offline
+        ? { ...orderArgs, customerData: withOfflineStockCheck(orderArgs.customerData) }
+        : orderArgs;
+
       const sale = {
         localId,
         tenantId,
         backend,
         clientOrderId,
         createdAt,
-        orderArgs,
+        orderArgs: saleOrderArgs,
         bookkeeping,
         paidAtTender: isPaidNow,
       };
@@ -822,6 +870,35 @@ export default function PosTenderScreen() {
     showLastSale,
     reset,
   ]);
+
+  handleCompleteRef.current = handleComplete;
+
+  // The manager's PIN goes to the server for THIS sale; once approved the
+  // sale completes as if Charge had been tapped again.
+  const submitStockApproval = useCallback(
+    async (approver: ApproverChoice, pin: string): Promise<string | null> => {
+      if (!stockApproval) return null;
+      const answer = await requestStockClearance({
+        ...stockApproval.ask,
+        approval: { approverUserId: approver.userId, pin },
+      });
+      // Unreachable (or the server could not record the approval): the sale is
+      // kept the offline way, accepted and flagged if it oversold, rather than
+      // left stuck behind the PIN sheet with the customer waiting.
+      if (answer.kind === "go" || answer.kind === "unreachable") {
+        if (stockSaleRef.current?.orderId === stockApproval.ask.orderId) {
+          stockSaleRef.current = answer.kind === "go"
+            ? { ...stockSaleRef.current, isApproved: true }
+            : { ...stockSaleRef.current, isApprovalUnreachable: true };
+        }
+        setStockApproval(null);
+        void handleCompleteRef.current();
+        return null;
+      }
+      return answer.message;
+    },
+    [stockApproval],
+  );
 
   if (lines.length === 0) {
     return (
@@ -1175,6 +1252,12 @@ export default function PosTenderScreen() {
         delivery={delivery}
         onSave={setDelivery}
         itemsSubtotal={totals.subtotal}
+      />
+
+      <StockApprovalSheet
+        request={stockApproval}
+        onSubmit={submitStockApproval}
+        onClose={() => setStockApproval(null)}
       />
     </View>
   );

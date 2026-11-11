@@ -133,7 +133,13 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // 23:59 UTC run only ever captured midnight to 8 AM Manila.
 // The bundle is rebuilt from the merged template (v37 + v38 + v39); no tenant
 // was ever deployed at 37-39 (all on <=36 at merge time).
-const CURRENT_SCHEMA_VERSION = 39;
+// v40 gates createOrder for every source, updateCustomerContact,
+// getOrderByClientId, trackEvent and refreshAnalytics (web server callers moved
+// to `*Internal`, with the public name as their fallback on older deployments),
+// lets platform_staff tokens read, carries a refusal's reason in a ConvexError
+// that production does not redact, and counts admitted writes per function in
+// `accessAudit`. Soft-mode stores behave as before until they are enforced.
+const CURRENT_SCHEMA_VERSION = 40;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 
@@ -400,13 +406,30 @@ export async function syncTenantConfig(
         }),
       });
 
-      if (!response.ok) {
+      if (!(await isAcceptedConvexWrite(response))) {
         return false;
       }
     }
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * A failed function answers HTTP 560 today, but its body is what actually says
+ * so: `status: "error"` is the failure, whatever the HTTP code. A sync that took
+ * a refusal for success would leave `auth_enforced` unset while reporting that
+ * the store is locked. A success body that can't be read (a proxy, a test
+ * double) falls back to the HTTP answer.
+ */
+async function isAcceptedConvexWrite(response: Response): Promise<boolean> {
+  if (!response.ok) return false;
+  try {
+    const body = (await response.json()) as { status?: unknown } | null;
+    return body?.status !== "error";
+  } catch {
+    return true;
   }
 }
 
