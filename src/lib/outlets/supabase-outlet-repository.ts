@@ -14,6 +14,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { assertRowsChanged, NOTHING_CHANGED_MESSAGE } from '@/platform/db/assert-rows-changed'
 import {
   assertOutletInvariants,
   normalizeOutletWrite,
@@ -148,15 +149,33 @@ export function createSupabaseOutletRepository(): OutletRepository {
       // One statement per row: the list is a handful of branches, and scoping
       // every write by tenant_id means a stale or hostile client list can only
       // ever reorder its own branches.
+      const unchangedIds: string[] = []
       for (const [index, id] of orderedIds.entries()) {
-        const { error } = await supabase
-          .from('outlets')
-          .update({ sort_order: index, updated_at: now } as never)
-          .eq('tenant_id', tenantId)
-          .eq('id', id)
-
-        if (error) throw new Error(error.message)
+        const result = assertRowsChanged(
+          await supabase
+            .from('outlets')
+            .update({ sort_order: index, updated_at: now } as never)
+            .eq('tenant_id', tenantId)
+            .eq('id', id)
+            .select('id'),
+        )
+        if (result.ok) continue
+        if (result.reason === 'error') throw new Error(result.error.message)
+        unchangedIds.push(id)
       }
+      if (unchangedIds.length === 0) return
+
+      // An id that changed nothing is either stale (the branch was deleted, or
+      // is not this store's) or a write row-level security refused. Only a
+      // branch that is still here was refused.
+      const { data: stillHere, error } = await supabase
+        .from('outlets')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', unchangedIds)
+        .limit(1)
+      if (error) throw new Error(error.message)
+      if ((stillHere ?? []).length > 0) throw new Error(NOTHING_CHANGED_MESSAGE)
     },
   }
 }

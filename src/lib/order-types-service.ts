@@ -5,6 +5,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 import type { OrderType, CustomerFormField } from '@/types/database'
 import { ORDER_TYPE_KINDS } from '@/lib/order-types/order-type-kinds'
 import { MARKUP_PERCENT_MAX, MARKUP_PERCENT_MIN } from '@/lib/order-types/order-type-pricing'
@@ -351,13 +353,13 @@ export async function deleteCustomerFormField(fieldId: string, tenantId: string)
 
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('customer_form_fields')
-    .delete()
-    .eq('id', fieldId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the question still there = row-level security
+  // refused the delete. Already gone is fine: a retried form save deletes twice.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('customer_form_fields').delete().eq('id', fieldId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('customer_form_fields').select('id').eq('id', fieldId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function reorderCustomerFormFields(fieldIds: string[], tenantId: string) {

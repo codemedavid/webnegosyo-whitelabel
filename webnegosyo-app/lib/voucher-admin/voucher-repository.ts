@@ -18,6 +18,7 @@
  */
 
 import { supabase } from "../supabase";
+import { assertRowsChanged, writeFailure } from "../assert-rows-changed";
 import {
   normalizeVoucherCode,
   validateVoucherDraft,
@@ -182,12 +183,17 @@ export async function setVoucherActive(
   tenantId: string,
   isActive: boolean,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("vouchers")
-    .update({ is_active: isActive })
-    .eq("id", voucherId)
-    .eq("tenant_id", tenantId);
-  if (error) throw error;
+  // A voucher is never deleted, so zero rows is never "nothing to do": the
+  // database refused the switch and the code is still in its old state.
+  const result = assertRowsChanged(
+    await supabase
+      .from("vouchers")
+      .update({ is_active: isActive })
+      .eq("id", voucherId)
+      .eq("tenant_id", tenantId)
+      .select("id"),
+  );
+  if (!result.ok) throw writeFailure(result);
 }
 
 export interface VoucherRedemption {

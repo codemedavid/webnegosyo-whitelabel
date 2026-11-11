@@ -62,6 +62,8 @@ function stub(options: {
   session?: Record<string, unknown> | null
   items?: Array<Record<string, unknown>>
   movements?: Array<Record<string, unknown>>
+  /** Row-level security turned the close away: no error, no rows. */
+  updateRefused?: boolean
 } = {}): Writes {
   const writes: Writes = { inserts: [], updates: [], filters: [] }
 
@@ -88,6 +90,7 @@ function stub(options: {
       },
       in: () => chain,
       order: () => chain,
+      range: () => chain,
       limit: () => chain,
       maybeSingle: () =>
         Promise.resolve({ data: table === 'inventory_counts' ? openSession : null, error: null }),
@@ -111,7 +114,17 @@ function stub(options: {
       },
       update: (patch: Record<string, unknown>) => {
         writes.updates.push({ table, patch })
-        return chain
+        // What PostgREST answers to the write: the rows it changed.
+        const changed = { data: options.updateRefused ? [] : [{ id: COUNT }], error: null }
+        const written: Record<string, unknown> = {
+          eq: (column: string, value: unknown) => {
+            writes.filters.push({ table, column, value })
+            return written
+          },
+          select: () => written,
+          then: (resolve: (v: unknown) => void) => resolve(changed),
+        }
+        return written
       },
     }
     return chain
@@ -265,6 +278,14 @@ describe('closing a count', () => {
     })
 
     await expect(closeCount(TENANT, COUNT)).rejects.toThrow(/already closed/i)
+  })
+
+  it('reports a close the database refused, instead of saying the count is closed', async () => {
+    // Row-level security refuses silently: no error, zero rows. The count is
+    // still open, and the report would go on waiting for it.
+    stub({ updateRefused: true })
+
+    await expect(closeCount(TENANT, COUNT)).rejects.toThrow('Nothing was changed. You may not have access to do this.')
   })
 })
 

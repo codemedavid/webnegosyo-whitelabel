@@ -258,7 +258,8 @@ describe("listProducts", () => {
       chain[m] = jest.fn(() => chain);
     });
     chain.order = jest.fn(() => chain);
-    chain.order.mockImplementationOnce(() => chain).mockImplementationOnce(() => Promise.resolve(single));
+    // The read is paged, so each request ends in `.range()`.
+    chain.range = jest.fn(() => Promise.resolve(single));
     (supabase.from as jest.Mock).mockReturnValueOnce(chain);
 
     const result = await listProducts("tenant-1");
@@ -270,6 +271,7 @@ describe("listProducts", () => {
       ["order", { ascending: true }],
       ["id", { ascending: true }],
     ]);
+    expect(chain.range.mock.calls).toEqual([[0, 999]]);
     expect(result).toEqual([{ id: "1" }]);
   });
 
@@ -278,10 +280,8 @@ describe("listProducts", () => {
     ["select", "eq"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
-    chain.order = jest
-      .fn()
-      .mockImplementationOnce(() => chain)
-      .mockImplementationOnce(() => Promise.resolve({ data: null, error: new Error("db down") }));
+    chain.order = jest.fn(() => chain);
+    chain.range = jest.fn(() => Promise.resolve({ data: null, error: new Error("db down") }));
     (supabase.from as jest.Mock).mockReturnValueOnce(chain);
 
     await expect(listProducts("tenant-1")).rejects.toThrow("db down");
@@ -473,22 +473,68 @@ describe("updateProduct", () => {
 });
 
 describe("deleteProduct", () => {
-  it("deletes only the given product for the given tenant", async () => {
-    const chain: Record<string, jest.Mock> = {};
-    chain.delete = jest.fn(() => chain);
-    chain.eq = jest.fn(() => chain);
-    // Last eq call resolves the promise
-    let eqCalls = 0;
-    chain.eq = jest.fn(() => {
-      eqCalls += 1;
-      if (eqCalls === 2) return Promise.resolve({ error: null });
-      return chain;
+  /** One query per `from()`, each answering with the next result. */
+  function answerInOrder(results: { data: unknown; error: unknown }[]) {
+    const queue = [...results];
+    const builders: Record<string, jest.Mock>[] = [];
+    (supabase.from as jest.Mock).mockImplementation(() => {
+      const settled = Promise.resolve(queue.shift() ?? { data: [], error: null });
+      const builder: Record<string, jest.Mock> = {};
+      ["delete", "select", "eq", "limit"].forEach((method) => {
+        builder[method] = jest.fn(() => builder);
+      });
+      (builder as Record<string, unknown>).then = settled.then.bind(settled);
+      builders.push(builder);
+      return builder;
     });
-    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return builders;
+  }
+
+  // Put the module mock's own builder back for the suites below.
+  const defaultFrom = (supabase.from as jest.Mock).getMockImplementation();
+  afterEach(() => {
+    (supabase.from as jest.Mock).mockImplementation(defaultFrom);
+  });
+
+  it("deletes only the given product for the given tenant", async () => {
+    const builders = answerInOrder([{ data: [{ id: "1" }], error: null }]);
 
     await deleteProduct("1", "tenant-1");
 
-    expect(chain.delete).toHaveBeenCalled();
+    expect(builders).toHaveLength(1);
+    expect(builders[0].delete).toHaveBeenCalled();
+    expect(builders[0].eq.mock.calls).toEqual([
+      ["id", "1"],
+      ["tenant_id", "tenant-1"],
+    ]);
+  });
+
+  it("reports a delete the database refused, instead of reporting success", async () => {
+    // Row-level security refuses silently: no error, zero rows, and the dish
+    // is still there when looked for.
+    answerInOrder([
+      { data: [], error: null },
+      { data: [{ id: "1" }], error: null },
+    ]);
+
+    await expect(deleteProduct("1", "tenant-1")).rejects.toThrow(
+      "Nothing was changed. You may not have access to do this.",
+    );
+  });
+
+  it("is fine when the dish is already gone: the second tap of a double tap", async () => {
+    answerInOrder([
+      { data: [], error: null },
+      { data: [], error: null },
+    ]);
+
+    await expect(deleteProduct("1", "tenant-1")).resolves.toBeUndefined();
+  });
+
+  it("surfaces a delete error", async () => {
+    answerInOrder([{ data: null, error: new Error("foreign key violation") }]);
+
+    await expect(deleteProduct("1", "tenant-1")).rejects.toThrow("foreign key violation");
   });
 });
 

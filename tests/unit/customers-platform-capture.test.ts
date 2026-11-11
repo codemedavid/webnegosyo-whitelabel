@@ -64,6 +64,9 @@ describe('capturePlatformOrderBestEffort', () => {
           },
           eq: () => builder,
           is: () => builder,
+          // The order history is read a page at a time.
+          order: () => builder,
+          range: () => builder,
           maybeSingle: async () => ({ data: { id: 'customer-1' }, error: null }),
           then: (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
             resolve({ data: [], error: null }),
