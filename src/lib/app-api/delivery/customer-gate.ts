@@ -19,7 +19,9 @@ export interface CustomerBudgets {
   daily: Pick<RateLimitOptions, 'limit' | 'windowSec'>
 }
 
-export type CustomerGate = { ok: true; customerId: string } | { ok: false; response: NextResponse }
+export type CustomerGate =
+  | { ok: true; customerId: string; /** The session's token hash, for RPCs that re-check the session themselves. */ tokenHash: string }
+  | { ok: false; response: NextResponse }
 
 export const SIGNED_OUT_MESSAGE = 'Please sign in again.'
 
@@ -42,5 +44,5 @@ export async function gateAppCustomer({ request, app }: AppRouteContext, budgets
       }
     }
   }
-  return { ok: true, customerId: session.customerId }
+  return { ok: true, customerId: session.customerId, tokenHash: session.tokenHash }
 }

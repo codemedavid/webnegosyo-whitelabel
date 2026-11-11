@@ -269,21 +269,33 @@ export const VALID_LOYALTY = {
       rewardLabel: 'Free drink of your choice',
       minSpend: 100,
       branchName: null,
+      rewardSteps: [
+        { at: 5, label: 'Free cookie', emoji: '🍪', imageUrl: null, isFinal: false },
+        { at: 10, label: 'Free drink of your choice', emoji: '🎁', imageUrl: null, isFinal: true },
+      ],
     },
   ],
   rewards: [
     {
-      id: 'ent-1',
+      id: '6f1c2a40-5b7e-4c1d-9a3e-2b8f0d4e6a11',
       programName: 'Kape Stamps',
       label: 'Free drink of your choice',
       expiresAt: '2026-10-30T15:59:59Z',
       branchName: null,
+      emoji: '🎁',
+      imageUrl: null,
     },
   ],
   activity: [
     { id: 'act-1', kind: 'earn' as const, delta: 1, label: 'Order #07', occurredAt: '2026-09-29T02:10:00Z' },
     { id: 'act-2', kind: 'reward_issued' as const, delta: -10, label: 'Free drink unlocked', occurredAt: '2026-09-20T05:00:00Z' },
   ],
+  claimsAvailable: true,
+}
+
+export const VALID_REWARD_CLAIM = {
+  token: `v1.${'A'.repeat(43)}.${'0'.repeat(64)}`,
+  expiresAt: '2026-10-01T02:12:00Z',
 }
 
 export const VALID_ORDER_DETAIL = {

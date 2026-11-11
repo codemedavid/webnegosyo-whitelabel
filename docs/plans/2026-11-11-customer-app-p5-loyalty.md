@@ -1,6 +1,8 @@
 # Customer app — Phase 5: loyalty + member QR (plan)
 
 Status: **APPROVED 2026-11-12** — counter-only claims (checkout rewards = later P5b), QR at once (no second SMS code), live test on sample-demo OK. Main merged in first.
+
+**Built 2026-11-12.** Migration `20261111223138_customer_app_loyalty.sql` APPLIED to platform (two parts: `…223138` + `…223149_customer_app_loyalty_claim`) and probed (column, CHECK, FK cascade, index, anon/authenticated refused, service role answers). PGlite `tests/sql/run-customer-app-loyalty.cjs` passes (incl. an app claim redeemed by the real `issue_loyalty_pos_quote`). Live `CUSTOMER_APP_LOYALTY_LIVE=1` passed on sample-demo (ran twice: 2 `live-test` corrections, both rewards voided). Owed: web deploy, device run, Retry-After not surfaced in the app.
 Date: 2026-11-11. Branch `feat/customer-app`.
 
 Goal: a signed-in customer opens Rewards and sees their real stamps/points,

@@ -4270,7 +4270,8 @@ export type Database = {
       }
       loyalty_verified_claims: {
         Row: {
-          challenge_id: string
+          app_session_id: string | null
+          challenge_id: string | null
           created_at: string
           entitlement_id: string
           expires_at: string
@@ -4280,7 +4281,8 @@ export type Database = {
           used_at: string | null
         }
         Insert: {
-          challenge_id: string
+          app_session_id?: string | null
+          challenge_id?: string | null
           created_at?: string
           entitlement_id: string
           expires_at: string
@@ -4290,7 +4292,8 @@ export type Database = {
           used_at?: string | null
         }
         Update: {
-          challenge_id?: string
+          app_session_id?: string | null
+          challenge_id?: string | null
           created_at?: string
           entitlement_id?: string
           expires_at?: string
@@ -4300,6 +4303,13 @@ export type Database = {
           used_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "loyalty_verified_claims_app_session_id_fkey"
+            columns: ["app_session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_app_sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "loyalty_verified_claims_challenge_id_fkey"
             columns: ["challenge_id"]
@@ -11182,6 +11192,10 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: boolean
       }
+      app_customer_loyalty: {
+        Args: { p_session_token_hash: string; p_tenant_id: string }
+        Returns: Json
+      }
       app_user_has_permission: {
         Args: { p_permission: string; p_tenant_id: string }
         Returns: boolean
@@ -12012,6 +12026,15 @@ export type Database = {
       inventory_recipe_cost: {
         Args: { p_path?: string[]; p_recipe_id: string; p_tenant_id: string }
         Returns: number
+      }
+      issue_app_loyalty_claim: {
+        Args: {
+          p_claim_token_hash: string
+          p_entitlement_id: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       issue_customer_login_challenge: {
         Args: {
