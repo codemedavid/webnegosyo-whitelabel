@@ -22,6 +22,8 @@
  */
 
 import { supabase } from "./supabase";
+import { assertRowsChanged } from "./assert-rows-changed";
+import { readAllPages, type PageResponse } from "./gov-reports/paging";
 import { judgeCountSession, type CountSessionProgress } from "./daily-report/count-session";
 import { isFromEarlierBusinessDay, toBusinessDayKey } from "./daily-report/business-day";
 
@@ -63,17 +65,49 @@ function asError(error: { message?: string } | null, fallback: string): Error {
   return new Error(error?.message ? `${fallback} (${error.message})` : fallback);
 }
 
-/** Distinct ingredients this session has reached. */
-async function countedItemIds(db: Db, countId: string): Promise<string[]> {
-  const { data, error } = await db
-    .from("stock_movements")
-    .select("inventory_item_id")
-    .eq("inventory_count_id", countId);
+/**
+ * One response from the platform database carries at most 1,000 rows and says
+ * nothing about the rest, which cut both sides of a count's coverage off at
+ * 1,000. Both reads are paged up to a ceiling far above any real store; past
+ * it they fail rather than report coverage worked out from part of the rows.
+ */
+const PAGE_SIZE = 1000;
+const MAX_INGREDIENTS_IN_SCOPE = 10_000;
+const MAX_COUNTED_LINES = 20_000;
 
-  if (error) throw asError(error, "The stock count's progress could not be read.");
-  return ((data ?? []) as unknown as { inventory_item_id: string }[]).map(
-    (row) => row.inventory_item_id,
+/** Every row of a paged read, or an error the merchant can be shown. */
+async function readEvery<Row>(
+  fetchPage: (from: number, to: number) => PromiseLike<PageResponse<Row>>,
+  maxRows: number,
+  failure: string,
+): Promise<Row[]> {
+  let read;
+  try {
+    read = await readAllPages(fetchPage, { pageSize: PAGE_SIZE, maxRows });
+  } catch (error) {
+    throw asError(error as { message?: string }, failure);
+  }
+  if (read.isTruncated) {
+    throw new Error(`${failure} (more than ${maxRows.toLocaleString("en-US")} rows)`);
+  }
+  return read.rows;
+}
+
+/** Ingredients this session has reached, one entry per line (recounts repeat). */
+async function countedItemIds(db: Db, countId: string): Promise<string[]> {
+  const rows = await readEvery<{ inventory_item_id: string }>(
+    (from, to) =>
+      db
+        .from("stock_movements")
+        .select("inventory_item_id")
+        .eq("inventory_count_id", countId)
+        // Unique, so pages never overlap or skip.
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PageResponse<{ inventory_item_id: string }>>,
+    MAX_COUNTED_LINES,
+    "The stock count's progress could not be read.",
   );
+  return rows.map((row) => row.inventory_item_id);
 }
 
 async function progressOf(db: Db, count: CountRow): Promise<OpenCountSession> {
@@ -143,14 +177,19 @@ export async function loadOpenCount(
  * teach the merchant that a complete count is unachievable.
  */
 async function countIngredientsInScope(db: Db, tenantId: string): Promise<number> {
-  const { data, error } = await db
-    .from("inventory_items")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
-
-  if (error) throw asError(error, "The ingredients to count could not be read.");
-  return (data ?? []).length;
+  const rows = await readEvery<{ id: string }>(
+    (from, to) =>
+      db
+        .from("inventory_items")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PageResponse<{ id: string }>>,
+    MAX_INGREDIENTS_IN_SCOPE,
+    "The ingredients to count could not be read.",
+  );
+  return rows.length;
 }
 
 /**
@@ -209,16 +248,33 @@ export async function closeCount(
   closedBy: string | null,
   db: Db = supabase,
 ): Promise<void> {
-  const { error } = await db
+  const result = assertRowsChanged(
+    await db
+      .from("inventory_counts")
+      .update({
+        status: "closed",
+        closed_at: new Date().toISOString(),
+        closed_by: closedBy,
+      } as never)
+      .eq("tenant_id", tenantId)
+      .eq("id", countId)
+      .eq("status", "open")
+      .select("id"),
+  );
+  if (result.ok) return;
+  if (result.reason === "error") throw asError(result.error, "The stock count could not be closed.");
+
+  // Zero rows: someone else closed it first (nothing to do), or row-level
+  // security refused the change and the count is still open. Read it back to
+  // tell which; a count that cannot be seen was not closed by this call.
+  const { data, error } = await db
     .from("inventory_counts")
-    .update({
-      status: "closed",
-      closed_at: new Date().toISOString(),
-      closed_by: closedBy,
-    } as never)
+    .select("id, closed_at")
     .eq("tenant_id", tenantId)
     .eq("id", countId)
-    .eq("status", "open");
-
+    .maybeSingle();
   if (error) throw asError(error, "The stock count could not be closed.");
+  if ((data as { closed_at: string | null } | null)?.closed_at) return;
+
+  throw new Error("The stock count could not be closed. You may not have access to do this.");
 }

@@ -226,7 +226,7 @@ describe("saveVoucher", () => {
 
 describe("setVoucherActive", () => {
   it("flips the switch within the tenant", async () => {
-    queued = [{ data: null, error: null }];
+    queued = [{ data: [{ id: "v1" }], error: null }];
     await setVoucherActive("v1", "t1", false);
     expect(argsFor("update")[0][0]).toEqual({ is_active: false });
     expect(argsFor("eq")).toEqual([
@@ -238,6 +238,16 @@ describe("setVoucherActive", () => {
   it("throws on failure so the optimistic switch can roll back", async () => {
     queued = [{ data: null, error: { message: "nope" } }];
     await expect(setVoucherActive("v1", "t1", true)).rejects.toEqual({ message: "nope" });
+  });
+
+  it("throws when the database refused the switch, so it does not stay showing the new state", async () => {
+    // Row-level security refuses silently: no error, zero rows. A voucher is
+    // never deleted, so zero rows is never "nothing to do".
+    queued = [{ data: [], error: null }];
+
+    await expect(setVoucherActive("v1", "t1", false)).rejects.toThrow(
+      "Nothing was changed. You may not have access to do this.",
+    );
   });
 });
 

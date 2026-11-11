@@ -36,7 +36,7 @@ const EXISTING = {
 function chain(result: { data: unknown; error: unknown }) {
   const settled = Promise.resolve(result);
   const builder: Record<string, unknown> = {};
-  ["select", "eq", "in", "order", "upsert", "delete", "update", "insert"].forEach((method) => {
+  ["select", "eq", "in", "order", "limit", "upsert", "delete", "update", "insert"].forEach((method) => {
     builder[method] = jest.fn(() => builder);
   });
   builder.maybeSingle = jest.fn(() => settled);
@@ -139,6 +139,30 @@ describe("setBranchListing", () => {
     await expect(setBranchListing("t1", "branch-a", "adobo", isListed)).rejects.toThrow(
       "write failed",
     );
+  });
+
+  it.each([
+    ["is still there: the database refused to remove it", [{ menu_item_id: "adobo" }], true],
+    ["is gone: someone else already put the dish back", [], false],
+  ])("after a removal that changed nothing, the row %s", async (_case, remaining, isRefused) => {
+    // Arrange: the row reads as "not here", the delete changes zero rows with
+    // no error (how row-level security refuses), then the look for the row.
+    const answers = [
+      { data: { ...EXISTING, is_listed: false, price: null }, error: null },
+      { data: [], error: null },
+      { data: remaining, error: null },
+    ];
+    from.mockImplementation(() => chain(answers.shift() ?? { data: null, error: null }));
+
+    // Act
+    const write = setBranchListing("t1", "branch-a", "adobo", true);
+
+    // Assert
+    if (isRefused) {
+      await expect(write).rejects.toThrow("Nothing was changed. You may not have access to do this.");
+    } else {
+      await expect(write).resolves.toBeUndefined();
+    }
   });
 
   it("throws when the branch's current row cannot be read", async () => {
