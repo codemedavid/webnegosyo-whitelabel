@@ -101,6 +101,24 @@ export async function checkCallerOrder(db: Db, input: CallerOrderInput): Promise
   }
 }
 
+/** The steps an order moves through, in order. A cancel is not a step: it ends the order from any of them. */
+const ORDER_STEPS: readonly string[] = ['pending', 'confirmed', 'preparing', 'ready', 'delivered']
+
+/**
+ * Whether the saved order bears out a move a device reports.
+ *
+ * The report travels behind the write, and staff tap an order through its steps
+ * about a second apart, so a report often arrives after the order has already
+ * moved on. A step the order shows or has passed is taken. A step it has not
+ * reached, and a cancel it does not show, are not.
+ */
+export function savedOrderBearsOut(reportedStatus: string, savedStatus: string): boolean {
+  if (reportedStatus === savedStatus) return true
+  const reportedStep = ORDER_STEPS.indexOf(reportedStatus)
+  const savedStep = ORDER_STEPS.indexOf(savedStatus)
+  return reportedStep !== -1 && savedStep !== -1 && reportedStep < savedStep
+}
+
 export interface EventOutletInput {
   tenantId: string
   callerOutletId: string | null

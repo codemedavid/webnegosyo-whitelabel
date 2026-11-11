@@ -262,8 +262,30 @@ describe('POST /api/customers/sync-order-lifecycle', () => {
       expectNothingWritten()
     })
 
-    test.each([['confirmed'], ['delivered']])('refuses a move to %s the saved order does not show', async (status) => {
-      const res = await post(platformBody({ status }))
+    test('refuses a move to a step the saved order has not reached', async () => {
+      const res = await post(platformBody({ status: 'delivered' }))
+
+      expect(res.status).toBe(409)
+      expectNothingWritten()
+    })
+
+    // Staff tap an order through its steps about a second apart, and the report
+    // travels behind the write: by the time "preparing" lands the order is "ready".
+    test.each([['confirmed'], ['preparing']])(
+      'keeps the line for a move to %s the order has already passed',
+      async (status) => {
+        const res = await post(platformBody({ status }))
+
+        expect(res.status).toBe(200)
+        expect(recordedDraft()).toMatchObject({ status, outletId: NORTH, orderTotal: 480 })
+        expect(reverseGrants).not.toHaveBeenCalled()
+      },
+    )
+
+    test('refuses an earlier step once the order is cancelled', async () => {
+      orderRow = { ...orderRow, status: 'cancelled' }
+
+      const res = await post(platformBody({ status: 'preparing' }))
 
       expect(res.status).toBe(409)
       expectNothingWritten()

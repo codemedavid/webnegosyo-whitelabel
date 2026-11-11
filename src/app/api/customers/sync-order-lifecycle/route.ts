@@ -28,7 +28,9 @@ import { defineRoute } from '@/platform/http/define-route'
  * - WHICH ORDER, on a platform store: the store's row says where its orders
  *   live (`resolveOrderBackend`), whatever backend the body names. The order
  *   must be the store's and, for a branch account, its own branch's (404), and
- *   a reported status must be the one the saved order shows (409). The branch,
+ *   a reported status must be one the saved order shows or has already passed
+ *   (409 otherwise: the report travels behind the write, and an order tapped
+ *   through its steps has often moved on by the time it lands). The branch,
  *   source and total on the activity line come from the saved order.
  * - A store on its own deployment: the order cannot be read from here, so the
  *   reported status is taken as sent, as it always was. A branch account's
@@ -78,7 +80,7 @@ export const POST = defineRoute({
     const { event: posted, deviceTotal } = body
 
     const { createAdminClient } = await import('@/lib/supabase/admin')
-    const { checkCallerOrder, resolveEventOutlet } = await import('@/lib/auth/caller-order')
+    const { checkCallerOrder, resolveEventOutlet, savedOrderBearsOut } = await import('@/lib/auth/caller-order')
     const { syncOrderLifecycle } = await import('@/lib/customer-lifecycle-sync')
     const { createSupabaseLifecycleDeps } = await import('@/lib/customer-lifecycle-store')
     const { runLoyaltyForOrder } = await import('@/lib/loyalty/lifecycle')
@@ -96,7 +98,9 @@ export const POST = defineRoute({
       if (check.backend === 'platform') {
         const order = check.order
         if (!order) return refused(404, 'Order not found')
-        if (posted.status && posted.status !== order.status) return refused(409, 'The order is not in that status.')
+        if (posted.status && !savedOrderBearsOut(posted.status, order.status)) {
+          return refused(409, 'The order is not in that status.')
+        }
         event = { ...posted, backend: 'platform_supabase', outletId: order.outletId, source: order.source }
         orderTotal = order.total
       } else {

@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, test } from '@jest/globals'
-import { checkCallerOrder, resolveEventOutlet } from '@/lib/auth/caller-order'
+import { checkCallerOrder, resolveEventOutlet, savedOrderBearsOut } from '@/lib/auth/caller-order'
 import { fakeSupabaseTables } from '../../fixtures/fake-supabase-tables'
 
 const TENANT = '11111111-1111-4111-8111-111111111111'
@@ -136,5 +136,29 @@ describe('resolveEventOutlet', () => {
     const { client } = db({ outlets }, { outlets: 'timeout' })
 
     await expect(resolveEventOutlet(client, { tenantId: TENANT, callerOutletId: null, named: NORTH })).rejects.toThrow()
+  })
+})
+
+describe('savedOrderBearsOut', () => {
+  test.each([
+    ['ready', 'ready'],
+    ['cancelled', 'cancelled'],
+    ['pending', 'confirmed'],
+    ['confirmed', 'delivered'],
+    ['preparing', 'ready'],
+  ])('takes a report of %s for an order saved as %s', (reported, saved) => {
+    expect(savedOrderBearsOut(reported, saved)).toBe(true)
+  })
+
+  test.each([
+    ['delivered', 'ready'],
+    ['ready', 'preparing'],
+    ['cancelled', 'ready'],
+    ['cancelled', 'delivered'],
+    ['preparing', 'cancelled'],
+    ['refunded', 'delivered'],
+    ['ready', ''],
+  ])('refuses a report of %s for an order saved as %s', (reported, saved) => {
+    expect(savedOrderBearsOut(reported, saved)).toBe(false)
   })
 })
