@@ -71,11 +71,10 @@ function scheduleBuild(onboardingId: string): void {
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`onboarding-submit:${ip}`, SUBMIT_RATE_LIMIT)
-    if (!rate.allowed) return respond({ error: 'Too many attempts. Please wait a few minutes.' }, 429)
-  }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`onboarding-submit:${ip}`, SUBMIT_RATE_LIMIT)
+  if (!rate.allowed) return respond({ error: 'Too many attempts. Please wait a few minutes.' }, 429)
 
   let body: unknown
   try {

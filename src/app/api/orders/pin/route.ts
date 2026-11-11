@@ -34,8 +34,9 @@ const bodySchema = z.object({
 })
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip && !(await checkRateLimit(`order-pin-ip:${ip}`, IP_LIMIT)).allowed) {
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  if (!(await checkRateLimit(`order-pin-ip:${ip}`, IP_LIMIT)).allowed) {
     return NextResponse.json({ error: 'Too many tries. Please wait a moment.' }, { status: 429 })
   }
 

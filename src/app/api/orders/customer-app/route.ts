@@ -32,11 +32,10 @@ const TENANT_LIMIT = { limit: 1000, windowSec: 60, onRedisFailure: 'instance' as
 const RATE_LIMITED_MESSAGE = 'You’re placing orders very quickly. Please wait a minute, then try again.'
 
 export async function POST(request: NextRequest) {
-  const ip = getClientIP(request)
-  if (ip) {
-    const byIp = await checkRateLimit(`customer-app-order-ip:${ip}`, IP_LIMIT)
-    if (!byIp.allowed) return rateLimited(byIp.retryAfterSec)
-  }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const byIp = await checkRateLimit(`customer-app-order-ip:${ip}`, IP_LIMIT)
+  if (!byIp.allowed) return rateLimited(byIp.retryAfterSec)
 
   let text: string
   try {

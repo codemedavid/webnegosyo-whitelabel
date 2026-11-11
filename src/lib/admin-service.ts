@@ -471,19 +471,26 @@ export async function reorderCategories(tenantId: string, categoryIds: string[])
   
   const supabase = await createClient()
 
-  // Update order for each category
-  const updates = categoryIds.map((id, index) => 
-    supabase
-      .from('categories')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .update({ order: index } as any)
-      .eq('id', id)
-      .eq('tenant_id', tenantId)
+  // One write per category, each asked what it changed. Zero rows with the
+  // category still there = row-level security refused the write. Zero rows with
+  // it gone = it was deleted meanwhile (or is not this store's): the rest of
+  // the order still stands.
+  const results = await Promise.all(
+    categoryIds.map(async (id, index) =>
+      assertRowsChangedOrGone(
+        await supabase
+          .from('categories')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .update({ order: index } as any)
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+          .select('id'),
+        () => supabase.from('categories').select('id').eq('id', id).eq('tenant_id', tenantId).limit(1),
+      ),
+    ),
   )
-
-  const results = await Promise.all(updates)
-  const failed = results.find((result) => result.error)
-  if (failed?.error) throw failed.error
+  const failed = results.find((result) => !result.ok)
+  if (failed && !failed.ok) throw writeFailure(failed)
 }
 
 // ============================================
