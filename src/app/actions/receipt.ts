@@ -1,9 +1,11 @@
 'use server'
 
-import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
+import { z } from 'zod'
+import { verifyTenantAdmin } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ReceiptTaxIdentity } from '@/lib/receipt-tax'
 import { readReceiptTaxIdentity } from '@/lib/receipt-tax-server'
+import { defineAction } from '@/platform/http/define-action'
 
 interface ReceiptContext {
   storeName: string
@@ -12,25 +14,25 @@ interface ReceiptContext {
   tax: ReceiptTaxIdentity | null
 }
 
-/**
- * What the admin's "Print receipt" needs from the tenant row: the store name
- * and the saved receipt layout. Fetched on demand when the button is clicked
- * rather than threaded through every orders wrapper — the layout must always
- * be the currently-published one, not a page-load snapshot.
- */
+interface SaveReceiptLayoutResult {
+  success: boolean
+  error?: string
+}
+
 /**
  * Publish a tenant's receipt layout (a preset name or a custom block stack).
  * Refuses anything `sanitizeLayoutForSave` cannot vouch for — the printer
  * silently falls back to Classic on invalid data, so a bad save would throw
  * the merchant's design away without telling them.
  */
-export async function saveReceiptLayoutAction(
-  tenantId: string,
-  layout: unknown,
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    await verifyTenantPermission(tenantId, 'store_setup')
-
+export const saveReceiptLayoutAction = defineAction({
+  auth: { kind: 'staff', permission: 'store_setup', branch: 'any', storeClaim: ([tenantId]) => tenantId },
+  // Typed, not validated here: the access check decides the store id, and
+  // `sanitizeLayoutForSave` is the check on the layout.
+  args: [z.custom<string>(), z.unknown()],
+  // This action has always answered every refusal and failure with one sentence.
+  onRefusal: (): SaveReceiptLayoutResult => ({ success: false, error: 'Not authorized' }),
+  handler: async ({ tenant, args: [, layout] }): Promise<SaveReceiptLayoutResult> => {
     const { sanitizeLayoutForSave } = await import('@/lib/receipt-editor')
     const sanitized = sanitizeLayoutForSave(layout)
     if (sanitized === null) {
@@ -43,15 +45,19 @@ export async function saveReceiptLayoutAction(
       // Structured-clone through JSON: ReceiptLayout is a closed interface and
       // the generated Json type wants an index signature.
       .update({ receipt_layout: JSON.parse(JSON.stringify(sanitized)) })
-      .eq('id', tenantId)
+      .eq('id', tenant)
 
     if (error) return { success: false, error: 'Could not save' }
     return { success: true }
-  } catch {
-    return { success: false, error: 'Not authorized' }
-  }
-}
+  },
+})
 
+/**
+ * What the admin's "Print receipt" needs from the tenant row: the store name
+ * and the saved receipt layout. Fetched on demand when the button is clicked
+ * rather than threaded through every orders wrapper — the layout must always
+ * be the currently-published one, not a page-load snapshot.
+ */
 export async function getReceiptContext(tenantId: string): Promise<ReceiptContext | null> {
   try {
     await verifyTenantAdmin(tenantId, 'view')
