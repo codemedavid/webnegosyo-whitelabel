@@ -57,18 +57,18 @@ export function convexServiceChargeArg(
 /**
  * The `serviceCharge` argument for an order write on any backend.
  *
- * The platform and tenant Supabase backends have a real column and take it
- * whatever the version; only Convex validates arguments strictly, so only Convex
- * (and a session whose backend is not resolved yet) is gated. Testing for
- * "supabase" alone sent every platform store through the Convex gate, where a
- * null version dropped the charge and reports counted it as food sales.
+ * The platform backend has a real column and takes it whatever the version;
+ * only Convex validates arguments strictly, so only Convex (and a session
+ * whose backend is not resolved yet) is gated. A platform store sent through
+ * the Convex gate had a null version drop the charge, and reports counted it
+ * as food sales.
  */
 export function serviceChargeArgFor(
-  orderBackend: "convex" | "supabase" | "platform" | null | undefined,
+  orderBackend: "convex" | "platform" | null | undefined,
   serviceCharge: number | null | undefined,
   convexSchemaVersion: number | null | undefined,
 ): { serviceCharge: number } | Record<string, never> {
-  const isGated = orderBackend !== "platform" && orderBackend !== "supabase";
+  const isGated = orderBackend !== "platform";
   return convexServiceChargeArg(
     serviceCharge,
     isGated ? convexSchemaVersion : CONVEX_SERVICE_CHARGE_MIN_VERSION,

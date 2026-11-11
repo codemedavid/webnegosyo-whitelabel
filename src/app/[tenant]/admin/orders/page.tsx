@@ -8,12 +8,7 @@ import { getCachedCurrentUserRole } from '@/lib/cache'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { ConvexOrdersWrapper } from '@/components/admin/convex-orders-wrapper'
 import { OrdersSkeleton } from '@/components/admin/orders-skeleton'
-import { getTenantSupabaseOrdersPage } from '@/lib/tenant-order-queue'
-import {
-  resolveOrderBackend,
-  hasTenantSupabaseOrderCredentials,
-} from '@/lib/order-backend'
-import type { OrderWithItems } from '@/lib/orders-service'
+import { resolveOrderBackend } from '@/lib/order-backend'
 import type { Tenant } from '@/types/database'
 import type { PaginatedOrdersResult } from '@/lib/orders-service'
 
@@ -24,56 +19,6 @@ interface OrdersPageProps {
     status?: string
     orderType?: string
   }>
-}
-
-/**
- * Queue for a tenant whose orders live in their own Supabase project. Reads go
- * through the service-role client server side; only the anon key reaches the
- * browser, for the realtime subscription.
- */
-async function TenantSupabaseOrdersContent({
-  tenantSlug,
-  tenant,
-  page,
-  status,
-  orderType,
-}: {
-  tenantSlug: string
-  tenant: Tenant
-  page: number
-  status?: string
-  orderType?: string
-}) {
-  const result = await getTenantSupabaseOrdersPage(tenant, {
-    page,
-    limit: 20,
-    status,
-    orderType,
-  })
-
-  // Resolved on the server from the request-cached admin row, so the browser is
-  // never trusted to say which branch it is allowed to hear about. A null row
-  // cannot reach here with orders to show — the fetch above authorizes first —
-  // so it keeps the store-wide behaviour that predates branches.
-  const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
-
-  return (
-    <RealtimeOrdersWrapper
-      initialOrders={result.orders as unknown as OrderWithItems[]}
-      tenantSlug={tenantSlug}
-      tenantId={tenant.id}
-      scope={scope}
-      realtimeUrl={tenant.supabase_order_url ?? undefined}
-      realtimeAnonKey={tenant.supabase_order_anon_key ?? undefined}
-      pagination={{
-        currentPage: result.currentPage,
-        totalPages: result.totalPages,
-        totalCount: result.totalCount,
-        hasNextPage: result.hasNextPage,
-        hasPreviousPage: result.hasPreviousPage,
-      }}
-    />
-  )
 }
 
 async function OrdersContent({
@@ -134,9 +79,6 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
   // A tenant marked `convex` without a deployment URL has nothing to render, so
   // it keeps falling back to the platform queue exactly as it did before.
   const showConvex = backend === 'convex' && Boolean(tenant.convex_deployment_url)
-  const showTenantSupabase = backend === 'supabase'
-  const isTenantSupabaseConfigured =
-    showTenantSupabase && hasTenantSupabaseOrderCredentials(tenant)
   // Resolved server-side; the Convex tab is a client component and must not be
   // trusted to decide which branch it may read.
   const convexScope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
@@ -164,32 +106,7 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
         />
       )}
 
-      {isTenantSupabaseConfigured && (
-        <Suspense fallback={<OrdersSkeleton />}>
-          <TenantSupabaseOrdersContent
-            tenantSlug={tenantSlug}
-            tenant={tenant}
-            page={page}
-            status={status}
-            orderType={orderType}
-          />
-        </Suspense>
-      )}
-
-      {showTenantSupabase && !isTenantSupabaseConfigured && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <Info className="mt-0.5 size-4 shrink-0" />
-          <div>
-            <p className="font-medium">Order backend not configured</p>
-            <p className="text-amber-800">
-              This store is set to use its own Supabase project, but its credentials are
-              incomplete. Orders cannot be shown until they are added. Contact support.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {!showConvex && !showTenantSupabase && (
+      {!showConvex && (
         <>
           <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
             <Info className="mt-0.5 size-4 shrink-0" />

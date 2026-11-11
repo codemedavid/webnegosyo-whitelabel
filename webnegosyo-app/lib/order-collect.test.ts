@@ -102,7 +102,7 @@ describe("canCollectPayment", () => {
   });
 
   it("refuses on a backend with no way to write a payment", () => {
-    const gate = canCollectPayment(request({ backend: "supabase" }));
+    const gate = canCollectPayment(request({ backend: "warehouse" as never }));
 
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toMatch(/backend/i);

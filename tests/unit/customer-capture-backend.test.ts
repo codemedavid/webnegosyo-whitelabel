@@ -26,7 +26,9 @@ describe('captureBackendOf', () => {
     // Act + Assert
     expect(captureBackendOf({ order_backend: 'platform' })).toBe('platform')
     expect(captureBackendOf({ order_backend: 'convex', convex_deployment_url: 'https://x.convex.cloud' })).toBe('convex')
-    expect(captureBackendOf({ order_backend: 'supabase' })).toBe('tenant_supabase')
+    // The retired own-project pin routes like auto, so it is named like auto.
+    expect(captureBackendOf({ order_backend: 'supabase' as never })).toBe('platform')
+    expect(captureBackendOf({ order_backend: 'supabase' as never, convex_deployment_url: 'https://x.convex.cloud' })).toBe('convex')
   })
 
   test('derives an unpinned tenant from its credentials, as checkout does', async () => {

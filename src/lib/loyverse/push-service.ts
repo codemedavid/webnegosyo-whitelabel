@@ -18,7 +18,7 @@
  * none. Platform receipts are labelled from the order row (daily number, else
  * short id), never a caller-sent number, so every trigger derives the same one.
  *
- * Convex / tenant-Supabase orders have no platform row (orderId is null);
+ * Convex orders have no platform row (orderId is null);
  * their single-call guarantee is the status transition that triggers the push.
  */
 
@@ -48,7 +48,7 @@ const UNKNOWN_OUTCOME_STATUSES: readonly string[] = ['pending', 'unconfirmed']
 
 export interface LoyversePushRequest {
   tenantId: string
-  /** Platform orders row id; null for Convex / tenant-Supabase orders. */
+  /** Platform orders row id; null for Convex orders. */
   orderId?: string | null
   orderNumber?: string
   items: OrderItem[]

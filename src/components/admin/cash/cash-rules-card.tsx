@@ -37,7 +37,7 @@ const REMIT_OPTIONS: ReadonlyArray<{ value: RemittanceMode; label: string }> = [
 export interface CashRulesCardProps {
   tenantSlug: string
   settings: CashSettings
-  /** The store's orders live outside the platform database (Convex / own Supabase). */
+  /** The store's orders live outside the platform database (Convex). */
   isPlatformBackend: boolean
 }
 

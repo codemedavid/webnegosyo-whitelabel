@@ -56,10 +56,6 @@ import type { DepletionOrderItem } from '@/lib/inventory/order-depletion'
  * `'qr_handoff'` are staff-made and have their own stock calls, so only those
  * are refused there. (Having the app send `source: 'mobile'` would let the
  * platform side be as strict, but needs a new app build.)
- *
- * NOT covered: tenants whose orders live in their own Supabase project. Those
- * orders are in neither store this route can read back, so the same guarantee
- * cannot be made without trusting the caller's lines.
  */
 
 interface TenantStockConfig {
@@ -284,11 +280,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // the platform, and reading Convex for them spent nothing.
     // The column is typed `string`; `resolveOrderBackend` validates the value itself.
     const backend = resolveOrderBackend(tenant as OrderBackendTenantFields)
-    if (backend === 'supabase') {
-      // Orders live in the tenant's own Supabase project; checkout already
-      // depletes them in createOrderAction, and the platform table has none.
-      return NextResponse.json({ success: true, skipped: 'unsupported_backend' })
-    }
     if (backend === 'convex' && tenant.convex_deployment_url) {
       const secrets = await getTenantSecrets(supabase, tenantId)
       return await depleteConvexOrder(

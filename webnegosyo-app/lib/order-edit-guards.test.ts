@@ -78,8 +78,8 @@ describe("canEditOrder", () => {
   });
 
   it("refuses on a backend that cannot accept the revise mutation", () => {
-    // Per-tenant Supabase projects have no mutation path at all today.
-    const gate = canEditOrder({ status: "pending", backend: "supabase", user: OWNER });
+    // An allowlist: a backend this build does not know is refused.
+    const gate = canEditOrder({ status: "pending", backend: "warehouse" as never, user: OWNER });
 
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toMatch(/not supported/i);

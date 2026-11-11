@@ -12,9 +12,8 @@ import {
  * refused for a store that has orders or stock claims there, unless the
  * superadmin sends `confirm_backend_change`.
  *
- * Platform orders and claims are counted here. A store leaving Convex (or its
- * own Supabase project) cannot have its orders counted from this database, so
- * it is always asked to confirm. A check that fails also asks, never guesses.
+ * Platform orders and claims are counted here. A store leaving Convex cannot
+ * have its orders counted from this database, so it is always asked to confirm. A check that fails also asks, never guesses.
  */
 export const BACKEND_CHANGE_REFUSAL =
   'This change moves where orders are stored, and the existing orders stay behind on the current backend. ' +

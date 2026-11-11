@@ -15,7 +15,6 @@ export const RECEIPT_REPRINTED_PATH = "/api/staff/receipt-reprinted";
 /** The platform's name for each backend — same table as report-pos-sale.ts. */
 const PLATFORM_BACKEND: Record<OrderBackend, string> = {
   convex: "convex",
-  supabase: "tenant_supabase",
   platform: "platform_supabase",
 };
 

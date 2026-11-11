@@ -43,8 +43,8 @@ import { checkDepleteLines, checkReviseLines, type OrderLineEvidence } from '@/l
  * anything moves (`lib/inventory/order-stock-lines.ts`): a made-up dish or
  * quantity is refused 409 `lines_do_not_match_order`, which the app's stock
  * queue treats as final (any 4xx outside 401/404/408/429). A Convex store with
- * no deploy key, or a tenant's own Supabase project, cannot be read back, so
- * its lines are still taken on trust and the route logs that it did.
+ * no deploy key cannot be read back, so its lines are still taken on trust and
+ * the route logs that it did.
  *
  * Authenticated via the caller's own Supabase access token — same trust level
  * as /api/revalidate-menu and `verifyTenantAdmin` in src/lib/admin-service.ts.

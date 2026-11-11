@@ -48,15 +48,13 @@ export interface PrepTimeCapability {
  * Whether this store can store a prep time at all.
  *
  * `platform` needs only the migration, which applies once to the shared
- * database. `supabase` is the separate per-tenant project track, for which the
- * app ships no adapter. `convex` needs its own deployment to carry the bundle.
+ * database. `convex` needs its own deployment to carry the bundle.
  */
 export function isPrepTimeSupported({
   orderBackend,
   convexSchemaVersion,
 }: PrepTimeCapability): boolean {
   if (orderBackend === "platform") return true;
-  if (orderBackend === "supabase") return false;
   return (convexSchemaVersion ?? 0) >= PREP_TIME_SCHEMA_VERSION;
 }
 

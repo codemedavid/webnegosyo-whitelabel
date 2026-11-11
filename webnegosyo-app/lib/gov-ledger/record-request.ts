@@ -23,7 +23,6 @@ export type GovRecordDraft = Omit<RecordGovDiscountRequest, "tenantId" | "backen
 const LEDGER_BACKEND: Record<OrderBackend, GovLedgerBackend> = {
   platform: "platform_supabase",
   convex: "convex",
-  supabase: "tenant_supabase",
 };
 
 export function ledgerBackendOf(backend: OrderBackend): GovLedgerBackend {

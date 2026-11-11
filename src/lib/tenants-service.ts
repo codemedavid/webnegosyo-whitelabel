@@ -518,8 +518,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
   const supabase = ctx?.client ?? (await createClient())
 
   // Get old tenant to clear old domain from cache. `order_backend` rides along
-  // so a tenant provisioned onto its own Supabase project is never demoted by an
-  // edit that does not mention order routing at all.
+  // for the backend-change checks below.
   const { data: oldTenantData } = await supabase
     .from('tenants')
     .select('domain, order_backend, convex_deployment_url, slug, auto_86_enabled')

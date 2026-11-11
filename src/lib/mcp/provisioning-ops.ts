@@ -533,7 +533,7 @@ const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'get_menu_performance',
         description:
-            "What actually SELLS: per-item units, revenue and share over the trailing window, read from whichever backend holds this tenant's orders (platform Supabase, the tenant's own Supabase project, or its Convex deployment). Envelope: { tenantId, days? }. ALWAYS call this before classifying a menu, arranging it, or proposing bundles/upsells. Check `coverage` in the response: when `coverage.complete` is false the read saw no data or only part of it — that is an ABSENCE of evidence, not proof that items sold nothing, and you must not classify a menu or recommend removing items from it.",
+            "What actually SELLS: per-item units, revenue and share over the trailing window, read from whichever backend holds this tenant's orders (platform Supabase or its Convex deployment). Envelope: { tenantId, days? }. ALWAYS call this before classifying a menu, arranging it, or proposing bundles/upsells. Check `coverage` in the response: when `coverage.complete` is false the read saw no data or only part of it — that is an ABSENCE of evidence, not proof that items sold nothing, and you must not classify a menu or recommend removing items from it.",
         input: z.object({
             tenantId: UUID,
             days: z

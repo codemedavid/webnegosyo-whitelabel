@@ -9,13 +9,17 @@
  * different databases for the same store.
  *
  * - `convex`   — the tenant's own dedicated Convex deployment.
- * - `supabase` — the tenant's own dedicated, fully separate Supabase project.
  * - `platform` — the shared platform Supabase, which the app already holds an
  *                authenticated client for (`lib/supabase.ts`).
+ *
+ * A third backend, `supabase` (the tenant's own, fully separate Supabase
+ * project), was removed on 2026-11-10: no store ever used it. The column's
+ * CHECK still accepts the word; like any value this build does not recognize,
+ * it derives from the Convex deployment URL.
  */
-export type OrderBackend = "convex" | "supabase" | "platform";
+export type OrderBackend = "convex" | "platform";
 
-const ORDER_BACKENDS: readonly OrderBackend[] = ["convex", "supabase", "platform"];
+const ORDER_BACKENDS: readonly OrderBackend[] = ["convex", "platform"];
 
 /** The subset of tenant columns needed to route order reads and writes. */
 export interface OrderBackendTenantFields {
@@ -32,7 +36,8 @@ function isNonEmpty(value: string | null | undefined): value is string {
  *
  * Prefers the explicit `order_backend` column so a superadmin can move a tenant
  * off Convex without first clearing its credentials. An absent or unrecognized
- * value (a row written by a newer platform build than this app) falls back to
+ * value (`auto`, the retired `supabase`, or a row written by a newer platform
+ * build than this app) falls back to
  * the historical rule — a Convex URL means Convex, otherwise the shared
  * platform database — so the app degrades instead of stranding on an adapter it
  * does not ship.
@@ -55,21 +60,16 @@ export interface OrderSessionFields {
  *
  * Screens gated on `convexUrl` alone predate the platform backend and lock out
  * every tenant moved onto the shared database — which the app reaches through
- * the adapter in `lib/backends/`, no deployment url required. `supabase` (a
- * separate per-tenant project) is deliberately false: the app ships no adapter
- * for it, so there is nothing to read.
+ * the adapter in `lib/backends/`, no deployment url required.
  */
 export function hasLiveOrderBackend(session: OrderSessionFields): boolean {
   if (session.orderBackend === "platform") return true;
-  if (session.orderBackend === "supabase") return false;
   return isNonEmpty(session.convexUrl);
 }
 
 /**
  * True when this tenant's orders are served by the shared platform Supabase —
- * the one database the app is already authenticated against. `supabase` is
- * deliberately excluded: that is a per-tenant project reached with different
- * credentials.
+ * the one database the app is already authenticated against.
  */
 export function isPlatformBackend(tenant: OrderBackendTenantFields): boolean {
   return resolveOrderBackend(tenant) === "platform";

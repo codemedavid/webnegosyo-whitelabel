@@ -88,8 +88,8 @@ describe("canConfirmFromDrawer", () => {
   });
 
   it("refuses on a backend that cannot write orders, rather than failing at the tap", () => {
-    // Arrange — per-tenant Supabase projects are read-only to this app.
-    const gate = canConfirmFromDrawer(order({ status: "pending" }), "supabase");
+    // Arrange — an allowlist: a backend this build does not know is refused.
+    const gate = canConfirmFromDrawer(order({ status: "pending" }), "warehouse");
 
     // Assert
     expect(gate.ok).toBe(false);

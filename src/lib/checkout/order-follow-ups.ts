@@ -4,11 +4,10 @@
  *
  * - Stock depletion stays ON the request: the next order's stock guard judges
  *   the shelf this leaves behind, so it must not trail the response.
- * - The merchant email (PostHog), the Loyverse receipt push and the
- *   Regulars-list capture are notifications. The customer is not waiting for
- *   them, so they run after the response (`runAfterResponse`) instead of
- *   holding checkout — and the tracking-page redirect — behind PostHog,
- *   Loyverse and the customer-profile queries.
+ * - The merchant email (PostHog) and the Loyverse receipt push are
+ *   notifications. The customer is not waiting for them, so they run after
+ *   the response (`runAfterResponse`) instead of holding checkout — and the
+ *   tracking-page redirect — behind PostHog and Loyverse.
  *
  * All of it is best-effort by design: the order is already saved.
  */
@@ -45,7 +44,7 @@ export interface OrderFollowUpInput {
   tenantId: string
   /** The saved order's id on its own backend. */
   orderId: string
-  /** The platform row id, or null for Convex / tenant-Supabase orders. */
+  /** The platform row id, or null for Convex orders. */
   platformOrderId: string | null
   items: readonly FollowUpOrderLine[]
   /** The already-validated branch — never the id the browser sent. */
@@ -53,13 +52,11 @@ export interface OrderFollowUpInput {
   /** The Loyverse snapshot checkout read; null skips the push entirely. */
   loyverse: LoyverseTenant | null
   notice: MerchantOrderNotice
-  /** Extra post-response capture (the tenant-Supabase Regulars list). */
-  captureCustomer?: () => Promise<unknown>
 }
 
 /**
  * Spend the order's ingredients. Stock lives in the platform Supabase for every
- * tenant regardless of where their orders live, so all three backends funnel
+ * tenant regardless of where their orders live, so both backends funnel
  * through here. A client-chosen branch would let a customer deplete someone
  * else's shelf, hence `outletId` is the validated one.
  */
@@ -132,8 +129,6 @@ async function notifyMerchant(input: OrderFollowUpInput): Promise<void> {
 export async function runOrderFollowUps(input: OrderFollowUpInput, schedule?: AfterScheduler): Promise<void> {
   await depleteStockForOrder(input)
 
-  const capture = input.captureCustomer
-  if (capture) await runAfterResponse('customer capture', async () => { await capture() }, schedule)
   await runAfterResponse('Loyverse push', () => pushLoyverseOnCreate(input), schedule)
   await runAfterResponse('merchant notification', () => notifyMerchant(input), schedule)
 }

@@ -1,7 +1,7 @@
 /**
  * The one storage-neutral sale the admin dashboard counts.
  *
- * Every order backend (platform Supabase, a tenant's own Supabase, Convex)
+ * Every order backend (platform Supabase, Convex)
  * projects its rows into this shape, and every dashboard number is pure
  * arithmetic over it — so the Overview and Growth tabs can never disagree about
  * what a sale is.

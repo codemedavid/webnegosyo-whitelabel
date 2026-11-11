@@ -252,7 +252,7 @@ export interface EnforcementArgs {
 }
 
 const COMMANDS: readonly EnforcementCommand[] = ['status', 'enforce', 'rollback', 'audit']
-const BACKENDS: readonly OrderBackend[] = ['platform', 'convex', 'supabase']
+const BACKENDS: readonly OrderBackend[] = ['platform', 'convex']
 
 export function parseEnforcementArgs(argv: readonly string[]): EnforcementArgs | { error: string } {
   const [command, ...rest] = argv

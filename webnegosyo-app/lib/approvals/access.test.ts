@@ -56,7 +56,6 @@ describe("approval gates", () => {
   test("only platform stores have approvals", () => {
     expect(isApprovalsStore({ orderBackend: "platform" })).toBe(true);
     expect(isApprovalsStore({ orderBackend: "convex" })).toBe(false);
-    expect(isApprovalsStore({ orderBackend: "supabase" })).toBe(false);
     expect(isApprovalsStore({ orderBackend: null })).toBe(false);
   });
 });

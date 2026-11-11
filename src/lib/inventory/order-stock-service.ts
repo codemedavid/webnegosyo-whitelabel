@@ -2,9 +2,9 @@
  * Order-driven stock depletion.
  *
  * Stock lives in the platform Supabase for every tenant, whatever backend holds
- * their orders — Convex, their own Supabase project, or the shared platform DB.
- * All three converge in `createOrderAction`, so depletion hooks in once here and
- * serves all of them rather than being reimplemented per backend.
+ * their orders — Convex or the shared platform DB. Both converge in
+ * `createOrderAction`, so depletion hooks in once here and serves both rather
+ * than being reimplemented per backend.
  *
  * Every write goes through the same append-only ledger a merchant uses by hand,
  * so an order's effect on stock is visible in the same history and reversible

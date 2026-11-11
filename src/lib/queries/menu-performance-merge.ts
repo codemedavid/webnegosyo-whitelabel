@@ -1,9 +1,8 @@
 /**
  * Pure per-item sales aggregation for the MCP's menu-engineering surface.
  *
- * A tenant's orders live in ONE of three backends (see `order-backend.ts`):
- * the shared platform Supabase, the tenant's own Supabase project, or the
- * tenant's own Convex deployment. Each is queried by a different shell and
+ * A tenant's orders live in ONE of two backends (see `order-backend.ts`):
+ * the shared platform Supabase or the tenant's own Convex deployment. Each is queried by a different shell and
  * normalized into `ItemSalesRow` before it arrives here, so this module is the
  * single place per-item popularity is computed — and the only place the
  * arithmetic has to be right.
@@ -18,7 +17,7 @@
  */
 
 /** Which backend actually answered the read. */
-export type MenuPerformanceSource = 'platform' | 'tenant_supabase' | 'convex'
+export type MenuPerformanceSource = 'platform' | 'convex'
 
 /** One order line, normalized from whichever backend produced it. */
 export interface ItemSalesRow {
