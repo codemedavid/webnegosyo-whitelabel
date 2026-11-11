@@ -26,8 +26,10 @@
  *
  * Returns a result instead of throwing, so the caller words the failure for
  * the person who made the change. `result.reason` says which kind it was.
+ * A writer that throws can `throw writeFailure(result)`.
  *
- * Not adopted anywhere yet.
+ * Where zero rows can also be a harmless no-op (deleting a row that is already
+ * gone), use `assertRowsChangedOrGone` beside this file.
  */
 
 export interface WriteError {
@@ -89,4 +91,16 @@ export function assertRowsChanged<Row>(
     return { ok: false, reason: 'unexpected-count', count: changed.count, expected }
   }
   return { ok: true, ...changed }
+}
+
+/** What the person who made the change is told when the database changed nothing. */
+export const NOTHING_CHANGED_MESSAGE = 'Nothing was changed. You may not have access to do this.'
+
+/**
+ * What a throwing writer throws for a failed result: the database error as it
+ * is (so existing handling of codes keeps working), anything else as an Error
+ * saying nothing was changed.
+ */
+export function writeFailure(result: { ok: false; reason: string; error?: WriteError }): WriteError | Error {
+  return result.error ?? new Error(NOTHING_CHANGED_MESSAGE)
 }

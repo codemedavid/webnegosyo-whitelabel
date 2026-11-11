@@ -5,7 +5,7 @@
  * that checks only `error` reports success. `assertRowsChanged` turns the
  * response into a result that cannot be read as success unless a row changed.
  */
-import { assertRowsChanged, type WriteResponse } from '@/platform/db/assert-rows-changed'
+import { assertRowsChanged, NOTHING_CHANGED_MESSAGE, writeFailure, type WriteResponse } from '@/platform/db/assert-rows-changed'
 
 interface Row {
   id: string
@@ -78,6 +78,22 @@ describe('assertRowsChanged', () => {
 
     it('still calls zero rows a refusal, whatever was expected', () => {
       expect(assertRowsChanged(response({ data: [] }), { expected: 3 })).toEqual({ ok: false, reason: 'no-rows-changed' })
+    })
+  })
+
+  describe('writeFailure: what a throwing writer throws', () => {
+    it('is the database error itself, so handling of its code keeps working', () => {
+      const error = { message: 'duplicate key value violates unique constraint', code: '23505' }
+
+      expect(writeFailure(assertRowsChanged(response({ error })) as { ok: false; reason: string })).toBe(error)
+    })
+
+    it('is an Error the person can read when the database changed nothing', () => {
+      const failure = writeFailure({ ok: false, reason: 'no-rows-changed' })
+
+      expect(failure).toBeInstanceOf(Error)
+      expect(failure.message).toBe(NOTHING_CHANGED_MESSAGE)
+      expect(NOTHING_CHANGED_MESSAGE).toBe('Nothing was changed. You may not have access to do this.')
     })
   })
 

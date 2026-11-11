@@ -209,3 +209,74 @@ describe('fakeSupabaseTables — ordering, windows, projection', () => {
     expect(seed[0].n).toBe(0)
   })
 })
+
+describe('fakeSupabaseTables — update and delete', () => {
+  it('deletes the matching rows and returns them after .select()', async () => {
+    const { client, writes } = fakeSupabaseTables({ things: rows(5) })
+
+    const result = await client.from('things').delete().eq('n', 2).select('id')
+
+    expect(result).toEqual(expect.objectContaining({ data: [{ id: 'r-00002' }], error: null, status: 200 }))
+    expect((await client.from('things').select('n')).data).toHaveLength(4)
+    expect(writes).toEqual([{ table: 'things', kind: 'delete', changed: 1 }])
+  })
+
+  it('updates the matching rows, and later reads see the new values', async () => {
+    const { client, writes } = fakeSupabaseTables({ things: rows(5) })
+
+    const result = await client.from('things').update({ status: 'done' }).in('n', [1, 2]).select('n, status')
+
+    expect(result.data).toEqual([{ n: 1, status: 'done' }, { n: 2, status: 'done' }])
+    expect((await client.from('things').select('n').eq('status', 'done')).data).toEqual([{ n: 1 }, { n: 2 }])
+    expect(writes).toEqual([{ table: 'things', kind: 'update', patch: { status: 'done' }, changed: 2 }])
+  })
+
+  it("answers with a count for { count: 'exact' } and with nothing at all otherwise, like PostgREST", async () => {
+    const { client } = fakeSupabaseTables({ things: rows(5) })
+
+    const counted = await client.from('things').update({ status: 'done' }, { count: 'exact' }).lt('n', 3)
+    const bare = await client.from('things').delete().eq('n', 4)
+
+    expect(counted).toEqual({ data: null, error: null, count: 3, status: 204 })
+    expect(bare).toEqual({ data: null, error: null, count: null, status: 204 })
+  })
+
+  it('reports zero rows and no error when the filter matches nothing', async () => {
+    const { client } = fakeSupabaseTables({ things: rows(5) })
+
+    const result = await client.from('things').delete().eq('n', 99).select('id')
+
+    expect(result).toEqual(expect.objectContaining({ data: [], error: null }))
+  })
+
+  it('refuses a write the way row-level security does: no error, zero rows, nothing changed', async () => {
+    const { client, writes } = fakeSupabaseTables({ things: rows(5) }, {}, { refuseWrites: ['things'] })
+
+    const deleted = await client.from('things').delete().eq('n', 2).select('id')
+    const updated = await client.from('things').update({ status: 'done' }, { count: 'exact' }).eq('n', 2)
+
+    expect(deleted).toEqual(expect.objectContaining({ data: [], error: null }))
+    expect(updated).toEqual(expect.objectContaining({ error: null, count: 0 }))
+    expect((await client.from('things').select('n, status').eq('n', 2)).data).toEqual([{ n: 2, status: 'confirmed' }])
+    expect(writes.map((write) => write.changed)).toEqual([0, 0])
+  })
+
+  it('fails a write on a failing table, with its error', async () => {
+    const { client } = fakeSupabaseTables({ things: rows(3) }, { things: 'permission denied' })
+
+    const result = await client.from('things').delete().eq('n', 1).select('id')
+
+    expect(result).toEqual(expect.objectContaining({ data: null, error: { message: 'permission denied' } }))
+  })
+
+  it('never writes into the seeded rows', async () => {
+    const seed = rows(3)
+    const { client } = fakeSupabaseTables({ things: seed })
+
+    await client.from('things').update({ status: 'done' }).eq('n', 1)
+    await client.from('things').delete().eq('n', 2)
+
+    expect(seed).toHaveLength(3)
+    expect(seed[1].status).toBe('confirmed')
+  })
+})

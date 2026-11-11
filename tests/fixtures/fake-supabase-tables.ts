@@ -12,6 +12,21 @@ export const PLATFORM_MAX_ROWS = 1000
 export interface FakeSupabaseOptions {
   /** Rows per response. Defaults to the platform's cap. */
   maxRows?: number
+  /**
+   * Tables whose UPDATE and DELETE row-level security refuses. A refusal is
+   * silent, as on the platform: no error, zero rows, the table unchanged.
+   */
+  refuseWrites?: readonly string[]
+}
+
+/** One settled UPDATE or DELETE, for tests that check what was written. */
+export interface FakeWrite {
+  table: string
+  kind: 'update' | 'delete'
+  /** The values an update set. */
+  patch?: FakeRow
+  /** Rows actually changed: zero for a refusal or a filter that matched nothing. */
+  changed: number
 }
 
 /** One settled request, for tests that count pages or check their windows. */
@@ -25,6 +40,18 @@ export interface FakeRequest {
 interface SelectOptions {
   count?: 'exact' | 'planned' | 'estimated'
   head?: boolean
+}
+
+interface WriteOptions {
+  count?: 'exact' | 'planned' | 'estimated'
+}
+
+interface Mutation {
+  kind: 'update' | 'delete'
+  patch?: FakeRow
+  options: WriteOptions
+  /** `.select()` after the write: the changed rows come back. */
+  returning: boolean
 }
 
 interface Ordering {
@@ -92,15 +119,25 @@ function sortRows(rows: readonly FakeRow[], orderings: readonly Ordering[]): Fak
  *   shows up as a missing field rather than passing silently.
  * - `or()` is accepted and ignored: seed only rows the filter would keep. A
  *   `not()` operator that is not modelled throws instead of matching nothing.
+ * - `update()` and `delete()` change the fake's own copy of a table (never the
+ *   seeded rows) and answer like PostgREST: the changed rows after `.select()`,
+ *   a count after `{ count: 'exact' }`, otherwise nothing (status 204). A table
+ *   in `refuseWrites` changes nothing and reports no error, like a write
+ *   row-level security turned away.
  */
 export function fakeSupabaseTables(
   /** Seeded rows per table. Typed rows (interfaces) are accepted as they are. */
   tables: Record<string, ReadonlyArray<object>>,
   failures: Record<string, string> = {},
-  { maxRows = PLATFORM_MAX_ROWS }: FakeSupabaseOptions = {},
+  { maxRows = PLATFORM_MAX_ROWS, refuseWrites = [] }: FakeSupabaseOptions = {},
 ) {
   const seen: string[] = []
   const requests: FakeRequest[] = []
+  const writes: FakeWrite[] = []
+  /** A table's rows once something wrote to it; until then the seeded rows are read as they are. */
+  const written: Record<string, FakeRow[]> = {}
+
+  const rowsOf = (table: string): ReadonlyArray<FakeRow> => written[table] ?? ((tables[table] ?? []) as ReadonlyArray<FakeRow>)
 
   function build(table: string) {
     const predicates: Predicate[] = []
@@ -108,6 +145,7 @@ export function fakeSupabaseTables(
     let selected: string[] | null = null
     let selectOptions: SelectOptions = {}
     let window: { from: number; to: number | null } = { from: 0, to: null }
+    let mutation: Mutation | null = null
 
     const where = (predicate: Predicate) => {
       predicates.push(predicate)
@@ -119,6 +157,15 @@ export function fakeSupabaseTables(
         const list = columns.split(',').map((column) => column.trim())
         selected = list.includes('*') ? null : list
         selectOptions = options
+        if (mutation) mutation.returning = true
+        return query
+      },
+      update(patch: FakeRow, options: WriteOptions = {}) {
+        mutation = { kind: 'update', patch, options, returning: false }
+        return query
+      },
+      delete(options: WriteOptions = {}) {
+        mutation = { kind: 'delete', options, returning: false }
         return query
       },
       eq: (column: string, value: unknown) => where((row) => row[column] === value),
@@ -165,6 +212,30 @@ export function fakeSupabaseTables(
       then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => settle().then(resolve, reject),
     }
 
+    const project = (row: FakeRow): FakeRow =>
+      selected === null
+        ? { ...row }
+        : Object.fromEntries(selected.filter((column) => column in row).map((column) => [column, row[column]]))
+
+    function settleWrite({ kind, patch, options, returning }: Mutation) {
+      const matches = (row: FakeRow) => predicates.every((predicate) => predicate(row))
+      const targets = refuseWrites.includes(table) ? [] : rowsOf(table).filter(matches)
+      if (targets.length > 0) {
+        const current = (written[table] ??= rowsOf(table).map((row) => ({ ...row })))
+        written[table] =
+          kind === 'delete' ? current.filter((row) => !matches(row)) : current.map((row) => (matches(row) ? { ...row, ...patch } : row))
+      }
+      const changed = kind === 'delete' ? targets : targets.map((row) => ({ ...row, ...patch }))
+      writes.push({ table, kind, ...(patch ? { patch } : {}), changed: changed.length })
+
+      return {
+        data: (returning ? changed.map(project) : null) as FakeRow[] | null,
+        error: null as { message: string } | null,
+        count: options.count ? changed.length : null,
+        status: returning ? 200 : 204,
+      }
+    }
+
     async function settle() {
       seen.push(table)
       if (failures[table]) {
@@ -172,17 +243,15 @@ export function fakeSupabaseTables(
         return { data: null as FakeRow[] | null, error: { message: failures[table] } as { message: string } | null, count: null as number | null }
       }
 
+      if (mutation) return settleWrite(mutation)
+
       const matching = sortRows(
-        ((tables[table] ?? []) as ReadonlyArray<FakeRow>).filter((row) => predicates.every((predicate) => predicate(row))),
+        rowsOf(table).filter((row) => predicates.every((predicate) => predicate(row))),
         orderings,
       )
       const asked = window.to === null ? Infinity : window.to - window.from + 1
       const page = matching.slice(window.from, window.from + Math.min(asked, maxRows))
-      const projected = page.map((row) =>
-        selected === null
-          ? { ...row }
-          : Object.fromEntries(selected.filter((column) => column in row).map((column) => [column, row[column]])),
-      )
+      const projected = page.map(project)
       requests.push({ table, ...window, returned: selectOptions.head ? 0 : projected.length })
 
       return {
@@ -199,5 +268,6 @@ export function fakeSupabaseTables(
     client: { from: (table: string) => build(table) } as unknown as SupabaseClient,
     seen,
     requests,
+    writes,
   }
 }
