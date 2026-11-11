@@ -24,11 +24,10 @@ const bodySchema = z.object({ event: z.string().max(60) }).strict()
 type RouteContext = { params: Promise<{ token: string }> }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`onboarding-events:${ip}`, RATE_LIMIT)
-    if (!rate.allowed) return new NextResponse(null, { status: 429 })
-  }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`onboarding-events:${ip}`, RATE_LIMIT)
+  if (!rate.allowed) return new NextResponse(null, { status: 429 })
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success || !isClientEvent(parsed.data.event)) return new NextResponse(null, { status: 400 })
 

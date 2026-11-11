@@ -33,7 +33,7 @@ import {
   describePushFailures,
   sendExpoPushMessages,
 } from '@/lib/push/expo-delivery'
-import { afterResponse, pruneStaleTokens, PG_NET_IP_LIMIT } from '@/lib/push/push-route-helpers'
+import { afterResponse, pruneStaleTokens, PG_NET_IP_LIMIT, PG_NET_WITHOUT_ADDRESS } from '@/lib/push/push-route-helpers'
 import { refuseOverIpLimit } from '@/lib/http/rate-limit-guard'
 
 interface NotifiableOrderRow {
@@ -47,7 +47,7 @@ interface NotifiableOrderRow {
 }
 
 export async function POST(request: NextRequest) {
-  const overLimit = await refuseOverIpLimit(request, 'notify-order', PG_NET_IP_LIMIT)
+  const overLimit = await refuseOverIpLimit(request, 'notify-order', PG_NET_IP_LIMIT, PG_NET_WITHOUT_ADDRESS)
   if (overLimit) return overLimit
 
   let body: unknown
