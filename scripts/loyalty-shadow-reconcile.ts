@@ -38,7 +38,7 @@ async function main(): Promise<void> {
 
   let query = client
     .from('tenants')
-    .select('id, name, order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key, supabase_order_service_key')
+    .select('id, name, order_backend, convex_deployment_url')
     .eq('loyalty_enabled', true)
   if (onlyTenant) query = query.eq('id', onlyTenant)
   const { data: tenants, error } = await query

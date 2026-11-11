@@ -16,9 +16,8 @@ export interface DrawerOrder extends IncomingOrder {
 }
 
 /**
- * Backends that accept order writes. A per-tenant Supabase project is read-only
- * to this app, so a Confirm button there must be refused up front rather than
- * failing at the tap.
+ * Backends that accept order writes. An allowlist: a backend this build does
+ * not know must be refused up front rather than failing at the tap.
  */
 const WRITABLE_BACKENDS: readonly string[] = ["convex", "platform"];
 

@@ -6,9 +6,9 @@ import { BUSINESS_DAY_SYNC_PATH, pushCutoffToOrderBackend } from "./backend-sync
 beforeEach(() => mockPost.mockReset());
 
 describe("pushCutoffToOrderBackend", () => {
-  it.each(["convex", "supabase"])("asks the web to push the stored schedule to a %s store's backend", async (backend) => {
+  it("asks the web to push the stored schedule to a convex store's backend", async () => {
     mockPost.mockResolvedValue(true);
-    await expect(pushCutoffToOrderBackend("t1", backend)).resolves.toBe(true);
+    await expect(pushCutoffToOrderBackend("t1", "convex")).resolves.toBe(true);
     expect(mockPost).toHaveBeenCalledWith(BUSINESS_DAY_SYNC_PATH, { tenantId: "t1" });
   });
 

@@ -1,5 +1,6 @@
 /**
- * cash.tenant_order_backend (supabase/migrations/20261027120200_cash_settings.sql)
+ * cash.tenant_order_backend (supabase/migrations/20261027120200_cash_settings.sql,
+ * current body in 20261110150100_cash_order_backend_two_backends.sql)
  * is the SQL twin of resolveOrderBackend (src/lib/order-backend.ts): the
  * shift-sales and day-close RPCs route on it, so a platform store can never be
  * answered "unavailable" (or a Convex store read from the empty platform DB)
@@ -16,8 +17,9 @@ import { resolveOrderBackend, type OrderBackendPreference } from '@/lib/order-ba
 
 const WORKER = path.join(process.cwd(), 'tests/sql/cash-order-backend-worker.cjs')
 
-// Pins as stored: every recognised value, `auto`, nothing, and values a hand
-// edit or an old row could hold (case matters on both sides).
+// Pins as stored: every recognised value, `auto`, nothing, the retired
+// `supabase` (the CHECK still allows it; both sides derive it like `auto`) and
+// values a hand edit or an old row could hold (case matters on both sides).
 const PINS: Array<string | null> = [null, 'auto', 'platform', 'convex', 'supabase', '', 'Convex', 'PLATFORM', ' convex', 'bogus']
 // JS String.prototype.trim() whitespace (ASCII, NBSP, Unicode spaces, line
 // separators, BOM), plus real URLs with and without padding.

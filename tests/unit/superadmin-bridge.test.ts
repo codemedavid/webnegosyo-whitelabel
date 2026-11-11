@@ -49,7 +49,6 @@ describe('SUPERADMIN_BRIDGE_ACTIONS', () => {
       'staff-create',
       'staff-remove',
       'staff-reset-password',
-      'supabase-deploy',
     ])
   })
 

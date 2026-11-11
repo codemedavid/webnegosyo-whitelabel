@@ -40,6 +40,14 @@ describe("resolveOrderBackend", () => {
   it("treats a blank Convex URL as no Convex deployment", () => {
     expect(resolveOrderBackend({ convex_deployment_url: "   " })).toBe("platform");
   });
+
+  it("derives a stale `supabase` pin (the retired own-project backend) like auto, as the web does", () => {
+    const stale = "supabase" as never;
+    expect(resolveOrderBackend({ order_backend: stale, convex_deployment_url: null })).toBe("platform");
+    expect(
+      resolveOrderBackend({ order_backend: stale, convex_deployment_url: "https://example.convex.cloud" })
+    ).toBe("convex");
+  });
 });
 
 describe("isPlatformBackend", () => {
@@ -53,14 +61,13 @@ describe("isPlatformBackend", () => {
     ).toBe(false);
   });
 
-  it("is false for a tenant on its own dedicated Supabase project", () => {
-    // `supabase` means a per-tenant project, which the app reaches with
-    // different credentials than the shared platform database.
+  it("treats a stale `supabase` pin (the retired own-project backend) like auto", () => {
+    // The column's CHECK still allows the word. Web and app must agree on
+    // where such a store's orders are: derive from the Convex url.
+    const stale = "supabase" as never;
+    expect(isPlatformBackend({ order_backend: stale, convex_deployment_url: null })).toBe(true);
     expect(
-      isPlatformBackend({
-        order_backend: "supabase",
-        convex_deployment_url: null,
-      })
+      isPlatformBackend({ order_backend: stale, convex_deployment_url: "https://example.convex.cloud" })
     ).toBe(false);
   });
 });
@@ -76,11 +83,6 @@ describe("hasLiveOrderBackend", () => {
     // The whole point of the platform backend: orders live in the shared
     // database this app is already authenticated against.
     expect(hasLiveOrderBackend({ convexUrl: null, orderBackend: "platform" })).toBe(true);
-  });
-
-  it("is false for a tenant on its own dedicated Supabase project", () => {
-    // The app ships no adapter for that project, so there is nothing to read.
-    expect(hasLiveOrderBackend({ convexUrl: null, orderBackend: "supabase" })).toBe(false);
   });
 
   it("is false before the session has resolved a backend", () => {

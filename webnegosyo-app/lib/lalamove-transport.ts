@@ -17,14 +17,11 @@ export type LalamoveOp = "book" | "sync" | "cancel" | "priority_fee" | "requote"
 export type LalamoveTransport = "convex" | "platform" | "unavailable";
 
 /**
- * Mirrors `hasLiveOrderBackend`: `supabase` is a separate per-tenant project
- * the app ships no adapter for, and claiming a transport for it would send a
- * booking to the wrong database. A session whose `orderBackend` has not
+ * Mirrors `hasLiveOrderBackend`. A session whose `orderBackend` has not
  * resolved yet falls back to the historical rule — a deployment url means
  * Convex — so the card keeps working during the first render after login.
  */
 export function resolveLalamoveTransport(session: OrderSessionFields): LalamoveTransport {
   if (session.orderBackend === "platform") return "platform";
-  if (session.orderBackend === "supabase") return "unavailable";
   return session.convexUrl && session.convexUrl.trim() !== "" ? "convex" : "unavailable";
 }

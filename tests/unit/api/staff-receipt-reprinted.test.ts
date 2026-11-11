@@ -233,11 +233,11 @@ describe('POST /api/staff/receipt-reprinted', () => {
       expect(rpcCalls[0]!.params).toMatchObject({ p_backend: 'convex', p_order_number: '#04', p_outlet_id: null })
     })
 
-    test('a tenant-Supabase store is filed as supabase', async () => {
+    test("a stale 'supabase' pin (the retired own-project backend) is filed as it routes: like auto", async () => {
       tenantRow = { order_backend: 'supabase', convex_deployment_url: null }
       const res = await post({ tenantId: TENANT, backend: 'convex', orderId: ORDER_ID })
       expect(res.status).toBe(200)
-      expect(rpcCalls[0]!.params).toMatchObject({ p_backend: 'supabase' })
+      expect(rpcCalls[0]!.params).toMatchObject({ p_backend: 'platform' })
     })
 
     test('500 (logged) when the store row cannot be read — never a guess', async () => {

@@ -11,8 +11,6 @@
  * therefore write orders only through the service role (web `createOrder`,
  * `POST /api/orders/customer-app`). Exempt:
  *   - files that build a service-role client and no session client;
- *   - src/lib/tenant-supabase-orders.ts: writes a store's OWN Supabase project,
- *     not the platform database this migration changes;
  *   - the merchant app (webnegosyo-app/): it writes as a signed-in staff member
  *     (`orders_insert_admin` / `order_items_write_admin`), which the migration keeps.
  */
@@ -30,7 +28,6 @@ const SCANNED_ROOTS = [
   'supabase/functions',
 ]
 const SKIP_DIRS = new Set(['node_modules', '.next', 'tests', '__tests__', 'dist'])
-const OTHER_DATABASE_WRITERS = new Set(['src/lib/tenant-supabase-orders.ts'])
 
 function listSources(dir: string): string[] {
   const absolute = path.join(ROOT, dir)
@@ -53,7 +50,6 @@ const SESSION_CLIENT =
   /from\s+['"](?:@\/lib\/supabase\/(?:server|client)|(?:\.\.?\/)+(?:lib\/)?supabase)['"]|createBrowserClient|createServerClient/
 
 export function findAnonOrderWrites(file: string, source: string): string[] {
-  if (OTHER_DATABASE_WRITERS.has(file)) return []
   const isServiceRoleOnly = SERVICE_ROLE.test(source) && !SESSION_CLIENT.test(source)
   const findings: string[] = []
   for (const match of source.matchAll(ORDER_WRITE)) {

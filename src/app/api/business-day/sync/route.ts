@@ -23,8 +23,7 @@ function reply(body: Record<string, unknown>, status: number): NextResponse {
  *
  * The merchant app changes the business-day cutoff with a direct RPC
  * (`set_business_day_cutoff`), but a Convex store numbers its orders in its
- * own deployment, and a tenant-database store in its own Supabase project,
- * which only the web can write. The app calls this after a successful change;
+ * own deployment, which only the web can write. The app calls this after a successful change;
  * it re-pushes the STORED schedule (`syncBusinessDayToOrderBackend` reads it
  * from the platform database), so nothing the caller sends reaches a backend.
  * Cookie (web) or Bearer (app). Same key as the change itself: `settings`.

@@ -240,42 +240,16 @@ describe('getDailyRevenue — platform backend', () => {
   })
 })
 
-describe('getDailyRevenue — per-tenant Supabase backend', () => {
-  const TENANT = {
-    id: 't2',
-    order_backend: 'supabase' as const,
-    supabase_order_url: 'https://tenant.supabase.co',
-    supabase_order_service_key: 'service-key',
-  }
+describe('getDailyRevenue — a stale pin to the retired own-database backend', () => {
+  test("reads the platform for order_backend 'supabase' with no Convex deployment", async () => {
+    // The CHECK on tenants.order_backend still allows the word; it routes like auto.
+    const platformDb = fakeSupabase({ data: [orderRow(750)], error: null })
 
-  test('reads the tenant\'s own project rather than the platform one', async () => {
-    // Arrange
-    const tenantDb = fakeSupabase({ data: [orderRow(750)], error: null })
-    const platformDb = fakeSupabase({ data: [orderRow(999999)], error: null })
-
-    // Act
-    const revenue = await getDailyRevenue(TENANT, DAY, {
-      tenantClient: () => tenantDb as never,
+    const revenue = await getDailyRevenue({ id: 't2', order_backend: 'supabase' } as never, DAY, {
       platformClient: async () => platformDb as never,
     })
 
-    // Assert
     expect(revenue).toBe(750)
-    expect(platformDb.calls).toHaveLength(0)
-  })
-
-  test('returns null when the tenant project is misconfigured', async () => {
-    const revenue = await getDailyRevenue(
-      { id: 't2', order_backend: 'supabase' },
-      DAY,
-      {
-        tenantClient: () => {
-          throw new Error('supabase_order_url is missing')
-        },
-      },
-    )
-
-    expect(revenue).toBeNull()
   })
 })
 
@@ -367,20 +341,6 @@ describe('getDailyRevenue — one branch of the store', () => {
       { id: 't1', order_backend: 'platform' } as never,
       '2026-08-01',
       { platformClient: async () => client as never },
-      'north',
-    )
-
-    expect(client.calls).toContainEqual({ method: 'eq', args: ['outlet_id', 'north'] })
-  })
-
-  test('narrows a per-tenant Supabase read the same way', async () => {
-    // Same schema, different client — the branch column is there either way.
-    const client = fakeSupabase({ data: [orderRow(500)], error: null })
-
-    await getDailyRevenue(
-      { id: 't1', order_backend: 'supabase' } as never,
-      '2026-08-01',
-      { tenantClient: () => client as never },
       'north',
     )
 

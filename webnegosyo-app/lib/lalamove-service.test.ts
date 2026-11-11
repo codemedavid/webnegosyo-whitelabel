@@ -77,18 +77,6 @@ describe("resolveLalamoveTransport", () => {
     expect(transport).toBe("convex");
   });
 
-  it("reports unavailable for a per-tenant Supabase project", () => {
-    // Arrange: a separate project the app ships no adapter for. Claiming a
-    // transport here would post a booking at the wrong database.
-    const session = { orderBackend: "supabase" as const, convexUrl: null };
-
-    // Act
-    const transport = resolveLalamoveTransport(session);
-
-    // Assert
-    expect(transport).toBe("unavailable");
-  });
-
   it("reports unavailable when there is no backend at all", () => {
     // Arrange
     const session = { orderBackend: null, convexUrl: null };

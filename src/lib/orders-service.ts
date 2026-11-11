@@ -199,8 +199,8 @@ export async function getOrderById(orderId: string, tenantId: string) {
  *
  * Best-effort: the cancellation is already saved, and a stock write must never
  * make an order un-cancellable. This path serves platform-backed orders; Convex
- * and tenant-Supabase cancellations run through their own admin surfaces and do
- * not reach here (see the evidence report).
+ * cancellations run through their own admin surface and do not reach here
+ * (see the evidence report).
  */
 async function restoreStockForCancelledOrder(
   orderId: string,

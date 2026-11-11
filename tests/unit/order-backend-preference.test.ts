@@ -26,10 +26,6 @@ function makeTenant(
     order_backend: null,
     convex_deployment_url: null,
     convex_deploy_key: null,
-    supabase_order_url: null,
-    supabase_order_anon_key: null,
-    supabase_order_service_key: null,
-    supabase_order_db_url: null,
     ...overrides,
   }
 }
@@ -39,11 +35,8 @@ const CONVEX_CREDS = {
   convex_deploy_key: 'deploy-key',
 }
 
-const SUPABASE_CREDS = {
-  supabase_order_url: 'https://abcdefgh.supabase.co',
-  supabase_order_anon_key: 'anon-key-123',
-  supabase_order_service_key: 'service-role-key-456',
-}
+/** The retired own-project backend; the column's CHECK still allows the word. */
+const RETIRED_SUPABASE_PIN = 'supabase' as unknown as OrderBackendTenantFields['order_backend']
 
 describe('ORDER_BACKEND_PREFERENCES', () => {
   it('offers auto, platform and convex as selectable options', () => {
@@ -88,9 +81,9 @@ describe('resolveOrderBackend — pinned selections', () => {
     )
   })
 
-  it('honors an explicit supabase selection over a lingering convex url', () => {
-    const tenant = makeTenant({ order_backend: 'supabase', ...SUPABASE_CREDS, ...CONVEX_CREDS })
-    expect(resolveOrderBackend(tenant)).toBe('supabase')
+  it("does not honor a stale 'supabase' pin: it derives from the credentials like auto", () => {
+    expect(resolveOrderBackend(makeTenant({ order_backend: RETIRED_SUPABASE_PIN, ...CONVEX_CREDS }))).toBe('convex')
+    expect(resolveOrderBackend(makeTenant({ order_backend: RETIRED_SUPABASE_PIN }))).toBe('platform')
   })
 })
 
@@ -104,8 +97,8 @@ describe('orderBackendPreferenceOf — what the form shows', () => {
     expect(orderBackendPreferenceOf(makeTenant({ order_backend: 'convex' }))).toBe('convex')
   })
 
-  it('reports auto for a tenant on its own supabase project, so the form cannot clobber it', () => {
-    expect(orderBackendPreferenceOf(makeTenant({ order_backend: 'supabase' }))).toBe('auto')
+  it("reports auto for a stale 'supabase' pin, which is how it routes", () => {
+    expect(orderBackendPreferenceOf(makeTenant({ order_backend: RETIRED_SUPABASE_PIN }))).toBe('auto')
   })
 })
 
@@ -130,11 +123,12 @@ describe('orderBackendForSave', () => {
     expect(orderBackendForSave('convex', makeTenant())).toBe('auto')
   })
 
-  it('never overwrites a tenant running on its own supabase project', () => {
-    const tenant = makeTenant({ order_backend: 'supabase', ...SUPABASE_CREDS })
-    expect(orderBackendForSave('platform', tenant)).toBe('supabase')
-    expect(orderBackendForSave('convex', tenant)).toBe('supabase')
-    expect(orderBackendForSave('auto', tenant)).toBe('supabase')
+  it("never writes the retired 'supabase' value back: a save stores what the form chose", () => {
+    const tenant = makeTenant({ order_backend: RETIRED_SUPABASE_PIN, ...CONVEX_CREDS })
+    expect(orderBackendForSave('platform', tenant)).toBe('platform')
+    expect(orderBackendForSave('convex', tenant)).toBe('convex')
+    expect(orderBackendForSave('auto', tenant)).toBe('auto')
+    expect(orderBackendForSave(undefined, makeTenant({ order_backend: RETIRED_SUPABASE_PIN }))).toBe('auto')
   })
 })
 

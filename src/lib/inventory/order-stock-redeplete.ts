@@ -156,8 +156,8 @@ function nextRedepletionRevision(
 }
 
 /**
- * The platform order's branch and saved lines. A Convex or tenant-Supabase
- * order has no row here; the restored record alone is enough to re-spend its
+ * The platform order's branch and saved lines. A Convex order has no row
+ * here; the restored record alone is enough to re-spend its
  * ingredients.
  */
 async function readSavedOrder(

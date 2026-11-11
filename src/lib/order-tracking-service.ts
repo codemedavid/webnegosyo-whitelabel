@@ -13,8 +13,6 @@ import { isRealContact } from '@/lib/order-contact'
 import { resolveCustomerIdentity } from '@/lib/customer-identity'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { recallTrackingBackend, rememberTrackingBackend } from '@/lib/order-tracking-backend-hint'
-import { createTenantOrderRealtimeClient } from '@/lib/supabase/tenant-order-client'
-import { fetchTenantOrderById } from '@/lib/tenant-supabase-orders-read'
 import type { OrderFactsBackend } from '@/lib/customer-order-facts'
 import {
   isPickupScanEnabled,
@@ -120,8 +118,7 @@ export async function fetchOrderTrackingData(
  * query decides whether the order can be found at all — `readTenantRouting`
  * retries without it on an undefined-column error.
  */
-const TENANT_ROUTING_COLUMNS =
-  'order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key'
+const TENANT_ROUTING_COLUMNS = 'order_backend, convex_deployment_url'
 
 const TENANT_ROUTING_WITH_PICKUP_COLUMNS = `${TENANT_ROUTING_COLUMNS}, pickup_scan_enabled`
 
@@ -216,8 +213,6 @@ export const fetchOrderTrackingContext = cache(async function fetchOrderTracking
         supabaseAdmin,
         tenantId
       )
-    } else if (backend === 'supabase') {
-      result = await fetchFromTenantSupabase(config, supabaseAdmin, orderId, tenantId)
     } else {
       result = await fetchFromSupabase(supabaseAdmin, orderId, tenantId, guessedPlatformOrder)
     }
@@ -246,8 +241,8 @@ function deferRejection<T>(promise: Promise<T>): Promise<T> {
  * Look up an order type's fixed kind by id.
  *
  * Order types live in the platform Supabase for every tenant, including
- * Convex ones, so this is the single authority for the Convex and tenant-
- * Supabase paths (the platform path embeds the row in its order read).
+ * Convex ones, so this is the single authority for the Convex path (the
+ * platform path embeds the row in its order read).
  * Returns null on any failure — the caller then falls back to the snapshot
  * string, and an unresolved kind simply hides the pickup QR.
  */
@@ -453,55 +448,12 @@ async function fetchFromSupabase(
   })
 }
 
-/**
- * Read the order from the tenant's OWN Supabase project (`order_backend =
- * 'supabase'`).
- *
- * Uses the anon-key client, not the service-role one: this runs on a public,
- * customer-reachable path, the standalone bundle's SELECT policy already
- * covers it, and handing a service-role key to a page a stranger can open is
- * a bigger key than the job needs.
- *
- * Order types stay on the PLATFORM database for every backend, so the kind
- * lookup still goes through the admin client. The tenant bundle has no
- * `prep_minutes` / `promised_ready_at` columns, so no estimate is promised.
- */
-async function fetchFromTenantSupabase(
-  config: OrderBackendTenantFields,
-  supabase: ReturnType<typeof createAdminClient>,
-  orderId: string,
-  tenantId: string
-): Promise<TrackingContextData> {
-  const order = await fetchTenantOrderById(
-    createTenantOrderRealtimeClient(config),
-    tenantId,
-    orderId
-  )
-
-  if (!order) throw new Error('Order not found in the tenant Supabase project')
-
-  const orderTypeFromRow = await fetchOrderTypeKind(supabase, order.order_type_id as string | null, tenantId)
-
-  return mapSupabaseOrderRow(order, {
-    backend: 'tenant_supabase',
-    orderTypeFromRow,
-    promisedReadyAt: null,
-    prepMinutes: null,
-  })
-}
-
-/**
- * The one projection from a Postgres order row into tracking data, shared by
- * the platform database and a tenant's own project. Their column names are
- * identical by design — the standalone bundle in `supabase-order-schema.ts`
- * mirrors the platform table — so one mapper serves both, and a field added to
- * the customer's view can never appear on only one of them.
- */
+/** The projection from a platform order row into tracking data. */
 function mapSupabaseOrderRow(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   order: any,
   context: {
-    backend: Extract<OrderFactsBackend, 'platform_supabase' | 'tenant_supabase'>
+    backend: Extract<OrderFactsBackend, 'platform_supabase'>
     orderTypeFromRow: string | null
     promisedReadyAt: string | null
     prepMinutes: number | null

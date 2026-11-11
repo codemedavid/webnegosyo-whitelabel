@@ -9,7 +9,7 @@
  * `stock_movements` row carries an `outlet_id`. The takings half depends
  * entirely on where the tenant's orders live:
  *
- *  - **Platform / per-tenant Supabase** — `getDailyRevenue` narrows the `orders`
+ *  - **Platform** — `getDailyRevenue` narrows the `orders`
  *    read by `outlet_id`. Comparable.
  *  - **Convex** — `orders:getDashboardStatsByPeriod` learned an optional
  *    `outletId` in schema v18. Deployments below that take a date window and
@@ -57,7 +57,7 @@ export interface ReportScope {
 }
 
 /** Backends whose order reads this repo can filter by branch outright, in SQL. */
-const BRANCH_SCOPABLE_BACKENDS = new Set(['platform', 'supabase'])
+const BRANCH_SCOPABLE_BACKENDS = new Set(['platform'])
 
 /** The Convex bundle in which `getDashboardStatsByPeriod` learned `outletId`. */
 export const BRANCH_STATS_SCHEMA_VERSION = 18

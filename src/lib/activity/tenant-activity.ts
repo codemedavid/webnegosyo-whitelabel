@@ -22,7 +22,7 @@ import type { OrderBackend } from '@/lib/order-backend'
  */
 export const CONVEX_SCAN_LIMIT = 10000
 
-export type ActivitySource = 'ok' | 'unreachable' | 'unsupported'
+export type ActivitySource = 'ok' | 'unreachable'
 
 export interface TenantActivityStats {
   /** Non-cancelled orders in the window. */
@@ -146,8 +146,6 @@ function resolveEntry(
   platformStats: ReadonlyMap<string, TenantActivityStats> | null,
   convexEntries: ReadonlyMap<string, ConvexActivityEntry>
 ): ConvexActivityEntry {
-  if (tenant.backend === 'supabase') return { source: 'unsupported', stats: null }
-
   if (tenant.backend === 'platform') {
     if (!platformStats) return { source: 'unreachable', stats: null }
     // The aggregate only lists stores that have ever had an order; absence

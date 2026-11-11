@@ -17,8 +17,8 @@
  *    follow-up tries again under the same id, which is today's behaviour.
  *
  * Release = the RPC's `cancel` under the same id, which returns exactly what
- * the claim took. Convex and tenant-Supabase orders get their ids from their
- * own backends, so they keep the unlocked courtesy read.
+ * the claim took. Convex orders get their ids from their own backend, so
+ * they keep the unlocked courtesy read.
  */
 
 import type { createAdminClient } from '@/lib/supabase/admin'
@@ -62,7 +62,7 @@ function hasSelections(items: readonly CheckoutOrderLine[]): boolean {
   return items.some((item) => item.option_ids?.length || item.addon_ids?.length)
 }
 
-/** Convex / tenant-Supabase: the unlocked read, as before. A failed read never refuses. */
+/** Convex: the unlocked read, as before. A failed read never refuses. */
 async function checkWithoutClaim(tenantId: string, items: readonly CheckoutOrderLine[]): Promise<SimpleOptionHold> {
   const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
   try {

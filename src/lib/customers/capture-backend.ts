@@ -28,7 +28,6 @@ import {
 const CAPTURE_BACKEND_OF: Record<OrderBackend, CaptureBackend> = {
   platform: 'platform',
   convex: 'convex',
-  supabase: 'tenant_supabase',
 }
 
 /** `public.orders.id` is a uuid; anything else can never be a platform order. */
@@ -55,7 +54,7 @@ export type CaptureBackendVerdict =
  * before the scanner fix still claims `convex` — correcting here fixes those
  * installs without waiting on a store release.
  *
- * A foreign backend (Convex, a tenant's own Supabase) cannot be read from here,
+ * A foreign backend (Convex) cannot be read from here,
  * so a mismatch is refused: the ledger is keyed by backend, and a row filed
  * under the wrong one would be counted again when the order arrives under its
  * real one.

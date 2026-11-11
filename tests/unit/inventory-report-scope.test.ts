@@ -33,12 +33,12 @@ describe('resolveReportScope — the branch the report covers', () => {
 })
 
 describe('resolveReportScope — whether a food cost may be stated', () => {
-  test('a branch admin on a Supabase backend gets their takings', () => {
-    // `getDailyRevenue` can narrow a Supabase `orders` read by `outlet_id`, so
-    // both halves describe one branch.
+  test('a branch admin on the platform backend gets their takings', () => {
+    // `getDailyRevenue` can narrow the platform `orders` read by `outlet_id`,
+    // so both halves describe one branch.
     const scope = resolveReportScope({
       scope: { kind: 'branch', outletId: 'north' },
-      orderBackend: 'supabase',
+      orderBackend: 'platform',
     })
 
     expect(scope.isRevenueBranchScoped).toBe(true)
@@ -123,14 +123,24 @@ describe('resolveReportScope — a Convex deployment that has learned about bran
     expect(scope.isRevenueBranchScoped).toBe(false)
   })
 
-  test('the version is irrelevant to a Supabase tenant', () => {
+  test('the version is irrelevant to a platform tenant', () => {
     // Their orders are narrowed by a SQL filter this repo controls outright.
+    const scope = resolveReportScope({
+      scope: branch,
+      orderBackend: 'platform',
+      convexSchemaVersion: null,
+    })
+
+    expect(scope.isRevenueBranchScoped).toBe(true)
+  })
+
+  test("the retired 'supabase' pin is not a listed backend: unnarrowable, like any unknown value", () => {
     const scope = resolveReportScope({
       scope: branch,
       orderBackend: 'supabase',
       convexSchemaVersion: null,
     })
 
-    expect(scope.isRevenueBranchScoped).toBe(true)
+    expect(scope.isRevenueBranchScoped).toBe(false)
   })
 })

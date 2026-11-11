@@ -6,9 +6,8 @@
  * per call and projected into an in-memory `CostingGraph`. Everything after the
  * fetch is pure, so the interesting behavior is testable without a database.
  *
- * The row fetch is injectable (see `CostingFetchDeps`), mirroring
- * `TenantOrderWriteDeps` in `tenant-supabase-orders.ts`. Production callers omit
- * the argument and get the Supabase-backed default.
+ * The row fetch is injectable (see `CostingFetchDeps`). Production callers
+ * omit the argument and get the Supabase-backed default.
  *
  * Reads are `cache()`-wrapped per request: a page that costs several items
  * loads the tenant's inventory once rather than once per item.

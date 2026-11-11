@@ -318,9 +318,8 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     return { error: 'Slug is already taken' }
   }
 
-  // The tenant form does not carry the per-tenant Supabase order credentials, so
-  // read the current routing state before recomputing the column — otherwise
-  // saving an unrelated field would demote a `supabase` tenant to `platform`.
+  // Read the current routing state before recomputing the column: the checks
+  // below compare the save against where the store's orders go today.
   const { data: currentBackendRow } = await supabase
     .from('tenants')
     .select('order_backend, slug, convex_deployment_url, auto_86_enabled')

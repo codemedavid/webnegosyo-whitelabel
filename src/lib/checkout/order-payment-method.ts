@@ -6,7 +6,7 @@
  * from the store's own rows and must be one the storefront offers for the
  * order's type (`load-checkout-config.ts`: the tenant's, active, linked via
  * `payment_method_order_types`). The stored name/details/QR are what every
- * backend (platform, tenant Supabase, Convex) then records, so a forged order
+ * backend (platform, Convex) then records, so a forged order
  * cannot point the merchant or the receipt at someone else's account.
  *
  * A method with `require_payment_proof` needs a screenshot OR a reference,

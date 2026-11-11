@@ -323,9 +323,9 @@ describe("what the merchant can see", () => {
   });
 
   it("explains itself rather than offering a button that cannot work", () => {
-    // Arrange: a per-tenant Supabase project — the app ships no adapter, so
-    // there is no transport. Silently showing Book would fail every tap.
-    mockSession = { tenantId: "t1", convexUrl: null, orderBackend: "supabase", isDemo: false };
+    // Arrange: no platform pin and no Convex deployment, so there is no
+    // transport. Silently showing Book would fail every tap.
+    mockSession = { tenantId: "t1", convexUrl: null, orderBackend: null, isDemo: false };
 
     // Act
     render(<LalamoveDeliveryCard order={QUOTED} />);

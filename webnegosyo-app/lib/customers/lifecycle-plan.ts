@@ -29,14 +29,11 @@ const LIFECYCLE_REFS = new Set([
 ]);
 
 /**
- * The platform's name for each backend. The two vocabularies differ and it
- * matters: the app's `supabase` means *the tenant's own project*, which the
- * platform calls `tenant_supabase`; the app's `platform` is the platform's
- * own orders table.
+ * The platform's name for each backend. The two vocabularies differ: the
+ * app's `platform` is the platform's own orders table, `platform_supabase`.
  */
 export const PLATFORM_BACKEND: Record<OrderBackend, string> = {
   convex: "convex",
-  supabase: "tenant_supabase",
   platform: "platform_supabase",
 };
 

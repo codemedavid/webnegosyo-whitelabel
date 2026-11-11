@@ -193,7 +193,7 @@ describe("canAppendToOrder", () => {
   });
 
   it("refuses a backend that cannot write orders at all", () => {
-    expect(canAppendToOrder({ ...base, status: "confirmed", backend: "supabase" }).allowed).toBe(
+    expect(canAppendToOrder({ ...base, status: "confirmed", backend: "warehouse" as never }).allowed).toBe(
       false,
     );
   });

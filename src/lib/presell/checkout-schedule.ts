@@ -52,7 +52,7 @@ export function presellScheduleDates(
 
 // ── customer_data carriage ────────────────────────────────────────────────
 // The claim that reserved the stock travels with the order on every backend
-// (platform Supabase, tenant Supabase, Convex all store customer_data), so a
+// (platform Supabase and Convex both store customer_data), so a
 // cancel path anywhere can find what to release.
 
 export const PRESELL_DATE_KEY = 'presell_date'

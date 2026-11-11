@@ -19,7 +19,7 @@
  * - A take-back (`government: null`) is only believed when the order itself
  *   agrees: a platform order must exist in this store and no longer carry a
  *   Senior/PWD block (or be cancelled). An order the server cannot read
- *   (Convex, a tenant's own Supabase) is still reversed — the register is the
+ *   (Convex) is still reversed — the register is the
  *   only witness — but the reversal is flagged for the owner.
  * - Records can arrive out of order (an offline register retries). A late
  *   OLDER revision is written and immediately taken back, so the book keeps
@@ -107,7 +107,7 @@ export interface ClaimRow {
 
 /** What the server can see of the order a record is about. */
 export type LedgerOrderState =
-  /** A backend the server does not read (Convex, a tenant's own Supabase). */
+  /** A backend the server does not read (Convex). */
   | { readable: false }
   | { readable: true; exists: false }
   | { readable: true; exists: true; cancelled: boolean; hasGovernment: boolean }

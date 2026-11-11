@@ -43,7 +43,7 @@ describe('platform order writers', () => {
     expect(service).toMatch(/\n\s+status: 'pending'/)
   })
 
-  it('has no other insert into orders / order_items in src/ besides the tenant-owned project writer', () => {
+  it('has no other insert into orders / order_items in src/', () => {
     const offenders = walk('src')
       .filter((file) => {
         const text = code(file)
@@ -51,13 +51,7 @@ describe('platform order writers', () => {
       })
       .sort()
 
-    expect(offenders).toEqual(['src/lib/orders-service.ts', 'src/lib/tenant-supabase-orders.ts'])
-  })
-
-  it('keeps the tenant-owned Supabase writer on its own client, never a platform session client', () => {
-    const text = code('src/lib/tenant-supabase-orders.ts')
-
-    expect(text).not.toMatch(/supabase\/server|createClient\(/)
+    expect(offenders).toEqual(['src/lib/orders-service.ts'])
   })
 })
 
