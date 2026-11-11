@@ -1,8 +1,17 @@
 'use server'
 
+import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import { bookingSchema } from '@/lib/booking/validation'
 import { createLead } from '@/lib/leads/leads-service'
 import { captureBookingCreated } from '@/lib/posthog'
+
+/**
+ * Bookings per client address. The form is public and every booking becomes a
+ * lead staff work, so it is counted like the checkout form beside it (shared
+ * across instances). A real visitor books once; a retry after "slot taken"
+ * still fits.
+ */
+const BOOKING_RATE_LIMIT = { limit: 5, windowSec: 3600 }
 
 interface BookingResult {
   success: boolean
@@ -30,7 +39,13 @@ export async function createBooking(input: {
     return { success: false, errors: fieldErrors }
   }
 
-  // 2. Insert (unique index prevents double-booking)
+  // 2. Count it. After validation, so a typo never spends the allowance.
+  const rate = await checkActionRateLimit('booking-create', BOOKING_RATE_LIMIT)
+  if (!rate.allowed) {
+    return { success: false, error: 'rate_limited' }
+  }
+
+  // 3. Insert (unique index prevents double-booking)
   const { data: lead, error } = await createLead({
     name: parsed.data.name,
     email: parsed.data.email,
@@ -47,7 +62,7 @@ export async function createBooking(input: {
     return { success: false, error: 'server_error' }
   }
 
-  // 3. PostHog (fire-and-forget)
+  // 4. PostHog (fire-and-forget)
   try {
     await captureBookingCreated({
       name: lead.name,
@@ -62,7 +77,7 @@ export async function createBooking(input: {
     // Silent — booking succeeded, just no email
   }
 
-  // 4. Return success
+  // 5. Return success
   return {
     success: true,
     lead: {

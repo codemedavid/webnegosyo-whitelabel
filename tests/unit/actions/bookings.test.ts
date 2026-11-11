@@ -10,6 +10,11 @@ jest.mock('@/lib/posthog', () => ({
   captureBookingCreated: (...args: unknown[]) => mockCaptureBooking(...args),
 }))
 
+const mockActionRateLimit = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+jest.mock('@/lib/action-rate-limit', () => ({
+  checkActionRateLimit: (...args: unknown[]) => mockActionRateLimit(...args),
+}))
+
 function formatDate(date: Date): string {
   return date.toISOString().split('T')[0]
 }
@@ -39,6 +44,7 @@ function getNextSaturdayDate(): string {
 describe('createBooking server action', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockActionRateLimit.mockResolvedValue({ allowed: true, retryAfterSec: 0 })
   })
 
   test('returns validation errors for invalid input', async () => {
@@ -104,5 +110,47 @@ describe('createBooking server action', () => {
     expect(result.success).toBe(false)
     expect(result.error).toBe('slot_taken')
     expect(mockCaptureBooking).not.toHaveBeenCalled()
+  })
+
+  // Anyone can submit this form, and each booking becomes a lead staff work.
+  describe('how often one connection may book', () => {
+    const booking = () => ({
+      name: 'Maria Santos',
+      email: 'maria@email.com',
+      phone: '+639171234567',
+      bookingDate: getNextWeekdayDate(),
+      bookingTime: '10:00',
+    })
+
+    test('counts a valid booking per client address before it is saved', async () => {
+      mockCreateLead.mockResolvedValueOnce({ data: null, error: 'slot_taken' })
+      const { createBooking } = await import('@/app/actions/bookings')
+
+      await createBooking(booking())
+
+      expect(mockActionRateLimit).toHaveBeenCalledWith('booking-create', { limit: 5, windowSec: 3600 })
+      expect(mockActionRateLimit.mock.invocationCallOrder[0]).toBeLessThan(mockCreateLead.mock.invocationCallOrder[0])
+    })
+
+    test('refuses a connection over its limit without saving a lead', async () => {
+      mockActionRateLimit.mockResolvedValue({ allowed: false, retryAfterSec: 1200 })
+      const { createBooking } = await import('@/app/actions/bookings')
+
+      const result = await createBooking(booking())
+
+      expect(result).toEqual({ success: false, error: 'rate_limited' })
+      expect(mockCreateLead).not.toHaveBeenCalled()
+      expect(mockCaptureBooking).not.toHaveBeenCalled()
+    })
+
+    test('does not count a submission that fails validation', async () => {
+      const { createBooking } = await import('@/app/actions/bookings')
+
+      const result = await createBooking({ ...booking(), email: 'not-an-email' })
+
+      expect(result.success).toBe(false)
+      expect(result.errors).toBeDefined()
+      expect(mockActionRateLimit).not.toHaveBeenCalled()
+    })
   })
 })
