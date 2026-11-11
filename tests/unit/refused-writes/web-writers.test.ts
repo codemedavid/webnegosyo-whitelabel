@@ -33,13 +33,13 @@ jest.mock('@/lib/auth/request-caller', () => ({
   getRequestSubscription: () => Promise.resolve(null),
 }))
 
-import { deleteCategory, deleteMenuItem } from '@/lib/admin-service'
+import { deleteCategory, deleteMenuItem, reorderCategories } from '@/lib/admin-service'
 import { deleteBoostPairing, saveBoostLastCall, setBoostPairingActive } from '@/lib/boost/writes'
 import { deleteUpsellPair } from '@/lib/menu-engineering-service'
-import { deleteCustomerFormField } from '@/lib/order-types-service'
+import { deleteCustomerFormField, reorderCustomerFormFields } from '@/lib/order-types-service'
 import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
-import { deletePaymentMethod } from '@/lib/payment-methods-service'
+import { deletePaymentMethod, reorderPaymentMethods } from '@/lib/payment-methods-service'
 
 const TENANT = '11111111-1111-4111-8111-111111111111'
 const OTHER_TENANT = '99999999-9999-4999-8999-999999999999'
@@ -51,14 +51,23 @@ const SOUTH = 'o-south'
 
 function tables() {
   return {
-    categories: [{ id: A, tenant_id: TENANT }],
+    categories: [
+      { id: A, tenant_id: TENANT, order: 0 },
+      { id: B, tenant_id: TENANT, order: 1 },
+    ],
     menu_items: [
       { id: A, tenant_id: TENANT, show_in_checkout_upsell: true },
       { id: B, tenant_id: TENANT, show_in_checkout_upsell: false },
       { id: C, tenant_id: TENANT, show_in_checkout_upsell: false },
     ],
-    payment_methods: [{ id: A, tenant_id: TENANT }],
-    customer_form_fields: [{ id: A, tenant_id: TENANT }],
+    payment_methods: [
+      { id: A, tenant_id: TENANT, order_index: 0 },
+      { id: B, tenant_id: TENANT, order_index: 1 },
+    ],
+    customer_form_fields: [
+      { id: A, tenant_id: TENANT, order_index: 0 },
+      { id: B, tenant_id: TENANT, order_index: 1 },
+    ],
     upsell_pairs: [
       { id: 'pair-1', tenant_id: TENANT, pair_type: 'complementary', source_item_id: A, target_item_id: B, is_active: true },
       { id: 'pair-2', tenant_id: TENANT, pair_type: 'complementary', source_item_id: A, target_item_id: C, is_active: true },
@@ -236,5 +245,40 @@ describe('reordering branches', () => {
 
     await expect(reorder([SOUTH, 'o-deleted', 'o-theirs', NORTH])).resolves.toBeUndefined()
     expect(await order()).toEqual([SOUTH, NORTH])
+  })
+})
+
+/** The same three promises for every list a merchant drags into a new order. */
+describe.each([
+  ['categories', 'categories', 'order', (ids: string[]) => reorderCategories(TENANT, ids)],
+  ['payment methods', 'payment_methods', 'order_index', (ids: string[]) => reorderPaymentMethods(TENANT, ids)],
+  ['checkout questions', 'customer_form_fields', 'order_index', (ids: string[]) => reorderCustomerFormFields(ids, TENANT)],
+])('reordering %s', (_what, table, column, reorder) => {
+  const order = async () => {
+    const { data } = await session.client.from(table).select('id').eq('tenant_id', TENANT).order(column)
+    return (data ?? []).map((row) => (row as unknown as { id: string }).id)
+  }
+
+  it('stores the new order', async () => {
+    await reorder([B, A])
+
+    expect(await order()).toEqual([B, A])
+  })
+
+  it('reports an order the database refused to store, instead of saying it was saved', async () => {
+    refused(table)
+
+    await expect(reorder([B, A])).rejects.toThrow(NOTHING_CHANGED_MESSAGE)
+    expect(await order()).toEqual([A, B])
+  })
+
+  it("skips a row that was deleted meanwhile, or is not this store's, without failing the rest", async () => {
+    session = fakeSupabaseTables({
+      ...tables(),
+      [table]: [...tables()[table as 'categories'], { id: C, tenant_id: OTHER_TENANT, [column]: 0 }],
+    })
+
+    await expect(reorder([B, 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', C, A])).resolves.not.toThrow()
+    expect(await order()).toEqual([B, A])
   })
 })
