@@ -25,6 +25,7 @@ import {
   type CustomerOrderItemInput,
 } from '@/lib/customer-identity'
 import { normalizePhoneE164 } from '@/lib/phone'
+import { readAllRows } from '@/platform/db/read-all-rows'
 import type { Customer } from '@/types/database'
 import type { CustomersPagination } from '@/lib/customers-pagination'
 
@@ -141,6 +142,9 @@ export async function upsertCustomerFromOrder(
 
 /** Postgres unique-violation code — a concurrent insert created the row first. */
 const PG_UNIQUE_VIOLATION = '23505'
+
+/** The longest history one profile recompute will read. */
+const MAX_CUSTOMER_ORDERS = 10_000
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any
@@ -266,12 +270,22 @@ export function createSupabaseCustomerStore(admin: AdminClient): CustomerStore {
     },
 
     async listCustomerOrders(customerId) {
-      const { data, error } = await admin
-        .from('orders')
-        .select('total, created_at, order_type, customer_data, order_items(menu_item_name, quantity)')
-        .eq('customer_id', customerId)
-      if (error) throw error
-      return (data as OrderFactsRow[] | null ?? []).map(rowToFacts)
+      // Paged: one response stops at 1,000 rows, and the profile is recomputed
+      // from this list, so a regular's count and spend froze at 1,000 orders.
+      const result = await readAllRows<OrderFactsRow>(
+        (from, to) =>
+          admin
+            .from('orders')
+            .select('total, created_at, order_type, customer_data, order_items(menu_item_name, quantity)')
+            .eq('customer_id', customerId)
+            .order('id', { ascending: true })
+            .range(from, to),
+        { maxRows: MAX_CUSTOMER_ORDERS },
+      )
+      if (result.ok) return result.rows.map(rowToFacts)
+      if (result.reason === 'error') throw result.error
+      // Failing keeps the last saved profile; saving one computed from part of the history would be wrong.
+      throw new Error(`Customer ${customerId} has more than 10,000 orders: the profile was not recomputed.`)
     },
   }
 }
