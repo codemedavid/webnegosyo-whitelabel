@@ -78,6 +78,10 @@ Uses Supabase Auth with `@supabase/ssr` (NOT the deprecated `auth-helpers-nextjs
 
 **Critical**: Supabase client cookies must use ONLY `getAll`/`setAll` pattern. Never use individual `get`/`set`/`remove` cookie methods — they are deprecated and will break session handling.
 
+**New routes and server actions are declared, not hand-checked.** Use `defineRoute` / `defineAction` (`src/platform/http/`): the declaration states who may call it (`auth.kind`, the permission key, the branch rule), the rate limit and the zod input, and the store comes from the caller's own account, never from the request. `tests/unit/guardrails/entry-points.test.ts` fails a new route or action file that checks access by hand (existing ones are on a list that may only shrink); `docs/generated/entry-points.md` is the generated table of who may call what. Reads past 1,000 rows use `readAllRows`, and a write that row-level security can refuse silently goes through `assertRowsChanged` (`src/platform/db/`).
+
+**Ratchets** (`tests/unit/guardrails/ratchets.test.ts`): counts of known debt (loose files in `src/lib`, files over 800 lines, service-role client importers, direct `convex_deployment_url` reads, hand-written DB type imports, UTC dates used as business days) may only go down. When a change lowers one, lower its ceiling in `ratchets.json` in the same change.
+
 Supabase client factories:
 - `src/lib/supabase/server.ts` — Server Components/Actions (async, uses `cookies()`)
 - `src/lib/supabase/client.ts` — Browser client (synchronous)

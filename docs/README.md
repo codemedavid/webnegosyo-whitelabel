@@ -6,6 +6,7 @@ Where things are. Rules that code must follow do NOT live here: they are in `CLA
 |---|---|
 | The rules for a feature (what must stay true) | The feature's own `CLAUDE.md`; table in the root `CLAUDE.md` |
 | Which migrations are live, held or pending | `supabase/migration-status.json`, `npm run db:status` |
+| Who may call a route or server action | `docs/generated/entry-points.md` (generated; do not edit) |
 | Work that is planned or in progress | `docs/plans/` (one file or folder per feature, dated) |
 | How to run a deploy or repair | `docs/runbooks/`, `docs/operations/`, a plan's own `RELEASE.md` |
 | Evidence from finished work (test-first write-ups, probes) | `docs/testing/` (237 files; search by feature name, do not read through) |
