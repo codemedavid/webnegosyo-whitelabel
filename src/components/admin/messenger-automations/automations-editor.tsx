@@ -1,5 +1,6 @@
 'use client'
 
+import type { MessageSettings } from '@/lib/messenger/messages/registry'
 import { useMemo, useState, useTransition } from 'react'
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -30,6 +31,8 @@ export interface AutomationsEditorProps {
   isTesterLinked: boolean
   profileError: string | null
   orderUpdates: OrderUpdatesConfig
+  /** What the bot says (registry wording, status texts folded in). */
+  messages: MessageSettings
   isPlatformOrders: boolean
 }
 

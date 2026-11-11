@@ -11,8 +11,17 @@ import type { CardElement, MessengerButton, OutgoingMessage, QuickReply } from '
 import { encodePayload } from './payload'
 import type { RuleAction, TextButton } from './rules'
 import type { ReplyItem, ReplyStore } from './store-view'
-import { MAX_CART_LINES, MAX_LINE_QTY, type CartOpOutcome, type PricedChatCart } from './chat-cart'
-import { statusLabel, type ReplyOrder } from './order-view'
+import type { CartOpOutcome, PricedChatCart } from './chat-cart'
+import { statusLabel, type OrderKind, type ReplyOrder, type UpdateStatus } from './order-view'
+import {
+  defaultText,
+  isToggleOn,
+  UPDATE_MESSAGE_IDS,
+  type MessageSettings,
+  type TextMessageId,
+  type ToggleId,
+} from './messages/registry'
+import { fillTemplate, type FillValues } from './messages/fill'
 
 /** Dishes per carousel page; the 10th card is "See more". */
 export const ITEMS_PER_PAGE = MESSENGER_LIMITS.cardElements - 1
@@ -38,43 +47,24 @@ export interface ReplyContext {
    * session); null = the store's orders aren't on the platform database.
    */
   orders?: ReplyOrder[] | null
+  /** The store's own wording (`messenger_settings.messages`). Missing = the defaults. */
+  messages?: MessageSettings
+  /** The customer's first name, already cleaned (`greetingName`). Missing / '' = no name. */
+  customerName?: string
 }
 
+/**
+ * The English defaults the rule editor shows as placeholders. The words
+ * themselves live in the message registry (`messages/registry.ts`).
+ */
 export const DEFAULT_WORDING = {
-  menuCardSubtitle: '👇 Tap below to view items and order now!',
-  menuCardButton: '🛒 View Items Now',
-  categoriesButton: '📋 Categories',
-  categoriesText: 'What are you craving? Pick a category 👇',
-  featuredText: 'Here are some favourites 👇',
-  categoryMissing: "That category isn't available right now. Here's what we have:",
-  orderStatus: "To check your order, open the tracking link on your receipt. You can also send us your order number and we'll check for you.",
-  talkToStaff: 'Got it! Someone from {store} will reply here soon. 🙏',
-  hoursLocation: '📍 {address}\n🕒 {hours}',
-  noMenu: "Our menu isn't online right now. Please message us what you'd like and we'll help you order.",
-  seeMore: 'See more',
-  fullMenu: 'Full menu',
-  order: 'Order',
-  chooseOptions: 'Choose options',
-  directions: 'Get directions',
-  addToCart: '🛒 Add to cart',
-  viewItem: 'View item',
-  viewCart: '🛒 View cart',
-  checkout: '✅ Checkout',
-  keepBrowsing: 'Keep browsing',
-  emptyCart: 'Empty cart',
-  cartEmpty: 'Your cart is empty. Pick a category to start 👇',
-  cartUnreadable: "We couldn't open your cart just now. You can order from our online menu instead 👇",
-  cartUnavailable: "Sorry, that dish can't be ordered from the chat right now.",
-  cartFull: `Your cart already has ${MAX_CART_LINES} different dishes. Check out first, or remove one.`,
-  maxQty: `That's the most (${MAX_LINE_QTY}) we can take for one dish in the chat. For more, message us here.`,
-  notInCart: "That dish isn't in your cart any more. Here's your cart now:",
-  clearAsk: 'Empty your cart?',
-  clearYes: 'Yes, empty it',
-  clearNo: 'Keep it',
-  cleared: 'Your cart is empty now.',
-  trackOrder: 'Track order',
-  noOrders: "We couldn't find a recent order from this chat. If you ordered online, open the tracking link on your receipt, or send us your order number.",
-  ordersIntro: 'Your recent orders 👇',
+  menuCardSubtitle: defaultText('browse.menu_subtitle'),
+  menuCardButton: defaultText('browse.menu_button'),
+  categoriesText: defaultText('browse.categories_text'),
+  featuredText: defaultText('browse.featured_text'),
+  orderStatus: defaultText('orders.status_text'),
+  talkToStaff: defaultText('handover.staff_reply'),
+  hoursLocation: defaultText('info.hours_location'),
 } as const
 
 function withToken(url: string, token: string | null): string {
@@ -99,38 +89,47 @@ function mapsUrl(address: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
 }
 
-export const PLACEHOLDERS = ['store', 'menu_link', 'hours', 'address'] as const
-const PLACEHOLDER_PATTERN = /\{(store|menu_link|hours|address)\}/g
+/** Placeholders a rule's own text may use (every reply knows them). */
+export const PLACEHOLDERS = ['store', 'name', 'menu_link', 'hours', 'address'] as const
 
-/**
- * `{store}`, `{menu_link}`, `{hours}`, `{address}`. A line whose placeholders
- * all came out blank (a store with no address) is dropped, so "📍 " never
- * goes out alone.
- */
-export function fillPlaceholders(text: string, ctx: ReplyContext): string {
-  const values: Record<string, string> = {
+function baseValues(ctx: ReplyContext): Record<(typeof PLACEHOLDERS)[number], string> {
+  return {
     store: ctx.store.name,
+    name: ctx.customerName ?? '',
     menu_link: menuUrl(ctx),
     hours: ctx.store.hoursText ?? '',
     address: ctx.store.address ?? '',
   }
-  return text
-    .split('\n')
-    .filter((line) => {
-      const keys = [...line.matchAll(PLACEHOLDER_PATTERN)].map((match) => match[1])
-      return keys.length === 0 || keys.some((key) => values[key] !== '')
-    })
-    .map((line) => line.replace(PLACEHOLDER_PATTERN, (_, key: string) => values[key] ?? ''))
-    .join('\n')
-    .trim()
 }
 
 /**
- * The owner's wording with placeholders filled, else the default. Never empty:
- * Meta refuses an empty message, and the customer would get nothing.
+ * `{store}`, `{name}`, `{menu_link}`, `{hours}`, `{address}` (+ `extra`). A
+ * line whose placeholders all came out blank (a store with no address) is
+ * dropped, so "📍 " never goes out alone.
  */
-function wording(ctx: ReplyContext, custom: string | undefined, fallback: string): string {
-  return (custom ? fillPlaceholders(custom, ctx) : '') || fillPlaceholders(fallback, ctx) || ctx.store.name
+export function fillPlaceholders(text: string, ctx: ReplyContext, extra: FillValues = {}): string {
+  return fillTemplate(text, { ...baseValues(ctx), ...extra })
+}
+
+/**
+ * A registry message: the store's words if set (and not blank once filled),
+ * else the default in the store's language.
+ */
+export function say(ctx: ReplyContext, id: TextMessageId, extra: FillValues = {}, kind: OrderKind = null): string {
+  const custom = ctx.messages?.texts[id]
+  return (custom ? fillPlaceholders(custom, ctx, extra) : '') || fillPlaceholders(defaultText(id, ctx.messages?.lang, kind), ctx, extra)
+}
+
+function shows(ctx: ReplyContext, id: ToggleId): boolean {
+  return isToggleOn(ctx.messages, id)
+}
+
+/**
+ * A rule's own text, else the store's message, else the store name. Never
+ * empty: Meta refuses an empty message, and the customer would get nothing.
+ */
+function wording(ctx: ReplyContext, custom: string | undefined, id: TextMessageId): string {
+  return (custom ? fillPlaceholders(custom, ctx) : '') || say(ctx, id) || ctx.store.name
 }
 
 function button(title: string, target: { url: string } | { payload: string }): MessengerButton {
@@ -144,8 +143,8 @@ function quickReply(title: string, payload: string): QuickReply {
 
 function navigationQuickReplies(ctx: ReplyContext): QuickReply[] {
   const replies: QuickReply[] = []
-  if (ctx.store.categories.length > 0) replies.push(quickReply(DEFAULT_WORDING.categoriesButton, encodePayload({ verb: 'categories' })))
-  replies.push(quickReply(DEFAULT_WORDING.fullMenu, encodePayload({ verb: 'menu' })))
+  if (ctx.store.categories.length > 0) replies.push(quickReply(say(ctx, 'browse.categories_button'), encodePayload({ verb: 'categories' })))
+  replies.push(quickReply(say(ctx, 'browse.full_menu'), encodePayload({ verb: 'menu' })))
   return replies
 }
 
@@ -155,26 +154,27 @@ export function formatPeso(amount: number): string {
   return `₱${text}`
 }
 
-function priceLine(item: ReplyItem): string {
-  return item.discountedPrice !== null
+function priceLine(ctx: ReplyContext, item: ReplyItem): string {
+  if (item.discountedPrice === null) return formatPeso(item.price)
+  return shows(ctx, 'browse.show_was_price')
     ? `${formatPeso(item.discountedPrice)} (was ${formatPeso(item.price)})`
-    : formatPeso(item.price)
+    : formatPeso(item.discountedPrice)
 }
 
 function itemCard(ctx: ReplyContext, item: ReplyItem): CardElement {
   const url = itemUrl(ctx, item.id)
-  const subtitle = [priceLine(item), item.description].filter(Boolean).join(' · ')
+  const subtitle = [priceLine(ctx, item), item.description].filter(Boolean).join(' · ')
   return {
     title: clip(item.name, MESSENGER_LIMITS.cardTitle),
     subtitle: clip(subtitle, MESSENGER_LIMITS.cardSubtitle),
     imageUrl: item.imageUrl ?? ctx.store.logoUrl ?? undefined,
     tapUrl: url,
     buttons: item.needsChoices
-      ? [button(DEFAULT_WORDING.chooseOptions, { url }), button(DEFAULT_WORDING.fullMenu, { url: menuUrl(ctx) })]
+      ? [button(say(ctx, 'browse.choose_options'), { url }), button(say(ctx, 'browse.full_menu'), { url: menuUrl(ctx) })]
       : [
-          button(DEFAULT_WORDING.addToCart, { payload: encodePayload({ verb: 'add', itemId: item.id }) }),
-          button(DEFAULT_WORDING.viewItem, { url }),
-          button(DEFAULT_WORDING.fullMenu, { url: menuUrl(ctx) }),
+          button(say(ctx, 'browse.add_to_cart'), { payload: encodePayload({ verb: 'add', itemId: item.id }) }),
+          ...(shows(ctx, 'browse.show_view_item') ? [button(say(ctx, 'browse.view_item'), { url })] : []),
+          button(say(ctx, 'browse.full_menu'), { url: menuUrl(ctx) }),
         ],
   }
 }
@@ -185,15 +185,15 @@ function textMessage(text: string, quickReplies?: QuickReply[]): OutgoingMessage
 
 export function buildMenuCard(ctx: ReplyContext, action: Extract<RuleAction, { kind: 'menu_card' }> = { kind: 'menu_card' }): OutgoingMessage[] {
   const url = menuUrl(ctx)
-  const buttons: MessengerButton[] = [button(action.buttonLabel || DEFAULT_WORDING.menuCardButton, { url })]
-  if (action.showCategoriesButton !== false && ctx.store.categories.length > 1) {
-    buttons.push(button(DEFAULT_WORDING.categoriesButton, { payload: encodePayload({ verb: 'categories' }) }))
+  const buttons: MessengerButton[] = [button(action.buttonLabel || say(ctx, 'browse.menu_button'), { url })]
+  if (action.showCategoriesButton !== false && shows(ctx, 'browse.show_categories_button') && ctx.store.categories.length > 1) {
+    buttons.push(button(say(ctx, 'browse.categories_button'), { payload: encodePayload({ verb: 'categories' }) }))
   }
   return [{
     kind: 'cards',
     cards: [{
-      title: clip(wording(ctx, action.title, `📍 ${ctx.store.name}`), MESSENGER_LIMITS.cardTitle),
-      subtitle: clip(wording(ctx, action.subtitle, DEFAULT_WORDING.menuCardSubtitle), MESSENGER_LIMITS.cardSubtitle),
+      title: clip(wording(ctx, action.title, 'browse.menu_title'), MESSENGER_LIMITS.cardTitle),
+      subtitle: clip(wording(ctx, action.subtitle, 'browse.menu_subtitle'), MESSENGER_LIMITS.cardSubtitle),
       imageUrl: ctx.store.logoUrl ?? undefined,
       tapUrl: url,
       buttons,
@@ -202,12 +202,17 @@ export function buildMenuCard(ctx: ReplyContext, action: Extract<RuleAction, { k
 }
 
 export function buildCategories(ctx: ReplyContext, text?: string): OutgoingMessage[] {
+  return categoriesMessage(ctx, wording(ctx, text, 'browse.categories_text'))
+}
+
+/** The category quick replies under words already filled. */
+function categoriesMessage(ctx: ReplyContext, words: string): OutgoingMessage[] {
   if (ctx.store.categories.length === 0) return buildMenuCard(ctx)
   const replies = ctx.store.categories
     .slice(0, CATEGORY_QUICK_REPLIES)
     .map((category) => quickReply(category.name, encodePayload({ verb: 'category', categoryId: category.id, page: 0 })))
-  replies.push(quickReply(DEFAULT_WORDING.fullMenu, encodePayload({ verb: 'menu' })))
-  return [textMessage(wording(ctx, text, DEFAULT_WORDING.categoriesText), replies)]
+  replies.push(quickReply(say(ctx, 'browse.full_menu'), encodePayload({ verb: 'menu' })))
+  return [textMessage(words, replies)]
 }
 
 function carousel(ctx: ReplyContext, items: readonly ReplyItem[], more: CardElement | null): OutgoingMessage {
@@ -217,7 +222,7 @@ function carousel(ctx: ReplyContext, items: readonly ReplyItem[], more: CardElem
 
 export function buildCategoryItems(ctx: ReplyContext, categoryId: string, page = 0, text?: string): OutgoingMessage[] {
   const category = ctx.store.categories.find((entry) => entry.id === categoryId)
-  if (!category) return [textMessage(DEFAULT_WORDING.categoryMissing), ...buildCategories(ctx).slice(0, 1)]
+  if (!category) return [textMessage(say(ctx, 'browse.category_missing')), ...buildCategories(ctx).slice(0, 1)]
 
   const all = ctx.store.items.filter((item) => item.categoryId === categoryId)
   const lastPage = Math.max(0, Math.ceil(all.length / ITEMS_PER_PAGE) - 1)
@@ -228,11 +233,11 @@ export function buildCategoryItems(ctx: ReplyContext, categoryId: string, page =
 
   const more: CardElement | null = remaining > 0
     ? {
-        title: clip(`${remaining} more in ${category.name}`, MESSENGER_LIMITS.cardTitle),
-        subtitle: clip('Tap to see the next ones', MESSENGER_LIMITS.cardSubtitle),
+        title: clip(say(ctx, 'browse.more_title', { more: String(remaining), category: category.name }), MESSENGER_LIMITS.cardTitle),
+        subtitle: clip(say(ctx, 'browse.more_subtitle'), MESSENGER_LIMITS.cardSubtitle),
         buttons: [
-          button(DEFAULT_WORDING.seeMore, { payload: encodePayload({ verb: 'category', categoryId, page: safePage + 1 }) }),
-          button(DEFAULT_WORDING.fullMenu, { url: menuUrl(ctx) }),
+          button(say(ctx, 'browse.see_more'), { payload: encodePayload({ verb: 'category', categoryId, page: safePage + 1 }) }),
+          button(say(ctx, 'browse.full_menu'), { url: menuUrl(ctx) }),
         ],
       }
     : null
@@ -249,7 +254,7 @@ export function buildFeaturedItems(ctx: ReplyContext, itemIds: readonly string[]
     ? picked
     : (ctx.store.items.some((item) => item.isFeatured) ? ctx.store.items.filter((item) => item.isFeatured) : ctx.store.items)
   if (items.length === 0) return buildMenuCard(ctx)
-  return [textMessage(wording(ctx, text, DEFAULT_WORDING.featuredText)), carousel(ctx, items, null)]
+  return [textMessage(wording(ctx, text, 'browse.featured_text')), carousel(ctx, items, null)]
 }
 
 function textButton(ctx: ReplyContext, entry: TextButton): MessengerButton {
@@ -266,7 +271,7 @@ function textButton(ctx: ReplyContext, entry: TextButton): MessengerButton {
 }
 
 export function buildText(ctx: ReplyContext, text: string, buttons: readonly TextButton[]): OutgoingMessage[] {
-  const filled = wording(ctx, text, ctx.store.name)
+  const filled = fillPlaceholders(text, ctx) || ctx.store.name
   if (buttons.length === 0) return [textMessage(filled)]
   return [{
     kind: 'buttons',
@@ -276,23 +281,23 @@ export function buildText(ctx: ReplyContext, text: string, buttons: readonly Tex
 }
 
 export function buildHoursLocation(ctx: ReplyContext, text?: string): OutgoingMessage[] {
-  const body = wording(ctx, text, DEFAULT_WORDING.hoursLocation)
+  const body = wording(ctx, text, 'info.hours_location')
   const buttons: MessengerButton[] = []
-  if (ctx.store.address) buttons.push(button(DEFAULT_WORDING.directions, { url: mapsUrl(ctx.store.address) }))
-  buttons.push(button(DEFAULT_WORDING.fullMenu, { url: menuUrl(ctx) }))
+  if (ctx.store.address) buttons.push(button(say(ctx, 'info.directions'), { url: mapsUrl(ctx.store.address) }))
+  buttons.push(button(say(ctx, 'browse.full_menu'), { url: menuUrl(ctx) }))
   return [{ kind: 'buttons', text: clip(body, MESSENGER_LIMITS.buttonTemplateText), buttons }]
 }
 
 export function buildTalkToStaff(ctx: ReplyContext, text?: string): OutgoingMessage[] {
-  return [textMessage(wording(ctx, text, DEFAULT_WORDING.talkToStaff))]
+  return [textMessage(wording(ctx, text, 'handover.staff_reply'))]
 }
 
 function orderCard(ctx: ReplyContext, order: ReplyOrder): CardElement {
   return {
-    title: clip(`Order ${order.label} · ${statusLabel(order.status, order.kind)}`, MESSENGER_LIMITS.cardTitle),
-    subtitle: clip(`${formatCentavos(order.totalCentavos)} · ${ctx.store.name}`, MESSENGER_LIMITS.cardSubtitle),
+    title: clip(say(ctx, 'orders.card_title', { order: order.label, status: statusLabel(order.status, order.kind) }), MESSENGER_LIMITS.cardTitle),
+    subtitle: clip(say(ctx, 'orders.card_subtitle', { total: formatCentavos(order.totalCentavos) }), MESSENGER_LIMITS.cardSubtitle),
     ...(order.trackingUrl ? { tapUrl: order.trackingUrl } : {}),
-    buttons: order.trackingUrl ? [button(DEFAULT_WORDING.trackOrder, { url: order.trackingUrl })] : [],
+    buttons: order.trackingUrl ? [button(say(ctx, 'orders.track'), { url: order.trackingUrl })] : [],
   }
 }
 
@@ -302,11 +307,10 @@ function orderCard(ctx: ReplyContext, order: ReplyOrder): CardElement {
  * the owner's text / the tracking-link explanation, as before.
  */
 export function buildOrderStatus(ctx: ReplyContext, text?: string): OutgoingMessage[] {
-  if (!ctx.orders) return [textMessage(wording(ctx, text, DEFAULT_WORDING.orderStatus), navigationQuickReplies(ctx))]
-  if (ctx.orders.length === 0) return [textMessage(wording(ctx, undefined, DEFAULT_WORDING.noOrders), navigationQuickReplies(ctx))]
-  const intro = text ? fillPlaceholders(text, ctx) : DEFAULT_WORDING.ordersIntro
+  if (!ctx.orders) return [textMessage(wording(ctx, text, 'orders.status_text'), navigationQuickReplies(ctx))]
+  if (ctx.orders.length === 0) return [textMessage(wording(ctx, undefined, 'orders.none'), navigationQuickReplies(ctx))]
   return [
-    textMessage(intro || DEFAULT_WORDING.ordersIntro),
+    textMessage(wording(ctx, text, 'orders.intro')),
     { kind: 'cards', cards: ctx.orders.slice(0, ITEMS_PER_PAGE).map((order) => orderCard(ctx, order)), quickReplies: navigationQuickReplies(ctx) },
   ]
 }
@@ -317,21 +321,29 @@ export function formatCentavos(centavos: number): string {
   return formatPeso(centavos / 100)
 }
 
-function cartSummaryLine(priced: PricedChatCart): string {
-  return `${priced.itemCount} item${priced.itemCount === 1 ? '' : 's'} · ${formatCentavos(priced.totalCentavos)}`
+/** "3 items" — the `{count}` placeholder. */
+function itemCountText(count: number): string {
+  return `${count} item${count === 1 ? '' : 's'}`
 }
 
-function browseButton(ctx: ReplyContext): MessengerButton {
-  return ctx.store.categories.length > 0
-    ? button(DEFAULT_WORDING.keepBrowsing, { payload: encodePayload({ verb: 'categories' }) })
-    : button(DEFAULT_WORDING.keepBrowsing, { url: menuUrl(ctx) })
+function cartValues(priced: PricedChatCart): FillValues {
+  return { count: itemCountText(priced.itemCount), total: formatCentavos(priced.totalCentavos) }
 }
 
-function droppedNotice(priced: PricedChatCart): OutgoingMessage[] {
+/** Keep browsing, unless the owner hid it. */
+function browseButtons(ctx: ReplyContext): MessengerButton[] {
+  if (!shows(ctx, 'cart.show_keep_browsing')) return []
+  return [ctx.store.categories.length > 0
+    ? button(say(ctx, 'cart.keep_browsing'), { payload: encodePayload({ verb: 'categories' }) })
+    : button(say(ctx, 'cart.keep_browsing'), { url: menuUrl(ctx) })]
+}
+
+function droppedNotice(ctx: ReplyContext, priced: PricedChatCart): OutgoingMessage[] {
   if (priced.droppedNames.length === 0) return []
   const names = priced.droppedNames.slice(0, 3).join(', ')
-  const more = priced.droppedNames.length > 3 ? ` and ${priced.droppedNames.length - 3} more` : ''
-  return [textMessage(`${names}${more} can't be ordered right now, so we took ${priced.droppedNames.length === 1 ? 'it' : 'them'} out of your cart.`)]
+  const hidden = priced.droppedNames.length - 3
+  const more = hidden > 0 ? (ctx.messages?.lang === 'tl' ? ` at ${hidden} pa` : ` and ${hidden} more`) : ''
+  return [textMessage(say(ctx, priced.droppedNames.length === 1 ? 'cart.dropped_one' : 'cart.dropped_many', { items: `${names}${more}` }))]
 }
 
 /** The cart: one card per dish with − / + / Remove, then the total with Checkout. */
@@ -339,43 +351,54 @@ export function buildCart(ctx: ReplyContext, lead: OutgoingMessage[] = []): Outg
   if (!ctx.cart) return [...lead, ...buildCartUnreadable(ctx)]
   const { priced } = ctx.cart
   if (priced.lines.length === 0) {
-    return [...lead, ...droppedNotice(priced), ...buildCategoriesOrMenu(ctx, DEFAULT_WORDING.cartEmpty)]
+    return [...lead, ...droppedNotice(ctx, priced), ...buildCategoriesOrMenu(ctx, say(ctx, 'cart.empty'))]
   }
 
   // 9 dishes + the total card = Meta's 10.
   const shown = priced.lines.slice(0, ITEMS_PER_PAGE)
   const hidden = priced.lines.length - shown.length
   const dishCards: CardElement[] = shown.map((line) => ({
-    title: clip(`${line.qty} × ${line.item.name}`, MESSENGER_LIMITS.cardTitle),
-    subtitle: clip(`${formatCentavos(line.unitCentavos)} each · ${formatCentavos(line.lineCentavos)}`, MESSENGER_LIMITS.cardSubtitle),
+    title: clip(say(ctx, 'cart.line_title', { qty: String(line.qty), item: line.item.name }), MESSENGER_LIMITS.cardTitle),
+    subtitle: clip(say(ctx, 'cart.line_subtitle', {
+      qty: String(line.qty), price: formatCentavos(line.unitCentavos), line_total: formatCentavos(line.lineCentavos),
+    }), MESSENGER_LIMITS.cardSubtitle),
     imageUrl: line.item.imageUrl ?? ctx.store.logoUrl ?? undefined,
     buttons: [
-      button('➖', { payload: encodePayload({ verb: 'dec', itemId: line.item.id }) }),
-      button('➕', { payload: encodePayload({ verb: 'inc', itemId: line.item.id }) }),
-      button('Remove', { payload: encodePayload({ verb: 'rm', itemId: line.item.id }) }),
+      button(say(ctx, 'cart.minus'), { payload: encodePayload({ verb: 'dec', itemId: line.item.id }) }),
+      button(say(ctx, 'cart.plus'), { payload: encodePayload({ verb: 'inc', itemId: line.item.id }) }),
+      button(say(ctx, 'cart.remove'), { payload: encodePayload({ verb: 'rm', itemId: line.item.id }) }),
     ],
   }))
-  const moreText = hidden > 0 ? `+${hidden} more on the checkout page` : 'Prices are confirmed at checkout'
+  const values = cartValues(priced)
+  const moreText = hidden > 0 ? say(ctx, 'cart.total_more', { more: String(hidden) }) : say(ctx, 'cart.total_subtitle')
   const total: CardElement = {
-    title: clip(`Total ${formatCentavos(priced.totalCentavos)} · ${priced.itemCount} item${priced.itemCount === 1 ? '' : 's'}`, MESSENGER_LIMITS.cardTitle),
+    title: clip(say(ctx, 'cart.total_title', values), MESSENGER_LIMITS.cardTitle),
     subtitle: clip(moreText, MESSENGER_LIMITS.cardSubtitle),
     imageUrl: ctx.store.logoUrl ?? undefined,
     tapUrl: checkoutUrl(ctx),
     buttons: [
-      button(DEFAULT_WORDING.checkout, { url: checkoutUrl(ctx) }),
-      browseButton(ctx),
-      button(DEFAULT_WORDING.emptyCart, { payload: encodePayload({ verb: 'clear' }) }),
+      button(say(ctx, 'cart.checkout'), { url: checkoutUrl(ctx) }),
+      ...browseButtons(ctx),
+      ...(shows(ctx, 'cart.show_empty_cart') ? [button(say(ctx, 'cart.empty_cart'), { payload: encodePayload({ verb: 'clear' }) })] : []),
     ],
   }
-  return [...lead, ...droppedNotice(priced), { kind: 'cards', cards: [...dishCards, total] }]
+  const leadText = say(ctx, 'cart.lead', values)
+  return [
+    ...lead,
+    ...droppedNotice(ctx, priced),
+    ...(leadText ? [textMessage(leadText)] : []),
+    { kind: 'cards', cards: [...dishCards, total] },
+  ]
 }
 
-function buildCategoriesOrMenu(ctx: ReplyContext, text: string): OutgoingMessage[] {
-  return ctx.store.categories.length > 0 ? buildCategories(ctx, text) : [textMessage(text), ...buildMenuCard(ctx)]
+/** `words` are already filled. */
+function buildCategoriesOrMenu(ctx: ReplyContext, words: string): OutgoingMessage[] {
+  const text = words || ctx.store.name
+  return ctx.store.categories.length > 0 ? categoriesMessage(ctx, text) : [textMessage(text), ...buildMenuCard(ctx)]
 }
 
 function buildCartUnreadable(ctx: ReplyContext): OutgoingMessage[] {
-  return [textMessage(DEFAULT_WORDING.cartUnreadable), ...buildMenuCard(ctx)]
+  return [textMessage(say(ctx, 'cart.unreadable')), ...buildMenuCard(ctx)]
 }
 
 /** The answer to a tap on Add to cart / − / + / Remove / Empty cart. */
@@ -388,39 +411,58 @@ export function buildCartChange(ctx: ReplyContext): OutgoingMessage[] {
     case 'added': {
       const line = priced.lines.find((entry) => entry.item.id === itemId)
       const name = line?.item.name ?? item?.name ?? 'That dish'
+      const qty = line?.qty ?? 1
+      const qtyNote = qty > 1 ? (ctx.messages?.lang === 'tl' ? ` (${qty} na sa cart)` : ` (${qty} in cart)`) : ''
       return [{
         kind: 'buttons',
-        text: clip(`✅ Added ${name}${line && line.qty > 1 ? ` (${line.qty} in cart)` : ''}\n🛒 Your cart: ${cartSummaryLine(priced)}`, MESSENGER_LIMITS.buttonTemplateText),
+        text: clip(say(ctx, 'cart.added', { item: name, qty: String(qty), qty_note: qtyNote, ...cartValues(priced) }), MESSENGER_LIMITS.buttonTemplateText),
         buttons: [
-          button(DEFAULT_WORDING.checkout, { url: checkoutUrl(ctx) }),
-          button(DEFAULT_WORDING.viewCart, { payload: encodePayload({ verb: 'cart' }) }),
-          browseButton(ctx),
+          button(say(ctx, 'cart.checkout'), { url: checkoutUrl(ctx) }),
+          button(say(ctx, 'cart.view_cart'), { payload: encodePayload({ verb: 'cart' }) }),
+          ...browseButtons(ctx),
         ],
       }]
     }
     case 'unavailable':
-      return [textMessage(DEFAULT_WORDING.cartUnavailable), ...buildCategoriesOrMenu(ctx, DEFAULT_WORDING.categoriesText)]
+      return [textMessage(say(ctx, 'cart.unavailable')), ...buildCategoriesOrMenu(ctx, say(ctx, 'browse.categories_text'))]
     case 'cart_full':
-      return buildCart(ctx, [textMessage(DEFAULT_WORDING.cartFull)])
+      return buildCart(ctx, [textMessage(say(ctx, 'cart.full'))])
     case 'max_qty':
-      return buildCart(ctx, [textMessage(DEFAULT_WORDING.maxQty)])
+      return buildCart(ctx, [textMessage(say(ctx, 'cart.max_qty'))])
     case 'not_in_cart':
-      return buildCart(ctx, [textMessage(DEFAULT_WORDING.notInCart)])
+      return buildCart(ctx, [textMessage(say(ctx, 'cart.not_in_cart'))])
     case 'cleared':
-      return buildCategoriesOrMenu(ctx, `${DEFAULT_WORDING.cleared} ${DEFAULT_WORDING.categoriesText}`)
+      return buildCategoriesOrMenu(ctx, `${say(ctx, 'cart.cleared')} ${say(ctx, 'browse.categories_text')}`.trim())
     default:
       // increased / decreased / removed: show the cart as it is now.
       return buildCart(ctx)
   }
 }
 
+/** What a status message needs to know; less than a full reply context (no menu). */
+export interface OrderUpdateContext {
+  storeName: string
+  messages?: MessageSettings
+  customerName?: string
+}
+
+/** A status message's words: the owner's for this status, else the default for this kind of order. */
+export function orderUpdateText(ctx: OrderUpdateContext, status: UpdateStatus, order: Pick<ReplyOrder, 'label' | 'kind'>): string {
+  const id = UPDATE_MESSAGE_IDS[status]
+  const values: FillValues = { store: ctx.storeName, order: order.label, name: ctx.customerName ?? '' }
+  const custom = ctx.messages?.texts[id]
+  return (custom ? fillTemplate(custom, values) : '') || fillTemplate(defaultText(id, ctx.messages?.lang, order.kind), values)
+}
+
 /** A status message: the owner's (or default) words, and the tracking link. */
-export function buildOrderUpdate(text: string, order: ReplyOrder): OutgoingMessage[] {
+export function buildOrderUpdate(ctx: OrderUpdateContext, status: UpdateStatus, order: ReplyOrder): OutgoingMessage[] {
+  const text = orderUpdateText(ctx, status, order)
   if (!order.trackingUrl) return [textMessage(text)]
+  const track = ctx.messages?.texts['orders.track'] || defaultText('orders.track', ctx.messages?.lang)
   return [{
     kind: 'buttons',
     text: clip(text, MESSENGER_LIMITS.buttonTemplateText),
-    buttons: [button(DEFAULT_WORDING.trackOrder, { url: order.trackingUrl })],
+    buttons: [button(track, { url: order.trackingUrl })],
   }]
 }
 
@@ -450,13 +492,13 @@ export function withPreviewData(ctx: ReplyContext): ReplyContext {
 }
 
 /** "Empty your cart?" — a tap on an old message must not empty it by accident. */
-export function buildClearConfirm(): OutgoingMessage[] {
+export function buildClearConfirm(ctx: ReplyContext): OutgoingMessage[] {
   return [{
     kind: 'buttons',
-    text: DEFAULT_WORDING.clearAsk,
+    text: clip(say(ctx, 'cart.clear_ask'), MESSENGER_LIMITS.buttonTemplateText),
     buttons: [
-      button(DEFAULT_WORDING.clearYes, { payload: encodePayload({ verb: 'clear_yes' }) }),
-      button(DEFAULT_WORDING.clearNo, { payload: encodePayload({ verb: 'cart' }) }),
+      button(say(ctx, 'cart.clear_yes'), { payload: encodePayload({ verb: 'clear_yes' }) }),
+      button(say(ctx, 'cart.clear_no'), { payload: encodePayload({ verb: 'cart' }) }),
     ],
   }]
 }
@@ -464,7 +506,7 @@ export function buildClearConfirm(): OutgoingMessage[] {
 /** The messages a rule's action sends. */
 export function buildReply(action: RuleAction, ctx: ReplyContext): OutgoingMessage[] {
   if (ctx.store.items.length === 0 && ['categories', 'category_items', 'featured_items'].includes(action.kind)) {
-    return [textMessage(wording(ctx, undefined, DEFAULT_WORDING.noMenu))]
+    return [textMessage(wording(ctx, undefined, 'browse.no_menu'))]
   }
   switch (action.kind) {
     case 'menu_card':

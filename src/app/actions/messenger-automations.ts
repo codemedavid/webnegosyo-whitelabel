@@ -26,6 +26,8 @@ import { touchSession } from '@/lib/messenger/session'
 import { createMessengerLinkToken } from '@/lib/messenger/link-token'
 import { hashTesterCode, newTesterCode, TESTER_CODE_TTL_MS } from '@/lib/messenger/tester'
 import { MAX_ORDER_UPDATE_TEXT, orderUpdatesSchema, UPDATE_STATUSES, type OrderUpdatesConfig } from '@/lib/messenger/order-view'
+import { parseMessagesForSave, type MessageProblem } from '@/lib/messenger/messages/stored'
+import type { MessageSettings } from '@/lib/messenger/messages/registry'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TAKEOVER_CHOICES = [0, 30, 60, 240, 1440] as const
@@ -151,7 +153,7 @@ export async function sendMessengerTestAction(tenantId: string, rawAction: unkno
 
   const session = await touchSession({ tenantId, pageId: page.page_id, psid: testerPsid, now: new Date(), isInbound: false })
   const linkToken = session ? createMessengerLinkToken(session.id) : null
-  const result = await sendMessages(page.page_access_token, testerPsid, buildReply(action.data, withPreviewData({ store: bundle.store, linkToken })))
+  const result = await sendMessages(page.page_access_token, testerPsid, buildReply(action.data, withPreviewData({ store: bundle.store, linkToken, messages: bundle.settings.messages })))
   return result.ok ? { ok: true } : { ok: false, error: testSendError(result.error.code, result.error.subcode) }
 }
 
@@ -196,4 +198,55 @@ export async function saveMessengerOrderUpdatesAction(input: { tenantId: string;
     return { ok: false, error: updated.error?.code === '42501' ? NOT_ALLOWED : "Couldn't save your status messages. Please try again." }
   }
   return { ok: true, config }
+}
+
+const messagesInput = z.object({
+  tenantId: z.string().uuid(),
+  messages: z.record(z.string(), z.unknown()),
+  orderUpdates: orderUpdatesSchema,
+}).strict()
+
+/**
+ * What the bot says (Studio → Messages): `messenger_settings.messages`, and
+ * the status-message switches in the same row write. Status wording now lives
+ * in `messages`, so `order_updates.texts` is emptied here — the editor showed
+ * those texts folded into the messages it sends back, so nothing is lost.
+ */
+export async function saveMessengerMessagesAction(input: {
+  tenantId: string
+  messages: Record<string, unknown>
+  orderUpdates: OrderUpdatesConfig
+}): Promise<ActionResult<{ messages: MessageSettings; orderUpdates: OrderUpdatesConfig }> | { ok: false; error: string; problems: MessageProblem[] }> {
+  const parsed = messagesInput.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Couldn't read these messages. Reload the page and try again." }
+  const { tenantId } = parsed.data
+  const checked = parseMessagesForSave(parsed.data.messages)
+  if (!checked.ok) return { ok: false, error: checked.problems[0]?.message ?? 'Check the highlighted messages.', problems: checked.problems }
+
+  const access = await authorize(tenantId)
+  if ('error' in access) return { ok: false, error: access.error }
+
+  const orderUpdates: OrderUpdatesConfig = {
+    enabled: parsed.data.orderUpdates.enabled,
+    statuses: UPDATE_STATUSES.filter((status) => parsed.data.orderUpdates.statuses.includes(status)),
+    texts: {},
+  }
+  const columns = { messages: checked.stored, order_updates: orderUpdates, updated_by: access.userId }
+
+  const supabase = await createClient()
+  const updated = await supabase.from('messenger_settings').update(columns as never).eq('tenant_id', tenantId).select('tenant_id')
+  let rows = updated.data?.length ?? 0
+  if (!updated.error && rows === 0) {
+    const inserted = await supabase.from('messenger_settings').insert({ tenant_id: tenantId, ...columns } as never).select('tenant_id')
+    if (inserted.error) {
+      console.error('[Messenger automations] messages not stored', { tenantId, code: inserted.error.code })
+      return { ok: false, error: inserted.error.code === '42501' ? NOT_ALLOWED : "Couldn't save your messages. Please try again." }
+    }
+    rows = inserted.data?.length ?? 0
+  }
+  if (updated.error || rows !== 1) {
+    console.error('[Messenger automations] messages not stored', { tenantId, code: updated.error?.code, rows })
+    return { ok: false, error: updated.error?.code === '42501' ? NOT_ALLOWED : "Couldn't save your messages. Please try again." }
+  }
+  return { ok: true, messages: checked.settings, orderUpdates }
 }

@@ -8,7 +8,8 @@ import type { ReplyOrder } from '@/lib/messenger/order-view'
 import { charLength, MESSENGER_LIMITS as L } from '@/lib/messenger/limits'
 import type { OutgoingMessage } from '@/lib/messenger/graph-message'
 import { ACTION_KINDS, type RuleAction } from '@/lib/messenger/rules'
-import { category, dish, sampleContext, sampleStore } from './sample-store'
+import { category, dish, sampleContext as plainContext, sampleStore } from './sample-store'
+import { DEFAULT_MESSAGE_SETTINGS, MESSAGES, type MessageSettings, type TextEntry } from '@/lib/messenger/messages/registry'
 
 const LONG = '🍗 Extra-Large Family Bucket of Our Famous Garlic Butter Chicken Wings with Java Rice and Gravy '.repeat(3)
 
@@ -30,6 +31,27 @@ const ACTIONS: Record<(typeof ACTION_KINDS)[number], RuleAction> = {
   order_status: { kind: 'order_status' },
   cart: { kind: 'cart' },
 }
+
+/** Every message at its longest, using every placeholder it may, every optional button hidden. */
+function maxedWording(): MessageSettings {
+  const texts: Record<string, string> = {}
+  const toggles: Record<string, boolean> = {}
+  for (const entry of MESSAGES as readonly (TextEntry | { kind: 'toggle'; id: string })[]) {
+    if (entry.kind === 'toggle') {
+      toggles[entry.id] = false
+      continue
+    }
+    const tokens = entry.placeholders.map((key) => `{${key}}`).join(' ')
+    texts[entry.id] = `${tokens}${'🍗'.repeat(Math.max(0, entry.max - charLength(tokens)))}`
+  }
+  return { lang: 'en', texts, toggles } as MessageSettings
+}
+
+const WORDINGS: Array<[string, MessageSettings]> = [
+  ['default wording', DEFAULT_MESSAGE_SETTINGS],
+  ['Taglish', { ...DEFAULT_MESSAGE_SETTINGS, lang: 'tl' }],
+  ['the longest wording', maxedWording()],
+]
 
 function problems(message: OutgoingMessage): string[] {
   const found: string[] = []
@@ -62,7 +84,9 @@ function problems(message: OutgoingMessage): string[] {
   return found
 }
 
-describe('every reply fits Meta\'s limits', () => {
+describe.each(WORDINGS)('every reply fits Meta\'s limits (%s)', (_name, messages) => {
+  const sampleContext: typeof plainContext = (...args) => ({ ...plainContext(...args), messages })
+
   for (const store of [awkward, sampleStore(), sampleStore({ items: [] })]) {
     for (const kind of ACTION_KINDS) {
       it(`${kind} on a ${store.items.length}-dish store`, () => {
@@ -82,7 +106,7 @@ describe('every reply fits Meta\'s limits', () => {
     }
     const applied = applyCartOp(cart, { kind: 'add', itemId: awkward.items[25].id }, awkward)
     expect(applied.outcome).toBe('cart_full')
-    for (const message of buildClearConfirm()) expect(problems(message)).toEqual([])
+    for (const message of buildClearConfirm(base)) expect(problems(message)).toEqual([])
   })
 
   it('orders and status messages', () => {
@@ -92,7 +116,12 @@ describe('every reply fits Meta\'s limits', () => {
     for (const message of buildReply({ kind: 'order_status', text: '{store} '.repeat(60) }, { ...sampleContext(awkward), orders })) {
       expect(problems(message)).toEqual([])
     }
-    for (const message of buildOrderUpdate('x'.repeat(2000), orders[0])) expect(problems(message)).toEqual([])
+    const longest: MessageSettings = { ...messages, texts: { ...messages.texts, 'orders.update.ready': 'x'.repeat(2000) } }
+    for (const update of [messages, longest]) {
+      for (const message of buildOrderUpdate({ storeName: awkward.name, messages: update, customerName: 'Ana' }, 'ready', orders[0])) {
+        expect(problems(message)).toEqual([])
+      }
+    }
   })
 
   it('every page of a long category', () => {

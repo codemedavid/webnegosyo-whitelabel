@@ -148,7 +148,7 @@ function fromPayload(payload: MessengerPayload, rules: readonly MessengerRule[])
     case 'cart':
       return tap((ctx) => buildCart(ctx), { cart: 'read' })
     case 'clear':
-      return tap(() => buildClearConfirm())
+      return tap((ctx) => buildClearConfirm(ctx))
     case 'clear_yes':
       return tap(buildCartChange, { cart: { kind: 'clear' } })
     case 'orders':
@@ -190,7 +190,7 @@ async function handleEcho(event: Extract<InboundEvent, { kind: 'echo' }>, page: 
     const bundle = await deps.loadBundle(page.tenantId, now)
     if (!bundle?.store) return 'no_store'
     const session = await deps.touchSession({ tenantId: page.tenantId, pageId: event.pageId, psid: event.psid, now, isInbound: false })
-    const ctx: ReplyContext = { store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null }
+    const ctx: ReplyContext = { store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null, messages: bundle.settings.messages }
     const result = await deps.send(page.token, event.psid, buildReply(command, ctx))
     return result.ok ? 'staff_command' : 'send_failed'
   }
@@ -275,7 +275,7 @@ export async function handleEvent(event: InboundEvent, deps: WebhookDeps): Promi
   const isPaused = session?.botPausedUntil !== null && session?.botPausedUntil !== undefined && session.botPausedUntil.getTime() > now.getTime()
   if (isPaused && decision.isTyped) return 'paused'
 
-  const ctx: ReplyContext = { store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null }
+  const ctx: ReplyContext = { store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null, messages: bundle.settings.messages }
   await loadNeeds(ctx, decision.needs, { session, bundle, psid: event.psid, now, deps })
   const messages = decision.build(ctx)
   if (decision.pausesBot && session) {

@@ -27,7 +27,7 @@ export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{
   const admin = createAdminClient()
   const [settingsRead, rulesRead] = await Promise.all([
     admin.from('messenger_settings')
-      .select('bot_enabled, takeover_minutes, rules_customized_at, rules_version, tester_psid, tester_code_hash, tester_code_expires_at, profile_hash, profile_fields')
+      .select('bot_enabled, takeover_minutes, rules_customized_at, rules_version, tester_psid, tester_code_hash, tester_code_expires_at, profile_hash, profile_fields, messages, order_updates')
       .eq('tenant_id', tenantId)
       .maybeSingle(),
     admin.from('messenger_rules')

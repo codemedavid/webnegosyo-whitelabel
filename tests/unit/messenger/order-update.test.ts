@@ -8,6 +8,7 @@ import {
   decideOrderUpdate, DEFAULT_ORDER_UPDATES, MESSAGING_WINDOW_MS, orderLabel, readOrderKind, readOrderUpdates, statusLabel,
 } from '@/lib/messenger/order-view'
 import type { OutgoingMessage } from '@/lib/messenger/graph-message'
+import { readMessages } from '@/lib/messenger/messages/stored'
 
 const NOW = new Date('2026-11-11T04:00:00Z')
 const ORDER_ID = '0b0c9d3c-2222-4000-8000-000000000001'
@@ -20,9 +21,13 @@ function row(overrides: Partial<UpdateOrderRow> = {}): UpdateOrderRow {
 }
 
 function store(overrides: Partial<UpdateStore> = {}): UpdateStore {
+  const orderUpdates = overrides.orderUpdates ?? DEFAULT_ORDER_UPDATES
   return {
     name: 'Karamotan Grill', baseUrl: 'https://karamotan.webnegosyo.com', isPlatformOrders: true, botEnabled: true,
-    orderUpdates: DEFAULT_ORDER_UPDATES, facebookPageRowId: 'page-row', ...overrides,
+    orderUpdates, facebookPageRowId: 'page-row',
+    // As loadStore reads it: release 2's order_updates.texts fold into the messages.
+    messages: readMessages(null, orderUpdates.texts),
+    ...overrides,
   }
 }
 
@@ -95,6 +100,20 @@ describe('runOrderUpdate', () => {
     expect(await runOrderUpdate(ORDER_ID, h.deps)).toMatchObject({ outcome })
     expect(h.sent).toEqual([])
     expect(h.recorded).toEqual([outcome])
+  })
+
+  it('the Messages tab wording wins over the old order_updates text; Taglish defaults follow the order kind', async () => {
+    const custom = harness({ store: store({
+      orderUpdates: { enabled: true, statuses: ['ready'], texts: { ready: 'old words' } },
+      messages: readMessages({ 'orders.update.ready': 'Ready na {order}!' }, { ready: 'old words' }),
+    }) })
+    await runOrderUpdate(ORDER_ID, custom.deps)
+    expect(custom.sent[0].messages[0]).toMatchObject({ text: 'Ready na #07!' })
+
+    const taglish = harness({ store: store({ orderUpdates: { enabled: true, statuses: ['ready'], texts: {} }, messages: readMessages({ lang: 'tl' }) }) })
+    await runOrderUpdate(ORDER_ID, taglish.deps)
+    expect(taglish.sent[0].messages[0]).toMatchObject({ text: expect.stringContaining('#07') })
+    expect(taglish.sent[0].messages[0]).toMatchObject({ buttons: [expect.objectContaining({ title: 'I-track ang order' })] })
   })
 
   it('the owner\'s wording, with {store} and {order}', async () => {

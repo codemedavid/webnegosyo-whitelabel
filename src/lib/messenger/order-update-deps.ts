@@ -7,6 +7,7 @@ import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-
 import { toCentavos } from './chat-cart'
 import type { OrderUpdateDeps } from './order-update'
 import { readOrderUpdates } from './order-view'
+import { readMessages } from './messages/stored'
 import { readOrderTypeKinds, trackingUrl } from './recent-orders'
 import { maskPsid, sendMessages } from './send'
 import { storeBaseUrl } from './store-view'
@@ -61,19 +62,21 @@ export function createOrderUpdateDeps(): OrderUpdateDeps {
           .select('name, slug, domain, facebook_page_id, order_backend, convex_deployment_url')
           .eq('id', tenantId)
           .maybeSingle(),
-        admin.from('messenger_settings').select('bot_enabled, order_updates').eq('tenant_id', tenantId).maybeSingle(),
+        admin.from('messenger_settings').select('bot_enabled, order_updates, messages').eq('tenant_id', tenantId).maybeSingle(),
       ])
       if (tenantRead.error || !tenantRead.data) return null
       const tenant = tenantRead.data as { name: string; slug: string; domain: string | null; facebook_page_id: string | null }
       // Unreadable settings: send nothing rather than guess the owner's choice.
       if (settingsRead.error) return null
-      const settings = settingsRead.data as { bot_enabled: boolean; order_updates: unknown } | null
+      const settings = settingsRead.data as { bot_enabled: boolean; order_updates: unknown; messages: unknown } | null
+      const orderUpdates = readOrderUpdates(settings?.order_updates ?? null)
       return {
         name: tenant.name.trim(),
         baseUrl: storeBaseUrl(tenant, process.env.PLATFORM_ROOT_DOMAIN ?? null, process.env.NEXT_PUBLIC_APP_URL ?? null),
         isPlatformOrders: resolveOrderBackend(tenantRead.data as OrderBackendTenantFields) === 'platform',
         botEnabled: settings?.bot_enabled ?? true,
-        orderUpdates: readOrderUpdates(settings?.order_updates ?? null),
+        orderUpdates,
+        messages: readMessages(settings?.messages ?? null, orderUpdates.texts),
         facebookPageRowId: tenant.facebook_page_id,
       }
     },

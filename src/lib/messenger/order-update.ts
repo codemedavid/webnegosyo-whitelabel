@@ -11,10 +11,11 @@
 
 import type { OutgoingMessage } from './graph-message'
 import {
-  decideOrderUpdate, defaultUpdateText, fillOrderText, isOrderStatus, orderLabel, readOrderKind,
+  decideOrderUpdate, isOrderStatus, orderLabel, readOrderKind,
   type OrderUpdatesConfig, type ReplyOrder, type UpdateSkipReason, type UpdateStatus,
 } from './order-view'
 import { buildOrderUpdate } from './replies'
+import type { MessageSettings } from './messages/registry'
 import type { SendResult } from './send'
 
 export interface UpdateOrderRow {
@@ -34,6 +35,8 @@ export interface UpdateStore {
   isPlatformOrders: boolean
   botEnabled: boolean
   orderUpdates: OrderUpdatesConfig
+  /** The store's wording; status messages are `orders.update.*` (legacy `order_updates.texts` folded in). */
+  messages: MessageSettings
   facebookPageRowId: string | null
 }
 
@@ -100,8 +103,7 @@ export async function runOrderUpdate(orderId: string, deps: OrderUpdateDeps): Pr
     totalCentavos: order.totalCentavos,
     trackingUrl: deps.trackingUrl(store.baseUrl, order.id),
   }
-  const custom = store.orderUpdates.texts[status]?.trim()
-  const text = fillOrderText(custom || defaultUpdateText(status, kind), { store: store.name, order: replyOrder.label })
-  const result = await deps.send(token, order.psid, buildOrderUpdate(text || defaultUpdateText(status, kind), replyOrder))
+  const messages = buildOrderUpdate({ storeName: store.name, messages: store.messages }, status, replyOrder)
+  const result = await deps.send(token, order.psid, messages)
   return finish(result.ok ? 'sent' : 'send_failed')
 }

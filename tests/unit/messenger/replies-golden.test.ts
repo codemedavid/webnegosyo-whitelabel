@@ -18,7 +18,7 @@ import {
   withPreviewData,
   type ReplyContext,
 } from '@/lib/messenger/replies'
-import { defaultUpdateText, fillOrderText, UPDATE_STATUSES, type OrderKind, type ReplyOrder } from '@/lib/messenger/order-view'
+import { UPDATE_STATUSES, type OrderKind, type ReplyOrder } from '@/lib/messenger/order-view'
 import type { RuleAction } from '@/lib/messenger/rules'
 import { category, dish, sampleContext, sampleStore } from './sample-store'
 
@@ -35,7 +35,7 @@ const cartStore = sampleStore({
 const bare = sampleStore({
   tenant: { restaurant_address: null, operating_hours: null, logo_url: null },
   categories: [category('c1', 'Meals', 1)],
-  items: [dish('solo', 'c1', 0, { name: 'Solo Dish', image_url: null })],
+  items: [dish('solo', 'c1', 0, { name: 'Solo Dish', image_url: '' })],
 })
 /** No dish to order: the store's categories list comes out empty too. */
 const empty = sampleStore({ categories: [category('c1', 'Meals', 1)], items: [] })
@@ -164,7 +164,7 @@ describe('golden: chat cart', () => {
   })
 
   it('clear confirm', () => {
-    expect(buildClearConfirm()).toMatchSnapshot()
+    expect(buildClearConfirm(sampleContext(full, null))).toMatchSnapshot()
   })
 })
 
@@ -173,9 +173,9 @@ describe('golden: order status messages', () => {
   for (const status of UPDATE_STATUSES) {
     for (const kind of kinds) {
       it(`${status} · ${kind ?? 'unknown'}`, () => {
-        const text = fillOrderText(defaultUpdateText(status, kind), { store: full.name, order: '#07' })
-        expect(buildOrderUpdate(text, order({ status, kind }))).toMatchSnapshot()
-        expect(buildOrderUpdate(text, order({ status, kind, trackingUrl: null }))).toMatchSnapshot('no tracking link')
+        const ctx = { storeName: full.name }
+        expect(buildOrderUpdate(ctx, status, order({ status, kind }))).toMatchSnapshot()
+        expect(buildOrderUpdate(ctx, status, order({ status, kind, trackingUrl: null }))).toMatchSnapshot('no tracking link')
       })
     }
   }
