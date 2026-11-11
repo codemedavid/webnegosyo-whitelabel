@@ -4,7 +4,7 @@ import { AppText } from '@/components/ui/app-text'
 import { ProgressRing } from '@/components/ui/progress-ring'
 import { StampGrid } from '@/components/ui/stamp-grid'
 import type { AppLoyaltyProgram } from '@/lib/contract'
-import { loyaltyProgress } from '@/lib/loyalty/progress'
+import { loyaltyProgress, rewardLadder } from '@/lib/loyalty/progress'
 import { useTokens } from '@/theme/theme-context'
 
 /** A punch card has room for this many stamps; bigger programs draw a ring instead. */
@@ -16,10 +16,11 @@ export function ProgramCard({ program }: { program: AppLoyaltyProgram }) {
   const progress = loyaltyProgress(program)
   const drawsStamps = program.earnMode === 'stamp' && progress.total <= MAX_DRAWN_STAMPS
   const unit = program.earnMode === 'points' ? 'points' : 'stamps'
+  const ladder = rewardLadder(program)
   return (
     <View
       accessible
-      accessibilityLabel={`${program.name}. ${progress.filled} of ${progress.total} ${unit}. ${progress.caption}`}
+      accessibilityLabel={[`${program.name}. ${progress.filled} of ${progress.total} ${unit}. ${progress.caption}`, ...ladder.map((rung) => `${rung.label} at ${rung.at}`)].join('. ')}
       style={{ marginHorizontal: space.lg, padding: space.xl, borderRadius: radius.xl, backgroundColor: colors.surface, ...elevation.card }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md }}>
@@ -65,6 +66,21 @@ export function ProgramCard({ program }: { program: AppLoyaltyProgram }) {
           {progress.caption}
         </AppText>
       </View>
+      {ladder.length > 0 ? (
+        <View style={{ marginTop: space.lg, gap: space.sm }}>
+          {ladder.map((rung) => (
+            <View key={rung.at} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+              <AppText variant="bodyStrong" color={rung.isReached ? 'primary' : 'textMuted'} style={{ minWidth: 32 }}>
+                {rung.at}
+              </AppText>
+              <AppText variant="body">{rung.emoji}</AppText>
+              <AppText variant="body" color={rung.isReached ? 'text' : 'textMuted'} style={{ flex: 1 }} numberOfLines={1}>
+                {rung.label}
+              </AppText>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   )
 }

@@ -3,15 +3,17 @@ import { AppApiError } from '@/lib/api/app-client'
 import type {
   AppDeliveryQuoteRequest,
   AppErrorCode,
+  AppOrderDetail,
   AppOrderDraft,
   AppOrderPage,
   AppVoucherPreviewRequest,
 } from '@/lib/contract'
 import { flattenOrderPages, withTrackedOrderInPages, type OrderPages } from '@/lib/orders/list-sync'
 import { orderPollInterval } from '@/lib/orders/polling'
+import { hasJustFinished } from '@/lib/orders/status'
 import { useCart } from '@/lib/stores/cart'
 import { useSession } from '@/lib/stores/session'
-import { createPrototypeSource, fixtureSource } from './fixture-source'
+import { fixtureSource } from './fixture-source'
 import { liveSourceFromEnv } from './live-source'
 import type { AppDataSource } from './source'
 
@@ -29,13 +31,14 @@ export const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: FIVE_MINUTES, gcTime: 2 * FIVE_MINUTES, retry: retryUnlessDefinite } },
 })
 
-/** Live store when EXPO_PUBLIC_APP_API_URL is set (loyalty stays prototype until its phase); screens only ever see this. */
+/** Live store when EXPO_PUBLIC_APP_API_URL is set; screens only ever see this. */
 const live = liveSourceFromEnv()
-const source: AppDataSource = live ? { ...createPrototypeSource(live), ...live } : fixtureSource
+const source: AppDataSource = live ?? fixtureSource
 
 /**
- * Rewards at checkout arrive in Phase 5: until then the order route refuses any
- * `rewardId`, so a live store never offers the (still prototype) reward there.
+ * Rewards are claimed at the counter ("Use now" → a QR the register scans;
+ * owner, 2026-11-12): the order route refuses any `rewardId`, so a live store
+ * never offers a reward at checkout. Only the demo keeps the toggle.
  */
 export const isRewardAtCheckoutOffered = live === null
 
@@ -64,10 +67,19 @@ export function useCatalog() {
   return useQuery({ queryKey: queryKeys.catalog(outletId), queryFn: () => source.getCatalog(outletId) })
 }
 
-export function useLoyalty() {
+/** The member's card. `pollMs` re-reads it on a timer (the open claim sheet watching for the scan). */
+export function useLoyalty({ pollMs = false }: { pollMs?: number | false } = {}) {
   const isMember = useSession((state) => state.status === 'member')
-  return useQuery({ queryKey: queryKeys.loyalty, queryFn: source.getLoyalty, enabled: isMember })
+  return useQuery({ queryKey: queryKeys.loyalty, queryFn: source.getLoyalty, enabled: isMember, refetchInterval: pollMs })
 }
+
+/** Stamps and rewards change at the counter and when an order finishes: re-read whatever loyalty is on screen. */
+export const refreshLoyalty = () =>
+  // A read already in flight (first mount) answers this too; never start a second one.
+  queryClient.invalidateQueries({ queryKey: queryKeys.loyalty }, { cancelRefetch: false })
+
+/** "Use now" — mints a single-use reward QR; refusals keep the store's words (`AppApiError.message`). */
+export const useClaimReward = () => useMutation({ mutationFn: (rewardId: string) => source.claimReward(rewardId) })
 
 /** The customer's app orders, newest first, one page (20) at a time; `data` is every loaded page as one list. */
 export function useOrders() {
@@ -92,9 +104,12 @@ export const useOrder = (orderId: string, visibility: OrderVisibility) =>
   useQuery({
     queryKey: queryKeys.order(orderId),
     queryFn: async () => {
+      const previous = queryClient.getQueryData<AppOrderDetail>(queryKeys.order(orderId))?.status
       const order = await source.getOrder(orderId)
       // Keep the history list in step with what the tracker sees.
       queryClient.setQueryData<OrderPages>(queryKeys.orderList, (pages) => withTrackedOrderInPages(pages, order))
+      // A finished order is when stamps land (or come back off): the card shouldn't wait for its cache to go stale.
+      if (hasJustFinished(previous, order.status)) void refreshLoyalty()
       return order
     },
     refetchInterval: (query) => orderPollInterval({ status: query.state.data?.status, ...visibility }),

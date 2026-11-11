@@ -1,14 +1,18 @@
 import { Gift } from 'lucide-react-native'
+import { useCallback, useState } from 'react'
 import { RefreshControl, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ActivityList } from '@/components/rewards/activity-list'
+import { ClaimSheet } from '@/components/rewards/claim-sheet'
 import { HowItWorks } from '@/components/rewards/how-it-works'
 import { JoinHero } from '@/components/rewards/join-hero'
 import { ProgramCard } from '@/components/rewards/program-card'
 import { RewardCard } from '@/components/rewards/reward-card'
 import { RewardsSkeleton } from '@/components/rewards/rewards-skeleton'
 import { AppText } from '@/components/ui/app-text'
+import type { AppReward } from '@/lib/contract'
 import { useAppConfig, useLoyalty } from '@/lib/data/hooks'
+import { useRefreshLoyaltyOnFocus } from '@/lib/data/use-refresh-loyalty-on-focus'
 import { useSession } from '@/lib/stores/session'
 import { useTokens } from '@/theme/theme-context'
 
@@ -24,6 +28,9 @@ function SectionTitle({ children }: { children: string }) {
 function MemberRewards() {
   const { space } = useTokens()
   const { data: loyalty, isPending, isError, refetch } = useLoyalty()
+  // Kept here, not on the card: the card leaves the list the moment the counter scans it.
+  const [claimFor, setClaimFor] = useState<AppReward | null>(null)
+  const closeClaim = useCallback(() => setClaimFor(null), [])
   const now = new Date()
   if (isPending) return <RewardsSkeleton />
   if (isError || !loyalty)
@@ -42,7 +49,7 @@ function MemberRewards() {
         <>
           <SectionTitle>Ready to use</SectionTitle>
           {loyalty.rewards.map((reward) => (
-            <RewardCard key={reward.id} reward={reward} now={now} />
+            <RewardCard key={reward.id} reward={reward} now={now} canClaim={loyalty.claimsAvailable} onUse={setClaimFor} />
           ))}
         </>
       ) : null}
@@ -54,6 +61,7 @@ function MemberRewards() {
           <HowItWorks program={program} />
         </>
       ) : null}
+      {claimFor ? <ClaimSheet reward={claimFor} onClose={closeClaim} /> : null}
     </View>
   )
 }
@@ -64,6 +72,7 @@ export default function RewardsScreen() {
   const { data: config } = useAppConfig()
   const isMember = useSession((state) => state.status === 'member')
   const { refetch, isRefetching } = useLoyalty()
+  useRefreshLoyaltyOnFocus()
   if (!config) return null
 
   const body = !config.features.loyalty ? (

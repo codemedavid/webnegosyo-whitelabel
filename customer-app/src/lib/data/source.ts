@@ -9,6 +9,7 @@ import type {
   AppOrderPage,
   AppPlace,
   AppPlacesQuery,
+  AppRewardClaim,
   AppVoucherPreview,
   AppVoucherPreviewRequest,
 } from '@/lib/contract'
@@ -23,6 +24,11 @@ export interface AppDataSource {
   /** The menu as one branch sells it; null = store-wide (single-location stores). */
   getCatalog(outletId?: string | null): Promise<AppCatalog>
   getLoyalty(): Promise<AppLoyalty>
+  /**
+   * "Use now": a single-use QR (~2 minutes) the register scans to redeem this
+   * reward. A refusal is a `refused` error carrying the store's words.
+   */
+  claimReward(rewardId: string): Promise<AppRewardClaim>
   /** The customer's app orders, newest first; null cursor = the first page. */
   getOrders(cursor: string | null): Promise<AppOrderPage>
   getOrder(orderId: string): Promise<AppOrderDetail>

@@ -27,3 +27,8 @@ export function statusPill(status: AppOrderStatus, kind: AppOrderKind): StatusPi
 export function isTerminalStatus(status: AppOrderStatus): boolean {
   return status === 'delivered' || status === 'cancelled'
 }
+
+/** The tracker just saw the order finish (a first read proves nothing: it may have finished long ago). */
+export function hasJustFinished(previous: AppOrderStatus | undefined, next: AppOrderStatus): boolean {
+  return previous !== undefined && !isTerminalStatus(previous) && isTerminalStatus(next)
+}

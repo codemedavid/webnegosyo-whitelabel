@@ -10,6 +10,7 @@ import {
   appConfigSchema,
   appLoyaltySchema,
   appOrderDetailSchema,
+  appRewardClaimSchema,
   type AppOrderDetail,
   type AppOrderSummary,
 } from '@/lib/contract'
@@ -79,6 +80,28 @@ const PAGE_SIZE = 20
 /** The demo's idempotency: a retried key returns the order it already placed. */
 const placedByKey = new Map<string, AppOrderDetail>()
 
+/** How long the demo's reward QR lasts — the same ~2 minutes the store gives. */
+export const PROTOTYPE_CLAIM_LIFETIME_MS = 2 * 60 * 1000
+const TOKEN_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'
+const HEX = '0123456789abcdef'
+const randomFrom = (alphabet: string, length: number) =>
+  Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')
+
+/**
+ * A demo "Use now" code in the store's token shape (no register will accept it).
+ * Only the demo's own rewards can be claimed, like the real route.
+ */
+export function prototypeRewardClaim(rewardId: string, nowMs = Date.now()) {
+  if (!loyalty.rewards.some((reward) => reward.id === rewardId))
+    return Promise.reject(new AppApiError('refused', 'This reward can’t be used right now.'))
+  return delay(
+    appRewardClaimSchema.parse({
+      token: `v1.${randomFrom(TOKEN_CHARS, 43)}.${randomFrom(HEX, 64)}`,
+      expiresAt: new Date(nowMs + PROTOTYPE_CLAIM_LIFETIME_MS).toISOString(),
+    }),
+  )
+}
+
 /** The store reads the prototype prices against (the real menu, once an API URL is set). */
 export type LiveReads = Pick<AppDataSource, 'getConfig' | 'getCatalog'>
 
@@ -98,6 +121,7 @@ export function createPrototypeSource(live: LiveReads = fixtureReads): AppDataSo
     getConfig: live.getConfig,
     getCatalog: live.getCatalog,
     getLoyalty: () => delay(loyalty),
+    claimReward: (rewardId) => prototypeRewardClaim(rewardId),
     getOrders: (cursor) => {
       const all = allOrders().map(summarize)
       const offset = cursor ? Number.parseInt(cursor, 10) || 0 : 0

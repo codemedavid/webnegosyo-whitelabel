@@ -1,4 +1,4 @@
-import { isTerminalStatus, statusPill } from './status'
+import { hasJustFinished, isTerminalStatus, statusPill } from './status'
 
 describe('statusPill', () => {
   it('words the ready step for how the order is fulfilled', () => {
@@ -22,5 +22,18 @@ describe('isTerminalStatus', () => {
     expect(isTerminalStatus('delivered')).toBe(true)
     expect(isTerminalStatus('cancelled')).toBe(true)
     expect(isTerminalStatus('ready')).toBe(false)
+  })
+})
+
+describe('hasJustFinished', () => {
+  it('is true only on the read that sees the order complete or get cancelled', () => {
+    expect(hasJustFinished('ready', 'delivered')).toBe(true)
+    expect(hasJustFinished('preparing', 'cancelled')).toBe(true)
+    expect(hasJustFinished('delivered', 'delivered')).toBe(false)
+    expect(hasJustFinished('pending', 'ready')).toBe(false)
+  })
+
+  it('ignores the first read of an order that finished long ago', () => {
+    expect(hasJustFinished(undefined, 'delivered')).toBe(false)
   })
 })

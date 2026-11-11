@@ -1,4 +1,4 @@
-import type { AppLoyaltyProgram } from '@/lib/contract'
+import type { AppLoyaltyProgram, AppRewardStep } from '@/lib/contract'
 
 export interface LoyaltyProgress {
   filled: number
@@ -19,4 +19,19 @@ export function loyaltyProgress(program: AppLoyaltyProgram): LoyaltyProgress {
       ? 'Reward unlocked'
       : `${remaining} more ${unit}${remaining === 1 ? '' : 's'} to ${program.rewardLabel}`
   return { filled, total, fraction: filled / total, remaining, caption }
+}
+
+export interface LadderRung extends AppRewardStep {
+  isReached: boolean
+}
+
+/**
+ * The program's reward ladder, lowest first, each rung marked once the balance
+ * reaches it. Empty for a single reward (the caption already says it) and for
+ * older servers that send no steps.
+ */
+export function rewardLadder(program: AppLoyaltyProgram): LadderRung[] {
+  const steps = program.rewardSteps ?? []
+  if (steps.length < 2) return []
+  return [...steps].sort((a, b) => a.at - b.at).map((step) => ({ ...step, isReached: program.balance >= step.at }))
 }

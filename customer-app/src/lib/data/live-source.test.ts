@@ -1,4 +1,4 @@
-import { VALID_ORDER_DETAIL } from '@/fixtures/contract-fixtures'
+import { VALID_LOYALTY, VALID_ORDER_DETAIL, VALID_REWARD_CLAIM } from '@/fixtures/contract-fixtures'
 import { createAppClient } from '@/lib/api/app-client'
 import { setSessionRefusedHandler } from '@/lib/auth/session-guard'
 import { useSession } from '@/lib/stores/session'
@@ -7,10 +7,10 @@ import { createLiveSource } from './live-source'
 jest.mock('expo-application', () => ({ applicationId: 'com.webnegosyo.kapedemo' }))
 
 const ok = (data: unknown) => ({ status: 200, ok: true, headers: { get: () => null }, json: async () => ({ success: true, data, error: null }) })
-const fail = (status: number, code: string, message: string) => ({
+const fail = (status: number, code: string, message: string, headers: Record<string, string> = {}) => ({
   status,
   ok: false,
-  headers: { get: () => null },
+  headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
   json: async () => ({ success: false, data: null, error: { code, message } }),
 })
 
@@ -82,6 +82,66 @@ describe('createLiveSource', () => {
     expect(fetchImpl.mock.calls[0][0]).toBe('https://store.example.com/api/app/v1/places?q=sm%20aura&outletId=o-1')
     await expect(live.quoteDelivery({ outletId: 'o-1', address: place.address, lat: place.lat, lng: place.lng })).resolves.toEqual(quote)
     expect(JSON.parse(fetchImpl.mock.calls[1][1].body)).toEqual({ outletId: 'o-1', address: place.address, lat: place.lat, lng: place.lng })
+  })
+
+  it('reads the member’s card as the signed-in customer', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(ok(VALID_LOYALTY))
+    const loyalty = await source(fetchImpl).getLoyalty()
+    expect(loyalty.memberCode).toBe(VALID_LOYALTY.memberCode)
+    expect(loyalty.claimsAvailable).toBe(true)
+    expect(loyalty.programs[0].rewardSteps).toHaveLength(2)
+    const [url, init] = fetchImpl.mock.calls[0]
+    expect(url).toBe('https://store.example.com/api/app/v1/me/loyalty')
+    expect(init.method).toBe('GET')
+    expect(init.headers.Authorization).toBe('Bearer cs1.session')
+  })
+
+  it('reads a store without loyalty as an empty card, and an older server as “no claims”', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(ok({ memberCode: null, programs: [], rewards: [], activity: [] }))
+    await expect(source(fetchImpl).getLoyalty()).resolves.toEqual({
+      memberCode: null,
+      programs: [],
+      rewards: [],
+      activity: [],
+      claimsAvailable: false,
+    })
+  })
+
+  it('refuses a card that breaks the contract instead of drawing it', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(ok({ ...VALID_LOYALTY, memberCode: '0917-123-4567' }))
+    await expect(source(fetchImpl).getLoyalty()).rejects.toMatchObject({ code: 'internal' })
+  })
+
+  it('claims a reward with its id and returns the QR token', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ...ok(VALID_REWARD_CLAIM), status: 201 })
+    const rewardId = VALID_LOYALTY.rewards[0].id
+    await expect(source(fetchImpl).claimReward(rewardId)).resolves.toEqual(VALID_REWARD_CLAIM)
+    const [url, init] = fetchImpl.mock.calls[0]
+    expect(url).toBe('https://store.example.com/api/app/v1/me/loyalty/claims')
+    expect(init.method).toBe('POST')
+    expect(init.headers.Authorization).toBe('Bearer cs1.session')
+    expect(JSON.parse(init.body)).toEqual({ rewardId })
+  })
+
+  it.each([
+    [422, 'refused', 'This reward can’t be used right now.'],
+    [429, 'rate_limited', 'Too many tries. Please wait a few minutes.'],
+  ])('keeps a %p %s claim answer and its words for the sheet', async (status, code, message) => {
+    const fetchImpl = jest.fn().mockResolvedValue(fail(status, code, message, { 'retry-after': '600' }))
+    await expect(source(fetchImpl).claimReward(VALID_LOYALTY.rewards[0].id)).rejects.toMatchObject({ code, message })
+  })
+
+  it('refuses a claim token that breaks the contract', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(ok({ token: 'WNLC1.not-a-claim', expiresAt: VALID_REWARD_CLAIM.expiresAt }))
+    await expect(source(fetchImpl).claimReward(VALID_LOYALTY.rewards[0].id)).rejects.toMatchObject({ code: 'internal' })
+  })
+
+  it('never asks for the card or a claim when signed out', async () => {
+    useSession.getState().setGuest()
+    const fetchImpl = jest.fn()
+    await expect(source(fetchImpl).getLoyalty()).rejects.toMatchObject({ code: 'unauthorized' })
+    await expect(source(fetchImpl).claimReward(VALID_LOYALTY.rewards[0].id)).rejects.toMatchObject({ code: 'unauthorized' })
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('signs out when the store refuses the session', async () => {

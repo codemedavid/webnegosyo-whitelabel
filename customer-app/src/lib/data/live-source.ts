@@ -6,15 +6,17 @@ import {
   appCatalogSchema,
   appConfigSchema,
   appDeliveryQuoteSchema,
+  appLoyaltySchema,
   appOrderDetailSchema,
   appOrderPageSchema,
   appPlacesResultSchema,
+  appRewardClaimSchema,
   appVoucherPreviewSchema,
 } from '@/lib/contract'
 import type { AppDataSource } from './source'
 
-/** Everything that is real once an API URL is set; loyalty stays prototype until its phase. */
-export type LiveSource = Omit<AppDataSource, 'getLoyalty'>
+/** Everything is real once an API URL is set. */
+export type LiveSource = AppDataSource
 
 const query = (params: Record<string, string | null | undefined>) => {
   const pairs = Object.entries(params).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '')
@@ -26,6 +28,9 @@ export function createLiveSource(client: AppClient): LiveSource {
   return {
     getConfig: () => client.get('/api/app/v1/config', appConfigSchema),
     getCatalog: (outletId) => client.get(`/api/app/v1/catalog${query({ outletId })}`, appCatalogSchema),
+    getLoyalty: () => withSession((token) => client.get('/api/app/v1/me/loyalty', appLoyaltySchema, { token })),
+    claimReward: (rewardId) =>
+      withSession((token) => client.send('POST', '/api/app/v1/me/loyalty/claims', appRewardClaimSchema, { body: { rewardId }, token })),
     getOrders: (cursor) => withSession((token) => client.get(`/api/app/v1/me/orders${query({ cursor })}`, appOrderPageSchema, { token })),
     getOrder: (orderId) => withSession((token) => client.get(`/api/app/v1/orders/${encodeURIComponent(orderId)}`, appOrderDetailSchema, { token })),
     placeOrder: (draft, idempotencyKey) =>

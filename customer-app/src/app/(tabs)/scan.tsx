@@ -1,4 +1,4 @@
-import { QrCode, ScanLine } from 'lucide-react-native'
+import { Gift, QrCode, ScanLine } from 'lucide-react-native'
 import { ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { SignInPrompt } from '@/components/auth/sign-in-prompt'
@@ -7,6 +7,7 @@ import { useMaxBrightness } from '@/components/rewards/use-max-brightness'
 import { AppText } from '@/components/ui/app-text'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppConfig, useLoyalty } from '@/lib/data/hooks'
+import { useRefreshLoyaltyOnFocus } from '@/lib/data/use-refresh-loyalty-on-focus'
 import { useSession } from '@/lib/stores/session'
 import { useTokens } from '@/theme/theme-context'
 
@@ -21,6 +22,19 @@ function MemberScan({ storeName }: { storeName: string }) {
     return (
       <View style={{ marginHorizontal: space.lg }}>
         <Skeleton height={440} radius={radius.xl} />
+      </View>
+    )
+  // No member code and no program: the store has no live rewards program (the server's empty card).
+  if (loyalty && !memberCode && loyalty.programs.length === 0)
+    return (
+      <View style={{ marginHorizontal: space.lg, alignItems: 'center', gap: space.md, marginTop: space.xxl }}>
+        <Gift size={36} color={colors.textMuted} />
+        <AppText variant="headline" align="center">
+          No rewards program yet
+        </AppText>
+        <AppText variant="callout" color="textMuted" align="center">
+          {storeName} hasn’t started one. Check back soon.
+        </AppText>
       </View>
     )
   if (!profile || !memberCode)
@@ -41,7 +55,7 @@ function MemberScan({ storeName }: { storeName: string }) {
       <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center', marginHorizontal: space.xl }}>
         <ScanLine size={22} color={colors.primary} />
         <AppText variant="callout" color="textMuted" style={{ flex: 1 }}>
-          Show this at the counter to earn stamps and redeem rewards.
+          Show this at the counter to earn stamps. To use a reward, tap Use now in Rewards.
         </AppText>
       </View>
     </View>
@@ -53,6 +67,7 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets()
   const { data: config } = useAppConfig()
   const isMember = useSession((state) => state.status === 'member')
+  useRefreshLoyaltyOnFocus()
   if (!config) return null
   return (
     <ScrollView
