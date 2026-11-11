@@ -41,15 +41,14 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`track-by-client:${ip}`, RATE_LIMIT)
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { error: 'Too many requests' },
-        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
-      )
-    }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`track-by-client:${ip}`, RATE_LIMIT)
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
+    )
   }
 
   try {

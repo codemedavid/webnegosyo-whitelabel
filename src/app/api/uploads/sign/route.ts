@@ -35,8 +35,8 @@ function respond(body: unknown, status = 200): NextResponse {
 }
 
 async function isRateLimited(request: NextRequest): Promise<boolean> {
-  const ip = getClientIP(request)
-  if (!ip) return false
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
   const result = await checkRateLimit(`uploads-sign:${ip}`, SIGN_RATE_LIMIT)
   return !result.allowed
 }
