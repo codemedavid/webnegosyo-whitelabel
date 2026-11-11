@@ -1,0 +1,7 @@
+{
+  "$comment": "Files written by a tool. ESLint ignores them (eslint.config.mjs) and the ratchets do not count them (ratchets.test.ts); generated-files.test.ts keeps this list complete. Each value is how to regenerate the file.",
+  "files": {
+    "src/components/mascot/owl-art.generated.ts": "node scripts/mascot/build-owl-svg.mjs",
+    "src/types/database.generated.ts": "npm run db:types"
+  }
+}

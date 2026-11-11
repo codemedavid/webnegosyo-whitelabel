@@ -19,10 +19,16 @@ const importRuleExceptions = JSON.parse(
   readFileSync(new URL("./tests/unit/guardrails/import-rule-exceptions.json", import.meta.url), "utf8"),
 ).rules;
 
+// Files written by a tool: not ours to lint (tests/unit/guardrails/generated-files.test.ts).
+const generatedFiles = Object.keys(
+  JSON.parse(readFileSync(new URL("./tests/unit/guardrails/generated-files.json", import.meta.url), "utf8")).files,
+);
+
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     ignores: [
+      ...generatedFiles,
       "node_modules/**",
       ".next/**",
       "out/**",

@@ -20,13 +20,14 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import ceilings from './ratchets.json'
+import generated from './generated-files.json'
 
 const ROOT = process.cwd()
 const SRC = path.join(ROOT, 'src')
 const CODE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/
 const TEST_FILE = /\.(test|spec)\.[a-z]+$/
-/** Written by a tool, so its size and contents are not ours to ratchet. */
-const GENERATED_FILES: readonly string[] = ['src/types/supabase.ts']
+/** Written by a tool, so its size and contents are not ours to ratchet. Listed by name, never by pattern (generated-files.test.ts). */
+const GENERATED_FILES: readonly string[] = Object.keys(generated.files)
 const SKIPPED_DIRS: readonly string[] = ['node_modules', '.next', '__tests__', '__mocks__']
 const LONG_FILE_LINES = 800
 
@@ -37,7 +38,7 @@ interface SourceFile {
 }
 
 function isGenerated(file: string): boolean {
-  return /\.generated\.[a-z]+$/.test(file) || GENERATED_FILES.includes(file)
+  return GENERATED_FILES.includes(file)
 }
 
 function walk(dir: string): string[] {
@@ -183,7 +184,7 @@ describe('ratchets: these counts only go down', () => {
       'Files importing @/types/database',
       measured.handWrittenDatabaseTypeImporters,
       ceilings.handWrittenDatabaseTypeImporters,
-      'Type new code from the generated types (src/types/supabase.ts) or a local row interface; the hand-written file drifts from the real schema.',
+      'Type new code from the generated types (src/types/database.generated.ts, npm run db:types) or a local row interface; the hand-written file drifts from the real schema.',
     )
   })
 

@@ -91,7 +91,7 @@ Supabase client factories:
 ### Data Layer
 
 - **Database**: Supabase PostgreSQL with Row-Level Security (RLS). Every table has `tenant_id`.
-- **Types**: `src/types/database.ts` — Full DB type definitions used with `createClient<Database>()`
+- **Types**: `src/types/database.generated.ts` is generated from the live platform schema (`npm run db:types`; `npm run db:types:check` reports drift). New code types rows from it (`Tables<'orders'>`); `src/types/database.ts` is hand-written and moves onto it one table at a time (aliases).
 - **Migrations**: `supabase/migrations/`. Whether each file is live, held or pending is recorded in `supabase/migration-status.json` (`npm run db:status`); a new migration is added there in the same change, as `applied` only after it is applied AND probed.
 - **Queries**: `src/lib/queries/` for reusable data fetching
 
