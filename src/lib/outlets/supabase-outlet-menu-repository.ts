@@ -15,6 +15,8 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { NOTHING_CHANGED_MESSAGE } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 import {
   INHERITED_OVERRIDE,
   mergeOutletMenuOverride,
@@ -127,14 +129,27 @@ export function createSupabaseOutletMenuRepository(): OutletMenuRepository {
 
     async clear(tenantId, outletId, menuItemId) {
       const supabase = await createClient()
-      const { error } = await supabase
-        .from('outlet_menu_items')
-        .delete()
-        .eq('tenant_id', tenantId)
-        .eq('outlet_id', outletId)
-        .eq('menu_item_id', menuItemId)
-
-      if (error) throw new Error(error.message)
+      // No row is the usual case (the branch never differed, or `save` merged
+      // back to nothing). A row still there after a zero-row delete was kept by
+      // row-level security: the dish is still different at that branch.
+      const result = await assertRowsChangedOrGone(
+        await supabase
+          .from('outlet_menu_items')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('outlet_id', outletId)
+          .eq('menu_item_id', menuItemId)
+          .select('menu_item_id'),
+        () =>
+          supabase
+            .from('outlet_menu_items')
+            .select('menu_item_id')
+            .eq('tenant_id', tenantId)
+            .eq('outlet_id', outletId)
+            .eq('menu_item_id', menuItemId)
+            .limit(1),
+      )
+      if (!result.ok) throw new Error(result.reason === 'error' ? result.error.message : NOTHING_CHANGED_MESSAGE)
     },
   }
 }
