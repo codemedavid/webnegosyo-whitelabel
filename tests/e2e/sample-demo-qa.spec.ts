@@ -86,8 +86,10 @@ async function settle(page: Page, ms = 1500) {
 
 /** The item sheet stays open after "Add To Cart" on some builds; close it if it is. */
 async function closeItemSheet(page: Page) {
+  // The sheet may be sliding out on its own (slow under dev-server load): let it finish first.
+  await page.waitForTimeout(1200)
   const back = page.getByRole('button', { name: 'Go back' })
-  if (await back.isVisible().catch(() => false)) await back.click()
+  if (await back.isVisible().catch(() => false)) await back.click({ timeout: 5_000 }).catch(() => {})
   await page.waitForTimeout(800)
 }
 
@@ -204,8 +206,9 @@ test.describe('customer', () => {
         await page.getByPlaceholder('Enter your name').fill(guest)
 
         await page.getByPlaceholder('9XXXXXXXXX').fill(FAKE_PHONE_LOCAL)
-        // Sample Demo's own required "Date & Time" question is a NUMBER field.
-        await page.locator('input[type=number]').first().fill('1')
+        // Sample Demo's NUMBER "Date & Time" question belongs to Delivery; Dine In has none.
+        const dateNumber = page.locator('input[type=number]').first()
+        if (await dateNumber.isVisible().catch(() => false)) await dateNumber.fill('1')
         await page.getByText('No, thanks').click()
       })
       await applyVoucher(page, info, 'QA50FRIES')
