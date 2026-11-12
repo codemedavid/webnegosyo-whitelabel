@@ -2,7 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AppOrderDraft } from '@/lib/app-contract'
 import { AppReadError } from '@/lib/app-api/store-reads'
-import { resolveOrderBackend, type OrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { ORDER_BACKEND_TENANT_COLUMNS, resolveOrderBackend, type OrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
 import { buildOutletMenuIndex, type OutletMenuOverrideRow } from '@/lib/outlets/outlet-menu-overrides'
@@ -24,7 +24,7 @@ export const DRAFT_ITEM_COLUMNS =
   'id, tenant_id, category_id, name, price, discounted_price, image_url, is_available, presell_enabled, modifier_groups, variation_types, variations, addons'
 const DRAFT_CATEGORY_COLUMNS = 'id, tenant_id, name, is_active, default_addons'
 /** The tenant columns the app order path reads: routing, branches, modifiers, Lalamove. */
-const DRAFT_TENANT_COLUMNS = 'id, is_active, order_backend, convex_deployment_url, modifier_groups_enabled, multi_branch_enabled, lalamove_enabled'
+const DRAFT_TENANT_COLUMNS = `id, is_active, ${ORDER_BACKEND_TENANT_COLUMNS}, modifier_groups_enabled, multi_branch_enabled, lalamove_enabled`
 
 const MAX_DISHES = 50
 /** More linked dishes than any real menu wires into one bag. */

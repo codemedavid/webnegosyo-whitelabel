@@ -13,7 +13,7 @@ import {
   createSignedLalamoveQuote,
   lalamoveQuoteRateKey,
   withLalamoveKeys,
-} from '@/lib/lalamove-signed-quote'
+} from '@/lib/delivery/lalamove-signed-quote'
 import { measureRoadDistanceKm } from '@/lib/maps/road-distance-server'
 import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
 import type { Tenant } from '@/types/database'

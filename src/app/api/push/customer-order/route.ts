@@ -9,36 +9,29 @@
  * makes a replay a no-op. A caller can at most make the customer get, once,
  * the push for the order's CURRENT status.
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createCustomerOrderPushDeps } from '@/lib/app-api/push/order-push-deps'
 import { runCustomerOrderPush } from '@/lib/app-api/push/run-order-push'
-import { refuseOverIpLimit } from '@/lib/http/rate-limit-guard'
 import { PG_NET_IP_LIMIT } from '@/lib/push/push-route-helpers'
+import { defineRoute } from '@/platform/http/define-route'
 
 export const runtime = 'nodejs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export async function POST(request: NextRequest) {
-  const overLimit = await refuseOverIpLimit(request, 'customer-order-push', PG_NET_IP_LIMIT)
-  if (overLimit) return overLimit
-
-  let body: unknown
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
-  const orderId = (body as { order_id?: unknown } | null)?.order_id
-  if (typeof orderId !== 'string' || !UUID.test(orderId)) {
-    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
-  }
-
-  try {
-    const result = await runCustomerOrderPush(orderId, createCustomerOrderPushDeps())
-    return NextResponse.json(result)
-  } catch (error) {
-    console.error('[customer-order-push] failed', { message: error instanceof Error ? error.message : String(error) })
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
-  }
-}
+export const POST = defineRoute({
+  auth: { kind: 'public' },
+  // Called by the database through pg_net, never retried: generous, per address.
+  rateLimit: { bucket: 'customer-order-push', per: 'ip', max: PG_NET_IP_LIMIT.limit, window: '1m' },
+  body: z.object({ order_id: z.string().regex(UUID) }),
+  handler: async ({ body }) => {
+    try {
+      const result = await runCustomerOrderPush(body.order_id, createCustomerOrderPushDeps())
+      return NextResponse.json(result)
+    } catch (error) {
+      console.error('[customer-order-push] failed', { message: error instanceof Error ? error.message : String(error) })
+      return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    }
+  },
+})

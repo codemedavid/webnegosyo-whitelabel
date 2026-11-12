@@ -1,6 +1,7 @@
 import type { Outlet } from '@/types/database'
 import { appFail } from '@/lib/app-api/respond'
-import { appCachedOk, appRoute } from '@/lib/app-api/app-route'
+import { appCachedOk, appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { projectAppConfig } from '@/lib/app-api/project-config'
 import { AppReadError, readActiveOutlets, readAppOrderTypes, readLoyaltyFlags, readPublishedAppConfig } from '@/lib/app-api/store-reads'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
@@ -14,7 +15,11 @@ import { getStorefrontTenant } from '@/lib/storefront/storefront-tenant'
  * storefront's own 5-minute cached read.
  */
 
-export const GET = appRoute({ scope: 'config', rateLimit: { limit: 120, windowSec: 60 } }, async ({ request, app }) => {
+export const GET = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:config', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: appRoute({ scope: 'config' }, async ({ request, app }) => {
   const { tenant, error } = await getStorefrontTenant(app.slug)
   if (error) throw new AppReadError('the store', error)
   if (!tenant) return appFail('not_found', 'This store is not available.')
@@ -34,4 +39,5 @@ export const GET = appRoute({ scope: 'config', rateLimit: { limit: 120, windowSe
     now: new Date(),
   })
   return appCachedOk(request, config, 60)
+}),
 })

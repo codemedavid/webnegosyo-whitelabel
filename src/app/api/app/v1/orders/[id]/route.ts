@@ -1,5 +1,6 @@
-import type { NextRequest } from 'next/server'
-import { appRoute } from '@/lib/app-api/app-route'
+import { z } from 'zod'
+import { appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { handleGetOrder } from '@/lib/app-api/orders/orders-http'
 
 /**
@@ -10,11 +11,10 @@ import { handleGetOrder } from '@/lib/app-api/orders/orders-http'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
-
-export async function GET(request: NextRequest, { params }: RouteParams) {
-  const { id } = await params
-  return appRoute({ scope: 'order', rateLimit: { limit: 120, windowSec: 60 } }, (context) => handleGetOrder(context, id))(request)
-}
+export const GET = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:order', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
+  params: z.object({ id: z.string() }),
+  onRefusal: appRefusal,
+  handler: ({ request, params }) => appRoute({ scope: 'order' }, (context) => handleGetOrder(context, params.id))({ request }),
+})

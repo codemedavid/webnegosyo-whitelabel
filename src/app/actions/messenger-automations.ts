@@ -13,7 +13,6 @@
 import crypto from 'crypto'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { verifyTenantPermission } from '@/lib/admin-service'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
@@ -28,6 +27,7 @@ import { hashTesterCode, newTesterCode, TESTER_CODE_TTL_MS } from '@/lib/messeng
 import { MAX_ORDER_UPDATE_TEXT, orderUpdatesSchema, UPDATE_STATUSES, type OrderUpdatesConfig } from '@/lib/messenger/order-view'
 import { parseMessagesForSave, type MessageProblem } from '@/lib/messenger/messages/stored'
 import type { MessageSettings } from '@/lib/messenger/messages/registry'
+import { defineAction } from '@/platform/http/define-action'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TAKEOVER_CHOICES = [0, 30, 60, 240, 1440] as const
@@ -46,31 +46,18 @@ export type ActionResult<T extends object = object> = ({ ok: true } & T) | { ok:
 
 const NOT_ALLOWED = 'You need the Settings permission on a store-wide account to change Messenger automations.'
 
-async function authorize(tenantId: string): Promise<{ userId: string } | { error: string }> {
-  try {
-    const { user, userRole } = await verifyTenantPermission(tenantId, 'settings')
-    const role = userRole as { role: string; outlet_id?: string | null; is_owner?: boolean | null }
-    const isStoreWide = role.role === 'superadmin' || !role.outlet_id || role.is_owner === true
-    return isStoreWide ? { userId: user.id } : { error: NOT_ALLOWED }
-  } catch {
-    return { error: NOT_ALLOWED }
-  }
-}
 
 /** Ids from the editor's built-in rules (`default-menu`) or new rows get a real uuid. */
 function withRowIds(rules: readonly MessengerRule[]): MessengerRule[] {
   return rules.map((rule) => (UUID_PATTERN.test(rule.id) ? rule : { ...rule, id: crypto.randomUUID() }))
 }
 
-export async function saveMessengerAutomationsAction(
-  input: SaveMessengerAutomationsInput,
-): Promise<ActionResult<{ version: number; rules: MessengerRule[]; profile: ProfileSyncOutcome; profileError?: string }>> {
+async function saveMessengerAutomations(
+  input: SaveMessengerAutomationsInput): Promise<ActionResult<{ version: number; rules: MessengerRule[]; profile: ProfileSyncOutcome; profileError?: string }>> {
   const parsed = saveSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Some automations are incomplete. Check the highlighted ones and try again.' }
   const { tenantId, expectedVersion, botEnabled, takeoverMinutes } = parsed.data
 
-  const access = await authorize(tenantId)
-  if ('error' in access) return { ok: false, error: access.error }
 
   const problems = ruleSetProblems(parsed.data.rules)
   if (problems.length > 0) return { ok: false, error: problems[0] }
@@ -100,10 +87,8 @@ export async function saveMessengerAutomationsAction(
 }
 
 /** A fresh "TEST 123456" code for the owner to message their Page (10 minutes, one use). */
-export async function createMessengerTesterCodeAction(tenantId: string): Promise<ActionResult<{ code: string; expiresAt: string }>> {
+async function createMessengerTesterCode(tenantId: string): Promise<ActionResult<{ code: string; expiresAt: string }>> {
   if (!z.string().uuid().safeParse(tenantId).success) return { ok: false, error: NOT_ALLOWED }
-  const access = await authorize(tenantId)
-  if ('error' in access) return { ok: false, error: access.error }
 
   const code = newTesterCode()
   const expiresAt = new Date(Date.now() + TESTER_CODE_TTL_MS)
@@ -119,10 +104,8 @@ export async function createMessengerTesterCodeAction(tenantId: string): Promise
 }
 
 /** Whether a test chat is linked (never the PSID itself). */
-export async function readMessengerTesterAction(tenantId: string): Promise<ActionResult<{ isLinked: boolean }>> {
+async function readMessengerTester(tenantId: string): Promise<ActionResult<{ isLinked: boolean }>> {
   if (!z.string().uuid().safeParse(tenantId).success) return { ok: false, error: NOT_ALLOWED }
-  const access = await authorize(tenantId)
-  if ('error' in access) return { ok: false, error: access.error }
   const { data } = await createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
   return { ok: true, isLinked: Boolean((data as { tester_psid: string | null } | null)?.tester_psid) }
 }
@@ -135,12 +118,10 @@ function testSendError(code: number | undefined, subcode: number | undefined): s
   return "Facebook didn't accept the test message. Check that your Page is still connected, then try again."
 }
 
-export async function sendMessengerTestAction(tenantId: string, rawAction: unknown): Promise<ActionResult> {
+async function sendMessengerTest(tenantId: string, rawAction: unknown): Promise<ActionResult> {
   if (!z.string().uuid().safeParse(tenantId).success) return { ok: false, error: NOT_ALLOWED }
   const action = actionSchema.safeParse(rawAction)
   if (!action.success) return { ok: false, error: 'Finish this automation before sending a test.' }
-  const access = await authorize(tenantId)
-  if ('error' in access) return { ok: false, error: access.error }
 
   const { data: settings } = await createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
   const testerPsid = (settings as { tester_psid: string | null } | null)?.tester_psid
@@ -164,12 +145,10 @@ const orderUpdatesInput = z.object({ tenantId: z.string().uuid(), config: orderU
  * Through the caller's session client; the affected row is checked because an
  * RLS refusal on UPDATE is silent.
  */
-export async function saveMessengerOrderUpdatesAction(input: { tenantId: string; config: OrderUpdatesConfig }): Promise<ActionResult<{ config: OrderUpdatesConfig }>> {
+async function saveMessengerOrderUpdates(input: { tenantId: string; config: OrderUpdatesConfig }, access: { userId: string }): Promise<ActionResult<{ config: OrderUpdatesConfig }>> {
   const parsed = orderUpdatesInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: `Status messages can be at most ${MAX_ORDER_UPDATE_TEXT} characters.` }
   const { tenantId } = parsed.data
-  const access = await authorize(tenantId)
-  if ('error' in access) return { ok: false, error: access.error }
 
   const config: OrderUpdatesConfig = {
     enabled: parsed.data.config.enabled,
@@ -212,19 +191,18 @@ const messagesInput = z.object({
  * in `messages`, so `order_updates.texts` is emptied here — the editor showed
  * those texts folded into the messages it sends back, so nothing is lost.
  */
-export async function saveMessengerMessagesAction(input: {
+async function saveMessengerMessages(input: {
   tenantId: string
   messages: Record<string, unknown>
   orderUpdates: OrderUpdatesConfig
-}): Promise<ActionResult<{ messages: MessageSettings; orderUpdates: OrderUpdatesConfig }> | { ok: false; error: string; problems: MessageProblem[] }> {
+},
+  access: { userId: string }): Promise<ActionResult<{ messages: MessageSettings; orderUpdates: OrderUpdatesConfig }> | { ok: false; error: string; problems: MessageProblem[] }> {
   const parsed = messagesInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Couldn't read these messages. Reload the page and try again." }
   const { tenantId } = parsed.data
   const checked = parseMessagesForSave(parsed.data.messages)
   if (!checked.ok) return { ok: false, error: checked.problems[0]?.message ?? 'Check the highlighted messages.', problems: checked.problems }
 
-  const access = await authorize(tenantId)
-  if ('error' in access) return { ok: false, error: access.error }
 
   const orderUpdates: OrderUpdatesConfig = {
     enabled: parsed.data.orderUpdates.enabled,
@@ -250,3 +228,60 @@ export async function saveMessengerMessagesAction(input: {
   }
   return { ok: true, messages: checked.settings, orderUpdates }
 }
+
+// ── Entry points ─────────────────────────────────────────────────────────────
+// Each is declared: Settings on a store-wide account of the store the input
+// names (checked, never trusted). Input is parsed by the work above, so its
+// refusals keep their words.
+
+/** The store an input names, or '' (refused by the access check) when it names none. */
+function claimedTenant(value: unknown): string {
+  const id = typeof value === 'string' ? value : (value as { tenantId?: unknown } | null)?.tenantId
+  return typeof id === 'string' && UUID_PATTERN.test(id) ? id : ''
+}
+
+const refused = (): { ok: false; error: string } => ({ ok: false, error: NOT_ALLOWED })
+
+export const saveMessengerAutomationsAction = defineAction({
+  auth: { kind: 'staff', permission: 'settings', branch: 'store-wide', storeClaim: ([input]) => claimedTenant(input) },
+  args: [z.custom<SaveMessengerAutomationsInput>()],
+  onRefusal: refused,
+  handler: ({ args: [input] }) => saveMessengerAutomations(input),
+})
+
+/** A fresh "TEST 123456" code for the owner to message their Page (10 minutes, one use). */
+export const createMessengerTesterCodeAction = defineAction({
+  auth: { kind: 'staff', permission: 'settings', branch: 'store-wide', storeClaim: ([tenantId]) => claimedTenant(tenantId) },
+  args: [z.custom<string>()],
+  onRefusal: refused,
+  handler: ({ args: [tenantId] }) => createMessengerTesterCode(tenantId),
+})
+
+/** Whether a test chat is linked (never the PSID itself). */
+export const readMessengerTesterAction = defineAction({
+  auth: { kind: 'staff', permission: 'settings', branch: 'store-wide', storeClaim: ([tenantId]) => claimedTenant(tenantId) },
+  args: [z.custom<string>()],
+  onRefusal: refused,
+  handler: ({ args: [tenantId] }) => readMessengerTester(tenantId),
+})
+
+export const sendMessengerTestAction = defineAction({
+  auth: { kind: 'staff', permission: 'settings', branch: 'store-wide', storeClaim: ([tenantId]) => claimedTenant(tenantId) },
+  args: [z.custom<string>(), z.unknown()],
+  onRefusal: refused,
+  handler: ({ args: [tenantId, rawAction] }) => sendMessengerTest(tenantId, rawAction),
+})
+
+export const saveMessengerOrderUpdatesAction = defineAction({
+  auth: { kind: 'staff', permission: 'settings', branch: 'store-wide', storeClaim: ([input]) => claimedTenant(input) },
+  args: [z.custom<{ tenantId: string; config: OrderUpdatesConfig }>()],
+  onRefusal: refused,
+  handler: ({ user, args: [input] }) => saveMessengerOrderUpdates(input, { userId: user.id }),
+})
+
+export const saveMessengerMessagesAction = defineAction({
+  auth: { kind: 'staff', permission: 'settings', branch: 'store-wide', storeClaim: ([input]) => claimedTenant(input) },
+  args: [z.custom<{ tenantId: string; messages: Record<string, unknown>; orderUpdates: OrderUpdatesConfig }>()],
+  onRefusal: refused,
+  handler: ({ user, args: [input] }) => saveMessengerMessages(input, { userId: user.id }),
+})

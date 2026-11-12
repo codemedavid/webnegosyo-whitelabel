@@ -5,8 +5,8 @@
  * sign-in, Home (draft → publish), store listing, release.
  *
  * Server Actions are public POST endpoints whatever the page gate says, so
- * every one asserts its console grant (`customer_apps.*`) first and parses its
- * input as `unknown`. Writes use the service role (`tenant_apps` and
+ * every one is declared with its console grant (`customer_apps.*`) and takes
+ * its input as `unknown`, parsed by the handler (its refusals keep their words). Writes use the service role (`tenant_apps` and
  * `tenant_app_configs` are closed to every client role).
  */
 import { revalidatePath, revalidateTag } from 'next/cache'
@@ -39,9 +39,11 @@ import {
 } from '@/lib/app-studio/service'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { loadLoyaltyClaimCrypto } from '@/lib/loyalty/server-keys'
-import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import { storefrontTenantIdTag } from '@/lib/storefront/cached-read'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { z } from 'zod'
+import { defineAction } from '@/platform/http/define-action'
+import type { Refusal } from '@/platform/http/entry'
 
 const LIST_PATH = '/superadmin/apps'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -71,28 +73,46 @@ function refreshAppLookup(...ids: (string | null | undefined)[]) {
   for (const id of ids) if (id) revalidateTag(customerAppTag(id))
 }
 
-export async function listAppStudioAppsAction(): Promise<AppStudioListRow[]> {
-  await requirePlatformPermission('customer_apps.view')
-  return listApps(db())
+/** A refused caller gets the result shape the editor already reads. */
+const refusedResult = (refusal: Refusal): { ok: false; error: string } => ({ ok: false, error: refusal.message })
+
+/** List reads have no result envelope: a refused caller is an error the page shows. */
+const refusedList = (refusal: Refusal): never => {
+  throw new Error(refusal.message)
 }
+
+const anyArg = z.unknown()
+
+export const listAppStudioAppsAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.view' },
+  args: [],
+  onRefusal: refusedList,
+  handler: async (): Promise<AppStudioListRow[]> => listApps(db()),
+})
 
 /** Stores without an app yet, for "Set up an app". */
-export async function listStoresWithoutAppAction(): Promise<{ id: string; name: string; slug: string }[]> {
-  await requirePlatformPermission('customer_apps.view')
-  const client = db()
-  const [stores, apps] = await Promise.all([
-    client.from('tenants').select('id, name, slug').eq('is_active', true).order('name').limit(2000),
-    client.from('tenant_apps').select('tenant_id').limit(2000),
-  ])
-  if (stores.error) throw new Error(stores.error.message)
-  if (apps.error) throw new Error(apps.error.message)
-  const taken = new Set((apps.data ?? []).map((row) => row.tenant_id))
-  return (stores.data ?? []).filter((store) => !taken.has(store.id))
-}
+export const listStoresWithoutAppAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.view' },
+  args: [],
+  onRefusal: refusedList,
+  handler: async (): Promise<{ id: string; name: string; slug: string }[]> => {
+    const client = db()
+    const [stores, apps] = await Promise.all([
+      client.from('tenants').select('id, name, slug').eq('is_active', true).order('name').limit(2000),
+      client.from('tenant_apps').select('tenant_id').limit(2000),
+    ])
+    if (stores.error) throw new Error(stores.error.message)
+    if (apps.error) throw new Error(apps.error.message)
+    const taken = new Set((apps.data ?? []).map((row) => row.tenant_id))
+    return (stores.data ?? []).filter((store) => !taken.has(store.id))
+  },
+})
 
-export async function createAppStudioAppAction(tenantId: unknown): Promise<AppStudioResult<AppStudioApp>> {
-  await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
+export const createAppStudioAppAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg],
+  onRefusal: refusedResult,
+  handler: ({ args: [tenantId] }): Promise<AppStudioResult<AppStudioApp>> => run(async () => {
     const id = tenantIdOf(tenantId)
     const { data: tenant } = await db().from('tenants').select('*').eq('id', id).maybeSingle()
     const brand = tenant ? getTenantBranding(tenant as Record<string, unknown>).buttonPrimary : null
@@ -100,12 +120,14 @@ export async function createAppStudioAppAction(tenantId: unknown): Promise<AppSt
     const app = await createApp(db(), id, splash)
     revalidatePath(LIST_PATH)
     return app
-  })
-}
+  }),
+})
 
-export async function saveAppIdentityAction(tenantId: unknown, input: unknown): Promise<AppStudioResult<AppStudioApp>> {
-  await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
+export const saveAppIdentityAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg, anyArg],
+  onRefusal: refusedResult,
+  handler: ({ args: [tenantId, input] }): Promise<AppStudioResult<AppStudioApp>> => run(async () => {
     const id = tenantIdOf(tenantId)
     const parsed = appIdentityInputSchema.safeParse(input)
     if (!parsed.success) throw new AppStudioError(firstIssue(parsed.error))
@@ -115,67 +137,75 @@ export async function saveAppIdentityAction(tenantId: unknown, input: unknown): 
     refreshAppLookup(current.app.bundle_id, current.app.android_package, app.bundle_id, app.android_package)
     revalidatePath(LIST_PATH)
     return app
-  })
-}
+  }),
+})
 
-export async function saveAppListingAction(tenantId: unknown, input: unknown): Promise<AppStudioResult<AppStudioApp>> {
-  await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
+export const saveAppListingAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg, anyArg],
+  onRefusal: refusedResult,
+  handler: ({ args: [tenantId, input] }): Promise<AppStudioResult<AppStudioApp>> => run(async () => {
     const parsed = appListingInputSchema.safeParse(input)
     if (!parsed.success) throw new AppStudioError(firstIssue(parsed.error))
     return saveListing(db(), tenantIdOf(tenantId), parsed.data)
-  })
-}
+  }),
+})
 
-export async function saveAppReleaseAction(tenantId: unknown, input: unknown): Promise<AppStudioResult<AppStudioApp>> {
-  await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
+export const saveAppReleaseAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg, anyArg],
+  onRefusal: refusedResult,
+  handler: ({ args: [tenantId, input] }): Promise<AppStudioResult<AppStudioApp>> => run(async () => {
     const parsed = appReleaseInputSchema.safeParse(input)
     if (!parsed.success) throw new AppStudioError(firstIssue(parsed.error))
     const app = await saveRelease(db(), tenantIdOf(tenantId), parsed.data)
     refreshAppLookup(app.bundle_id, app.android_package)
     revalidatePath(LIST_PATH)
     return app
-  })
-}
+  }),
+})
 
 /** A new App Review code for the review number. The code is in this answer only; the database keeps its hash. */
-export async function issueAppReviewCodeAction(tenantId: unknown, phone: unknown): Promise<AppStudioResult<{ app: AppStudioApp; code: string }>> {
-  await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
+export const issueAppReviewCodeAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg, anyArg],
+  onRefusal: refusedResult,
+  handler: ({ args: [tenantId, phone] }): Promise<AppStudioResult<{ app: AppStudioApp; code: string }>> => run(async () => {
     const parsed = reviewPhoneSchema.safeParse(phone)
     if (!parsed.success) throw new AppStudioError(firstIssue(parsed.error))
     const crypto = loadLoyaltyClaimCrypto()
     if (!crypto) throw new AppStudioError('Sign-in keys are not set on this deployment, so a review code can’t be made here.')
     return issueReviewCode(db(), tenantIdOf(tenantId), parsed.data, crypto)
-  })
-}
+  }),
+})
 
-export async function clearAppReviewCodeAction(tenantId: unknown): Promise<AppStudioResult<AppStudioApp>> {
-  await requirePlatformPermission('customer_apps.edit')
-  return run(() => clearReviewCode(db(), tenantIdOf(tenantId)))
-}
+export const clearAppReviewCodeAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg],
+  onRefusal: refusedResult,
+  handler: ({ args: [tenantId] }): Promise<AppStudioResult<AppStudioApp>> => run(() => clearReviewCode(db(), tenantIdOf(tenantId))),
+})
 
-export async function saveAppDraftAction(tenantId: unknown, draft: unknown): Promise<AppStudioResult<{ savedAt: string }>> {
-  const caller = await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
+export const saveAppDraftAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg, anyArg],
+  onRefusal: refusedResult,
+  handler: ({ user, args: [tenantId, draft] }): Promise<AppStudioResult<{ savedAt: string }>> => run(async () => {
     const parsed = appPublishedConfigSchema.safeParse(draft)
     if (!parsed.success) throw new AppStudioError(firstIssue(parsed.error))
-    return { savedAt: await saveDraft(db(), tenantIdOf(tenantId), parsed.data, caller.user.id) }
-  })
-}
+    return { savedAt: await saveDraft(db(), tenantIdOf(tenantId), parsed.data, user.id) }
+  }),
+})
 
 /**
  * Checks the draft against the live store exactly as the app will receive it,
  * then publishes it. `expectedVersion` is the version the editor loaded.
  */
-export async function publishAppDraftAction(
-  tenantId: unknown,
-  draft: unknown,
-  expectedVersion: unknown,
-): Promise<AppStudioResult<{ version: number; publishedAt: string }>> {
-  const caller = await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
+export const publishAppDraftAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg, anyArg, anyArg],
+  onRefusal: refusedResult,
+  handler: ({ user, args: [tenantId, draft, expectedVersion] }): Promise<AppStudioResult<{ version: number; publishedAt: string }>> => run(async () => {
     const id = tenantIdOf(tenantId)
     if (typeof expectedVersion !== 'number' || !Number.isInteger(expectedVersion) || expectedVersion < 0) throw new AppStudioError('Reload the page and try again.')
     const { data: tenant } = await db().from('tenants').select('slug').eq('id', id).maybeSingle()
@@ -183,18 +213,20 @@ export async function publishAppDraftAction(
     if (!store) throw new AppStudioError('The store could not be read. Try again in a moment.')
     const checked = checkDraftForPublish(draft, store.configInput)
     if (!checked.ok) throw new AppStudioError(checked.error)
-    const published = await publishDraft(db(), id, checked.draft, expectedVersion, caller.user.id)
+    const published = await publishDraft(db(), id, checked.draft, expectedVersion, user.id)
     // The config route reads `published` through the store's cached reads.
     revalidateTag(storefrontTenantIdTag(id))
     revalidatePath(LIST_PATH)
     return published
-  })
-}
+  }),
+})
 
-export async function discardAppDraftAction(tenantId: unknown): Promise<AppStudioResult<null>> {
-  const caller = await requirePlatformPermission('customer_apps.edit')
-  return run(async () => {
-    await discardDraft(db(), tenantIdOf(tenantId), caller.user.id)
+export const discardAppDraftAction = defineAction({
+  auth: { kind: 'superadmin', permission: 'customer_apps.edit' },
+  args: [anyArg],
+  onRefusal: refusedResult,
+  handler: ({ user, args: [tenantId] }): Promise<AppStudioResult<null>> => run(async () => {
+    await discardDraft(db(), tenantIdOf(tenantId), user.id)
     return null
-  })
-}
+  }),
+})

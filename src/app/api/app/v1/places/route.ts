@@ -1,4 +1,5 @@
-import { appRoute } from '@/lib/app-api/app-route'
+import { appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { handlePlaces } from '@/lib/app-api/delivery/places'
 
 /**
@@ -10,4 +11,9 @@ import { handlePlaces } from '@/lib/app-api/delivery/places'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export const GET = appRoute({ scope: 'places', rateLimit: { limit: 60, windowSec: 60 } }, handlePlaces)
+export const GET = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:places', per: 'ip', max: 60, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: appRoute({ scope: 'places' }, handlePlaces),
+})

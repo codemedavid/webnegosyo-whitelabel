@@ -10,7 +10,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
-import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { ORDER_BACKEND_TENANT_COLUMNS, resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import type { MessengerRule } from './rules'
 import { buildReplyStore } from './store-view'
 import {
@@ -21,7 +21,7 @@ import {
 export type { MessengerSettings, StoreBundle } from './settings'
 export { activeRules, DEFAULT_SETTINGS } from './settings'
 
-const TENANT_COLUMNS = 'id, slug, name, domain, logo_url, operating_hours, timezone, restaurant_address, footer_address, facebook_page_id, order_backend, convex_deployment_url'
+const TENANT_COLUMNS = `id, slug, name, domain, logo_url, operating_hours, timezone, restaurant_address, footer_address, facebook_page_id, ${ORDER_BACKEND_TENANT_COLUMNS}`
 
 export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{ settings: MessengerSettings; storedRules: MessengerRule[] }> {
   const admin = createAdminClient()
@@ -60,8 +60,7 @@ export async function loadStoreBundle(tenantId: string, now: Date = new Date()):
     id: string; slug: string; name: string; domain: string | null; logo_url: string | null
     operating_hours: unknown; timezone: string | null; restaurant_address: string | null; footer_address: string | null
     facebook_page_id: string | null
-    order_backend: string | null; convex_deployment_url: string | null
-  }
+  } & OrderBackendTenantFields
 
   const [menu, { settings, storedRules }] = await Promise.all([
     getStorefrontMenu(tenant.slug).catch((menuError: unknown) => {

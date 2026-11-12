@@ -1,4 +1,5 @@
-import { appRoute } from '@/lib/app-api/app-route'
+import { appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { handleOtpRequest } from '@/lib/customer-auth/sign-in-http'
 
 /**
@@ -8,4 +9,9 @@ import { handleOtpRequest } from '@/lib/customer-auth/sign-in-http'
  * Semaphore account). Always 202 with a challenge id, known number or not;
  * per number / IP / store limits live in issue_customer_login_challenge.
  */
-export const POST = appRoute({ scope: 'otp-request', rateLimit: { limit: 10, windowSec: 60 } }, handleOtpRequest)
+export const POST = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:otp-request', per: 'ip', max: 10, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: appRoute({ scope: 'otp-request' }, handleOtpRequest),
+})

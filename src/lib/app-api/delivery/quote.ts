@@ -38,7 +38,7 @@ import {
 import { withOriginRadius } from '@/lib/delivery/distance-quote-server'
 import { assessDeliveryPin } from '@/lib/delivery/pin-assessment'
 import { resolveFreeDeliveryThreshold } from '@/lib/free-delivery'
-import type { SignedLalamoveQuote } from '@/lib/lalamove-signed-quote'
+import type { SignedLalamoveQuote } from '@/lib/delivery/lalamove-signed-quote'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { requireCheckoutOutlet, type OrderOutletCandidate } from '@/lib/outlets/order-outlet'
 import { encodeAppQuoteToken } from './quote-token'

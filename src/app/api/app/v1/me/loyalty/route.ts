@@ -1,4 +1,5 @@
-import { appRoute } from '@/lib/app-api/app-route'
+import { appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { handleGetLoyalty } from '@/lib/app-api/loyalty/loyalty-http'
 
 /**
@@ -8,4 +9,9 @@ import { handleGetLoyalty } from '@/lib/app-api/loyalty/loyalty-http'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export const GET = appRoute({ scope: 'my-loyalty', rateLimit: { limit: 120, windowSec: 60 } }, (context) => handleGetLoyalty(context))
+export const GET = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:my-loyalty', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: appRoute({ scope: 'my-loyalty' }, (context) => handleGetLoyalty(context)),
+})

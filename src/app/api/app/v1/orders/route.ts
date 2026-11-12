@@ -1,4 +1,5 @@
-import { appRoute } from '@/lib/app-api/app-route'
+import { appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { handlePlaceOrder } from '@/lib/app-api/orders/orders-http'
 
 /**
@@ -9,4 +10,9 @@ import { handlePlaceOrder } from '@/lib/app-api/orders/orders-http'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export const POST = appRoute({ scope: 'orders', rateLimit: { limit: 20, windowSec: 60 } }, (context) => handlePlaceOrder(context))
+export const POST = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:orders', per: 'ip', max: 20, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: appRoute({ scope: 'orders' }, (context) => handlePlaceOrder(context)),
+})

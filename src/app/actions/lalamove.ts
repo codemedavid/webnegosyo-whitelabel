@@ -28,7 +28,7 @@ import {
   createSignedLalamoveQuote,
   lalamoveQuoteRateKey,
   withLalamoveKeys,
-} from '@/lib/lalamove-signed-quote'
+} from '@/lib/delivery/lalamove-signed-quote'
 import { claimLalamoveBooking, persistLalamoveBooking, releaseLalamoveBookingClaim, LALAMOVE_BOOKING_PENDING_MESSAGE } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import { buildRiderRemarks } from '@/lib/delivery/rider-remarks'

@@ -1,4 +1,5 @@
-import { appRoute } from '@/lib/app-api/app-route'
+import { appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { handleMe } from '@/lib/customer-auth/sign-in-http'
 
 /**
@@ -7,7 +8,22 @@ import { handleMe } from '@/lib/customer-auth/sign-in-http'
  *   PATCH  {name} → profile
  *   DELETE → delete the app account (Apple 5.1.1(v)); the store keeps its orders and stamps
  */
-const me = appRoute({ scope: 'me', rateLimit: { limit: 120, windowSec: 60 } }, handleMe)
-export const GET = me
-export const PATCH = me
-export const DELETE = me
+const meHandler = appRoute({ scope: 'me' }, handleMe)
+export const GET = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:me', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: meHandler,
+})
+export const PATCH = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:me', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: meHandler,
+})
+export const DELETE = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:me', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: meHandler,
+})

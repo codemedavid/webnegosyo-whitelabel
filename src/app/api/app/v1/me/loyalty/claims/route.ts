@@ -1,4 +1,5 @@
-import { appRoute } from '@/lib/app-api/app-route'
+import { appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { handleClaimReward } from '@/lib/app-api/loyalty/loyalty-http'
 
 /**
@@ -8,4 +9,9 @@ import { handleClaimReward } from '@/lib/app-api/loyalty/loyalty-http'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export const POST = appRoute({ scope: 'loyalty-claim', rateLimit: { limit: 30, windowSec: 60 } }, (context) => handleClaimReward(context))
+export const POST = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:loyalty-claim', per: 'ip', max: 30, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: appRoute({ scope: 'loyalty-claim' }, (context) => handleClaimReward(context)),
+})

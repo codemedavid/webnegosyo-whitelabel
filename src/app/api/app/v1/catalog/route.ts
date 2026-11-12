@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { appFail } from '@/lib/app-api/respond'
-import { appCachedOk, appRoute } from '@/lib/app-api/app-route'
+import { appCachedOk, appRefusal, appRoute } from '@/lib/app-api/app-route'
+import { defineRoute } from '@/platform/http/define-route'
 import { projectAppCatalog } from '@/lib/app-api/project-catalog'
 import { AppReadError, readAppOrderTypes, readAppPaymentMethods, readCheckoutQuestions, readComplementaryPairs } from '@/lib/app-api/store-reads'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
@@ -17,7 +18,11 @@ import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
 
 const outletIdSchema = z.string().uuid().nullable()
 
-export const GET = appRoute({ scope: 'catalog', rateLimit: { limit: 120, windowSec: 60 } }, async ({ request, app }) => {
+export const GET = defineRoute({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'app:catalog', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
+  onRefusal: appRefusal,
+  handler: appRoute({ scope: 'catalog' }, async ({ request, app }) => {
   const outletParam = outletIdSchema.safeParse(request.nextUrl.searchParams.get('outletId'))
   if (!outletParam.success) return appFail('bad_request', 'That branch was not found.')
 
@@ -49,4 +54,5 @@ export const GET = appRoute({ scope: 'catalog', rateLimit: { limit: 120, windowS
     questions,
   })
   return appCachedOk(request, catalog, 120)
+}),
 })

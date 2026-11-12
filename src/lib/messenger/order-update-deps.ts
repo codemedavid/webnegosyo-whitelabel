@@ -4,7 +4,7 @@ import 'server-only'
 import { writeChatLog } from './chat-log-store'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
-import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { ORDER_BACKEND_TENANT_COLUMNS, resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { toCentavos } from './chat-cart'
 import type { OrderUpdateDeps } from './order-update'
 import { readOrderUpdates } from './order-view'
@@ -60,7 +60,7 @@ export function createOrderUpdateDeps(): OrderUpdateDeps {
     loadStore: async (tenantId) => {
       const [tenantRead, settingsRead] = await Promise.all([
         admin.from('tenants')
-          .select('name, slug, domain, facebook_page_id, order_backend, convex_deployment_url')
+          .select(`name, slug, domain, facebook_page_id, ${ORDER_BACKEND_TENANT_COLUMNS}`)
           .eq('id', tenantId)
           .maybeSingle(),
         admin.from('messenger_settings').select('bot_enabled, order_updates, messages').eq('tenant_id', tenantId).maybeSingle(),
