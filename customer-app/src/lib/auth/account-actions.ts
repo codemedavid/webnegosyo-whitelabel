@@ -2,6 +2,7 @@ import { AppApiError } from '@/lib/api/app-client'
 import type { AppOtpVerifyResult } from '@/lib/contract'
 import { queryClient, queryKeys } from '@/lib/data/hooks'
 import { appClientFromEnv } from '@/lib/data/live-source'
+import { syncPushRegistration } from '@/lib/push/push-actions'
 import { useCart } from '@/lib/stores/cart'
 import { useSession, type MemberProfile } from '@/lib/stores/session'
 import { createLiveAuth, createPrototypeAuth, type AuthSource } from './auth-source'
@@ -39,6 +40,8 @@ export async function restoreSession(): Promise<void> {
   if (!token) return useSession.getState().setGuest()
   try {
     useSession.getState().setMember(token, await auth.getProfile(token))
+    // A token can rotate between launches; re-filing it is cheap and idempotent.
+    void syncPushRegistration()
   } catch (error) {
     // Only a refused session signs out; offline keeps the saved session for next launch.
     if (error instanceof AppApiError && error.code === 'unauthorized') await clearSessionToken()
@@ -54,6 +57,8 @@ export async function completeSignIn(result: AppOtpVerifyResult): Promise<boolea
   forgetCustomerData({ keepBag: isSamePerson })
   useSession.getState().setMember(result.token, result.profile)
   await saveSessionToken(result.token)
+  // A phone that already allows notifications now rings for THIS account (the server moves the install).
+  void syncPushRegistration()
   return result.isNewCustomer || result.profile.name === null
 }
 

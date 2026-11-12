@@ -10,6 +10,7 @@ import { BootError } from '@/components/navigation/boot-screen'
 import { restoreSession } from '@/lib/auth/account-actions'
 import type { AppFontKey } from '@/lib/contract'
 import { queryClient, useAppConfig } from '@/lib/data/hooks'
+import { usePushRouting } from '@/lib/push/use-push-routing'
 import { FONT_ASSETS } from '@/theme/font-assets'
 import { ThemeProvider, useTokens } from '@/theme/theme-context'
 
@@ -35,6 +36,7 @@ function useTenantFonts(fontKey: AppFontKey | undefined): boolean {
 
 function ThemedStack() {
   const { colors, type } = useTokens()
+  usePushRouting()
   return (
     <>
       <StatusBar style="dark" />

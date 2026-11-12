@@ -1,6 +1,7 @@
 import { useIsFocused, useLocalSearchParams } from 'expo-router'
 import { RefreshControl, ScrollView, View } from 'react-native'
 import { CheckoutSection } from '@/components/checkout/checkout-section'
+import { NotificationAsk } from '@/components/orders/notification-ask'
 import { OrderAgainButton } from '@/components/orders/order-again-button'
 import { OrderHero } from '@/components/orders/order-hero'
 import { OrderLines } from '@/components/orders/order-lines'
@@ -72,6 +73,7 @@ export default function OrderTrackingScreen() {
         </View>
       ) : null}
       <OrderHero order={order} />
+      {isTerminalStatus(order.status) ? null : <NotificationAsk />}
       <CheckoutSection title="Progress">
         <StepTracker steps={trackingSteps(order.status, order.orderKind)} />
       </CheckoutSection>

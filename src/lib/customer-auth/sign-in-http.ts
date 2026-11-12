@@ -18,6 +18,7 @@ import { getLoyaltySmsFallback } from '@/lib/tenant-secrets'
 import { deleteAccount, readProfile, readReviewPhone, resolveCustomerSession, revokeSession, updateProfileName } from './account'
 import { canonicalLoginPhone, issueLoginChallenge, noteReviewRequest, openReviewSession, verifyLoginChallenge, type LoginVerifyResult } from './login-challenge'
 import { readBearerSession } from './session-token'
+import { removeSessionPushTokens } from '@/lib/app-api/push/push-tokens'
 
 const CODE_LIFETIME_SECONDS = 300
 const NO_STORE = { 'Cache-Control': 'no-store' }
@@ -138,7 +139,14 @@ export async function handleOtpVerify({ request, app }: AppRouteContext): Promis
 /** DELETE /auth/session — sign out this device. Idempotent: no or unknown token is already signed out. */
 export async function handleSignOut({ request, app }: AppRouteContext): Promise<NextResponse> {
   const tokenHash = readBearerSession(request.headers)
-  if (tokenHash) await revokeSession(app.tenantId, tokenHash)
+  if (tokenHash) {
+    // This phone stops getting the account's order pushes. A failure here must not keep anyone signed in:
+    // the sender only uses tokens of LIVE sessions, so a leftover row is never pushed to.
+    await removeSessionPushTokens(app.tenantId, tokenHash).catch((error: unknown) =>
+      console.error('[app-api:sign-out] push token removal failed', { message: error instanceof Error ? error.message : String(error) }),
+    )
+    await revokeSession(app.tenantId, tokenHash)
+  }
   return appOk({ signedOut: true }, { headers: NO_STORE })
 }
 
