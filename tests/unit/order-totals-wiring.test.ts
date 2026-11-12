@@ -42,10 +42,15 @@ const MONEY_BEARING_FILES = [
   `${CHECKOUT_TEMPLATE_DIR}/wizard-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/express-checkout.tsx`,
   'src/app/actions/orders.ts',
+  // The order engine createOrderAction (and the customer app) call: pricing,
+  // the backend writes and the totals handed back to the app.
+  'src/lib/checkout/place-order/pricing.ts',
+  'src/lib/checkout/place-order/write-order.ts',
+  'src/lib/checkout/place-order/placed-result.ts',
   // The write paths (platform and Convex). Each persists the amount actually
-  // charged and once had its own copy of the arithmetic. A discount applied on
-  // the display side and missed here would show the customer one price and
-  // bill them another.
+  // charged and once had its own copy of the arithmetic.
+  // A discount applied on the display side and missed here would show the
+  // customer one price and bill them another.
   'src/lib/orders-service.ts',
   // The hook itself. It derives the shared `grandTotal` correctly, and then
   // built a SECOND total further down for the QR handoff payload — the amount

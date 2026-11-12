@@ -36,11 +36,11 @@ export function PressableScale({
       disabled={disabled}
       {...rest}
       onPressIn={(event) => {
-        scale.value = withSpring(scaleTo, SPRING)
+        scale.set(withSpring(scaleTo, SPRING))
         onPressIn?.(event)
       }}
       onPressOut={(event) => {
-        scale.value = withSpring(1, SPRING)
+        scale.set(withSpring(1, SPRING))
         onPressOut?.(event)
       }}
       onPress={(event) => {

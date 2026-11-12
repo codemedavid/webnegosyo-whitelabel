@@ -1,10 +1,12 @@
 /**
  * Line pricing used to read the dishes, then the linked add-on dishes, then
  * the branch's price overrides, then the combos — four sequential round trips
- * on the path of every branch or combo order. Only the linked dishes depend on
- * another read (they are named inside the dish JSON); the branch overrides and
- * the combo catalog are keyed by the cart alone, so they ride alongside the
- * dish read.
+ * on the path of every branch or combo order. Now it is at most two rounds:
+ * the combo catalog (keyed by the cart alone) rides alongside the dish read;
+ * everything the dish rows name — the linked add-on dishes, the categories of
+ * legacy-path dishes, and the branch overrides for the dishes AND their linked
+ * dishes (one query, so linked options take the branch's price) — goes out
+ * together in the second round.
  *
  * Parallel reads must not change which failure the checkout hears: the
  * messages keep their old precedence (dishes, add-ons, branch, combos).
@@ -43,25 +45,35 @@ function deferredClient() {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+const STORE = { modifierGroupsEnabled: false }
+
+const linkedBurger = {
+  id: 'burger', name: 'Burger', category_id: 'cat-food', price: 100, is_available: true,
+  modifier_groups: [{ id: 'g', name: 'Drink', options: [{ id: 'o-soda', name: '', price_modifier: 0, menu_item_id: 'soda' }] }],
+}
+
 const plainLine: PriceableOrderLine = {
   menu_item_id: 'burger', menu_item_name: 'Burger', price: 100, subtotal: 100, quantity: 1,
 }
 
 describe('loadAndPriceOrderLines — independent reads run together', () => {
-  test('starts the branch override read without waiting for the dish read', async () => {
+  test('issues the linked, category and branch reads together once the dishes are known', async () => {
     // Arrange
     const { client, pending } = deferredClient()
 
     // Act
-    const result = loadAndPriceOrderLines(client, 'tenant-1', [plainLine], 'outlet-1')
+    const result = loadAndPriceOrderLines(client, 'tenant-1', [plainLine], 'outlet-1', STORE)
     await flush()
 
-    // Assert — both reads are in flight before either answered.
-    expect(pending.map((read) => read.table).sort()).toEqual(['menu_items', 'outlet_menu_items'])
+    // Assert — round one is the dish read alone.
+    expect(pending.map((read) => read.table)).toEqual(['menu_items'])
+    pending[0].resolve({ data: [linkedBurger], error: null })
+    await flush()
 
-    pending.find((read) => read.table === 'menu_items')!.resolve({
-      data: [{ id: 'burger', name: 'Burger', price: 100, is_available: true }], error: null,
-    })
+    // Round two: all three in flight before any answered.
+    expect(pending.slice(1).map((read) => read.table).sort()).toEqual(['categories', 'menu_items', 'outlet_menu_items'])
+    pending[1].resolve({ data: [{ id: 'soda', name: 'Soda', price: 40 }], error: null })
+    pending.find((read) => read.table === 'categories')!.resolve({ data: [], error: null })
     pending.find((read) => read.table === 'outlet_menu_items')!.resolve({ data: [], error: null })
     await expect(result).resolves.toMatchObject({ ok: true, itemsSubtotal: 100 })
   })
@@ -72,7 +84,7 @@ describe('loadAndPriceOrderLines — independent reads run together', () => {
     const comboLine: PriceableOrderLine = { ...plainLine, isBundleItem: true, bundleId: 'combo' }
 
     // Act
-    void loadAndPriceOrderLines(client, 'tenant-1', [comboLine], null)
+    void loadAndPriceOrderLines(client, 'tenant-1', [comboLine], null, STORE)
     await flush()
 
     // Assert
@@ -84,13 +96,30 @@ describe('loadAndPriceOrderLines — independent reads run together', () => {
     const { client, pending } = deferredClient()
 
     // Act
-    const result = loadAndPriceOrderLines(client, 'tenant-1', [plainLine], 'outlet-1')
+    const result = loadAndPriceOrderLines(client, 'tenant-1', [plainLine], 'outlet-1', STORE)
     await flush()
-    pending.find((read) => read.table === 'outlet_menu_items')!.resolve({ data: null, error: { message: 'down' } })
     pending.find((read) => read.table === 'menu_items')!.resolve({ data: null, error: { message: 'down' } })
 
-    // Assert
+    // Assert — nothing else is read for a cart that cannot be priced.
     await expect(result).resolves.toEqual({ ok: false, refused: false, error: 'Failed to verify item prices' })
+    expect(pending.map((read) => read.table)).toEqual(['menu_items'])
+  })
+
+  test('a failed add-on read is reported before a failed branch read', async () => {
+    // Arrange
+    const { client, pending } = deferredClient()
+
+    // Act
+    const result = loadAndPriceOrderLines(client, 'tenant-1', [plainLine], 'outlet-1', STORE)
+    await flush()
+    pending[0].resolve({ data: [linkedBurger], error: null })
+    await flush()
+    pending.find((read) => read.table === 'outlet_menu_items')!.resolve({ data: null, error: { message: 'down' } })
+    pending.find((read) => read.table === 'categories')!.resolve({ data: null, error: { message: 'down' } })
+    pending[1].resolve({ data: [], error: null })
+
+    // Assert
+    await expect(result).resolves.toEqual({ ok: false, refused: false, error: 'Failed to verify add-on prices' })
   })
 
   test('a failed branch read is still an infrastructure failure, never a store-wide price', async () => {
@@ -98,11 +127,12 @@ describe('loadAndPriceOrderLines — independent reads run together', () => {
     const { client, pending } = deferredClient()
 
     // Act
-    const result = loadAndPriceOrderLines(client, 'tenant-1', [plainLine], 'outlet-1')
+    const result = loadAndPriceOrderLines(client, 'tenant-1', [plainLine], 'outlet-1', STORE)
     await flush()
-    pending.find((read) => read.table === 'menu_items')!.resolve({
+    pending[0].resolve({
       data: [{ id: 'burger', name: 'Burger', price: 100, is_available: true }], error: null,
     })
+    await flush()
     pending.find((read) => read.table === 'outlet_menu_items')!.resolve({ data: null, error: { message: 'down' } })
 
     // Assert

@@ -7,8 +7,10 @@ import { useEffect, useState } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { BootError } from '@/components/navigation/boot-screen'
+import { restoreSession } from '@/lib/auth/account-actions'
 import type { AppFontKey } from '@/lib/contract'
 import { queryClient, useAppConfig } from '@/lib/data/hooks'
+import { usePushRouting } from '@/lib/push/use-push-routing'
 import { FONT_ASSETS } from '@/theme/font-assets'
 import { ThemeProvider, useTokens } from '@/theme/theme-context'
 
@@ -34,6 +36,7 @@ function useTenantFonts(fontKey: AppFontKey | undefined): boolean {
 
 function ThemedStack() {
   const { colors, type } = useTokens()
+  usePushRouting()
   return (
     <>
       <StatusBar style="dark" />
@@ -69,7 +72,18 @@ function ThemedStack() {
             sheetCornerRadius: 28,
           }}
         />
+        <Stack.Screen
+          name="edit-name"
+          options={{
+            presentation: 'formSheet',
+            headerShown: false,
+            sheetAllowedDetents: 'fitToContents',
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
         <Stack.Screen name="sign-in" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="address-search" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="checkout" options={{ title: 'Review order' }} />
         <Stack.Screen name="order/[id]" options={{ title: 'Your order' }} />
         <Stack.Screen name="orders" options={{ title: 'Order history' }} />
@@ -78,8 +92,16 @@ function ThemedStack() {
   )
 }
 
+/** A saved session signs the customer back in; until it answers they browse as a guest (never blocks launch). */
+function useRestoredSession() {
+  useEffect(() => {
+    void restoreSession()
+  }, [])
+}
+
 /** Holds the splash until the tenant's config and font pair are ready, so the first frame is on-brand. */
 function TenantGate() {
+  useRestoredSession()
   const config = useAppConfig()
   const fontsReady = useTenantFonts(config.data?.theme.fontKey)
   const isReady = config.data !== undefined && fontsReady

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { gateAppMapsRequest, latLngSchema, mapsFail, NO_STORE } from '@/lib/maps/app-maps-request'
-import { createAppleMapsClient, type AppleMapsClient, type ServerPlace } from '@/lib/maps/apple/maps-server-api'
-import type { MapKitConfig } from '@/lib/maps/apple/mapkit-token'
+import type { AppleMapsClient, ServerPlace } from '@/lib/maps/apple/maps-server-api'
+import { appleMapsClientFor } from '@/lib/maps/apple/server-client'
 import { mergeSuggestions, searchQueriesFor } from '@/lib/maps/address-query'
 
 /**
@@ -37,16 +37,6 @@ const BUDGETS = {
   bucket: 'maps-places',
   burst: { limit: 40, windowSec: 60 },
   daily: { limit: 1500, windowSec: 86_400 },
-}
-
-/** One client per runtime, so Apple's 30-minute access token is reused. */
-let cachedClient: { config: MapKitConfig; client: AppleMapsClient } | null = null
-
-function clientFor(config: MapKitConfig): AppleMapsClient {
-  if (cachedClient?.config.keyId !== config.keyId) {
-    cachedClient = { config, client: createAppleMapsClient(config) }
-  }
-  return cachedClient.client
 }
 
 interface AppPlace {
@@ -84,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!gate.config) return mapsFail(503, 'Maps are not available right now.')
 
   try {
-    const client = clientFor(gate.config)
+    const client = appleMapsClientFor(gate.config)
     const places = 'query' in body
       ? await searchAddress(client, queries, body.near)
       : await client.reverseGeocode(body.at)

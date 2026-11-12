@@ -109,6 +109,13 @@ export const PLATFORM_SECTIONS = {
     actions: ['view', 'edit'],
     path: '/superadmin/app-releases',
   },
+  customer_apps: {
+    label: 'Customer apps',
+    description: 'App Studio: each store’s branded customer app — identity, Home, store listing, release.',
+    actions: ['view', 'edit'],
+    actionHints: { edit: 'Set up apps, edit and publish' },
+    path: '/superadmin/apps',
+  },
   mcp_keys: {
     label: 'MCP keys',
     description: 'API keys for the SmartMenu MCP.',
@@ -246,6 +253,7 @@ const CONSOLE_PATH_RULES: ReadonlyArray<readonly [string, ConsolePathRequirement
   ['/superadmin/university/new', 'university.create'],
   ['/superadmin/university', 'university.view'],
   ['/superadmin/app-releases', 'app_releases.view'],
+  ['/superadmin/apps', 'customer_apps.view'],
   ['/superadmin/mcp-keys', 'mcp_keys.view'],
   // Open to every console user: it is where they change their own password.
   // The platform sections on it gate themselves on `settings.*`.

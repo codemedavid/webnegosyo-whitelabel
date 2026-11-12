@@ -35,6 +35,8 @@ export const ORDER_TENANT_CONFIG_SELECT = [
   'delivery_price_per_km', 'delivery_min_fee', 'delivery_radius_km', 'free_delivery_min_order',
   'restaurant_latitude', 'restaurant_longitude', 'multi_branch_enabled',
   'loyverse_enabled', 'loyverse_store_id', 'loyverse_payment_type_id', 'loyverse_push_mode',
+  // Line pricing: decides whether a dish shows its category's default add-ons.
+  'modifier_groups_enabled',
   // Operating hours + pre-launch: the action refuses a closed store itself, on
   // every backend, so the refusal is marked as one (see store-open-status.ts).
   ...OPERATING_HOURS_ENFORCEMENT_COLUMNS,

@@ -1,0 +1,86 @@
+import { AppApiError } from '@/lib/api/app-client'
+import type { AppOtpVerifyResult } from '@/lib/contract'
+import { queryClient, queryKeys } from '@/lib/data/hooks'
+import { appClientFromEnv } from '@/lib/data/live-source'
+import { syncPushRegistration } from '@/lib/push/push-actions'
+import { useCart } from '@/lib/stores/cart'
+import { useSession, type MemberProfile } from '@/lib/stores/session'
+import { createLiveAuth, createPrototypeAuth, type AuthSource } from './auth-source'
+import { setSessionRefusedHandler, withSession } from './session-guard'
+import { clearSessionToken, loadSessionToken, saveSessionToken } from './session-storage'
+
+/**
+ * Everything that changes who is signed in. A change of person drops every
+ * per-customer cache (rewards, member QR, orders) and the bag, so the next
+ * person on this phone never sees the last one's data. A guest signing in is
+ * the same person mid-order ("Sign in to place your order"): their bag stays.
+ */
+const client = appClientFromEnv()
+export const auth: AuthSource = client ? createLiveAuth(client) : createPrototypeAuth()
+
+function forgetCustomerData({ keepBag = false }: { keepBag?: boolean } = {}) {
+  queryClient.removeQueries({ queryKey: queryKeys.loyalty })
+  queryClient.removeQueries({ queryKey: queryKeys.orders })
+  // Addresses searched and quoted, and vouchers previewed, were this person's too.
+  queryClient.removeQueries({ queryKey: ['deliveryQuote'] })
+  queryClient.removeQueries({ queryKey: ['places'] })
+  queryClient.removeQueries({ queryKey: ['voucherPreview'] })
+  if (!keepBag) useCart.getState().clear()
+}
+
+async function becomeGuest() {
+  forgetCustomerData()
+  useSession.getState().setGuest()
+  await clearSessionToken()
+}
+
+/** At launch: a saved session that the store still accepts signs the customer back in. */
+export async function restoreSession(): Promise<void> {
+  const token = await loadSessionToken()
+  if (!token) return useSession.getState().setGuest()
+  try {
+    useSession.getState().setMember(token, await auth.getProfile(token))
+    // A token can rotate between launches; re-filing it is cheap and idempotent.
+    void syncPushRegistration()
+  } catch (error) {
+    // Only a refused session signs out; offline keeps the saved session for next launch.
+    if (error instanceof AppApiError && error.code === 'unauthorized') await clearSessionToken()
+    useSession.getState().setGuest()
+  }
+}
+
+/** After a verified code. Returns whether to ask for a name. */
+export async function completeSignIn(result: AppOtpVerifyResult): Promise<boolean> {
+  // Sign-out already emptied the bag, so a guest's bag is their own; only another member's is dropped.
+  const previous = useSession.getState()
+  const isSamePerson = previous.status !== 'member' || previous.profile?.phoneE164 === result.profile.phoneE164
+  forgetCustomerData({ keepBag: isSamePerson })
+  useSession.getState().setMember(result.token, result.profile)
+  await saveSessionToken(result.token)
+  // A phone that already allows notifications now rings for THIS account (the server moves the install).
+  void syncPushRegistration()
+  return result.isNewCustomer || result.profile.name === null
+}
+
+/** A refused session (expired, revoked elsewhere) ends here — from any per-customer call: signed out, quietly. */
+setSessionRefusedHandler(becomeGuest)
+const asMember = withSession
+
+export async function saveName(name: string | null): Promise<MemberProfile> {
+  const profile = await asMember((token) => auth.updateName(token, name))
+  useSession.getState().setProfile(profile)
+  return profile
+}
+
+/** Signs this phone out; the server forgets the session even if this call fails later. */
+export async function signOut(): Promise<void> {
+  const { token } = useSession.getState()
+  await becomeGuest()
+  if (token) await auth.signOut(token).catch(() => undefined)
+}
+
+/** Apple 5.1.1(v): removes the app account. Throws (and stays signed in) if the store didn't confirm. */
+export async function deleteAccount(): Promise<void> {
+  await asMember((token) => auth.deleteAccount(token))
+  await becomeGuest()
+}

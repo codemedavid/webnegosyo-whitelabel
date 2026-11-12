@@ -2,8 +2,10 @@
  * Loads what server-side line pricing needs and prices the cart.
  *
  * Tenant-scoped reads, each only when needed: the dishes (with their option
- * JSON), the menu items their linked options point at, the chosen branch's
- * price overrides and the combos the cart names. A failed read is an infrastructure failure — the
+ * JSON), the menu items their linked options point at, the default add-ons of
+ * the dishes' categories, the chosen branch's price overrides
+ * (for the dishes AND their linked dishes, one query) and the combos the cart
+ * names. A failed read is an infrastructure failure — the
  * order is not refused, it is reported lost so the checkout keeps its
  * Messenger fallback. A pricing "no" (unknown dish, unavailable, off-branch) is
  * a refusal.
@@ -24,6 +26,7 @@ import {
 } from '@/lib/checkout/price-order-lines'
 import type { CheckoutBundle } from './price-bundle-lines'
 import { withCategoryAddons } from '@/lib/category-default-addons'
+import { mergeCategoryAddons, usesUnifiedModifierGroups } from '@/lib/app-api/item-modifier-groups'
 
 interface QueryResult {
   data: unknown
@@ -34,6 +37,33 @@ interface QueryResult {
 export interface LinePricingClient {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   from: (table: string) => any
+}
+
+/** What the store's own settings decide about how its dishes were shown. */
+export interface LinePricingStore {
+  /** `tenants.modifier_groups_enabled`: which of a dish's two shapes the diner saw. */
+  modifierGroupsEnabled: boolean
+}
+
+/**
+ * The dish with its category's default add-ons merged in where the diner saw
+ * them: into its groups when the dish is shown by `modifier_groups` (the item
+ * page's `withCategoryAddons`), else into its legacy add-ons (the legacy item
+ * page and the app's `modifierGroupsFor`). Without the store's flag, the
+ * groups whenever the dish has any.
+ */
+function withShownCategoryAddons(
+  row: StoreMenuItemRow,
+  defaults: readonly unknown[] | undefined,
+  store: LinePricingStore | undefined
+): StoreMenuItemRow {
+  if (!defaults || defaults.length === 0) return row
+  const showsGroups = store
+    ? usesUnifiedModifierGroups(row, { modifier_groups_enabled: store.modifierGroupsEnabled })
+    : Array.isArray(row.modifier_groups) && row.modifier_groups.length > 0
+  if (showsGroups) return withCategoryAddons(row, defaults)
+  const addons = mergeCategoryAddons(row, { default_addons: defaults })
+  return addons === row.addons ? row : { ...row, addons }
 }
 
 export type LoadAndPriceResult<T> =
@@ -47,9 +77,8 @@ async function readMenuItems(client: LinePricingClient, tenantId: string, ids: s
 async function readLinkedItems(
   client: LinePricingClient,
   tenantId: string,
-  storeItems: readonly StoreMenuItemRow[]
+  ids: readonly string[]
 ): Promise<{ ok: true; items: Map<string, LinkedModifierItem> } | { ok: false }> {
-  const ids = [...new Set(storeItems.flatMap((item) => collectLinkedModifierItemIds(item)))]
   if (ids.length === 0) return { ok: true, items: new Map() }
 
   const { data, error }: QueryResult = await client
@@ -64,16 +93,16 @@ async function readLinkedItems(
 }
 
 /**
- * Category default add-ons, by category id. Best-effort: without them the
- * floor is only lower (the customer's own price still stands), so a failed
- * read is logged rather than turned into a lost order.
+ * Category default add-ons, by category id. An unreadable list is reported
+ * (null), and the caller treats it as a failed add-on price check: without
+ * them a category add-on would keep the client's price.
  */
 async function readCategoryAddons(
   client: LinePricingClient,
   tenantId: string,
   storeItems: readonly StoreMenuItemRow[]
 ): Promise<Map<string, unknown[]> | null> {
-  const ids = [...new Set(storeItems.map((item) => item.category_id).filter((id): id is string => Boolean(id)))]
+  const ids = [...new Set(storeItems.map((item) => item.category_id).filter((id): id is string => typeof id === 'string' && id !== ''))]
   if (ids.length === 0) return new Map()
 
   const { data, error }: QueryResult = await client
@@ -96,7 +125,7 @@ async function readBranchOverrides(
   client: LinePricingClient,
   tenantId: string,
   outletId: string | null,
-  ids: string[]
+  ids: readonly string[]
 ): Promise<{ ok: true; index: OutletMenuIndex } | { ok: false }> {
   if (!outletId) return { ok: true, index: buildOutletMenuIndex([]) }
 
@@ -141,9 +170,10 @@ async function readBundles<T extends PriceableOrderLine>(
 }
 
 /**
- * Only the linked add-on dishes depend on another read (their ids live inside
- * the dish JSON), so the dish read, the branch overrides and the combo catalog
- * are issued together and the linked read follows the dishes. Failures are
+ * Two rounds. The dishes first (with the combo catalog alongside — it is keyed
+ * by the cart alone); then, together, everything the dish rows name: the
+ * linked add-on dishes, the dishes' categories, and the branch
+ * overrides for the dishes AND their linked dishes in ONE query. Failures are
  * still judged in the original order — dishes, add-ons, branch, combos — so
  * the checkout hears exactly the message it heard when the reads ran in turn.
  */
@@ -151,29 +181,32 @@ export async function loadAndPriceOrderLines<T extends PriceableOrderLine>(
   client: LinePricingClient,
   tenantId: string,
   lines: readonly T[],
-  outletId: string | null
+  outletId: string | null,
+  store?: LinePricingStore
 ): Promise<LoadAndPriceResult<T>> {
   const ids = [...new Set(lines.map((line) => line.menu_item_id))]
 
-  const overridesRead = readBranchOverrides(client, tenantId, outletId, ids)
   const bundlesRead = readBundles(client, tenantId, lines)
   // Settled reads are awaited below in precedence order; until then a
   // rejection must not surface as unhandled.
-  overridesRead.catch(() => {})
   bundlesRead.catch(() => {})
 
   const menu = await readMenuItems(client, tenantId, ids)
   if (menu.error) return { ok: false, refused: false, error: 'Failed to verify item prices' }
   const dishRows = (menu.data ?? []) as StoreMenuItemRow[]
 
-  const [linked, categoryAddons] = await Promise.all([
-    readLinkedItems(client, tenantId, dishRows),
-    readCategoryAddons(client, tenantId, dishRows).catch(() => null),
-  ])
+  const linkedIds = [...new Set(dishRows.flatMap((row) => collectLinkedModifierItemIds(row)))]
+  const linkedRead = readLinkedItems(client, tenantId, linkedIds)
+  const categoriesRead = readCategoryAddons(client, tenantId, dishRows).catch(() => null)
+  const overridesRead = readBranchOverrides(client, tenantId, outletId, [...new Set([...ids, ...linkedIds])])
+  overridesRead.catch(() => {})
+
+  const [linked, categoryAddons] = await Promise.all([linkedRead, categoriesRead])
   if (!linked.ok || !categoryAddons) return { ok: false, refused: false, error: 'Failed to verify add-on prices' }
-  // The storefront offers a category's default add-ons on every dish in it.
+  // The storefront offers a category's default add-ons on every dish in it,
+  // in whichever shape the dish was shown (see withShownCategoryAddons).
   const rows = dishRows.map((row) =>
-    row.category_id ? withCategoryAddons(row, categoryAddons.get(row.category_id)) : row
+    row.category_id ? withShownCategoryAddons(row, categoryAddons.get(row.category_id), store) : row
   )
 
   const overrides = await overridesRead

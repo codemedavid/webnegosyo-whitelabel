@@ -19,6 +19,7 @@ const CREDENTIAL = 'A'.repeat(43)
 const owner = { role: 'admin', is_owner: true, permissions: null, tenant_id: TENANT }
 const staff = { role: 'admin', is_owner: false, permissions: ['loyalty_manage'], tenant_id: TENANT }
 const outsider = { role: 'admin', is_owner: false, permissions: ['orders'], tenant_id: TENANT }
+const textsStaff = { role: 'admin', is_owner: false, permissions: ['customers'], tenant_id: TENANT }
 let member: Record<string, unknown> = owner
 
 const rpc = jest.fn()
@@ -180,6 +181,18 @@ describe('gateway authorize grant', () => {
   })
 })
 
+describe('gateway authorize grant for a customer-app sign-in code', () => {
+  test('words it as a sign-in code', async () => {
+    const { delivery, authorize } = await load()
+    authorize.mockResolvedValue({ ok: true, jobId: JOB, leaseToken: LEASE, phone: '+639171234567', code: '012345', expiresAt: '2026-10-04T01:05:00Z', purpose: 'login' })
+    const response = await delivery(
+      post('/api/loyalty/sms-delivery/authorize', { tenantId: TENANT, deviceId: DEVICE, credential: CREDENTIAL, jobId: JOB, leaseToken: LEASE }),
+      'authorize',
+    )
+    expect((await response.json()).grant.message).toBe('012345 is your Cafe sign-in code. It expires in 5 minutes. Never share it with anyone.')
+  })
+})
+
 describe('sms settings: verify before showing rewards', () => {
   test('status reports the switch', async () => {
     const { settings, readFallback } = await load()
@@ -237,5 +250,35 @@ describe('reward-code claim on a phone that also sends automated texts', () => {
     expect(await response.json()).toEqual({ job: null })
     tenantRow = { name: 'Cafe', loyalty_enabled: true, loyalty_shadow: true }
     expect(await (await delivery(post('/x', body), 'claim')).json()).toEqual({ job: null })
+  })
+})
+
+describe('a phone allowed to send automated texts (the customers key) also sends sign-in codes', () => {
+  const body = { tenantId: TENANT, deviceId: DEVICE, credential: CREDENTIAL }
+
+  test('may claim; SQL decides which jobs it gets', async () => {
+    const { delivery } = await load()
+    member = textsStaff
+    rpc.mockResolvedValue({ data: { ok: false, error: 'no_job' }, error: null })
+    const response = await delivery(post('/x', body), 'claim')
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ job: null })
+    expect(rpc).toHaveBeenCalledWith('claim_loyalty_sms_job', expect.objectContaining({ p_tenant_id: TENANT }))
+  })
+
+  test('a denied claim is not read as "revoked" for a phone without loyalty access, even in a loyalty store', async () => {
+    const { delivery } = await load()
+    member = textsStaff
+    rpc.mockResolvedValue({ data: { ok: false, error: 'request_denied' }, error: null })
+    const response = await delivery(post('/x', body), 'claim')
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ job: null })
+  })
+
+  test('a staff account with neither key is still refused before SQL', async () => {
+    const { delivery } = await load()
+    member = outsider
+    expect((await delivery(post('/x', body), 'claim')).status).toBe(403)
+    expect(rpc).not.toHaveBeenCalled()
   })
 })

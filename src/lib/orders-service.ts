@@ -34,6 +34,7 @@ import {
   buildOrderParityColumns,
   buildOrderItemParityColumns,
   isDuplicateClientOrderId,
+  type OnlineOrderSource,
 } from '@/lib/order-parity'
 import type { OrderDiscountPayload } from '@/lib/order-discount'
 import type { OrderLineAddonDetail } from '@/lib/order-line-modifier-pricing'
@@ -579,6 +580,8 @@ export async function createOrder(
   parityOptions?: {
     clientOrderId?: string | null
     discountPayload?: OrderDiscountPayload | null
+    /** `orders.source`; absent = 'web'. The customer app sends 'mobile'. */
+    source?: OnlineOrderSource
     /**
      * The row id, chosen by the caller BEFORE the insert — the checkout claims
      * simple-option counters under it (see simple-option-hold.ts). Absent =
@@ -931,7 +934,9 @@ export async function createOrderConvex(
   serviceChargeAmount?: number,
   scheduledForISO?: string,
   /** Server-priced discount lines. See the Supabase path above. */
-  discounts?: readonly OrderDiscountLine[]
+  discounts?: readonly OrderDiscountLine[],
+  /** `orders.source`; the customer app sends 'mobile'. */
+  source: OnlineOrderSource = 'web'
 ) {
   // Same authoritative operating-hours guard as the Supabase path — a Convex tenant
   // must not be the one storefront where a closed shop still takes ASAP orders.
@@ -987,7 +992,7 @@ export async function createOrderConvex(
       serviceCharge: serviceChargeAmount,
       discounts,
     }).grandTotal,
-    source: 'web' as const,
+    source,
     ...convexScheduledForArg(scheduledForISO, tenantConvexSchemaVersion),
     itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
     items: items.map((item) => ({

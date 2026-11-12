@@ -11,7 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
 import { generateDeviceCredential, hashDeviceCredential } from './device-credential'
 import { authenticateMerchant, hasExactKeys, isUuid, readBody, respond, unavailable } from './merchant-http'
-import { buildLoyaltyOtpMessage } from './otp-message'
+import { buildOtpMessage } from './otp-message'
 import { readLoyaltyStoreName } from './otp-delivery'
 import { loadLoyaltyClaimCrypto } from './server-keys'
 import { authorizeLoyaltySmsDispatch } from './sms-dispatch'
@@ -94,12 +94,15 @@ export async function handleSmsDelivery(request: NextRequest, action: string): P
   const tenantId = (fields.tenantId as string).toLowerCase()
   const auth = await authenticateMerchant(request, tenantId)
   if (!auth.ok) return auth.response
-  if (!hasPermission(auth.member, 'loyalty_manage')) return respond({ error: 'Forbidden' }, 403)
+  // Reward codes need loyalty access; customer-app sign-in codes ride the
+  // automated-text permission. SQL hands each phone only the jobs it may send.
+  const sendsRewardCodes = hasPermission(auth.member, 'loyalty_manage')
+  if (!sendsRewardCodes && !hasPermission(auth.member, 'customers')) return respond({ error: 'Forbidden' }, 403)
   const credentialHash = hashDeviceCredential(fields.credential)
   if (!credentialHash) return respond({ error: 'Malformed delivery request.' }, 400)
   const identity = { tenantId, deviceId: (fields.deviceId as string).toLowerCase(), credentialHash }
   try {
-    if (action === 'claim') return await claim(identity, auth.userId)
+    if (action === 'claim') return await claim(identity, auth.userId, sendsRewardCodes)
     const jobId = (fields.jobId as string).toLowerCase()
     const leaseToken = (fields.leaseToken as string).toLowerCase()
     if (action === 'authorize') return await authorize(identity, auth.userId, jobId, leaseToken)
@@ -131,11 +134,14 @@ async function isLoyaltyLive(tenantId: string): Promise<boolean> {
   return row?.loyalty_enabled === true && row.loyalty_shadow !== true
 }
 
-async function claim(identity: DeviceIdentity, actorId: string): Promise<NextResponse> {
+async function claim(identity: DeviceIdentity, actorId: string, sendsRewardCodes: boolean): Promise<NextResponse> {
   const { data, error }: RpcResult = await createAdminClient().rpc('claim_loyalty_sms_job', rpcIdentity(identity, actorId))
   if (error) return unavailable(UNAVAILABLE)
   if (isDenied(data)) {
-    return (await isLoyaltyLive(identity.tenantId)) ? respond({ error: 'Forbidden' }, 403) : respond({ job: null }, 200)
+    // "Revoked" only for a reward-code phone in a loyalty store; any other
+    // denial means this phone simply has no codes it may send.
+    const isRevoked = sendsRewardCodes && (await isLoyaltyLive(identity.tenantId))
+    return isRevoked ? respond({ error: 'Forbidden' }, 403) : respond({ job: null }, 200)
   }
   if (!isRpcOk(data)) return respond({ job: null }, 200)
   const row = data as { jobId?: unknown; leaseToken?: unknown; leaseExpiresAt?: unknown }
@@ -155,10 +161,10 @@ async function authorize(identity: DeviceIdentity, actorId: string, jobId: strin
     { crypto, database, now: () => Date.now() },
   )
   if (!grant.ok) return respond({ grant: null }, 200)
-  const { jobId: id, leaseToken: token, phone, code, expiresAt } = grant
+  const { jobId: id, leaseToken: token, phone, code, expiresAt, purpose } = grant
   // Same wording as the Semaphore fallback; built here so the phone never has
   // to know the store's name and both transports read identically.
-  const message = buildLoyaltyOtpMessage(await readLoyaltyStoreName(database, identity.tenantId), code)
+  const message = buildOtpMessage(purpose, await readLoyaltyStoreName(database, identity.tenantId), code)
   return respond({ grant: { jobId: id, leaseToken: token, phone, code, expiresAt, message } }, 200)
 }
 

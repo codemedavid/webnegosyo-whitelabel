@@ -110,11 +110,11 @@ describe('authoritative combo checkout', () => {
       }
       return query
     } }
-    expect(await loadAndPriceOrderLines(client, 'tenant-1', lines(), null)).toMatchObject({ ok: true, itemsSubtotal: 150 })
+    expect(await loadAndPriceOrderLines(client, 'tenant-1', lines(), null, { modifierGroupsEnabled: false })).toMatchObject({ ok: true, itemsSubtotal: 150 })
     expect(predicates).toContainEqual(['bundles', 'tenant_id', 'tenant-1'])
     enabled = false
-    expect(await loadAndPriceOrderLines(client, 'tenant-1', lines(), null)).toMatchObject({ ok: false, refused: true })
+    expect(await loadAndPriceOrderLines(client, 'tenant-1', lines(), null, { modifierGroupsEnabled: false })).toMatchObject({ ok: false, refused: true })
     failed = true
-    expect(await loadAndPriceOrderLines(client, 'tenant-1', lines(), null)).toMatchObject({ ok: false, refused: false })
+    expect(await loadAndPriceOrderLines(client, 'tenant-1', lines(), null, { modifierGroupsEnabled: false })).toMatchObject({ ok: false, refused: false })
   })
 })

@@ -6,7 +6,7 @@ import { AppText } from './app-text'
 import { PressableScale } from './pressable-scale'
 
 interface SegmentedControlProps<T extends string> {
-  options: ReadonlyArray<{ value: T; label: string }>
+  options: readonly { value: T; label: string }[]
   value: T
   onChange: (value: T) => void
   accessibilityLabel: string

@@ -1,4 +1,4 @@
-import qrcode from 'qrcode-generator'
+import qrcodeGenerator from 'qrcode-generator'
 import { useMemo } from 'react'
 import Svg, { Path, Rect } from 'react-native-svg'
 
@@ -7,12 +7,13 @@ interface QrCodeProps {
   size: number
   color?: string
   background?: string
+  accessibilityLabel?: string
 }
 
 /** One SVG path for the whole matrix — cheaper to draw than a rect per module. */
-export function QrCode({ value, size, color = '#000000', background = '#FFFFFF' }: QrCodeProps) {
+export function QrCode({ value, size, color = '#000000', background = '#FFFFFF', accessibilityLabel = 'Member QR code' }: QrCodeProps) {
   const { path, count } = useMemo(() => {
-    const qr = qrcode(0, 'M')
+    const qr = qrcodeGenerator(0, 'M')
     qr.addData(value)
     qr.make()
     const modules = qr.getModuleCount()
@@ -24,7 +25,7 @@ export function QrCode({ value, size, color = '#000000', background = '#FFFFFF' 
   const quiet = 2
   const box = count + quiet * 2
   return (
-    <Svg width={size} height={size} viewBox={`${-quiet} ${-quiet} ${box} ${box}`} accessibilityLabel="Member QR code">
+    <Svg width={size} height={size} viewBox={`${-quiet} ${-quiet} ${box} ${box}`} accessibilityLabel={accessibilityLabel}>
       <Rect x={-quiet} y={-quiet} width={box} height={box} fill={background} />
       <Path d={path} fill={color} />
     </Svg>

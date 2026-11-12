@@ -100,6 +100,17 @@ describe('dispatchOtpViaSemaphore', () => {
     expect(db.rpc).toHaveBeenCalledWith('finish_loyalty_sms_server_dispatch', { p_tenant_id: tenant, p_job_id: job, p_outcome: 'sent' })
   })
 
+  test('words a customer-app sign-in code as a sign-in code', async () => {
+    const send = jest.fn(async () => ({ ok: true as const }))
+    await dispatchOtpViaSemaphore(
+      { tenantId: tenant, challengeId: challenge, storeName: 'Cafe', purpose: 'login' },
+      { database: database(), crypto, semaphore, send },
+    )
+    expect(send).toHaveBeenCalledWith(semaphore, expect.objectContaining({
+      template: '{otp} is your Cafe sign-in code. It expires in 5 minutes. Never share it with anyone.',
+    }))
+  })
+
   test('records a refused send as failed', async () => {
     const db = database()
     const outcome = await dispatchOtpViaSemaphore(

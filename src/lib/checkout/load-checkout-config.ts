@@ -26,9 +26,10 @@ export class CheckoutConfigLoadError extends Error {
   }
 }
 
-type Client = ReturnType<typeof createPublicClient>
+export type CheckoutReadClient = ReturnType<typeof createPublicClient>
+type Client = CheckoutReadClient
 
-async function readOrderTypes(client: Client, tenantId: string): Promise<OrderType[]> {
+export async function readOrderTypes(client: Client, tenantId: string): Promise<OrderType[]> {
   const { data, error } = await client
     .from('order_types')
     .select('*')
@@ -50,7 +51,7 @@ async function readFormFields(client: Client, tenantId: string): Promise<Custome
   return (data ?? []) as unknown as CustomerFormField[]
 }
 
-async function readPaymentMethods(client: Client, tenantId: string): Promise<PaymentMethodWithLinks[]> {
+export async function readPaymentMethods(client: Client, tenantId: string): Promise<PaymentMethodWithLinks[]> {
   const { data, error } = await client
     .from('payment_methods')
     .select('*, payment_method_order_types(order_type_id)')

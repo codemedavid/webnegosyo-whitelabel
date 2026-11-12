@@ -119,3 +119,11 @@ test("an invalid server clock fails closed", async () => {
     await authorizeLoyaltySmsDispatch(input, { ...deps, now: () => NaN }),
   ).toEqual({ ok: false });
 });
+
+test("passes the job's purpose through, so the server words a sign-in code as one", async () => {
+  const deps = setup();
+  deps.database.rpc.mockResolvedValue({ data: { ...deps.grant, purpose: "login" }, error: null });
+  expect(await authorizeLoyaltySmsDispatch(input, deps)).toMatchObject({ ok: true, purpose: "login" });
+  deps.database.rpc.mockResolvedValue({ data: { ...deps.grant, purpose: "bogus" }, error: null });
+  expect(await authorizeLoyaltySmsDispatch(input, deps)).toEqual({ ok: false });
+});

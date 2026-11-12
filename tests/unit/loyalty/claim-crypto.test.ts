@@ -108,3 +108,22 @@ test('wallet sessions are signed per tenant and never interchangeable with rewar
   expect(crypto.resolveClaim(tenant, session.token)).toBeNull()
   for (const bad of [null, 42, '', 'ws1.x.y']) expect(crypto.resolveWalletSession(tenant, bad)).toBeNull()
 })
+
+test('App Review codes hash per store under their own label', () => {
+  const crypto = createLoyaltyClaimCrypto(keys)
+  const hash = crypto.hashAppReviewCode(tenant, '424242')
+  expect(hash).toMatch(/^[a-f0-9]{64}$/)
+  expect(crypto.hashAppReviewCode(tenant, '424242')).toBe(hash)
+  expect(crypto.hashAppReviewCode(challenge, '424242')).not.toBe(hash)
+  expect(hash).not.toBe(crypto.hashCode(context, '424242'))
+  expect(() => crypto.hashAppReviewCode(tenant, '42424')).toThrow()
+})
+
+test('counts a whole IPv6 /64 as one network for sign-in limits, and IPv4 per address', () => {
+  const crypto = createLoyaltyClaimCrypto(keys)
+  expect(crypto.hashNetwork('2001:db8:aa:bb::1')).toBe(crypto.hashNetwork('2001:db8:aa:bb:ffff:1:2:3'))
+  expect(crypto.hashNetwork('2001:db8:aa:bb::1')).not.toBe(crypto.hashNetwork('2001:db8:aa:bc::1'))
+  expect(crypto.hashNetwork('::ffff:192.0.2.1')).toBe(crypto.hashNetwork('192.0.2.1'))
+  expect(crypto.hashNetwork('192.0.2.1')).not.toBe(crypto.hashNetwork('192.0.2.2'))
+  expect(crypto.hashNetwork('192.0.2.1')).not.toBe(crypto.hashIp('192.0.2.1'))
+})

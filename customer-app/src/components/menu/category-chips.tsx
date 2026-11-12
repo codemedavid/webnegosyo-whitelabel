@@ -28,6 +28,8 @@ export function CategoryChips({ categories, activeIndex, onSelect }: CategoryChi
     <ScrollView
       ref={scrollRef}
       horizontal
+      // A horizontal ScrollView grows to fill a column parent by default, which pushed the menu half off-screen.
+      style={{ flexGrow: 0 }}
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.sm, paddingVertical: space.sm }}
       accessibilityRole="tablist"

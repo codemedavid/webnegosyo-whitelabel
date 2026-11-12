@@ -18,6 +18,7 @@
 import {
   quoteDistanceDelivery,
   type DistanceDeliveryConfig,
+  type DistanceQuoteOutcome,
   type LatLng,
   type MeasureDistanceKm,
 } from '@/lib/delivery-fee'
@@ -71,6 +72,18 @@ export async function resolveOrderDeliveryFee(input: OrderDeliveryFeeInput): Pro
     destination: input.destination,
     measureKm: input.measureKm,
   })
+  return judgeDistanceQuote(outcome, config)
+}
+
+/**
+ * The checkout's verdict on a distance quote: the fee, a "no" the customer can
+ * act on, or a store misconfiguration. Shared with the customer app's quote
+ * route so both refuse the same addresses with the same words.
+ */
+export function judgeDistanceQuote(
+  outcome: DistanceQuoteOutcome,
+  config: DistanceDeliveryConfig
+): OrderDeliveryFeeResolution {
   if (outcome.kind === 'store-unlocated') {
     return { kind: 'abort', error: 'Delivery is unavailable: the store location has not been configured.' }
   }

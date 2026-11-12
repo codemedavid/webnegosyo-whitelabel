@@ -8,6 +8,7 @@ import {
   VALID_CONFIG,
   VALID_LOYALTY,
   VALID_ORDER_DETAIL,
+  VALID_ORDER_DRAFT,
 } from '../../fixtures/app-contract'
 
 async function loadContract() {
@@ -83,6 +84,32 @@ describe('app contract — catalog', () => {
   })
 })
 
+describe('app contract — payment methods', () => {
+  it('rejects a payment kind the app cannot render', async () => {
+    const { appCatalogSchema } = await loadContract()
+    const catalog = {
+      ...VALID_CATALOG,
+      paymentMethods: [{ ...VALID_CATALOG.paymentMethods[0], kind: 'crypto' }],
+    }
+    expect(appCatalogSchema.safeParse(catalog).success).toBe(false)
+  })
+
+  it('requires the order-type link (empty = every order type)', async () => {
+    const { appPaymentMethodSchema } = await loadContract()
+    const unlinked: Record<string, unknown> = { ...VALID_CATALOG.paymentMethods[0] }
+    delete unlinked.orderTypeIds
+    expect(appPaymentMethodSchema.safeParse(unlinked).success).toBe(false)
+    expect(appPaymentMethodSchema.safeParse({ ...unlinked, orderTypeIds: [] }).success).toBe(true)
+  })
+
+  it('rejects a catalog without the payment methods list', async () => {
+    const { appCatalogSchema } = await loadContract()
+    const catalog: Record<string, unknown> = { ...VALID_CATALOG }
+    delete catalog.paymentMethods
+    expect(appCatalogSchema.safeParse(catalog).success).toBe(false)
+  })
+})
+
 describe('app contract — loyalty and orders', () => {
   it('accepts a member wallet', async () => {
     const { appLoyaltySchema } = await loadContract()
@@ -98,6 +125,52 @@ describe('app contract — loyalty and orders', () => {
     const { appOrderDetailSchema } = await loadContract()
     const order = { ...VALID_ORDER_DETAIL, status: 'lost' }
     expect(appOrderDetailSchema.safeParse(order).success).toBe(false)
+  })
+})
+
+describe('app contract — order draft', () => {
+  it('accepts a draft', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    expect(appOrderDraftSchema.safeParse(VALID_ORDER_DRAFT).success).toBe(true)
+  })
+
+  it('carries no prices: an injected price is stripped, never trusted', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    const draft = { ...VALID_ORDER_DRAFT, total: 1, lines: [{ ...VALID_ORDER_DRAFT.lines[0], unitPrice: 1 }] }
+    const parsed = appOrderDraftSchema.parse(draft)
+    expect(parsed).not.toHaveProperty('total')
+    expect(parsed.lines[0]).not.toHaveProperty('unitPrice')
+  })
+
+  it('rejects an empty bag and a zero quantity', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, lines: [] }).success).toBe(false)
+    const zero = { ...VALID_ORDER_DRAFT, lines: [{ ...VALID_ORDER_DRAFT.lines[0], quantity: 0 }] }
+    expect(appOrderDraftSchema.safeParse(zero).success).toBe(false)
+  })
+
+  it('takes no payment method (null) for a store that offers none, but never an empty id', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentMethodId: null }).success).toBe(true)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentMethodId: '' }).success).toBe(false)
+  })
+
+  it('takes a delivery as a picked place, never bare text', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    const delivery = { address: ' 12 Rizal St, Makati ', lat: 14.55, lng: 121.02, quoteToken: null }
+    const parsed = appOrderDraftSchema.parse({ ...VALID_ORDER_DRAFT, delivery })
+    expect(parsed.delivery).toEqual({ ...delivery, address: '12 Rizal St, Makati' })
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: '12 Rizal St' }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: { ...delivery, lat: 91 } }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: { ...delivery, lng: -181 } }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, delivery: { ...delivery, address: '  ' } }).success).toBe(false)
+  })
+
+  it('takes a typed payment reference, trimmed and bounded', async () => {
+    const { appOrderDraftSchema } = await loadContract()
+    expect(appOrderDraftSchema.parse({ ...VALID_ORDER_DRAFT, paymentReference: ' 1234 5678 ' }).paymentReference).toBe('1234 5678')
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentReference: ' ' }).success).toBe(false)
+    expect(appOrderDraftSchema.safeParse({ ...VALID_ORDER_DRAFT, paymentReference: 'x'.repeat(81) }).success).toBe(false)
   })
 })
 
