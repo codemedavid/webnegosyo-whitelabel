@@ -36,6 +36,8 @@ const STAFF_UPLOAD_GRANTS: readonly PlatformPermission[] = [
   'whats_new.edit',
   'university.create',
   'university.edit',
+  // App Studio: app icons, splash images, Home banners.
+  'customer_apps.edit',
 ]
 
 export type UploaderResolution =

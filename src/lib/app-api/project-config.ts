@@ -71,16 +71,18 @@ const DEFAULT_COPY = {
   guestJoinBody: 'Sign in with your number to collect a stamp on every order.',
 }
 
-const publishedSchema = z.object({
+/** What App Studio publishes into `tenant_app_configs.published` (and keeps as `draft`). */
+export const appPublishedConfigSchema = z.object({
   copy: appCopySchema.partial().optional(),
   theme: z.object({ fontKey: z.enum(APP_FONT_KEYS).optional(), corners: z.enum(APP_CORNER_STYLES).optional() }).optional(),
   home: appConfigSchema.shape.home.optional(),
 })
 
-type Published = z.infer<typeof publishedSchema>
+export type AppPublishedConfig = z.infer<typeof appPublishedConfigSchema>
+type Published = AppPublishedConfig
 
 function readPublished(raw: unknown): Published {
-  const parsed = publishedSchema.safeParse(raw ?? {})
+  const parsed = appPublishedConfigSchema.safeParse(raw ?? {})
   return parsed.success ? parsed.data : {}
 }
 

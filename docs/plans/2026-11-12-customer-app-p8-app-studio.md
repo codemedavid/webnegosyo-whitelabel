@@ -1,6 +1,6 @@
 # Customer app P8: App Studio (+ P0 account checklist)
 
-Status: APPROVED 2026-11-12 — schematic preview, com.webnegosyo.<slug> ids, App Studio generates the review code. Building on feat/customer-app-studio.
+Status: APPROVED + BUILT 2026-11-12 (feat/customer-app-studio) — schematic preview, com.webnegosyo.<slug> ids, App Studio generates the review code. Proof: browser run on sample-demo (edit Home → autosaved draft not served → Publish v1 → /config serves it → simulator Home shows it; review code hash matches; Release paused → /resolve paused, /config 503). P0 checklist below still waits on the owner.
 
 ## Goal
 
