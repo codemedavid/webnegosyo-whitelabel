@@ -32,25 +32,9 @@ import { MessagesPanel } from './messages-panel'
 import { RulesPanel } from './rules-panel'
 import { SettingsPanel } from './settings-panel'
 import { StudioCanvas, type CanvasMode } from './studio-canvas'
+import type { MessengerStudioProps } from '@/lib/messenger/studio-props'
 
-export interface MessengerStudioProps {
-  tenantId: string
-  tenantSlug: string
-  initialRules: MessengerRule[]
-  /** False = the store still runs the built-in rules (shown as such until the first save). */
-  isCustomized: boolean
-  version: number
-  botEnabled: boolean
-  takeoverMinutes: number
-  store: ReplyStore
-  isPageConnected: boolean
-  isTesterLinked: boolean
-  profileError: string | null
-  orderUpdates: OrderUpdatesConfig
-  /** What the bot says (registry wording, status texts folded in). */
-  messages: MessageSettings
-  isPlatformOrders: boolean
-}
+export type { MessengerStudioProps }
 
 type TabId = 'journey' | 'rules' | 'messages' | 'settings'
 
