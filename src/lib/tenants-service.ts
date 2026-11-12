@@ -10,7 +10,7 @@ import {
   orderBackendForSave,
   type OrderBackendPreference,
 } from '@/lib/order-backend'
-import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
+import { getTenantSecrets, upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 import { checkLalamoveKey, describeLalamoveEnvironmentMismatch } from '@/lib/lalamove-keys'
 import { detachTenantDomains, type TenantDomainColumns } from '@/lib/domains/detach-tenant-domains'
 import { withNewTenantFeatureDefaults } from '@/lib/new-tenant-feature-defaults'
@@ -340,6 +340,23 @@ export const tenantSchema = z.object({
 })
 
 export type TenantInput = z.infer<typeof tenantSchema>
+
+/**
+ * Whether the store's Lalamove keys are saved; null = they could not be read.
+ * Read with the service role: tenant_secrets has no client read (a cashier
+ * could otherwise fetch the keys over PostgREST). Callers are owner-only
+ * (Settings → Delivery, Owl's delivery checklist) and only a boolean leaves.
+ */
+export async function hasStoredLalamoveKeys(tenantId: string): Promise<boolean | null> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const secrets = await getTenantSecrets(createAdminClient(), tenantId)
+    return Boolean(secrets?.lalamove_api_key && secrets?.lalamove_secret_key)
+  } catch (error) {
+    console.error('[lalamove] could not read keys:', error instanceof Error ? error.message : error)
+    return null
+  }
+}
 
 export async function getTenantBySlugSupabase(slug: string): Promise<{ data: TenantRow | null; error: PostgrestError | null }> {
   const supabase = await createClient()

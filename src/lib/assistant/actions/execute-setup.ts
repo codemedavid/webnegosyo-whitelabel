@@ -8,12 +8,9 @@
 
 import 'server-only'
 
-import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  createPaymentMethodAction,
-  updatePaymentMethodAction,
-  updatePaymentMethodOrderTypesAction,
-} from '@/app/actions/payment-methods'
+import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
+import { createPaymentMethod, updatePaymentMethod, updatePaymentMethodOrderTypes } from '@/lib/payment-methods-service'
 import { createIngredient } from '@/lib/inventory/ingredients-service'
 import { recordStockMovement } from '@/lib/inventory/stock-service'
 import { isPermissionRefusal } from '@/lib/inventory/permission-refusals'
@@ -23,6 +20,23 @@ import type { ExecuteOutcome, IngredientPayload, PaymentMethodChangePayload, Pay
 const PAYMENT_LINK = { label: 'Open Payment methods', path: '/payment-methods' }
 const STALE = 'This changed since it was proposed, so nothing was changed. Ask again for a fresh proposal.'
 
+type WriteResult<T> = { success: true; data: T } | { success: false; error: string }
+
+/**
+ * The Payment methods screen's own writer (cookie-session client, so RLS and
+ * the `store_setup` check are the screen's), then the same pages refreshed.
+ */
+async function paymentWrite<T>(store: StoreRef, write: () => Promise<T>): Promise<WriteResult<T>> {
+  try {
+    const data = await write()
+    revalidatePath(`/${store.slug}/admin/payment-methods`)
+    revalidatePath(`/${store.slug}/admin`)
+    return { success: true, data }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'write failed' }
+  }
+}
+
 /** The writers answer with raw database text; the owner reads this instead. */
 function paymentFailure(raw: string | undefined, fallback: string): ExecuteOutcome {
   if (raw?.startsWith('Unauthorized')) return { ok: false, error: 'You no longer have permission to change payment methods.' }
@@ -31,16 +45,8 @@ function paymentFailure(raw: string | undefined, fallback: string): ExecuteOutco
 }
 
 export async function executePaymentMethod(store: StoreRef, payload: PaymentMethodPayload): Promise<ExecuteOutcome> {
-  const result = await createPaymentMethodAction(
-    store.id,
-    store.slug,
-    payload.name,
-    payload.details ?? undefined,
-    payload.qrCodeUrl ?? undefined,
-    true,
-    payload.orderTypeIds,
-    payload.requireProof,
-    false,
+  const result = await paymentWrite(store, () =>
+    createPaymentMethod(store.id, payload.name, payload.details ?? undefined, payload.qrCodeUrl ?? undefined, true, payload.orderTypeIds, payload.requireProof, false),
   )
   if (!result.success) return paymentFailure(result.error, 'The payment method could not be added. Add it on the Payment methods page.')
   const id = (result.data as { id?: string } | undefined)?.id ?? null
@@ -48,7 +54,8 @@ export async function executePaymentMethod(store: StoreRef, payload: PaymentMeth
 }
 
 export async function executePaymentMethodChange(store: StoreRef, payload: PaymentMethodChangePayload): Promise<ExecuteOutcome> {
-  const { data } = await createAdminClient()
+  // Same session the writer uses: a row it can't see, it can't change either.
+  const { data } = await (await createClient())
     .from('payment_methods')
     .select('updated_at')
     .eq('id', payload.paymentMethodId)
@@ -59,7 +66,7 @@ export async function executePaymentMethodChange(store: StoreRef, payload: Payme
   if (payload.expectedUpdatedAt !== null && row.updated_at !== payload.expectedUpdatedAt) return { ok: false, error: STALE }
 
   const { changes } = payload
-  const updates: Parameters<typeof updatePaymentMethodAction>[3] = {}
+  const updates: Parameters<typeof updatePaymentMethod>[2] = {}
   if (changes.name !== null) updates.name = changes.name
   if (changes.details !== null) updates.details = changes.details
   if (changes.qrCodeUrl !== null) updates.qr_code_url = changes.qrCodeUrl
@@ -67,11 +74,12 @@ export async function executePaymentMethodChange(store: StoreRef, payload: Payme
   if (changes.requireProof !== null) updates.require_payment_proof = changes.requireProof
 
   if (Object.keys(updates).length > 0) {
-    const result = await updatePaymentMethodAction(payload.paymentMethodId, store.id, store.slug, updates)
+    const result = await paymentWrite(store, () => updatePaymentMethod(payload.paymentMethodId, store.id, updates))
     if (!result.success) return paymentFailure(result.error, 'The payment method could not be changed. Nothing was changed.')
   }
-  if (changes.orderTypeIds !== null) {
-    const result = await updatePaymentMethodOrderTypesAction(payload.paymentMethodId, store.id, store.slug, changes.orderTypeIds)
+  const orderTypeIds = changes.orderTypeIds
+  if (orderTypeIds !== null) {
+    const result = await paymentWrite(store, () => updatePaymentMethodOrderTypes(payload.paymentMethodId, store.id, orderTypeIds))
     if (!result.success) {
       return paymentFailure(
         result.error,

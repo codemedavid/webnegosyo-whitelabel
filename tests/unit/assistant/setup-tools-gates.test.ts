@@ -7,7 +7,6 @@
 import { createRefBook } from '@/lib/assistant/refs'
 
 jest.mock('server-only', () => ({}))
-jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
 
 const tables: string[] = []
 const ROWS: Record<string, unknown> = {
@@ -26,15 +25,21 @@ function chainFor(table: string) {
   chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve)
   return chain
 }
-jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({
+// Every read is the caller's own session now (RLS applies), never the service role.
+jest.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
     from: (table: string) => {
       tables.push(table)
       return chainFor(table)
     },
   }),
 }))
-jest.mock('@/lib/tenant-secrets', () => ({ getTenantSecrets: async () => ({ lalamove_api_key: 'k', lalamove_secret_key: 's' }) }))
+jest.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => {
+    throw new Error('Owl set-up reads must not use the service role')
+  },
+}))
+jest.mock('@/lib/tenants-service', () => ({ hasStoredLalamoveKeys: async () => true }))
 jest.mock('@/lib/inventory/ingredients-service', () => ({
   getIngredients: async () => [{ id: 'pork', name: 'Pork', current_qty: 900, stock_unit_id: 'g', is_active: true }],
 }))

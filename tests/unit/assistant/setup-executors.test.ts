@@ -6,8 +6,8 @@
 
 jest.mock('server-only', () => ({}))
 let mockRow: Record<string, unknown> | null = null
-jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => {
+jest.mock('@/lib/supabase/server', () => ({
+  createClient: async () => {
     const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: mockRow, error: null }) }
     return { from: () => chain }
   },
@@ -15,10 +15,12 @@ jest.mock('@/lib/supabase/admin', () => ({
 const mockCreate = jest.fn()
 const mockUpdate = jest.fn()
 const mockTypes = jest.fn()
-jest.mock('@/app/actions/payment-methods', () => ({
-  createPaymentMethodAction: (...a: unknown[]) => mockCreate(...a),
-  updatePaymentMethodAction: (...a: unknown[]) => mockUpdate(...a),
-  updatePaymentMethodOrderTypesAction: (...a: unknown[]) => mockTypes(...a),
+const mockRevalidate = jest.fn()
+jest.mock('next/cache', () => ({ revalidatePath: (...a: unknown[]) => mockRevalidate(...a) }))
+jest.mock('@/lib/payment-methods-service', () => ({
+  createPaymentMethod: (...a: unknown[]) => mockCreate(...a),
+  updatePaymentMethod: (...a: unknown[]) => mockUpdate(...a),
+  updatePaymentMethodOrderTypes: (...a: unknown[]) => mockTypes(...a),
 }))
 const mockCreateIngredient = jest.fn()
 jest.mock('@/lib/inventory/ingredients-service', () => ({ createIngredient: (...a: unknown[]) => mockCreateIngredient(...a) }))
@@ -35,14 +37,15 @@ beforeEach(() => {
 })
 
 test('a new payment method goes through the admin writer, switched on, with its order types', async () => {
-  mockCreate.mockResolvedValue({ success: true, data: { id: 'pm-1' } })
+  mockCreate.mockResolvedValue({ id: 'pm-1' })
   const outcome = await executePaymentMethod(STORE, { name: 'Maya', details: '0918', qrCodeUrl: null, orderTypeIds: ['ot-1'], requireProof: true })
-  expect(mockCreate).toHaveBeenCalledWith('t', 's', 'Maya', '0918', undefined, true, ['ot-1'], true, false)
+  expect(mockCreate).toHaveBeenCalledWith('t', 'Maya', '0918', undefined, true, ['ot-1'], true, false)
+  expect(mockRevalidate).toHaveBeenCalledWith('/s/admin/payment-methods')
   expect(outcome).toMatchObject({ ok: true, resultRef: 'pm-1' })
 })
 
 test('a refused write is told plainly, never with the raw database text', async () => {
-  mockCreate.mockResolvedValue({ success: false, error: 'new row violates row-level security policy' })
+  mockCreate.mockRejectedValue(new Error('new row violates row-level security policy'))
   const outcome = await executePaymentMethod(STORE, { name: 'Maya', details: null, qrCodeUrl: null, orderTypeIds: ['ot-1'], requireProof: false })
   expect(outcome.ok).toBe(false)
   if (!outcome.ok) expect(outcome.error).not.toMatch(/row-level/)
@@ -63,11 +66,11 @@ test('a change refuses when the method moved on since the card was shown', async
 })
 
 test('a change writes only the fields that change, then the order types', async () => {
-  mockUpdate.mockResolvedValue({ success: true })
-  mockTypes.mockResolvedValue({ success: true })
+  mockUpdate.mockResolvedValue({ id: 'pm-1' })
+  mockTypes.mockResolvedValue(undefined)
   const outcome = await executePaymentMethodChange(STORE, change({ qrCodeUrl: '', orderTypeIds: ['ot-2'] }))
-  expect(mockUpdate).toHaveBeenCalledWith('pm-1', 't', 's', { qr_code_url: '', is_active: false })
-  expect(mockTypes).toHaveBeenCalledWith('pm-1', 't', 's', ['ot-2'])
+  expect(mockUpdate).toHaveBeenCalledWith('pm-1', 't', { qr_code_url: '', is_active: false })
+  expect(mockTypes).toHaveBeenCalledWith('pm-1', 't', ['ot-2'])
   expect(outcome).toMatchObject({ ok: true })
 })
 

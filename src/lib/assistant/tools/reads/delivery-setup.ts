@@ -5,9 +5,8 @@
  */
 
 import { z } from 'zod'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getTenantSecrets } from '@/lib/tenant-secrets'
+import { createClient } from '@/lib/supabase/server'
+import { hasStoredLalamoveKeys } from '@/lib/tenants-service'
 import { evaluateDeliverySetup, type DeliverySetup } from '@/lib/assistant/insights/delivery-setup'
 import type { AssistantToolDef } from '@/lib/assistant/tools/registry'
 import type { ToolResult } from '@/lib/assistant/types'
@@ -26,15 +25,6 @@ interface TenantRow {
   footer_phone: string | null
   restaurant_latitude: number | null
   restaurant_longitude: number | null
-}
-
-async function hasKeys(tenantId: string): Promise<boolean | null> {
-  try {
-    const secrets = await getTenantSecrets(createAdminClient(), tenantId)
-    return Boolean(secrets?.lalamove_api_key && secrets?.lalamove_secret_key)
-  } catch {
-    return null
-  }
 }
 
 export function buildDeliverySetupResult(setup: DeliverySetup, keysUnreadable: boolean): ToolResult {
@@ -63,7 +53,9 @@ export const getDeliverySetupTool: AssistantToolDef<Input> = {
   access: { ownerOnly: true },
   input,
   async run(ctx) {
-    const db = createAdminClient() as unknown as SupabaseClient
+    // The owner's own session, like Settings → Delivery; only the keys check
+    // (tenant_secrets has no client read) uses the service role.
+    const db = await createClient()
     const since = new Date(Date.now() - WEEK_MS).toISOString()
     // Bookings are counted only where the store's orders really live (CLAUDE.md:
     // route through resolveOrderBackend); elsewhere they read as unavailable, never 0.
@@ -85,7 +77,7 @@ export const getDeliverySetupTool: AssistantToolDef<Input> = {
             .gte('created_at', since)
             .limit(1000)
         : Promise.resolve({ data: null, error: 'not a platform-orders store' }),
-      hasKeys(ctx.tenantId),
+      hasStoredLalamoveKeys(ctx.tenantId),
     ])
     const row = tenant.data as TenantRow | null
     if (tenant.error || !row) return { facts: { available: false, reason: 'Delivery settings could not be read.' } }

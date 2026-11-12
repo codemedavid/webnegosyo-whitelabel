@@ -7,7 +7,10 @@
 
 import { resolveProducibleUnits, type ProducibleStock } from '@/lib/inventory/producible'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
-import type { Recipe, RecipeComponent } from '@/types/database'
+import type { TenantStockGraph } from '@/lib/inventory/stock-graph-read'
+
+type Recipe = TenantStockGraph['recipes'][number]
+type RecipeComponent = TenantStockGraph['components'][number]
 
 export interface StockGraphLike {
   recipes: readonly Recipe[]

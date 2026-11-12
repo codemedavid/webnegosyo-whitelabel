@@ -1,13 +1,12 @@
 /**
- * Payment methods and order types for Owl. Read with the service role and an
- * explicit tenant filter (the tool's `store_setup` gate is the boundary, as
- * for every Owl read); a store has a handful of each, so the reads are bounded.
+ * Payment methods and order types for Owl, read through the caller's own
+ * session like the Payment methods screen (RLS applies on top of the tool's
+ * `store_setup` gate); a store has a handful of each, so the reads are bounded.
  */
 
 import 'server-only'
 
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import type { AssistantPaymentMethod, StoreOrderType } from '@/lib/assistant/insights/payment-methods'
 
 const MAX_ROWS = 100
@@ -29,7 +28,7 @@ export interface StorePaymentSetup {
 }
 
 export async function readPaymentSetup(tenantId: string): Promise<StorePaymentSetup> {
-  const client = createAdminClient() as unknown as SupabaseClient
+  const client = await createClient()
   const [methods, orderTypes] = await Promise.all([
     client
       .from('payment_methods')

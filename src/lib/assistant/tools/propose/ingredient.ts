@@ -7,8 +7,7 @@
  */
 
 import { z } from 'zod'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { getIngredients } from '@/lib/inventory/ingredients-service'
 import { hasPermission } from '@/lib/staff-permissions'
 import { foldName } from '@/lib/assistant/insights/menu-import'
@@ -49,7 +48,7 @@ export const proposeIngredientTool: AssistantToolDef<Input> = {
     const existing = (await ctx.memo('ingredients', () => getIngredients(ctx.tenantId))).find((item) => foldName(item.name) === foldName(request.name))
     if (existing) return refused(`"${existing.name}" is already an ingredient. Use propose_stock_adjustment to record stock for it.`)
 
-    const { data } = await (createAdminClient() as unknown as SupabaseClient)
+    const { data } = await (await createClient())
       .from('inventory_units')
       .select('id, name, abbreviation, is_active')
       .eq('tenant_id', ctx.tenantId)

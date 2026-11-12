@@ -12,26 +12,29 @@
  */
 
 import { z } from 'zod'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { getIngredients } from '@/lib/inventory/ingredients-service'
 import { readTenantStockGraph, type TenantStockGraph } from '@/lib/inventory/stock-graph-read'
 import { getMenuItemCost } from '@/lib/inventory/costing-service'
 import { evaluateStockLevel } from '@/lib/inventory/low-stock'
 import { canSeeCosts } from '@/lib/inventory/cost-visibility'
 import { hasPermission } from '@/lib/staff-permissions'
-import { formatPeso } from '@/components/admin/dashboard/dashboard-format'
 import { foldName } from '@/lib/assistant/insights/menu-import'
 import { MOVEMENT_LABEL, dishRecipe, ingredientUsage, quantityLabel } from '@/lib/assistant/insights/ingredient-detail'
 import type { AssistantToolContext, AssistantToolDef } from '@/lib/assistant/tools/registry'
-import type { InventoryItem } from '@/types/database'
 
 const DISH_LIMIT = 8
 const MOVEMENT_LIMIT = 5
+const PESO = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 })
+const PESO_CENTS = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 2 })
 
-function client(): SupabaseClient {
-  return createAdminClient() as unknown as SupabaseClient
+/** As on the dashboard: centavos only on small, non-whole amounts (a gram of pork). */
+function formatPeso(value: number): string {
+  return Math.abs(value) < 1000 && !Number.isInteger(value) ? PESO_CENTS.format(value) : PESO.format(value)
 }
+
+/** The row the Inventory screen reads (`getIngredients`, the caller's own session). */
+type InventoryItem = Awaited<ReturnType<typeof getIngredients>>[number]
 
 function loadIngredients(ctx: AssistantToolContext): Promise<InventoryItem[]> {
   return ctx.memo('ingredients', () => getIngredients(ctx.tenantId))
@@ -43,7 +46,7 @@ function loadGraph(ctx: AssistantToolContext): Promise<TenantStockGraph | null> 
 
 async function loadUnitLabels(ctx: AssistantToolContext): Promise<Map<string, string>> {
   return ctx.memo('unit-labels', async () => {
-    const { data } = await client().from('inventory_units').select('id, abbreviation').eq('tenant_id', ctx.tenantId).limit(500)
+    const { data } = await (await createClient()).from('inventory_units').select('id, abbreviation').eq('tenant_id', ctx.tenantId).limit(500)
     return new Map(((data ?? []) as Array<{ id: string; abbreviation: string }>).map((row) => [row.id, row.abbreviation]))
   })
 }
@@ -70,7 +73,8 @@ interface BranchRow { outlet_id: string; current_qty: number | string | null }
 interface MovementRow { reason: string; quantity_delta: number | string | null; created_at: string }
 
 async function readBranchesAndMovements(tenantId: string, itemId: string) {
-  const db = client()
+  // The caller's own session, like the Inventory screen: RLS decides what they see.
+  const db = await createClient()
   const [stock, outlets, movements] = await Promise.all([
     db.from('inventory_stock').select('outlet_id, current_qty').eq('tenant_id', tenantId).eq('inventory_item_id', itemId).limit(200),
     db.from('outlets').select('id, name').eq('tenant_id', tenantId).limit(200),
@@ -159,7 +163,7 @@ type RecipeInput = z.infer<typeof recipeInput>
 
 async function findDish(ctx: AssistantToolContext, wanted: string): Promise<{ id: string; name: string } | null | 'ambiguous'> {
   const byRef = ctx.refs.resolve(wanted, 'item')
-  const query = client().from('menu_items').select('id, name').eq('tenant_id', ctx.tenantId)
+  const query = (await createClient()).from('menu_items').select('id, name').eq('tenant_id', ctx.tenantId)
   const { data } = byRef
     ? await query.eq('id', byRef).limit(1)
     : await query.ilike('name', wanted.replace(/[\\%_]/g, (c) => `\\${c}`)).limit(2)
