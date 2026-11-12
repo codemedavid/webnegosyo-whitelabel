@@ -1194,6 +1194,8 @@ export type Database = {
           email: string
           id: string
           live_at: string | null
+          meta_attribution: Json | null
+          meta_purchase_sent_at: string | null
           name: string
           notes: string | null
           paid_at: string | null
@@ -1214,6 +1216,8 @@ export type Database = {
           email: string
           id?: string
           live_at?: string | null
+          meta_attribution?: Json | null
+          meta_purchase_sent_at?: string | null
           name: string
           notes?: string | null
           paid_at?: string | null
@@ -1234,6 +1238,8 @@ export type Database = {
           email?: string
           id?: string
           live_at?: string | null
+          meta_attribution?: Json | null
+          meta_purchase_sent_at?: string | null
           name?: string
           notes?: string | null
           paid_at?: string | null
@@ -1325,6 +1331,51 @@ export type Database = {
           },
           {
             foreignKeyName: "complementary_pairs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_app_order_pushes: {
+        Row: {
+          created_at: string
+          devices: number
+          order_id: string
+          outcome: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          devices?: number
+          order_id: string
+          outcome?: string
+          status: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          devices?: number
+          order_id?: string
+          outcome?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_order_pushes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_order_pushes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1516,6 +1567,64 @@ export type Database = {
           },
           {
             foreignKeyName: "customer_app_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_device_tokens: {
+        Row: {
+          app_version: string | null
+          created_at: string
+          customer_id: string
+          expo_token: string
+          id: string
+          last_seen_at: string
+          platform: string
+          session_id: string
+          tenant_id: string
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string
+          customer_id: string
+          expo_token: string
+          id?: string
+          last_seen_at?: string
+          platform: string
+          session_id: string
+          tenant_id: string
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string
+          customer_id?: string
+          expo_token?: string
+          id?: string
+          last_seen_at?: string
+          platform?: string
+          session_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_device_tokens_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_device_tokens_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_app_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_device_tokens_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -4886,7 +4995,9 @@ export type Database = {
       }
       merchant_notifications: {
         Row: {
+          cash_cents: number | null
           created_at: string
+          drawer_name: string | null
           id: string
           inventory_item_id: string | null
           item_name: string
@@ -4895,13 +5006,17 @@ export type Database = {
           outlet_name: string | null
           push_claimed_at: string | null
           quantity: number | null
+          remittance_id: string | null
           reorder_level: number | null
+          shift_id: string | null
           stock_alert_id: string | null
           tenant_id: string
           unit: string | null
         }
         Insert: {
+          cash_cents?: number | null
           created_at?: string
+          drawer_name?: string | null
           id?: string
           inventory_item_id?: string | null
           item_name: string
@@ -4910,13 +5025,17 @@ export type Database = {
           outlet_name?: string | null
           push_claimed_at?: string | null
           quantity?: number | null
+          remittance_id?: string | null
           reorder_level?: number | null
+          shift_id?: string | null
           stock_alert_id?: string | null
           tenant_id: string
           unit?: string | null
         }
         Update: {
+          cash_cents?: number | null
           created_at?: string
+          drawer_name?: string | null
           id?: string
           inventory_item_id?: string | null
           item_name?: string
@@ -4925,7 +5044,9 @@ export type Database = {
           outlet_name?: string | null
           push_claimed_at?: string | null
           quantity?: number | null
+          remittance_id?: string | null
           reorder_level?: number | null
+          shift_id?: string | null
           stock_alert_id?: string | null
           tenant_id?: string
           unit?: string | null
@@ -4946,6 +5067,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "merchant_notifications_remittance_id_fkey"
+            columns: ["remittance_id"]
+            isOneToOne: false
+            referencedRelation: "cash_remittances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "staff_shifts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "merchant_notifications_stock_alert_id_fkey"
             columns: ["stock_alert_id"]
             isOneToOne: false
@@ -4954,6 +5089,57 @@ export type Database = {
           },
           {
             foreignKeyName: "merchant_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messenger_messages: {
+        Row: {
+          body: string
+          created_at: string
+          direction: string
+          id: string
+          kind: string
+          mid: string | null
+          sent_at: string
+          session_id: string
+          tenant_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          direction: string
+          id?: string
+          kind: string
+          mid?: string | null
+          sent_at: string
+          session_id: string
+          tenant_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          kind?: string
+          mid?: string | null
+          sent_at?: string
+          session_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_messages_session_fkey"
+            columns: ["session_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "messenger_sessions"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "messenger_messages_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -5057,9 +5243,15 @@ export type Database = {
           cart_version: number
           checkout_state: Json | null
           created_at: string
+          first_name: string | null
           id: string
           last_inbound_at: string | null
+          last_message_at: string | null
+          last_message_preview: string | null
+          last_name: string | null
           page_id: string | null
+          profile_fetched_at: string | null
+          profile_pic_url: string | null
           psid: string
           state: string
           tenant_id: string
@@ -5071,9 +5263,15 @@ export type Database = {
           cart_version?: number
           checkout_state?: Json | null
           created_at?: string
+          first_name?: string | null
           id?: string
           last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_name?: string | null
           page_id?: string | null
+          profile_fetched_at?: string | null
+          profile_pic_url?: string | null
           psid: string
           state?: string
           tenant_id: string
@@ -5085,9 +5283,15 @@ export type Database = {
           cart_version?: number
           checkout_state?: Json | null
           created_at?: string
+          first_name?: string | null
           id?: string
           last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_name?: string | null
           page_id?: string | null
+          profile_fetched_at?: string | null
+          profile_pic_url?: string | null
           psid?: string
           state?: string
           tenant_id?: string
@@ -5106,6 +5310,7 @@ export type Database = {
       messenger_settings: {
         Row: {
           bot_enabled: boolean
+          messages: Json | null
           order_updates: Json | null
           profile_error: string | null
           profile_fields: string[]
@@ -5123,6 +5328,7 @@ export type Database = {
         }
         Insert: {
           bot_enabled?: boolean
+          messages?: Json | null
           order_updates?: Json | null
           profile_error?: string | null
           profile_fields?: string[]
@@ -5140,6 +5346,7 @@ export type Database = {
         }
         Update: {
           bot_enabled?: boolean
+          messages?: Json | null
           order_updates?: Json | null
           profile_error?: string | null
           profile_fields?: string[]
@@ -9958,6 +10165,7 @@ export type Database = {
           outlet_selection_timing: string
           page_layout: string | null
           pairing_rules_enabled: boolean | null
+          payment_step_style: Json
           pending_domain: string | null
           pending_domain_claimed_at: string | null
           pending_domain_token: string | null
@@ -10259,6 +10467,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          payment_step_style?: Json
           pending_domain?: string | null
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
@@ -10560,6 +10769,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          payment_step_style?: Json
           pending_domain?: string | null
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
@@ -11185,16 +11395,16 @@ export type Database = {
         Args: { p_ip_hash: string; p_phone_hash: string; p_tenant_id: string }
         Returns: Json
       }
+      app_customer_loyalty: {
+        Args: { p_session_token_hash: string; p_tenant_id: string }
+        Returns: Json
+      }
       app_release_version_key: { Args: { version: string }; Returns: number[] }
       app_user_admin_outlet_id: { Args: never; Returns: string }
       app_user_admin_tenant_id: { Args: never; Returns: string }
       app_user_belongs_to_store: {
         Args: { p_tenant_id: string }
         Returns: boolean
-      }
-      app_customer_loyalty: {
-        Args: { p_session_token_hash: string; p_tenant_id: string }
-        Returns: Json
       }
       app_user_has_permission: {
         Args: { p_permission: string; p_tenant_id: string }
@@ -11225,8 +11435,21 @@ export type Database = {
         Args: { target_outlet_id: string; target_tenant_id: string }
         Returns: boolean
       }
-      app_user_may_read_merchant_notifications: {
-        Args: { target_outlet_id: string; target_tenant_id: string }
+      app_user_may_read_merchant_notifications:
+        | {
+            Args: { target_outlet_id: string; target_tenant_id: string }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              target_kind: string
+              target_outlet_id: string
+              target_tenant_id: string
+            }
+            Returns: boolean
+          }
+      app_user_may_read_messenger_chat: {
+        Args: { p_psid: string; p_tenant_id: string }
         Returns: boolean
       }
       app_user_may_see_order: {
@@ -12167,6 +12390,27 @@ export type Database = {
         Returns: Json
       }
       mark_store_activity_reviewed: { Args: { p_id: string }; Returns: string }
+      messenger_chat_for_order: {
+        Args: { p_limit?: number; p_order_id: string }
+        Returns: Json
+      }
+      messenger_chats: {
+        Args: { p_before?: string; p_limit?: number; p_tenant_id: string }
+        Returns: {
+          bot_paused_until: string
+          first_name: string
+          last_inbound_at: string
+          last_message_at: string
+          last_message_preview: string
+          last_name: string
+          order_created_at: string
+          order_daily_number: number
+          order_id: string
+          order_status: string
+          profile_pic_url: string
+          session_id: string
+        }[]
+      }
       next_daily_order_number: {
         Args: { p_order_date: string; p_tenant_id: string }
         Returns: number
@@ -12253,6 +12497,7 @@ export type Database = {
         Args: { p_receipt: Json; p_settlement_id: string; p_tenant_id: string }
         Returns: string
       }
+      purge_messenger_messages: { Args: never; Returns: number }
       purge_order_deletions: { Args: never; Returns: Json }
       read_loyalty_refund_evidence: {
         Args: { p_settlement_id: string; p_tenant_id: string }
@@ -12346,6 +12591,16 @@ export type Database = {
         }
         Returns: string
       }
+      register_customer_app_push_token: {
+        Args: {
+          p_app_version: string
+          p_expo_token: string
+          p_platform: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       release_loyalty_pos_quote: {
         Args: { p_actor: string; p_quote_id: string; p_tenant_id: string }
         Returns: boolean
@@ -12353,6 +12608,10 @@ export type Database = {
       release_voucher_redemptions: {
         Args: { p_order_id: string; p_tenant_id: string }
         Returns: number
+      }
+      remove_customer_app_push_tokens: {
+        Args: { p_session_token_hash: string; p_tenant_id: string }
+        Returns: Json
       }
       reopen_business_day: {
         Args: { p_close_id: string; p_reason: string }
@@ -12827,10 +13086,6 @@ export type Database = {
           p_transfer_id: string
         }
         Returns: number
-      }
-      stock_transfer_has_movements: {
-        Args: { p_transfer_id: string }
-        Returns: boolean
       }
       store_activity_actor: { Args: never; Returns: string }
       store_activity_actor_name: {

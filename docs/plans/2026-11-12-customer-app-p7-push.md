@@ -2,9 +2,12 @@
 
 Status: APPROVED + BUILT 2026-11-12. Owner: Accepted / Ready / Cancelled (+ Delivered for delivery),
 ask after the first order, no Convex push, live test on sample-demo.
-Migration 20261112150000 applied in parts: `customer_app_push_1_tokens` + `customer_app_push_3_claims_trigger`
-APPLIED + probed (RLS on, anon/authenticated 42501, trigger as written); part 2 (the two token functions)
-NOT yet applied: its DELETE needs the owner's approval in the Supabase tool, which expired twice.
+Migration 20261112150000 applied in three parts, all APPLIED + probed: `customer_app_push_1_tokens` +
+`customer_app_push_3_claims_trigger` (RLS on, anon/authenticated 42501, trigger as written), then
+`customer_app_push_2_token_functions` (owner-approved 2026-11-12; SECURITY DEFINER, search_path public,
+EXECUTE service_role only: anon 42501; live on sample-demo's QA session: bad hash = bad_request, unknown
+session = signed_out, malformed token = 23514, register twice = one row with the newer app_version on the
+same session, remove = 1 removed, 0 left). `src/types/supabase.ts` regenerated.
 Live (sample-demo, order #12 fb944d41, cancelled): trigger posted once (production answered 404: route not
 deployed yet), local route claimed (order, confirmed), Expo refused the fake token (DeviceNotRegistered),
 the token was pruned, replay = duplicate, Cancelled = no_devices. Simulator (Expo Go): card on the order
