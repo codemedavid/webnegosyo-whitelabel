@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, type UIMessage } from 'ai'
-import { ArrowUp, Check, History, ImagePlus, Loader2, Mic, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, Check, History, ImagePlus, Loader2, Mic, Plus, Square, Users, X } from 'lucide-react'
 import { Owl } from '@/components/mascot/owl'
 import { cn } from '@/lib/utils'
 import { MAX_INPUT_CHARS, MAX_PHOTOS_PER_MESSAGE, MAX_PHOTOS_TOTAL_CHARS, PHOTO_ONLY_TEXT } from '@/lib/assistant/limits'
@@ -11,6 +11,7 @@ import { AssistantMessage, collectChips } from './assistant-message'
 import { PhotoError, prepareMenuPhoto } from './menu-photos'
 import { assistantOwlState } from './owl-mood'
 import { useVoiceInput } from './voice-input'
+import { OwlAccessView } from './owl-access-view'
 
 interface StarterGroup {
   title: string
@@ -31,7 +32,9 @@ const CHEER_MS = 2600
 
 interface AssistantPanelProps {
   tenantId: string
+  tenantSlug: string
   adminBasePath: string
+  canManageOwlAccess: boolean
   isOpen: boolean
   onClose: () => void
 }
@@ -67,7 +70,8 @@ function conversationIdOf(messages: UIMessage[]): string | null {
   return null
 }
 
-export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: AssistantPanelProps) {
+export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageOwlAccess, isOpen, onClose }: AssistantPanelProps) {
+  const [isAccessOpen, setIsAccessOpen] = useState(false)
   const conversationRef = useRef<string | null>(null)
   const [draft, setDraft] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
@@ -183,6 +187,7 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
   const send = (text: string) => {
     const trimmed = text.trim() || (photos.length > 0 ? PHOTO_ONLY_TEXT : '')
     if (!trimmed || isBusy || isPreparingPhotos) return
+    setIsAccessOpen(false)
     clearError()
     setDraft('')
     setPhotos([])
@@ -222,10 +227,21 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
           <p className="text-[15px] font-extrabold tracking-[-0.01em]">Owl</p>
           <p className="truncate text-[11px] text-muted-foreground">Your store assistant</p>
         </div>
-        <button type="button" onClick={openHistory} className="rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="Past chats" title="Past chats">
+        {canManageOwlAccess ? (
+          <button
+            type="button"
+            onClick={() => { setIsAccessOpen(true); setIsHistoryOpen(false) }}
+            className="rounded-full p-2 text-muted-foreground hover:bg-muted"
+            aria-label="Who can use Owl"
+            title="Who can use Owl"
+          >
+            <Users className="h-4 w-4" />
+          </button>
+        ) : null}
+        <button type="button" onClick={() => { setIsAccessOpen(false); void openHistory() }} className="rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="Past chats" title="Past chats">
           <History className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => { startOver(); setIsHistoryOpen(false) }} className="rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="New chat" title="New chat">
+        <button type="button" onClick={() => { startOver(); setIsHistoryOpen(false); setIsAccessOpen(false) }} className="rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="New chat" title="New chat">
           <Plus className="h-4 w-4" />
         </button>
         <button type="button" onClick={onClose} className="rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="Close assistant">
@@ -234,7 +250,9 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
       </header>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {isHistoryOpen ? (
+        {isAccessOpen ? (
+          <OwlAccessView tenantId={tenantId} tenantSlug={tenantSlug} onBack={() => setIsAccessOpen(false)} />
+        ) : isHistoryOpen ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-[13px] font-bold">Past chats</p>

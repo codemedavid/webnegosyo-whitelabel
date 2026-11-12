@@ -6,6 +6,7 @@ import { shadow } from "../../theme/colors";
 import { getWebAppUrl } from "../../lib/web-app-url";
 import { resolveOwlLink } from "../../lib/assistant/links";
 import { isOwlAvailable, shouldShowOwlButton } from "../../lib/assistant/visibility";
+import { hasPermission } from "../../lib/staff-permissions";
 import { hintForRoute, screenKeyOf, shouldOfferOwlHint } from "../../lib/assistant/owl-hints";
 import { useOwlHintState } from "../../lib/assistant/use-owl-hint-state";
 import type { AssistantLink } from "../../lib/assistant/types";
@@ -43,6 +44,9 @@ export function OwlLauncher({ bottomOffset }: Props) {
   const tenantSlug = useAuthStore((s) => s.tenantSlug);
   const assistantEnabled = useAuthStore((s) => s.assistantEnabled === true);
   const outletId = useAuthStore((s) => s.outletId);
+  const canUseAssistant = useAuthStore((s) =>
+    hasPermission({ role: s.role, isOwner: s.isOwner, permissions: s.permissions }, "assistant"),
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
@@ -50,7 +54,7 @@ export function OwlLauncher({ bottomOffset }: Props) {
   const hints = useOwlHintState();
   const { width: screenWidth } = useWindowDimensions();
 
-  const access = { isAuthenticated, isDemo, tenantId, assistantEnabled, outletId };
+  const access = { isAuthenticated, isDemo, tenantId, assistantEnabled, outletId, canUseAssistant };
   const isAvailable = isOwlAvailable(access) && tenantId !== null;
   const isButtonVisible = isAvailable && !isOpen && shouldShowOwlButton({ ...access, routeSegments: segments });
   const screenKey = screenKeyOf(segments);

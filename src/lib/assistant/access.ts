@@ -13,6 +13,7 @@ import { isCustomerHubOn } from '@/lib/customer-dashboard'
 import { SubscriptionPausedError } from '@/lib/billing/subscription-gate'
 import type { OrderBackendTenantFields } from '@/lib/order-backend'
 import { isAssistantGloballyEnabled } from '@/lib/assistant/config'
+import { hasPermission } from '@/lib/staff-permissions'
 import type { AssistantCaller, AssistantTenantFlags } from '@/lib/assistant/tools/registry'
 
 export interface AssistantStore {
@@ -27,6 +28,9 @@ export type AssistantAccess =
 
 const TENANT_SELECT =
   'id, slug, name, assistant_enabled, inventory_enabled, menu_engineering_enabled, customer_hub_enabled, order_backend, convex_deployment_url'
+
+/** What a staff account without the `assistant` key reads (web panel and app alike). */
+export const NO_ASSISTANT_GRANT = "The owner hasn't given you access to Owl yet. Ask them to switch it on for you in Staff."
 
 function refusal(status: 401 | 403 | 404, error: string): AssistantAccess {
   return { ok: false, status, error }
@@ -51,6 +55,10 @@ export async function resolveAssistantAccess(tenantId: string): Promise<Assistan
   if (resolveBranchScope(userRole).kind === 'branch') {
     return refusal(403, 'The assistant is available to store-wide accounts for now.')
   }
+  // Who may talk to Owl at all is the owner's choice by name (opt-in key,
+  // 2026-11-12); owners and superadmins always may. Checked before the tenant
+  // read so a refused account learns nothing about the store's flags.
+  if (!hasPermission(userRole, 'assistant')) return refusal(403, NO_ASSISTANT_GRANT)
 
   const { data: tenant, error } = await createAdminClient().from('tenants').select(TENANT_SELECT).eq('id', tenantId).maybeSingle()
   if (error) {

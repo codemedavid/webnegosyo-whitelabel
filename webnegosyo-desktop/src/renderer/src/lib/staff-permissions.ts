@@ -49,7 +49,9 @@ export const STAFF_PERMISSION_KEYS = [
   'expenses',
   // Cash & day close: drawers, pickups, others' shifts, remittances, day
   // close. Opt-in, implied by nothing (backfilled from store_setup).
-  'cash_manage'
+  'cash_manage',
+  // The Owl assistant chat. Opt-in: the owner picks who may use it.
+  'assistant'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -80,7 +82,7 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
  * Mirror of `OPT_IN_PERMISSION_KEYS` in src/lib/staff-permissions.ts (see the
  * reasoning there); the parity test pins every copy.
  */
-export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses', 'cash_manage'] as const satisfies readonly StaffPermissionKey[]
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses', 'cash_manage', 'assistant'] as const satisfies readonly StaffPermissionKey[]
 
 /** Whether full access (`permissions: null`) grants `key`. */
 export function isGrantedByFullAccess(key: string): boolean {

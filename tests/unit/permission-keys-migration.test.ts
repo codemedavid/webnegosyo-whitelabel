@@ -12,7 +12,7 @@
  * one moves without the other. Behaviour was probed on the live database
  * inside rolled-back transactions (docs/testing/permission-keys.tdd.md).
  */
-import { readFileSync } from 'fs'
+import { readdirSync, readFileSync } from 'fs'
 import path from 'path'
 import { IMPLIED_BY, OPT_IN_PERMISSION_KEYS, ORDER_READ_KEYS, PAYMENT_READ_KEYS } from '@/lib/staff-permissions'
 
@@ -29,6 +29,17 @@ const code = (sql: string): string =>
 const KEYS = code(migration('20261013120050_staff_permission_keys.sql'))
 const GATES = code(migration('20261013120100_inventory_costs_permission_gates.sql'))
 const ORDERS = code(migration('20261013120200_order_reads_need_permission.sql'))
+
+/** The newest migration that (re)defines app_user_has_permission: the body in force. */
+const NEWEST_PERMISSION_FN = code(
+  migration(
+    readdirSync(path.join(process.cwd(), 'supabase', 'migrations'))
+      .filter((name) => name.endsWith('.sql'))
+      .sort()
+      .reverse()
+      .find((name) => migration(name).includes('create or replace function public.app_user_has_permission(')) as string,
+  ),
+)
 
 /** The body of `create or replace function public.<name>` up to its closing $$. */
 function functionBody(sql: string, name: string): string {
@@ -194,10 +205,12 @@ describe('20261027120100 cash_manage carved out of store_setup', () => {
   it('makes cash_manage opt-in (release review D1): the newest app_user_has_permission keeps every registry opt-in key out of legacy full access', () => {
     expect(OPT_IN_PERMISSION_KEYS).toContain('cash_manage')
     expect(Object.keys(IMPLIED_BY)).not.toContain('cash_manage')
-    const body = functionBody(CASH, 'app_user_has_permission')
+    expect(functionBody(CASH, 'app_user_has_permission')).toContain("'cash_manage']))")
+    // The NEWEST definition is the one in force (20261112120000 added 'assistant').
+    const body = functionBody(NEWEST_PERMISSION_FN, 'app_user_has_permission')
     expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(OPT_IN_PERMISSION_KEYS)})`)
     expect(body).toContain("(p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))")
     expect(body).toContain("(p_permission = 'reports' and 'analytics' = any (au.permissions))")
-    expect(CASH).toContain('revoke all on function public.app_user_has_permission(uuid, text) from public, anon;')
+    expect(NEWEST_PERMISSION_FN).toContain('revoke all on function public.app_user_has_permission(uuid, text) from public, anon;')
   })
 })

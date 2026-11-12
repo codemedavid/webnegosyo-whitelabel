@@ -64,6 +64,8 @@ describe('staff permission registry', () => {
       // Cash & day close: drawers, pickups, others' shifts, remittances, day
       // close. Not opt-in; backfilled from store_setup, not implied by it.
       'cash_manage',
+      // The Owl assistant chat: opt-in, the owner picks who may use it.
+      'assistant',
     ])
   })
 })
@@ -122,7 +124,7 @@ describe('hasPermission', () => {
 
 describe('opt-in permissions (activity_view, approve_requests)', () => {
   it('names exactly the two store-activity keys and the expense book', () => {
-    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests', 'expenses', 'cash_manage'])
+    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests', 'expenses', 'cash_manage', 'assistant'])
   })
 
   it('labels them for the owner picking them', () => {

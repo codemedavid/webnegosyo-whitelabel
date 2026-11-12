@@ -75,7 +75,7 @@ describe("resolveOwlLink", () => {
 });
 
 describe("owl visibility", () => {
-  const base = { isAuthenticated: true, isDemo: false, tenantId: "t", assistantEnabled: true, outletId: null, routeSegments: ["(main)", "dashboard"] };
+  const base = { isAuthenticated: true, isDemo: false, tenantId: "t", assistantEnabled: true, outletId: null, canUseAssistant: true, routeSegments: ["(main)", "dashboard"] };
 
   test("shows for a store-wide account on a store with the assistant on", () => {
     expect(shouldShowOwlButton(base)).toBe(true);
@@ -87,6 +87,10 @@ describe("owl visibility", () => {
     expect(isOwlAvailable({ ...base, isAuthenticated: false })).toBe(false);
     expect(isOwlAvailable({ ...base, outletId: "branch-1" })).toBe(false);
     expect(isOwlAvailable({ ...base, tenantId: null })).toBe(false);
+  });
+
+  test("hidden for staff the owner has not given Owl (opt-in `assistant`)", () => {
+    expect(isOwlAvailable({ ...base, canUseAssistant: false })).toBe(false);
   });
 
   test("stays off the register, tender, kitchen and scanner", () => {

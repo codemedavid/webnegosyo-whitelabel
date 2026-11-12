@@ -17,7 +17,7 @@ jest.mock("../../lib/assistant/use-assistant-chat", () => ({
   useAssistantChat: () => ({ messages: [], status: "ready", error: null, isBusy: false, send: mockSend, stop: jest.fn(), startOver: jest.fn(), reopen: jest.fn() }),
 }));
 jest.mock("../../stores/auth-store", () => {
-  const state = { isAuthenticated: true, isDemo: false, tenantId: "t-1", tenantSlug: "seacook", assistantEnabled: true, outletId: null };
+  const state = { isAuthenticated: true, isDemo: false, tenantId: "t-1", tenantSlug: "seacook", assistantEnabled: true, outletId: null, role: "admin", isOwner: true, permissions: null };
   return { useAuthStore: (select: (s: typeof state) => unknown) => select(state) };
 });
 
