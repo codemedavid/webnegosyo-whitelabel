@@ -428,6 +428,7 @@
     "20261109025736_funnel_six_month_installment_term.sql",
     "20261109120000_design_columns_need_store_setup.sql",
     "20261110112841_checkout_leads_meta_attribution.sql",
-    "20261111090000_library_writes_need_menu.sql"
+    "20261111090000_library_writes_need_menu.sql",
+    "20261112120000_tenants_payment_step_style.sql"
   ]
 }

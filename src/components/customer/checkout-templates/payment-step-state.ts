@@ -14,7 +14,8 @@ import { useBrandingPreviewDraft } from '@/hooks/use-branding-preview'
 import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { readPaymentStepStyle, type PaymentStepStyle } from '@/lib/payment-step/style'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
-import type { PaymentMethod } from '@/types/database'
+
+type PaymentMethod = UseCheckoutReturn['paymentMethods'][number]
 
 export interface OpenPaymentStep {
   method: PaymentMethod

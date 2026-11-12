@@ -5,8 +5,14 @@
  * answer the phone's Back button, and a preview never sends an order.
  */
 
+import { StrictMode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { PaymentStep } from '@/components/customer/checkout-templates/payment-step'
+import {
+  afterPaymentStepEntryReleased,
+  releasePaymentStepEntry,
+  resetPaymentStepHistoryForTests,
+} from '@/components/customer/checkout-templates/payment-step-history'
 import { previewPaymentMethod, SAMPLE_PAYMENT_METHOD } from '@/components/customer/checkout-templates/payment-step-state'
 import { buildSampleCheckout } from '@/components/page-designer/checkout/sample-checkout'
 import { readPaymentStepStyle, type PaymentStepLayout, type PaymentUploadDesign } from '@/lib/payment-step/style'
@@ -61,6 +67,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   window.history.replaceState(null, '')
+  resetPaymentStepHistoryForTests()
 })
 
 describe('PaymentStep — proof of payment', () => {
@@ -137,7 +144,7 @@ describe('PaymentStep — layouts', () => {
   it.each(['fullscreen', 'screen'] as const)('%s: the phone’s Back button closes the step', (layout) => {
     const { checkout, setShowPaymentDetails } = makeCheckout()
     render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout })} />)
-    expect((window.history.state as Record<string, unknown>)?.wnPaymentStep).toBe(true)
+    expect((window.history.state as Record<string, unknown>)?.wnPaymentStep).toBeTruthy()
 
     act(() => {
       window.history.replaceState(null, '')
@@ -163,7 +170,190 @@ describe('PaymentStep — layouts', () => {
       window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
     })
     expect(setShowPaymentDetails).not.toHaveBeenCalled()
-    expect((window.history.state as Record<string, unknown>)?.wnPaymentStep).toBe(true)
+    expect((window.history.state as Record<string, unknown>)?.wnPaymentStep).toBeTruthy()
+  })
+})
+
+describe('PaymentStep — the Back entry is always given back', () => {
+  /** Stands in for the browser: Back leaves our entry and reports it. */
+  function fakeBack() {
+    return jest.spyOn(window.history, 'back').mockImplementation(() => {
+      window.history.replaceState(null, '')
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+    })
+  }
+
+  it('closed without Back (saved order, refusal): the entry is popped once, a tick later', () => {
+    jest.useFakeTimers()
+    const back = jest.spyOn(window.history, 'back').mockImplementation(() => undefined)
+    const { checkout } = makeCheckout()
+    const { unmount } = render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    unmount()
+    expect(back).not.toHaveBeenCalled()
+    act(() => {
+      jest.runOnlyPendingTimers()
+    })
+    expect(back).toHaveBeenCalledTimes(1)
+    back.mockRestore()
+    jest.useRealTimers()
+  })
+
+  it('closed by Back: nothing more is popped', () => {
+    jest.useFakeTimers()
+    const { checkout } = makeCheckout()
+    const { unmount } = render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    act(() => {
+      window.history.replaceState(null, '')
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+    })
+    const back = jest.spyOn(window.history, 'back').mockImplementation(() => undefined)
+    unmount()
+    act(() => {
+      jest.runOnlyPendingTimers()
+    })
+    expect(back).not.toHaveBeenCalled()
+    back.mockRestore()
+    jest.useRealTimers()
+  })
+
+  it('a navigation away (QR page) waits for the pop, and the popstate it causes does not close or re-push', async () => {
+    const back = fakeBack()
+    const { checkout, setShowPaymentDetails } = makeCheckout()
+    render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'fullscreen' })} />)
+    const push = jest.spyOn(window.history, 'pushState')
+    await act(async () => {
+      await releasePaymentStepEntry()
+    })
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(setShowPaymentDetails).not.toHaveBeenCalled()
+    expect(push).not.toHaveBeenCalled()
+    push.mockRestore()
+    back.mockRestore()
+  })
+
+  it('a navigation runs at once with no step entry, and only after the pop with one', async () => {
+    const now = jest.fn()
+    afterPaymentStepEntryReleased(now)
+    expect(now).toHaveBeenCalledTimes(1)
+
+    const back = fakeBack()
+    const { checkout } = makeCheckout()
+    render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    const later = jest.fn()
+    await act(async () => {
+      afterPaymentStepEntryReleased(later)
+      expect(later).not.toHaveBeenCalled()
+      await Promise.resolve()
+    })
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(later).toHaveBeenCalledTimes(1)
+    back.mockRestore()
+  })
+
+  it('the marker copied onto another page (Next.js keeps custom state on push) is not ours', async () => {
+    const back = jest.spyOn(window.history, 'back').mockImplementation(() => undefined)
+    const { checkout } = makeCheckout()
+    render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    // Next pushes the QR page, carrying the current state (our marker) along.
+    window.history.pushState(window.history.state, '', '/order/qr/abc')
+    await act(async () => {
+      await releasePaymentStepEntry()
+    })
+    expect(back).not.toHaveBeenCalled()
+    window.history.replaceState(null, '', '/')
+    back.mockRestore()
+  })
+
+  it('the marker stripped by a server action still counts as ours (in-step back pops it)', () => {
+    const back = jest.spyOn(window.history, 'back').mockImplementation(() => undefined)
+    const { checkout } = makeCheckout()
+    render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    window.history.replaceState({ __NA: true }, '')
+    fireEvent.click(screen.getByRole('button', { name: 'Back to checkout', hidden: true }))
+    expect(back).toHaveBeenCalledTimes(1)
+    back.mockRestore()
+  })
+
+  it('StrictMode double effect: one entry, none given back', () => {
+    jest.useFakeTimers()
+    const push = jest.spyOn(window.history, 'pushState')
+    const back = jest.spyOn(window.history, 'back').mockImplementation(() => undefined)
+    const { checkout } = makeCheckout()
+    render(
+      <StrictMode>
+        <PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />
+      </StrictMode>,
+    )
+    act(() => {
+      jest.runOnlyPendingTimers()
+    })
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(back).not.toHaveBeenCalled()
+    push.mockRestore()
+    back.mockRestore()
+    jest.useRealTimers()
+  })
+
+  it('Back while sending keeps one fresh entry, which a saved order then gives back', () => {
+    jest.useFakeTimers()
+    const { checkout } = makeCheckout({ isProcessing: true })
+    const { unmount } = render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    act(() => {
+      window.history.replaceState(null, '')
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+    })
+    const back = jest.spyOn(window.history, 'back').mockImplementation(() => undefined)
+    unmount()
+    act(() => {
+      jest.runOnlyPendingTimers()
+    })
+    expect(back).toHaveBeenCalledTimes(1)
+    back.mockRestore()
+    jest.useRealTimers()
+  })
+})
+
+describe('PaymentStep — "Its own screen" scroll', () => {
+  function withScrollY(y: number) {
+    Object.defineProperty(window, 'scrollY', { value: y, configurable: true })
+  }
+  afterEach(() => withScrollY(0))
+
+  it('opens at the top and Back returns to where the customer was in the form', () => {
+    const scrollTo = window.scrollTo as jest.Mock
+    scrollTo.mockClear()
+    const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 1
+    })
+    withScrollY(840)
+    const { checkout, setShowPaymentDetails } = makeCheckout()
+    const { unmount } = render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' })
+    withScrollY(0) // the browser clamped it once the form hid
+    act(() => {
+      window.history.replaceState(null, '')
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+    })
+    expect(setShowPaymentDetails).toHaveBeenCalledWith(false)
+    unmount()
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 840, behavior: 'instant' })
+    raf.mockRestore()
+  })
+
+  it('a saved order (closed without Back) leaves the next screen’s scroll alone', () => {
+    const scrollTo = window.scrollTo as jest.Mock
+    const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 1
+    })
+    withScrollY(840)
+    const { checkout } = makeCheckout()
+    const { unmount } = render(<PaymentStep checkout={checkout} method={PROOF_METHOD} style={style({ layout: 'screen' })} />)
+    scrollTo.mockClear()
+    unmount()
+    expect(scrollTo).not.toHaveBeenCalled()
+    raf.mockRestore()
   })
 })
 

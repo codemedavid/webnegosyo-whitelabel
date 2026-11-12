@@ -31,7 +31,7 @@
  * `payment_step_style` colours (`resolvePaymentStepColors`).
  */
 
-import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { ArrowLeft, CheckCircle2, ChevronDown, Maximize2, MessageCircle, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/cart-utils'
@@ -48,9 +48,12 @@ import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { PaymentMethod } from '@/types/database'
 import { PaymentDetailRows } from './payment-detail-rows'
 import { checkoutThemeStyle } from './checkout-theme'
-
-/** Marks the history entry the step pushed (Next.js keeps its own state beside it). */
-const HISTORY_MARK = 'wnPaymentStep'
+import {
+  didLeavePaymentStepEntry,
+  holdPaymentStepEntry,
+  isOnPaymentStepEntry,
+  scheduleReleasePaymentStepEntry,
+} from './payment-step-history'
 
 export interface PaymentStepProps {
   checkout: UseCheckoutReturn
@@ -68,39 +71,35 @@ export interface PaymentStepProps {
   isContained?: boolean
 }
 
-function hasHistoryMark(): boolean {
-  const state = window.history.state as Record<string, unknown> | null
-  return Boolean(state && state[HISTORY_MARK])
-}
-
 /**
  * Page-like layouts: one history entry while open, so the phone's Back
- * button closes the step instead of leaving the checkout.
+ * button closes the step instead of leaving the checkout. `onBack` answers
+ * 'stay' to keep the step open (the order is being sent): the entry goes back.
+ * Closed any other way (saved order, refusal, QR handoff), the entry is given
+ * back on unmount (`payment-step-history.ts`).
  */
-function useBackButtonCloses(isActive: boolean, onBack: () => void): { close: () => void } {
+function useBackButtonCloses(isActive: boolean, onBack: () => 'stay' | 'close'): { close: () => void } {
   const onBackRef = useRef(onBack)
   onBackRef.current = onBack
-  const pushedRef = useRef(false)
 
   useEffect(() => {
     if (!isActive) return
-    if (!hasHistoryMark()) {
-      window.history.pushState({ [HISTORY_MARK]: true }, '')
-      pushedRef.current = true
-    }
+    holdPaymentStepEntry()
     const onPopState = () => {
-      if (hasHistoryMark()) return
-      pushedRef.current = false
-      onBackRef.current()
+      if (!didLeavePaymentStepEntry()) return
+      if (onBackRef.current() === 'stay') holdPaymentStepEntry()
     }
     window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      scheduleReleasePaymentStepEntry()
+    }
   }, [isActive])
 
   return {
     // The in-step back button: pop our entry (popstate then closes), or just close.
     close: () => {
-      if (isActive && pushedRef.current && hasHistoryMark()) window.history.back()
+      if (isActive && isOnPaymentStepEntry()) window.history.back()
       else onBackRef.current()
     },
   }
@@ -127,13 +126,17 @@ function useOverlayFocus(isActive: boolean, sheetRef: React.RefObject<HTMLDivEle
 }
 
 /**
- * "Its own screen": start at the top, and give the form its scroll back
- * afterwards. A cleanup immediately followed by a re-run (React's dev double
- * effect, a re-render) must not restore the form's scroll over the step, so
- * the restore waits a frame and the next run cancels it.
+ * "Its own screen": start at the top, and when the customer goes back, return
+ * them to where they were in the form. Closed any other way (a saved order, a
+ * refusal that points at a field, a QR handoff), the scroll is left to that
+ * screen. The restore waits a frame so a cleanup straight followed by a re-run
+ * (React's dev double effect) can cancel it.
  */
-function useScreenScroll(isActive: boolean) {
-  const savedY = useRef<number | null>(null)
+function useScreenScroll(isActive: boolean): { restoreOnClose: () => void } {
+  // Read while rendering, before the form behind is hidden: by the time an
+  // effect runs the browser has clamped the scroll to the short step page.
+  const [openedAtY] = useState(() => (typeof window === 'undefined' ? 0 : window.scrollY))
+  const shouldRestore = useRef(false)
   const pendingRestore = useRef<number | null>(null)
   useEffect(() => {
     if (!isActive) return
@@ -141,19 +144,22 @@ function useScreenScroll(isActive: boolean) {
       cancelAnimationFrame(pendingRestore.current)
       pendingRestore.current = null
     }
-    if (savedY.current === null) savedY.current = window.scrollY
     // 'instant': the storefront sets `scroll-behavior: smooth`, and a smooth
     // scroll from deep in the form gets cut short, leaving the step half off screen.
     window.scrollTo({ top: 0, behavior: 'instant' })
     return () => {
+      if (!shouldRestore.current) return
       pendingRestore.current = requestAnimationFrame(() => {
         pendingRestore.current = null
-        const y = savedY.current ?? 0
-        savedY.current = null
-        window.scrollTo({ top: y, behavior: 'instant' })
+        window.scrollTo({ top: openedAtY, behavior: 'instant' })
       })
     }
-  }, [isActive])
+  }, [isActive, openedAtY])
+  return {
+    restoreOnClose: () => {
+      shouldRestore.current = true
+    },
+  }
 }
 
 export function PaymentStep({ checkout, method, style, isPreview = false, isContained = false }: PaymentStepProps) {
@@ -195,16 +201,16 @@ export function PaymentStep({ checkout, method, style, isPreview = false, isCont
   const isPageLike = isPageLikeLayout(layout)
   const isScreen = layout === 'screen'
 
+  const screenScroll = useScreenScroll(isLive && isScreen && !isContained)
   const closeNow = () => {
     if (isLive && !isProcessing) setShowPaymentDetails(false)
   }
   const history = useBackButtonCloses(isLive && isPageLike && !isContained, () => {
     // Back while the order is being sent: it is on its way, keep the step (and its spinner).
-    if (isProcessing) {
-      window.history.pushState({ [HISTORY_MARK]: true }, '')
-      return
-    }
+    if (isProcessing) return 'stay'
+    screenScroll.restoreOnClose()
     setShowPaymentDetails(false)
+    return 'close'
   })
   const close = () => {
     if (!isLive || isProcessing) return
@@ -213,7 +219,6 @@ export function PaymentStep({ checkout, method, style, isPreview = false, isCont
   }
 
   useOverlayFocus(isLive && !isContained, sheetRef, close, !isScreen)
-  useScreenScroll(isLive && isScreen && !isContained)
 
   const submit = () => {
     if (isPreview) {

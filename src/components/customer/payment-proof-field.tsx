@@ -210,7 +210,7 @@ function ExampleReceipt({ image, label }: { image: string | null | undefined; la
         {label}
       </summary>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={image} alt="Example payment receipt" className="mx-auto mt-2 max-h-72 w-auto rounded-lg object-contain" />
+      <img src={image} alt="Example payment receipt" referrerPolicy="no-referrer" loading="lazy" className="mx-auto mt-2 max-h-72 w-auto rounded-lg object-contain" />
     </details>
   )
 }
