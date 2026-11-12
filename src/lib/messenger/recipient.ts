@@ -10,7 +10,7 @@
  */
 
 import 'server-only'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { looksLikeMessengerLinkToken } from './link-token-shape'
 import { readMessengerLinkToken } from './link-token'
 import { readSessionOwner } from './session'
@@ -23,7 +23,7 @@ export const LEGACY_PSID_ACCEPTED_UNTIL = new Date('2026-11-24T00:00:00Z')
 const LEGACY_PSID_PATTERN = /^\d{5,32}$/
 
 async function hasLegacySession(tenantId: string, psid: string): Promise<boolean> {
-  const { data, error } = await createAdminClient()
+  const { data, error } = await messengerDb()
     .from('messenger_sessions')
     .select('id')
     .eq('tenant_id', tenantId)

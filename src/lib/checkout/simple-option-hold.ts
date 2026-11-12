@@ -21,11 +21,9 @@
  * they keep the unlocked courtesy read.
  */
 
-import type { createAdminClient } from '@/lib/supabase/admin'
+import type { AdminClient } from '@/lib/supabase/admin'
 import { depletionItemFromCheckoutLine, type CheckoutOrderLine } from '@/lib/inventory/order-depletion'
 import { resolveMovementOutletId } from '@/lib/inventory/stock-location'
-
-type AdminClient = ReturnType<typeof createAdminClient>
 
 export type SimpleOptionHold =
   | { ok: true; release: () => Promise<void> }

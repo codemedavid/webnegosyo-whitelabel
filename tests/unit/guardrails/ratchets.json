@@ -20,8 +20,8 @@
     "src/types/database.ts"
   ],
   "adminClientImporters": {
-    "src/app/api": 70,
-    "src/app/actions": 32,
+    "src/app/api": 69,
+    "src/app/actions": 31,
     "src/lib": 105,
     "src/components": 2,
     "elsewhere": 17

@@ -14,7 +14,7 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from '@/lib/messenger/service-db'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { actionSchema, ruleSchema, ruleSetProblems, type MessengerRule } from '@/lib/messenger/rules'
 import { loadStoreBundle } from '@/lib/messenger/load-store'
@@ -92,7 +92,7 @@ async function createMessengerTesterCode(tenantId: string): Promise<ActionResult
 
   const code = newTesterCode()
   const expiresAt = new Date(Date.now() + TESTER_CODE_TTL_MS)
-  const { data, error } = await createAdminClient()
+  const { data, error } = await messengerDb()
     .from('messenger_settings')
     .upsert({ tenant_id: tenantId, tester_code_hash: hashTesterCode(tenantId, code), tester_code_expires_at: expiresAt.toISOString() } as never, { onConflict: 'tenant_id' })
     .select('tenant_id')
@@ -106,7 +106,7 @@ async function createMessengerTesterCode(tenantId: string): Promise<ActionResult
 /** Whether a test chat is linked (never the PSID itself). */
 async function readMessengerTester(tenantId: string): Promise<ActionResult<{ isLinked: boolean }>> {
   if (!z.string().uuid().safeParse(tenantId).success) return { ok: false, error: NOT_ALLOWED }
-  const { data } = await createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
+  const { data } = await messengerDb().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
   return { ok: true, isLinked: Boolean((data as { tester_psid: string | null } | null)?.tester_psid) }
 }
 
@@ -123,7 +123,7 @@ async function sendMessengerTest(tenantId: string, rawAction: unknown): Promise<
   const action = actionSchema.safeParse(rawAction)
   if (!action.success) return { ok: false, error: 'Finish this automation before sending a test.' }
 
-  const { data: settings } = await createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
+  const { data: settings } = await messengerDb().from('messenger_settings').select('tester_psid').eq('tenant_id', tenantId).maybeSingle()
   const testerPsid = (settings as { tester_psid: string | null } | null)?.tester_psid
   if (!testerPsid) return { ok: false, error: 'Link your Messenger first: get a test code and send it to your Page.' }
 

@@ -13,7 +13,7 @@ import { dispatchOtpViaSemaphore, loadOtpRouting, readLoyaltyStoreName } from '@
 import { getLoyaltyTrustedIp } from '@/lib/loyalty/public-ingress'
 import { sendSemaphoreOtp } from '@/lib/loyalty/semaphore'
 import { loadLoyaltyClaimCrypto } from '@/lib/loyalty/server-keys'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
 import { getLoyaltySmsFallback } from '@/lib/tenant-secrets'
 import { deleteAccount, readProfile, readReviewPhone, resolveCustomerSession, revokeSession, updateProfileName } from './account'
 import { canonicalLoginPhone, issueLoginChallenge, noteReviewRequest, openReviewSession, verifyLoginChallenge, type LoginVerifyResult } from './login-challenge'
@@ -76,13 +76,13 @@ export async function handleOtpRequest({ request, app }: AppRouteContext): Promi
 
   // The review number gets the same limits and answer as any number, but no text.
   if ((await reviewPhoneFor(app)) === phone) {
-    const noted = await noteReviewRequest({ tenantId: app.tenantId, phone, trustedIp: prepared.trustedIp }, { crypto: prepared.crypto, database: createAdminClient() })
+    const noted = await noteReviewRequest({ tenantId: app.tenantId, phone, trustedIp: prepared.trustedIp }, { crypto: prepared.crypto, database: appDb({}) })
     if (!noted.ok && noted.error === 'rate_limited') return rateLimited(noted.retryAfterSeconds)
     await paceFrom(start)
     return accepted(decoy)
   }
 
-  const database = createAdminClient()
+  const database = appDb({})
   const routing = await loadOtpRouting(app.tenantId, { database, readFallback: (id) => getLoyaltySmsFallback(database, id) })
   if (routing.sender === 'none') {
     await paceFrom(start)
@@ -126,7 +126,7 @@ export async function handleOtpVerify({ request, app }: AppRouteContext): Promis
   if (!parsed.success) return appFail('unauthorized', WRONG_CODE)
   const start = performance.now()
   const phone = canonicalLoginPhone(parsed.data.phone)
-  const deps = { crypto: prepared.crypto, database: createAdminClient() }
+  const deps = { crypto: prepared.crypto, database: appDb({}) }
   const isReview = phone !== null && (await reviewPhoneFor(app)) === phone
   const result = isReview
     ? await openReviewSession({ tenantId: app.tenantId, phone: parsed.data.phone, code: parsed.data.code, trustedIp: prepared.trustedIp }, deps)

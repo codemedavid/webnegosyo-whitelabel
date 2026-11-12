@@ -8,11 +8,15 @@
  * store-wide menu; the branch is chosen at web checkout (owner, 2026-11-10).
  */
 
-import type { Category, MenuItem } from '@/types/database'
+import type { MenuContents } from '@/storefront/data/menu-data'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { listStoreAddresses } from '@/lib/qr-print/qr-links'
 import { getStoreOpenStatus, getZonedNow, formatTimeLabel } from '@/lib/store-open-status'
 import { normalizeOperatingHours, parseHHMM } from '@/lib/operating-hours'
+
+/** Dishes and categories as the storefront menu read returns them (`getStorefrontMenu`). */
+type Category = MenuContents['categories'][number]
+type MenuItem = MenuContents['menuItems'][number]
 
 export interface ReplyCategory {
   id: string

@@ -1,4 +1,4 @@
-import type { Outlet } from '@/types/database'
+import type { Outlet } from '@/lib/app-api/store-types'
 import { appFail } from '@/lib/app-api/respond'
 import { appCachedOk, appRefusal, appRoute } from '@/lib/app-api/app-route'
 import { defineRoute } from '@/platform/http/define-route'

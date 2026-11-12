@@ -11,7 +11,7 @@ import {
   resolveItemForOutlet,
   type OutletMenuIndex,
 } from '@/lib/outlets/outlet-menu-overrides'
-import type { Category, MenuItem, ModifierGroup, ModifierOption } from '@/types/database'
+import type { Category, MenuItem, ModifierGroup, ModifierOption } from '@/lib/app-api/store-types'
 import { appModifierGroups, groupSelectLimits, linkedItemsAtBranch, modifierGroupsFor } from '../item-modifier-groups'
 
 /**

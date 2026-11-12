@@ -3,13 +3,13 @@
 // Service role only (the tables are not exposed to anon/authenticated).
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAdminClient, ADMIN_QUERY_TIMEOUT_MS } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
 import { AppReadError } from '@/lib/app-api/store-reads'
 import type { AppProfile } from '@/lib/app-contract'
 import { readBearerSession } from './session-token'
 
 // Untyped until 20261026160000_customer_app_auth is applied and src/types/supabase.ts regenerated.
-const admin = () => createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }) as unknown as SupabaseClient
+const admin = () => appDb() as unknown as SupabaseClient
 
 const failed = (detail: string) => new AppReadError('the customer account', detail)
 

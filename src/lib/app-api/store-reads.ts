@@ -1,10 +1,10 @@
 import 'server-only'
 
-import type { Outlet } from '@/types/database'
+import type { Outlet } from '@/lib/app-api/store-types'
 import { readOrderTypes, readPaymentMethods } from '@/lib/checkout/load-checkout-config'
 import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
 import { createCachedRead, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
-import { createAdminClient, ADMIN_QUERY_TIMEOUT_MS } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
 import { createPublicClient } from '@/lib/supabase/public'
 import type { CheckoutQuestionRow, ComplementaryPairRow } from './project-catalog'
 
@@ -21,7 +21,7 @@ export class AppReadError extends Error {
   }
 }
 
-const admin = () => createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
+const admin = () => appDb()
 
 /**
  * Every phone launch reads these, on a database all stores share, so each is

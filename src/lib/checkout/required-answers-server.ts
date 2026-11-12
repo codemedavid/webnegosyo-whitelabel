@@ -11,15 +11,13 @@
  * already asked these questions, and a database blip must never cost a sale.
  */
 
-import type { createAdminClient } from '@/lib/supabase/admin'
+import type { AdminClient } from '@/lib/supabase/admin'
 import {
   describeFieldErrors,
   findMissingRequiredAnswers,
   type FieldValidationError,
   type RequiredQuestion,
 } from '@/lib/checkout/required-answers'
-
-type AdminClient = ReturnType<typeof createAdminClient>
 
 /** Budget for the questions read on the order path (a timed admin client). */
 export const REQUIRED_QUESTIONS_TIMEOUT_MS = 4_000

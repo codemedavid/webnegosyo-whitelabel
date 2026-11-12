@@ -8,7 +8,7 @@ import { readAppJson } from '@/lib/app-api/request-body'
 import { appFail, appOk } from '@/lib/app-api/respond'
 import { AppReadError } from '@/lib/app-api/store-reads'
 import { resolveCustomerSession } from '@/lib/customer-auth/account'
-import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
 
 /**
  * This install's Expo push token for the signed-in session (P7). The store is
@@ -20,7 +20,7 @@ const NO_STORE = { 'Cache-Control': 'no-store' }
 const SIGNED_OUT = 'Please sign in again.'
 
 // Untyped until src/types/supabase.ts is regenerated after 20261112150000.
-const admin = () => createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }) as unknown as SupabaseClient
+const admin = () => appDb() as unknown as SupabaseClient
 const failed = (detail: string) => new AppReadError('the notification settings', detail)
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null

@@ -9,7 +9,7 @@
 
 import 'server-only'
 import { sendMessage } from '@/lib/facebook-api'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
 import { createLogger } from '@/lib/logger'
@@ -44,7 +44,7 @@ export async function answerOrderReferral(input: {
   senderId: string
 }): Promise<{ outcome: OrderReferralOutcome; tenantId?: string }> {
   const { orderId, pageId, senderId } = input
-  const supabase = createAdminClient()
+  const supabase = messengerDb()
 
   const { data: orderData, error: orderError } = await supabase.from('orders').select('*').eq('id', orderId).single()
   if (orderError || !orderData) {

@@ -6,7 +6,7 @@ import { ORDER_BACKEND_TENANT_COLUMNS, resolveOrderBackend, type OrderBackend, t
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
 import { buildOutletMenuIndex, type OutletMenuOverrideRow } from '@/lib/outlets/outlet-menu-overrides'
-import type { Category, MenuItem } from '@/types/database'
+import type { Category, MenuItem } from '@/lib/app-api/store-types'
 import { linkedItemIdsForDraft, type DraftLinesInput } from './draft-to-lines'
 
 /**

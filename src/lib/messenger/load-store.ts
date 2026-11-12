@@ -8,7 +8,7 @@
  */
 
 import 'server-only'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
 import { ORDER_BACKEND_TENANT_COLUMNS, resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import type { MessengerRule } from './rules'
@@ -24,7 +24,7 @@ export { activeRules, DEFAULT_SETTINGS } from './settings'
 const TENANT_COLUMNS = `id, slug, name, domain, logo_url, operating_hours, timezone, restaurant_address, footer_address, facebook_page_id, ${ORDER_BACKEND_TENANT_COLUMNS}`
 
 export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{ settings: MessengerSettings; storedRules: MessengerRule[] }> {
-  const admin = createAdminClient()
+  const admin = messengerDb()
   const [settingsRead, rulesRead] = await Promise.all([
     admin.from('messenger_settings')
       .select('bot_enabled, takeover_minutes, rules_customized_at, rules_version, tester_psid, tester_code_hash, tester_code_expires_at, profile_hash, profile_fields, messages, order_updates')
@@ -47,7 +47,7 @@ export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{
 }
 
 export async function loadStoreBundle(tenantId: string, now: Date = new Date()): Promise<StoreBundle | null> {
-  const { data: tenantRow, error } = await createAdminClient()
+  const { data: tenantRow, error } = await messengerDb()
     .from('tenants')
     .select(TENANT_COLUMNS)
     .eq('id', tenantId)

@@ -9,7 +9,7 @@
  */
 
 import 'server-only'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { generateShortTrackingToken } from '@/lib/tracking-token'
 import { toCentavos } from './chat-cart'
 import { isOrderStatus, orderLabel, readOrderKind, type ReplyOrder } from './order-view'
@@ -39,13 +39,13 @@ export function trackingUrl(baseUrl: string, orderId: string): string | null {
 export async function readOrderTypeKinds(ids: readonly string[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids.filter(Boolean))]
   if (unique.length === 0) return new Map()
-  const { data } = await createAdminClient().from('order_types').select('id, type').in('id', unique)
+  const { data } = await messengerDb().from('order_types').select('id, type').in('id', unique)
   return new Map(((data ?? []) as Array<{ id: string; type: string | null }>).map((row) => [row.id, row.type ?? '']))
 }
 
 export async function loadRecentOrders(input: { tenantId: string; psid: string; store: ReplyStore; now: Date }): Promise<ReplyOrder[]> {
   const since = new Date(input.now.getTime() - LOOKBACK_MS).toISOString()
-  const { data, error } = await createAdminClient()
+  const { data, error } = await messengerDb()
     .from('orders')
     .select('id, daily_number, status, total, order_type, order_type_id')
     .eq('tenant_id', input.tenantId)

@@ -6,22 +6,24 @@
 
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
-import type { Tenant } from '@/types/database'
 import type { MessengerStudioProps } from './studio-props'
 import { DEFAULT_RULES } from './rules'
 import { rowsToRules, type RuleRow } from './settings'
-import { buildReplyStore } from './store-view'
+import { buildReplyStore, type StoreViewTenant } from './store-view'
 import { readOrderUpdates } from './order-view'
 import { readMessages } from './messages/stored'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 
 type EditorData = { ok: true; props: Omit<MessengerStudioProps, 'tenantId' | 'tenantSlug'> } | { ok: false; error: string }
 
+/** The store columns this page reads (the page hands in its full tenant row). */
+type AutomationsTenant = StoreViewTenant & OrderBackendTenantFields & { id: string; slug: string; facebook_page_id?: string | null }
+
 const UNAVAILABLE = 'Messenger automations aren’t available for this store yet. Please try again later.'
 
-export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorData> {
+export async function loadAutomationsPageData(tenant: AutomationsTenant): Promise<EditorData> {
   const supabase = await createClient()
   const [settingsRead, rulesRead, menu, tester] = await Promise.all([
     supabase.from('messenger_settings')
@@ -34,7 +36,7 @@ export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorDat
       .order('position', { ascending: true })
       .limit(60),
     getStorefrontMenu(tenant.slug).catch(() => null),
-    createAdminClient().from('messenger_settings').select('tester_psid').eq('tenant_id', tenant.id).maybeSingle(),
+    messengerDb().from('messenger_settings').select('tester_psid').eq('tenant_id', tenant.id).maybeSingle(),
   ])
 
   if (settingsRead.error || rulesRead.error) {
@@ -72,7 +74,7 @@ export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorDat
       profileError: settings?.profile_error ?? null,
       orderUpdates,
       messages: readMessages(settings?.messages ?? null, orderUpdates.texts),
-      isPlatformOrders: resolveOrderBackend(tenant as OrderBackendTenantFields) === 'platform',
+      isPlatformOrders: resolveOrderBackend(tenant) === 'platform',
     },
   }
 }

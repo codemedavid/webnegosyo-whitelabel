@@ -17,11 +17,9 @@
  * still opens the details step for a proof-required method.
  */
 
-import type { createAdminClient } from '@/lib/supabase/admin'
+import type { AdminClient } from '@/lib/supabase/admin'
 import { getPaymentProofError } from '@/lib/payment-proof'
 import type { SanitizedPaymentProof } from '@/lib/checkout/payment-proof-guard'
-
-type AdminClient = ReturnType<typeof createAdminClient>
 
 export const PAYMENT_METHOD_UNAVAILABLE_MESSAGE =
   'This payment method is no longer available. Please choose another one and try again.'

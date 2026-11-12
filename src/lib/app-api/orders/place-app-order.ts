@@ -2,7 +2,7 @@ import type { AppOrderDetail, AppOrderDraft, AppProfile } from '@/lib/app-contra
 import type { PaymentMethodWithLinks } from '@/lib/checkout/checkout-config'
 import type { PlaceOrderInput, PlaceOrderResult, PlacedOrder } from '@/lib/checkout/place-order/types'
 import type { Logger } from '@/lib/logger'
-import type { OrderType } from '@/types/database'
+import type { OrderType } from '@/lib/app-api/store-types'
 import { draftToOrderLines } from './draft-to-lines'
 import type { CheckoutQuestionRow } from '../project-catalog'
 import type { DraftRequest, DraftTenant, LoadedDraft } from './load-draft'

@@ -7,7 +7,7 @@ import { ANSWER_KEYS_THE_SERVER_CANNOT_SEE } from '@/lib/checkout/required-answe
 import { DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
 import { isOrderTypeOrderableOnWeb } from '@/lib/order-types/order-type-availability'
 import { isOrderTypeKind } from '@/lib/order-types/order-type-kinds'
-import type { OrderType } from '@/types/database'
+import type { OrderType } from '@/lib/app-api/store-types'
 import { decodeAppQuoteToken } from '../delivery/quote-token'
 import { projectQuestions, type CheckoutQuestionRow } from '../project-catalog'
 

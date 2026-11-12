@@ -11,7 +11,7 @@ import { readLoyaltyActivity } from '@/lib/loyalty/activity-repository'
 import { loadLoyaltyClaimCrypto } from '@/lib/loyalty/server-keys'
 import { ensurePass } from '@/lib/loyalty/wallet-pass/pass-repository'
 import { createPassSerial, encodeMemberCode } from '@/lib/loyalty/wallet-pass/member-code'
-import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
 import { APP_ACTIVITY_LIMIT, memberProgramId, projectActivity, projectPrograms, projectRewards } from './project-loyalty'
 
 /**
@@ -43,7 +43,7 @@ const CLAIM_BUSY = 'You asked for a lot of reward codes just now. Please wait a 
 const CLAIMS_OFF = 'Show this reward to the cashier and they’ll apply it for you.'
 const UNREADABLE = "We couldn't read that reward. Please update the app and try again."
 
-const admin = () => createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }) as unknown as SupabaseClient
+const admin = () => appDb() as unknown as SupabaseClient
 
 /** Same env gates as the web claim, minus SMS: the app needs no text to claim. */
 export function areAppClaimsAvailable(env: Record<string, string | undefined> = process.env): boolean {

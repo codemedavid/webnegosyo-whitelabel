@@ -2,7 +2,7 @@ import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { withCategoryAddons } from '@/lib/category-default-addons'
 import { collectLinkedItemIds, resolveLinkedOptions, type LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { resolveMenuForOutlet, type OutletMenuIndex } from '@/lib/outlets/outlet-menu-overrides'
-import type { Addon, Category, MenuItem, ModifierGroup } from '@/types/database'
+import type { Addon, Category, MenuItem, ModifierGroup } from '@/lib/app-api/store-types'
 
 /**
  * How the customer app reads a dish's modifier groups — ONE path shared by the

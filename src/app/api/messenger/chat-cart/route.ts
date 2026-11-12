@@ -11,7 +11,7 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from '@/lib/messenger/service-db'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
 import { readMessengerLinkToken } from '@/lib/messenger/link-token'
 import { readSessionOwner } from '@/lib/messenger/session'
@@ -38,7 +38,7 @@ export const POST = defineRoute({
       return NextResponse.json({ error: 'This Messenger link has expired' }, { status: 403 })
     }
 
-    const { data: tenant } = await createAdminClient().from('tenants').select('slug').eq('id', tenantId).eq('is_active', true).maybeSingle()
+    const { data: tenant } = await messengerDb().from('tenants').select('slug').eq('id', tenantId).eq('is_active', true).maybeSingle()
     const slug = (tenant as { slug: string } | null)?.slug
     if (!slug) return NextResponse.json({ error: 'Store not found' }, { status: 404 })
 

@@ -13,10 +13,10 @@ import {
   createSignedLalamoveQuote,
   lalamoveQuoteRateKey,
   withLalamoveKeys,
+  type LalamoveTenant,
 } from '@/lib/delivery/lalamove-signed-quote'
 import { measureRoadDistanceKm } from '@/lib/maps/road-distance-server'
-import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
-import type { Tenant } from '@/types/database'
+import { appDb } from '@/lib/app-api/service-db'
 import { gateAppCustomer, type CustomerBudgets } from './customer-gate'
 import { quoteAppDelivery, type DeliveryQuoteDeps, type DeliveryQuoteOutlet, type DeliveryQuoteTenant } from './quote'
 
@@ -43,7 +43,7 @@ const QUOTE_TENANT_COLUMNS =
 
 const MAX_OUTLETS = 500
 
-const admin = () => createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
+const admin = () => appDb()
 
 async function readQuoteTenant(tenantId: string): Promise<(DeliveryQuoteTenant & Record<string, unknown>) | null> {
   const { data, error } = await admin().from('tenants').select(QUOTE_TENANT_COLUMNS).eq('id', tenantId).maybeSingle()
@@ -75,7 +75,7 @@ function liveDeps(): DeliveryQuoteDeps {
       if (!rate.allowed) return { ok: false, reason: 'rate-limited', retryAfterSec: rate.retryAfterSec }
       const row = await readTenant(tenantId)
       if (!row) throw new AppReadError('delivery pricing', 'store row vanished')
-      return createSignedLalamoveQuote(await withLalamoveKeys(row as unknown as Tenant), origin, destination)
+      return createSignedLalamoveQuote(await withLalamoveKeys(row as unknown as LalamoveTenant), origin, destination)
     },
   }
 }

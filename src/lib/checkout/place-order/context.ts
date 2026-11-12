@@ -1,6 +1,6 @@
 /** Shapes the engine's steps pass to one another. Internal to place-order. */
 
-import type { createAdminClient } from '@/lib/supabase/admin'
+import type { AdminClient } from '@/lib/supabase/admin'
 import type { OrderTenantContext } from '@/lib/checkout/load-order-tenant-context'
 import type { SanitizedPaymentProof } from '@/lib/checkout/payment-proof-guard'
 import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
@@ -11,7 +11,7 @@ import type { PlaceOrderInput, PlaceOrderLineInput } from './types'
 
 export type { TenantSecrets } from '@/lib/tenant-secrets'
 
-export type AdminClient = ReturnType<typeof createAdminClient>
+export type { AdminClient }
 
 export type TenantConfig = Extract<OrderTenantContext, { ok: true }>['tenantConfig']
 

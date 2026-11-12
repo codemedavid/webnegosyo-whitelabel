@@ -7,7 +7,7 @@
  */
 
 import 'server-only'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { applyCartOp, parseChatCart, priceChatCart, sameCart, type CartOp, type ChatCartLine, type CartOpOutcome } from './chat-cart'
 import type { ChatCartView } from './replies'
 import type { ReplyStore } from './store-view'
@@ -20,7 +20,7 @@ interface CartRow {
 }
 
 async function readCartRow(sessionId: string): Promise<CartRow | null> {
-  const { data, error } = await createAdminClient()
+  const { data, error } = await messengerDb()
     .from('messenger_sessions')
     .select('cart_data, cart_version')
     .eq('id', sessionId)
@@ -34,7 +34,7 @@ async function readCartRow(sessionId: string): Promise<CartRow | null> {
 
 /** Write `next` if nobody changed the cart since `version`. True = written; false = raced; null = error. */
 async function writeCart(sessionId: string, version: number, next: readonly ChatCartLine[]): Promise<boolean | null> {
-  const { data, error } = await createAdminClient()
+  const { data, error } = await messengerDb()
     .from('messenger_sessions')
     .update({ cart_data: next, cart_version: version + 1 } as never)
     .eq('id', sessionId)

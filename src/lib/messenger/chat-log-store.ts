@@ -8,7 +8,7 @@
 
 import 'server-only'
 import { FACEBOOK_GRAPH_API } from '@/lib/facebook/graph'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { chatPreview, clipText, type ChatLogLine } from './chat-log'
 
 const PROFILE_TIMEOUT_MS = 2500
@@ -24,7 +24,7 @@ function logFailure(what: string, error: { code?: string; message?: string } | n
 /** One insert per event (a retried webhook's lines are skipped by `mid`), then the session's newest line. */
 export async function writeChatLog(input: { tenantId: string; sessionId: string; lines: readonly ChatLogLine[] }): Promise<void> {
   if (input.lines.length === 0) return
-  const admin = createAdminClient()
+  const admin = messengerDb()
   const { error } = await admin
     .from('messenger_messages')
     .upsert(
@@ -97,7 +97,7 @@ export async function refreshCustomerProfile(
     console.error('[Messenger] profile not fetched', { message: error instanceof Error ? error.message.slice(0, 120) : 'network error' })
   }
 
-  const { error } = await createAdminClient()
+  const { error } = await messengerDb()
     .from('messenger_sessions')
     .update({ ...(profile ?? {}), profile_fetched_at: input.now.toISOString() } as never)
     .eq('id', input.sessionId)

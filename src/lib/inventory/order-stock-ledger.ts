@@ -11,7 +11,7 @@
  * together.
  */
 
-import type { createAdminClient } from '@/lib/supabase/admin'
+import type { AdminClient } from '@/lib/supabase/admin'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import { applySimpleOptionStockSettled, type SimpleOptionStockResult } from './simple-option-stock-service'
 import { reportStockFailure } from './stock-failure-report'
@@ -32,7 +32,7 @@ const log = {
   },
 }
 
-export type AdminClient = ReturnType<typeof createAdminClient>
+export type { AdminClient }
 
 /**
  * What a best-effort order stock write tells its caller. The wrappers never

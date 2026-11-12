@@ -20,10 +20,8 @@
 
 import { getTenantSecrets, type TenantSecrets } from '@/lib/tenant-secrets'
 import { CHECKOUT_ORDER_TYPE_SELECT, type CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
-import type { createAdminClient } from '@/lib/supabase/admin'
+import type { AdminClient } from '@/lib/supabase/admin'
 import { OPERATING_HOURS_ENFORCEMENT_COLUMNS } from '@/lib/store-open-status'
-
-type AdminClient = ReturnType<typeof createAdminClient>
 
 const NO_ROW_CODE = 'PGRST116'
 

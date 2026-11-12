@@ -1,6 +1,7 @@
 import 'server-only'
 
-import { createAdminClient, ADMIN_QUERY_TIMEOUT_MS } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
+import type { AdminClient } from '@/lib/supabase/admin'
 import { createCachedRead, doNotCache } from '@/lib/storefront/cached-read'
 
 /**
@@ -73,7 +74,7 @@ export function isDevIdentityEnabled(env: Record<string, string | undefined> = p
   return Boolean(env.APP_DEV_TENANT_SLUG?.trim()) && vercelEnv !== 'production' && vercelEnv !== 'preview'
 }
 
-async function devTenantApp(client: ReturnType<typeof createAdminClient>): Promise<TenantAppLookup> {
+async function devTenantApp(client: AdminClient): Promise<TenantAppLookup> {
   const slug = process.env.APP_DEV_TENANT_SLUG?.trim()
   if (!slug || !isDevIdentityEnabled()) return { app: null, error: null }
   const { data, error } = await client.from('tenants').select('id, slug, is_active').eq('slug', slug).maybeSingle()
@@ -84,7 +85,7 @@ async function devTenantApp(client: ReturnType<typeof createAdminClient>): Promi
 
 async function loadTenantApp(applicationId: string) {
   try {
-    const client = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
+    const client = appDb()
     if (applicationId === DEV_APPLICATION_ID) {
       const dev = await devTenantApp(client)
       return dev.error ? doNotCache(dev) : dev

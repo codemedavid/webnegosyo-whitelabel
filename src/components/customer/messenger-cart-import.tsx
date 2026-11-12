@@ -9,10 +9,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useCart } from '@/hooks/useCart'
 import { looksLikeMessengerLinkToken, MESSENGER_LINK_QUERY_PARAM } from '@/lib/messenger/link-token-shape'
-import type { MenuItem } from '@/types/database'
 
 /** Set on the chat's Checkout button (`checkoutUrl` in src/lib/messenger/replies.ts). */
 export const MESSENGER_CART_PARAM = 'mc'
+
+/** A dish as the cart takes it. */
+type MenuItem = Parameters<ReturnType<typeof useCart>['addItem']>[0]
 
 interface ImportedLine {
   menuItem: MenuItem

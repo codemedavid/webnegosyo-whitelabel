@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { APP_ORDER_KINDS } from '@/lib/app-contract'
 import { chaseExpoReceipts, describePushFailures, sendExpoPushMessages, staleTokensFrom, type PushFailure } from '@/lib/push/expo-delivery'
 import { afterResponse } from '@/lib/push/push-route-helpers'
-import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
 import { CUSTOMER_PUSH_INSTALLS_MAX, type CustomerOrderPushMessage } from './order-push-words'
 import type { CustomerOrderPushDeps, PushIndexRow } from './run-order-push'
 
@@ -31,7 +31,7 @@ async function pruneCustomerTokens(admin: SupabaseClient, tenantId: string, fail
 
 export function createCustomerOrderPushDeps(): CustomerOrderPushDeps {
   // Untyped until src/types/supabase.ts is regenerated after 20261112150000.
-  const admin = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }) as unknown as SupabaseClient
+  const admin = appDb() as unknown as SupabaseClient
 
   return {
     async readOrder(orderId) {

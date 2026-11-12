@@ -3,7 +3,7 @@
 // placed so a retried Idempotency-Key never places a second order.
 //
 // Service role only: the table is not exposed to anon/authenticated. The
-// client is injected (the routes pass createAdminClient), so every write
+// client is injected (the routes pass the service-role `appDb()`), so every write
 // checks the rows it affected — a refusal or a lost race is a zero-row
 // result, never an error.
 import 'server-only'

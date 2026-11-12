@@ -1,7 +1,7 @@
 /** The real side effects behind `handleEvent`. */
 
 import 'server-only'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { getActivePageByPageId } from '@/lib/facebook/page-tokens'
 import { claimEventOnce } from './dedupe'
 import type { WebhookDeps } from './handle-event'
@@ -17,7 +17,7 @@ import { refreshCustomerProfile, writeChatLog } from './chat-log-store'
 
 /** Store the owner's PSID as the test recipient and spend the code. */
 async function linkTester(tenantId: string, psid: string): Promise<boolean> {
-  const { data, error } = await createAdminClient()
+  const { data, error } = await messengerDb()
     .from('messenger_settings')
     .update({ tester_psid: psid, tester_code_hash: null, tester_code_expires_at: null } as never)
     .eq('tenant_id', tenantId)

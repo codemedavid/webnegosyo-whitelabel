@@ -14,7 +14,7 @@ import { priceOrderVouchers } from '@/lib/checkout/place-order/pricing'
 import { readProfile } from '@/lib/customer-auth/account'
 import { createLogger } from '@/lib/logger'
 import { fetchOrderTrackingContext } from '@/lib/order-tracking-service'
-import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
+import { appDb } from '@/lib/app-api/service-db'
 import { createPublicClient } from '@/lib/supabase/public'
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
@@ -69,7 +69,7 @@ function respondOutcome<T>(outcome: AppOutcome<T>): NextResponse {
 }
 
 const log = createLogger('[Customer App Orders]', 'DEBUG_CUSTOMER_APP')
-const admin = () => createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }) as unknown as SupabaseClient
+const admin = () => appDb() as unknown as SupabaseClient
 
 function rethrowAs(source: string) {
   return (caught: unknown): never => {

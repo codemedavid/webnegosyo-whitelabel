@@ -5,12 +5,14 @@
  * exactly what Lalamove priced. One implementation for the web checkout
  * (`createQuotationAction`) and the customer app (`POST /api/app/v1/delivery/quote`).
  */
-import type { Tenant } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { createLalamoveQuotation } from '@/lib/lalamove-service'
 import type { DeliveryOrigin } from '@/lib/delivery/delivery-origin'
 import { DELIVERY_QUOTE_SIGNATURE_TTL_MS, signDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
+
+/** The store row Lalamove quoting takes (with its keys merged in by `withLalamoveKeys`). */
+export type LalamoveTenant = Parameters<typeof createLalamoveQuotation>[0]
 
 /**
  * The tenant columns Lalamove work actually needs. Several callers are
@@ -37,7 +39,7 @@ export const lalamoveQuoteRateKey = (tenantId: string): string => `lalamove-quot
  * role, and only for a store that has Lalamove switched on. The keys never
  * leave the server: the SDK consumes them and callers return quotation data only.
  */
-export async function withLalamoveKeys(tenant: Tenant): Promise<Tenant> {
+export async function withLalamoveKeys(tenant: LalamoveTenant): Promise<LalamoveTenant> {
   if (!tenant.lalamove_enabled) return tenant
   return mergeTenantSecrets(tenant, await getTenantSecrets(createAdminClient(), tenant.id))
 }
@@ -73,7 +75,7 @@ export const LALAMOVE_UNSIGNED_MESSAGE =
  * `createLalamoveQuotation` does.
  */
 export async function createSignedLalamoveQuote(
-  tenant: Tenant,
+  tenant: LalamoveTenant,
   origin: DeliveryOrigin | null,
   destination: LalamoveDestination,
   now: number = Date.now()

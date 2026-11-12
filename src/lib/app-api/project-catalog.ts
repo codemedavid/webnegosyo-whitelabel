@@ -24,7 +24,7 @@ import { isOptionAvailable } from '@/lib/modifier-groups'
 import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
 import { isOrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { buildOutletMenuIndex, resolveMenuForOutlet, type OutletMenuOverrideRow } from '@/lib/outlets/outlet-menu-overrides'
-import type { Category, MenuItem, ModifierGroup, OrderType, Outlet, PaymentMethod } from '@/types/database'
+import type { Category, MenuItem, ModifierGroup, OrderType, Outlet, PaymentMethod } from '@/lib/app-api/store-types'
 import { appModifierGroups, groupSelectLimits, linkedItemsAtBranch, modifierGroupsFor } from './item-modifier-groups'
 
 /**

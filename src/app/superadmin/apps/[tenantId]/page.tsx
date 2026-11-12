@@ -3,9 +3,8 @@ import { AppStudioEditor } from '@/components/superadmin/app-studio/app-studio-e
 import { projectAppConfig } from '@/lib/app-api/project-config'
 import { startingDraft } from '@/lib/app-studio/home-draft'
 import { loadAppStudioStore } from '@/lib/app-studio/preview-input'
-import { readApp } from '@/lib/app-studio/service'
+import { appStudioDb, readApp } from '@/lib/app-studio/service'
 import { requirePlatformPermission } from '@/lib/platform-staff/guard'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +14,7 @@ export default async function AppStudioPage({ params }: { params: Promise<{ tena
   await requirePlatformPermission('customer_apps.view')
   const { tenantId } = await params
   if (!UUID.test(tenantId)) notFound()
-  const db = createAdminClient()
+  const db = appStudioDb()
   const [record, tenant] = await Promise.all([readApp(db, tenantId), db.from('tenants').select('name, slug').eq('id', tenantId).maybeSingle()])
   if (!record || !tenant.data) notFound()
   const store = await loadAppStudioStore(tenant.data.slug)

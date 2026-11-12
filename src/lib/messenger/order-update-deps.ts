@@ -2,7 +2,7 @@
 
 import 'server-only'
 import { writeChatLog } from './chat-log-store'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { messengerDb } from './service-db'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { ORDER_BACKEND_TENANT_COLUMNS, resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { toCentavos } from './chat-cart'
@@ -14,7 +14,7 @@ import { maskPsid, sendMessages } from './send'
 import { storeBaseUrl } from './store-view'
 
 export function createOrderUpdateDeps(): OrderUpdateDeps {
-  const admin = createAdminClient()
+  const admin = messengerDb()
   return {
     now: () => new Date(),
     readOrder: async (orderId) => {

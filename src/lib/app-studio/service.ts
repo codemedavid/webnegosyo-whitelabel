@@ -5,6 +5,7 @@ import type { createLoyaltyClaimCrypto } from '@/lib/loyalty/claim-crypto'
 import type { Database, Json } from '@/types/supabase'
 import { defaultAppIds, type AppIdentityInput, type AppListingInput, type AppReleaseInput } from './inputs'
 import { sameDraft, type AppStudioDraft } from './home-draft'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * App Studio's reads and writes on `tenant_apps` / `tenant_app_configs`
@@ -15,6 +16,16 @@ import { sameDraft, type AppStudioDraft } from './home-draft'
  */
 
 type Db = SupabaseClient<Database>
+
+/**
+ * The service-role client App Studio reads and writes with: the two tables are
+ * closed to anon and authenticated, and every caller (the superadmin page and
+ * `src/app/actions/app-studio.ts`) has checked the `customer_apps.*` console
+ * permission first.
+ */
+export function appStudioDb(): Db {
+  return createAdminClient()
+}
 type AppRow = Database['public']['Tables']['tenant_apps']['Row']
 type ConfigRow = Database['public']['Tables']['tenant_app_configs']['Row']
 

@@ -1,5 +1,5 @@
 import 'server-only'
-import type { Outlet } from '@/types/database'
+import type { Outlet } from '@/lib/app-api/store-types'
 import type { AppConfigInput } from '@/lib/app-api/project-config'
 import { projectAppCatalog } from '@/lib/app-api/project-catalog'
 import { readActiveOutlets, readAppOrderTypes, readAppPaymentMethods, readLoyaltyFlags } from '@/lib/app-api/store-reads'

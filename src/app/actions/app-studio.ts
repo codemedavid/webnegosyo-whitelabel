@@ -23,6 +23,7 @@ import {
 import { loadAppStudioStore } from '@/lib/app-studio/preview-input'
 import {
   AppStudioError,
+  appStudioDb,
   clearReviewCode,
   createApp,
   discardDraft,
@@ -40,7 +41,6 @@ import {
 import { getTenantBranding } from '@/lib/branding-utils'
 import { loadLoyaltyClaimCrypto } from '@/lib/loyalty/server-keys'
 import { storefrontTenantIdTag } from '@/lib/storefront/cached-read'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { defineAction } from '@/platform/http/define-action'
 import type { Refusal } from '@/platform/http/entry'
@@ -50,7 +50,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type AppStudioResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
-const db = () => createAdminClient()
+const db = appStudioDb
 
 function tenantIdOf(value: unknown): string {
   if (typeof value !== 'string' || !UUID.test(value)) throw new AppStudioError('That store was not found.')
