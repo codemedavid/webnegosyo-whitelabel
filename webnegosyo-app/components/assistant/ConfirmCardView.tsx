@@ -48,7 +48,7 @@ export function ConfirmCardView({ card, tenantId, onOpenLink }: Props) {
         <Text style={styles.eyebrow}>NEEDS YOUR OK</Text>
         <Text style={styles.title}>{card.title}</Text>
       </View>
-      {typeof card.imageUrl === "string" && card.imageUrl.startsWith("https://") ? (
+      {typeof card.imageUrl === "string" && card.imageUrl.startsWith("https://") && card.imageUrl.length <= 600 ? (
         <Image source={{ uri: card.imageUrl }} style={styles.qr} resizeMode="contain" alt="QR code customers will scan" />
       ) : null}
       <View style={styles.lines}>

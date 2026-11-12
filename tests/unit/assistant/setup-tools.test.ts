@@ -197,6 +197,14 @@ describe('Lalamove readiness', () => {
     expect(setup.steps.find((step) => step.id === 'keys')?.next).toMatch(/never in this chat/)
   })
 
+  test('keys that could not be checked are never reported as missing', () => {
+    const setup = evaluateDeliverySetup({ ...READY, hasKeys: null })
+    const keys = setup.steps.find((step) => step.id === 'keys')
+    expect(keys?.next).toMatch(/Couldn't check/)
+    expect(keys?.next).not.toMatch(/paste/)
+    expect(setup.environment).toBeNull()
+  })
+
   test('the result says whether keys exist — never what they are', () => {
     const facts = factsForModel(buildDeliverySetupResult(evaluateDeliverySetup(READY), false))
     expect(JSON.stringify(facts)).not.toMatch(/pk_|sk_/)
@@ -208,6 +216,10 @@ describe('Lalamove readiness', () => {
     expect(removed).toBe(2)
     expect(text).toBe(`here: ${KEY_REMOVED} and ${KEY_REMOVED} thanks`)
     expect(redactLalamoveKeys('my pk is fine').removed).toBe(0)
+    // Retyped keys: other case, hyphens.
+    expect(redactLalamoveKeys('PK_PROD_1A2B3C4D5E6F and sk-test-abcdef1234').removed).toBe(2)
+    // A secret with base64 characters goes whole, not up to the first '+'.
+    expect(redactLalamoveKeys('sk_prod_AbC123xyz+Qw/ErTy== ok').text).toBe(`${KEY_REMOVED} ok`)
   })
 })
 

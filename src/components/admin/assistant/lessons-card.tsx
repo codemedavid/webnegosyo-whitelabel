@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, GraduationCap, Play } from 'lucide-react'
 import { VideoPlayer } from '@/components/university/video-player'
+import { resolveLessonVideo } from '@/lib/university/video'
 import type { LessonsCard } from '@/lib/assistant/types'
 
 interface LessonsCardViewProps {
@@ -35,9 +36,10 @@ export function LessonsCardView({ card, adminBasePath, onNavigate }: LessonsCard
       </header>
       <ol className="space-y-2 px-4 pb-4">
         {lessons.map((lesson, index) => {
-          const canPlay = Boolean(lesson.watchUrl)
+          // The same check the player makes, so a Play button never opens an empty slot.
+          const canPlay = typeof lesson.watchUrl === 'string' && resolveLessonVideo(lesson.watchUrl) !== null
           return (
-            <li key={lesson.path} className="space-y-1.5">
+            <li key={`${index}:${lesson.path}`} className="space-y-1.5">
               {canPlay && playing === index ? (
                 <VideoPlayer url={lesson.watchUrl as string} title={lesson.title} className="rounded-xl shadow-none" />
               ) : null}

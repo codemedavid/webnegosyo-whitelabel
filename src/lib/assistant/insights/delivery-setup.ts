@@ -14,7 +14,8 @@ export interface DeliverySetupInput {
   lalamoveEnabled: boolean
   market: string | null
   isSandbox: boolean
-  hasKeys: boolean
+  /** null = could not be checked: never told to paste keys they may already have saved. */
+  hasKeys: boolean | null
   senderPhone: string | null
   footerPhone: string | null
   storePinned: boolean
@@ -63,7 +64,9 @@ export function evaluateDeliverySetup(input: DeliverySetupInput): DeliverySetup 
       state: input.lalamoveEnabled ? 'done' : 'todo',
       next: input.lalamoveEnabled ? null : 'Lalamove is switched on by the WebNegosyo team. Message support and ask them to turn on Lalamove for your store.',
     },
-    step('keys', 'Your Lalamove API keys saved', input.hasKeys, `Get your API key and secret from the Lalamove Partner portal, then paste them in ${SETTINGS} (never in this chat).`),
+    input.hasKeys === null
+      ? { id: 'keys', label: 'Your Lalamove API keys saved', state: blocked ? 'blocked' : 'todo', next: `Couldn't check your keys just now. Open ${SETTINGS} to see whether they are saved.` }
+      : step('keys', 'Your Lalamove API keys saved', input.hasKeys, `Get your API key and secret from the Lalamove Partner portal, then paste them in ${SETTINGS} (never in this chat).`),
     step('rider_phone', 'A phone the rider can call', phoneOk, `Add the number riders should call at pickup in ${SETTINGS}.`),
     step(
       'pickup_pin',
@@ -90,7 +93,7 @@ export function evaluateDeliverySetup(input: DeliverySetupInput): DeliverySetup 
   return {
     steps,
     ready: steps.every((entry) => entry.state === 'done'),
-    environment: input.hasKeys ? (input.isSandbox ? 'sandbox' : 'live') : null,
+    environment: input.hasKeys === true ? (input.isSandbox ? 'sandbox' : 'live') : null,
     bookings,
   }
 }
@@ -100,7 +103,9 @@ export function evaluateDeliverySetup(input: DeliverySetupInput): DeliverySetup 
  * message carrying one is cut BEFORE it is stored or sent to the model:
  * conversations are kept and leave our servers for the model provider.
  */
-const KEY_SHAPE = /\b[ps]k_(?:prod|test)_[A-Za-z0-9_-]{6,}/g
+// Any case and `-` as well as `_` (owners retype keys); best effort, the prompt rule stays.
+// Everything up to the next space goes: a secret's alphabet may include + / = .
+const KEY_SHAPE = /\b[ps]k[_-](?:prod|test)[_-]\S{6,}/gi
 
 export const KEY_REMOVED = '[Lalamove key removed]'
 

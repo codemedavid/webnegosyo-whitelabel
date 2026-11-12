@@ -25,10 +25,10 @@ export interface LessonCandidate {
 /** A topic word → the words a lesson about it uses. Folded, singular. */
 const TOPICS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
   [['gcash', 'maya', 'paymaya', 'bayad', 'payment', 'pay', 'qr', 'bank', 'transfer', 'cash'], ['payment']],
-  [['inventory', 'stock', 'ingredient', 'sangkap', 'recipe', 'stocktake', 'count', 'waste', 'delivery'], ['inventory']],
+  [['inventory', 'stock', 'ingredient', 'sangkap', 'recipe', 'stocktake', 'count', 'waste'], ['inventory']],
   [['printer', 'print', 'bluetooth', 'thermal'], ['printer']],
   [['receipt', 'resibo'], ['receipt']],
-  [['staff', 'cashier', 'employee', 'empleyado', 'account', 'team', 'crew', 'tauhan'], ['staff', 'account']],
+  [['staff', 'cashier', 'employee', 'empleyado', 'team', 'crew', 'tauhan'], ['staff']],
   [['pos', 'register', 'walk', 'counter', 'kahera'], ['pos', 'walk']],
   [['app', 'download', 'install', 'phone', 'android', 'iphone'], ['app', 'download']],
   [['design', 'color', 'kulay', 'logo', 'brand', 'branding', 'theme', 'look'], ['branding']],

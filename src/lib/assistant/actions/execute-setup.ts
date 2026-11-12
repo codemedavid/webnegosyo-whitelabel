@@ -63,7 +63,9 @@ export async function executePaymentMethodChange(store: StoreRef, payload: Payme
     .maybeSingle()
   const row = data as { updated_at: string | null } | null
   if (!row) return { ok: false, error: 'That payment method no longer exists.' }
-  if (payload.expectedUpdatedAt !== null && row.updated_at !== payload.expectedUpdatedAt) return { ok: false, error: STALE }
+  // Strict, null included: `payment_methods_set_updated_at` stamps every update, so a row
+  // first seen with no timestamp that has one now was edited meanwhile.
+  if (row.updated_at !== payload.expectedUpdatedAt) return { ok: false, error: STALE }
 
   const { changes } = payload
   const updates: Parameters<typeof updatePaymentMethod>[2] = {}
@@ -81,10 +83,15 @@ export async function executePaymentMethodChange(store: StoreRef, payload: Payme
   if (orderTypeIds !== null) {
     const result = await paymentWrite(store, () => updatePaymentMethodOrderTypes(payload.paymentMethodId, store.id, orderTypeIds))
     if (!result.success) {
-      return paymentFailure(
-        result.error,
-        Object.keys(updates).length > 0 ? 'The other changes were saved, but its order types could not be updated.' : 'Its order types could not be updated.',
-      )
+      if (Object.keys(updates).length === 0) return paymentFailure(result.error, 'Its order types could not be updated.')
+      // The rest IS saved (and updated_at moved, so a retry would be stale): say so as done,
+      // with what is left for the owner to do.
+      return {
+        ok: true,
+        message: `${changes.name ?? payload.name} is updated, but its order types could not be changed. Set them on the Payment methods page.`,
+        resultRef: payload.paymentMethodId,
+        link: PAYMENT_LINK,
+      }
     }
   }
   const name = changes.name ?? payload.name

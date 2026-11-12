@@ -87,7 +87,7 @@ export const getDeliverySetupTool: AssistantToolDef<Input> = {
       lalamoveEnabled: row.lalamove_enabled === true,
       market: row.lalamove_market,
       isSandbox: row.lalamove_sandbox === true,
-      hasKeys: keys === true,
+      hasKeys: keys,
       senderPhone: row.lalamove_sender_phone,
       footerPhone: row.footer_phone,
       storePinned: row.restaurant_latitude !== null && row.restaurant_longitude !== null,

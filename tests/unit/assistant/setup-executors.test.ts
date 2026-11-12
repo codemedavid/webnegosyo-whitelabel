@@ -65,6 +65,21 @@ test('a change refuses when the method moved on since the card was shown', async
   expect(mockUpdate).not.toHaveBeenCalled()
 })
 
+test('a method first seen without a timestamp is stale once it has one (edited meanwhile)', async () => {
+  mockRow = { updated_at: '2026-11-05T00:00:00Z' }
+  const outcome = await executePaymentMethodChange(STORE, { ...change(), expectedUpdatedAt: null })
+  expect(outcome.ok).toBe(false)
+  expect(mockUpdate).not.toHaveBeenCalled()
+})
+
+test('saved fields + failed order types = done, with what is left to do (a retry would only be stale)', async () => {
+  mockUpdate.mockResolvedValue({ id: 'pm-1' })
+  mockTypes.mockRejectedValue(new Error('boom'))
+  const outcome = await executePaymentMethodChange(STORE, change({ orderTypeIds: ['ot-2'] }))
+  expect(outcome).toMatchObject({ ok: true })
+  if (outcome.ok) expect(outcome.message).toMatch(/order types could not be changed/)
+})
+
 test('a change writes only the fields that change, then the order types', async () => {
   mockUpdate.mockResolvedValue({ id: 'pm-1' })
   mockTypes.mockResolvedValue(undefined)

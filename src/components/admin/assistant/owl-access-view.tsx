@@ -6,6 +6,9 @@ import { Switch } from '@/components/ui/switch'
 import { listStaffAction, updateStaffPermissionsAction } from '@/app/actions/staff'
 import { owlAccessRows, withOwlAccess, type OwlAccessRow } from '@/lib/assistant/access-list'
 
+const COULD_NOT_LOAD = 'Your team could not be loaded. Check your connection and open this again.'
+const COULD_NOT_SAVE = 'That change could not be saved. Check your connection and try again.'
+
 interface OwlAccessViewProps {
   tenantId: string
   tenantSlug: string
@@ -24,11 +27,17 @@ export function OwlAccessView({ tenantId, tenantSlug, onBack }: OwlAccessViewPro
 
   useEffect(() => {
     let isCurrent = true
-    void listStaffAction(tenantId).then((result) => {
-      if (!isCurrent) return
-      if (result.success) setRows(owlAccessRows(result.data))
-      else setError(result.error)
-    })
+    listStaffAction(tenantId).then(
+      (result) => {
+        if (!isCurrent) return
+        if (result.success) setRows(owlAccessRows(result.data))
+        else setError(result.error)
+      },
+      () => {
+        // A thrown action (network, timeout) must not leave the spinner up forever.
+        if (isCurrent) setError(COULD_NOT_LOAD)
+      },
+    )
     return () => {
       isCurrent = false
     }
@@ -37,23 +46,28 @@ export function OwlAccessView({ tenantId, tenantSlug, onBack }: OwlAccessViewPro
   const flip = async (row: OwlAccessRow, allowed: boolean) => {
     setSavingId(row.userId)
     setError(null)
-    // The switch saves the person's WHOLE list, so build it from a fresh read:
-    // a Staff edit made since this sheet opened must not be overwritten.
-    const fresh = await listStaffAction(tenantId)
-    const current = fresh.success ? owlAccessRows(fresh.data).find((item) => item.userId === row.userId) : undefined
-    if (!current) {
+    try {
+      // The switch saves the person's WHOLE list, so build it from a fresh read:
+      // a Staff edit made since this sheet opened must not be overwritten.
+      const fresh = await listStaffAction(tenantId)
+      const current = fresh.success ? owlAccessRows(fresh.data).find((item) => item.userId === row.userId) : undefined
+      if (!current) {
+        setError(fresh.success ? 'That account is no longer on your team.' : fresh.error)
+        return
+      }
+      const next = withOwlAccess(current.permissions, allowed)
+      const result = await updateStaffPermissionsAction(tenantId, tenantSlug, row.userId, next)
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      setRows((list) => list?.map((item) => (item.userId === row.userId ? { ...item, hasOwl: allowed, permissions: next } : item)) ?? null)
+    } catch {
+      setError(COULD_NOT_SAVE)
+    } finally {
+      // Every switch is disabled while one saves, so this must always clear.
       setSavingId(null)
-      setError(fresh.success ? 'That account is no longer on your team.' : fresh.error)
-      return
     }
-    const next = withOwlAccess(current.permissions, allowed)
-    const result = await updateStaffPermissionsAction(tenantId, tenantSlug, row.userId, next)
-    setSavingId(null)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    setRows((list) => list?.map((item) => (item.userId === row.userId ? { ...item, hasOwl: allowed, permissions: next } : item)) ?? null)
   }
 
   return (

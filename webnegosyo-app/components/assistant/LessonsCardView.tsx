@@ -17,19 +17,24 @@ export function isLessonVideoUrl(url: unknown): url is string {
 
 type Props = { card: LessonsCard; onOpenLink: (link: AssistantLink) => void };
 
+/** Same rule as the web card: /learn/<course>/<lesson>, nothing that could climb out of the admin. */
+function isLessonPath(path: unknown): path is string {
+  return typeof path === "string" && /^\/learn\/[A-Za-z0-9%_-]+\/[A-Za-z0-9%_-]+$/.test(path);
+}
+
 /**
  * University lessons Owl found (web: lessons-card.tsx). The app has no video
  * player module, so "Watch" opens the video's own page; "Open" opens the
  * lesson on the web admin, like every other web-only Owl link.
  */
 export function LessonsCardView({ card, onOpenLink }: Props) {
-  const lessons = Array.isArray(card.lessons) ? card.lessons.filter((lesson) => typeof lesson.path === "string" && lesson.path.startsWith("/learn/")) : [];
+  const lessons = Array.isArray(card.lessons) ? card.lessons.filter((lesson) => isLessonPath(lesson.path)) : [];
   if (lessons.length === 0) return null;
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{card.title}</Text>
-      {lessons.map((lesson) => (
-        <View key={lesson.path} style={styles.row}>
+      {lessons.map((lesson, index) => (
+        <View key={`${index}:${lesson.path}`} style={styles.row}>
           <View style={styles.body}>
             <Text style={styles.lessonTitle} numberOfLines={2}>
               {lesson.title}
