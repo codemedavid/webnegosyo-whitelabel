@@ -9,7 +9,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../../../.." && pwd)"
-PORT=3100
+PORT="${QA_PORT:-3100}"
 STATE="${VERIFY_STATE_DIR:-${TMPDIR:-/tmp}/verify-webnegosyo-$PORT}"
 RUN_ID="${VERIFY_RUN_ID:-$(date +%Y%m%d-%H%M%S)}"
 EVIDENCE="$REPO/test-results/verify/$RUN_ID"

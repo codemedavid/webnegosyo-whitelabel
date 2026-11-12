@@ -13,7 +13,7 @@ import { adminSessionCookies } from '../../../../tests/e2e/admin-session'
 loadEnv({ path: '.env.local' })
 
 const ADMIN_EMAIL = process.env.QA_ADMIN_EMAIL ?? 'admin@sampledemowebnegosyo.com'
-const BASE = 'http://sample-demo.localhost:3100'
+const BASE = `http://sample-demo.localhost:${process.env.QA_PORT ?? '3100'}`
 
 async function main() {
   const path = process.argv[2] ?? '/admin/orders'

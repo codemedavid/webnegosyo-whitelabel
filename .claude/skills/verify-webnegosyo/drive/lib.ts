@@ -127,8 +127,13 @@ export async function settle(page: Page, ms = 1500) {
 }
 
 async function closeItemSheet(page: Page) {
+  // After "Add To Cart" the sheet closes itself; under dev-server load its exit
+  // animation can outlast a fixed wait, and a click on the sliding button then
+  // waits for an element that is about to disappear. Let it finish, then only
+  // close a sheet that is still open.
+  await page.waitForTimeout(1200)
   const back = page.getByRole('button', { name: 'Go back' })
-  if (await back.isVisible().catch(() => false)) await back.click()
+  if (await back.isVisible().catch(() => false)) await back.click({ timeout: 5_000 }).catch(() => {})
   await page.waitForTimeout(800)
 }
 
@@ -147,7 +152,8 @@ export async function fillCartToCheckout(page: Page, info: TestInfo, prefix: str
   // Under load the first tap can land before hydration; tap again once if the sheet didn't open.
   const increase = page.getByRole('button', { name: 'Increase quantity', exact: true })
   await page.getByRole('button', { name: 'Add QA Fries' }).click()
-  if (!(await increase.isVisible({ timeout: 15_000 }).catch(() => false))) await page.getByRole('button', { name: 'Add QA Fries' }).click()
+  // The second tap must not wait on a card the opening sheet already covers.
+  if (!(await increase.isVisible({ timeout: 15_000 }).catch(() => false))) await page.getByRole('button', { name: 'Add QA Fries' }).click({ timeout: 5_000 }).catch(() => {})
   await increase.click()
   await page.getByRole('button', { name: 'Add To Cart' }).click()
   await page.waitForTimeout(1500)
