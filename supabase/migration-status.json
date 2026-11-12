@@ -12,11 +12,6 @@
       "gate": "Compare the server's expected cash with the stored device figure over real closed shifts (CASH_LIVE=1 cash-expectation-live) and explain every difference. The 14 days of shadow mode ended 2026-11-10; the probe has not been run.",
       "checkedOn": "2026-11-11"
     },
-    "20261027190000_cash_alerts.sql": {
-      "status": "partial",
-      "gate": "Applied 2026-11-11 as cash_alerts_without_schedule: columns, kind check, indexes, visibility by kind and cash.notify_overdue_shifts(). The pg_cron job 'cash-alerts' is NOT scheduled: 42 hand-overs pending over 60 minutes would all notify on the first tick. Settle or accept those, then run the file's cron block.",
-      "checkedOn": "2026-11-11"
-    },
     "20261027210000_shift_close_rpc_only.sql": {
       "status": "held",
       "gate": "No store may have closed a shift the old way for 7 days (probe in the file header). 2026-11-10: 25 old-style closes in the last 7 days, the latest on 2026-11-09.",
@@ -78,7 +73,7 @@
     },
     "cash_alerts_without_schedule": {
       "liveVersion": "20261111002449",
-      "note": "20261027190000_cash_alerts.sql minus its pg_cron block (see notApplied)."
+      "note": "20261027190000_cash_alerts.sql minus its pg_cron block. The block was run on its own 2026-11-13 (owner accepted the backlog notifying at once): job 'cash-alerts' every 15 min; first run 21:00 UTC 2026-11-12 succeeded and wrote 61 remittance_pending + 11 shift_overdue notices, all push-claimed."
     }
   },
   "applied": [
@@ -400,6 +395,7 @@
     "20261027170000_business_day_closes.sql",
     "20261027170010_day_close_activity_validate.sql",
     "20261027180000_profit_business_day.sql",
+    "20261027190000_cash_alerts.sql",
     "20261027200000_report_cash_functions.sql",
     "20261029120000_staff_limit_reads_allowance.sql",
     "20261029121000_order_items_addon_details.sql",
