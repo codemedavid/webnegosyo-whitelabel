@@ -4,6 +4,7 @@ import type { PlaceOrderInput, PlaceOrderResult, PlacedOrder } from '@/lib/check
 import type { Logger } from '@/lib/logger'
 import type { OrderType } from '@/types/database'
 import { draftToOrderLines } from './draft-to-lines'
+import type { CheckoutQuestionRow } from '../project-catalog'
 import type { DraftRequest, DraftTenant, LoadedDraft } from './load-draft'
 import type { OrderIndex, PlacedOrderRow } from './order-index'
 import { buildPlaceOrderInput, chooseOrderType, ORDER_TYPE_GONE, REWARDS_SOON, type ChosenOrderType } from './order-request'
@@ -41,6 +42,8 @@ export interface PlaceAppOrderDeps {
   loadDraft: (tenant: DraftTenant, request: DraftRequest) => Promise<LoadedDraft>
   readOrderTypes: (tenantId: string) => Promise<OrderType[]>
   readPaymentMethods: (tenantId: string) => Promise<PaymentMethodWithLinks[]>
+  /** The store's checkout questions, every order type (`customer_form_fields`). */
+  readQuestions: (tenantId: string) => Promise<CheckoutQuestionRow[]>
   readProfile: (tenantId: string, customerId: string) => Promise<AppProfile | null>
   placeOrder: (input: PlaceOrderInput) => Promise<PlaceOrderResult>
   readLive: (tenantId: string, orderId: string) => Promise<LiveOrderState | null>
@@ -68,10 +71,11 @@ const stop = (outcome: AppOutcome<AppOrderDetail>): Prepared => ({ ok: false, ou
 /** Everything the engine needs, or the refusal to answer with. Reads only. */
 async function prepare(request: PlaceAppOrderRequest, tenant: DraftTenant, deps: PlaceAppOrderDeps): Promise<Prepared> {
   const { tenantId, customerId, draft } = request
-  const [profile, orderTypes, paymentMethods] = await Promise.all([
+  const [profile, orderTypes, paymentMethods, questions] = await Promise.all([
     deps.readProfile(tenantId, customerId),
     deps.readOrderTypes(tenantId),
     deps.readPaymentMethods(tenantId),
+    deps.readQuestions(tenantId),
   ])
   if (!profile) return stop(failOutcome('unauthorized', SIGNED_OUT))
   const orderType = chooseOrderType(orderTypes, draft.orderTypeId)
@@ -88,6 +92,7 @@ async function prepare(request: PlaceAppOrderRequest, tenant: DraftTenant, deps:
     idempotencyKey: request.idempotencyKey,
     orderType,
     paymentMethods,
+    questions,
     profile,
     isLalamoveStore: tenant.isLalamove,
     lines: lines.lines,
@@ -149,7 +154,8 @@ async function attempt(id: string, request: PlaceAppOrderRequest, tenant: DraftT
   if (result.kind === 'placed') return okOutcome(await recordPlaced(id, request, prepared.order, result, deps), 201)
   if (result.kind === 'refused') {
     await deps.index.markFailed(id)
-    return failOutcome('refused', result.error)
+    // Unanswered checkout questions come back by name, so the app marks the exact question.
+    return failOutcome('refused', result.error, result.fieldErrors)
   }
   deps.log.error('app order lost', { tenantId: request.tenantId, id, backend: tenant.backend, error: result.error })
   if (tenant.backend === 'platform') await deps.index.markFailed(id)

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { appFail } from '@/lib/app-api/respond'
 import { appCachedOk, appRoute } from '@/lib/app-api/app-route'
 import { projectAppCatalog } from '@/lib/app-api/project-catalog'
-import { AppReadError, readAppOrderTypes, readAppPaymentMethods, readComplementaryPairs } from '@/lib/app-api/store-reads'
+import { AppReadError, readAppOrderTypes, readAppPaymentMethods, readCheckoutQuestions, readComplementaryPairs } from '@/lib/app-api/store-reads'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
 
 /**
@@ -29,10 +29,11 @@ export const GET = appRoute({ scope: 'catalog', rateLimit: { limit: 120, windowS
   const outletId = outletParam.data
   if (outletId && !menu.outlets.some((outlet) => outlet.id === outletId)) return appFail('bad_request', 'That branch was not found.')
 
-  const [orderTypes, paymentMethods, pairs] = await Promise.all([
+  const [orderTypes, paymentMethods, pairs, questions] = await Promise.all([
     readAppOrderTypes(menu.tenant.id),
     readAppPaymentMethods(menu.tenant.id),
     readComplementaryPairs(menu.tenant.id),
+    readCheckoutQuestions(menu.tenant.id),
   ])
 
   const catalog = projectAppCatalog({
@@ -45,6 +46,7 @@ export const GET = appRoute({ scope: 'catalog', rateLimit: { limit: 120, windowS
     outletId,
     paymentMethods,
     pairs,
+    questions,
   })
   return appCachedOk(request, catalog, 120)
 })

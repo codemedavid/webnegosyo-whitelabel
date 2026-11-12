@@ -107,6 +107,15 @@ export const appOrderDraftSchema = z.object({
   /** A picked place (not typed text) for delivery orders; null for every other order type. */
   delivery: appOrderDeliverySchema.nullable(),
   notes: z.string().max(300),
+  /**
+   * Answers to the catalog's questions for this order type, keyed by question
+   * `name`. The server keeps only those it asked; absent from builds before
+   * 2026-11-12.
+   */
+  answers: z
+    .record(z.string().min(1).max(200), z.string().max(500))
+    .refine((answers) => Object.keys(answers).length <= 40, 'Too many answers')
+    .optional(),
 })
 
 export type AppOrderDraft = z.infer<typeof appOrderDraftSchema>

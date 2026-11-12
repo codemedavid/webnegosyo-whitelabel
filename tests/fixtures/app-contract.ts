@@ -255,6 +255,39 @@ export const VALID_CATALOG = {
       orderTypeIds: ['ot-pickup', 'ot-dine'],
     },
   ],
+  // The store's own checkout questions (name / phone / address ones never reach the app).
+  questions: [
+    {
+      id: 'q-pickup-day',
+      orderTypeId: 'ot-pickup',
+      name: 'pickup_date',
+      label: 'Pickup date',
+      type: 'date' as const,
+      isRequired: true,
+      placeholder: null,
+      options: [],
+    },
+    {
+      id: 'q-dine-table',
+      orderTypeId: 'ot-dine',
+      name: 'table_number',
+      label: 'Table number',
+      type: 'text' as const,
+      isRequired: false,
+      placeholder: 'e.g. 12',
+      options: [],
+    },
+    {
+      id: 'q-delivery-gate',
+      orderTypeId: 'ot-delivery',
+      name: 'gate',
+      label: 'Which gate?',
+      type: 'choice' as const,
+      isRequired: false,
+      placeholder: null,
+      options: ['Main gate', 'Back gate'],
+    },
+  ],
 }
 
 export const VALID_LOYALTY = {

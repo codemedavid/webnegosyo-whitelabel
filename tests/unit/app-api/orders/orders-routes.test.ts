@@ -44,6 +44,11 @@ jest.mock('@/lib/checkout/load-checkout-config', () => ({
   readOrderTypes: (...a: unknown[]) => readOrderTypes(...a),
   readPaymentMethods: (...a: unknown[]) => readPaymentMethods(...a),
 }))
+const readCheckoutQuestionsFresh = jest.fn()
+jest.mock('@/lib/app-api/store-reads', () => ({
+  ...jest.requireActual('@/lib/app-api/store-reads'),
+  readCheckoutQuestionsFresh: (...a: unknown[]) => readCheckoutQuestionsFresh(...a),
+}))
 const placeOrder = jest.fn()
 jest.mock('@/lib/checkout/place-order', () => ({ placeOrder: (...a: unknown[]) => placeOrder(...a) }))
 const loadAndPriceOrderLines = jest.fn()
@@ -83,6 +88,7 @@ const placeRequest = (body: unknown = draft(), headers: Record<string, string> =
 
 beforeEach(() => {
   jest.clearAllMocks()
+  readCheckoutQuestionsFresh.mockResolvedValue([])
   getTenantApp.mockResolvedValue({ app: APP, error: null })
   checkRateLimit.mockResolvedValue({ allowed: true, remaining: 4, retryAfterSec: 0 })
   resolveCustomerSession.mockResolvedValue({ customerId: CUSTOMER, tokenHash: 'h' })
@@ -137,6 +143,29 @@ describe('POST /api/app/v1/orders', () => {
     const response = await (await routes()).placeOrder(placeRequest())
     expect(response.status).toBe(422)
     expect((await response.json()).error).toEqual({ code: 'refused', message: 'We are closed right now.' })
+  })
+
+  it('answers the store’s questions: what the app was asked, plus renamed contact questions from the session', async () => {
+    readCheckoutQuestionsFresh.mockResolvedValue([
+      { id: 'q1', order_type_id: PICKUP_TYPE, field_name: 'pickup_date', field_label: 'Pickup date', field_type: 'date', is_required: true, placeholder: null, options: null, order_index: 2 },
+      { id: 'q2', order_type_id: PICKUP_TYPE, field_name: 'Contact Number', field_label: 'Contact Number', field_type: 'text', is_required: true, placeholder: null, options: null, order_index: 1 },
+    ])
+    const body = draft({ answers: { pickup_date: ' 2026-11-13 ', customer_phone: '+639000000000', unasked: 'x' } })
+    expect((await (await routes()).placeOrder(placeRequest(body))).status).toBe(201)
+    const customerData = placeOrder.mock.calls[0][0].customerData
+    expect(customerData).toMatchObject({ pickup_date: '2026-11-13', 'Contact Number': '+639171234567', customer_phone: '+639171234567' })
+    expect(customerData).not.toHaveProperty('unasked')
+  })
+
+  it('an unanswered question comes back as fieldErrors the app can point at', async () => {
+    placeOrder.mockResolvedValue({ kind: 'refused', error: 'Pickup date is required', fieldErrors: [{ fieldName: 'pickup_date', message: 'Pickup date is required' }] })
+    const response = await (await routes()).placeOrder(placeRequest())
+    expect(response.status).toBe(422)
+    expect((await response.json()).error).toEqual({
+      code: 'refused',
+      message: 'Pickup date is required',
+      fieldErrors: [{ fieldName: 'pickup_date', message: 'Pickup date is required' }],
+    })
   })
 
   it('a reward is refused (422) before any key is claimed', async () => {

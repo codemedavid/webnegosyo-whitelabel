@@ -3,7 +3,17 @@ import { UNCONFIRMED_ORDER_MESSAGE, placeOrderFailure } from './place-order-outc
 
 describe('placeOrderFailure', () => {
   it('shows the store’s own words for a refusal', () => {
-    expect(placeOrderFailure(new AppApiError('refused', 'We’re closed until 7 AM.'))).toEqual({ kind: 'refused', code: 'refused', message: 'We’re closed until 7 AM.' })
+    expect(placeOrderFailure(new AppApiError('refused', 'We’re closed until 7 AM.'))).toEqual({
+      kind: 'refused',
+      code: 'refused',
+      message: 'We’re closed until 7 AM.',
+      fieldErrors: [],
+    })
+  })
+
+  it('keeps the questions the store refused the order for', () => {
+    const fieldErrors = [{ fieldName: 'pickup_date', message: 'Pickup date is required' }]
+    expect(placeOrderFailure(new AppApiError('refused', 'Pickup date is required', fieldErrors))).toMatchObject({ kind: 'refused', fieldErrors })
   })
 
   it('never claims failure when the order may exist: still placing, outage, lost answer, network', () => {

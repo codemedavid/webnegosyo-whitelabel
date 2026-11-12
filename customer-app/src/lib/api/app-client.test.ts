@@ -27,6 +27,13 @@ describe('createAppClient', () => {
     expect(error).toMatchObject({ code: 'not_found', message: 'No store' })
   })
 
+  it('keeps the questions a refusal names, and ignores a malformed list', async () => {
+    const fieldErrors = [{ fieldName: 'pickup_date', message: 'Pickup date is required' }]
+    const refusal = (errors: unknown) => jest.fn().mockResolvedValue(response(422, { success: false, data: null, error: { code: 'refused', message: 'No', fieldErrors: errors } }))
+    await expect(client(refusal(fieldErrors)).send('POST', '/x', schema)).rejects.toMatchObject({ code: 'refused', fieldErrors })
+    await expect(client(refusal([{ fieldName: 7 }])).send('POST', '/x', schema)).rejects.toMatchObject({ code: 'refused', fieldErrors: [] })
+  })
+
   it('refuses a payload that fails the contract instead of rendering it', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(response(200, { success: true, data: { hello: 42 }, error: null }))
     await expect(client(fetchImpl).get('/x', schema)).rejects.toMatchObject({ code: 'internal' })

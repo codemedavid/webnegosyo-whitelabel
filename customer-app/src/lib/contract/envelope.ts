@@ -19,9 +19,19 @@ export const APP_ERROR_CODES = [
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number]
 
+/** A refusal about one checkout question: `fieldName` is the question's `name` in the catalog. */
+export const appFieldErrorSchema = z.object({
+  fieldName: z.string().min(1),
+  message: z.string().min(1),
+})
+
+export type AppFieldError = z.infer<typeof appFieldErrorSchema>
+
 export const appErrorSchema = z.object({
   code: z.enum(APP_ERROR_CODES),
   message: z.string().min(1),
+  /** Present when the store refused an order for unanswered checkout questions. */
+  fieldErrors: z.array(appFieldErrorSchema).max(40).optional(),
 })
 
 export type AppError = z.infer<typeof appErrorSchema>

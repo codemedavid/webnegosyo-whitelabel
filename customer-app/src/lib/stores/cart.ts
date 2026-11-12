@@ -17,6 +17,8 @@ interface CartState {
   deliveryPlace: PickedPlace | null
   /** The Idempotency-Key of the current checkout attempt; kept across retries of the same bag. */
   checkoutAttempt: CheckoutAttempt | null
+  /** Answers to the store's own checkout questions, by question id (kept when the order type changes and back). */
+  answers: Record<string, string>
   add: (line: CartLine) => void
   setQuantity: (lineId: string, quantity: number) => void
   clear: () => void
@@ -25,6 +27,7 @@ interface CartState {
   setBagNotice: (notice: string | null) => void
   setDeliveryPlace: (place: PickedPlace | null) => void
   setCheckoutAttempt: (attempt: CheckoutAttempt | null) => void
+  setAnswer: (questionId: string, value: string) => void
 }
 
 export const useCart = create<CartState>((set) => ({
@@ -35,15 +38,17 @@ export const useCart = create<CartState>((set) => ({
   bagNotice: null,
   deliveryPlace: null,
   checkoutAttempt: null,
+  answers: {},
   add: (line) => set((state) => ({ lines: addLine(state.lines, line), lastAdded: line })),
   setQuantity: (lineId, quantity) => set((state) => ({ lines: updateQuantity(state.lines, lineId, quantity) })),
   // After an order (or a change of person): the next order is a new attempt to a place picked again.
-  clear: () => set({ lines: [], lastAdded: null, bagNotice: null, deliveryPlace: null, checkoutAttempt: null }),
+  clear: () => set({ lines: [], lastAdded: null, bagNotice: null, deliveryPlace: null, checkoutAttempt: null, answers: {} }),
   setMode: (mode) => set({ mode }),
   setOutlet: (outletId) => set({ outletId }),
   setBagNotice: (bagNotice) => set({ bagNotice }),
   setDeliveryPlace: (deliveryPlace) => set({ deliveryPlace }),
   setCheckoutAttempt: (checkoutAttempt) => set({ checkoutAttempt }),
+  setAnswer: (questionId, value) => set((state) => ({ answers: { ...state.answers, [questionId]: value } })),
 }))
 
 export const useCartSummary = (): CartSummary => cartSummary(useCart((state) => state.lines))

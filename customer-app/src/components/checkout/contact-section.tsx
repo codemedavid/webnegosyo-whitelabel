@@ -1,3 +1,4 @@
+import { router } from 'expo-router'
 import { UserRound } from 'lucide-react-native'
 import { View } from 'react-native'
 import { AppText } from '@/components/ui/app-text'
@@ -20,8 +21,10 @@ export function ContactSection() {
       </CheckoutSection>
     )
   const { profile } = session
+  // Stores call orders out by name (nearly every store makes it required), so a nameless member adds one here.
+  const hasName = Boolean(profile.name?.trim())
   return (
-    <CheckoutSection title="Your details">
+    <CheckoutSection title="Your details" actionLabel={hasName ? undefined : 'Add name'} onAction={hasName ? undefined : () => router.push('/edit-name')}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
         <View
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}
@@ -29,7 +32,9 @@ export function ContactSection() {
           <UserRound size={20} color={colors.onPrimarySoft} />
         </View>
         <View style={{ flex: 1 }}>
-          <AppText variant="bodyStrong">{profile.name ?? 'Member'}</AppText>
+          <AppText variant="bodyStrong" color={hasName ? 'text' : 'textMuted'}>
+            {hasName ? profile.name : 'Add your name so the store can call your order'}
+          </AppText>
           <AppText variant="callout" color="textMuted">
             {formatPhoneForDisplay(profile.phoneE164)}
           </AppText>

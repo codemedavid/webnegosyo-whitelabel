@@ -2,11 +2,14 @@ import type { AppOrderDelivery, AppOrderDraft, AppOrderKind, AppProfile } from '
 import type { CartLineOrderItem } from '@/lib/checkout/order-items-payload'
 import type { PaymentMethodWithLinks } from '@/lib/checkout/checkout-config'
 import type { PlaceOrderInput } from '@/lib/checkout/place-order/types'
+import { questionRole } from '@/lib/checkout/question-roles'
+import { ANSWER_KEYS_THE_SERVER_CANNOT_SEE } from '@/lib/checkout/required-answers'
 import { DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
 import { isOrderTypeOrderableOnWeb } from '@/lib/order-types/order-type-availability'
 import { isOrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import type { OrderType } from '@/types/database'
 import { decodeAppQuoteToken } from '../delivery/quote-token'
+import { projectQuestions, type CheckoutQuestionRow } from '../project-catalog'
 
 /**
  * An app draft → the engine's `PlaceOrderInput`, with the checks only the app
@@ -21,7 +24,12 @@ import { decodeAppQuoteToken } from '../delivery/quote-token'
  *     signature check and the receipt;
  *   - `notes` — the order-level note, shown as "Notes" in the order card's
  *     checkout answers and on the receipt (`customer-details.ts`). Stores name
- *     their own note question; `notes` is the plain spelling those use.
+ *     their own note question; `notes` is the plain spelling those use;
+ *   - the store's own checkout questions, under each question's own name:
+ *     answers the app sent for the questions the catalog asked
+ *     (`projectQuestions`), and name / phone / address questions spelled the
+ *     store's way ("Contact Number") answered from the session and the
+ *     picked place (`question-roles.ts`). They go FIRST, so the keys above win.
  * The app channel is `orders.source` (`channel: 'app'`), not a customerData key.
  */
 
@@ -46,6 +54,8 @@ export interface OrderRequestInput {
   idempotencyKey: string
   orderType: ChosenOrderType
   paymentMethods: readonly PaymentMethodWithLinks[]
+  /** The store's checkout questions (every order type); absent = none. */
+  questions?: readonly CheckoutQuestionRow[]
   profile: AppProfile
   isLalamoveStore: boolean
   lines: CartLineOrderItem[]
@@ -86,14 +96,50 @@ export function choosePaymentMethod(
   return offeredPaymentMethods(methods, orderTypeId).find((candidate) => candidate.id === paymentMethodId) ?? null
 }
 
+interface QuestionAnswers {
+  orderTypeId: string
+  questions: readonly CheckoutQuestionRow[]
+  answers: Readonly<Record<string, string>> | undefined
+}
+
+/**
+ * The store's questions for this order type, answered: what the app sent for
+ * the questions it was asked (anything else is dropped), and name / phone /
+ * address questions spelled the store's way filled from the session and place.
+ */
+export function questionAnswers(profile: AppProfile, delivery: AppOrderDelivery | null, input: QuestionAnswers): Record<string, string> {
+  const asked = new Set(projectQuestions(input.questions, new Set([input.orderTypeId])).map((question) => question.name))
+  const result: Record<string, string> = {}
+  for (const [name, value] of Object.entries(input.answers ?? {})) {
+    const answer = typeof value === 'string' ? value.trim() : ''
+    if (asked.has(name) && answer !== '') result[name] = answer
+  }
+  const known: Record<'name' | 'phone' | 'address', string | null> = {
+    name: profile.name?.trim() || null,
+    phone: profile.phoneE164,
+    address: delivery?.address ?? null,
+  }
+  for (const row of input.questions) {
+    const name = row.field_name ?? ''
+    if (row.order_type_id !== input.orderTypeId || name.trim() === '' || ANSWER_KEYS_THE_SERVER_CANNOT_SEE.has(name)) continue
+    const role = questionRole(name)
+    if (role !== 'name' && role !== 'phone' && role !== 'address') continue
+    const value = known[role]
+    if (value) result[name] = value
+  }
+  return result
+}
+
 /** The customer data the web writes for the same answers (see the header). */
 export function buildAppCustomerData(
   profile: AppProfile,
   delivery: AppOrderDelivery | null,
   notes: string,
+  questions?: QuestionAnswers,
 ): Record<string, string> {
   const trimmedNotes = notes.trim()
   return {
+    ...(questions ? questionAnswers(profile, delivery, questions) : {}),
     ...(profile.name ? { customer_name: profile.name } : {}),
     customer_phone: profile.phoneE164,
     ...(delivery
@@ -163,7 +209,11 @@ export function buildPlaceOrderInput(request: OrderRequestInput): OrderRequest {
       items: request.lines,
       customerInfo: { name: profile.name ?? undefined, contact: profile.phoneE164 },
       orderTypeId: orderType.id,
-      customerData: buildAppCustomerData(profile, delivery, draft.notes),
+      customerData: buildAppCustomerData(profile, delivery, draft.notes, {
+        orderTypeId: orderType.id,
+        questions: request.questions ?? [],
+        answers: draft.answers,
+      }),
       ...(lalamove ?? {}),
       ...payment.fields,
       ...(request.outletId ? { outletId: request.outletId } : {}),

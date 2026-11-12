@@ -6,7 +6,7 @@ import type { AppRouteContext } from '@/lib/app-api/app-route'
 import { gateAppCustomer, type CustomerBudgets } from '@/lib/app-api/delivery/customer-gate'
 import { readAppJson } from '@/lib/app-api/request-body'
 import { appFail, appOk } from '@/lib/app-api/respond'
-import { AppReadError } from '@/lib/app-api/store-reads'
+import { AppReadError, readCheckoutQuestionsFresh } from '@/lib/app-api/store-reads'
 import { readOrderTypes, readPaymentMethods } from '@/lib/checkout/load-checkout-config'
 import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
 import { placeOrder } from '@/lib/checkout/place-order'
@@ -63,7 +63,9 @@ const UNREADABLE_PREVIEW = "We couldn't check that code. Please update the app a
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
 function respondOutcome<T>(outcome: AppOutcome<T>): NextResponse {
-  return outcome.ok ? appOk(outcome.data, { status: outcome.status, headers: NO_STORE }) : appFail(outcome.code, outcome.message)
+  return outcome.ok
+    ? appOk(outcome.data, { status: outcome.status, headers: NO_STORE })
+    : appFail(outcome.code, outcome.message, outcome.fieldErrors ? { fieldErrors: outcome.fieldErrors } : {})
 }
 
 const log = createLogger('[Customer App Orders]', 'DEBUG_CUSTOMER_APP')
@@ -91,6 +93,7 @@ export function livePlaceDeps(): PlaceAppOrderDeps {
     ...storeReads,
     index: createOrderIndex(admin(), { log }),
     readPaymentMethods: (tenantId) => readPaymentMethods(createPublicClient(), tenantId).catch(rethrowAs('payment methods')),
+    readQuestions: readCheckoutQuestionsFresh,
     placeOrder,
     readLive,
     log,

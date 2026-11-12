@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import { APP_ERROR_CODES, type AppErrorCode } from '@/lib/contract'
+import { APP_ERROR_CODES, appErrorSchema, type AppErrorCode, type AppFieldError } from '@/lib/contract'
 
 /**
  * The app's only door to the platform: `/api/app/v1/*` with the build's native
@@ -15,6 +15,8 @@ export class AppApiError extends Error {
   constructor(
     readonly code: AppErrorCode,
     message: string,
+    /** The store's unanswered checkout questions, by question name (order refusals only). */
+    readonly fieldErrors: readonly AppFieldError[] = [],
   ) {
     super(message)
     this.name = 'AppApiError'
@@ -64,7 +66,7 @@ export interface AppClient {
 interface Envelope {
   success?: unknown
   data?: unknown
-  error?: { code?: unknown; message?: unknown } | null
+  error?: { code?: unknown; message?: unknown; fieldErrors?: unknown } | null
 }
 
 /** Headers only the client sets: a caller's copy is dropped, whatever its case. */
@@ -80,7 +82,8 @@ function errorFrom(body: unknown): AppApiError {
   const error = (body as Envelope | null)?.error
   const code = isErrorCode(error?.code) ? error.code : 'internal'
   const message = typeof error?.message === 'string' && error.message ? error.message : UNEXPECTED
-  return new AppApiError(code, message)
+  const fieldErrors = appErrorSchema.shape.fieldErrors.safeParse(error?.fieldErrors)
+  return new AppApiError(code, message, fieldErrors.success ? (fieldErrors.data ?? []) : [])
 }
 
 export function createAppClient({ baseUrl, applicationId, fetch: fetchImpl = fetch as unknown as FetchLike }: AppClientOptions): AppClient {

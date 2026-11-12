@@ -34,6 +34,13 @@ describe('buildOrderDraft', () => {
     expect(appOrderDraftSchema.safeParse(draft).success).toBe(true)
   })
 
+  it('sends the store’s question answers only when there are some', () => {
+    expect(buildOrderDraft({ ...input, answers: { pickup_date: '2026-11-13' } }).answers).toEqual({ pickup_date: '2026-11-13' })
+    expect(buildOrderDraft({ ...input, answers: {} })).not.toHaveProperty('answers')
+    expect(buildOrderDraft(input)).not.toHaveProperty('answers')
+    expect(appOrderDraftSchema.safeParse(buildOrderDraft({ ...input, answers: { gate: 'Back gate' } })).success).toBe(true)
+  })
+
   it('sends no payment method (null) for a store that offers none', () => {
     const draft = buildOrderDraft({ ...input, paymentMethodId: null })
     expect(draft.paymentMethodId).toBeNull()

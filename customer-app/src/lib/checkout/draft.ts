@@ -19,6 +19,8 @@ export interface DraftInput {
   rewardId: string | null
   delivery: AppOrderDelivery | null
   notes: string
+  /** Answers to the store's own questions, by question name; absent = none asked or none answered. */
+  answers?: Record<string, string>
 }
 
 const blankToNull = (value: string | null) => {
@@ -37,6 +39,7 @@ export function buildOrderDraft(input: DraftInput): AppOrderDraft {
     rewardId: input.rewardId,
     delivery: input.delivery,
     notes: input.notes.trim(),
+    ...(input.answers && Object.keys(input.answers).length > 0 ? { answers: input.answers } : {}),
   }
 }
 

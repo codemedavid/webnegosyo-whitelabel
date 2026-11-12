@@ -15,6 +15,7 @@ import { buildOrderDraft, draftFingerprint, stableStringify } from '@/lib/checko
 import { attemptAfterFailure, attemptFor, mintIdempotencyKey } from '@/lib/checkout/idempotency'
 import { availablePaymentMethods } from '@/lib/checkout/payments'
 import { placeOrderFailure, type PlaceOrderFailure } from '@/lib/checkout/place-order-outcome'
+import { answersToSend, questionsFor, unansweredQuestions } from '@/lib/checkout/questions'
 import { rewardEstimateCentavos } from '@/lib/checkout/reward'
 import { checkoutTotals, minimumOrderShortfall } from '@/lib/checkout/totals'
 import type { AppDeliveryQuote, AppOrderDelivery } from '@/lib/contract'
@@ -54,7 +55,8 @@ export function useCheckout() {
   const { data: catalog } = useCatalog()
   const { data: loyalty } = useLoyalty()
   const isMember = useSession((state) => state.status === 'member')
-  const { lines, mode, outletId, clear, deliveryPlace, setDeliveryPlace, setCheckoutAttempt } = useCart()
+  const hasName = useSession((state) => Boolean(state.profile?.name?.trim()))
+  const { lines, mode, outletId, clear, deliveryPlace, setDeliveryPlace, setCheckoutAttempt, answers, setAnswer } = useCart()
   const { itemCount, subtotalCentavos } = useCartSummary()
   const placeOrder = usePlaceOrder()
 
@@ -74,6 +76,7 @@ export function useCheckout() {
     () => (catalog && features ? availablePaymentMethods(catalog.paymentMethods, features.onlinePayments, orderType?.id) : []),
     [catalog, features, orderType?.id],
   )
+  const questions = useMemo(() => questionsFor(catalog?.questions, orderType?.id), [catalog?.questions, orderType?.id])
   const paymentMethod = paymentMethods.find((method) => method.id === pickedPaymentId) ?? paymentMethods[0]
   const needsPaymentReference = paymentMethod?.requiresProof ?? false
   const reward = isMember && isRewardAtCheckoutOffered ? loyalty?.rewards[0] : undefined
@@ -101,6 +104,7 @@ export function useCheckout() {
   const blockers = checkoutBlockers({
     itemCount,
     isMember,
+    hasName,
     mode,
     orderType,
     outlet,
@@ -114,10 +118,20 @@ export function useCheckout() {
     deliveryRefusal,
     voucher: voucher.status,
     shortfallCentavos,
+    unansweredQuestions: unansweredQuestions(questions, answers),
   })
 
   // What a refusal was about: once the customer changes any of it, the old message no longer applies.
-  const context = stableStringify({ lines, mode, outletId: outlet?.id ?? null, paymentId: paymentMethod?.id ?? null, deliveryPlace, paymentReference })
+  const sentAnswers = answersToSend(questions, answers)
+  const context = stableStringify({
+    lines,
+    mode,
+    outletId: outlet?.id ?? null,
+    paymentId: paymentMethod?.id ?? null,
+    deliveryPlace,
+    paymentReference,
+    answers: sentAnswers ?? null,
+  })
 
   const send = (delivery: AppOrderDelivery | null) => {
     // No method offered = the order goes without one (as on the web); a method offered but unpicked never sends.
@@ -132,6 +146,7 @@ export function useCheckout() {
       rewardId: rewardCentavos > 0 && reward ? reward.id : null,
       delivery,
       notes,
+      answers: sentAnswers,
     })
     // Same bag as the last unanswered try → same key, so the store returns that order instead of a second one.
     const attempt = attemptFor(useCart.getState().checkoutAttempt, draftFingerprint(draft), mintIdempotencyKey)
@@ -168,6 +183,10 @@ export function useCheckout() {
   // "Check your orders" stays up whatever changes; a refusal only while it is still about this checkout.
   const failure =
     shownFailure && (shownFailure.failure.kind === 'unconfirmed' || shownFailure.context === context) ? shownFailure.failure : null
+  // The store named the questions it refused the order for: show each under its question.
+  const questionErrors: Record<string, string> = Object.fromEntries(
+    failure?.kind === 'refused' ? failure.fieldErrors.map((error) => [error.fieldName, error.message]) : [],
+  )
 
   return {
     isReady: config !== undefined && catalog !== undefined,
@@ -189,6 +208,10 @@ export function useCheckout() {
       retry: () => void quote.refetch(),
     },
     shortfallCentavos,
+    questions,
+    answers,
+    setAnswer,
+    questionErrors,
     notes,
     setNotes,
     paymentMethods,

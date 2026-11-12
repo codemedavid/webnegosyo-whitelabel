@@ -1,3 +1,4 @@
+import type { CheckoutQuestionRow } from '@/lib/app-api/project-catalog'
 import { appCatalogSchema } from '@/lib/app-contract'
 import type { Category, OrderType, Outlet } from '@/types/database'
 import { createTestAddon, createTestMenuItem, createTestVariation, createTestVariationType } from '../../fixtures/menu-item.fixture'
@@ -193,6 +194,62 @@ describe('projectAppCatalog', () => {
     expect(catalog.paymentMethods.map((method) => method.id)).toEqual(['pm-1'])
     expect(errors).toHaveBeenCalledWith('[app-api:catalog] dropped rows that fail the app contract', expect.objectContaining({ kind: 'category', dropped: 1 }))
     errors.mockRestore()
+  })
+
+  describe('checkout questions', () => {
+    const row = (overrides: Partial<CheckoutQuestionRow> & { field_name: string | null }): CheckoutQuestionRow => ({
+      id: String(overrides.field_name),
+      order_type_id: 'ot-pickup',
+      field_label: null,
+      field_type: 'text',
+      is_required: false,
+      placeholder: null,
+      options: null,
+      order_index: 0,
+      ...overrides,
+    })
+
+    it('asks the store’s own questions in form order, typed for the app', async () => {
+      const { projectQuestions } = await import('@/lib/app-api/project-catalog')
+      const questions = projectQuestions(
+        [
+          row({ field_name: 'pickup_date', field_label: ' Pickup date ', field_type: 'date', is_required: true, order_index: 3 }),
+          row({ field_name: 'size_pref', field_type: 'select', options: ['Small', ' Small', 'Large', '', 7] as unknown, order_index: 1 }),
+          row({ field_name: 'empty_pick', field_type: 'choice', options: [], order_index: 2 }),
+          row({ field_name: 'agree', field_type: 'checkbox', order_index: 4 }),
+          row({ field_name: 'mystery', field_type: 'signature', placeholder: '  Sign here ', order_index: 5 }),
+          row({ field_name: 'Table Number', order_index: 6 }),
+        ],
+        new Set(['ot-pickup']),
+      )
+      expect(questions.map((q) => [q.name, q.label, q.type, q.isRequired, q.options, q.placeholder])).toEqual([
+        ['size_pref', 'size_pref', 'choice', false, ['Small', 'Large'], null],
+        ['empty_pick', 'empty_pick', 'text', false, [], null],
+        ['pickup_date', 'Pickup date', 'date', true, [], null],
+        ['agree', 'agree', 'checkbox', false, [], null],
+        ['mystery', 'mystery', 'text', false, [], 'Sign here'],
+        ['Table Number', 'Table Number', 'text', false, [], null],
+      ])
+    })
+
+    it('never asks contact questions in any spelling, server-owned keys, or another order type’s questions', async () => {
+      const { projectQuestions } = await import('@/lib/app-api/project-catalog')
+      const questions = projectQuestions(
+        [
+          row({ field_name: 'customer_name', is_required: true }),
+          row({ field_name: 'Contact Number ', is_required: true }),
+          row({ field_name: 'Complete Address' }),
+          row({ field_name: 'delivery_address' }),
+          row({ field_name: 'delivery_lat' }),
+          row({ field_name: 'discount' }),
+          row({ field_name: '   ' }),
+          row({ field_name: 'landmark', order_type_id: 'ot-delivery' }),
+          row({ field_name: 'orphan', order_type_id: null }),
+        ],
+        new Set(['ot-pickup']),
+      )
+      expect(questions).toEqual([])
+    })
   })
 
   it('versions the catalog by its content', async () => {

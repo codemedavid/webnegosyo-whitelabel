@@ -65,6 +65,7 @@ function deps(overrides: Partial<PlaceAppOrderDeps> = {}): TestDeps {
       { id: GCASH, name: 'GCash', is_active: true, require_payment_proof: true, payment_method_order_types: [{ order_type_id: PICKUP_TYPE }] },
     ]),
     readProfile: jest.fn().mockResolvedValue({ name: 'Ana', phoneE164: '+639171234567' }),
+    readQuestions: jest.fn().mockResolvedValue([]),
     placeOrder: jest.fn().mockResolvedValue(placedResult()),
     readLive: jest.fn().mockResolvedValue(null),
     log: silentLog,

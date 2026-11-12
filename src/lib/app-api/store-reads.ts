@@ -6,7 +6,7 @@ import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
 import { createCachedRead, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
 import { createAdminClient, ADMIN_QUERY_TIMEOUT_MS } from '@/lib/supabase/admin'
 import { createPublicClient } from '@/lib/supabase/public'
-import type { ComplementaryPairRow } from './project-catalog'
+import type { CheckoutQuestionRow, ComplementaryPairRow } from './project-catalog'
 
 /**
  * The few reads the customer-app routes need beyond the storefront's own
@@ -76,6 +76,21 @@ async function loadComplementaryPairs(tenantId: string): Promise<ComplementaryPa
   return (data ?? []) as ComplementaryPairRow[]
 }
 
+/** Far above any real form (the biggest store asks about a dozen per order type); a bound, not a rule. */
+export const CHECKOUT_QUESTIONS_READ_LIMIT = 500
+
+/** The store's checkout questions for every order type, in form order (`customer_form_fields_tenant_idx`). */
+async function loadCheckoutQuestions(tenantId: string): Promise<CheckoutQuestionRow[]> {
+  const { data, error } = await admin()
+    .from('customer_form_fields')
+    .select('id, order_type_id, field_name, field_label, field_type, is_required, placeholder, options, order_index')
+    .eq('tenant_id', tenantId)
+    .order('order_index', { ascending: true })
+    .limit(CHECKOUT_QUESTIONS_READ_LIMIT)
+  if (error) throw new AppReadError('checkout questions', error.message)
+  return (data ?? []) as CheckoutQuestionRow[]
+}
+
 async function loadActiveOutlets(tenantId: string): Promise<Outlet[]> {
   const { data, error } = await createPublicClient()
     .from('outlets')
@@ -91,6 +106,9 @@ export const readPublishedAppConfig = cachedPerStore('published-config', loadPub
 export const readLoyaltyFlags = cachedPerStore('loyalty-flags', loadLoyaltyFlags)
 export const readComplementaryPairs = cachedPerStore('pairs', loadComplementaryPairs)
 export const readActiveOutlets = cachedPerStore('outlets', loadActiveOutlets)
+export const readCheckoutQuestions = cachedPerStore('checkout-questions', loadCheckoutQuestions)
+/** Uncached, for placing an order (like the order path's other reads). */
+export const readCheckoutQuestionsFresh = loadCheckoutQuestions
 export const readAppOrderTypes = cachedPerStore('order-types', (tenantId) =>
   readOrderTypes(createPublicClient(), tenantId).catch(rethrowAs('order types')),
 )

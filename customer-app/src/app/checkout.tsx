@@ -8,6 +8,7 @@ import { FulfillmentSection } from '@/components/checkout/fulfillment-section'
 import { NotesSection } from '@/components/checkout/notes-section'
 import { PaymentSection } from '@/components/checkout/payment-section'
 import { PlaceOrderBar } from '@/components/checkout/place-order-bar'
+import { QuestionsSection } from '@/components/checkout/questions-section'
 import { SavingsSection } from '@/components/checkout/savings-section'
 import { useCheckout } from '@/components/checkout/use-checkout'
 import { TotalsRows } from '@/components/orders/totals-rows'
@@ -53,6 +54,7 @@ export default function CheckoutScreen() {
         <BagSection lines={model.lines} itemCount={model.itemCount} />
         <FulfillmentSection model={model} />
         <ContactSection />
+        <QuestionsSection questions={model.questions} answers={model.answers} onAnswer={model.setAnswer} errors={model.questionErrors} />
         <PaymentSection
           methods={model.paymentMethods}
           selected={model.paymentMethod}

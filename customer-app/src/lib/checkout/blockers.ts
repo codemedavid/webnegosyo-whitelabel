@@ -33,6 +33,8 @@ const VOUCHER_BLOCKERS: Partial<Record<VoucherStatus, string>> = {
 export interface CheckoutState {
   itemCount: number
   isMember: boolean
+  /** The member gave a name (stores call orders out by it); absent = yes. */
+  hasName?: boolean
   mode: OrderMode
   orderType: AppOrderType | undefined
   outlet: AppOutlet | undefined
@@ -51,6 +53,8 @@ export interface CheckoutState {
   deliveryRefusal: string | null
   voucher: VoucherStatus
   shortfallCentavos: number
+  /** The store's required questions still blank, already worded ("Answer “Pickup date”"); absent = none. */
+  unansweredQuestions?: readonly string[]
 }
 
 /**
@@ -62,6 +66,7 @@ export function checkoutBlockers(state: CheckoutState): string[] {
   const isDelivery = state.mode === 'delivery'
   const checks: [boolean, string][] = [
     [state.itemCount === 0, 'Your bag is empty'],
+    [state.hasName === false, 'Add your name'],
     [state.orderType === undefined, `This store is not taking ${MODE_WORDS[state.mode]} orders`],
     [state.needsOutlet && state.outlet === undefined, 'Choose a branch'],
     [
@@ -75,6 +80,7 @@ export function checkoutBlockers(state: CheckoutState): string[] {
       : []),
     [state.shortfallCentavos > 0, `Add ${formatPeso(state.shortfallCentavos)} more for ${MODE_WORDS[state.mode]}`],
     [state.paymentMethodId === null && state.hasPaymentMethods, 'Choose how to pay'],
+    ...(state.unansweredQuestions ?? []).map((message): [boolean, string] => [true, message]),
     [state.paymentMethodId !== null && state.needsPaymentReference && state.paymentReference.trim() === '', 'Add your payment reference number'],
     ...(VOUCHER_BLOCKERS[state.voucher] ? [[true, VOUCHER_BLOCKERS[state.voucher]] as [boolean, string]] : []),
   ]

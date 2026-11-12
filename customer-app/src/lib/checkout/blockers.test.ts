@@ -121,6 +121,14 @@ describe('checkoutBlockers', () => {
     for (const voucher of ['none', 'applied', 'notApplied', 'invalid'] as const) expect(checkoutBlockers({ ...ready, voucher })).toEqual([])
   })
 
+  it('asks a member without a name to add one (stores call orders out by name)', () => {
+    expect(checkoutBlockers({ ...ready, hasName: false })).toEqual(['Add your name'])
+  })
+
+  it('asks for the store’s required questions before the payment reference', () => {
+    expect(checkoutBlockers({ ...ready, unansweredQuestions: ['Answer “Pickup date”'] })).toEqual(['Answer “Pickup date”'])
+  })
+
   it('ignores the fee for pick up and dine in', () => {
     expect(checkoutBlockers({ ...ready, deliveryFee: 'failed' })).toEqual([])
   })

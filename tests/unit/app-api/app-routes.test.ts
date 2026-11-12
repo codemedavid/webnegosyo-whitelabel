@@ -30,6 +30,7 @@ jest.mock('@/lib/checkout/load-checkout-config', () => ({
 const readPublishedAppConfig = jest.fn()
 const readLoyaltyFlags = jest.fn()
 const readComplementaryPairs = jest.fn()
+const readCheckoutQuestions = jest.fn()
 jest.mock('@/lib/app-api/store-reads', () => {
   const actual = jest.requireActual('@/lib/app-api/store-reads')
   return {
@@ -37,6 +38,7 @@ jest.mock('@/lib/app-api/store-reads', () => {
     readPublishedAppConfig: (...a: unknown[]) => readPublishedAppConfig(...a),
     readLoyaltyFlags: (...a: unknown[]) => readLoyaltyFlags(...a),
     readComplementaryPairs: (...a: unknown[]) => readComplementaryPairs(...a),
+    readCheckoutQuestions: (...a: unknown[]) => readCheckoutQuestions(...a),
     readAppOrderTypes: (tenantId: string) => readOrderTypes({}, tenantId),
     readAppPaymentMethods: (tenantId: string) => readPaymentMethods({}, tenantId),
     readActiveOutlets: async () => [],
@@ -64,6 +66,7 @@ beforeEach(() => {
   readOrderTypes.mockResolvedValue([{ id: 'ot-1', type: 'pickup', name: 'Pick Up', is_enabled: true, available_on_web: true }])
   readPaymentMethods.mockResolvedValue([{ id: 'pm-1', name: 'Cash', skip_payment_details: true, payment_method_order_types: [] }])
   readComplementaryPairs.mockResolvedValue([])
+  readCheckoutQuestions.mockResolvedValue([])
   getStorefrontMenu.mockResolvedValue({
     status: 'ready',
     tenant: TENANT,
@@ -162,6 +165,17 @@ describe('customer app API', () => {
     expect(response.status).toBe(200)
     const parsed = appCatalogSchema.safeParse((await response.json()).data)
     expect(parsed.success ? null : parsed.error.issues).toBeNull()
+  })
+
+  it('carries the store’s own checkout questions for the order types on offer', async () => {
+    readCheckoutQuestions.mockResolvedValue([
+      { id: 'q-1', order_type_id: 'ot-1', field_name: 'pickup_date', field_label: 'Pickup date', field_type: 'date', is_required: true, placeholder: null, options: null, order_index: 3 },
+      { id: 'q-2', order_type_id: 'ot-1', field_name: 'Contact Number', field_label: 'Contact Number', field_type: 'text', is_required: true, placeholder: null, options: null, order_index: 1 },
+    ])
+    const { catalog } = await routes()
+    const body = appCatalogSchema.parse((await (await catalog(request('/api/app/v1/catalog'))).json()).data)
+    expect(body.questions.map((question) => [question.name, question.type, question.isRequired])).toEqual([['pickup_date', 'date', true]])
+    expect(readCheckoutQuestions).toHaveBeenCalledWith(TENANT_ID)
   })
 
   it('refuses a branch that is not one of the store’s', async () => {
