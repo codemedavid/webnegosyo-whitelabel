@@ -29,6 +29,11 @@ const CLOSED_TEXT: Record<string, string> = {
 }
 
 /** The only path from a proposal to a real change: the owner's own tap. */
+/** Only a hosted https image is drawn (the QR Owl uploaded when it proposed). */
+function isCdnImage(url: unknown): url is string {
+  return typeof url === 'string' && url.startsWith('https://') && url.length <= 600
+}
+
 export function ConfirmCardView({ card, tenantId, adminBasePath, onNavigate, onApplied }: ConfirmCardViewProps) {
   const settled = card.status && card.status !== 'pending' ? card.status : null
   const isExpired = Date.parse(card.expiresAt) <= Date.now()
@@ -63,6 +68,12 @@ export function ConfirmCardView({ card, tenantId, adminBasePath, onNavigate, onA
         <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Needs your OK</p>
         <h3 className="text-[14px] font-extrabold tracking-[-0.01em]">{card.title}</h3>
       </header>
+      {isCdnImage(card.imageUrl) ? (
+        <div className="px-4 pb-2">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a hosted QR at its own size */}
+          <img src={card.imageUrl} alt="QR code customers will scan" className="h-40 w-40 rounded-lg object-contain ring-1 ring-border" />
+        </div>
+      ) : null}
       <dl className="space-y-1 px-4 pb-3">
         {card.lines.map((line) => (
           <div key={line.label} className="flex gap-3 text-[13px]">

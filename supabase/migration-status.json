@@ -438,6 +438,7 @@
     "20261111212438_messenger_settings_messages.sql",
     "20261111223138_customer_app_loyalty.sql",
     "20261111224021_messenger_chat_log.sql",
+    "20261112022453_owl_assistant_access_and_kinds.sql",
     "20261112120000_tenants_payment_step_style.sql",
     "20261112150000_customer_app_push.sql"
   ]

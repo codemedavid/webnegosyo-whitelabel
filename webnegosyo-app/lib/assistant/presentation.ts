@@ -51,6 +51,14 @@ export const TOOL_LABELS: Readonly<Record<string, string>> = {
   propose_menu_item_change: "Preparing the dish update…",
   propose_menu_from_photo: "Reading your photo… this takes a moment",
   propose_menu_import_edit: "Updating the dish list…",
+  get_payment_methods: "Checking how customers pay…",
+  propose_payment_method: "Preparing the payment method…",
+  propose_payment_method_change: "Preparing the payment change…",
+  get_ingredient: "Checking that ingredient…",
+  get_dish_recipe: "Reading the recipe…",
+  propose_ingredient: "Preparing the new ingredient…",
+  get_delivery_setup: "Checking your Lalamove set-up…",
+  find_lessons: "Finding the right video…",
 };
 
 export const WORKING_LABEL = "Working on it…";
@@ -66,7 +74,9 @@ export const STARTERS: readonly StarterGroup[] = [
   { title: "Customers & team", prompts: ["Who are my best customers?", "How is my staff doing this week?"] },
   { title: "Promos", prompts: ["Suggest a promo for my quiet hours", "Can I afford 20% off my best seller?"] },
   { title: "Loyalty & offers", prompts: ["How is my loyalty program doing?", "Which offers are running?", "Which vouchers are being used?"] },
-  { title: "Inventory", prompts: ["What stock is running low?"] },
+  { title: "Inventory", prompts: ["What stock is running low?", "Which dishes use my rice?"] },
+  { title: "Set up", prompts: ["Add GCash as a payment method", "Is Lalamove ready for my store?"] },
+  { title: "Learn", prompts: ["How do I connect my printer?", "Show me how inventory works"] },
 ];
 
 /** A proposal's settled outcome, as the confirm card words it. */

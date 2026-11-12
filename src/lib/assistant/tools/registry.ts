@@ -23,6 +23,12 @@ export interface AssistantTenantFlags {
   inventoryEnabled: boolean
   customerHubOn: boolean
   menuEngineeringEnabled: boolean
+  /**
+   * `resolveOrderBackend(tenant) === 'platform'`: the store's orders live in the
+   * platform `orders` table. Absent/false = Convex or a per-store database,
+   * whose orders a platform read would wrongly count as none.
+   */
+  isPlatformOrders?: boolean
 }
 
 export interface AssistantToolContext {
@@ -54,7 +60,11 @@ export function createTurnMemo(): AssistantToolContext['memo'] {
   }
 }
 
-export type ToolAccess = { permission: StaffPermissionKey } | { ownerOnly: true }
+/**
+ * `public` = anyone who may open Owl (it reads no store data, e.g. how-to
+ * lessons); opening Owl itself already needs the `assistant` key.
+ */
+export type ToolAccess = { permission: StaffPermissionKey } | { ownerOnly: true } | { public: true }
 
 export interface AssistantToolDef<I = unknown> {
   name: string
@@ -70,7 +80,8 @@ export interface AssistantToolDef<I = unknown> {
 }
 
 export function canUseTool(def: AssistantToolDef, caller: PermissionHolder, flags: AssistantTenantFlags): boolean {
-  const permitted = 'ownerOnly' in def.access ? canManageStaff(caller) : hasPermission(caller, def.access.permission)
+  const { access } = def
+  const permitted = 'public' in access ? true : 'ownerOnly' in access ? canManageStaff(caller) : hasPermission(caller, access.permission)
   return permitted && (def.isAvailable?.(flags) ?? true)
 }
 

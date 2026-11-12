@@ -8,6 +8,8 @@ import { toast } from 'sonner'
 import type { AdminShellTenant } from '@/lib/admin-shell-tenant'
 import {
   filterSidebarEntriesByPermission,
+  canManageStaff,
+  hasPermission,
   type PermissionHolder,
 } from '@/lib/staff-permissions'
 import { canViewBranchDirectory, resolveBranchScope } from '@/lib/outlets/branch-scope'
@@ -102,9 +104,11 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
     isPlatformBackend: tenant.is_platform_backend,
   }
 
-  // The owl is for store-wide accounts on stores a superadmin switched it on for;
-  // the API enforces the same rules, this only avoids offering a refusal.
-  const showAssistant = tenant.assistant_enabled && (!caller || resolveBranchScope(caller).kind === 'all')
+  // The owl is for store-wide accounts the owner gave it to (`assistant`, opt-in)
+  // on stores a superadmin switched it on for; the API enforces the same
+  // rules, this only avoids offering a refusal.
+  const showAssistant =
+    tenant.assistant_enabled && (!caller || (resolveBranchScope(caller).kind === 'all' && hasPermission(caller, 'assistant')))
 
   if (isFullBleedRoute) {
     return <>{children}</>
@@ -123,7 +127,14 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
           <div className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-8 md:py-8">{children}</div>
         </main>
       </div>
-      {showAssistant ? <AssistantLauncher tenantId={tenant.id} adminBasePath={`${basePath}/admin`} /> : null}
+      {showAssistant ? (
+        <AssistantLauncher
+          tenantId={tenant.id}
+          tenantSlug={tenantSlug}
+          adminBasePath={`${basePath}/admin`}
+          canManageOwlAccess={caller ? canManageStaff(caller) : false}
+        />
+      ) : null}
     </div>
   )
 }

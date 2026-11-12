@@ -8,6 +8,7 @@ import type { AssistantChip, ToolResult } from '@/lib/assistant/types'
 import { AssistantCardView } from './assistant-cards'
 import { SafeTextView } from './safe-text-view'
 import { ConfirmCardView } from './confirm-card'
+import { LessonsCardView } from './lessons-card'
 
 /** What the owner sees while a tool runs. */
 const TOOL_LABELS: Record<string, string> = {
@@ -45,6 +46,14 @@ const TOOL_LABELS: Record<string, string> = {
   propose_menu_item_change: 'Preparing the dish update…',
   propose_menu_from_photo: 'Reading your photo… this takes a moment',
   propose_menu_import_edit: 'Updating the dish list…',
+  get_payment_methods: 'Checking how customers pay…',
+  propose_payment_method: 'Preparing the payment method…',
+  propose_payment_method_change: 'Preparing the payment change…',
+  get_ingredient: 'Checking that ingredient…',
+  get_dish_recipe: 'Reading the recipe…',
+  propose_ingredient: 'Preparing the new ingredient…',
+  get_delivery_setup: 'Checking your Lalamove set-up…',
+  find_lessons: 'Finding the right video…',
 }
 
 interface ToolPartLike {
@@ -144,6 +153,8 @@ export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate,
           <div key={index} className="space-y-1.5">
             {result.card?.type === 'confirm' ? (
               <ConfirmCardView card={result.card} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onNavigate} onApplied={onApplied} />
+            ) : result.card?.type === 'lessons' ? (
+              <LessonsCardView card={result.card} adminBasePath={adminBasePath} onNavigate={onNavigate} />
             ) : (
               <AssistantCardView card={result.card} />
             )}

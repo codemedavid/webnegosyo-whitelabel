@@ -7,7 +7,7 @@
  * the owner sees), `chips` (one-tap follow-ups).
  */
 
-export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard;
+export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard;
 
 export interface StatsCard {
   type: "stats";
@@ -39,9 +39,26 @@ export interface ConfirmCard {
   title: string;
   lines: Array<{ label: string; value: string }>;
   warning?: string;
+  /** A picture the change uses (a hosted payment QR), an https URL. */
+  imageUrl?: string;
   expiresAt: string;
   /** Filled in when a past conversation is reopened: the proposal's outcome so far. */
   status?: string;
+}
+
+/** SmartMenu University lessons (web: LessonsCard). The app opens them in the browser. */
+export interface LessonsCard {
+  type: "lessons";
+  title: string;
+  lessons: Array<{
+    title: string;
+    detail: string;
+    /** Relative to the web's /{tenant}/admin, e.g. /learn/getting-started/inventory-management. */
+    path: string;
+    embedUrl: string | null;
+    watchUrl: string | null;
+    thumbnailUrl: string | null;
+  }>;
 }
 
 /** A one-tap follow-up: tapping it sends `prompt` as the owner's next message. */

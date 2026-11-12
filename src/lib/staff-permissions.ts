@@ -73,6 +73,13 @@ export const STAFF_PERMISSION_KEYS = [
   // and the owner can separate the two afterwards. A cashier's OWN shift
   // (clock in, count, remit) needs only 'pos'.
   'cash_manage',
+  // The Owl assistant (the admin chat). OPT-IN (owner's call, 2026-11-12):
+  // the owner chooses by name who may talk to it, so a legacy full-access
+  // account (`permissions: null`) does not hold it. It opens the chat only:
+  // every Owl tool still needs its own key (sales need 'reports', stock needs
+  // 'inventory'…), and every change still waits for a Confirm tap that the
+  // writer re-checks.
+  'assistant',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -174,6 +181,10 @@ export const STAFF_PERMISSION_LABELS: Record<
     description:
       "Set up cash drawers, pick up cash, close others' shifts, receive remittances, close the business day and see that day's sales. Give it to supervisors you trust with cash.",
   },
+  assistant: {
+    label: 'Use the Owl assistant',
+    description: 'Chat with Owl. It only shows and suggests what their other permissions already allow.',
+  },
 }
 
 /**
@@ -214,7 +225,7 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
  * `public.app_user_has_permission` (and its `_of` twin) and in the three
  * other registry copies (staff-permissions-parity.test.ts pins all of them).
  */
-export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses', 'cash_manage'] as const satisfies readonly StaffPermissionKey[]
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests', 'expenses', 'cash_manage', 'assistant'] as const satisfies readonly StaffPermissionKey[]
 
 /** Whether full access (`permissions: null`) grants `key`. */
 export function isGrantedByFullAccess(key: string): boolean {
@@ -274,12 +285,15 @@ export function impliedPermissions(
 /**
  * The list a permission editor starts from. A legacy full-access account
  * (`null`) opens with everything it can do ticked: opening it with nothing
- * ticked made the first Save strip every grant at once. A stored list is
- * copied as-is, including keys this build does not know, so an editor never
- * drops what it cannot see.
+ * ticked made the first Save strip every grant at once. "Everything it can
+ * do" excludes the opt-in keys (2026-11-12, matching the app's
+ * `effectivePermissions`): ticking the whole registry turned any Save of a
+ * legacy account into a silent grant of Expenses, Cash, Store activity,
+ * Approvals and Owl. A stored list is copied as-is, including keys this
+ * build does not know, so an editor never drops what it cannot see.
  */
 export function editablePermissions(permissions: readonly string[] | null): string[] {
-  return permissions === null ? [...STAFF_PERMISSION_KEYS] : [...permissions]
+  return permissions === null ? STAFF_PERMISSION_KEYS.filter(isGrantedByFullAccess) : [...permissions]
 }
 
 /** Whether `user` holds at least one of `keys` (owners and full access hold all). */

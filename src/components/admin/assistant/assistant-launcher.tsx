@@ -12,11 +12,14 @@ const AssistantPanel = dynamic(() => import('./assistant-panel').then((module) =
 
 interface AssistantLauncherProps {
   tenantId: string
+  tenantSlug: string
   adminBasePath: string
+  /** The owner (or a superadmin): may choose which staff use Owl. */
+  canManageOwlAccess: boolean
 }
 
 /** The floating owl. Stays mounted after the first open so a closed chat keeps its thread. */
-export function AssistantLauncher({ tenantId, adminBasePath }: AssistantLauncherProps) {
+export function AssistantLauncher({ tenantId, tenantSlug, adminBasePath, canManageOwlAccess }: AssistantLauncherProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [hasOpened, setHasOpened] = useState(false)
 
@@ -28,7 +31,14 @@ export function AssistantLauncher({ tenantId, adminBasePath }: AssistantLauncher
   return (
     <>
       {hasOpened ? (
-        <AssistantPanel tenantId={tenantId} adminBasePath={adminBasePath} isOpen={isOpen} onClose={() => setIsOpen(false)} />
+        <AssistantPanel
+          tenantId={tenantId}
+          tenantSlug={tenantSlug}
+          adminBasePath={adminBasePath}
+          canManageOwlAccess={canManageOwlAccess}
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+        />
       ) : null}
       <button
         type="button"

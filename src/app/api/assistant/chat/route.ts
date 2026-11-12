@@ -20,6 +20,7 @@ import { checkMessagePhotos, photoMarkerPart } from '@/lib/assistant/photos'
 import { loadActionStatuses } from '@/lib/assistant/actions/store'
 import { withActionStatuses } from '@/lib/assistant/actions/status'
 import { SYSTEM_PROMPT, buildContextNote } from '@/lib/assistant/prompt'
+import { redactLalamoveKeys } from '@/lib/assistant/insights/delivery-setup'
 import { createRefBook } from '@/lib/assistant/refs'
 import { claimAssistantTurn, loadMessages, openConversation, recordAssistantUsage, saveMessage, saveRefMap } from '@/lib/assistant/store'
 import { ASSISTANT_TOOLS } from '@/lib/assistant/tools'
@@ -68,7 +69,11 @@ export function POST(request: NextRequest): Promise<Response> {
 async function handleChat(request: NextRequest): Promise<Response> {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return fail(400, 'That message could not be sent.')
-  const { tenantId, conversationId, message } = parsed.data
+  const { tenantId, conversationId } = parsed.data
+  // A pasted Lalamove key is cut before anything is stored or sent to the
+  // model (conversations are kept and leave for the model provider). Owl
+  // tells the person where keys really go.
+  const message = { ...parsed.data.message, text: redactLalamoveKeys(parsed.data.message.text).text }
   const photoCheck = checkMessagePhotos(message.images)
   if (!photoCheck.ok) return fail(400, photoCheck.error)
   const { photos } = photoCheck
