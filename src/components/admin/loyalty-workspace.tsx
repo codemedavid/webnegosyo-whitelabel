@@ -79,7 +79,7 @@ export function LoyaltyWorkspace({
           <LoyaltyProgramsManagement tenantId={tenantId} tenantSlug={tenantSlug} />
         </div>
       ) : null}
-      {section === 'settings' ? <LoyaltyWalletVerificationSetting key={tenantId} tenantId={tenantId} /> : null}
+      {section === 'settings' ? <LoyaltyWalletVerificationSetting key={tenantId} tenantId={tenantId} tenantSlug={tenantSlug} /> : null}
     </div>
   )
 }

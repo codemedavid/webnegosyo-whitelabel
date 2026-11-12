@@ -5,6 +5,7 @@ import {
   LayoutTemplate,
   MapPin,
   MessageCircle,
+  MessageSquareText,
   PanelBottom,
   Percent,
   Paintbrush,
@@ -40,6 +41,7 @@ const ICONS: Record<SettingsIconKey, LucideIcon> = {
   user: UserRound,
   trash: Trash2,
   percent: Percent,
+  sms: MessageSquareText,
 }
 
 interface SettingsIconProps {

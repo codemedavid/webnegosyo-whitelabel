@@ -10,6 +10,7 @@
  * Semaphore backup — so the card warns when neither can send right now.
  */
 
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/switch'
 import { createClient } from '@/lib/supabase/client'
@@ -43,7 +44,7 @@ function parseSettings(result: Record<string, unknown>): SmsSettings {
   }
 }
 
-export function LoyaltyWalletVerificationSetting({ tenantId }: { tenantId: string }) {
+export function LoyaltyWalletVerificationSetting({ tenantId, tenantSlug }: { tenantId: string; tenantSlug?: string }) {
   const [settings, setSettings] = useState<SmsSettings | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +99,17 @@ export function LoyaltyWalletVerificationSetting({ tenantId }: { tenantId: strin
       {settings?.walletVerification && cannotSend ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
           No gateway phone is online and there is no Semaphore backup, so customers can&apos;t get a code right now and
-          won&apos;t see their rewards. Turn on a gateway phone in the merchant app or add a Semaphore backup.
+          won&apos;t see their rewards. Turn on a gateway phone in the merchant app or add a Semaphore backup
+          {tenantSlug ? (
+            <>
+              {' '}
+              in{' '}
+              <Link href={`/${tenantSlug}/admin/settings/sms`} className="font-medium underline">
+                Settings → Text messages
+              </Link>
+            </>
+          ) : null}
+          .
         </p>
       ) : null}
       {error ? (

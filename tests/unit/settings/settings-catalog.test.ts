@@ -62,6 +62,7 @@ describe('buildSettingsCatalog — what each viewer is offered', () => {
       'receipts',
       'qr-codes',
       'messenger',
+      'sms',
       'connect-ai',
       'branding',
       'hero',
@@ -159,6 +160,13 @@ describe('canOpenSettingsSection — the page gate agrees with the catalog', () 
     expect(canOpenTax(staff(['settings']))).toBe(true)
     expect(canOpenTax(staff(['discount_review']))).toBe(true)
     expect(canOpenTax(staff(['orders', 'menu']))).toBe(false)
+  })
+
+  it('opens Text messages to the owner and to store-wide loyalty managers only', () => {
+    expect(canOpenSettingsSection('sms', { viewer: owner(), tenant: store() })).toBe(true)
+    expect(canOpenSettingsSection('sms', { viewer: staff(['loyalty_manage']), tenant: store() })).toBe(true)
+    expect(canOpenSettingsSection('sms', { viewer: staff(['loyalty_manage'], { isBranchScopedAccount: true }), tenant: store() })).toBe(false)
+    expect(canOpenSettingsSection('sms', { viewer: staff(['settings']), tenant: store() })).toBe(false)
   })
 
   it('lets a branch admin who manages staff open the team section', () => {
