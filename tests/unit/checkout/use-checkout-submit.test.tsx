@@ -90,7 +90,8 @@ const orderType = (id: string, extra: Partial<OrderType> = {}): OrderType =>
 const field = (orderTypeId: string, fieldName: string, fieldType = 'text'): CustomerFormField =>
   ({ id: `${orderTypeId}-${fieldName}`, order_type_id: orderTypeId, field_name: fieldName, field_label: `${fieldName} label`, field_type: fieldType }) as unknown as CustomerFormField
 
-const GCASH = { id: 'gcash', name: 'GCash', details: '0917 000 0000', qr_code_url: 'https://qr.example/g.png' } as unknown as PaymentMethod
+// Asks for proof, so the typed reference rides along (a method that never asks drops it: proofForMethod).
+const GCASH = { id: 'gcash', name: 'GCash', details: '0917 000 0000', qr_code_url: 'https://qr.example/g.png', require_payment_proof: true } as unknown as PaymentMethod
 
 function configWith(pickup: Partial<OrderType>): CheckoutConfig {
   return {
@@ -315,6 +316,8 @@ describe('useCheckout submit — QR hand-off', () => {
     const { result } = renderHook(() => useCheckout({ tenantSlug: 'acme', initialTenant: tenant, config }))
     await act(async () => {
       result.current.setCustomerData({ customer_name: 'Juan', customer_email: 'juan@example.com' })
+      // GCash asks for proof; the QR hand-off waits for it like any submit.
+      result.current.setPaymentProofReference('REF-1')
     })
 
     await act(async () => {

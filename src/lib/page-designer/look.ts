@@ -71,8 +71,10 @@ function storeSection(): BrandingSection {
 export const PAGE_LOOK_SECTIONS: Readonly<Record<PageId, readonly BrandingSection[]>> = {
   checkout: [
     ...styleSections('checkout', ['Template']),
+    // The step after "Proceed to Payment" (a designed checkout uses it too).
+    ...prefixed('Payment step', styleSections('payment')),
     ...prefixed('Loyalty card', styleSections('loyalty')),
-    labelSection(['checkout', 'loyalty']),
+    labelSection(['checkout', 'payment', 'loyalty']),
     storeSection(),
   ],
   confirmation: [...styleSections('checkout', ['Template']), labelSection(['confirmation']), storeSection()],

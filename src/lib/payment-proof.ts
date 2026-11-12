@@ -61,3 +61,17 @@ export function getPaymentProofError(
   if (isPaymentProofSatisfied(method, input)) return null
   return 'Please upload a payment screenshot or enter your reference number to continue.'
 }
+
+/**
+ * The proof an order carries: what the customer attached, but only when the
+ * chosen method asks for proof. The payment step shows the upload only for
+ * such methods (2026-11-12), so a screenshot attached while a proof method was
+ * selected must not ride along after the customer switched to one that never
+ * asked for it — they can no longer see or remove it there.
+ */
+export function proofForMethod<T extends { url: string; reference: string }>(
+  method: ProofRuleMethod | null | undefined,
+  proof: T,
+): T {
+  return isPaymentProofRequired(method) ? proof : { ...proof, url: '', publicId: '', reference: '' }
+}

@@ -14,12 +14,17 @@ import { useMemo, useState } from 'react'
 import { getInheritSourceLabel, isFieldSet, isFieldVisible, resolveFieldValue, type BrandingField } from '@/lib/branding-registry'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { listTenantContrastIssues } from '@/lib/branding-studio/tenant-contrast'
-import { lookValues, MOBILE_PREFIX, PAGE_LOOK_SECTIONS, type LookChanges } from '@/lib/page-designer/look'
+import { lookValues, MOBILE_PREFIX, PAGE_LOOK_SECTIONS, previewLookRow, type LookChanges } from '@/lib/page-designer/look'
 import type { PageId } from '@/lib/page-designer/types'
 import { toTrackingHex } from '@/lib/tracking-style/keys'
+import { isHexOnlyField } from '@/lib/branding-studio/studio-columns'
 import { cn } from '@/lib/utils'
 import { FieldRow } from '@/components/admin/branding-studio/field-row'
 import type { StoreColor } from '@/components/admin/branding-studio/color-picker'
+import { PaymentStepPreviewButton } from './payment-step-preview'
+
+/** The Look section that carries the "Preview the payment step" button. */
+const FIRST_PAYMENT_SECTION = 'Payment step · How it opens'
 
 interface LookPanelProps {
   page: PageId
@@ -86,6 +91,8 @@ export function LookPanel({ page, saved, changes, onChange, onClear, onDiscard, 
   const storeColors = useStoreColors(saved)
   const contrastIssues = useMemo(() => listTenantContrastIssues(draft, savedValues), [draft, savedValues])
   const changedCount = Object.keys(changes).length
+  // The store row with these edits, for the payment step preview.
+  const previewRow = useMemo(() => previewLookRow(saved, changes), [saved, changes])
   const valueOf = (fieldId: string) => resolveFieldValue(fieldId, draft, savedValues)
 
   const toggle = (title: string) =>
@@ -114,7 +121,7 @@ export function LookPanel({ page, saved, changes, onChange, onClear, onDiscard, 
         onChange={(value) => onChange(field.id, value as string | boolean)}
         onClear={() => onClear(field.id)}
         contrastIssue={contrastIssues.find((issue) => issue.fieldId === field.id) ?? null}
-        storeColors={field.id.startsWith('tracking_style.') ? storeColors.hex : storeColors.colors}
+        storeColors={isHexOnlyField(field.id) ? storeColors.hex : storeColors.colors}
       />
       {phoneOverride(field) && (
         <p className="mt-1 flex flex-wrap items-center gap-1.5 rounded-md bg-violet-50 px-2 py-1.5 text-[11px] leading-snug text-violet-900">
@@ -154,6 +161,7 @@ export function LookPanel({ page, saved, changes, onChange, onClear, onDiscard, 
       )}
       {sections.map((section) => (
         <Section key={section.title} title={section.title} isOpen={open.has(section.title)} onToggle={() => toggle(section.title)}>
+          {section.title === FIRST_PAYMENT_SECTION && <PaymentStepPreviewButton row={previewRow} />}
           {section.fields.map(row)}
         </Section>
       ))}

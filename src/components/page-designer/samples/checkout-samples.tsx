@@ -47,7 +47,7 @@ function readCanvasPalette(element: HTMLElement): SamplePalette | null {
 }
 
 /** The store's checkout palette from its row (with the Look tab's edits), as sample data. */
-function storePalette(store: Readonly<Record<string, unknown>>): SamplePalette {
+export function storePalette(store: Readonly<Record<string, unknown>>): SamplePalette {
   const row = store as Record<string, unknown>
   const theme = resolveCheckoutTheme(row, getTenantBranding(row))
   return {

@@ -10068,6 +10068,7 @@ export type Database = {
           outlet_selection_timing: string
           page_layout: string | null
           pairing_rules_enabled: boolean | null
+          payment_step_style: Json
           pending_domain: string | null
           pending_domain_claimed_at: string | null
           pending_domain_token: string | null
@@ -10369,6 +10370,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          payment_step_style?: Json
           pending_domain?: string | null
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null
@@ -10670,6 +10672,7 @@ export type Database = {
           outlet_selection_timing?: string
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
+          payment_step_style?: Json
           pending_domain?: string | null
           pending_domain_claimed_at?: string | null
           pending_domain_token?: string | null

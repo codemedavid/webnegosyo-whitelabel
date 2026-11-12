@@ -56,7 +56,7 @@ import { createOrderAction } from '@/app/actions/orders'
 import { storeAddressToken } from '@/lib/page-designer/store-address'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
-import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
+import { getPaymentProofError, isPaymentProofRequired, proofForMethod } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
 import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { resolveActiveOrderType } from '@/lib/checkout-order-type'
@@ -628,7 +628,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         paymentMethod: selectedPaymentMethodData,
         scheduledForISO,
         scheduledForLabel,
-        paymentProof,
+        paymentProof: proofForMethod(selectedPaymentMethodData, paymentProof),
       })
 
       const preparedQr = prepareOrderQr(payload)
@@ -937,7 +937,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
           selectedPaymentMethodData?.qr_code_url || undefined,
           serviceChargeAmount || undefined,
           scheduledForISO || undefined,
-          buildPaymentProofPayload(paymentProof),
+          buildPaymentProofPayload(proofForMethod(selectedPaymentMethodData, paymentProof)),
           selectedOutletId,
           // Codes, not amounts. The server recomputes the discount from these.
           [...voucherCodes],
