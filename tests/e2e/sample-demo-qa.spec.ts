@@ -209,7 +209,9 @@ test.describe('customer', () => {
         // Sample Demo's NUMBER "Date & Time" question belongs to Delivery; Dine In has none.
         const dateNumber = page.locator('input[type=number]').first()
         if (await dateNumber.isVisible().catch(() => false)) await dateNumber.fill('1')
-        await page.getByText('No, thanks').click()
+        // "Need cutlery? (QA)" is a Delivery question too.
+        const noCutlery = page.getByText('No, thanks')
+        if (await noCutlery.isVisible().catch(() => false)) await noCutlery.click()
       })
       await applyVoucher(page, info, 'QA50FRIES')
       await expect(page.getByText(/QA50FRIES|50%/).first()).toBeVisible()
