@@ -80,6 +80,33 @@ async function checkOrderUpdatesSetting(db) {
   await refused(db.query('select order_updates from messenger_settings'), '42501', 'anon cannot read them')
 }
 
+// 20261111212438: the Studio's wording column rides the same grants and policies.
+async function checkMessagesSetting(db) {
+  const words = { lang: 'tl', 'cart.added': 'Nadagdag {item}!', 'cart.show_empty_cart': false }
+  for (const [uid, label] of [[U.owner, 'owner'], [U.settings, 'settings staff']]) {
+    await as(db, 'authenticated', uid)
+    eq((await rows(db, 'update messenger_settings set messages = $1 where tenant_id = $2 returning tenant_id', [words, T_A])).length, 1,
+      `${label} saves the bot's wording`)
+    eq((await rows(db, 'select messages from messenger_settings where tenant_id = $1', [T_A]))[0].messages, words, `${label} reads it back`)
+  }
+  for (const [uid, label] of [[U.ordersOnly, 'orders-only staff'], [U.branchSettings, 'branch-locked staff'], [U.ownerB, "another store's owner"]]) {
+    await as(db, 'authenticated', uid)
+    eq((await rows(db, "update messenger_settings set messages = '{}'::jsonb where tenant_id = $1 returning tenant_id", [T_A])).length, 0,
+      `${label} changes no wording`)
+    eq(await rows(db, 'select messages from messenger_settings where tenant_id = $1', [T_A]), [], `${label} reads no wording`)
+  }
+  await as(db, 'authenticated', U.ownerB)
+  await refused(db.query('insert into messenger_settings (tenant_id, messages) values ($1, $2)', [T_A, words]), '42501',
+    "an owner never writes another store's wording")
+  await as(db, 'authenticated', U.owner)
+  await refused(db.query("update messenger_settings set messages = '[1]'::jsonb where tenant_id = $1", [T_A]), '23514', 'wording must be an object')
+  await refused(db.query("update messenger_settings set messages = jsonb_build_object('x', repeat('y', 40000)) where tenant_id = $1", [T_A]), '23514',
+    'oversized wording fails the check')
+  await refused(db.query("update messenger_settings set tester_psid = 'x' where tenant_id = $1", [T_A]), '42501', 'the tester PSID stays service-role only')
+  await asAnon(db)
+  await refused(db.query('select messages from messenger_settings'), '42501', 'anon cannot read the wording')
+}
+
 async function checkClaims(db) {
   await db.query(`insert into orders (id, tenant_id, customer_data) values ($1, $2, '{"messenger_psid":"24000000000000001"}'), ($3, $2, '{"name":"Ana"}')`,
     [ORDER_CHAT, T_A, ORDER_WEB])
@@ -155,14 +182,16 @@ async function main() {
     for (let pass = 0; pass < 2; pass += 1) {
       await db.exec(readMigration('20261110080757_messenger_chat_cart_order_updates.sql'))
       await db.exec(readMigration('20261111090100_orders_messenger_psid_idx.sql'))
+      await db.exec(readMigration('20261111212438_messenger_settings_messages.sql'))
     }
     await reset(db)
     await checkCartAction(db)
     await checkOrderUpdatesSetting(db)
+    await checkMessagesSetting(db)
     await checkClaims(db)
     await checkTrigger(db)
     await checkSessions(db)
-    console.log(`Messenger chat cart + order updates SQL: ${checks} checks passed (migrations applied twice: idempotent)`)
+    console.log(`Messenger chat cart + order updates + wording SQL: ${checks} checks passed (migrations applied twice: idempotent)`)
   } finally {
     await db.close()
   }

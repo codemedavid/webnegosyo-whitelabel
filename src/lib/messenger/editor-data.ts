@@ -1,5 +1,5 @@
 /**
- * What the automations editor opens with. Rules and settings are read through
+ * What the Messenger Studio opens with. Rules and settings are read through
  * the caller's session client (RLS decides); only "is a test chat linked" is
  * read with the service role, as a yes/no — never the PSID.
  */
@@ -9,14 +9,15 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
 import type { Tenant } from '@/types/database'
-import type { AutomationsEditorProps } from '@/components/admin/messenger-automations/automations-editor'
+import type { MessengerStudioProps } from '@/components/admin/messenger-studio/messenger-studio'
 import { DEFAULT_RULES } from './rules'
 import { rowsToRules, type RuleRow } from './settings'
 import { buildReplyStore } from './store-view'
 import { readOrderUpdates } from './order-view'
+import { readMessages } from './messages/stored'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 
-type EditorData = { ok: true; props: Omit<AutomationsEditorProps, 'tenantId'> } | { ok: false; error: string }
+type EditorData = { ok: true; props: Omit<MessengerStudioProps, 'tenantId' | 'tenantSlug'> } | { ok: false; error: string }
 
 const UNAVAILABLE = 'Messenger automations aren’t available for this store yet. Please try again later.'
 
@@ -24,7 +25,7 @@ export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorDat
   const supabase = await createClient()
   const [settingsRead, rulesRead, menu, tester] = await Promise.all([
     supabase.from('messenger_settings')
-      .select('bot_enabled, takeover_minutes, rules_customized_at, rules_version, profile_error, order_updates')
+      .select('bot_enabled, takeover_minutes, rules_customized_at, rules_version, profile_error, order_updates, messages')
       .eq('tenant_id', tenant.id)
       .maybeSingle(),
     supabase.from('messenger_rules')
@@ -43,8 +44,9 @@ export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorDat
 
   const settings = settingsRead.data as {
     bot_enabled: boolean; takeover_minutes: number; rules_customized_at: string | null; rules_version: number; profile_error: string | null
-    order_updates: unknown
+    order_updates: unknown; messages: unknown
   } | null
+  const orderUpdates = readOrderUpdates(settings?.order_updates ?? null)
   const isCustomized = Boolean(settings?.rules_customized_at)
   const store = buildReplyStore({
     tenant,
@@ -68,7 +70,8 @@ export async function loadAutomationsPageData(tenant: Tenant): Promise<EditorDat
       isPageConnected: Boolean(tenant.facebook_page_id),
       isTesterLinked: Boolean((tester.data as { tester_psid: string | null } | null)?.tester_psid),
       profileError: settings?.profile_error ?? null,
-      orderUpdates: readOrderUpdates(settings?.order_updates ?? null),
+      orderUpdates,
+      messages: readMessages(settings?.messages ?? null, orderUpdates.texts),
       isPlatformOrders: resolveOrderBackend(tenant as OrderBackendTenantFields) === 'platform',
     },
   }

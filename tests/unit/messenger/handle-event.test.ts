@@ -7,6 +7,7 @@ import { hashTesterCode } from '@/lib/messenger/tester'
 import type { OutgoingMessage } from '@/lib/messenger/graph-message'
 import { applyCartOp, priceChatCart, type CartOp, type ChatCartLine } from '@/lib/messenger/chat-cart'
 import type { ReplyOrder } from '@/lib/messenger/order-view'
+import type { ChatLogLine } from '@/lib/messenger/chat-log'
 import { NOW, sampleStore } from './sample-store'
 
 const PAGE = 'page-1'
@@ -21,7 +22,10 @@ function bundle(overrides: Partial<StoreBundle> = {}): StoreBundle {
 function harness(options: {
   bundle?: StoreBundle | null; pausedUntil?: Date | null; seen?: boolean; page?: boolean; testerAllowed?: boolean
   cart?: ChatCartLine[]; cartUnreadable?: boolean; orders?: ReplyOrder[]
+  firstName?: string | null; profileFetchedAt?: Date | null; fetchedName?: string | null; profileThrows?: boolean
 } = {}) {
+  const logs: Array<{ sessionId: string; lines: readonly ChatLogLine[] }> = []
+  const profileFetches: string[] = []
   let cart: ChatCartLine[] = options.cart ?? []
   const cartOps: Array<CartOp | null> = []
   const orderReads: string[] = []
@@ -41,7 +45,10 @@ function harness(options: {
     allowTesterAttempt: async () => options.testerAllowed ?? true,
     touchSession: async (input) => {
       touches.push({ isInbound: input.isInbound })
-      return { id: '0b0c9d3c-1111-4000-8000-000000000001', botPausedUntil: options.pausedUntil ?? null }
+      return {
+        id: '0b0c9d3c-1111-4000-8000-000000000001', botPausedUntil: options.pausedUntil ?? null,
+        firstName: options.firstName ?? null, profileFetchedAt: options.profileFetchedAt === undefined ? NOW : options.profileFetchedAt,
+      }
     },
     setBotPause: async (_id, until) => { pauses.push(until); return true },
     send: async (_token, psid, messages) => { sent.push({ psid, messages }); return { ok: true, sent: messages.length } },
@@ -57,8 +64,14 @@ function harness(options: {
       return { priced, outcome: applied.outcome }
     },
     loadRecentOrders: async ({ psid }) => { orderReads.push(psid); return options.orders ?? [] },
+    logChat: async ({ sessionId, lines }) => { logs.push({ sessionId, lines }) },
+    refreshProfile: async ({ psid }) => {
+      profileFetches.push(psid)
+      if (options.profileThrows) throw new Error('graph down')
+      return options.fetchedName ?? null
+    },
   }
-  return { deps, sent, pauses, touches, referrals, linked, cartOps, orderReads, cart: () => cart }
+  return { deps, sent, pauses, touches, referrals, linked, cartOps, orderReads, logs, profileFetches, cart: () => cart }
 }
 
 const base = { pageId: PAGE, psid: PSID, timestamp: 1, dedupeKey: 'mid:1' }
@@ -271,6 +284,110 @@ describe('handleEvent', () => {
       expect(await handleEvent(text('TEST 482193'), expired.deps)).toBe('bot_off')
       expect([...wrong.linked, ...expired.linked]).toEqual([])
     })
+  })
+})
+
+describe('chat log + customer name', () => {
+  const greetRule: MessengerRule = {
+    id: '0b0c9d3c-2222-4000-8000-000000000001', name: 'Hello', isEnabled: true,
+    trigger: { kind: 'keyword', keywords: ['hello'], match: 'contains' },
+    action: { kind: 'text', text: 'Hi {name}! Welcome.', buttons: [] },
+  }
+  const withGreet = () => bundle({ rules: [greetRule, ...DEFAULT_RULES] })
+  const bodies = (h: ReturnType<typeof harness>) => h.logs.flatMap((entry) => entry.lines.map((line) => `${line.direction}:${line.kind}:${line.body}`))
+
+  it('logs what the customer typed and a summary of the reply, once, in order', async () => {
+    const h = harness()
+    expect(await handleEvent(text('menu po'), h.deps)).toBe('replied')
+    expect(h.logs).toHaveLength(1)
+    expect(h.logs[0].sessionId).toBe('0b0c9d3c-1111-4000-8000-000000000001')
+    const [customer, bot] = h.logs[0].lines
+    expect(customer).toMatchObject({ direction: 'in', kind: 'text', body: 'menu po', mid: '1' })
+    expect(bot).toMatchObject({ direction: 'bot', kind: 'card', mid: null })
+    expect(bot.body).toMatch(/^🗂 Sent: /)
+    expect(bot.body).not.toContain('mt1.TOKEN')
+    expect(bot.sentAt.getTime()).toBeGreaterThan(customer.sentAt.getTime())
+  })
+
+  it('a message the bot does not answer is still logged (staff see what was asked)', async () => {
+    for (const [h, outcome] of [[harness(), 'no_match'], [harness({ bundle: bundle({ settings: { ...DEFAULT_SETTINGS, botEnabled: false } }) }), 'bot_off'], [harness({ pausedUntil: new Date(NOW.getTime() + 60_000) }), 'paused']] as const) {
+      expect(await handleEvent(text(outcome === 'paused' ? 'menu' : 'salamat po'), h.deps)).toBe(outcome)
+      expect(bodies(h)).toEqual([`in:text:${outcome === 'paused' ? 'menu' : 'salamat po'}`])
+    }
+  })
+
+  it('a photo is logged as "📷 Photo" (no media), a tap as its button title', async () => {
+    const h = harness()
+    expect(await handleEvent({ ...base, kind: 'other', attachment: 'photo' }, h.deps)).toBe('nothing_to_answer')
+    expect(bodies(h)).toEqual(['in:photo:📷 Photo'])
+    const tap = harness()
+    await handleEvent({ ...base, kind: 'quick_reply', text: '🛒 View cart', payload: encodePayload({ verb: 'cart' }) }, tap.deps)
+    expect(bodies(tap)[0]).toBe('in:tap:🛒 View cart')
+  })
+
+  it('a failed send logs only the customer line', async () => {
+    const h = harness()
+    h.deps.send = async () => ({ ok: false, sent: 0, error: { code: 10 } })
+    expect(await handleEvent(text('menu'), h.deps)).toBe('send_failed')
+    expect(bodies(h)).toEqual(['in:text:menu'])
+  })
+
+  it('staff typing in Page Inbox is logged (also with takeover off); our own echoes never are', async () => {
+    const staff = harness()
+    expect(await handleEvent(echo('Ready na po in 10 mins', null), staff.deps)).toBe('staff_paused')
+    expect(bodies(staff)).toEqual(['staff:text:Ready na po in 10 mins'])
+    const noTakeover = harness({ bundle: bundle({ settings: { ...DEFAULT_SETTINGS, takeoverMinutes: 0 } }) })
+    expect(await handleEvent(echo('ok po', null), noTakeover.deps)).toBe('staff_ignored')
+    expect(bodies(noTakeover)).toEqual(['staff:text:ok po'])
+    const ours = harness()
+    expect(await handleEvent(echo('🍽️ Our menu', OUR_APP, 'wn'), ours.deps)).toBe('own_echo')
+    expect(ours.logs).toEqual([])
+  })
+
+  it('a staff /menu is logged with the card it sent', async () => {
+    const h = harness()
+    expect(await handleEvent(echo('/menu', null), h.deps)).toBe('staff_command')
+    expect(bodies(h)[0]).toBe('staff:text:/menu')
+    expect(bodies(h)[1]).toMatch(/^bot:card:🗂 Sent: /)
+  })
+
+  it("the owner's TEST code is never logged", async () => {
+    const settings = { ...DEFAULT_SETTINGS, testerCodeHash: hashTesterCode(TENANT, '482193'), testerCodeExpiresAt: new Date(NOW.getTime() + 60_000) }
+    const h = harness({ bundle: bundle({ settings }) })
+    expect(await handleEvent(text('TEST 482193'), h.deps)).toBe('tester_linked')
+    expect(h.logs).toEqual([])
+  })
+
+  it('an order referral is logged with the summary it sent', async () => {
+    const h = harness()
+    expect(await handleEvent({ ...base, kind: 'referral', ref: 'ORDER_0b0c9d3c-3333-4000-8000-000000000001' }, h.deps)).toBe('referral')
+    expect(bodies(h)).toEqual(['in:other:↪ Opened the chat from their order', 'bot:text:🧾 Sent the order summary'])
+  })
+
+  it('fetches the Messenger name the first time and greets with it', async () => {
+    const h = harness({ bundle: withGreet(), profileFetchedAt: null, fetchedName: 'Juan Carlo' })
+    expect(await handleEvent(text('hello'), h.deps)).toBe('replied')
+    expect(h.profileFetches).toEqual([PSID])
+    expect(JSON.stringify(h.sent[0].messages)).toContain('Hi Juan! Welcome.')
+  })
+
+  it('a fresh stored name is used without asking Meta again', async () => {
+    const h = harness({ bundle: withGreet(), firstName: 'Ana', profileFetchedAt: new Date(NOW.getTime() - 86_400_000) })
+    await handleEvent(text('hello'), h.deps)
+    expect(h.profileFetches).toEqual([])
+    expect(JSON.stringify(h.sent[0].messages)).toContain('Hi Ana! Welcome.')
+  })
+
+  it('a failed profile fetch still replies, just without a name', async () => {
+    const h = harness({ bundle: withGreet(), profileFetchedAt: null, profileThrows: true })
+    expect(await handleEvent(text('hello'), h.deps)).toBe('replied')
+    expect(JSON.stringify(h.sent[0].messages)).toContain('Hi! Welcome.')
+  })
+
+  it('a failing log write never fails the event', async () => {
+    const h = harness()
+    h.deps.logChat = async () => { throw new Error('db down') }
+    expect(await handleEvent(text('menu'), h.deps)).toBe('replied')
   })
 })
 

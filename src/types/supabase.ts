@@ -4951,6 +4951,57 @@ export type Database = {
           },
         ]
       }
+      messenger_messages: {
+        Row: {
+          body: string
+          created_at: string
+          direction: string
+          id: string
+          kind: string
+          mid: string | null
+          sent_at: string
+          session_id: string
+          tenant_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          direction: string
+          id?: string
+          kind: string
+          mid?: string | null
+          sent_at: string
+          session_id: string
+          tenant_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          kind?: string
+          mid?: string | null
+          sent_at?: string
+          session_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_messages_session_fkey"
+            columns: ["session_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "messenger_sessions"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "messenger_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messenger_order_updates: {
         Row: {
           created_at: string
@@ -5047,9 +5098,15 @@ export type Database = {
           cart_version: number
           checkout_state: Json | null
           created_at: string
+          first_name: string | null
           id: string
           last_inbound_at: string | null
+          last_message_at: string | null
+          last_message_preview: string | null
+          last_name: string | null
           page_id: string | null
+          profile_fetched_at: string | null
+          profile_pic_url: string | null
           psid: string
           state: string
           tenant_id: string
@@ -5061,9 +5118,15 @@ export type Database = {
           cart_version?: number
           checkout_state?: Json | null
           created_at?: string
+          first_name?: string | null
           id?: string
           last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_name?: string | null
           page_id?: string | null
+          profile_fetched_at?: string | null
+          profile_pic_url?: string | null
           psid: string
           state?: string
           tenant_id: string
@@ -5075,9 +5138,15 @@ export type Database = {
           cart_version?: number
           checkout_state?: Json | null
           created_at?: string
+          first_name?: string | null
           id?: string
           last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_name?: string | null
           page_id?: string | null
+          profile_fetched_at?: string | null
+          profile_pic_url?: string | null
           psid?: string
           state?: string
           tenant_id?: string
@@ -5096,6 +5165,7 @@ export type Database = {
       messenger_settings: {
         Row: {
           bot_enabled: boolean
+          messages: Json | null
           order_updates: Json | null
           profile_error: string | null
           profile_fields: string[]
@@ -5113,6 +5183,7 @@ export type Database = {
         }
         Insert: {
           bot_enabled?: boolean
+          messages?: Json | null
           order_updates?: Json | null
           profile_error?: string | null
           profile_fields?: string[]
@@ -5130,6 +5201,7 @@ export type Database = {
         }
         Update: {
           bot_enabled?: boolean
+          messages?: Json | null
           order_updates?: Json | null
           profile_error?: string | null
           profile_fields?: string[]
@@ -11215,6 +11287,10 @@ export type Database = {
         Args: { target_outlet_id: string; target_tenant_id: string }
         Returns: boolean
       }
+      app_user_may_read_messenger_chat: {
+        Args: { p_psid: string; p_tenant_id: string }
+        Returns: boolean
+      }
       app_user_may_see_order: {
         Args: { order_outlet_id: string; order_tenant_id: string }
         Returns: boolean
@@ -12144,6 +12220,27 @@ export type Database = {
         Returns: Json
       }
       mark_store_activity_reviewed: { Args: { p_id: string }; Returns: string }
+      messenger_chat_for_order: {
+        Args: { p_limit?: number; p_order_id: string }
+        Returns: Json
+      }
+      messenger_chats: {
+        Args: { p_before?: string; p_limit?: number; p_tenant_id: string }
+        Returns: {
+          bot_paused_until: string
+          first_name: string
+          last_inbound_at: string
+          last_message_at: string
+          last_message_preview: string
+          last_name: string
+          order_created_at: string
+          order_daily_number: number
+          order_id: string
+          order_status: string
+          profile_pic_url: string
+          session_id: string
+        }[]
+      }
       next_daily_order_number: {
         Args: { p_order_date: string; p_tenant_id: string }
         Returns: number
@@ -12231,6 +12328,7 @@ export type Database = {
         Returns: string
       }
       purge_order_deletions: { Args: never; Returns: Json }
+      purge_messenger_messages: { Args: never; Returns: number }
       read_loyalty_refund_evidence: {
         Args: { p_settlement_id: string; p_tenant_id: string }
         Returns: Json

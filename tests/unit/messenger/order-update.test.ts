@@ -8,6 +8,7 @@ import {
   decideOrderUpdate, DEFAULT_ORDER_UPDATES, MESSAGING_WINDOW_MS, orderLabel, readOrderKind, readOrderUpdates, statusLabel,
 } from '@/lib/messenger/order-view'
 import type { OutgoingMessage } from '@/lib/messenger/graph-message'
+import { readMessages } from '@/lib/messenger/messages/stored'
 
 const NOW = new Date('2026-11-11T04:00:00Z')
 const ORDER_ID = '0b0c9d3c-2222-4000-8000-000000000001'
@@ -20,9 +21,13 @@ function row(overrides: Partial<UpdateOrderRow> = {}): UpdateOrderRow {
 }
 
 function store(overrides: Partial<UpdateStore> = {}): UpdateStore {
+  const orderUpdates = overrides.orderUpdates ?? DEFAULT_ORDER_UPDATES
   return {
     name: 'Karamotan Grill', baseUrl: 'https://karamotan.webnegosyo.com', isPlatformOrders: true, botEnabled: true,
-    orderUpdates: DEFAULT_ORDER_UPDATES, facebookPageRowId: 'page-row', ...overrides,
+    orderUpdates, facebookPageRowId: 'page-row',
+    // As loadStore reads it: release 2's order_updates.texts fold into the messages.
+    messages: readMessages(null, orderUpdates.texts),
+    ...overrides,
   }
 }
 
@@ -97,10 +102,35 @@ describe('runOrderUpdate', () => {
     expect(h.recorded).toEqual([outcome])
   })
 
+  it('the Messages tab wording wins over the old order_updates text; Taglish defaults follow the order kind', async () => {
+    const custom = harness({ store: store({
+      orderUpdates: { enabled: true, statuses: ['ready'], texts: { ready: 'old words' } },
+      messages: readMessages({ 'orders.update.ready': 'Ready na {order}!' }, { ready: 'old words' }),
+    }) })
+    await runOrderUpdate(ORDER_ID, custom.deps)
+    expect(custom.sent[0].messages[0]).toMatchObject({ text: 'Ready na #07!' })
+
+    const taglish = harness({ store: store({ orderUpdates: { enabled: true, statuses: ['ready'], texts: {} }, messages: readMessages({ lang: 'tl' }) }) })
+    await runOrderUpdate(ORDER_ID, taglish.deps)
+    expect(taglish.sent[0].messages[0]).toMatchObject({ text: expect.stringContaining('#07') })
+    expect(taglish.sent[0].messages[0]).toMatchObject({ buttons: [expect.objectContaining({ title: 'I-track ang order' })] })
+  })
+
   it('the owner\'s wording, with {store} and {order}', async () => {
     const h = harness({ store: store({ orderUpdates: { enabled: true, statuses: ['ready'], texts: { ready: 'Hi! {order} from {store} is ready 🎉' } } }) })
     await runOrderUpdate(ORDER_ID, h.deps)
     expect(h.sent[0].messages[0]).toMatchObject({ text: 'Hi! #07 from Karamotan Grill is ready 🎉' })
+  })
+
+  it('logs the status message in the customer\'s chat and greets by Messenger name', async () => {
+    const h = harness()
+    const logs: Array<{ sessionId: string; bodies: string[] }> = []
+    h.deps.readSession = async () => ({ id: 'session-1', firstName: 'Juan Carlo', lastInboundAt: new Date(NOW.getTime() - 60_000), botPausedUntil: null })
+    h.deps.loadStore = async () => store({ messages: readMessages({ 'orders.update.ready': '{name}, order {order} is ready!' }) })
+    h.deps.logChat = async ({ sessionId, lines }) => { logs.push({ sessionId, bodies: lines.map((line) => `${line.direction}:${line.body}`) }) }
+    expect(await runOrderUpdate(ORDER_ID, h.deps)).toEqual({ outcome: 'sent', status: 'ready' })
+    expect(JSON.stringify(h.sent[0].messages)).toContain('Juan, order #07 is ready!')
+    expect(logs).toEqual([{ sessionId: 'session-1', bodies: ['bot:Juan, order #07 is ready!'] }])
   })
 
   it('a refused send is recorded as send_failed', async () => {

@@ -3,7 +3,7 @@
  * starting point of a new rule. Pure, shared by the editor and its tests.
  */
 
-import type { ActionKind, MessengerRule, RuleAction, RuleTrigger, TriggerKind } from './rules'
+import { triggerWhen, type ActionKind, type MessengerRule, type RuleAction, type RuleTrigger, type RuleWhen, type TriggerKind } from './rules'
 
 export const TRIGGER_LABELS: Record<TriggerKind, { title: string; help: string }> = {
   keyword: { title: 'A customer types…', help: 'Answers when a message contains one of these words.' },
@@ -25,6 +25,34 @@ export const ACTION_LABELS: Record<ActionKind, { title: string; help: string }> 
   cart: { title: 'Their cart', help: 'What the customer added from the chat, with − / + / Remove and a Checkout button.' },
 }
 
+/** Triggers that take "Only when" (typed messages; Meta's profile buttons always answer). */
+export const WHEN_KINDS: readonly TriggerKind[] = ['keyword', 'get_started', 'fallback']
+
+export const WHEN_LABELS: Record<RuleWhen | 'always', string> = {
+  always: 'Always',
+  open: 'Store open',
+  closed: 'Store closed',
+}
+
+/** " · when closed" after a rule's summary, '' for always. */
+export function whenSuffix(trigger: RuleTrigger): string {
+  const only = triggerWhen(trigger)
+  return only ? ` · only when ${only}` : ''
+}
+
+/** Get Started / fallback may exist once per "Only when" choice: the slot a trigger takes. */
+export function onceSlot(kind: TriggerKind, when: RuleWhen | null): string {
+  return `${kind}:${when ?? 'always'}`
+}
+
+/** The same trigger with another "Only when" (null = always); unchanged for kinds without one. */
+export function withWhen(trigger: RuleTrigger, when: RuleWhen | null): RuleTrigger {
+  if (trigger.kind !== 'keyword' && trigger.kind !== 'get_started' && trigger.kind !== 'fallback') return trigger
+  const { when: _old, ...rest } = trigger
+  void _old
+  return (when ? { ...rest, when } : rest) as RuleTrigger
+}
+
 export const TRIGGER_KIND_ORDER: readonly TriggerKind[] = ['keyword', 'get_started', 'ice_breaker', 'menu_button', 'fallback']
 export const ACTION_KIND_ORDER: readonly ActionKind[] = [
   'menu_card', 'categories', 'category_items', 'featured_items', 'text', 'hours_location', 'talk_to_staff', 'order_status', 'cart',
@@ -43,14 +71,14 @@ export function describeTrigger(trigger: RuleTrigger): string {
     case 'keyword': {
       const shown = trigger.keywords.slice(0, 3).map((word) => `“${word}”`).join(', ')
       const more = trigger.keywords.length > 3 ? ` +${trigger.keywords.length - 3} more` : ''
-      return `${trigger.match === 'exact' ? 'Exactly ' : ''}${shown}${more}`
+      return `${trigger.match === 'exact' ? 'Exactly ' : ''}${shown}${more}${whenSuffix(trigger)}`
     }
     case 'ice_breaker':
       return `Starter question: “${trigger.question}”`
     case 'menu_button':
       return `Chat menu: “${trigger.label}”`
     default:
-      return TRIGGER_LABELS[trigger.kind].title
+      return `${TRIGGER_LABELS[trigger.kind].title}${whenSuffix(trigger)}`
   }
 }
 

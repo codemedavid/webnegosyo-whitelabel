@@ -1,12 +1,14 @@
 /** The real side effects behind `runOrderUpdate` (service role: the caller is a database trigger). */
 
 import 'server-only'
+import { writeChatLog } from './chat-log-store'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { toCentavos } from './chat-cart'
 import type { OrderUpdateDeps } from './order-update'
 import { readOrderUpdates } from './order-view'
+import { readMessages } from './messages/stored'
 import { readOrderTypeKinds, trackingUrl } from './recent-orders'
 import { maskPsid, sendMessages } from './send'
 import { storeBaseUrl } from './store-view'
@@ -61,32 +63,37 @@ export function createOrderUpdateDeps(): OrderUpdateDeps {
           .select('name, slug, domain, facebook_page_id, order_backend, convex_deployment_url')
           .eq('id', tenantId)
           .maybeSingle(),
-        admin.from('messenger_settings').select('bot_enabled, order_updates').eq('tenant_id', tenantId).maybeSingle(),
+        admin.from('messenger_settings').select('bot_enabled, order_updates, messages').eq('tenant_id', tenantId).maybeSingle(),
       ])
       if (tenantRead.error || !tenantRead.data) return null
       const tenant = tenantRead.data as { name: string; slug: string; domain: string | null; facebook_page_id: string | null }
       // Unreadable settings: send nothing rather than guess the owner's choice.
       if (settingsRead.error) return null
-      const settings = settingsRead.data as { bot_enabled: boolean; order_updates: unknown } | null
+      const settings = settingsRead.data as { bot_enabled: boolean; order_updates: unknown; messages: unknown } | null
+      const orderUpdates = readOrderUpdates(settings?.order_updates ?? null)
       return {
         name: tenant.name.trim(),
         baseUrl: storeBaseUrl(tenant, process.env.PLATFORM_ROOT_DOMAIN ?? null, process.env.NEXT_PUBLIC_APP_URL ?? null),
         isPlatformOrders: resolveOrderBackend(tenantRead.data as OrderBackendTenantFields) === 'platform',
         botEnabled: settings?.bot_enabled ?? true,
-        orderUpdates: readOrderUpdates(settings?.order_updates ?? null),
+        orderUpdates,
+        messages: readMessages(settings?.messages ?? null, orderUpdates.texts),
         facebookPageRowId: tenant.facebook_page_id,
       }
     },
     readSession: async (tenantId, psid) => {
       const { data, error } = await admin
         .from('messenger_sessions')
-        .select('last_inbound_at, bot_paused_until')
+        // `*`: the profile (20261111224021) when present; an older database still answers.
+        .select('*')
         .eq('tenant_id', tenantId)
         .eq('psid', psid)
         .maybeSingle()
       if (error || !data) return null
-      const row = data as { last_inbound_at: string | null; bot_paused_until: string | null }
+      const row = data as { id: string; last_inbound_at: string | null; bot_paused_until: string | null; first_name?: string | null }
       return {
+        id: row.id,
+        firstName: row.first_name ?? null,
         lastInboundAt: row.last_inbound_at ? new Date(row.last_inbound_at) : null,
         botPausedUntil: row.bot_paused_until ? new Date(row.bot_paused_until) : null,
       }
@@ -94,6 +101,7 @@ export function createOrderUpdateDeps(): OrderUpdateDeps {
     readOrderTypeKind: async (orderTypeId) => (await readOrderTypeKinds([orderTypeId])).get(orderTypeId) ?? null,
     findPageToken: async (tenantId, pageRowId) => (await getTenantActivePageById(tenantId, pageRowId))?.page_access_token ?? null,
     trackingUrl,
+    logChat: writeChatLog,
     send: async (token, psid, messages) => {
       const result = await sendMessages(token, psid, messages, fetch, 'UPDATE')
       if (!result.ok) console.error('[Messenger order update] not sent', { psid: maskPsid(psid), code: result.error.code })

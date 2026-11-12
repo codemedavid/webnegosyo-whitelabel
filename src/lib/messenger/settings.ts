@@ -5,6 +5,9 @@
 
 import { DEFAULT_RULES, parseStoredRules, type MessengerRule } from './rules'
 import type { ReplyStore } from './store-view'
+import { DEFAULT_MESSAGE_SETTINGS, type MessageSettings } from './messages/registry'
+import { readMessages } from './messages/stored'
+import { readOrderUpdates } from './order-view'
 
 export interface MessengerSettings {
   botEnabled: boolean
@@ -17,6 +20,8 @@ export interface MessengerSettings {
   testerCodeExpiresAt: Date | null
   profileHash: string | null
   profileFields: string[]
+  /** What the bot says (`messenger_settings.messages`, legacy order texts folded in). */
+  messages: MessageSettings
 }
 
 export const DEFAULT_SETTINGS: MessengerSettings = Object.freeze({
@@ -29,6 +34,7 @@ export const DEFAULT_SETTINGS: MessengerSettings = Object.freeze({
   testerCodeExpiresAt: null,
   profileHash: null,
   profileFields: [],
+  messages: DEFAULT_MESSAGE_SETTINGS,
 }) as MessengerSettings
 
 export interface StoreBundle {
@@ -52,6 +58,8 @@ export interface SettingsRow {
   tester_code_expires_at: string | null
   profile_hash: string | null
   profile_fields: string[] | null
+  messages: unknown
+  order_updates: unknown
 }
 
 export function toSettings(row: SettingsRow | null): MessengerSettings {
@@ -66,6 +74,7 @@ export function toSettings(row: SettingsRow | null): MessengerSettings {
     testerCodeExpiresAt: row.tester_code_expires_at ? new Date(row.tester_code_expires_at) : null,
     profileHash: row.profile_hash,
     profileFields: row.profile_fields ?? [],
+    messages: readMessages(row.messages, readOrderUpdates(row.order_updates ?? null).texts),
   }
 }
 

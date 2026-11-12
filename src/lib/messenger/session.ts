@@ -13,15 +13,26 @@ import { maskPsid } from './send'
 export interface MessengerSession {
   id: string
   botPausedUntil: Date | null
+  /** The customer's Messenger first name as fetched (raw: clean it with `greetingName` before use). */
+  firstName: string | null
+  /** When the profile was last asked for (successfully or not); null = never. */
+  profileFetchedAt: Date | null
 }
 
 interface SessionRow {
   id: string
   bot_paused_until: string | null
+  first_name?: string | null
+  profile_fetched_at?: string | null
 }
 
 function toSession(row: SessionRow): MessengerSession {
-  return { id: row.id, botPausedUntil: row.bot_paused_until ? new Date(row.bot_paused_until) : null }
+  return {
+    id: row.id,
+    botPausedUntil: row.bot_paused_until ? new Date(row.bot_paused_until) : null,
+    firstName: row.first_name ?? null,
+    profileFetchedAt: row.profile_fetched_at ? new Date(row.profile_fetched_at) : null,
+  }
 }
 
 /**
@@ -53,7 +64,9 @@ export async function touchSession(input: {
       } as never,
       { onConflict: 'tenant_id,psid' },
     )
-    .select('id, bot_paused_until')
+    // `*`: the profile columns (20261111224021) are read when present, and a
+    // database without them still answers.
+    .select('*')
     .single()
 
   if (error && PRE_MIGRATION_CODES.has(error.code ?? '')) return touchLegacySession(input)
@@ -83,7 +96,7 @@ async function touchLegacySession(input: { tenantId: string; psid: string; now: 
     console.error('[Messenger] legacy session not written', { psid: maskPsid(input.psid), code: error?.code })
     return null
   }
-  return { id: row.id, botPausedUntil: null }
+  return { id: row.id, botPausedUntil: null, firstName: null, profileFetchedAt: null }
 }
 
 /** Pause (or, with `until = null`, resume) the bot for one customer. Asserts the row changed. */

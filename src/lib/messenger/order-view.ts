@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod'
+import { defaultText, UPDATE_MESSAGE_IDS } from './messages/registry'
 
 export const ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'] as const
 export type OrderStatus = (typeof ORDER_STATUSES)[number]
@@ -67,25 +68,13 @@ export function statusLabel(status: OrderStatus, kind: OrderKind): string {
 
 // ── Status messages ─────────────────────────────────────────────────────────
 
-/** Placeholders an owner may use in a status message. */
-export const ORDER_UPDATE_PLACEHOLDERS = ['store', 'order'] as const
 export const MAX_ORDER_UPDATE_TEXT = 300
 
 export const DEFAULT_UPDATE_STATUSES: readonly UpdateStatus[] = ['preparing', 'ready', 'delivered', 'cancelled']
 
+/** The English default for a status (words live in `messages/registry.ts`). */
 export function defaultUpdateText(status: UpdateStatus, kind: OrderKind): string {
-  switch (status) {
-    case 'confirmed': return '✅ {store} confirmed your order {order}.'
-    case 'preparing': return '👨‍🍳 {store} is now preparing your order {order}.'
-    case 'ready':
-      if (kind === 'pickup') return '🛍️ Your order {order} is ready for pickup at {store}!'
-      if (kind === 'delivery') return '🛵 Your order {order} is ready and will be on its way soon.'
-      return '🍽️ Your order {order} is ready!'
-    case 'delivered':
-      if (kind === 'delivery') return '📦 Your order {order} was delivered. Enjoy, and thank you for ordering from {store}! 🙏'
-      return '🙏 Thank you for ordering from {store}! Enjoy your meal.'
-    case 'cancelled': return '❌ Your order {order} was cancelled. Please message us here if you have questions.'
-  }
+  return defaultText(UPDATE_MESSAGE_IDS[status], 'en', kind)
 }
 
 const updateText = z.string().trim().max(MAX_ORDER_UPDATE_TEXT)
@@ -112,10 +101,6 @@ export function readOrderUpdates(raw: unknown): OrderUpdatesConfig {
   const parsed = orderUpdatesSchema.safeParse(raw)
   // A row that no longer validates sends nothing rather than something the owner didn't choose.
   return parsed.success ? { ...parsed.data, statuses: [...new Set(parsed.data.statuses)] } : { enabled: false, statuses: [], texts: {} }
-}
-
-export function fillOrderText(text: string, values: { store: string; order: string }): string {
-  return text.replace(/\{(store|order)\}/g, (_, key: 'store' | 'order') => values[key]).trim()
 }
 
 /** Meta's standard window: inside it, any message is allowed. */

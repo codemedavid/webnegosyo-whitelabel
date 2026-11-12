@@ -10,11 +10,14 @@
  */
 
 import type { OutgoingMessage } from './graph-message'
+import { botLine, type ChatLogLine } from './chat-log'
+import { greetingName } from './messages/fill'
 import {
-  decideOrderUpdate, defaultUpdateText, fillOrderText, isOrderStatus, orderLabel, readOrderKind,
+  decideOrderUpdate, isOrderStatus, orderLabel, readOrderKind,
   type OrderUpdatesConfig, type ReplyOrder, type UpdateSkipReason, type UpdateStatus,
 } from './order-view'
 import { buildOrderUpdate } from './replies'
+import type { MessageSettings } from './messages/registry'
 import type { SendResult } from './send'
 
 export interface UpdateOrderRow {
@@ -34,6 +37,8 @@ export interface UpdateStore {
   isPlatformOrders: boolean
   botEnabled: boolean
   orderUpdates: OrderUpdatesConfig
+  /** The store's wording; status messages are `orders.update.*` (legacy `order_updates.texts` folded in). */
+  messages: MessageSettings
   facebookPageRowId: string | null
 }
 
@@ -44,11 +49,21 @@ export interface OrderUpdateDeps {
   claim(input: { orderId: string; status: UpdateStatus; tenantId: string }): Promise<boolean>
   record(input: { orderId: string; status: UpdateStatus; outcome: OrderUpdateOutcome }): Promise<void>
   loadStore(tenantId: string): Promise<UpdateStore | null>
-  readSession(tenantId: string, psid: string): Promise<{ lastInboundAt: Date | null; botPausedUntil: Date | null } | null>
+  readSession(tenantId: string, psid: string): Promise<UpdateSession | null>
   readOrderTypeKind(orderTypeId: string): Promise<string | null>
   findPageToken(tenantId: string, pageRowId: string): Promise<string | null>
   trackingUrl(baseUrl: string, orderId: string): string | null
   send(token: string, psid: string, messages: readonly OutgoingMessage[]): Promise<SendResult>
+  /** The chat log (a status message is a bot line). Never throws. */
+  logChat?(input: { tenantId: string; sessionId: string; lines: readonly ChatLogLine[] }): Promise<void>
+}
+
+export interface UpdateSession {
+  lastInboundAt: Date | null
+  botPausedUntil: Date | null
+  /** Present once 20261111224021 is applied. */
+  id?: string
+  firstName?: string | null
 }
 
 export type OrderUpdateOutcome = 'sent' | 'send_failed' | 'no_page' | 'no_store' | UpdateSkipReason
@@ -100,8 +115,11 @@ export async function runOrderUpdate(orderId: string, deps: OrderUpdateDeps): Pr
     totalCentavos: order.totalCentavos,
     trackingUrl: deps.trackingUrl(store.baseUrl, order.id),
   }
-  const custom = store.orderUpdates.texts[status]?.trim()
-  const text = fillOrderText(custom || defaultUpdateText(status, kind), { store: store.name, order: replyOrder.label })
-  const result = await deps.send(token, order.psid, buildOrderUpdate(text || defaultUpdateText(status, kind), replyOrder))
+  const messages = buildOrderUpdate({ storeName: store.name, messages: store.messages, customerName: greetingName(session?.firstName) }, status, replyOrder)
+  const result = await deps.send(token, order.psid, messages)
+  const line = result.ok ? botLine(messages, deps.now()) : null
+  if (line && session?.id && deps.logChat) {
+    await deps.logChat({ tenantId: order.tenantId, sessionId: session.id, lines: [line] }).catch(() => undefined)
+  }
   return finish(result.ok ? 'sent' : 'send_failed')
 }
