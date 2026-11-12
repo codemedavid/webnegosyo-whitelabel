@@ -23,6 +23,12 @@ export interface AssistantTenantFlags {
   inventoryEnabled: boolean
   customerHubOn: boolean
   menuEngineeringEnabled: boolean
+  /**
+   * `resolveOrderBackend(tenant) === 'platform'`: the store's orders live in the
+   * platform `orders` table. Absent/false = Convex or a per-store database,
+   * whose orders a platform read would wrongly count as none.
+   */
+  isPlatformOrders?: boolean
 }
 
 export interface AssistantToolContext {

@@ -37,14 +37,23 @@ export function OwlAccessView({ tenantId, tenantSlug, onBack }: OwlAccessViewPro
   const flip = async (row: OwlAccessRow, allowed: boolean) => {
     setSavingId(row.userId)
     setError(null)
-    const next = withOwlAccess(row.permissions, allowed)
+    // The switch saves the person's WHOLE list, so build it from a fresh read:
+    // a Staff edit made since this sheet opened must not be overwritten.
+    const fresh = await listStaffAction(tenantId)
+    const current = fresh.success ? owlAccessRows(fresh.data).find((item) => item.userId === row.userId) : undefined
+    if (!current) {
+      setSavingId(null)
+      setError(fresh.success ? 'That account is no longer on your team.' : fresh.error)
+      return
+    }
+    const next = withOwlAccess(current.permissions, allowed)
     const result = await updateStaffPermissionsAction(tenantId, tenantSlug, row.userId, next)
     setSavingId(null)
     if (!result.success) {
       setError(result.error)
       return
     }
-    setRows((current) => current?.map((item) => (item.userId === row.userId ? { ...item, hasOwl: allowed, permissions: next } : item)) ?? null)
+    setRows((list) => list?.map((item) => (item.userId === row.userId ? { ...item, hasOwl: allowed, permissions: next } : item)) ?? null)
   }
 
   return (

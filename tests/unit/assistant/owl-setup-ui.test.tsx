@@ -39,6 +39,18 @@ test('switching Owl on for a legacy full-access account saves its real grants pl
   await waitFor(() => expect(screen.getByRole('switch', { name: 'Ana can use Owl' })).toHaveAttribute('aria-checked', 'true'))
 })
 
+test('the switch builds the list from a fresh read, so a Staff edit made meanwhile is not overwritten', async () => {
+  const ben = { user_id: 'ben', is_owner: false, role: 'admin', display_name: 'Ben', email: null, outlet_id: null }
+  mockList
+    .mockResolvedValueOnce({ success: true, data: [{ ...ben, permissions: ['pos', 'menu'] }] })
+    // Meanwhile, in Staff, the owner took Menu away.
+    .mockResolvedValueOnce({ success: true, data: [{ ...ben, permissions: ['pos'] }] })
+  mockUpdate.mockResolvedValue({ success: true })
+  render(<OwlAccessView tenantId="t" tenantSlug="s" onBack={() => {}} />)
+  fireEvent.click(await screen.findByRole('switch', { name: 'Ben can use Owl' }))
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('t', 's', 'ben', ['pos', 'assistant']))
+})
+
 test('a refused save leaves the switch where it was and says why', async () => {
   mockList.mockResolvedValue({ success: true, data: [{ user_id: 'ben', is_owner: false, role: 'admin', permissions: ['pos'], display_name: 'Ben', email: null, outlet_id: null }] })
   mockUpdate.mockResolvedValue({ success: false, error: 'Only the store owner can change staff access' })

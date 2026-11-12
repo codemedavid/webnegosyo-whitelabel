@@ -65,6 +65,9 @@ export const getDeliverySetupTool: AssistantToolDef<Input> = {
   async run(ctx) {
     const db = createAdminClient() as unknown as SupabaseClient
     const since = new Date(Date.now() - WEEK_MS).toISOString()
+    // Bookings are counted only where the store's orders really live (CLAUDE.md:
+    // route through resolveOrderBackend); elsewhere they read as unavailable, never 0.
+    const countBookings = ctx.flags.isPlatformOrders === true
     const [tenant, outlets, deliveryTypes, bookings, keys] = await Promise.all([
       db
         .from('tenants')
@@ -73,13 +76,15 @@ export const getDeliverySetupTool: AssistantToolDef<Input> = {
         .maybeSingle(),
       db.from('outlets').select('latitude, longitude, is_active').eq('tenant_id', ctx.tenantId).limit(200),
       db.from('order_types').select('id').eq('tenant_id', ctx.tenantId).eq('type', 'delivery').eq('is_enabled', true).limit(1),
-      db
-        .from('orders')
-        .select('lalamove_status')
-        .eq('tenant_id', ctx.tenantId)
-        .not('lalamove_order_id', 'is', null)
-        .gte('created_at', since)
-        .limit(1000),
+      countBookings
+        ? db
+            .from('orders')
+            .select('lalamove_status')
+            .eq('tenant_id', ctx.tenantId)
+            .not('lalamove_order_id', 'is', null)
+            .gte('created_at', since)
+            .limit(1000)
+        : Promise.resolve({ data: null, error: 'not a platform-orders store' }),
       hasKeys(ctx.tenantId),
     ])
     const row = tenant.data as TenantRow | null
@@ -96,7 +101,7 @@ export const getDeliverySetupTool: AssistantToolDef<Input> = {
       storePinned: row.restaurant_latitude !== null && row.restaurant_longitude !== null,
       branches: { total: activeOutlets.length, pinned: activeOutlets.filter((outlet) => outlet.latitude !== null && outlet.longitude !== null).length },
       deliveryOrderTypeOn: (deliveryTypes.data ?? []).length > 0,
-      recentStatuses: bookings.error ? null : ((bookings.data ?? []) as Array<{ lalamove_status: string | null }>).map((booking) => booking.lalamove_status),
+      recentStatuses: !countBookings || bookings.error ? null : ((bookings.data ?? []) as Array<{ lalamove_status: string | null }>).map((booking) => booking.lalamove_status),
     })
     return buildDeliverySetupResult(setup, keys === null)
   },

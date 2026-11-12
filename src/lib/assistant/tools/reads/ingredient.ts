@@ -19,6 +19,7 @@ import { readTenantStockGraph, type TenantStockGraph } from '@/lib/inventory/sto
 import { getMenuItemCost } from '@/lib/inventory/costing-service'
 import { evaluateStockLevel } from '@/lib/inventory/low-stock'
 import { canSeeCosts } from '@/lib/inventory/cost-visibility'
+import { hasPermission } from '@/lib/staff-permissions'
 import { formatPeso } from '@/components/admin/dashboard/dashboard-format'
 import { foldName } from '@/lib/assistant/insights/menu-import'
 import { MOVEMENT_LABEL, dishRecipe, ingredientUsage, quantityLabel } from '@/lib/assistant/insights/ingredient-detail'
@@ -189,6 +190,8 @@ export const getDishRecipeTool: AssistantToolDef<RecipeInput> = {
       }
     }
 
+    // The recipe is `menu`; what is on the shelf is `inventory` (a figure checks its own key).
+    const showStock = hasPermission(ctx.caller, 'inventory')
     let cost: number | null = null
     if (canSeeCosts(ctx.caller)) {
       try {
@@ -201,15 +204,23 @@ export const getDishRecipeTool: AssistantToolDef<RecipeInput> = {
       facts: {
         dish: dish.name,
         hasRecipe: true,
-        canStillMake: recipe.canMake ?? 'not tracked',
-        ingredients: recipe.lines.map((line) => ({ ref: ctx.refs.refFor('ingredient', line.ingredientId), name: line.ingredient, perDish: line.perDish, onHand: line.onHand })),
+        ...(showStock ? { canStillMake: recipe.canMake ?? 'not tracked' } : {}),
+        ingredients: recipe.lines.map((line) => ({
+          ref: ctx.refs.refFor('ingredient', line.ingredientId),
+          name: line.ingredient,
+          perDish: line.perDish,
+          ...(showStock ? { onHand: line.onHand } : {}),
+        })),
         ...(cost !== null ? { recipeCost: cost } : {}),
       },
       card: {
         type: 'ranked',
         title: `${dish.name} recipe`,
-        subtitle: [recipe.canMake === null ? null : `${recipe.canMake} can still be made`, cost !== null ? `costs ${formatPeso(cost)} to make` : null].filter(Boolean).join(' · ') || undefined,
-        rows: recipe.lines.map((line) => ({ label: line.ingredient, value: line.perDish, detail: line.onHand ? `${line.onHand} on hand` : undefined })),
+        subtitle:
+          [showStock && recipe.canMake !== null ? `${recipe.canMake} can still be made` : null, cost !== null ? `costs ${formatPeso(cost)} to make` : null]
+            .filter(Boolean)
+            .join(' · ') || undefined,
+        rows: recipe.lines.map((line) => ({ label: line.ingredient, value: line.perDish, detail: showStock && line.onHand ? `${line.onHand} on hand` : undefined })),
       },
       links: [{ label: 'Open dish', path: `/menu/${dish.id}` }],
     }

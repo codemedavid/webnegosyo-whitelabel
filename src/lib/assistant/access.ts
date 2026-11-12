@@ -11,7 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { isCustomerHubOn } from '@/lib/customer-dashboard'
 import { SubscriptionPausedError } from '@/lib/billing/subscription-gate'
-import type { OrderBackendTenantFields } from '@/lib/order-backend'
+import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { isAssistantGloballyEnabled } from '@/lib/assistant/config'
 import { hasPermission } from '@/lib/staff-permissions'
 import type { AssistantCaller, AssistantTenantFlags } from '@/lib/assistant/tools/registry'
@@ -81,6 +81,7 @@ export async function resolveAssistantAccess(tenantId: string): Promise<Assistan
       inventoryEnabled: tenant.inventory_enabled === true,
       customerHubOn: isCustomerHubOn(tenant as OrderBackendTenantFields & { customer_hub_enabled: boolean | null }),
       menuEngineeringEnabled: tenant.menu_engineering_enabled === true,
+      isPlatformOrders: resolveOrderBackend(tenant as OrderBackendTenantFields) === 'platform',
     },
   }
 }

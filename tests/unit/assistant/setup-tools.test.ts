@@ -20,7 +20,7 @@ jest.mock('@/lib/assistant/data/payment-methods', () => ({
   hostPaymentQr: (...a: unknown[]) => mockHostQr(...a),
 }))
 
-import { matchOrderTypes, cleanPaymentDetails, type StoreOrderType } from '@/lib/assistant/insights/payment-methods'
+import { matchOrderTypes, cleanPaymentDetails, type AssistantPaymentMethod, type StoreOrderType } from '@/lib/assistant/insights/payment-methods'
 import { buildPaymentMethodsResult } from '@/lib/assistant/tools/reads/payment-methods'
 import { proposePaymentMethodChangeTool, proposePaymentMethodTool } from '@/lib/assistant/tools/propose/payment-method'
 import { rankLessons, type LessonCandidate } from '@/lib/assistant/insights/lessons'
@@ -52,11 +52,11 @@ function ctx(photos: string[] = [], refs = createRefBook({})) {
   }
 }
 
-function setup(methods: Array<Record<string, unknown>> = []) {
+function setup(methods: AssistantPaymentMethod[] = []) {
   return { methods, orderTypes: ORDER_TYPES }
 }
 
-const gcash = { id: GCASH_ID, name: 'GCash', details: '0917 123 4567 · J. Cruz', qrCodeUrl: null, isActive: true, requireProof: false, orderTypeIds: ['ot-dine'], updatedAt: '2026-11-01T00:00:00Z' }
+const gcash: AssistantPaymentMethod = { id: GCASH_ID, name: 'GCash', details: '0917 123 4567 · J. Cruz', qrCodeUrl: null, isActive: true, requireProof: false, orderTypeIds: ['ot-dine'], updatedAt: '2026-11-01T00:00:00Z' }
 
 beforeEach(() => {
   jest.clearAllMocks()

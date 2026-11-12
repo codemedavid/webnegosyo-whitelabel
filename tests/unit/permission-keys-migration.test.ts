@@ -206,7 +206,7 @@ describe('20261027120100 cash_manage carved out of store_setup', () => {
     expect(OPT_IN_PERMISSION_KEYS).toContain('cash_manage')
     expect(Object.keys(IMPLIED_BY)).not.toContain('cash_manage')
     expect(functionBody(CASH, 'app_user_has_permission')).toContain("'cash_manage']))")
-    // The NEWEST definition is the one in force (20261112120000 added 'assistant').
+    // The NEWEST definition is the one in force (20261112022453 added 'assistant').
     const body = functionBody(NEWEST_PERMISSION_FN, 'app_user_has_permission')
     expect(body).toContain(`au.permissions is null and p_permission <> all (${sqlArray(OPT_IN_PERMISSION_KEYS)})`)
     expect(body).toContain("(p_permission in ('kitchen', 'tables') and 'orders' = any (au.permissions))")
