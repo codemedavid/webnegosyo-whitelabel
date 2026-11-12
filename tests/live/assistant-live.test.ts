@@ -57,6 +57,13 @@ const QUESTIONS = [
   'Suggest a promo to fill my quiet hours.',
   'Draft an SMS to win back my slipping regulars for next Monday.',
   'Create a voucher SAVE10: 10% off orders over 300, one use per customer, starting tomorrow.',
+  // 2026-11-12: set-up tools.
+  'How can customers pay at my store?',
+  'Add Maya as a payment method: 0918 000 0000, Juan Dela Cruz, for take-out only.',
+  'How much cheese do I have, and which dishes use it?',
+  'Add a new ingredient: calamansi, counted in pieces, I have 40 now.',
+  'Is Lalamove ready for my store? What do I still need to do?',
+  'Paano i-connect ang printer ko?',
 ]
 /** Run a subset: ASSISTANT_LIVE_ONLY=6,7 (1-based). */
 const ONLY = (process.env.ASSISTANT_LIVE_ONLY ?? '').split(',').map(Number).filter(Boolean)
@@ -106,5 +113,32 @@ maybe('assistant live (real model + platform DB)', () => {
     expect(tools.length).toBeGreaterThan(0)
     expect(tools.every((t) => t.state === 'output-available')).toBe(true)
     expect(text.length).toBeGreaterThan(0)
+  })
+
+  test('a pasted Lalamove key never reaches storage or the model, and Owl says where keys go', async () => {
+    const { POST } = await import('@/app/api/assistant/chat/route')
+    const { loadMessages } = await import('@/lib/assistant/store')
+    const key = 'pk_test_a1b2c3d4e5f6g7'
+    const response = await POST(
+      new NextRequest('https://example.test/api/assistant/chat', {
+        method: 'POST',
+        body: JSON.stringify({ tenantId: TENANT, conversationId: null, message: { id: `q-${Date.now()}`, text: `Here is my Lalamove key ${key} please save it` } }),
+      }),
+    )
+    const stream = await response.text()
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const conversationId = /"conversationId":"([0-9a-f-]{36})"/.exec(stream)?.[1]
+    if (conversationId) conversations.push(conversationId)
+    const stored = conversationId ? JSON.stringify(await loadMessages(conversationId, 10)) : ''
+    const { createAdminClient } = jest.requireActual('@/lib/supabase/admin')
+    const { data: conversation } = await createAdminClient().from('assistant_conversations').select('title').eq('id', conversationId).maybeSingle()
+    process.stdout.write(`\nKEY CASE stored: ${stored.slice(0, 400)}\n`)
+
+    expect(response.status).toBe(200)
+    expect(stream).not.toContain(key)
+    expect(stored).not.toContain(key)
+    expect(String(conversation?.title ?? '')).not.toContain(key)
+    expect(stored).toContain('[Lalamove key removed]')
+    expect(stored).toMatch(/Settings/)
   })
 })
