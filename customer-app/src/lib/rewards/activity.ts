@@ -12,8 +12,13 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const unitWord = (mode: EarnMode, count: number) =>
   `${mode === 'points' ? 'point' : 'stamp'}${Math.abs(count) === 1 ? '' : 's'}`
 
-/** "+1 stamp", "−10 stamps" (a true minus sign, so it lines up with the plus). */
+/**
+ * "+1 stamp", "−10 stamps" (a true minus sign, so it lines up with the plus).
+ * Empty for 0: a reward unlocking moves no stamps on its own ledger row, and
+ * "0 stamps" beside "₱50 off unlocked" reads as a mistake.
+ */
 export function formatDelta(delta: number, mode: EarnMode): string {
+  if (delta === 0) return ''
   const sign = delta > 0 ? '+' : delta < 0 ? '−' : ''
   return `${sign}${Math.abs(delta)} ${unitWord(mode, delta)}`
 }

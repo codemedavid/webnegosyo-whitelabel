@@ -27,7 +27,7 @@ export function ActivityList({ activity, earnMode, now }: ActivityListProps) {
           <View
             key={entry.id}
             accessible
-            accessibilityLabel={`${entry.label}, ${date}, ${delta}`}
+            accessibilityLabel={[entry.label, date, delta].filter(Boolean).join(', ')}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -47,9 +47,11 @@ export function ActivityList({ activity, earnMode, now }: ActivityListProps) {
                 {date}
               </AppText>
             </View>
-            <AppText variant="bodyStrong" color={activityTone(entry.kind)}>
-              {delta}
-            </AppText>
+            {delta ? (
+              <AppText variant="bodyStrong" color={activityTone(entry.kind)}>
+                {delta}
+              </AppText>
+            ) : null}
           </View>
         )
       })}

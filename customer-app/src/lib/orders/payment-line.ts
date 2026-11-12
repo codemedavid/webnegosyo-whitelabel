@@ -10,6 +10,8 @@ export interface PaymentLine {
 export function paymentLine(order: AppOrderDetail): PaymentLine {
   const total = formatPeso(toCentavos(order.totals.total))
   const method = order.paymentMethodName
+  // A cancelled order owes nothing; "₱120 to pay" there would send money for food that isn't coming.
+  if (order.status === 'cancelled' && order.paymentStatus === 'pending') return { text: 'Nothing to pay · this order was cancelled', tone: 'muted' }
   switch (order.paymentStatus) {
     case 'paid':
       return { text: method ? `Paid ${total} with ${method}` : `Paid ${total}`, tone: 'success' }

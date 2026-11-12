@@ -23,7 +23,7 @@ describe('formatDelta', () => {
     [-10, 'stamp', '−10 stamps'],
     [50, 'points', '+50 points'],
     [-1, 'points', '−1 point'],
-    [0, 'stamp', '0 stamps'],
+    [0, 'stamp', ''],
   ] as const)('%p %s reads %p', (delta, mode, expected) => {
     expect(formatDelta(delta, mode)).toBe(expected)
   })

@@ -48,12 +48,22 @@ beforeEach(() => {
 
 describe('account actions', () => {
   it('signing in drops the previous person’s rewards, orders and bag, and keeps the session', async () => {
+    useSession.setState({ status: 'member', token: `cs1.${'b'.repeat(43)}`, profile: { name: 'Someone', phoneE164: '+639181112222' } })
     seedPreviousCustomer()
     const needsName = await actions().completeSignIn({ token: TOKEN, isNewCustomer: false, profile: PROFILE })
     expect(needsName).toBe(false)
     expect(hasCustomerData()).toBe(false)
     expect(useSession.getState()).toMatchObject({ status: 'member', token: TOKEN, profile: PROFILE })
     expect(stored.token).toBe(TOKEN)
+  })
+
+  it('a guest who signs in to check out keeps their bag (live: bag emptied on the simulator, 2026-11-12)', async () => {
+    useCart.getState().clear()
+    useCart.getState().add({ lineId: 'mine', itemId: 'i1', name: 'Latte', imageUrl: null, selections: {}, optionLabels: [], quantity: 2, unitCentavos: 14500 })
+    queryClient.setQueryData(queryKeys.loyalty, { memberCode: 'WNLC1.stale' })
+    await actions().completeSignIn({ token: TOKEN, isNewCustomer: false, profile: PROFILE })
+    expect(useCart.getState().lines.map((line) => [line.lineId, line.quantity])).toEqual([['mine', 2]])
+    expect(queryClient.getQueryData(queryKeys.loyalty)).toBeUndefined()
   })
 
   it('asks for a name for a new customer or one who never gave it', async () => {

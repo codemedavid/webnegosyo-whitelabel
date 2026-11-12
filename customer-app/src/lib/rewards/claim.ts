@@ -2,7 +2,7 @@ import type { AppLoyalty } from '@/lib/contract'
 
 /** How often an open claim sheet re-reads the card to see whether the counter scanned it. */
 export const CLAIM_POLL_MS = 5_000
-/** How long "Scanned ✓" stays up before the sheet closes. */
+/** How long "Scanned" stays up before the sheet closes. */
 export const SCANNED_CLOSE_MS = 1_500
 
 /** What the store issues today (~2 minutes); used when the phone's clock can't be trusted. */
@@ -40,14 +40,19 @@ export function claimCountdown(deadlineMs: number, nowMs: number): ClaimCountdow
 /**
  * The counter took the reward: a card read AFTER the code was issued no longer
  * lists it. An older read (still cached from before) proves nothing either way.
+ * A reward that reached its own expiry also leaves the list; that is not a
+ * scan (the code dies with it, so the sheet shows "expired" instead).
  */
 export function isRewardRedeemed(
   rewardId: string,
   loyalty: Pick<AppLoyalty, 'rewards'> | undefined,
   readAtMs: number,
   issuedAtMs: number,
+  rewardExpiresAt: string | null = null,
 ): boolean {
   if (!loyalty || readAtMs < issuedAtMs) return false
+  const expiresAtMs = rewardExpiresAt === null ? Number.NaN : Date.parse(rewardExpiresAt)
+  if (Number.isFinite(expiresAtMs) && readAtMs >= expiresAtMs) return false
   return !loyalty.rewards.some((reward) => reward.id === rewardId)
 }
 

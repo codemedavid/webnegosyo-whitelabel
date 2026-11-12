@@ -10,29 +10,32 @@ import { useTokens } from '@/theme/theme-context'
 export function OrderHero({ order }: { order: AppOrderDetail }) {
   const { colors, space, radius, type } = useTokens()
   const isLive = !isTerminalStatus(order.status)
+  // Cancelled is not a celebration: the hero goes quiet instead of brand colour.
+  const isCancelled = order.status === 'cancelled'
+  const ink = isCancelled ? 'text' : 'onPrimary'
   const eta = isLive && order.estimatedReadyAt ? `${order.orderKind === 'delivery' ? 'Arriving' : 'Ready'} around ${formatTime(order.estimatedReadyAt)}` : null
   return (
-    <View style={{ marginHorizontal: space.lg, padding: space.xl, borderRadius: radius.xl, backgroundColor: colors.primary, alignItems: 'center' }}>
+    <View style={{ marginHorizontal: space.lg, padding: space.xl, borderRadius: radius.xl, backgroundColor: isCancelled ? colors.surfaceMuted : colors.primary, alignItems: 'center' }}>
       {order.number ? (
         <>
-          <AppText variant="label" color="onPrimary" style={{ opacity: 0.85 }}>
+          <AppText variant="label" color={ink} style={{ opacity: 0.85 }}>
             ORDER NUMBER
           </AppText>
-          <AppText color="onPrimary" style={[type.display, { fontSize: 56, lineHeight: 64 }]} accessibilityLabel={`Order number ${order.number}`}>
+          <AppText color={ink} style={[type.display, { fontSize: 56, lineHeight: 64 }]} accessibilityLabel={`Order number ${order.number}`}>
             #{order.number}
           </AppText>
         </>
       ) : null}
-      <AppText variant="title" color="onPrimary" align="center" accessibilityLiveRegion="polite">
+      <AppText variant="title" color={ink} align="center" accessibilityLiveRegion="polite">
         {statusLabel(order.status, order.orderKind)}
       </AppText>
       {eta ? (
-        <AppText variant="callout" color="onPrimary" style={{ marginTop: space.xs, opacity: 0.9 }}>
+        <AppText variant="callout" color={ink} style={{ marginTop: space.xs, opacity: 0.9 }}>
           {eta}
         </AppText>
       ) : null}
       {order.outletName ? (
-        <AppText variant="caption" color="onPrimary" style={{ marginTop: space.sm, opacity: 0.85 }}>
+        <AppText variant="caption" color={ink} style={{ marginTop: space.sm, opacity: 0.85 }}>
           {order.orderTypeName} · {order.outletName}
         </AppText>
       ) : null}

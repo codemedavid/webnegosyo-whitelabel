@@ -72,7 +72,7 @@ export function ClaimSheet({ reward, onClose }: ClaimSheetProps) {
   }, [getCode])
 
   const loyalty = useLoyalty({ pollMs: active ? CLAIM_POLL_MS : false })
-  const isScanned = active !== null && isRewardRedeemed(reward.id, loyalty.data, loyalty.dataUpdatedAt, active.issuedAtMs)
+  const isScanned = active !== null && isRewardRedeemed(reward.id, loyalty.data, loyalty.dataUpdatedAt, active.issuedAtMs, reward.expiresAt)
   const now = useNow(active !== null && !isScanned)
   const phase = claimPhase({
     isScanned,
@@ -116,7 +116,7 @@ export function ClaimSheet({ reward, onClose }: ClaimSheetProps) {
               <>
                 <CircleCheck size={56} color={colors.success} />
                 <AppText variant="title" color="success" align="center">
-                  Scanned ✓
+                  Scanned
                 </AppText>
               </>
             ) : phase === 'claiming' ? (

@@ -14,10 +14,18 @@ import { AppText } from '@/components/ui/app-text'
 import { AppApiError } from '@/lib/api/app-client'
 import { deleteAccount, signOut } from '@/lib/auth/account-actions'
 import { useAppConfig } from '@/lib/data/hooks'
+import { appClientFromEnv } from '@/lib/data/live-source'
 import { useSession } from '@/lib/stores/session'
 import { useTokens } from '@/theme/theme-context'
 
 const HELP_URL = 'https://www.webnegosyo.com/support'
+
+/**
+ * Saved addresses and the order-updates switch are prototype stand-ins (no
+ * /me/addresses, no push yet): a real store's build must not show a customer
+ * someone else's sample addresses or a switch that does nothing.
+ */
+const SHOWS_PROTOTYPE_ROWS = appClientFromEnv() === null
 
 function HelpGroup() {
   return (
@@ -54,22 +62,24 @@ function MemberAccount({ storeName }: { storeName: string }) {
       <ListGroup title="Orders">
         <ListRow Icon={Receipt} label="Order history" detail="Track, view receipts and reorder" onPress={() => router.push('/orders')} />
       </ListGroup>
-      <SavedAddresses />
-      <ListGroup title="Notifications">
-        <ListRow
-          Icon={Bell}
-          label="Order updates"
-          detail="When your order is confirmed, ready or on the way"
-          trailing={
-            <Switch
-              value={wantsOrderUpdates}
-              onValueChange={setWantsOrderUpdates}
-              trackColor={{ true: colors.primary, false: colors.border }}
-              accessibilityLabel="Order update notifications"
-            />
-          }
-        />
-      </ListGroup>
+      {SHOWS_PROTOTYPE_ROWS ? <SavedAddresses /> : null}
+      {SHOWS_PROTOTYPE_ROWS ? (
+        <ListGroup title="Notifications">
+          <ListRow
+            Icon={Bell}
+            label="Order updates"
+            detail="When your order is confirmed, ready or on the way"
+            trailing={
+              <Switch
+                value={wantsOrderUpdates}
+                onValueChange={setWantsOrderUpdates}
+                trackColor={{ true: colors.primary, false: colors.border }}
+                accessibilityLabel="Order update notifications"
+              />
+            }
+          />
+        </ListGroup>
+      ) : null}
       <HelpGroup />
       <ListGroup>
         <ListRow Icon={LogOut} label="Sign out" onPress={() => void signOut()} />
@@ -113,7 +123,7 @@ export default function AccountScreen() {
           <SignInPrompt
             Icon={CircleUser}
             title="Sign in to order faster"
-            body="Save your details and addresses, track every order, and collect rewards."
+            body="Save your details, track every order, and collect rewards."
           />
           <HelpGroup />
         </View>

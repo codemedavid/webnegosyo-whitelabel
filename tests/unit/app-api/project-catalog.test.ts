@@ -1,6 +1,6 @@
 import { appCatalogSchema } from '@/lib/app-contract'
 import type { Category, OrderType, Outlet } from '@/types/database'
-import { createTestAddon, createTestMenuItem, createTestVariation } from '../../fixtures/menu-item.fixture'
+import { createTestAddon, createTestMenuItem, createTestVariation, createTestVariationType } from '../../fixtures/menu-item.fixture'
 
 describe('projectAppCatalog', () => {
   const load = async () => (await import('@/lib/app-api/project-catalog')).projectAppCatalog
@@ -136,6 +136,63 @@ describe('projectAppCatalog', () => {
     const items = [createTestMenuItem({ id: 'a', category_id: 'cat-1', badge_text: 'Best seller' })]
     expect(projectAppCatalog(base({ menuItems: items })).items[0].badge).toBeNull()
     expect(projectAppCatalog(base({ menuItems: items, tenant: { menu_engineering_enabled: true } })).items[0].badge).toBe('Best seller')
+  })
+
+  it('leaves out options without a name instead of failing the whole menu (live: sample-demo, 2026-11-12)', async () => {
+    const projectAppCatalog = await load()
+    const items = [
+      createTestMenuItem({
+        id: 'shirt',
+        category_id: 'cat-1',
+        variations: [createTestVariation({ id: 'temp-1', name: '', price_modifier: 0, is_default: true })],
+        addons: [createTestAddon({ id: 'blank', name: '   ', price: 5 }), createTestAddon({ id: 'shot', name: ' Extra shot ', price: 35 })],
+      }),
+      createTestMenuItem({ id: 'latte', category_id: 'cat-1', name: 'Latte' }),
+    ]
+    const catalog = projectAppCatalog(base({ menuItems: items }))
+    const parsed = appCatalogSchema.safeParse(catalog)
+    expect(parsed.success ? null : parsed.error.issues).toBeNull()
+    expect(catalog.items.map((item) => item.id)).toEqual(['shirt', 'latte'])
+    const shirt = catalog.items[0]
+    expect(shirt.isAvailable).toBe(true)
+    expect(shirt.modifierGroups.map((group) => [group.id, group.options.map((option) => option.name)])).toEqual([['legacy-addons', ['Extra shot']]])
+  })
+
+  it('shows a dish whose required choice has nothing nameable as unavailable', async () => {
+    const projectAppCatalog = await load()
+    const items = [
+      createTestMenuItem({
+        id: 'a',
+        category_id: 'cat-1',
+        variation_types: [createTestVariationType({ id: 'size', is_required: true, options: [{ id: 'o1', name: '', price_modifier: 0 }] as never })],
+      }),
+    ]
+    const catalog = projectAppCatalog(base({ menuItems: items }))
+    expect(appCatalogSchema.safeParse(catalog).success).toBe(true)
+    expect(catalog.items[0]).toMatchObject({ id: 'a', isAvailable: false, modifierGroups: [] })
+  })
+
+  it('drops a blank-named category, order type or payment method alone, never the menu', async () => {
+    const projectAppCatalog = await load()
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const catalog = projectAppCatalog(
+      base({
+        categories: [category(), category({ id: 'blank', name: '  ' })],
+        menuItems: [createTestMenuItem({ id: 'latte', category_id: 'cat-1' }), createTestMenuItem({ id: 'ghost', category_id: 'blank' })],
+        orderTypes: [orderType({}), orderType({ id: 'ot-blank', type: 'delivery', name: '' })],
+        paymentMethods: [
+          { id: 'pm-1', name: 'Cash', details: null, require_payment_proof: false, skip_payment_details: true },
+          { id: 'pm-2', name: '', details: null, require_payment_proof: false, skip_payment_details: true },
+        ],
+      }),
+    )
+    expect(appCatalogSchema.safeParse(catalog).success).toBe(true)
+    expect(catalog.categories.map((c) => c.id)).toEqual(['cat-1'])
+    expect(catalog.items.map((item) => item.id)).toEqual(['latte'])
+    expect(catalog.orderTypes.map((type) => type.id)).toEqual(['ot-pickup'])
+    expect(catalog.paymentMethods.map((method) => method.id)).toEqual(['pm-1'])
+    expect(errors).toHaveBeenCalledWith('[app-api:catalog] dropped rows that fail the app contract', expect.objectContaining({ kind: 'category', dropped: 1 }))
+    errors.mockRestore()
   })
 
   it('versions the catalog by its content', async () => {

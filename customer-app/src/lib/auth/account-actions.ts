@@ -11,19 +11,20 @@ import { clearSessionToken, loadSessionToken, saveSessionToken } from './session
 /**
  * Everything that changes who is signed in. A change of person drops every
  * per-customer cache (rewards, member QR, orders) and the bag, so the next
- * person on this phone never sees the last one's data.
+ * person on this phone never sees the last one's data. A guest signing in is
+ * the same person mid-order ("Sign in to place your order"): their bag stays.
  */
 const client = appClientFromEnv()
 export const auth: AuthSource = client ? createLiveAuth(client) : createPrototypeAuth()
 
-function forgetCustomerData() {
+function forgetCustomerData({ keepBag = false }: { keepBag?: boolean } = {}) {
   queryClient.removeQueries({ queryKey: queryKeys.loyalty })
   queryClient.removeQueries({ queryKey: queryKeys.orders })
   // Addresses searched and quoted, and vouchers previewed, were this person's too.
   queryClient.removeQueries({ queryKey: ['deliveryQuote'] })
   queryClient.removeQueries({ queryKey: ['places'] })
   queryClient.removeQueries({ queryKey: ['voucherPreview'] })
-  useCart.getState().clear()
+  if (!keepBag) useCart.getState().clear()
 }
 
 async function becomeGuest() {
@@ -47,7 +48,10 @@ export async function restoreSession(): Promise<void> {
 
 /** After a verified code. Returns whether to ask for a name. */
 export async function completeSignIn(result: AppOtpVerifyResult): Promise<boolean> {
-  forgetCustomerData()
+  // Sign-out already emptied the bag, so a guest's bag is their own; only another member's is dropped.
+  const previous = useSession.getState()
+  const isSamePerson = previous.status !== 'member' || previous.profile?.phoneE164 === result.profile.phoneE164
+  forgetCustomerData({ keepBag: isSamePerson })
   useSession.getState().setMember(result.token, result.profile)
   await saveSessionToken(result.token)
   return result.isNewCustomer || result.profile.name === null

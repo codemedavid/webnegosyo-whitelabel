@@ -1,12 +1,17 @@
 import { createHash } from 'node:crypto'
-import type {
-  AppCatalog,
-  AppCategory,
-  AppMenuItem,
-  AppModifierGroup,
-  AppOrderType,
-  AppOutlet,
-  AppPaymentMethod,
+import {
+  appCategorySchema,
+  appMenuItemSchema,
+  appOrderTypeSchema,
+  appOutletSchema,
+  appPaymentMethodSchema,
+  type AppCatalog,
+  type AppCategory,
+  type AppMenuItem,
+  type AppModifierGroup,
+  type AppOrderType,
+  type AppOutlet,
+  type AppPaymentMethod,
 } from '@/lib/app-contract'
 import { getEffectiveItemPrice } from '@/lib/cart-utils'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
@@ -59,21 +64,53 @@ const PAIRINGS_PER_ITEM = 6
 const httpsOrNull = (value: string | null | undefined): string | null =>
   typeof value === 'string' && value.startsWith('https://') ? value : null
 
+const trimmed = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
+
+/**
+ * Options without a name can't be shown to a customer (13 platform stores
+ * carry one, 2026-11-12), so they are left out instead of failing the whole
+ * catalog in the app's contract check.
+ */
 function projectGroup(group: ModifierGroup): AppModifierGroup {
   return {
     id: group.id,
-    name: group.name,
+    name: trimmed(group.name),
     selectionMode: group.selection_mode ?? 'choice',
     ...groupSelectLimits(group),
-    options: group.options.map((option) => ({
-      id: option.id,
-      name: option.name,
-      priceDelta: option.price_modifier ?? 0,
-      imageUrl: httpsOrNull(option.image_url),
-      isDefault: option.is_default === true,
-      isAvailable: isOptionAvailable(option),
-    })),
+    options: group.options.flatMap((option) => {
+      const name = trimmed(option.name)
+      if (!name) return []
+      return [{
+        id: option.id,
+        name,
+        priceDelta: option.price_modifier ?? 0,
+        imageUrl: httpsOrNull(option.image_url),
+        isDefault: option.is_default === true,
+        isAvailable: isOptionAvailable(option),
+      }]
+    }),
   }
+}
+
+/**
+ * A group left with nothing to pick disappears; if it had to be answered, the
+ * dish can't be ordered from the app, so it shows as unavailable.
+ */
+function shownGroups(groups: readonly AppModifierGroup[]): { groups: AppModifierGroup[]; isAnswerable: boolean } {
+  const isAnswerable = groups.every((group) => group.minSelect === 0 || group.options.some((option) => option.isAvailable))
+  return { groups: groups.filter((group) => group.options.length > 0), isAnswerable }
+}
+
+/**
+ * The last guard before the wire: one malformed row (a blank name, a bad
+ * price) drops only itself, never the whole menu the app checks it against.
+ */
+function keepValid<T>(rows: readonly T[], schema: { safeParse(value: unknown): { success: boolean } }, kind: string, tenantId: unknown): T[] {
+  const kept = rows.filter((row) => schema.safeParse(row).success)
+  if (kept.length < rows.length) {
+    console.error('[app-api:catalog] dropped rows that fail the app contract', { tenantId, kind, dropped: rows.length - kept.length })
+  }
+  return kept
 }
 
 function projectItem(
@@ -83,7 +120,7 @@ function projectItem(
   linked: ReadonlyMap<string, LinkedItemSnapshot>,
 ): AppMenuItem {
   const price = getEffectiveItemPrice(item)
-  const groups = appModifierGroups(item, category, input.tenant, linked)
+  const { groups, isAnswerable } = shownGroups(appModifierGroups(item, category, input.tenant, linked).map(projectGroup))
   const badge = input.tenant.menu_engineering_enabled === true && item.badge_text ? item.badge_text.slice(0, BADGE_MAX) : null
   return {
     id: item.id,
@@ -94,9 +131,9 @@ function projectItem(
     compareAtPrice: price < item.price ? item.price : null,
     imageUrl: httpsOrNull(item.image_url),
     badge,
-    isAvailable: isMenuItemOrderable(item),
+    isAvailable: isMenuItemOrderable(item) && isAnswerable,
     isFeatured: item.is_featured === true,
-    modifierGroups: groups.map(projectGroup),
+    modifierGroups: groups,
   }
 }
 
@@ -172,19 +209,29 @@ export function projectAppCatalog(input: AppCatalogInput): AppCatalog {
     input.outletId,
   )
 
-  const items = branchMenu.map((item) => projectItem(item, categoriesById.get(item.category_id), input, linked))
+  const tenantId = input.tenant.id
+  const projectedCategories: AppCategory[] = input.categories
+    .filter((category) => categoriesById.has(category.id))
+    .map((category) => ({ id: category.id, name: trimmed(category.name), description: category.description?.trim() || null, imageUrl: null }))
+  const shownCategories = new Set(keepValid(projectedCategories, appCategorySchema, 'category', tenantId).map((category) => category.id))
+  const items = keepValid(
+    branchMenu
+      .filter((item) => shownCategories.has(item.category_id))
+      .map((item) => projectItem(item, categoriesById.get(item.category_id), input, linked)),
+    appMenuItemSchema,
+    'item',
+    tenantId,
+  )
   const used = new Set(items.map((item) => item.categoryId))
-  const categories: AppCategory[] = input.categories
-    .filter((category) => used.has(category.id))
-    .map((category) => ({ id: category.id, name: category.name, description: category.description?.trim() || null, imageUrl: null }))
+  const categories = projectedCategories.filter((category) => used.has(category.id))
 
   const content = {
     categories,
     items,
-    orderTypes: projectOrderTypes(input.orderTypes),
-    outlets: projectOutlets(input.outlets),
+    orderTypes: keepValid(projectOrderTypes(input.orderTypes), appOrderTypeSchema, 'order type', tenantId),
+    outlets: keepValid(projectOutlets(input.outlets), appOutletSchema, 'outlet', tenantId),
     pairings: projectPairings(input.pairs, new Set(items.map((item) => item.id))),
-    paymentMethods: projectPaymentMethods(input.paymentMethods),
+    paymentMethods: keepValid(projectPaymentMethods(input.paymentMethods), appPaymentMethodSchema, 'payment method', tenantId),
   }
   return { version: versionOf(content), ...content }
 }

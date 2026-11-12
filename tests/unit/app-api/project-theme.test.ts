@@ -77,6 +77,15 @@ describe('projectAppTheme', () => {
     expect(projectAppTheme({ card_roundness: roundness }).corners).toBe(corners)
   })
 
+  it('keeps muted text visibly lighter than body text, so a placeholder never looks filled in (sample-demo, 2026-11-12)', async () => {
+    const projectAppTheme = await load()
+    const lifted = projectAppTheme({ text_primary_color: '#000000', text_secondary_color: '#0d0d0d', background_color: '#ffffff' }).colors
+    expect(contrastRatio(lifted.textMuted, lifted.text)).toBeGreaterThanOrEqual(1.6)
+    expect(contrastRatio(lifted.textMuted, lifted.background)).toBeGreaterThanOrEqual(4.5)
+    // A store whose muted grey already differs keeps it.
+    expect(projectAppTheme({ text_primary_color: '#111111', text_secondary_color: '#6b7280' }).colors.textMuted).toBe('#6b7280')
+  })
+
   it('only passes an https logo', async () => {
     const projectAppTheme = await load()
     expect(projectAppTheme({ logo_url: 'https://ik.imagekit.io/x/logo.png' }).logoUrl).toBe('https://ik.imagekit.io/x/logo.png')

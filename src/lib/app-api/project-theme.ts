@@ -12,6 +12,9 @@ const HEX_6 = /^#[0-9a-f]{6}$/i
 const HEX_3 = /^#[0-9a-f]{3}$/i
 const SOFT_TINT = 0.85
 const MUTED_TINT = 0.05
+/** Muted text (hints, placeholders) closer than this to body text reads as typed text. */
+const MIN_MUTED_DISTINCTION = 1.6
+const MUTED_LIFT = 0.4
 
 /** `#rrggbb` (lowercase) or null — native colour props take nothing else. */
 function toHex6(value: string | null | undefined): string | null {
@@ -46,6 +49,17 @@ function inkOn(background: string): string {
   return (contrastRatio(DARK_INK, background) ?? 0) >= (contrastRatio(LIGHT_INK, background) ?? 0) ? DARK_INK : LIGHT_INK
 }
 
+/**
+ * The store's secondary text colour, unless it is (nearly) the body colour: a
+ * placeholder like "917 123 4567" would then look already filled in (seen on
+ * sample-demo, #0d0d0d on #000000). Lifted toward the page, it still reads.
+ */
+function mutedText(preferred: string, text: string, background: string): string {
+  const muted = onColour(preferred, background)
+  if ((contrastRatio(muted, text) ?? 0) >= MIN_MUTED_DISTINCTION) return muted
+  return onColour(toHex6(mixHex(text, background, MUTED_LIFT)) ?? muted, background)
+}
+
 /** A surface colour that is visibly different from the page but still holds body text. */
 function ensureReadableSurface(surface: string, text: string): string {
   return (contrastRatio(text, surface) ?? 0) >= MIN_TEXT_CONTRAST ? surface : '#ffffff'
@@ -70,7 +84,7 @@ function projectColors(tenant: Record<string, unknown>): AppColors {
     surface,
     surfaceMuted: toHex6(mixHex(surface, text, MUTED_TINT)) ?? surface,
     text,
-    textMuted: onColour(pick(branding.textSecondary, DEFAULT_BRANDING.textSecondary), background),
+    textMuted: mutedText(pick(branding.textSecondary, DEFAULT_BRANDING.textSecondary), text, background),
     border: pick(branding.border, DEFAULT_BRANDING.border),
     success: pick(branding.success, DEFAULT_BRANDING.success),
     warning: pick(branding.warning, DEFAULT_BRANDING.warning),

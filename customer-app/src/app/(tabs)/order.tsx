@@ -7,6 +7,7 @@ import { CategoryChips } from '@/components/menu/category-chips'
 import { MenuItemRow } from '@/components/menu/menu-item-row'
 import { OrderHeader } from '@/components/menu/order-header'
 import { AppText } from '@/components/ui/app-text'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppConfig, useCatalog } from '@/lib/data/hooks'
 import { defaultOutlet } from '@/lib/branch/availability'
@@ -43,7 +44,7 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets()
   const { category: requestedCategory } = useLocalSearchParams<{ category?: string }>()
   const { data: config } = useAppConfig()
-  const { data: catalog, isPending } = useCatalog()
+  const { data: catalog, isPending, isFetching, refetch } = useCatalog()
   const { mode, setMode, outletId, setOutlet } = useCart()
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState(0)
@@ -124,6 +125,14 @@ export default function OrderScreen() {
       />
       {isPending ? (
         <MenuSkeleton />
+      ) : !catalog ? (
+        // The first read failed (no network, or a menu the app can't read): say so, never "Nothing matches".
+        <View style={{ alignItems: 'center', gap: space.lg, padding: space.xxl }}>
+          <AppText variant="body" color="textMuted" align="center">
+            We couldn’t load the menu. Check your connection and try again.
+          </AppText>
+          <Button label="Try again" variant="secondary" isBusy={isFetching} onPress={() => void refetch()} />
+        </View>
       ) : (
         <>
           {query === '' ? <CategoryChips categories={menu.sections} activeIndex={activeSection} onSelect={jumpToSection} /> : null}

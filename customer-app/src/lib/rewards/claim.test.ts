@@ -50,6 +50,13 @@ describe('isRewardRedeemed', () => {
     expect(isRewardRedeemed(REWARD_ID, { rewards: [] }, issuedAt + 5_000, issuedAt)).toBe(true)
   })
 
+  it('is false when the reward left the list because it reached its own expiry', () => {
+    const expiresAt = new Date(issuedAt + 60_000).toISOString()
+    expect(isRewardRedeemed(REWARD_ID, { rewards: [] }, issuedAt + 65_000, issuedAt, expiresAt)).toBe(false)
+    // Gone before its expiry = the counter took it.
+    expect(isRewardRedeemed(REWARD_ID, { rewards: [] }, issuedAt + 30_000, issuedAt, expiresAt)).toBe(true)
+  })
+
   it('ignores a read from before the code was issued', () => {
     expect(isRewardRedeemed(REWARD_ID, { rewards: [] }, issuedAt - 1, issuedAt)).toBe(false)
   })
