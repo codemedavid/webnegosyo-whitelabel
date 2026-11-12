@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../Icon";
 import { colors, radius } from "../../theme/colors";
 import { decideAction } from "../../lib/assistant/api";
@@ -48,6 +48,9 @@ export function ConfirmCardView({ card, tenantId, onOpenLink }: Props) {
         <Text style={styles.eyebrow}>NEEDS YOUR OK</Text>
         <Text style={styles.title}>{card.title}</Text>
       </View>
+      {typeof card.imageUrl === "string" && card.imageUrl.startsWith("https://") ? (
+        <Image source={{ uri: card.imageUrl }} style={styles.qr} resizeMode="contain" alt="QR code customers will scan" />
+      ) : null}
       <View style={styles.lines}>
         {card.lines.map((line) => (
           <View key={line.label} style={styles.line}>
@@ -113,6 +116,7 @@ const styles = StyleSheet.create({
   lineLabel: { width: 112, fontSize: 14, color: colors.textSecondary },
   lineValue: { flex: 1, fontSize: 14, fontWeight: "500", color: colors.textPrimary },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator, paddingHorizontal: 16, paddingVertical: 12 },
+  qr: { width: 160, height: 160, marginHorizontal: 16, marginBottom: 8, borderRadius: 8 },
   warning: { fontSize: 13, color: colors.textSecondary, marginBottom: 8 },
   buttons: { flexDirection: "row", gap: 8 },
   confirm: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 10, minHeight: 44 },

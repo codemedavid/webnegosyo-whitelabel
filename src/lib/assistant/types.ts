@@ -7,7 +7,7 @@
  * the tool writes deterministically, so suggesting "what next" costs no tokens.
  */
 
-export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard
+export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard
 
 export interface StatsCard {
   type: 'stats'
@@ -40,9 +40,28 @@ export interface ConfirmCard {
   lines: Array<{ label: string; value: string }>
   /** Shown above the buttons, e.g. "Goes live on your menu immediately". */
   warning?: string
+  /** A picture the change uses (a payment QR), always one of our CDN's https URLs. */
+  imageUrl?: string
   expiresAt: string
   /** Filled in when a past conversation is reopened: the proposal's outcome so far. */
   status?: string
+}
+
+/** SmartMenu University lessons that answer a "how do I…" question. */
+export interface LessonsCard {
+  type: 'lessons'
+  title: string
+  lessons: Array<{
+    title: string
+    /** "Inventory Management · 6 min" */
+    detail: string
+    /** Relative to /{tenant}/admin, e.g. /learn/getting-started/inventory. */
+    path: string
+    /** Iframe player URL (YouTube / Vimeo / Loom only) or null when the lesson has no video. */
+    embedUrl: string | null
+    watchUrl: string | null
+    thumbnailUrl: string | null
+  }>
 }
 
 /** A one-tap follow-up: tapping it sends `prompt` as the owner's next message. */

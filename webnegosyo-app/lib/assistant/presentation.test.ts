@@ -65,6 +65,13 @@ describe("resolveOwlLink", () => {
       href: "/(main)/product/0b6c1f8e-4b1a-4c3e-9d2a-1234567890ab",
     });
     expect(resolveOwlLink("/boost-sales", "seacook", WEB)).toEqual({ kind: "web", url: `${WEB}/seacook/admin/boost-sales` });
+    expect(resolveOwlLink("/payment-methods", "seacook", WEB)).toEqual({ kind: "app", href: "/(main)/payments" });
+    // Web-only screens Owl links to: Delivery settings (Lalamove keys) and University lessons.
+    expect(resolveOwlLink("/settings/delivery", "seacook", WEB)).toEqual({ kind: "web", url: `${WEB}/seacook/admin/settings/delivery` });
+    expect(resolveOwlLink("/learn/getting-started/connecting-sa-printer", "seacook", WEB)).toEqual({
+      kind: "web",
+      url: `${WEB}/seacook/admin/learn/getting-started/connecting-sa-printer`,
+    });
   });
 
   test("never builds an off-platform or malformed link", () => {

@@ -15,6 +15,10 @@
 --   * assistant_actions kinds: payment methods (create / change), a new
 --     ingredient. Additive only — every existing kind stays valid.
 --
+-- APPLIED + probed on platform 2026-11-12 (as 20261112022453): a legacy
+-- full-access admin gets false for assistant and true for menu (both twins),
+-- an owner true at their store and false at another, the three new kinds
+-- insert and an unknown kind is refused (23514), rolled back.
 -- Safe to apply before the deploy: nothing reads the new array entry, and the
 -- new kinds are only written by code that ships with them.
 -- Rollback: re-run 20261027120100's function and 20261013150000's constraint.

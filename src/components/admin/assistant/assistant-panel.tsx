@@ -24,7 +24,9 @@ const STARTERS: StarterGroup[] = [
   { title: 'Customers & team', prompts: ['Who are my best customers?', 'How is my staff doing this week?'] },
   { title: 'Promos', prompts: ['Suggest a promo for my quiet hours', 'Can I afford 20% off my best seller?'] },
   { title: 'Loyalty & offers', prompts: ['How is my loyalty program doing?', 'Which offers are running?', 'Which vouchers are being used?'] },
-  { title: 'Inventory', prompts: ['What stock is running low?'] },
+  { title: 'Inventory', prompts: ['What stock is running low?', 'Which dishes use my rice?'] },
+  { title: 'Set up', prompts: ['Add GCash as a payment method', 'Is Lalamove ready for my store?'] },
+  { title: 'Learn', prompts: ['How do I connect my printer?', 'Show me how inventory works'] },
 ]
 
 /** How long Owl celebrates a confirmed change. */

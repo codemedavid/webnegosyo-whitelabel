@@ -15,6 +15,8 @@ interface ProposalSpec {
   title: string
   lines: ConfirmCard['lines']
   warning?: string
+  /** A picture the change uses (a hosted payment QR). */
+  imageUrl?: string
 }
 
 export async function fileProposal(ctx: AssistantToolContext, spec: ProposalSpec): Promise<ToolResult> {
@@ -33,7 +35,15 @@ export async function fileProposal(ctx: AssistantToolContext, spec: ProposalSpec
       summary: spec.summary,
       note: 'Shown to the user as a card with Confirm / Cancel. Nothing has changed yet; do not say it is done.',
     },
-    card: { type: 'confirm', actionId: id, title: spec.title, lines: spec.lines, warning: spec.warning, expiresAt },
+    card: {
+      type: 'confirm',
+      actionId: id,
+      title: spec.title,
+      lines: spec.lines,
+      warning: spec.warning,
+      ...(spec.imageUrl ? { imageUrl: spec.imageUrl } : {}),
+      expiresAt,
+    },
   }
 }
 

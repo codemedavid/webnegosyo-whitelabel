@@ -8,7 +8,21 @@
  * means the same dish on every turn.
  */
 
-export type RefKind = 'item' | 'category' | 'customer' | 'staff' | 'ingredient' | 'idea' | 'offer' | 'program' | 'campaign' | 'voucher' | 'import' | 'draft'
+export type RefKind =
+  | 'item'
+  | 'category'
+  | 'customer'
+  | 'staff'
+  | 'ingredient'
+  | 'idea'
+  | 'offer'
+  | 'program'
+  | 'campaign'
+  | 'voucher'
+  | 'import'
+  | 'draft'
+  | 'payment'
+  | 'lesson'
 
 const PREFIX: Readonly<Record<RefKind, string>> = {
   item: 'i',
@@ -25,6 +39,10 @@ const PREFIX: Readonly<Record<RefKind, string>> = {
   import: 'n',
   /** One dish inside a photo import (`<proposal id>#<index>`). */
   draft: 'd',
+  /** A payment method ("pay"). */
+  payment: 'y',
+  /** A SmartMenu University lesson. */
+  lesson: 'l',
 }
 
 const KINDS = Object.keys(PREFIX) as RefKind[]
