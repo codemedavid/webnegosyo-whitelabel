@@ -15,7 +15,7 @@ const fail = (status: number, code: string, message: string, headers: Record<str
 })
 
 function source(fetchImpl: jest.Mock) {
-  return createLiveSource(createAppClient({ baseUrl: 'https://store.example.com', applicationId: 'com.webnegosyo.kapedemo', fetch: fetchImpl }))
+  return createLiveSource(createAppClient({ baseUrl: 'https://store.example.com', applicationId: 'com.webnegosyo.kapedemo', fetch: fetchImpl }), 'https://store.example.com')
 }
 
 const draft = {

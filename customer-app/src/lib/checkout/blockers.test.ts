@@ -108,10 +108,14 @@ describe('checkoutBlockers', () => {
     expect(checkoutBlockers({ ...delivery, hasDeliveryPlace: false, deliveryFee: 'failed' })).toEqual(['Add a delivery address'])
   })
 
-  it('needs a reference number for a method that requires proof', () => {
+  it('needs a screenshot or a reference number for a method that requires proof', () => {
     const proof = { ...ready, paymentMethodId: 'pm-gcash', needsPaymentReference: true }
-    expect(checkoutBlockers({ ...proof, paymentReference: '   ' })).toEqual(['Add your payment reference number'])
+    expect(checkoutBlockers({ ...proof, paymentReference: '   ' })).toEqual(['Add a payment screenshot or reference number'])
     expect(checkoutBlockers({ ...proof, paymentReference: '0123 4567 89' })).toEqual([])
+    expect(checkoutBlockers({ ...proof, proofImage: 'ready' })).toEqual([])
+    expect(checkoutBlockers({ ...proof, proofImage: 'failed' })).toEqual(['Add a payment screenshot or reference number'])
+    expect(checkoutBlockers({ ...proof, proofImage: 'uploading' })).toEqual(['Wait for your screenshot to finish uploading'])
+    expect(checkoutBlockers({ ...proof, proofImage: 'uploading', paymentReference: '0123' })).toEqual([])
     expect(checkoutBlockers({ ...ready, paymentReference: '' })).toEqual([])
   })
 

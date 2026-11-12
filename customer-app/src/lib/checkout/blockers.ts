@@ -43,9 +43,11 @@ export interface CheckoutState {
   paymentMethodId: string | null
   /** The order type offers at least one method; with none the order goes without one, as on the web. */
   hasPaymentMethods: boolean
-  /** The chosen method needs proof: a typed reference number until screenshots arrive. */
+  /** The chosen method needs proof: a screenshot OR a typed reference number (the web's rule). */
   needsPaymentReference: boolean
   paymentReference: string
+  /** Where the payment screenshot is; absent = none picked. */
+  proofImage?: 'none' | 'uploading' | 'ready' | 'failed'
   /** A place was picked from the search (it has a pin); typed text alone cannot be delivered to. */
   hasDeliveryPlace: boolean
   deliveryFee: DeliveryFeeStatus
@@ -55,6 +57,14 @@ export interface CheckoutState {
   shortfallCentavos: number
   /** The store's required questions still blank, already worded ("Answer “Pickup date”"); absent = none. */
   unansweredQuestions?: readonly string[]
+}
+
+/** A proof method needs a screenshot that finished uploading, or a typed reference. */
+function paymentProofBlockers(state: CheckoutState): [boolean, string][] {
+  if (state.paymentMethodId === null || !state.needsPaymentReference) return []
+  const hasReference = state.paymentReference.trim() !== ''
+  if (state.proofImage === 'uploading' && !hasReference) return [[true, 'Wait for your screenshot to finish uploading']]
+  return [[!hasReference && state.proofImage !== 'ready', 'Add a payment screenshot or reference number']]
 }
 
 /**
@@ -81,7 +91,7 @@ export function checkoutBlockers(state: CheckoutState): string[] {
     [state.shortfallCentavos > 0, `Add ${formatPeso(state.shortfallCentavos)} more for ${MODE_WORDS[state.mode]}`],
     [state.paymentMethodId === null && state.hasPaymentMethods, 'Choose how to pay'],
     ...(state.unansweredQuestions ?? []).map((message): [boolean, string] => [true, message]),
-    [state.paymentMethodId !== null && state.needsPaymentReference && state.paymentReference.trim() === '', 'Add your payment reference number'],
+    ...paymentProofBlockers(state),
     ...(VOUCHER_BLOCKERS[state.voucher] ? [[true, VOUCHER_BLOCKERS[state.voucher]] as [boolean, string]] : []),
   ]
   return checks.filter(([isBlocked]) => isBlocked).map(([, message]) => message)

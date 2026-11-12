@@ -161,6 +161,8 @@ export function createPrototypeSource(live: LiveReads = fixtureReads): AppDataSo
         distanceKm: 3.2,
       }),
     searchPlaces: ({ q }) => delay(searchDemoPlaces(q)),
+    // The demo never uploads: any picked photo stands in as an ImageKit proof.
+    uploadPaymentProof: () => delay({ url: 'https://ik.imagekit.io/demo/payment-proofs/demo-proof.jpg', fileId: 'demo-proof' }),
   }
 }
 

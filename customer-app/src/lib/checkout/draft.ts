@@ -14,6 +14,8 @@ export interface DraftInput {
   paymentMethodId: string | null
   /** Only for a method that needs proof; blank = none. */
   paymentReference: string | null
+  /** The uploaded payment screenshot, only for a method that needs proof; absent = none. */
+  paymentProofImage?: { url: string; fileId: string } | null
   /** A voucher the server's preview says applies; null otherwise. */
   voucherCode: string | null
   rewardId: string | null
@@ -35,6 +37,7 @@ export function buildOrderDraft(input: DraftInput): AppOrderDraft {
     lines: draftLines(input.lines),
     paymentMethodId: input.paymentMethodId,
     paymentReference: blankToNull(input.paymentReference),
+    ...(input.paymentProofImage ? { paymentProofImage: input.paymentProofImage } : {}),
     voucherCode: blankToNull(input.voucherCode),
     rewardId: input.rewardId,
     delivery: input.delivery,

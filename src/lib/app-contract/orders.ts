@@ -101,6 +101,16 @@ export const appOrderDraftSchema = z.object({
   paymentMethodId: z.string().min(1).nullable(),
   /** Typed proof (reference number) for a method that requires proof; null when none was typed. */
   paymentReference: z.string().trim().min(1).max(80).nullable(),
+  /**
+   * The payment screenshot, uploaded first through `POST /api/payment-proof/upload`
+   * (the web checkout's own upload). The server keeps it only on the store's
+   * ImageKit folder, like the web. A proof method needs this OR a reference.
+   * Absent from builds before 2026-11-13.
+   */
+  paymentProofImage: z
+    .object({ url: z.string().url().max(2048), fileId: z.string().min(1).max(200) })
+    .nullable()
+    .optional(),
   voucherCode: z.string().trim().min(1).max(40).nullable(),
   /** Rewards at checkout arrive in Phase 5: until then the server refuses anything but null. */
   rewardId: z.string().min(1).nullable(),

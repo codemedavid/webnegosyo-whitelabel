@@ -1,6 +1,7 @@
 import type { AppOrderDelivery, AppOrderDraft, AppOrderKind, AppProfile } from '@/lib/app-contract'
 import type { CartLineOrderItem } from '@/lib/checkout/order-items-payload'
 import type { PaymentMethodWithLinks } from '@/lib/checkout/checkout-config'
+import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import type { PlaceOrderInput } from '@/lib/checkout/place-order/types'
 import { questionRole } from '@/lib/checkout/question-roles'
 import { ANSWER_KEYS_THE_SERVER_CANNOT_SEE } from '@/lib/checkout/required-answers'
@@ -37,7 +38,7 @@ export const REWARDS_SOON = 'Rewards at checkout are coming soon. Remove the rew
 export const ORDER_TYPE_GONE = 'That way of ordering is not available right now. Choose another one.'
 export const PAYMENT_GONE = 'That payment method is not available for this order. Choose another one.'
 export const PAYMENT_NEEDED = 'Choose how you will pay for this order.'
-export const PROOF_NEEDED = 'Enter the reference number of your payment to continue.'
+export const PROOF_NEEDED = 'Add a screenshot of your payment or enter its reference number to continue.'
 export const DELIVERY_NEEDED = 'Choose your delivery address from the suggestions.'
 export const QUOTE_NEEDED = 'Your delivery quote has expired. Choose your address again to get a new one.'
 
@@ -154,9 +155,25 @@ function lalamoveFields(delivery: AppOrderDelivery): Pick<PlaceOrderInput, 'lala
   return parts ? { lalamoveQuotationId: parts.quotationId, lalamoveQuoteSignature: parts.signature } : null
 }
 
-function proofOf(method: PaymentMethodWithLinks, reference: string | null) {
-  if (reference) return { ok: true as const, proof: { reference } }
-  return method.require_payment_proof === true ? { ok: false as const } : { ok: true as const, proof: undefined }
+/**
+ * The proof the order carries, by the web's rule (`proofForMethod`,
+ * `getPaymentProofError`): a proof method needs a screenshot OR a reference; a
+ * method that never asked for proof carries neither. The screenshot passes the
+ * same `sanitizePaymentProof` the engine runs, so one that is not on the
+ * store's ImageKit folder counts as missing here too.
+ */
+function proofOf(method: PaymentMethodWithLinks, draft: Pick<AppOrderDraft, 'paymentReference' | 'paymentProofImage'>) {
+  if (method.require_payment_proof !== true) return { ok: true as const, proof: undefined }
+  const image = draft.paymentProofImage ?? null
+  const safe = sanitizePaymentProof({ url: image?.url, publicId: image?.fileId, reference: draft.paymentReference })
+  if (!safe || (!safe.url && !safe.reference)) return { ok: false as const }
+  return {
+    ok: true as const,
+    proof: {
+      ...(safe.url ? { url: safe.url, publicId: safe.publicId } : {}),
+      ...(safe.reference ? { reference: safe.reference } : {}),
+    },
+  }
 }
 
 type PaymentChoice = { ok: true; fields: Partial<PlaceOrderInput>; name: string | null } | { ok: false; message: string }
@@ -175,7 +192,7 @@ function choosePayment(request: OrderRequestInput): PaymentChoice {
   }
   const method = choosePaymentMethod(request.paymentMethods, draft.paymentMethodId, orderType.id)
   if (!method) return { ok: false, message: PAYMENT_GONE }
-  const proof = proofOf(method, draft.paymentReference)
+  const proof = proofOf(method, draft)
   if (!proof.ok) return { ok: false, message: PROOF_NEEDED }
   return {
     ok: true,

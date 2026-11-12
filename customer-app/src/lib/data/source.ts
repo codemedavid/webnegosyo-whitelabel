@@ -13,6 +13,7 @@ import type {
   AppVoucherPreview,
   AppVoucherPreviewRequest,
 } from '@/lib/contract'
+import type { ProofFile, UploadedProof } from '@/lib/checkout/payment-proof-upload'
 
 /**
  * Everything the screens read. The demo runs on `fixtureSource`; the
@@ -42,4 +43,6 @@ export interface AppDataSource {
   /** Out of area comes back as a `refused` error carrying the store's words. */
   quoteDelivery(request: AppDeliveryQuoteRequest): Promise<AppDeliveryQuote>
   searchPlaces(query: AppPlacesQuery): Promise<AppPlace[]>
+  /** A payment screenshot, through the web checkout's upload; throws an Error carrying words for the customer. */
+  uploadPaymentProof(file: ProofFile): Promise<UploadedProof>
 }

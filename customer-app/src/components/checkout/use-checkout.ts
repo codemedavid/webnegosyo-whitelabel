@@ -23,6 +23,7 @@ import { isRewardAtCheckoutOffered, useAppConfig, useCatalog, useDeliveryQuote, 
 import { formatPeso, toCentavos } from '@/lib/money'
 import { useCart, useCartSummary } from '@/lib/stores/cart'
 import { useSession } from '@/lib/stores/session'
+import { usePaymentProof } from './use-payment-proof'
 import { useVoucher } from './use-voucher'
 
 export type { PickedPlace }
@@ -63,6 +64,7 @@ export function useCheckout() {
   const [notes, setNotes] = useState('')
   const [pickedPaymentId, setPickedPaymentId] = useState<string | null>(null)
   const [paymentReference, setPaymentReference] = useState('')
+  const paymentProof = usePaymentProof()
   const [isUsingReward, setIsUsingReward] = useState(false)
   const [shownFailure, setShownFailure] = useState<ShownFailure | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -113,6 +115,7 @@ export function useCheckout() {
     hasPaymentMethods: paymentMethods.length > 0,
     needsPaymentReference,
     paymentReference,
+    proofImage: paymentProof.state.status,
     hasDeliveryPlace: deliveryPlace !== null,
     deliveryFee: feeStatus,
     deliveryRefusal,
@@ -130,6 +133,7 @@ export function useCheckout() {
     paymentId: paymentMethod?.id ?? null,
     deliveryPlace,
     paymentReference,
+    proofImage: paymentProof.state.status === 'ready' ? paymentProof.state.proof.fileId : null,
     answers: sentAnswers ?? null,
   })
 
@@ -142,6 +146,7 @@ export function useCheckout() {
       lines,
       paymentMethodId: paymentMethod?.id ?? null,
       paymentReference: needsPaymentReference ? paymentReference : null,
+      paymentProofImage: needsPaymentReference && paymentProof.state.status === 'ready' ? paymentProof.state.proof : null,
       voucherCode: voucher.codeToSend,
       rewardId: rewardCentavos > 0 && reward ? reward.id : null,
       delivery,
@@ -219,6 +224,7 @@ export function useCheckout() {
     pickPayment: setPickedPaymentId,
     paymentReference,
     setPaymentReference,
+    paymentProof,
     voucher,
     reward,
     rewardCentavos,

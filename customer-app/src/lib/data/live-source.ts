@@ -13,6 +13,7 @@ import {
   appRewardClaimSchema,
   appVoucherPreviewSchema,
 } from '@/lib/contract'
+import { uploadProofFile } from '@/lib/checkout/payment-proof-upload'
 import type { AppDataSource } from './source'
 
 /** Everything is real once an API URL is set. */
@@ -24,7 +25,7 @@ const query = (params: Record<string, string | null | undefined>) => {
 }
 
 /** The platform's /api/app/v1 routes for the build this app is. Per-customer calls run as the signed-in session. */
-export function createLiveSource(client: AppClient): LiveSource {
+export function createLiveSource(client: AppClient, baseUrl: string): LiveSource {
   return {
     getConfig: () => client.get('/api/app/v1/config', appConfigSchema),
     getCatalog: (outletId) => client.get(`/api/app/v1/catalog${query({ outletId })}`, appCatalogSchema),
@@ -53,6 +54,7 @@ export function createLiveSource(client: AppClient): LiveSource {
       )
       return result.places
     },
+    uploadPaymentProof: (file) => uploadProofFile(baseUrl, file),
   }
 }
 
@@ -69,5 +71,6 @@ export function appClientFromEnv(): AppClient | null {
 /** `EXPO_PUBLIC_APP_API_URL` switches the app from fixtures to the real store. */
 export function liveSourceFromEnv(): LiveSource | null {
   const client = appClientFromEnv()
-  return client ? createLiveSource(client) : null
+  const baseUrl = process.env.EXPO_PUBLIC_APP_API_URL?.trim()
+  return client && baseUrl ? createLiveSource(client, baseUrl) : null
 }
