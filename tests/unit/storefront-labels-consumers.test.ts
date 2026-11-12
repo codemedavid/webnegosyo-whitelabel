@@ -49,6 +49,8 @@ describe('storefront label consumers', () => {
         'checkout-templates/wizard-checkout.tsx': ['checkout.title', 'checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment'],
         'checkout-templates/bitespeed-checkout.tsx': ['checkout.order_type', 'checkout.customer', 'checkout.summary', 'checkout.payment'],
         'checkout-templates/order-summary-lines.tsx': ['checkout.total'],
+        'checkout-templates/payment-step.tsx': ['payment.paying_with', 'payment.total', 'payment.blocked', 'payment.next_step', 'payment.back'],
+        'payment-proof-field.tsx': ['payment.proof_title', 'payment.upload', 'payment.reference', 'payment.example'],
         'order-tracking/ring-me-button.tsx': ['tracking.ring_me', 'tracking.ring_armed'],
         'order-tracking/back-to-menu-button.tsx': ['tracking.back'],
         'order-tracking/status-hero.tsx': ['tracking.cancelled_headline', 'tracking.cancelled_detail'],

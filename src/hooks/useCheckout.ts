@@ -56,7 +56,7 @@ import { createOrderAction } from '@/app/actions/orders'
 import { storeAddressToken } from '@/lib/page-designer/store-address'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
-import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
+import { getPaymentProofError, isPaymentProofRequired, proofForMethod } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
 import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { resolveActiveOrderType } from '@/lib/checkout-order-type'
@@ -97,6 +97,7 @@ import { deliveryQuoteOutlet } from '@/hooks/checkout/delivery-quote-outlet'
 import { useCheckoutSchedule } from '@/hooks/checkout/use-checkout-schedule'
 import { amountToFreeDelivery, resolveFreeDeliveryThreshold, waiveDeliveryFee } from '@/lib/free-delivery'
 import { usePaymentProof } from '@/hooks/checkout/use-payment-proof'
+import { afterPaymentStepEntryReleased } from '@/components/customer/checkout-templates/payment-step-history'
 import { toast } from 'sonner'
 import type { QrOrderPayloadV1 } from '@/types/qr-order'
 import type { Tenant } from '@/types/database'
@@ -596,7 +597,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   )
   const trackingRedirectPath = confirmationHandoff.kind === 'redirect' ? confirmationHandoff.path : null
   useEffect(() => {
-    if (trackingRedirectPath) router.replace(trackingRedirectPath)
+    if (!trackingRedirectPath) return
+    // A page-like payment step's Back entry goes first, so Back from
+    // tracking doesn't stop on an emptied checkout.
+    return afterPaymentStepEntryReleased(() => router.replace(trackingRedirectPath))
   }, [trackingRedirectPath, router])
 
   // QR-handoff flow: build a QrOrderPayloadV1 from the cart + form values,
@@ -628,7 +632,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
         paymentMethod: selectedPaymentMethodData,
         scheduledForISO,
         scheduledForLabel,
-        paymentProof,
+        paymentProof: proofForMethod(selectedPaymentMethodData, paymentProof),
       })
 
       const preparedQr = prepareOrderQr(payload)
@@ -663,7 +667,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       // The table was for this order; the next scan names the next one.
       clearLinkedTable(window.localStorage, tenantSlug)
       toast.success('Order ready! Show the QR to the vendor.')
-      router.push(`/${tenantSlug}/order/qr/${payload.cid}`)
+      const qrPath = `/${tenantSlug}/order/qr/${payload.cid}`
+      afterPaymentStepEntryReleased(() => router.push(qrPath))
     } catch (error) {
       console.error('QR handoff error:', error)
       toast.error('Failed to generate order QR. Please try again.')
@@ -937,7 +942,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
           selectedPaymentMethodData?.qr_code_url || undefined,
           serviceChargeAmount || undefined,
           scheduledForISO || undefined,
-          buildPaymentProofPayload(paymentProof),
+          buildPaymentProofPayload(proofForMethod(selectedPaymentMethodData, paymentProof)),
           selectedOutletId,
           // Codes, not amounts. The server recomputes the discount from these.
           [...voucherCodes],

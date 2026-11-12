@@ -23,6 +23,10 @@ import {
   PaymentDetailsDialog,
   QrCodeDialog,
 } from '@/components/customer/checkout-templates/checkout-shared'
+import {
+  PaymentStepScreen,
+  useIsPaymentScreenOpen,
+} from '@/components/customer/checkout-templates/payment-details-dialog'
 import { CheckoutOutletSummary } from '@/components/customer/checkout-templates/checkout-outlet-section'
 import { CheckoutOutletScreen } from '@/components/customer/checkout-templates/checkout-outlet-screen'
 import { SeniorOrderSteps } from '@/components/customer/senior-mode/senior-order-steps'
@@ -31,6 +35,8 @@ import { isOrderSaveFailed } from '@/lib/checkout/order-save-outcome'
 
 export function CheckoutView({ tenantSlug, initialTenant, config }: UseCheckoutInput) {
   const checkout = useCheckout({ tenantSlug, initialTenant, config })
+  // The owner's "Its own screen" payment step replaces the form while open.
+  const isPaymentScreenOpen = useIsPaymentScreenOpen(checkout)
 
   // Order confirmation / thank-you view (shared across all designs)
   if (checkout.checkoutComplete && checkout.completedOrderData) {
@@ -65,7 +71,9 @@ export function CheckoutView({ tenantSlug, initialTenant, config }: UseCheckoutI
 
   return (
     <StorefrontLabelsProvider tenant={checkout.tenant}>
-      <div data-branding-scope="checkout/colors" style={checkoutThemeStyle(checkout)}>
+      {/* Hidden, not unmounted, behind the payment screen: a wizard design keeps
+          its step and the form its answers when the customer comes back. */}
+      <div data-branding-scope="checkout/colors" style={checkoutThemeStyle(checkout)} hidden={isPaymentScreenOpen}>
         <SeniorOrderSteps
           current="checkout"
           branding={checkout.branding}
@@ -78,6 +86,7 @@ export function CheckoutView({ tenantSlug, initialTenant, config }: UseCheckoutI
         {/* The owner's Page Designer checkout when published, else the standard design. */}
         <CheckoutDesignSwitch template={template} checkout={checkout} />
       </div>
+      <PaymentStepScreen checkout={checkout} />
       {/* Shared overlays — rendered for every design */}
       <PaymentDetailsDialog checkout={checkout} />
       <QrCodeDialog checkout={checkout} />

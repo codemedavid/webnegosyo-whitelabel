@@ -35,6 +35,10 @@ describe('getPreviewTarget', () => {
     expect(getPreviewTarget(slug, 'checkout', null).path).toBe('/demo/checkout')
   })
 
+  it('previews the checkout page for the payment step surface (the checkout holds the step open)', () => {
+    expect(getPreviewTarget(slug, 'payment', null).path).toBe('/demo/checkout')
+  })
+
   it('previews the cart for the upsell surface — the last-call offers live there', () => {
     expect(getPreviewTarget(slug, 'upsell', null)).toEqual({ path: '/demo/menu', openCart: true })
   })

@@ -8,7 +8,7 @@
 
 import { z } from 'zod'
 
-export type LabelScreen = 'menu' | 'item' | 'cart' | 'checkout' | 'confirmation' | 'tracking' | 'loyalty'
+export type LabelScreen = 'menu' | 'item' | 'cart' | 'checkout' | 'payment' | 'confirmation' | 'tracking' | 'loyalty'
 
 export interface StorefrontLabelDefinition {
     screen: LabelScreen
@@ -51,6 +51,17 @@ export const STOREFRONT_LABELS = {
     'checkout.payment': { screen: 'checkout', label: 'Payment title', example: 'Payment', maxLength: MEDIUM },
     'checkout.total': { screen: 'checkout', label: 'Total', example: 'Total', maxLength: SHORT },
     'checkout.voucher': { screen: 'checkout', label: 'Voucher prompt', example: 'Have a voucher?', maxLength: MEDIUM },
+    // The payment step (after "Proceed to Payment"). `payment.next_step` replaces
+    // all three built-in "after paying" lines (Messenger / QR / plain submit).
+    'payment.paying_with': { screen: 'payment', label: 'Above the method name', example: 'Paying with', maxLength: SHORT },
+    'payment.total': { screen: 'payment', label: 'Amount title', example: 'Total to pay', maxLength: SHORT },
+    'payment.proof_title': { screen: 'payment', label: 'Receipt upload title', example: 'Proof of payment', maxLength: MEDIUM },
+    'payment.upload': { screen: 'payment', label: 'Upload button', example: 'Upload screenshot', maxLength: SHORT },
+    'payment.reference': { screen: 'payment', label: 'Reference number label', example: 'Reference / transaction number', maxLength: MEDIUM },
+    'payment.example': { screen: 'payment', label: 'Example receipt link', example: 'See an example', maxLength: SHORT },
+    'payment.blocked': { screen: 'payment', label: 'Until proof is attached', example: 'Attach a screenshot or enter your reference number to continue.', maxLength: LONG },
+    'payment.next_step': { screen: 'payment', label: 'What happens next', example: 'After paying, tap below to submit your order to the restaurant.', maxLength: LONG },
+    'payment.back': { screen: 'payment', label: 'Back button', example: 'Go back', maxLength: SHORT },
     'confirmation.title': { screen: 'confirmation', label: 'Order placed title', example: 'Order Placed!', maxLength: MEDIUM },
     'tracking.received': { screen: 'tracking', label: 'Received — step name', example: 'Order received', maxLength: SHORT },
     'tracking.received_headline': { screen: 'tracking', label: 'Received — headline', example: 'We got your order!', maxLength: MEDIUM },

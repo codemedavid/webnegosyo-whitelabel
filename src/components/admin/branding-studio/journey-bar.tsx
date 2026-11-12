@@ -2,7 +2,7 @@
 
 /**
  * The diner's journey above the preview — Welcome › Menu › Item › Cart ›
- * Checkout › Order status › Loyalty card — so owners move screen to screen
+ * Checkout › Payment › Order status › Loyalty card — so owners move screen to screen
  * the way a customer does.
  */
 
@@ -14,6 +14,7 @@ export const JOURNEY_STEPS: ReadonlyArray<{ surfaceId: BrandingSurface['id']; la
     { surfaceId: 'product', label: 'Item' },
     { surfaceId: 'cart', label: 'Cart' },
     { surfaceId: 'checkout', label: 'Checkout' },
+    { surfaceId: 'payment', label: 'Payment' },
     { surfaceId: 'tracking', label: 'Order status' },
     { surfaceId: 'loyalty', label: 'Loyalty card' },
 ]

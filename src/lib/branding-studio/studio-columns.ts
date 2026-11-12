@@ -1,7 +1,7 @@
 /**
  * The jsonb columns the Studio edits as virtual fields: the store's label
- * wording, the per-section colour styles and the order page / loyalty card
- * look. Shared by the draft engine, the saved overlay and the preview so all
+ * wording, the per-section colour styles, the order page / loyalty card
+ * look and the checkout's payment step look. Shared by the draft engine, the saved overlay and the preview so all
  * three fold them the same way.
  */
 
@@ -9,6 +9,7 @@ import { STOREFRONT_LABEL_KEYS } from '@/lib/storefront-labels'
 import { STYLED_SECTIONS } from '@/lib/section-schemes'
 import { createJsonColumnFields, type JsonColumnFields } from '@/lib/branding-studio/json-column-fields'
 import { TRACKING_STYLE_KEYS } from '@/lib/tracking-style/keys'
+import { PAYMENT_STEP_STYLE_KEYS } from '@/lib/payment-step/style'
 
 type Bag = Record<string, unknown> | null | undefined
 
@@ -16,7 +17,13 @@ export const JSON_COLUMNS: readonly JsonColumnFields[] = [
     createJsonColumnFields('storefront_labels', STOREFRONT_LABEL_KEYS),
     createJsonColumnFields('section_schemes', STYLED_SECTIONS),
     createJsonColumnFields('tracking_style', TRACKING_STYLE_KEYS),
+    createJsonColumnFields('payment_step_style', PAYMENT_STEP_STYLE_KEYS),
 ]
+
+/** Looks stored as strict hex (the order page, loyalty card, payment step): the swatches offer hex only. */
+export function isHexOnlyField(fieldId: string): boolean {
+    return fieldId.startsWith('tracking_style.') || fieldId.startsWith('payment_step_style.')
+}
 
 export function isJsonColumnFieldId(fieldId: string): boolean {
     return JSON_COLUMNS.some((column) => column.isFieldId(fieldId))

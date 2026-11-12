@@ -54,6 +54,7 @@ const LABEL_SURFACE: Record<LabelScreen, BrandingSurface['id']> = {
   item: 'product',
   cart: 'cart',
   checkout: 'checkout',
+  payment: 'payment',
   confirmation: 'checkout',
   tracking: 'tracking',
   loyalty: 'loyalty',
@@ -88,6 +89,7 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'product/labels': scope('product', 'Labels', 'Item page wording'),
   'cart/labels': scope('cart', 'Labels', 'Cart wording'),
   'checkout/labels': scope('checkout', 'Labels', 'Checkout wording'),
+  'payment/labels': scope('payment', 'Labels', 'Payment step wording'),
   'tracking/labels': scope('tracking', 'Labels', 'Order page wording'),
   'loyalty/labels': scope('loyalty', 'Labels', 'Loyalty card wording'),
 
@@ -137,6 +139,13 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'checkout/summary': scope('checkout', 'Colors', 'Order summary', 'checkout_summary_background_color'),
   'checkout/choice': scope('checkout', 'Colors', 'Order type & payment choice', 'checkout_accent_color'),
   'checkout/place-order': scope('checkout', 'Colors', 'Place order button', 'checkout_button_color'),
+
+  // The payment step (after Proceed to Payment).
+  'payment/frame': scope('payment', 'How it opens', 'Payment step'),
+  'payment/header': scope('payment', 'Top of the step', 'Amount & method'),
+  'payment/upload': scope('payment', 'Receipt upload', 'Receipt upload'),
+  'payment/colors': scope('payment', 'Colours', 'Payment step colours'),
+  'payment/send': scope('payment', 'Colours', 'Send order button', 'payment_step_style.button_color'),
 
   // Order-tracking page (the Studio previews it with a sample order).
   'tracking/page': scope('tracking', 'Page', 'Order page'),

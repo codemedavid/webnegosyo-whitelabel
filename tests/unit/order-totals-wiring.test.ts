@@ -35,6 +35,7 @@ const MONEY_BEARING_FILES = [
   `${CHECKOUT_TEMPLATE_DIR}/payment-choices.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/checkout-shared.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/payment-details-dialog.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/payment-step.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/classic-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/modern-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/minimal-checkout.tsx`,
