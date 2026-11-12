@@ -4,8 +4,10 @@
  * Server actions for Lalamove delivery integration
  */
 
+import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { defineAction } from '@/platform/http/define-action'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import {
   createLalamoveQuotation,
@@ -224,66 +226,93 @@ export async function createQuotationAction(
 
 
 /**
+ * Asking Lalamove about a quotation is a call against the store's own account,
+ * and this action has no session, so it is counted like quoting itself: per
+ * client address (the declaration below) and per store, both shared across
+ * instances.
+ */
+const QUOTATION_CHECK_STORE_RATE_LIMIT = { limit: 30, windowSec: 60 }
+
+/** Longer than any store or quotation id; bounds the limiter key and the Lalamove path. */
+const MAX_QUOTATION_CHECK_ID_LENGTH = 64
+
+const QUOTE_CHECK_RATE_LIMITED = 'Too many delivery quote checks. Please try again in a moment.'
+const QUOTE_CHECK_UNAVAILABLE = 'We could not check this delivery quote right now.'
+
+interface QuotationValidity {
+  valid: boolean
+  expiresAt?: Date
+  error?: string
+}
+
+const quotationCheckId = z.string().min(1).max(MAX_QUOTATION_CHECK_ID_LENGTH)
+
+/**
  * Check if quotation is still valid (not expired)
  * Quotations are valid for 5 minutes per Lalamove documentation
+ *
+ * The answer never carries Lalamove's own error text: that is written for the
+ * store (keys, market, account state) and stays in the server log.
  */
-export async function checkQuotationValidity(
-  tenantId: string,
-  quotationId: string
-): Promise<{ valid: boolean; expiresAt?: Date; error?: string }> {
-  try {
-    const supabase = await createClient()
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select(LALAMOVE_TENANT_COLUMNS)
-      .eq('id', tenantId)
-      .single()
+export const checkQuotationValidity = defineAction({
+  auth: { kind: 'public' },
+  rateLimit: { bucket: 'lalamove-quote-check-client', per: 'ip', max: 10, window: '1m' },
+  args: [quotationCheckId, quotationCheckId],
+  // This action answers `{ valid, error }`, never `{ success }`.
+  onRefusal: (refusal): QuotationValidity => ({
+    valid: false,
+    error: refusal.code === 'rate-limited' ? QUOTE_CHECK_RATE_LIMITED : QUOTE_CHECK_UNAVAILABLE,
+  }),
+  handler: async ({ args: [tenantId, quotationId] }): Promise<QuotationValidity> => {
+    try {
+      const rate = await checkRateLimit(`lalamove-quote-check:${tenantId}`, QUOTATION_CHECK_STORE_RATE_LIMIT)
+      if (!rate.allowed) return { valid: false, error: QUOTE_CHECK_RATE_LIMITED }
 
-    if (!tenant || !(tenant as unknown as Tenant).lalamove_enabled) {
-      return { valid: false, error: 'Lalamove not enabled' }
-    }
+      const supabase = await createClient()
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select(LALAMOVE_TENANT_COLUMNS)
+        .eq('id', tenantId)
+        .single()
 
-    const quotation = await retrieveLalamoveQuotation(
-      await withLalamoveKeys(tenant as unknown as Tenant),
-      quotationId
-    )
-    const expiresAt = new Date(quotation.expiresAt)
-    const now = new Date()
-    const valid = expiresAt > now
-
-    if (!valid) {
-      const timeDiff = now.getTime() - expiresAt.getTime()
-      const minutesExpired = Math.floor(timeDiff / 60000)
-      return { 
-        valid: false, 
-        expiresAt,
-        error: `Quotation expired ${minutesExpired} minute(s) ago` 
+      if (!tenant || !(tenant as unknown as Tenant).lalamove_enabled) {
+        return { valid: false, error: 'Lalamove not enabled' }
       }
-    }
 
-    return { valid, expiresAt }
-  } catch (error) {
-    console.error('Quotation validity check error:', error)
-    // If we can't retrieve the quotation, don't block - let Lalamove API handle it
-    // This is especially important in sandbox where quotation retrieval might fail
-    const errorMessage = error instanceof Error ? error.message : 'Failed to check quotation validity'
-    
-    // If it's a 404 or similar, the quotation might not exist - we'll let Lalamove API reject it
-    // Otherwise, we'll proceed and let Lalamove validate
-    if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
-      return { 
-        valid: false, 
-        error: 'Quotation not found' 
+      const quotation = await retrieveLalamoveQuotation(
+        await withLalamoveKeys(tenant as unknown as Tenant),
+        quotationId
+      )
+      const expiresAt = new Date(quotation.expiresAt)
+      const now = new Date()
+      const valid = expiresAt > now
+
+      if (!valid) {
+        const timeDiff = now.getTime() - expiresAt.getTime()
+        const minutesExpired = Math.floor(timeDiff / 60000)
+        return {
+          valid: false,
+          expiresAt,
+          error: `Quotation expired ${minutesExpired} minute(s) ago`
+        }
       }
+
+      return { valid, expiresAt }
+    } catch (error) {
+      // Lalamove's message is for the store; the caller gets one fixed sentence.
+      console.error('Quotation validity check error:', error)
+      const errorMessage = error instanceof Error ? error.message : ''
+
+      // A 404 means Lalamove does not know the quotation; saying so tells the
+      // caller nothing about the store's account.
+      if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+        return { valid: false, error: 'Quotation not found' }
+      }
+
+      return { valid: false, error: QUOTE_CHECK_UNAVAILABLE }
     }
-    
-    // For other errors, return valid: false but with a warning that we'll still try
-    return { 
-      valid: false, 
-      error: `Could not verify quotation validity: ${errorMessage}. Will attempt creation anyway.` 
-    }
-  }
-}
+  },
+})
 
 /**
  * Create a Lalamove delivery order from a quotation

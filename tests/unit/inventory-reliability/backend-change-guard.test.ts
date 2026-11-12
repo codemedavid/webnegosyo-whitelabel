@@ -20,8 +20,10 @@ describe('previewBackendChange', () => {
     expect(previewBackendChange(NO_URL, { order_backend: 'auto', convex_deployment_url: 'https://x.convex.cloud' }))
       .toEqual({ from: 'platform', to: 'convex' })
   })
-  test('a store on its own supabase project is never moved by the form', () => {
-    expect(previewBackendChange({ order_backend: 'supabase', convex_deployment_url: null }, { order_backend: 'platform' })).toBeNull()
+  test("a stale 'supabase' pin (the retired own-project backend) already routes like auto, so a save moves nothing", () => {
+    const stale = { order_backend: 'supabase' as never, convex_deployment_url: null }
+    expect(previewBackendChange(stale, { order_backend: 'platform' })).toBeNull()
+    expect(previewBackendChange(stale, { order_backend: 'auto' })).toBeNull()
   })
 })
 

@@ -2,8 +2,8 @@
  * What one Manila day took, wherever the tenant's orders actually live.
  *
  * The stock ledger is always platform-side, but orders are NOT: depending on the
- * tenant they sit in the shared platform project, in the tenant's own Supabase
- * project, or in the tenant's own Convex deployment. Reading revenue straight
+ * tenant they sit in the shared platform project or in the tenant's own Convex
+ * deployment. Reading revenue straight
  * from the platform `orders` table would therefore hand every Convex tenant a
  * zero — and a zero denominator does not produce an obvious error, it produces a
  * flattering food cost percentage. So this module routes through the same
@@ -14,12 +14,12 @@
  * report renders a reason; `0` means "genuinely took nothing" and the report
  * says so. Collapsing the two is the one bug this module exists to prevent.
  *
- * BRANCH: the Supabase paths narrow by `outlet_id`. The Convex path narrows too
+ * BRANCH: the platform path narrows by `outlet_id`. The Convex path narrows too
  * from schema v18, and NOT before — an older deployment rejects the unknown
  * argument outright. `resolveReportScope` owns that decision from the tenant's
  * recorded version; this module simply forwards what it is given.
  *
- * WHICH FIGURE: on Supabase backends, NET SALES by the one sales model
+ * WHICH FIGURE: on the platform backend, NET SALES by the one sales model
  * (`src/lib/reports/sales-model.ts`): what the food sold for after its
  * discounts, without service charges or delivery fees. Food cost % divides by
  * it, and fees are income the food did not earn — dividing by the order total
@@ -34,10 +34,6 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
-import {
-  createTenantOrderWriteClient,
-  type TenantOrderCredentials,
-} from '@/lib/supabase/tenant-order-client'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { resolveBusinessDayWindow } from '@/lib/inventory/business-day'
@@ -57,7 +53,7 @@ const DEFAULT_TIMEOUT_MS = 6000
 
 const CONVEX_STATS_PATH = 'orders:getDashboardStatsByPeriodInternal'
 
-export interface DailyRevenueTenant extends OrderBackendTenantFields, TenantOrderCredentials {
+export interface DailyRevenueTenant extends OrderBackendTenantFields {
   id: string
 }
 
@@ -67,11 +63,10 @@ interface ConvexQueryClient {
 
 /**
  * Injected so tests never open a connection, mirroring the factory-injection
- * `tenant-order-client.ts` and `convex-platform-aggregator.ts` already use.
+ * `convex-platform-aggregator.ts` already uses.
  */
 export interface DailyRevenueDeps {
   platformClient?: () => Promise<SupabaseClient>
-  tenantClient?: (credentials: TenantOrderCredentials) => SupabaseClient
   convexClient?: (url: string, key: string) => ConvexQueryClient
   timeoutMs?: number
 }
@@ -109,11 +104,8 @@ export function revenueBasisFor(tenant: OrderBackendTenantFields): RevenueBasis 
 }
 
 /**
- * Sum a day's net sales over live (not reversed) orders out of a Supabase
+ * Sum a day's net sales over live (not reversed) orders out of the platform
  * `orders` table.
- *
- * Shared by the platform and per-tenant projects because the schema is the same
- * in both — the only difference is which client reaches it.
  *
  * Offset paging: an order cancelled while a 1,000+ order day is being read can
  * shift one row across a page boundary. Accepted for this one card; the report
@@ -225,10 +217,7 @@ export async function getDailyRevenue(
       return await readConvexRevenue(tenant, startIso, endIso, deps, outletId)
     }
 
-    const client =
-      backend === 'supabase'
-        ? (deps.tenantClient ?? createTenantOrderWriteClient)(tenant)
-        : await (deps.platformClient ?? createClient)()
+    const client = await (deps.platformClient ?? createClient)()
 
     return await sumNetSales(client, tenant.id, startIso, endIso, outletId)
   } catch (error) {

@@ -2,6 +2,7 @@ import { STOREFRONT_PACK_IDS, storefrontPackSettingsSchema } from '@/lib/storefr
 import { storefrontLabelsSchema } from '@/lib/storefront-labels'
 import { sectionSchemesSchema } from '@/lib/section-schemes'
 import { trackingStyleSchema } from '@/lib/tracking-style/keys'
+import { paymentStepStyleSchema } from '@/lib/payment-step/style'
 import { CARD_ADD_BUTTONS, CARD_DENSITIES, CARD_DESCRIPTIONS, CARD_IMAGE_FITS, CARD_IMAGE_RATIOS, CARD_TEXT_ALIGNS } from '@/lib/card-style'
 import { HEADER_CART_STYLES } from '@/lib/header-templates'
 import { z } from 'zod'
@@ -172,6 +173,8 @@ const brandingFieldsSchema = z.object({
     section_schemes: sectionSchemesSchema.optional(),
     // Order-tracking page + loyalty card look (Studio → Order status / Loyalty card).
     tracking_style: trackingStyleSchema.optional(),
+    // The checkout's payment step look (Studio → Payment step).
+    payment_step_style: paymentStepStyleSchema.optional(),
     // Header template & customization
     header_template: z.string().optional(),
     mobile_header_template: z.string().optional().nullable(),
@@ -406,6 +409,7 @@ export const ROLLOUT_DEPENDENT_FIELDS = [
     'storefront_labels',
     'section_schemes',
     'tracking_style',
+    'payment_step_style',
     'mobile_overrides',
     'header_template',
     'mobile_header_template',

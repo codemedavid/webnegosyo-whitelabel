@@ -35,18 +35,18 @@ const MONEY_BEARING_FILES = [
   `${CHECKOUT_TEMPLATE_DIR}/payment-choices.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/checkout-shared.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/payment-details-dialog.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/payment-step.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/classic-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/modern-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/minimal-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/wizard-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/express-checkout.tsx`,
   'src/app/actions/orders.ts',
-  // The three write paths. Each one persists the amount actually charged, for
-  // a different order backend, and each had its own copy of the arithmetic.
-  // A discount applied on the display side and missed here would show the
-  // customer one price and bill them another.
+  // The write paths (platform and Convex). Each persists the amount actually
+  // charged and once had its own copy of the arithmetic. A discount applied on
+  // the display side and missed here would show the customer one price and
+  // bill them another.
   'src/lib/orders-service.ts',
-  'src/lib/tenant-supabase-orders.ts',
   // The hook itself. It derives the shared `grandTotal` correctly, and then
   // built a SECOND total further down for the QR handoff payload — the amount
   // a customer is asked to pay when they scan. Two totals, one order.

@@ -435,15 +435,20 @@ describe('customer order stock route — backend comes from resolveOrderBackend'
     )
   })
 
-  it('skips a tenant whose orders live in its own Supabase project', async () => {
-    stubTables({ tenant: { order_backend: 'supabase' } })
+  it("spends a stale 'supabase' pin (the retired own-project backend) from the platform table, like auto", async () => {
+    stubTables({
+      tenant: { order_backend: 'supabase', convex_deployment_url: null },
+      lines: [{ menu_item_id: 'dish-1', quantity: 1 }],
+    })
 
     const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ success: true, skipped: 'unsupported_backend' })
-    expect(from).not.toHaveBeenCalledWith('orders')
-    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
+    expect(createConvexServerClient).not.toHaveBeenCalled()
+    expect(applyOrderStockBestEffort).toHaveBeenCalledWith(
+      TENANT, ORDER, [{ menuItemId: 'dish-1', quantity: 1 }], 'sale', 0, null,
+      { context: { source: 'customer_app' } },
+    )
   })
 })
 

@@ -394,7 +394,7 @@ describe("countProductsIn", () => {
 
 describe("deleteCategory", () => {
   it("deletes only within the caller's own store", async () => {
-    queued = [{ data: null, error: null }];
+    queued = [{ data: [{ id: "cat-1" }], error: null }];
 
     await deleteCategory("cat-1", "tenant-1");
 
@@ -408,13 +408,33 @@ describe("deleteCategory", () => {
 
     await expect(deleteCategory("cat-1", "tenant-1")).rejects.toBeTruthy();
   });
+
+  // Row-level security refuses a delete without an error: the statement
+  // succeeds and removes nothing.
+  it("reports a delete the database turned away without an error", async () => {
+    queued = [
+      { data: [], error: null }, // the delete removed nothing
+      { data: [{ id: "cat-1" }], error: null }, // and the category is still there
+    ];
+
+    await expect(deleteCategory("cat-1", "tenant-1")).rejects.toThrow(/Nothing was changed/);
+  });
+
+  it("treats a category that is already gone as deleted (a second tap)", async () => {
+    queued = [
+      { data: [], error: null },
+      { data: [], error: null },
+    ];
+
+    await expect(deleteCategory("cat-1", "tenant-1")).resolves.toBeUndefined();
+  });
 });
 
 describe("reorderCategories", () => {
   it("persists every position produced by the move", async () => {
     queued = [
-      { data: null, error: null },
-      { data: null, error: null },
+      { data: [{ id: "b" }], error: null },
+      { data: [{ id: "a" }], error: null },
     ];
 
     await reorderCategories("tenant-1", [
@@ -433,6 +453,34 @@ describe("reorderCategories", () => {
     await expect(
       reorderCategories("tenant-1", [category({ id: "b" }), category({ id: "a" })]),
     ).rejects.toBeTruthy();
+  });
+
+  it("reports a position the database turned away without an error", async () => {
+    queued = [
+      { data: [], error: null }, // the update changed nothing
+      { data: [{ id: "b" }], error: null }, // and the category is still there
+    ];
+
+    await expect(
+      reorderCategories("tenant-1", [category({ id: "b" }), category({ id: "a" })]),
+    ).rejects.toThrow(/Nothing was changed/);
+    // Stopped at the refused write: the second category was never written.
+    expect(argsFor("update")).toHaveLength(1);
+  });
+
+  it("skips a category deleted meanwhile and saves the rest", async () => {
+    queued = [
+      { data: [], error: null }, // "b" changed nothing
+      { data: [], error: null }, // because it is gone
+      { data: [{ id: "a" }], error: null },
+    ];
+
+    await reorderCategories("tenant-1", [
+      category({ id: "b", order: 0 }),
+      category({ id: "a", order: 1 }),
+    ]);
+
+    expect(argsFor("update")).toEqual([[{ order: 0 }], [{ order: 1 }]]);
   });
 });
 

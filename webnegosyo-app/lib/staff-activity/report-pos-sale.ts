@@ -16,7 +16,6 @@ const ACTIVITY_PATH = "/api/staff/order-activity";
 /** The platform's name for each backend — same table as lifecycle-plan.ts. */
 const PLATFORM_BACKEND: Record<OrderBackend, string> = {
   convex: "convex",
-  supabase: "tenant_supabase",
   platform: "platform_supabase",
 };
 

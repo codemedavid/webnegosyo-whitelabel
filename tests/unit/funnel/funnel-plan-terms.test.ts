@@ -1,15 +1,21 @@
 /**
  * The /funnel sells two plans through the same checkout_leads pipeline the
- * ₱3,899 one-time checkout uses: ₱1,499 monthly, or six months for ₱5,499
- * (paid in full, or ₱2,000 down). A lead's amount is computed server-side
- * from its payment term, so every plan term must resolve to what is due TODAY.
+ * ₱3,899 one-time checkout uses: ₱1,499 monthly, or the six-month plan —
+ * ₱5,499 paid in full (six months + one free = seven), or ₱999 a month for
+ * six months. A lead's amount is computed server-side from its payment term,
+ * so every plan term must resolve to what is due TODAY. The ₱2,000-down term
+ * is no longer sold but stays valid for the leads that already hold it.
  */
 import { describe, it, expect } from '@jest/globals'
 import {
   CHECKOUT_BASE_PRICE,
   CHECKOUT_PAYMENT_TERMS,
   MONTHLY_SUBSCRIPTION_PRICE,
+  SIX_MONTH_BONUS_MONTHS,
   SIX_MONTH_DOWNPAYMENT,
+  SIX_MONTH_FULL_MONTHS,
+  SIX_MONTH_INSTALLMENT_PRICE,
+  SIX_MONTH_PLAN_MONTHS,
   SIX_MONTH_PLAN_PRICE,
   getCheckoutBalanceDue,
   getCheckoutPayableAmount,
@@ -31,10 +37,25 @@ describe('six-month plan', () => {
     expect(SIX_MONTH_PLAN_PRICE).toBe(5499)
   })
 
-  it('charges the whole plan when paid in full', () => {
+  it('charges the whole plan when paid in full, and adds one free month', () => {
     expect(isCheckoutPaymentTerm('six_month_full')).toBe(true)
     expect(getCheckoutPayableAmount('six_month_full')).toBe(5499)
     expect(getCheckoutBalanceDue('six_month_full')).toBe(0)
+    expect(SIX_MONTH_BONUS_MONTHS).toBe(1)
+    expect(SIX_MONTH_FULL_MONTHS).toBe(SIX_MONTH_PLAN_MONTHS + 1)
+  })
+
+  it('charges ₱999 today on the monthly installment and owes five more', () => {
+    expect(isCheckoutPaymentTerm('six_month_installment')).toBe(true)
+    expect(SIX_MONTH_INSTALLMENT_PRICE).toBe(999)
+    expect(getCheckoutPayableAmount('six_month_installment')).toBe(999)
+    expect(getCheckoutBalanceDue('six_month_installment')).toBe(999 * 5)
+  })
+
+  it('makes paying in full cheaper than the installments, and both cheaper than monthly', () => {
+    const installmentTotal = SIX_MONTH_INSTALLMENT_PRICE * SIX_MONTH_PLAN_MONTHS
+    expect(SIX_MONTH_PLAN_PRICE).toBeLessThan(installmentTotal)
+    expect(installmentTotal).toBeLessThan(MONTHLY_SUBSCRIPTION_PRICE * SIX_MONTH_PLAN_MONTHS)
   })
 
   it('charges ₱2,000 today and leaves the rest as a balance', () => {
@@ -53,10 +74,11 @@ describe('six-month plan', () => {
 })
 
 describe('funnel plan terms', () => {
-  it('are the monthly and both six-month terms, never the one-time checkout', () => {
+  it('are the monthly and every six-month term, never the one-time checkout', () => {
     expect(isFunnelPlanTerm('monthly_subscription')).toBe(true)
     expect(isFunnelPlanTerm('six_month_full')).toBe(true)
     expect(isFunnelPlanTerm('six_month_downpayment')).toBe(true)
+    expect(isFunnelPlanTerm('six_month_installment')).toBe(true)
     expect(isFunnelPlanTerm('full_payment')).toBe(false)
     expect(isFunnelPlanTerm('downpayment_50')).toBe(false)
     expect(isFunnelPlanTerm(null)).toBe(false)
@@ -71,7 +93,8 @@ describe('funnel plan terms', () => {
 describe('plan labels', () => {
   it('names each plan without quoting a price that older leads did not pay', () => {
     expect(getPaymentTermLabel('monthly_subscription')).toBe('Monthly plan')
-    expect(getPaymentTermLabel('six_month_full')).toBe('6-month plan (paid in full)')
+    expect(getPaymentTermLabel('six_month_full')).toBe('6-month plan + 1 free month (paid in full)')
+    expect(getPaymentTermLabel('six_month_installment')).toBe('6-month plan (₱999/month × 6)')
     expect(getPaymentTermLabel('six_month_downpayment')).toBe('6-month plan (₱2,000 down, ₱3,499 balance)')
   })
 })

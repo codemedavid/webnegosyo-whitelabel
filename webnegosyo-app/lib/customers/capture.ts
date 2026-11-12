@@ -40,18 +40,10 @@ export interface CaptureOrderFacts {
   items?: readonly CaptureItem[];
 }
 
-/**
- * The platform's name for each backend.
- *
- * The two vocabularies differ on one entry and it matters: the app's `supabase`
- * means *the tenant's own project*, which the platform calls `tenant_supabase`.
- * Sending the app's word would be refused as an unknown backend, and the sale
- * would be dropped rather than captured.
- */
+/** The platform's name for each backend, in the capture route's vocabulary. */
 const PLATFORM_BACKEND: Record<OrderBackend, string> = {
   convex: "convex",
   platform: "platform",
-  supabase: "tenant_supabase",
 };
 
 export interface CapturePayload {

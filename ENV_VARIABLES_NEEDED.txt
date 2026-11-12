@@ -96,7 +96,9 @@ FACEBOOK_APP_SECRET=your_app_secret_here
 # Meta Pixel / Conversions API (Optional - for landing page and checkout tracking)
 NEXT_PUBLIC_META_PIXEL_ID=your_meta_pixel_id_here
 META_PIXEL_ID=your_meta_pixel_id_here
+# Conversions API token. Either name works (Vercel holds META_CONVERSIONS_API_ACCESS_TOKEN).
 META_CONVERSIONS_API_TOKEN=your_meta_capi_access_token_here
+# Test Events code: honoured everywhere EXCEPT VERCEL_ENV=production (it would hide real events).
 META_TEST_EVENT_CODE=your_test_event_code_here
 
 ========================================

@@ -42,16 +42,11 @@ jest.mock('@/lib/supabase/admin', () => ({
 const SAVED = { order: { id: 'order-1', total: 320 }, orderToken: 'tok' }
 const createOrder = jest.fn(async (...args: unknown[]) => { void args; return SAVED })
 const createOrderConvex = jest.fn(async (...args: unknown[]) => { void args; return SAVED })
-const createOrderTenantSupabase = jest.fn(async (...args: unknown[]) => { void args; return SAVED })
 
 jest.mock('@/lib/orders-service', () => ({
   createOrder: (...args: unknown[]) => createOrder(...args),
   createOrderConvex: (...args: unknown[]) => createOrderConvex(...args),
 }))
-jest.mock('@/lib/tenant-supabase-orders', () => ({
-  createOrderTenantSupabase: (...args: unknown[]) => createOrderTenantSupabase(...args),
-}))
-jest.mock('@/lib/supabase/tenant-order-client', () => ({ createTenantOrderWriteClient: () => ({}) }))
 jest.mock('@/lib/checkout/order-follow-ups', () => ({ runOrderFollowUps: async () => undefined }))
 jest.mock('@/lib/tenant-secrets', () => ({
   getTenantSecrets: async () => ({ convex_deploy_key: 'deploy-key', loyverse_access_token: null }),
@@ -60,6 +55,7 @@ jest.mock('@/lib/tenant-secrets', () => ({
 const MENU_ITEMS = [{ id: 'mi-1', name: 'Tapsilog', price: 160, discounted_price: null, is_available: true }]
 const items = [{ menu_item_id: 'mi-1', menu_item_name: 'Tapsilog', addons: [], quantity: 2, price: 160, subtotal: 320 }]
 
+/** `supabase` = a stale pin to the retired own-project backend (the CHECK still allows it). */
 function tenantOn(backend: 'platform' | 'convex' | 'supabase') {
   return {
     order_backend: backend,
@@ -68,9 +64,6 @@ function tenantOn(backend: 'platform' | 'convex' | 'supabase') {
     slug: 'island-silog',
     inventory_enabled: false,
     convex_deployment_url: backend === 'convex' ? 'https://x.convex.cloud' : null,
-    supabase_order_url: backend === 'supabase' ? 'https://tenant.supabase.co' : null,
-    supabase_order_anon_key: backend === 'supabase' ? 'anon' : null,
-    supabase_order_service_key: backend === 'supabase' ? 'service' : null,
     multi_branch_enabled: false,
     lalamove_enabled: false,
     distance_delivery_enabled: false,
@@ -136,19 +129,17 @@ describe('createOrderAction — payment method comes from the store', () => {
     expect(args.slice(10, 13)).toEqual(STORED)
   })
 
-  test('tenant Supabase: records the stored method', async () => {
+  test("a stale 'supabase' pin saves to the platform database, like auto, and records the stored method", async () => {
     tableRows = { ...tableRows, tenants: tenantOn('supabase') }
 
     const result = await placeOrder()
 
     expect(result.success).toBe(true)
-    const input = createOrderTenantSupabase.mock.calls[0][1] as Record<string, unknown>
-    expect(input).toMatchObject({
-      paymentMethodId: PM_ID,
-      paymentMethodName: STORED[0],
-      paymentMethodDetails: STORED[1],
-      paymentMethodQrCodeUrl: STORED[2],
-    })
+    expect(createOrder).toHaveBeenCalledTimes(1)
+    expect(createOrderConvex).not.toHaveBeenCalled()
+    const args = createOrder.mock.calls[0]
+    expect(args[7]).toBe(PM_ID)
+    expect(args.slice(8, 11)).toEqual(STORED)
   })
 
   test.each([

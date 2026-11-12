@@ -87,7 +87,7 @@ async function loadConvexOrderItems(
  * Two shapes:
  * - { tenantId, orderId }             — platform-backend order; items are read
  *                                       (and the outcome recorded) server-side.
- * - { tenantId, items, orderNumber? } — Convex / tenant-Supabase order or POS
+ * - { tenantId, items, orderNumber? } — Convex order or POS
  *                                       counter sale; the app supplies the
  *                                       lines and there is no platform row to
  *                                       record on. The caller must invoke this

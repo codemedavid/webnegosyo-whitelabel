@@ -66,11 +66,7 @@ describe("buildCapturePayload — what gets sent", () => {
   it.each([
     ["convex", "convex"],
     ["platform", "platform"],
-    ["supabase", "tenant_supabase"],
   ])("translates the %s backend to %s", (backend, expected) => {
-    // The app and the platform name these differently: the app's "supabase" means
-    // the tenant's own project, which the platform calls "tenant_supabase".
-    // Sending the app's word would be rejected as an unknown backend.
     const payload = buildCapturePayload("t1", {
       ...FACTS,
       backend: backend as "convex",

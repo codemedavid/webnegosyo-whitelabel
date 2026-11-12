@@ -15,6 +15,9 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { NOTHING_CHANGED_MESSAGE } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
+import { readAllRows, type PageQuery } from '@/platform/db/read-all-rows'
 import {
   INHERITED_OVERRIDE,
   mergeOutletMenuOverride,
@@ -25,6 +28,27 @@ import {
   type OutletMenuOverrideValues,
   type OutletMenuRepository,
 } from '@/lib/outlets/outlet-menu-repository'
+
+/**
+ * The most branch differences one list read returns. A store's rows are
+ * dishes x branches-that-differ, so this is far above any real store; past it
+ * the read fails rather than answer with part of the rows.
+ */
+const MAX_BRANCH_MENU_ROWS = 20_000
+
+/**
+ * Every row of a list read. One response carries at most 1,000 rows and says
+ * nothing about the rest, and a difference that was not read is the claim
+ * "this branch sells it at the store-wide price", so the read is paged. Each
+ * caller ends its query with a unique order ((outlet_id, menu_item_id) is
+ * unique), which is what keeps a row from landing on two pages or on none.
+ */
+async function readEveryOverride(query: PageQuery<OutletMenuOverride>): Promise<OutletMenuOverride[]> {
+  const result = await readAllRows(query, { maxRows: MAX_BRANCH_MENU_ROWS })
+  if (result.ok) return result.rows
+  if (result.reason === 'error') throw new Error(result.error.message)
+  throw new Error('This store has more than 20,000 branch menu differences, too many to load at once.')
+}
 
 function valuesOf(row: OutletMenuOverride | null): OutletMenuOverrideValues {
   if (!row) return { ...INHERITED_OVERRIDE }
@@ -59,37 +83,46 @@ export function createSupabaseOutletMenuRepository(): OutletMenuRepository {
   return {
     async listByTenant(tenantId) {
       const supabase = await createClient()
-      const { data, error } = await supabase
-        .from('outlet_menu_items')
-        .select(OUTLET_MENU_OVERRIDE_SELECT)
-        .eq('tenant_id', tenantId)
-
-      if (error) throw new Error(error.message)
-      return (data ?? []) as unknown as OutletMenuOverride[]
+      return readEveryOverride(
+        (from, to) =>
+          supabase
+            .from('outlet_menu_items')
+            .select(OUTLET_MENU_OVERRIDE_SELECT)
+            .eq('tenant_id', tenantId)
+            .order('outlet_id', { ascending: true })
+            .order('menu_item_id', { ascending: true })
+            .range(from, to) as unknown as ReturnType<PageQuery<OutletMenuOverride>>,
+      )
     },
 
     async listByOutlet(tenantId, outletId) {
       const supabase = await createClient()
-      const { data, error } = await supabase
-        .from('outlet_menu_items')
-        .select(OUTLET_MENU_OVERRIDE_SELECT)
-        .eq('tenant_id', tenantId)
-        .eq('outlet_id', outletId)
-
-      if (error) throw new Error(error.message)
-      return (data ?? []) as unknown as OutletMenuOverride[]
+      return readEveryOverride(
+        (from, to) =>
+          supabase
+            .from('outlet_menu_items')
+            .select(OUTLET_MENU_OVERRIDE_SELECT)
+            .eq('tenant_id', tenantId)
+            .eq('outlet_id', outletId)
+            // One row per dish per branch, so within a branch this order is unique.
+            .order('menu_item_id', { ascending: true })
+            .range(from, to) as unknown as ReturnType<PageQuery<OutletMenuOverride>>,
+      )
     },
 
     async listByMenuItem(tenantId, menuItemId) {
       const supabase = await createClient()
-      const { data, error } = await supabase
-        .from('outlet_menu_items')
-        .select(OUTLET_MENU_OVERRIDE_SELECT)
-        .eq('tenant_id', tenantId)
-        .eq('menu_item_id', menuItemId)
-
-      if (error) throw new Error(error.message)
-      return (data ?? []) as unknown as OutletMenuOverride[]
+      return readEveryOverride(
+        (from, to) =>
+          supabase
+            .from('outlet_menu_items')
+            .select(OUTLET_MENU_OVERRIDE_SELECT)
+            .eq('tenant_id', tenantId)
+            .eq('menu_item_id', menuItemId)
+            // One row per branch per dish, so for one dish this order is unique.
+            .order('outlet_id', { ascending: true })
+            .range(from, to) as unknown as ReturnType<PageQuery<OutletMenuOverride>>,
+      )
     },
 
     async save(tenantId, outletId, menuItemId, patch: OutletMenuOverridePatch) {
@@ -127,14 +160,27 @@ export function createSupabaseOutletMenuRepository(): OutletMenuRepository {
 
     async clear(tenantId, outletId, menuItemId) {
       const supabase = await createClient()
-      const { error } = await supabase
-        .from('outlet_menu_items')
-        .delete()
-        .eq('tenant_id', tenantId)
-        .eq('outlet_id', outletId)
-        .eq('menu_item_id', menuItemId)
-
-      if (error) throw new Error(error.message)
+      // No row is the usual case (the branch never differed, or `save` merged
+      // back to nothing). A row still there after a zero-row delete was kept by
+      // row-level security: the dish is still different at that branch.
+      const result = await assertRowsChangedOrGone(
+        await supabase
+          .from('outlet_menu_items')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('outlet_id', outletId)
+          .eq('menu_item_id', menuItemId)
+          .select('menu_item_id'),
+        () =>
+          supabase
+            .from('outlet_menu_items')
+            .select('menu_item_id')
+            .eq('tenant_id', tenantId)
+            .eq('outlet_id', outletId)
+            .eq('menu_item_id', menuItemId)
+            .limit(1),
+      )
+      if (!result.ok) throw new Error(result.reason === 'error' ? result.error.message : NOTHING_CHANGED_MESSAGE)
     },
   }
 }

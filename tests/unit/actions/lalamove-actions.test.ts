@@ -39,6 +39,7 @@ jest.mock('@/lib/action-rate-limit', () => ({
 
 jest.mock('@/lib/lalamove-service', () => ({
   createLalamoveQuotation: jest.fn(),
+  retrieveLalamoveQuotation: jest.fn(),
   createLalamoveOrder: jest.fn(),
   getLalamoveOrder: jest.fn(),
   getLalamoveDriver: jest.fn(),
@@ -623,6 +624,128 @@ describe('lalamove server actions', () => {
       expect(result.error).toMatch(/pickup phone/i)
       const service = await import('@/lib/lalamove-service')
       expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+    })
+  })
+
+  // Anyone can call this (it is a server action with no session) and every
+  // call that reaches Lalamove is counted against the store's own account.
+  describe('checkQuotationValidity', () => {
+    type AsyncMock = jest.Mock<(...args: unknown[]) => Promise<unknown>>
+
+    async function load() {
+      const service = await import('@/lib/lalamove-service')
+      const shared = await import('@/lib/distributed-rate-limit')
+      const client = await import('@/lib/action-rate-limit')
+      const { checkQuotationValidity } = await import('@/app/actions/lalamove')
+      return {
+        retrieve: service.retrieveLalamoveQuotation as unknown as AsyncMock,
+        storeLimit: shared.checkRateLimit as unknown as AsyncMock,
+        clientLimit: client.checkActionRateLimit as unknown as AsyncMock,
+        checkQuotationValidity,
+      }
+    }
+
+    test('answers valid with the expiry for a live quotation, as before', async () => {
+      const { retrieve, checkQuotationValidity } = await load()
+      const expiresAt = new Date(Date.now() + 240_000)
+      retrieve.mockResolvedValue({ quotationId: 'q1', expiresAt })
+
+      const result = await checkQuotationValidity('t1', 'q1')
+
+      expect(result).toEqual({ valid: true, expiresAt })
+      expect(retrieve).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', lalamove_api_key: 'key' }), 'q1')
+    })
+
+    test('says how long ago an expired quotation ran out, as before', async () => {
+      const { retrieve, checkQuotationValidity } = await load()
+      const expiresAt = new Date(Date.now() - 125_000)
+      retrieve.mockResolvedValue({ quotationId: 'q1', expiresAt })
+
+      expect(await checkQuotationValidity('t1', 'q1')).toEqual({
+        valid: false,
+        expiresAt,
+        error: 'Quotation expired 2 minute(s) ago',
+      })
+    })
+
+    test('answers "not enabled" without calling Lalamove for a store that has it off', async () => {
+      tenantRow = { ...TENANT, lalamove_enabled: false }
+      const { retrieve, checkQuotationValidity } = await load()
+
+      expect(await checkQuotationValidity('t1', 'q1')).toEqual({ valid: false, error: 'Lalamove not enabled' })
+      expect(retrieve).not.toHaveBeenCalled()
+    })
+
+    test('counts each call per client address and per store', async () => {
+      const { retrieve, storeLimit, clientLimit, checkQuotationValidity } = await load()
+      retrieve.mockResolvedValue({ quotationId: 'q1', expiresAt: new Date(Date.now() + 240_000) })
+
+      await checkQuotationValidity('t1', 'q1')
+
+      expect(clientLimit).toHaveBeenCalledWith('lalamove-quote-check-client', { limit: 10, windowSec: 60, onRedisFailure: undefined })
+      expect(storeLimit).toHaveBeenCalledWith('lalamove-quote-check:t1', { limit: 30, windowSec: 60 })
+    })
+
+    test('refuses a client over its limit before the store or Lalamove is read', async () => {
+      const { retrieve, storeLimit, clientLimit, checkQuotationValidity } = await load()
+      clientLimit.mockResolvedValueOnce({ allowed: false, retryAfterSec: 30 })
+
+      const result = await checkQuotationValidity('t1', 'q1')
+
+      expect(result).toEqual({ valid: false, error: 'Too many delivery quote checks. Please try again in a moment.' })
+      expect(storeLimit).not.toHaveBeenCalled()
+      expect(selectMock).not.toHaveBeenCalled()
+      expect(retrieve).not.toHaveBeenCalled()
+    })
+
+    test('refuses once the store is over its limit, without calling Lalamove', async () => {
+      const { retrieve, storeLimit, checkQuotationValidity } = await load()
+      storeLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 30 })
+
+      const result = await checkQuotationValidity('t1', 'q1')
+
+      expect(result).toEqual({ valid: false, error: 'Too many delivery quote checks. Please try again in a moment.' })
+      expect(selectMock).not.toHaveBeenCalled()
+      expect(retrieve).not.toHaveBeenCalled()
+    })
+
+    test('keeps Lalamove\'s own error text in the log and out of the answer', async () => {
+      const { retrieve, checkQuotationValidity } = await load()
+      const upstream = 'ERR_INVALID_KEY: apikey pk_prod_abc123 is not authorised for market PH'
+      retrieve.mockRejectedValue(new Error(upstream))
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+      const result = await checkQuotationValidity('t1', 'q1')
+
+      expect(result).toEqual({ valid: false, error: 'We could not check this delivery quote right now.' })
+      expect(JSON.stringify(result)).not.toContain('pk_prod_abc123')
+      expect(errorSpy.mock.calls.some((call) => call.some((part) => String(part instanceof Error ? part.message : part).includes(upstream)))).toBe(true)
+      errorSpy.mockRestore()
+    })
+
+    test('still says "not found" for a quotation Lalamove does not know', async () => {
+      const { retrieve, checkQuotationValidity } = await load()
+      retrieve.mockRejectedValue(new Error('Request failed with status 404 Not Found: /v3/quotations/q-nope'))
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+      expect(await checkQuotationValidity('t1', 'q-nope')).toEqual({ valid: false, error: 'Quotation not found' })
+      errorSpy.mockRestore()
+    })
+
+    test.each([
+      ['an empty store id', '', 'q1'],
+      ['an empty quotation id', 't1', ''],
+      ['an oversized quotation id', 't1', 'q'.repeat(200)],
+      ['a quotation id that is not text', 't1', { $ne: null } as unknown as string],
+    ])('refuses %s without reading anything', async (_label, tenantId, quotationId) => {
+      const { retrieve, storeLimit, checkQuotationValidity } = await load()
+
+      const result = await checkQuotationValidity(tenantId, quotationId)
+
+      expect(result).toEqual({ valid: false, error: 'We could not check this delivery quote right now.' })
+      expect(storeLimit).not.toHaveBeenCalled()
+      expect(selectMock).not.toHaveBeenCalled()
+      expect(retrieve).not.toHaveBeenCalled()
     })
   })
 })

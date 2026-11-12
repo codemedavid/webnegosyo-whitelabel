@@ -5,7 +5,7 @@
 // operations that require the service-role key or a server-side secret, which
 // can never ship inside an app binary:
 //
-//   - Convex / Supabase per-tenant deploys (deploy keys)
+//   - Convex per-tenant deploys (deploy keys)
 //   - MCP key minting and revocation (hashing, one-time secret return)
 //   - Staff create / remove / password reset (Supabase admin API)
 //   - AI menu parsing (OpenRouter key)
@@ -29,10 +29,6 @@ export const SUPERADMIN_BRIDGE_ACTIONS: Record<string, BridgeAction> = {
   'convex-deploy': {
     requiredFields: ['tenantId'],
     description: "Deploy the Convex schema to a tenant's deployment",
-  },
-  'supabase-deploy': {
-    requiredFields: ['tenantId'],
-    description: "Deploy the order schema to a tenant's Supabase project",
   },
   'mcp-keys-list': {
     requiredFields: [],

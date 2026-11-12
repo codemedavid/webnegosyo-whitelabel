@@ -105,7 +105,7 @@ export async function saveOrderDurably(
  * free of server-side imports.
  */
 export interface OrderBackendFields {
-  order_backend?: 'auto' | 'convex' | 'supabase' | 'platform' | null
+  order_backend?: 'auto' | 'convex' | 'platform' | null
   convex_deployment_url?: string | null
 }
 
@@ -114,9 +114,9 @@ export interface OrderBackendFields {
  *
  * Only the shared platform Supabase backend dedupes on `client_order_id`
  * (partial unique index `orders_tenant_client_order_id_uq`). The Convex path
- * never forwards the id despite the mutation supporting it, and a tenant's own
- * Supabase project has no idempotency at all — on both, a retry creates a
- * second live order and re-burns vouchers, re-depletes stock and re-notifies.
+ * never forwards the id despite the mutation supporting it, so a retry there
+ * creates a second live order and re-burns vouchers, re-depletes stock and
+ * re-notifies.
  *
  * So this fails closed: anything we cannot positively prove is on the platform
  * backend gets a single attempt, which is exactly today's behaviour.
@@ -126,9 +126,10 @@ export function isOrderSaveRetrySafe(tenant: OrderBackendFields | null | undefin
 
   const backend = tenant.order_backend
   if (backend === 'platform') return true
-  if (backend === 'convex' || backend === 'supabase') return false
+  if (backend === 'convex') return false
 
-  // 'auto' (or unset) resolves the same way the server does: Convex when a
+  // 'auto', unset or an unrecognized value (the retired 'supabase' included)
+  // resolves the same way the server does: Convex when a
   // deployment URL is set, platform otherwise. A projection that never selected
   // the column reads as `undefined`, which is not proof of absence — refuse.
   if (!('convex_deployment_url' in tenant)) return false

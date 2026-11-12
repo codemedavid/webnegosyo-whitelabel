@@ -2,8 +2,7 @@
  * Costing read path: load a tenant's inventory rows once, project them into the
  * pure CostingGraph, and cost one menu item's targets against it.
  *
- * The row fetch is injectable (mirroring TenantOrderWriteDeps in
- * tenant-supabase-orders.ts) so the assembly and error handling are testable
+ * The row fetch is injectable so the assembly and error handling are testable
  * without a Supabase client.
  */
 

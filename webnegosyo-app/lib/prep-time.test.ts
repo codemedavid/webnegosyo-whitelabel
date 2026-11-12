@@ -131,10 +131,4 @@ describe("isPrepTimeSupported", () => {
       isPrepTimeSupported({ orderBackend: "convex", convexSchemaVersion: null }),
     ).toBe(false);
   });
-
-  it("is not offered on the per-tenant supabase track, which has no adapter", () => {
-    expect(
-      isPrepTimeSupported({ orderBackend: "supabase", convexSchemaVersion: 99 }),
-    ).toBe(false);
-  });
 });

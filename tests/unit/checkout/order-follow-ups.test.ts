@@ -137,16 +137,4 @@ describe('runOrderFollowUps', () => {
     })
     expect(event.customerData).not.toHaveProperty('scheduled_for')
   })
-
-  test('runs an extra deferred capture when one is given', async () => {
-    // Arrange
-    const { runOrderFollowUps } = await load()
-    const capture = jest.fn(async () => null)
-
-    // Act
-    await runOrderFollowUps(baseInput({ captureCustomer: capture }))
-
-    // Assert
-    expect(capture).toHaveBeenCalledTimes(1)
-  })
 })

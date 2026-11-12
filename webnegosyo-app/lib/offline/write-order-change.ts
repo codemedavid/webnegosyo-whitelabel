@@ -64,8 +64,8 @@ export interface WriteOrderChangeInput {
  * A platform payment carries an id minted here, ONCE, so the live write and
  * every replay of the queued copy insert the same row — the primary key turns
  * a replay of money that already landed into a no-op (`recordPayment` in the
- * platform adapter). Convex validators refuse unknown fields, and the
- * per-tenant Supabase track has no replay path, so only platform gets one.
+ * platform adapter). Convex validators refuse unknown fields, so only
+ * platform gets one.
  */
 function withPaymentId(input: WriteOrderChangeInput): Record<string, unknown> {
   if (input.ref !== "orders:recordPayment" || input.backend !== "platform") return input.args;

@@ -3,6 +3,7 @@ import {
   isPaymentProofSatisfied,
   getPaymentProofError,
   PAYMENT_PROOF_FOLDER,
+  proofForMethod,
 } from '@/lib/payment-proof'
 import type { PaymentMethod } from '@/types/database'
 
@@ -84,5 +85,18 @@ describe('getPaymentProofError', () => {
 describe('constants', () => {
   test('exposes a Cloudinary folder for proofs', () => {
     expect(PAYMENT_PROOF_FOLDER).toContain('payment-proof')
+  })
+})
+
+describe('proofForMethod', () => {
+  const attached = { url: 'https://ik.imagekit.io/x/payment-proofs/a.jpg', publicId: 'f1', reference: '0091' }
+
+  test('keeps the proof for a method that asks for it', () => {
+    expect(proofForMethod(method({ require_payment_proof: true }), attached)).toEqual(attached)
+  })
+
+  test('drops a proof left over from another method once the chosen one never asks (the upload is not on its screen)', () => {
+    expect(proofForMethod(method({ require_payment_proof: false }), attached)).toEqual({ url: '', publicId: '', reference: '' })
+    expect(proofForMethod(null, attached)).toEqual({ url: '', publicId: '', reference: '' })
   })
 })

@@ -11,6 +11,8 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { assertRowsChanged, writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import {
   createUpsellPair,
@@ -135,26 +137,37 @@ export async function setBoostPairingActive(tenantId: string, sourceIds: string[
   await verifyTenantPermission(tenantId, 'analytics')
   const ids = sourceIdsSchema.parse(sourceIds)
   const client = await createClient()
-  const { error } = await client
-    .from('upsell_pairs')
-    .update({ is_active: isActive })
-    .eq('tenant_id', tenantId)
-    .eq('pair_type', 'complementary')
-    .in('source_item_id', ids)
-  if (error) throw error
+  // Zero rows = refused by row-level security, or the pairing is gone. Either
+  // way the switch on screen would be wrong, so both are reported.
+  const result = assertRowsChanged(
+    await client
+      .from('upsell_pairs')
+      .update({ is_active: isActive })
+      .eq('tenant_id', tenantId)
+      .eq('pair_type', 'complementary')
+      .in('source_item_id', ids)
+      .select('id'),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function deleteBoostPairing(tenantId: string, sourceIds: string[]): Promise<void> {
   await verifyTenantPermission(tenantId, 'analytics', 'delete')
   const ids = sourceIdsSchema.parse(sourceIds)
   const client = await createClient()
-  const { error } = await client
-    .from('upsell_pairs')
-    .delete()
-    .eq('tenant_id', tenantId)
-    .eq('pair_type', 'complementary')
-    .in('source_item_id', ids)
-  if (error) throw error
+  // Zero rows deleted with rows of the pairing still there = refused; zero rows
+  // with none left is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await client
+      .from('upsell_pairs')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('pair_type', 'complementary')
+      .in('source_item_id', ids)
+      .select('id'),
+    () => client.from('upsell_pairs').select('id').eq('tenant_id', tenantId).eq('pair_type', 'complementary').in('source_item_id', ids).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 /** Edits in place — the old flow deleted the pair first and lost it on failure. */
@@ -199,20 +212,31 @@ export async function saveBoostLastCall(tenantId: string, raw: LastCallSaveInput
   const client = await writeClient(ctx)
   await assertTenantItems(client, tenantId, input.pickedItemIds)
 
-  const { error: clearError } = await client
-    .from('menu_items')
-    .update({ show_in_checkout_upsell: false })
-    .eq('tenant_id', tenantId)
-    .eq('show_in_checkout_upsell', true)
-  if (clearError) throw clearError
+  // No picks yet is the usual case and changes nothing; old picks that are
+  // still there after a zero-row clear were refused by row-level security.
+  const cleared = await assertRowsChangedOrGone(
+    await client
+      .from('menu_items')
+      .update({ show_in_checkout_upsell: false })
+      .eq('tenant_id', tenantId)
+      .eq('show_in_checkout_upsell', true)
+      .select('id'),
+    () => client.from('menu_items').select('id').eq('tenant_id', tenantId).eq('show_in_checkout_upsell', true).limit(1),
+  )
+  if (!cleared.ok) throw writeFailure(cleared)
 
   if (input.pickedItemIds.length === 0) return
-  const { error: setError } = await client
-    .from('menu_items')
-    .update({ show_in_checkout_upsell: true })
-    .eq('tenant_id', tenantId)
-    .in('id', input.pickedItemIds)
-  if (setError) throw setError
+  // Every pick was just read as this store's (assertTenantItems), so zero rows
+  // here is a write row-level security refused.
+  const picked = assertRowsChanged(
+    await client
+      .from('menu_items')
+      .update({ show_in_checkout_upsell: true })
+      .eq('tenant_id', tenantId)
+      .in('id', input.pickedItemIds)
+      .select('id'),
+  )
+  if (!picked.ok) throw writeFailure(picked)
 }
 
 /**

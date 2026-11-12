@@ -2,9 +2,8 @@
  * Order baskets from wherever a store's orders actually live, summarised into
  * "what is ordered together".
  *
- * Orders sit in one of three backends (`resolveOrderBackend`): the shared
- * platform database, the store's own Supabase project, or its own Convex
- * deployment. Each is read from its real home and labelled; an unreachable
+ * Orders sit in one of two backends (`resolveOrderBackend`): the shared
+ * platform database or the store's own Convex deployment. Each is read from its real home and labelled; an unreachable
  * backend returns an EMPTY summary with a note, never a fallback to another
  * database — that would answer from the wrong project.
  *
@@ -15,7 +14,6 @@
 import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createTenantOrderWriteClient, type TenantOrderCredentials } from '@/lib/supabase/tenant-order-client'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
@@ -23,7 +21,7 @@ import { generateCacheKey, getCachedOrFetch } from '@/lib/redis-cache'
 import { buildBasketStats } from './basket-stats'
 import { findPickedTogether, type PickedTogetherPair } from './pair-insights'
 
-export type BasketSource = 'platform' | 'tenant_supabase' | 'convex'
+export type BasketSource = 'platform' | 'convex'
 
 export interface BasketSummary {
   dataSource: BasketSource
@@ -51,10 +49,9 @@ const CONVEX_ORDER_ITEMS_PATH = 'orders:getAllOrderItemsInternal'
 /** What the Convex order-items query returns at most (convex-template QUERY_LIMIT). */
 const CONVEX_LINE_LIMIT = 10_000
 
-const TENANT_ROUTING_SELECT =
-  'id, order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key, supabase_order_service_key'
+const TENANT_ROUTING_SELECT = 'id, order_backend, convex_deployment_url'
 
-type BasketTenant = OrderBackendTenantFields & TenantOrderCredentials & { id: string }
+type BasketTenant = OrderBackendTenantFields & { id: string }
 
 /**
  * Recent non-cancelled orders with their lines, paged: the API returns at most
@@ -165,10 +162,6 @@ function summarizeOrderRows(rows: readonly BasketOrderRow[] | null, dataSource: 
   return summarizeBaskets(baskets, { dataSource, windowLabel: `last ${BASKET_HISTORY_DAYS} days` })
 }
 
-async function readSupabaseSummary(client: SupabaseClient, tenantId: string, dataSource: BasketSource): Promise<BasketSummary> {
-  return summarizeOrderRows(await readRecentOrderRows<BasketOrderRow>(client, tenantId, 'id, order_items(menu_item_id)'), dataSource)
-}
-
 async function readConvexSummary(tenant: BasketTenant & { convex_deploy_key?: string | null }): Promise<BasketSummary> {
   const url = tenant.convex_deployment_url?.trim()
   const key = tenant.convex_deploy_key?.trim()
@@ -200,14 +193,6 @@ export async function readBasketSummary(tenantId: string): Promise<BasketSummary
   const backend = resolveOrderBackend(tenant)
 
   if (backend === 'convex') return readConvexSummary(tenant)
-  if (backend === 'supabase') {
-    try {
-      return await readSupabaseSummary(createTenantOrderWriteClient(tenant), tenantId, 'tenant_supabase')
-    } catch (err) {
-      console.error('[boost] tenant supabase basket read failed:', err)
-      return unavailable('tenant_supabase', 'Your order backend is not fully connected, so order history cannot be read.')
-    }
-  }
   return summarizeOrderRows(await readPlatformOrderHistory(tenantId), 'platform')
 }
 

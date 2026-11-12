@@ -1,4 +1,4 @@
-const mockConstants: { expoConfig: { extra: Record<string, unknown> } | null } = {
+const mockConstants: { expoConfig: { extra: Record<string, unknown>; hostUri?: string } | null } = {
   expoConfig: { extra: {} },
 };
 jest.mock("expo-constants", () => ({
@@ -56,5 +56,91 @@ describe("getWebAppUrl", () => {
 
     // Act & Assert
     expect(getWebAppUrl()).toBe("https://staging.example.com");
+  });
+});
+
+/**
+ * A dev build pointed at this Mac's `next dev` (`EXPO_PUBLIC_WEB_APP_URL=
+ * http://<lan ip>:3000`) froze that address into the bundle. When the Mac moved
+ * Wi-Fi networks its address changed, every web call (Reports' customer
+ * figures, vouchers, stock, the Owl) ran into its 15 s deadline, and Reports
+ * said "Customer figures could not be loaded" (2026-11-05). Metro's own host is
+ * the Mac's CURRENT address — the phone just loaded its bundle from there — so
+ * a LAN dev server follows it.
+ */
+describe("getWebAppUrl in a dev build pointed at this Mac", () => {
+  const globals = globalThis as { __DEV__?: boolean };
+  const wasDev = globals.__DEV__;
+
+  beforeEach(() => {
+    globals.__DEV__ = true;
+  });
+
+  afterEach(() => {
+    globals.__DEV__ = wasDev;
+    mockConstants.expoConfig = { extra: {} };
+  });
+
+  it("follows Metro to the Mac's current LAN address", () => {
+    // Arrange — configured on yesterday's network, served from today's.
+    mockConstants.expoConfig = {
+      extra: { webAppUrl: "http://192.168.18.188:3000" },
+      hostUri: "192.168.100.52:8081",
+    };
+
+    // Act & Assert — same scheme and port, Metro's host.
+    expect(getWebAppUrl()).toBe("http://192.168.100.52:3000");
+  });
+
+  it("follows Metro to localhost on a simulator", () => {
+    mockConstants.expoConfig = {
+      extra: { webAppUrl: "http://192.168.18.188:3000" },
+      hostUri: "localhost:8081",
+    };
+
+    expect(getWebAppUrl()).toBe("http://localhost:3000");
+  });
+
+  it("leaves a deployed web app alone", () => {
+    // Arrange — a dev build deliberately talking to staging or production.
+    mockConstants.expoConfig = {
+      extra: { webAppUrl: "https://staging.example.com" },
+      hostUri: "192.168.100.52:8081",
+    };
+
+    expect(getWebAppUrl()).toBe("https://staging.example.com");
+  });
+
+  it("leaves the default production host alone", () => {
+    mockConstants.expoConfig = { extra: {}, hostUri: "192.168.100.52:8081" };
+
+    expect(getWebAppUrl()).toBe("https://www.webnegosyo.com");
+  });
+
+  it("keeps the configured address when Metro runs over a tunnel", () => {
+    // Arrange — a tunnel host is not this Mac's LAN address; port 3000 is not on it.
+    mockConstants.expoConfig = {
+      extra: { webAppUrl: "http://192.168.18.188:3000" },
+      hostUri: "abc-anonymous-8081.exp.direct",
+    };
+
+    expect(getWebAppUrl()).toBe("http://192.168.18.188:3000");
+  });
+
+  it("keeps the configured address when Metro's host is unknown", () => {
+    mockConstants.expoConfig = { extra: { webAppUrl: "http://192.168.18.188:3000" } };
+
+    expect(getWebAppUrl()).toBe("http://192.168.18.188:3000");
+  });
+
+  it("never rewrites a release build", () => {
+    // Arrange — release bundles carry no Metro host, but be explicit anyway.
+    globals.__DEV__ = false;
+    mockConstants.expoConfig = {
+      extra: { webAppUrl: "http://192.168.18.188:3000" },
+      hostUri: "192.168.100.52:8081",
+    };
+
+    expect(getWebAppUrl()).toBe("http://192.168.18.188:3000");
   });
 });

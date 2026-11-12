@@ -26,7 +26,11 @@ export interface OrderStatusEvent {
   status: string
   previousStatus: string | null
   source: OrderEventSource | null
-  /** The order total as the writer saw it. Null when the writer did not know. */
+  /**
+   * The order's total. For a platform order the writer reads it from the saved
+   * order. For an order in a store's own deployment the server cannot read it,
+   * so this is the amount the device reported. Null when the writer did not know.
+   */
   orderTotal: number | null
   actorUserId: string | null
   /** Snapshotted at write so a removed account keeps its history named. */
@@ -44,6 +48,7 @@ export interface OrderEventDraft {
   status: string
   previousStatus?: string | null
   source?: OrderEventSource | null
+  /** The saved order's total, or the device's figure where the order cannot be read (see `OrderStatusEvent.orderTotal`). */
   orderTotal?: number | null
   actorUserId: string | null
   actorName: string

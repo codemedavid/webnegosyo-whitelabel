@@ -11,8 +11,6 @@ import {
 } from '@/lib/orders-service'
 import type { OrderStatusChangeOptions } from '@/lib/orders-service'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
-import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
 import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backend'
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { findCartPresellDate } from '@/lib/presell/availability'
@@ -282,8 +280,8 @@ export async function createOrderAction(
 
     const safePaymentProof = sanitizePaymentProof(paymentProof)
 
-    // Resolve where this tenant's orders live (Convex / their own Supabase /
-    // the shared platform DB) AND that the tenant is active — together with
+    // Resolve where this tenant's orders live (Convex or the shared
+    // platform DB) AND that the tenant is active — together with
     // its secrets and the chosen order type, in one parallel batch. Credentials
     // live in tenant_secrets, never on the anon-readable tenants row: the
     // Convex deploy key routes the order and the Loyverse token backs the live
@@ -811,13 +809,12 @@ export async function createOrderAction(
 
     /**
      * Everything owed once an order row exists: stock is spent on the request;
-     * the merchant email, Loyverse push and (tenant-Supabase) Regulars capture
-     * follow the response. Burning vouchers stays with the caller, inline.
+     * the merchant email and Loyverse push follow the response. Burning
+     * vouchers stays with the caller, inline.
      */
     const followUp = (
       orderId: string,
       platformOrderId: string | null,
-      captureCustomer?: () => Promise<unknown>,
     ) => runOrderFollowUps({
       tenantConfig,
       tenantId,
@@ -834,7 +831,6 @@ export async function createOrderAction(
         paymentMethodName: trustedPaymentMethodName,
         customerData: effectiveCustomerData,
       },
-      captureCustomer,
     })
 
     // Convex has no payment-proof columns, so proof rides in customerData (same
@@ -848,67 +844,6 @@ export async function createOrderAction(
           payment_proof_reference: safePaymentProof?.reference || undefined,
         }
       : effectiveCustomerData
-
-    // Route to the tenant's OWN Supabase project when that is the selected
-    // backend. Checked before the Convex branch so an explicit selection always
-    // wins; `assertOrderBackendReady` makes a half-configured tenant fail loudly
-    // instead of silently writing into the shared platform database, which would
-    // split that merchant's orders across two backends unnoticed.
-    if (resolveOrderBackend(tenantConfig) === 'supabase') {
-      assertOrderBackendReady(tenantConfig)
-
-      // The order type lives on the platform; carry its display name across so
-      // the merchant queue doesn't render every order as "N/A".
-      const orderTypeName = orderTypeRow?.name ?? null
-
-      const tenantClient = createTenantOrderWriteClient(tenantConfig)
-      const result = await createOrderTenantSupabase(tenantClient, {
-        tenantId,
-        items,
-        customerInfo,
-        orderTypeId,
-        orderTypeName,
-        customerData: effectiveCustomerData,
-        deliveryFee: effectiveDeliveryFee,
-        lalamoveQuotationId,
-        paymentMethodId: trustedPaymentMethodId,
-        paymentMethodName: trustedPaymentMethodName,
-        paymentMethodDetails: trustedPaymentMethodDetails,
-        paymentMethodQrCodeUrl: trustedPaymentMethodQrCodeUrl,
-        serviceChargeAmount: serviceCharge,
-        scheduledForISO: validatedScheduledISO,
-        paymentProof: safePaymentProof,
-        discounts: pricing.application.discountLines,
-      })
-      // The order row exists and carries the claim; the stock is spent for real.
-      orderPersisted = true
-
-      await burnFor(result.order.id)
-
-      // Same reason as the Convex branch: this order lives in the tenant's own
-      // project, so nothing else would ever roll it into the platform-side
-      // customers table. Best-effort and post-response — the order is saved.
-      const capturedAt = new Date().toISOString()
-      await followUp(result.order.id, null, async () => {
-        const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
-        await captureExternalOrderBestEffort(supabaseAdmin, tenantId, {
-          backend: 'tenant_supabase',
-          externalOrderId: result.order.id,
-          name: customerInfo?.name ?? null,
-          contact: customerInfo?.contact ?? null,
-          customerData: effectiveCustomerData ?? null,
-          total: Number(result.order.total) || 0,
-          createdAt: capturedAt,
-          channel: orderTypeName,
-          items: items.map((item) => ({
-            name: item.menu_item_name,
-            quantity: item.quantity,
-          })),
-        })
-      })
-      await finishChatCart()
-    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
-    }
 
     // Route on the same resolver the admin queue reads with, so a write can
     // never land in a backend the merchant's order page isn't looking at.

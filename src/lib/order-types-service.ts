@@ -5,6 +5,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 import type { OrderType, CustomerFormField } from '@/types/database'
 import { ORDER_TYPE_KINDS } from '@/lib/order-types/order-type-kinds'
 import { MARKUP_PERCENT_MAX, MARKUP_PERCENT_MIN } from '@/lib/order-types/order-type-pricing'
@@ -351,13 +353,13 @@ export async function deleteCustomerFormField(fieldId: string, tenantId: string)
 
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('customer_form_fields')
-    .delete()
-    .eq('id', fieldId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the question still there = row-level security
+  // refused the delete. Already gone is fine: a retried form save deletes twice.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('customer_form_fields').delete().eq('id', fieldId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('customer_form_fields').select('id').eq('id', fieldId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function reorderCustomerFormFields(fieldIds: string[], tenantId: string) {
@@ -365,22 +367,26 @@ export async function reorderCustomerFormFields(fieldIds: string[], tenantId: st
 
   const supabase = await createClient()
 
-  // Update order_index for each field
-  const updates = fieldIds.map((fieldId, index) =>
-    supabase
-      .from('customer_form_fields')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .update({ order_index: index } as any)
-      .eq('id', fieldId)
-      .eq('tenant_id', tenantId)
+  // One write per question, each asked what it changed. Zero rows with the
+  // question still there = row-level security refused the write. Zero rows with
+  // it gone = it was deleted meanwhile (or is not this store's): the rest of
+  // the order still stands.
+  const results = await Promise.all(
+    fieldIds.map(async (fieldId, index) =>
+      assertRowsChangedOrGone(
+        await supabase
+          .from('customer_form_fields')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .update({ order_index: index } as any)
+          .eq('id', fieldId)
+          .eq('tenant_id', tenantId)
+          .select('id'),
+        () => supabase.from('customer_form_fields').select('id').eq('id', fieldId).eq('tenant_id', tenantId).limit(1),
+      ),
+    ),
   )
-
-  const results = await Promise.all(updates)
-
-  // Check for any errors
-  for (const result of results) {
-    if (result.error) throw result.error
-  }
+  const failed = results.find((result) => !result.ok)
+  if (failed && !failed.ok) throw writeFailure(failed)
 }
 
 // ============================================

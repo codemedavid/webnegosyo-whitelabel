@@ -57,15 +57,14 @@ function respond(body: unknown, status = 200): NextResponse {
 const TOO_LARGE = { error: 'Screenshot is too large (max 5MB).' }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const ip = getClientIP(request)
-  if (ip) {
-    const rate = await checkRateLimit(`payment-proof-upload:${ip}`, UPLOAD_RATE_LIMIT)
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { error: 'Too many uploads. Please wait a moment and try again.' },
-        { status: 429, headers: { ...NO_STORE, 'Retry-After': String(rate.retryAfterSec) } },
-      )
-    }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`payment-proof-upload:${ip}`, UPLOAD_RATE_LIMIT)
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many uploads. Please wait a moment and try again.' },
+      { status: 429, headers: { ...NO_STORE, 'Retry-After': String(rate.retryAfterSec) } },
+    )
   }
 
   const declaredLength = Number(request.headers.get('content-length') ?? '')

@@ -19,6 +19,7 @@
 
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 import { NextRequest } from 'next/server'
+import { fakeSupabaseTables } from '../../fixtures/fake-supabase-tables'
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(),
@@ -32,9 +33,12 @@ jest.mock('@/lib/vouchers/repository', () => ({
   redeemVoucher: jest.fn(),
 }))
 
+/** A platform order id is a uuid; the store in these tests keeps its orders on the platform. */
+const ORDER_ID = '7d1c3a2e-5b4f-4c8d-9e0a-1b2c3d4e5f60'
+
 const VALID_BODY = {
   tenantId: 't1',
-  orderId: 'order-1',
+  orderId: ORDER_ID,
   channel: 'pos',
   redemptions: [{ voucherId: 'v-1', amount: 20 }],
 }
@@ -52,6 +56,10 @@ describe('POST /api/vouchers/redeem', () => {
   let appUserSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let redeemMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let storeOutletIds: string[]
+  let tenantRow: Record<string, unknown>
+  let orderRows: Record<string, unknown>[]
+  let adminFailures: Record<string, string>
+  let adminTablesRead: string[]
 
   beforeEach(async () => {
     jest.resetModules()
@@ -83,22 +91,21 @@ describe('POST /api/vouchers/redeem', () => {
 
     const { createAdminClient } = await import('@/lib/supabase/admin')
     storeOutletIds = ['outlet-2', 'outlet-9']
-    ;(createAdminClient as unknown as jest.Mock).mockReturnValue({
-      rpc: jest.fn(),
-      from: jest.fn(() => {
-        let wanted: unknown = null
-        const builder: Record<string, unknown> = {}
-        builder.select = jest.fn(() => builder)
-        builder.eq = jest.fn((column: string, value: unknown) => {
-          if (column === 'id') wanted = value
-          return builder
-        })
-        builder.maybeSingle = jest.fn(async () => ({
-          data: storeOutletIds.includes(String(wanted)) ? { id: wanted } : null,
-          error: null,
-        }))
-        return builder
-      }),
+    tenantRow = { id: 't1', order_backend: 'auto', convex_deployment_url: null }
+    orderRows = [{ id: ORDER_ID, tenant_id: 't1', outlet_id: 'outlet-9', status: 'pending', source: 'pos', total: 200 }]
+    adminFailures = {}
+    adminTablesRead = []
+    ;(createAdminClient as unknown as jest.Mock).mockImplementation(() => {
+      const fake = fakeSupabaseTables(
+        {
+          tenants: [tenantRow],
+          orders: orderRows,
+          outlets: storeOutletIds.map((id) => ({ id, tenant_id: 't1' })),
+        },
+        adminFailures,
+      )
+      adminTablesRead = fake.seen
+      return { rpc: jest.fn(), from: fake.client.from }
     })
 
     const repo = await import('@/lib/vouchers/repository')
@@ -170,7 +177,7 @@ describe('POST /api/vouchers/redeem', () => {
     expect(redeemMock.mock.calls[0][1]).toMatchObject({
       tenantId: 't1',
       voucherId: 'v-1',
-      orderId: 'order-1',
+      orderId: ORDER_ID,
       amount: 20,
       channel: 'pos',
     })
@@ -265,6 +272,79 @@ describe('POST /api/vouchers/redeem', () => {
 
     expect(res.status).toBe(403)
     expect(redeemMock).not.toHaveBeenCalled()
+  })
+
+  describe('the order the burn is recorded against', () => {
+    const asStoreWide = () =>
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', is_owner: true, outlet_id: null },
+        error: null,
+      })
+
+    test('refuses an order the store does not hold', async () => {
+      orderRows = [{ ...orderRows[0], tenant_id: 'other-tenant' }]
+      const { POST } = await import('@/app/api/vouchers/redeem/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer t'))
+
+      expect(res.status).toBe(404)
+      expect(await res.json()).toEqual({ error: 'Order not found' })
+      expect(redeemMock).not.toHaveBeenCalled()
+    })
+
+    test('refuses an order id the store has never written', async () => {
+      orderRows = []
+      const { POST } = await import('@/app/api/vouchers/redeem/route')
+
+      const unknown = await POST(makeRequest(VALID_BODY, 'Bearer t'))
+      const notAnId = await POST(makeRequest({ ...VALID_BODY, orderId: 'order-1' }, 'Bearer t'))
+
+      expect(unknown.status).toBe(404)
+      expect(notAnId.status).toBe(404)
+      expect(redeemMock).not.toHaveBeenCalled()
+    })
+
+    test('refuses a branch-locked cashier burning against another branch\'s order', async () => {
+      orderRows = [{ ...orderRows[0], outlet_id: 'outlet-2' }]
+      const { POST } = await import('@/app/api/vouchers/redeem/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer t'))
+
+      expect(res.status).toBe(404)
+      expect(redeemMock).not.toHaveBeenCalled()
+    })
+
+    test('lets a store-wide account burn against any branch\'s order, or one with no branch', async () => {
+      asStoreWide()
+      const { POST } = await import('@/app/api/vouchers/redeem/route')
+
+      orderRows = [{ ...orderRows[0], outlet_id: 'outlet-2' }]
+      expect((await POST(makeRequest(VALID_BODY, 'Bearer t'))).status).toBe(200)
+
+      orderRows = [{ ...orderRows[0], outlet_id: null }]
+      expect((await POST(makeRequest(VALID_BODY, 'Bearer t'))).status).toBe(200)
+      expect(redeemMock).toHaveBeenCalledTimes(2)
+    })
+
+    test('answers 503 and burns nothing when the order cannot be checked', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      adminFailures = { orders: 'timeout' }
+      const { POST } = await import('@/app/api/vouchers/redeem/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer t'))
+
+      expect(res.status).toBe(503)
+      expect(redeemMock).not.toHaveBeenCalled()
+      jest.restoreAllMocks()
+    })
+
+    test('a store on its own deployment burns as before: its orders cannot be read here', async () => {
+      tenantRow = { id: 't1', order_backend: 'auto', convex_deployment_url: 'https://calm-owl-1.convex.cloud' }
+      orderRows = []
+      const { POST } = await import('@/app/api/vouchers/redeem/route')
+      const res = await POST(makeRequest({ ...VALID_BODY, orderId: 'jd7f3k2m9x' }, 'Bearer t'))
+
+      expect(res.status).toBe(200)
+      expect(redeemMock.mock.calls[0][1]).toMatchObject({ orderId: 'jd7f3k2m9x', outletId: 'outlet-9' })
+      expect(adminTablesRead).not.toContain('orders')
+    })
   })
 
   test('lets pos staff burn', async () => {

@@ -46,6 +46,10 @@ jest.mock('@/components/customer/checkout-templates/checkout-shared', () => ({
   PaymentDetailsDialog: () => null,
   QrCodeDialog: () => null,
 }))
+jest.mock('@/components/customer/checkout-templates/payment-details-dialog', () => ({
+  PaymentStepScreen: () => null,
+  useIsPaymentScreenOpen: () => false,
+}))
 jest.mock('@/components/customer/checkout-templates/checkout-outlet-screen', () => ({
   CheckoutOutletScreen: () => <div>branch-screen</div>,
 }))

@@ -53,6 +53,20 @@ describe('what each page’s Look shows', () => {
     }
   })
 
+  it('gives the checkout the payment step look and wording (a designed checkout opens that step too)', () => {
+    const ids = fieldIds('checkout')
+    for (const id of ['payment_step_style.layout', 'payment_step_style.upload_design', 'payment_step_style.button_color', 'storefront_labels.payment.upload']) {
+      expect(ids).toContain(id)
+    }
+    expect(fieldIds('tracking').some((id) => id.startsWith('payment_step_style.'))).toBe(false)
+  })
+
+  it('folds a payment step edit over the saved look, keeping keys the editor did not touch', () => {
+    const current = { payment_step_style: { layout: 'popup', accent: '#00aa55' } }
+    expect(lookPatch({ 'payment_step_style.layout': 'screen' }, current)).toEqual({ payment_step_style: { layout: 'screen', accent: '#00aa55' } })
+    expect(previewLookRow(current, { 'payment_step_style.accent': '' }).payment_step_style).toEqual({ layout: 'popup' })
+  })
+
   it('lets a page change only its own fields', () => {
     expect(isPageLookField('checkout', 'checkout_accent_color')).toBe(true)
     expect(isPageLookField('checkout', 'tracking_style.hero_style')).toBe(false)

@@ -31,7 +31,7 @@ import {
 import { getTenantBranding } from '@/lib/branding-utils'
 import { saveBrandingAction } from '@/app/actions/branding'
 import { withPackSettingsPreview } from '@/lib/storefront-pack-studio'
-import { withJsonColumnsPreview } from '@/lib/branding-studio/studio-columns'
+import { isHexOnlyField, withJsonColumnsPreview } from '@/lib/branding-studio/studio-columns'
 import type { BrandingInput } from '@/lib/branding-service'
 import {
   getProductDetailFieldIds,
@@ -93,7 +93,7 @@ const PUBLISHED_TOAST_MS = 2500
 const PHONE_EDITOR_QUERY = '(max-width: 767px)'
 const NO_SAMPLE_DISHES: readonly MenuItem[] = []
 /** Screens whose preview needs a cart with something in it. */
-const CART_SURFACES = new Set<BrandingSurface['id']>(['cart', 'upsell', 'checkout'])
+const CART_SURFACES = new Set<BrandingSurface['id']>(['cart', 'upsell', 'checkout', 'payment'])
 /** Screens previewed on the sample order page. */
 const TRACKING_SURFACES = new Set<BrandingSurface['id']>(['tracking', 'loyalty'])
 
@@ -485,7 +485,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                 ? productFields.contrastIssue(field.id)
                 : contrastIssues.find((issue) => issue.fieldId === field.id) ?? null
           }
-          storeColors={field.id.startsWith('tracking_style.') ? hexStoreColors : storeColors}
+          storeColors={isHexOnlyField(field.id) ? hexStoreColors : storeColors}
         />
       </div>
     )

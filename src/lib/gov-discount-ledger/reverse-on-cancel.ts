@@ -12,7 +12,7 @@
  * The app's sync is only a CLAIM that the order was cancelled, so the grants
  * are reversed only when the order agrees (`reverseIfCancelled`): a platform
  * order must really be cancelled in this store; an order the server cannot
- * read (Convex, a tenant's own Supabase) is reversed but flagged
+ * read (Convex) is reversed but flagged
  * `reversal_unverified` for the owner. A cancel with nobody signed in (a
  * system or customer cancel) is signed by `SYSTEM_ACTOR`, never skipped.
  */
@@ -30,7 +30,6 @@ export const SYSTEM_ACTOR: LedgerActor = { userId: null, name: 'System' }
 export const LEDGER_BACKEND: Readonly<Record<OrderBackend, GovLedgerBackend>> = {
   platform: 'platform_supabase',
   convex: 'convex',
-  supabase: 'tenant_supabase',
 }
 
 export async function reverseGovGrants(

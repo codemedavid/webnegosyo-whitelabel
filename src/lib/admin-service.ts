@@ -21,6 +21,8 @@ import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/p
 import { assertSubscriptionActive } from '@/lib/billing/subscription-gate'
 import { z } from 'zod'
 import { isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-icon-catalog'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 
 // ============================================
 // Types & Schemas
@@ -455,13 +457,13 @@ export async function deleteCategory(categoryId: string, tenantId: string) {
   
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('categories')
-    .delete()
-    .eq('id', categoryId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the category still there = row-level security
+  // refused the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('categories').delete().eq('id', categoryId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('categories').select('id').eq('id', categoryId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function reorderCategories(tenantId: string, categoryIds: string[]) {
@@ -469,19 +471,26 @@ export async function reorderCategories(tenantId: string, categoryIds: string[])
   
   const supabase = await createClient()
 
-  // Update order for each category
-  const updates = categoryIds.map((id, index) => 
-    supabase
-      .from('categories')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .update({ order: index } as any)
-      .eq('id', id)
-      .eq('tenant_id', tenantId)
+  // One write per category, each asked what it changed. Zero rows with the
+  // category still there = row-level security refused the write. Zero rows with
+  // it gone = it was deleted meanwhile (or is not this store's): the rest of
+  // the order still stands.
+  const results = await Promise.all(
+    categoryIds.map(async (id, index) =>
+      assertRowsChangedOrGone(
+        await supabase
+          .from('categories')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .update({ order: index } as any)
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+          .select('id'),
+        () => supabase.from('categories').select('id').eq('id', id).eq('tenant_id', tenantId).limit(1),
+      ),
+    ),
   )
-
-  const results = await Promise.all(updates)
-  const failed = results.find((result) => result.error)
-  if (failed?.error) throw failed.error
+  const failed = results.find((result) => !result.ok)
+  if (failed && !failed.ok) throw writeFailure(failed)
 }
 
 // ============================================
@@ -882,13 +891,12 @@ export async function deleteMenuItem(itemId: string, tenantId: string) {
   
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('menu_items')
-    .delete()
-    .eq('id', itemId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // As deleteCategory: a refused delete is reported, an item already gone is not.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('menu_items').delete().eq('id', itemId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('menu_items').select('id').eq('id', itemId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }
 
 export async function toggleMenuItemAvailability(itemId: string, tenantId: string, isAvailable: boolean) {

@@ -30,12 +30,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'That is not a short map link.' }, { status: 400, headers: NO_STORE })
   }
 
-  const ip = getClientIP(request)
-  if (ip) {
-    const limit = await checkRateLimit(`maps-resolve-link:${ip}`, RATE_LIMIT)
-    if (!limit.allowed) {
-      return NextResponse.json({ error: 'Too many links. Please wait a moment.' }, { status: 429, headers: { ...NO_STORE, 'Retry-After': String(limit.retryAfterSec) } })
-    }
+  // A request with no readable address still counts: they all share one bucket.
+  const ip = getClientIP(request) ?? 'unknown'
+  const limit = await checkRateLimit(`maps-resolve-link:${ip}`, RATE_LIMIT)
+  if (!limit.allowed) {
+    return NextResponse.json({ error: 'Too many links. Please wait a moment.' }, { status: 429, headers: { ...NO_STORE, 'Retry-After': String(limit.retryAfterSec) } })
   }
 
   try {

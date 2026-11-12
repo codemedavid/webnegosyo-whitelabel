@@ -24,6 +24,7 @@ import { STOREFRONT_LABELS, STOREFRONT_LABEL_KEYS, type LabelScreen } from '@/li
 import { SECTION_SCHEME_IDS } from '@/lib/section-schemes'
 import { isJsonColumnFieldId } from '@/lib/branding-studio/studio-columns'
 import { LOYALTY_STYLE_SECTIONS, TRACKING_STYLE_SECTIONS } from '@/lib/tracking-style/studio-sections'
+import { PAYMENT_STEP_STYLE_SECTIONS } from '@/lib/payment-step/studio-sections'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
@@ -74,7 +75,7 @@ export interface BrandingSection {
 }
 
 export interface BrandingSurface {
-  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'tracking' | 'loyalty' | 'footer' | 'flash'
+  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'payment' | 'upsell' | 'product' | 'tracking' | 'loyalty' | 'footer' | 'flash'
   label: string
   glyph: string
   description: string
@@ -468,6 +469,13 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       },
       { title: 'Labels', fields: labelFields(['checkout', 'confirmation']) },
     ],
+  },
+  {
+    id: 'payment',
+    label: 'Payment Step',
+    glyph: '₱',
+    description: 'The step after "Proceed to Payment" (methods with a QR, account details or proof of payment) — how it opens, the receipt upload, colours and wording. The upload shows only for methods set to "Require payment proof". Blank colours follow your checkout.',
+    sections: [...PAYMENT_STEP_STYLE_SECTIONS, { title: 'Labels', fields: labelFields(['payment']) }],
   },
   {
     id: 'upsell',

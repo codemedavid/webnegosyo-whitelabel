@@ -38,6 +38,8 @@ export function getPreviewTarget(
       // layout setting). The "last call" offers (Upsell Modal) show in both.
       return cartView === 'page' ? { path: `${base}/cart` } : { path: `${base}/menu`, openCart: true }
     case 'checkout':
+    case 'payment':
+      // Payment: the checkout holds its payment step open (payment-step-state.ts).
       return { path: `${base}/checkout` }
     case 'tracking':
     case 'loyalty':

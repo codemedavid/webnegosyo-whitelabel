@@ -17,6 +17,7 @@
  */
 
 import { supabase } from "./supabase";
+import { assertRowsChangedOrGone, writeFailure } from "./assert-rows-changed";
 import { isKnownCategoryIcon, isValidCategoryIconColor } from "./category-icon-catalog";
 
 /** A category as the management screens see it. */
@@ -309,13 +310,13 @@ export async function countProductsIn(categoryId: string, tenantId: string): Pro
 }
 
 export async function deleteCategory(categoryId: string, tenantId: string): Promise<void> {
-  const { error } = await supabase
-    .from("categories")
-    .delete()
-    .eq("id", categoryId)
-    .eq("tenant_id", tenantId);
-
-  if (error) throw error;
+  // Zero rows deleted with the category still there = row-level security
+  // refused the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from("categories").delete().eq("id", categoryId).eq("tenant_id", tenantId).select("id"),
+    () => supabase.from("categories").select("id").eq("id", categoryId).eq("tenant_id", tenantId).limit(1),
+  );
+  if (!result.ok) throw writeFailure(result);
 }
 
 /** Persist the positions produced by {@link moveCategory}. */
@@ -324,12 +325,19 @@ export async function reorderCategories(
   categories: readonly ManagedCategory[],
 ): Promise<void> {
   for (const category of categories) {
-    const { error } = await supabase
-      .from("categories")
-      .update({ order: category.order })
-      .eq("id", category.id)
-      .eq("tenant_id", tenantId);
-
-    if (error) throw error;
+    // Each write is asked what it changed. Zero rows with the category still
+    // there = row-level security refused it, and the arrangement on screen was
+    // not saved. Zero rows with it gone = deleted meanwhile on another device:
+    // the rest of the order still stands.
+    const result = await assertRowsChangedOrGone(
+      await supabase
+        .from("categories")
+        .update({ order: category.order })
+        .eq("id", category.id)
+        .eq("tenant_id", tenantId)
+        .select("id"),
+      () => supabase.from("categories").select("id").eq("id", category.id).eq("tenant_id", tenantId).limit(1),
+    );
+    if (!result.ok) throw writeFailure(result);
   }
 }

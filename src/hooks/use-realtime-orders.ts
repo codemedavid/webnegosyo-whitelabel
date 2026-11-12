@@ -27,10 +27,8 @@ interface RealtimeOrder {
 interface UseRealtimeOrdersOptions {
   tenantId: string
   /**
-   * The project holding this tenant's orders. Omit for tenants on the shared
-   * platform database; pass a client built from the tenant's own Supabase
-   * credentials when `order_backend = 'supabase'`, otherwise the queue
-   * subscribes to a project that will never receive their orders.
+   * The client to subscribe with. Omit in the app: the queue then uses the
+   * platform browser client. Tests pass a fake.
    */
   client?: SupabaseClient
   onNewOrder?: (order: RealtimeOrder) => void

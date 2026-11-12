@@ -27,7 +27,14 @@ import { issueOnboardingLink } from '@/lib/onboarding/start'
 import { canSendSetupLink, invitePaidCustomerSchema } from '@/lib/onboarding/invite'
 import { applyLeadStatusWithLaunch, readLeadOnboarding } from '@/lib/onboarding/staff'
 import { findOnboardingByLead } from '@/lib/onboarding/repository'
-import { checkActionRateLimit } from '@/lib/action-rate-limit'
+import { checkActionRateLimit, getActionClientIp } from '@/lib/action-rate-limit'
+import {
+  META_PURCHASE_STATUSES,
+  runAfterResponse,
+  sendLeadConversion,
+  sendLeadPurchaseOnce,
+  toLeadMetaAttribution,
+} from '@/lib/checkout-leads/meta-events'
 import type { RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { isReferenceNumber } from '@/lib/checkout-leads/reference-number'
 import { CHECKOUT_LEAD_LOOKUP_RATE_LIMITED, type CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
@@ -56,11 +63,25 @@ export async function submitCheckoutForm(input: CreateCheckoutLeadInput) {
     return { data: null, error: 'Too many orders from this connection. Please try again later.' }
   }
 
+  // The pixel's signals only exist when the form ran on a pixel page; the IP
+  // is the one Vercel saw, never a value the browser could send.
+  const metaAttribution = input.meta?.eventId ? toLeadMetaAttribution(input.meta, await getActionClientIp()) : null
+
   // No set-up link here: staff send it once the payment is confirmed
   // (issueLeadSetupLink), so an unpaid order never gets a store.
-  const result = await createCheckoutLead(input)
+  const result = await createCheckoutLead(input, { metaAttribution })
 
   if (result.data && !result.error) {
+    const lead = result.data
+    if (metaAttribution) {
+      // After the response, so the buyer never waits on Meta; a fire-and-forget
+      // promise here was cut off when the serverless function froze.
+      await runAfterResponse(() =>
+        sendLeadConversion(lead, metaAttribution).catch((error: unknown) => {
+          console.error('[Meta CAPI] Lead event dispatch failed', error)
+        })
+      )
+    }
     captureCheckoutLeadCreated({
       name: input.name,
       email: input.email,
@@ -106,12 +127,30 @@ export async function changeCheckoutLeadStatus(
   try {
     // "paid" and "live" also open an onboarded store; see applyLeadStatusWithLaunch.
     const launch = await applyLeadStatusWithLaunch(leadId, newStatus)
-    if (launch.handled) return { error: null, isPublished: launch.isPublished }
+    if (launch.handled) {
+      await reportPurchaseIfPaid(leadId, newStatus)
+      return { error: null, isPublished: launch.isPublished }
+    }
   } catch (error) {
     console.error('[checkout-leads] launch-aware status change failed', error)
     return { error: error instanceof Error ? error.message : 'Status change failed' }
   }
-  return updateCheckoutLeadStatus(leadId, newStatus)
+  const result = await updateCheckoutLeadStatus(leadId, newStatus)
+  if (!result.error) await reportPurchaseIfPaid(leadId, newStatus)
+  return result
+}
+
+/**
+ * Staff confirmed the money: tell Meta once (sendLeadPurchaseOnce claims the
+ * lead, so re-picking "paid" or moving on to "live" never sends twice).
+ */
+async function reportPurchaseIfPaid(leadId: string, status: CheckoutLeadStatus) {
+  if (!META_PURCHASE_STATUSES.has(status)) return
+  await runAfterResponse(() =>
+    sendLeadPurchaseOnce(createAdminClient(), leadId).catch((error: unknown) => {
+      console.error('[Meta CAPI] Purchase dispatch failed', error)
+    })
+  )
 }
 
 // ---- Store onboarding (/funnel plans) ----

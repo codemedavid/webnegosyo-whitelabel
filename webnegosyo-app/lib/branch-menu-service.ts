@@ -14,6 +14,8 @@
  */
 
 import { supabase } from "./supabase";
+import { NOTHING_CHANGED_MESSAGE, assertRowsChangedOrGone } from "./assert-rows-changed";
+import { readAllPages, type PageResponse } from "./gov-reports/paging";
 import { planBranchListingWrite } from "./branch-menu";
 import type { OutletMenuOverrideRow } from "./outlet-menu-overrides";
 
@@ -25,20 +27,40 @@ import type { OutletMenuOverrideRow } from "./outlet-menu-overrides";
 const OVERRIDE_SELECT =
   "outlet_id, menu_item_id, is_listed, is_available, price, discounted_price, discount_cleared";
 
+/**
+ * One response from the platform database carries at most 1,000 rows and says
+ * nothing about the rest. A store's rows are dishes x branches-that-differ, so
+ * the read is paged up to a ceiling far above any real store; past it the
+ * read fails rather than answer with part of the rows.
+ */
+const OVERRIDE_PAGE_SIZE = 1000;
+const MAX_OVERRIDE_ROWS = 20_000;
+
 /** Every branch difference the store has, for the cross-branch product list. */
 export async function listBranchMenuOverrides(
   tenantId: string,
 ): Promise<OutletMenuOverrideRow[]> {
-  const { data, error } = await supabase
-    .from("outlet_menu_items")
-    .select(OVERRIDE_SELECT)
-    .eq("tenant_id", tenantId);
-
   // Not swallowed: an empty result is the claim "no branch differs from the
   // store-wide menu", which after a failed query hides every delisted dish.
-  if (error) throw new Error(error.message);
-
-  return (data ?? []) as unknown as OutletMenuOverrideRow[];
+  // A failed page throws for the same reason, and so does a short list: a
+  // difference that was not read shows its dish as carried at the store price.
+  const { rows, isTruncated } = await readAllPages<OutletMenuOverrideRow>(
+    (from, to) =>
+      supabase
+        .from("outlet_menu_items")
+        .select(OVERRIDE_SELECT)
+        .eq("tenant_id", tenantId)
+        // One row per dish per branch, so this order is unique and pages
+        // never overlap or skip.
+        .order("outlet_id", { ascending: true })
+        .order("menu_item_id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PageResponse<OutletMenuOverrideRow>>,
+    { pageSize: OVERRIDE_PAGE_SIZE, maxRows: MAX_OVERRIDE_ROWS },
+  );
+  if (isTruncated) {
+    throw new Error("This store has more than 20,000 branch menu differences, too many to load at once.");
+  }
+  return rows;
 }
 
 async function findBranchOverride(
@@ -74,14 +96,29 @@ export async function setBranchListing(
   if (plan.kind === "noop") return;
 
   if (plan.kind === "delete") {
-    const { error } = await supabase
-      .from("outlet_menu_items")
-      .delete()
-      .eq("tenant_id", tenantId)
-      .eq("outlet_id", outletId)
-      .eq("menu_item_id", menuItemId);
-
-    if (error) throw new Error(error.message);
+    // Zero rows removed with the row still there = row-level security refused
+    // it (the branch still does not carry the dish); zero rows with it gone
+    // means someone else put the dish back first.
+    const result = await assertRowsChangedOrGone(
+      await supabase
+        .from("outlet_menu_items")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("outlet_id", outletId)
+        .eq("menu_item_id", menuItemId)
+        .select("menu_item_id"),
+      () =>
+        supabase
+          .from("outlet_menu_items")
+          .select("menu_item_id")
+          .eq("tenant_id", tenantId)
+          .eq("outlet_id", outletId)
+          .eq("menu_item_id", menuItemId)
+          .limit(1),
+    );
+    if (!result.ok) {
+      throw new Error(result.reason === "error" ? result.error.message : NOTHING_CHANGED_MESSAGE);
+    }
     return;
   }
 

@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
 import {
   loyverseListAll,
   LoyverseApiError,
@@ -227,13 +229,13 @@ export async function deletePaymentMethod(paymentMethodId: string, tenantId: str
   
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('payment_methods')
-    .delete()
-    .eq('id', paymentMethodId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the method still there = row-level security refused
+  // the delete; zero rows with it already gone is a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('payment_methods').delete().eq('id', paymentMethodId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('payment_methods').select('id').eq('id', paymentMethodId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
   return { success: true }
 }
 
@@ -242,18 +244,25 @@ export async function reorderPaymentMethods(tenantId: string, paymentMethodIds: 
   
   const supabase = await createClient()
 
-  // Update order_index for each payment method
-  const updates = paymentMethodIds.map((id, index) => 
-    supabase
-      .from('payment_methods')
-      .update({ order_index: index })
-      .eq('id', id)
-      .eq('tenant_id', tenantId)
+  // One write per method, each asked what it changed. Zero rows with the method
+  // still there = row-level security refused the write. Zero rows with it gone
+  // = it was deleted meanwhile (or is not this store's): the rest of the order
+  // still stands.
+  const results = await Promise.all(
+    paymentMethodIds.map(async (id, index) =>
+      assertRowsChangedOrGone(
+        await supabase
+          .from('payment_methods')
+          .update({ order_index: index })
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+          .select('id'),
+        () => supabase.from('payment_methods').select('id').eq('id', id).eq('tenant_id', tenantId).limit(1),
+      ),
+    ),
   )
-
-  const results = await Promise.all(updates)
-  const failed = results.find((result) => result.error)
-  if (failed?.error) throw failed.error
+  const failed = results.find((result) => !result.ok)
+  if (failed && !failed.ok) throw writeFailure(failed)
 
   return { success: true }
 }

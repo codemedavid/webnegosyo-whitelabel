@@ -61,8 +61,8 @@ export function shouldRegisterPushToken(state: PushRegistrationState): boolean {
   if (!state.userId) return false;
   if (isImpersonating(state)) return false;
   // Same availability rule the screens use: a Convex url, or the shared
-  // platform backend. The per-tenant-Supabase track has no send path, so
-  // registering there would promise alerts nothing will ever deliver.
+  // platform backend. With neither there is no send path, so registering
+  // would promise alerts nothing will ever deliver.
   return hasLiveOrderBackend({
     convexUrl: state.convexUrl,
     orderBackend: state.orderBackend ?? null,

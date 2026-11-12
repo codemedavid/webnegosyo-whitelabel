@@ -1,14 +1,14 @@
 import { LandingViewContent } from '@/components/tracking/landing-view-content'
+import { MarketingPixel } from '@/components/tracking/marketing-pixel'
 import { FunnelBonuses } from './funnel-bonuses'
 import { FunnelCloseBand, FunnelFaq, FunnelFooter } from './funnel-close'
 import { FunnelFeatures } from './funnel-features'
-import { funnelFontClass } from './funnel-fonts'
 import { FunnelHeader } from './funnel-header'
 import { FunnelHero } from './funnel-hero'
 import { FunnelOrder } from './funnel-order'
 import { FunnelProof } from './funnel-proof'
 import { FunnelStickyBar } from './funnel-sticky-bar'
-import { FUNNEL_STYLES } from './funnel-styles'
+import { FunnelWorld } from './funnel-world'
 
 /**
  * /funnel, rebuilt on the contentacademy.io class page's design system (its
@@ -19,8 +19,8 @@ import { FUNNEL_STYLES } from './funnel-styles'
  */
 export function FunnelPage() {
   return (
-    <div className={`funnel-world min-h-screen ${funnelFontClass}`}>
-      <style>{FUNNEL_STYLES}</style>
+    <FunnelWorld>
+      <MarketingPixel />
       <LandingViewContent />
       <FunnelHeader />
       <main>
@@ -34,6 +34,6 @@ export function FunnelPage() {
       </main>
       <FunnelFooter />
       <FunnelStickyBar />
-    </div>
+    </FunnelWorld>
   )
 }

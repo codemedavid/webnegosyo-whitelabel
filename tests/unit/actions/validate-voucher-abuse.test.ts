@@ -96,5 +96,43 @@ describe('validateVoucherAction abuse limits', () => {
   })
 })
 
+// The action has no session, so whoever calls it is a checkout visitor: it
+// previews what the checkout channel would give, whatever channel is asked for.
+// The register and the admin look codes up through their own signed-in routes.
+describe('validateVoucherAction channel', () => {
+  beforeEach(() => {
+    jest.resetModules()
+  })
+
+  it.each([['pos'], ['admin'], ['kiosk'], [undefined]] as const)(
+    'previews the checkout channel when asked for %s',
+    async (channel) => {
+      const { checkActionRateLimit, buildVoucherPreview, validateVoucherAction } = await load()
+      checkActionRateLimit.mockResolvedValue({ allowed: true, retryAfterSec: 0 })
+      buildVoucherPreview.mockResolvedValue(EMPTY_PREVIEW as never)
+
+      const result = await validateVoucherAction({
+        tenantId: 't1',
+        codes: ['STAFF50'],
+        lines: [LINE],
+        channel: channel as never,
+      })
+
+      expect(result).toEqual({ success: true, data: EMPTY_PREVIEW })
+      expect(buildVoucherPreview.mock.calls[0][0].context.channel).toBe('checkout')
+    },
+  )
+
+  it('previews the checkout channel for the checkout itself', async () => {
+    const { checkActionRateLimit, buildVoucherPreview, validateVoucherAction } = await load()
+    checkActionRateLimit.mockResolvedValue({ allowed: true, retryAfterSec: 0 })
+    buildVoucherPreview.mockResolvedValue(EMPTY_PREVIEW as never)
+
+    await validateVoucherAction({ tenantId: 't1', codes: ['SAVE10'], lines: [LINE], channel: 'checkout' })
+
+    expect(buildVoucherPreview.mock.calls[0][0].context.channel).toBe('checkout')
+  })
+})
+
 // A module, not a script: without this, top-level helpers collide across test files under tsc.
 export {};

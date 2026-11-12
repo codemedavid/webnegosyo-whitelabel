@@ -56,9 +56,9 @@ describe("shouldRegisterPushToken on the platform backend", () => {
     ).toBe(false);
   });
 
-  it("still refuses the per-tenant-Supabase track, which has no send path", () => {
+  it("refuses a session with neither a platform pin nor a Convex url: no send path", () => {
     expect(
-      shouldRegisterPushToken({ ...PLATFORM_MERCHANT, orderBackend: "supabase" })
+      shouldRegisterPushToken({ ...PLATFORM_MERCHANT, orderBackend: null, convexUrl: null })
     ).toBe(false);
   });
 });

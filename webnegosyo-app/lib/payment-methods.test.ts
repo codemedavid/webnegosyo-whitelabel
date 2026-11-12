@@ -572,6 +572,8 @@ describe("togglePaymentMethodStatus", () => {
 
 describe("deletePaymentMethod", () => {
   it("deletes only within the tenant", async () => {
+    queued = [{ data: [{ id: "pm-1" }], error: null }];
+
     await deletePaymentMethod("pm-1", "t-1");
 
     expect(tablesTouched()).toEqual(["payment_methods"]);
@@ -588,10 +590,37 @@ describe("deletePaymentMethod", () => {
       "foreign key violation",
     );
   });
+
+  it("reports a delete the database refused, instead of reporting success", async () => {
+    // Row-level security refuses silently: no error, zero rows, and the
+    // method is still there when looked for.
+    queued = [
+      { data: [], error: null },
+      { data: [{ id: "pm-1" }], error: null },
+    ];
+
+    await expect(deletePaymentMethod("pm-1", "t-1")).rejects.toThrow(
+      "Nothing was changed. You may not have access to do this.",
+    );
+  });
+
+  it("is fine when the method is already gone: the second tap of a double tap", async () => {
+    queued = [
+      { data: [], error: null },
+      { data: [], error: null },
+    ];
+
+    await expect(deletePaymentMethod("pm-1", "t-1")).resolves.toBeUndefined();
+  });
 });
 
 describe("reorderPaymentMethods", () => {
   it("writes each method's position, scoped to the tenant", async () => {
+    queued = [
+      { data: [{ id: "b" }], error: null },
+      { data: [{ id: "a" }], error: null },
+    ];
+
     await reorderPaymentMethods("t-1", [
       method({ id: "b", order_index: 0 }),
       method({ id: "a", order_index: 1 }),
@@ -612,5 +641,38 @@ describe("reorderPaymentMethods", () => {
     await expect(
       reorderPaymentMethods("t-1", [method({ id: "b", order_index: 0 })]),
     ).rejects.toThrow("boom");
+  });
+
+  it("reports positions the database refused to store, so the list is put back", async () => {
+    // Zero rows for both, and both methods are still there when looked for.
+    queued = [
+      { data: [], error: null },
+      { data: [], error: null },
+      { data: [{ id: "b" }], error: null },
+    ];
+
+    await expect(
+      reorderPaymentMethods("t-1", [
+        method({ id: "b", order_index: 0 }),
+        method({ id: "a", order_index: 1 }),
+      ]),
+    ).rejects.toThrow("Nothing was changed. You may not have access to do this.");
+  });
+
+  it("skips a method deleted on another phone without failing the rest", async () => {
+    // "b" changed nothing and is gone when looked for; "a" was written.
+    queued = [
+      { data: [], error: null },
+      { data: [{ id: "a" }], error: null },
+      { data: [], error: null },
+    ];
+
+    await expect(
+      reorderPaymentMethods("t-1", [
+        method({ id: "b", order_index: 0 }),
+        method({ id: "a", order_index: 1 }),
+      ]),
+    ).resolves.toBeUndefined();
+    expect(argsFor("in")).toEqual([["id", ["b"]]]);
   });
 });

@@ -52,13 +52,8 @@ const CONVEX_TENANT: MenuPerformanceTenant = {
 
 const PLATFORM_TENANT: MenuPerformanceTenant = { id: 't2', order_backend: 'platform' }
 
-const TENANT_SUPABASE_TENANT: MenuPerformanceTenant = {
-  id: 't3',
-  order_backend: 'supabase',
-  supabase_order_url: 'https://tenant.supabase.co',
-  supabase_order_anon_key: 'anon',
-  supabase_order_service_key: 'service',
-}
+/** A stale pin to the retired own-project backend; the CHECK still allows the word. */
+const STALE_SUPABASE_PIN_TENANT = { id: 't3', order_backend: 'supabase' } as unknown as MenuPerformanceTenant
 
 describe('fetchMenuPerformance paging past the 1000-row API cap', () => {
   function itemRows(count: number) {
@@ -139,20 +134,19 @@ describe('fetchMenuPerformance backend routing', () => {
     expect(result.items[0]).toMatchObject({ itemId: 'b', units: 2, revenue: 300 })
   })
 
-  it('reads a tenant-Supabase tenant from its own project', async () => {
+  it("reads the platform database for a stale 'supabase' pin, which routes like auto", async () => {
     const calls: Record<string, unknown> = {}
-    const tenantClient = fakeOrderItemsClient(
+    const platformClient = fakeOrderItemsClient(
       [{ menu_item_id: 'c', menu_item_name: 'Pancit', quantity: 4, subtotal: '400.00' }],
       calls,
     )
 
-    const result = await fetchMenuPerformance(TENANT_SUPABASE_TENANT, {
+    const result = await fetchMenuPerformance(STALE_SUPABASE_PIN_TENANT, {
       windowDays: 30,
-      platformClient: fakeOrderItemsClient([]) as never,
-      tenantSupabaseFactory: () => tenantClient as never,
+      platformClient: platformClient as never,
     })
 
-    expect(result.dataSource).toBe('tenant_supabase')
+    expect(result.dataSource).toBe('platform')
     expect(result.items[0]).toMatchObject({ itemId: 'c', units: 4 })
   })
 

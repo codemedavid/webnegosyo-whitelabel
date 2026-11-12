@@ -35,7 +35,7 @@ export function ReportRefused({ reason }: { reason: ReportRefusal }) {
   return <Panel {...REFUSAL_COPY[reason]} />
 }
 
-/** Convex and own-database stores get sales reports in Phase 7 (plan §11.4): never half-accurate numbers. */
+/** Convex stores get sales reports in Phase 7 (plan §11.4): never half-accurate numbers. */
 export function ReportUnsupported({ tenantSlug, backend }: { tenantSlug: string; backend: OrderBackend }) {
   return (
     <Panel

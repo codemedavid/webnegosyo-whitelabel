@@ -279,8 +279,5 @@ export async function fetchCustomerOrderFacts(
   if (backend === 'convex') {
     return fetchLedgerFacts(platformClient, tenant.id, 'convex', window)
   }
-  if (backend === 'supabase') {
-    return fetchLedgerFacts(platformClient, tenant.id, 'tenant_supabase', window)
-  }
   return fetchPlatformFacts(platformClient, tenant.id, window)
 }

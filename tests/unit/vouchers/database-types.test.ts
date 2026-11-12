@@ -2,7 +2,7 @@
  * Guardrail: the generated Supabase types must actually describe the voucher
  * schema that is already live in the database.
  *
- * `src/types/supabase.ts` is generated, so it drifts silently: the migration
+ * `src/types/database.generated.ts` is generated, so it drifts silently: the migration
  * applies, the tables exist, every query works at runtime — and `.from('vouchers')`
  * refuses to compile because the type file predates the migration. Worse, the
  * hand-written `VoucherRow` in the mapper is the only description of that table
@@ -59,7 +59,7 @@ const ordersCarryDiscount: OrdersCarryDiscount = true
 const orderItemsCarryDiscount: OrderItemsCarryDiscount = true
 const redeemVoucherExposed: RedeemVoucherExposed = true
 
-const GENERATED_TYPES = join(process.cwd(), 'src/types/supabase.ts')
+const GENERATED_TYPES = join(process.cwd(), 'src/types/database.generated.ts')
 
 function readGeneratedTypes(): string {
   return readFileSync(GENERATED_TYPES, 'utf8')
