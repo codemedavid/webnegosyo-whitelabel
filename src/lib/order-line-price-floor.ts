@@ -34,8 +34,8 @@ import {
 export const MAX_LINE_PRICE = 1_000_000
 /** Matches `MAX_CART_ITEM_QUANTITY`; a bigger order is a mistake or an attack. */
 export const MAX_LINE_QUANTITY = 99
-/** Currency rounding slack, so float noise is not read as tampering. */
-const PRICE_EPSILON = 0.01
+/** Whole centavos: float noise rounds away, a real centavo under the floor does not. */
+const toCentavos = (value: number): number => Math.round(value * 100)
 
 /** The submitted line, as the checkout posts it. */
 export interface OrderLinePriceInput {
@@ -119,7 +119,7 @@ export function resolveOrderLinePrice(
   }
 
   // Above the floor is accepted — the customer only ever overpays themselves.
-  const price = round(line.price < floor - PRICE_EPSILON ? floor : line.price)
+  const price = round(toCentavos(line.price) < toCentavos(floor) ? floor : line.price)
 
   if (price > MAX_LINE_PRICE) {
     return { ok: false, error: `Price exceeds maximum for ${line.menu_item_name}` }

@@ -17,7 +17,7 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/../../../.." && pwd)"
 BIN="$REPO/.claude/skills/verify-webnegosyo/bin"
-PORT=3100
+PORT="${QA_PORT:-3100}"
 STATE="${VERIFY_STATE_DIR:-${TMPDIR:-/tmp}/verify-webnegosyo-$PORT}"
 TENANT="${VERIFY_TENANT:-sample-demo}"
 [[ "${1:-}" == "--tenant" ]] && TENANT="${2:-}"

@@ -5,6 +5,7 @@ import { HomeBlock } from '@/components/home/home-block'
 import { HomeHeader } from '@/components/home/home-header'
 import { MemberCard } from '@/components/home/member-card'
 import { useAppConfig, useCatalog } from '@/lib/data/hooks'
+import { useRefreshLoyaltyOnFocus } from '@/lib/data/use-refresh-loyalty-on-focus'
 import { greetingFor } from '@/lib/home/greeting'
 import { visibleBlocks } from '@/lib/home/visible-blocks'
 import { firstName, useSession } from '@/lib/stores/session'
@@ -18,6 +19,8 @@ export default function HomeScreen() {
   const { data: catalog } = useCatalog()
   const session = useSession()
   const isMember = session.status === 'member'
+  // The member card and rewards teaser read the loyalty card; stamps land at the counter.
+  useRefreshLoyaltyOnFocus()
 
   const blocks = useMemo(
     () => (config ? visibleBlocks(config.home.blocks, { isMember, features: config.features }) : []),

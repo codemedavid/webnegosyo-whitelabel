@@ -1,5 +1,5 @@
 import type { AppLoyaltyProgram } from '@/lib/contract'
-import { loyaltyProgress } from './progress'
+import { loyaltyProgress, rewardLadder } from './progress'
 
 const program = (overrides: Partial<AppLoyaltyProgram> = {}): AppLoyaltyProgram => ({
   id: 'p',
@@ -40,5 +40,22 @@ describe('loyaltyProgress', () => {
 
   it('celebrates a full card', () => {
     expect(loyaltyProgress(program({ balance: 12 }))).toMatchObject({ filled: 10, fraction: 1, caption: 'Reward unlocked' })
+  })
+})
+
+describe('rewardLadder', () => {
+  const cookie = { at: 5, label: 'Free cookie', emoji: '🍪', imageUrl: null, isFinal: false }
+  const drink = { at: 10, label: 'Free drink', emoji: '🎁', imageUrl: null, isFinal: true }
+
+  it('lists the rungs lowest first and marks those reached', () => {
+    expect(rewardLadder(program({ balance: 7, rewardSteps: [drink, cookie] }))).toEqual([
+      { ...cookie, isReached: true },
+      { ...drink, isReached: false },
+    ])
+  })
+
+  it('shows nothing for a single reward or an older server', () => {
+    expect(rewardLadder(program({ rewardSteps: [drink] }))).toEqual([])
+    expect(rewardLadder(program())).toEqual([])
   })
 })

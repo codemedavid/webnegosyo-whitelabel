@@ -54,6 +54,8 @@ export function resolveFeaturedItems(
     return block.itemIds.flatMap((id) => byId.get(id) ?? []).slice(0, MAX_FEATURED_ITEMS)
   }
   const featured = items.filter((item) => item.isFeatured)
+  // A store that never flagged a favourite still gets a row: its first dishes that have a photo and can be ordered.
+  if (featured.length === 0) return items.filter((item) => item.isAvailable && item.imageUrl !== null).slice(0, MAX_FEATURED_ITEMS)
   return [...featured.filter((item) => item.isAvailable), ...featured.filter((item) => !item.isAvailable)].slice(
     0,
     MAX_FEATURED_ITEMS,

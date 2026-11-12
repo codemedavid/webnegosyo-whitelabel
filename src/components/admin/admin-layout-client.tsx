@@ -38,7 +38,8 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
       pathname?.startsWith(`/${tenantSlug}/admin/receipt-editor`) ||
       pathname?.startsWith(`/${tenantSlug}/admin/hero-designer`) ||
       pathname?.startsWith(`/${tenantSlug}/admin/welcome-designer`) ||
-      pathname?.startsWith(`/${tenantSlug}/admin/page-designer`)) ??
+      pathname?.startsWith(`/${tenantSlug}/admin/page-designer`) ||
+      pathname?.startsWith(`/${tenantSlug}/admin/settings/messenger/automations`)) ??
     false
 
   const handleLogout = async () => {

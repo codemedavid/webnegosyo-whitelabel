@@ -1344,6 +1344,51 @@ export type Database = {
           },
         ]
       }
+      customer_app_order_pushes: {
+        Row: {
+          created_at: string
+          devices: number
+          order_id: string
+          outcome: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          devices?: number
+          order_id: string
+          outcome?: string
+          status: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          devices?: number
+          order_id?: string
+          outcome?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_app_order_pushes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_app_order_pushes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_app_orders: {
         Row: {
           app_id: string
@@ -1528,6 +1573,64 @@ export type Database = {
           },
           {
             foreignKeyName: "customer_app_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_device_tokens: {
+        Row: {
+          app_version: string | null
+          created_at: string
+          customer_id: string
+          expo_token: string
+          id: string
+          last_seen_at: string
+          platform: string
+          session_id: string
+          tenant_id: string
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string
+          customer_id: string
+          expo_token: string
+          id?: string
+          last_seen_at?: string
+          platform: string
+          session_id: string
+          tenant_id: string
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string
+          customer_id?: string
+          expo_token?: string
+          id?: string
+          last_seen_at?: string
+          platform?: string
+          session_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_device_tokens_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_device_tokens_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_app_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_device_tokens_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -12494,6 +12597,16 @@ export type Database = {
         }
         Returns: string
       }
+      register_customer_app_push_token: {
+        Args: {
+          p_app_version: string
+          p_expo_token: string
+          p_platform: string
+          p_session_token_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       release_loyalty_pos_quote: {
         Args: { p_actor: string; p_quote_id: string; p_tenant_id: string }
         Returns: boolean
@@ -12501,6 +12614,10 @@ export type Database = {
       release_voucher_redemptions: {
         Args: { p_order_id: string; p_tenant_id: string }
         Returns: number
+      }
+      remove_customer_app_push_tokens: {
+        Args: { p_session_token_hash: string; p_tenant_id: string }
+        Returns: Json
       }
       reopen_business_day: {
         Args: { p_close_id: string; p_reason: string }

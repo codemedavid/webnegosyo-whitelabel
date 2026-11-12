@@ -27,8 +27,14 @@ export interface ParityOrderItem {
  */
 const MAX_CLIENT_ORDER_ID_LENGTH = 64
 
+/**
+ * Where an online order was placed: `web` for the storefront, `mobile` for the
+ * customer app. Reports read it through `toSaleChannel` (mobile → "Customer app").
+ */
+export type OnlineOrderSource = 'web' | 'mobile'
+
 export interface OrderParityColumns {
-  source: 'web'
+  source: OnlineOrderSource
   item_count: number
   has_upsell_items: boolean
   has_bundle_items: boolean
@@ -42,6 +48,8 @@ export function buildOrderParityColumns(
   options: {
     clientOrderId?: string | null
     discountPayload?: OrderDiscountPayload | null
+    /** Absent = 'web', the storefront's value since the column existed. */
+    source?: OnlineOrderSource
   }
 ): OrderParityColumns {
   const trimmedId = typeof options.clientOrderId === 'string' ? options.clientOrderId.trim() : ''
@@ -51,7 +59,7 @@ export function buildOrderParityColumns(
   const discountPayload = options.discountPayload ?? null
 
   return {
-    source: 'web',
+    source: options.source ?? 'web',
     item_count: items.reduce((sum, item) => sum + item.quantity, 0),
     has_upsell_items: items.some((item) => item.isUpsellItem === true),
     has_bundle_items: items.some((item) => item.isBundleItem === true),

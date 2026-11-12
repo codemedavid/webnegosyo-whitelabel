@@ -4,7 +4,6 @@
   "filesOver800Lines": [
     "src/actions/tenants.ts",
     "src/app/actions/lalamove.ts",
-    "src/app/actions/orders.ts",
     "src/components/customer/product-detail-content.tsx",
     "src/components/shared/mapbox-address-autocomplete.tsx",
     "src/components/superadmin/tenant-form-wrapper.tsx",
@@ -21,8 +20,8 @@
     "src/types/database.ts"
   ],
   "adminClientImporters": {
-    "src/app/api": 71,
-    "src/app/actions": 32,
+    "src/app/api": 69,
+    "src/app/actions": 31,
     "src/lib": 105,
     "src/components": 2,
     "elsewhere": 17

@@ -12,6 +12,8 @@ import type { ConfigContext, ExpoConfig } from 'expo/config'
  * Build-time env (set by the build pipeline from tenant_apps):
  *   APP_NAME, APP_BUNDLE_ID, APP_ANDROID_PACKAGE, APP_ICON, APP_ADAPTIVE_ICON,
  *   APP_SPLASH_IMAGE, APP_SPLASH_BACKGROUND
+ *   EAS_PROJECT_ID  the one EAS project every store app is built in; without
+ *                   it (Expo Go, local runs) the app can't get a push token
  */
 
 const DEV_IDENTITY = {
@@ -68,6 +70,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-secure-store',
       'expo-web-browser',
       'expo-font',
+      // Android: the notification icon falls back to the app icon until the pipeline (P9) makes a monochrome one.
+      ['expo-notifications', { defaultChannel: 'orders' }],
       [
         'expo-splash-screen',
         {
@@ -78,5 +82,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ],
     ],
     experiments: { typedRoutes: true },
+    extra: {
+      ...config.extra,
+      ...(process.env.EAS_PROJECT_ID ? { eas: { projectId: process.env.EAS_PROJECT_ID } } : {}),
+    },
   }
 }

@@ -20,13 +20,20 @@ export function nextSheetSize(size: SheetSize): SheetSize {
     return NEXT_SIZE[size]
 }
 
-interface SurfaceRailProps {
-    surfaces: readonly BrandingSurface[]
-    activeId: BrandingSurface['id']
-    onPick: (id: BrandingSurface['id']) => void
+/** One screen in the rail. Branding surfaces fit; so do the Messenger Studio's tabs. */
+export interface RailItem<Id extends string = BrandingSurface['id']> {
+    id: Id
+    glyph: string
+    label: string
 }
 
-export function SurfaceRail({ surfaces, activeId, onPick }: SurfaceRailProps) {
+interface SurfaceRailProps<Id extends string> {
+    surfaces: readonly RailItem<Id>[]
+    activeId: Id
+    onPick: (id: Id) => void
+}
+
+export function SurfaceRail<Id extends string>({ surfaces, activeId, onPick }: SurfaceRailProps<Id>) {
     // The phone's chip row scrolls: keep the open screen's chip in view
     // (Order status / Loyalty card sit past the edge when opened from the preview).
     const activeRef = useRef<HTMLButtonElement>(null)

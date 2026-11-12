@@ -39,6 +39,9 @@ export const SERVER_OWNED_CUSTOMER_DATA_KEYS = [
   'payment_proof_reference',
   // Messenger send routes — a forged stamp suppresses the order message.
   'messenger_message_sent_at',
+  // The webhook's record of who owns the order's conversation (order-referral.ts).
+  'messenger_sender_id',
+  'messenger_last_interaction',
   // POS tender snapshot written by the register.
   'pos',
   // The store's own line to the rider: forged, a customer could tell a rider to collect cash "from the store".

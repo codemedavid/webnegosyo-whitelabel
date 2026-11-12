@@ -7,12 +7,19 @@ import { CategoryChips } from '@/components/menu/category-chips'
 import { MenuItemRow } from '@/components/menu/menu-item-row'
 import { OrderHeader } from '@/components/menu/order-header'
 import { AppText } from '@/components/ui/app-text'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppConfig, useCatalog } from '@/lib/data/hooks'
+import { defaultOutlet } from '@/lib/branch/availability'
 import { buildMenuRows, type MenuRow } from '@/lib/menu/menu-rows'
 import { sectionForIndex } from '@/lib/menu/scroll-spy'
 import { useCart } from '@/lib/stores/cart'
 import { useTokens } from '@/theme/theme-context'
+
+/** How long a chip tap owns the active chip while the list scrolls there. */
+const JUMP_GUARD_MS = 600
+/** Lets the list lay out before a deep link scrolls it. */
+const DEEP_LINK_DELAY_MS = 250
 
 function MenuSkeleton() {
   const { space } = useTokens()
@@ -37,7 +44,7 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets()
   const { category: requestedCategory } = useLocalSearchParams<{ category?: string }>()
   const { data: config } = useAppConfig()
-  const { data: catalog, isPending } = useCatalog()
+  const { data: catalog, isPending, isFetching, refetch } = useCatalog()
   const { mode, setMode, outletId, setOutlet } = useCart()
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState(0)
@@ -48,11 +55,24 @@ export default function OrderScreen() {
     () => (catalog ? buildMenuRows(catalog.categories, catalog.items, query) : { rows: [], headerIndices: [], sections: [] }),
     [catalog, query],
   )
-  const outlet = catalog?.outlets.find((candidate) => candidate.id === outletId) ?? catalog?.outlets[0]
+  const startingOutlet = catalog ? defaultOutlet(catalog.outlets, mode) : undefined
+  const outlet = catalog?.outlets.find((candidate) => candidate.id === outletId) ?? startingOutlet
 
   useEffect(() => {
-    if (!outletId && catalog?.outlets[0]) setOutlet(catalog.outlets[0].id)
-  }, [catalog, outletId, setOutlet])
+    if (!outletId && startingOutlet) setOutlet(startingOutlet.id)
+  }, [startingOutlet, outletId, setOutlet])
+
+  const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const deepLinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The category a deep link already jumped to, so a menu refetch doesn't jump again.
+  const jumpedCategory = useRef<string | null>(null)
+  useEffect(
+    () => () => {
+      if (jumpTimer.current) clearTimeout(jumpTimer.current)
+      if (deepLinkTimer.current) clearTimeout(deepLinkTimer.current)
+    },
+    [],
+  )
 
   const jumpToSection = useCallback(
     (index: number) => {
@@ -61,24 +81,32 @@ export default function OrderScreen() {
       isJumping.current = true
       setActiveSection(index)
       listRef.current?.scrollToIndex({ index: rowIndex, animated: true })
-      setTimeout(() => (isJumping.current = false), 600)
+      // A new tap restarts the guard, so an earlier jump can't release it mid-scroll.
+      if (jumpTimer.current) clearTimeout(jumpTimer.current)
+      jumpTimer.current = setTimeout(() => (isJumping.current = false), JUMP_GUARD_MS)
     },
     [menu.headerIndices],
   )
 
   useEffect(() => {
-    if (!requestedCategory) return
+    if (!requestedCategory || jumpedCategory.current === requestedCategory) return
     const index = menu.sections.findIndex((section) => section.id === requestedCategory)
-    if (index >= 0) setTimeout(() => jumpToSection(index), 250)
+    if (index < 0) return
+    jumpedCategory.current = requestedCategory
+    if (deepLinkTimer.current) clearTimeout(deepLinkTimer.current)
+    deepLinkTimer.current = setTimeout(() => jumpToSection(index), DEEP_LINK_DELAY_MS)
   }, [requestedCategory, menu.sections, jumpToSection])
 
   const headerIndicesRef = useRef(menu.headerIndices)
-  headerIndicesRef.current = menu.headerIndices
-  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken<MenuRow>[] }) => {
+  useEffect(() => {
+    headerIndicesRef.current = menu.headerIndices
+  }, [menu.headerIndices])
+  // Stable identity: it only reads refs, so the list never sees a new callback.
+  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken<MenuRow>[] }) => {
     if (isJumping.current) return
     const first = viewableItems.find((token) => token.isViewable)?.index
     if (first !== null && first !== undefined) setActiveSection(sectionForIndex(first, headerIndicesRef.current))
-  }).current
+  }, [])
 
   if (!config) return null
 
@@ -97,40 +125,52 @@ export default function OrderScreen() {
       />
       {isPending ? (
         <MenuSkeleton />
+      ) : !catalog ? (
+        // The first read failed (no network, or a menu the app can't read): say so, never "Nothing matches".
+        <View style={{ alignItems: 'center', gap: space.lg, padding: space.xxl }}>
+          <AppText variant="body" color="textMuted" align="center">
+            We couldn’t load the menu. Check your connection and try again.
+          </AppText>
+          <Button label="Try again" variant="secondary" isBusy={isFetching} onPress={() => void refetch()} />
+        </View>
       ) : (
         <>
           {query === '' ? <CategoryChips categories={menu.sections} activeIndex={activeSection} onSelect={jumpToSection} /> : null}
           <View style={{ height: 1, backgroundColor: colors.border }} />
-          <FlashList
-            ref={listRef}
-            data={menu.rows}
-            keyExtractor={(row) => row.key}
-            getItemType={(row) => row.type}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={{ itemVisiblePercentThreshold: 10 }}
-            contentContainerStyle={{ paddingBottom: 140 }}
-            ListEmptyComponent={
-              <AppText variant="body" color="textMuted" align="center" style={{ marginTop: space.xxl }}>
-                Nothing matches “{query}”.
-              </AppText>
-            }
-            renderItem={({ item: row }) =>
-              row.type === 'header' ? (
-                <View style={{ paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.xs }}>
-                  <AppText variant="title" accessibilityRole="header">
-                    {row.category.name}
-                  </AppText>
-                  {row.category.description ? (
-                    <AppText variant="callout" color="textMuted">
-                      {row.category.description}
+          <View style={{ flex: 1 }}>
+            <FlashList
+              ref={listRef}
+              // The screen already pads for the notch; iOS would add the safe area again on top of the list.
+              contentInsetAdjustmentBehavior="never"
+              data={menu.rows}
+              keyExtractor={(row) => row.key}
+              getItemType={(row) => row.type}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={{ itemVisiblePercentThreshold: 10 }}
+              contentContainerStyle={{ paddingBottom: 140 }}
+              ListEmptyComponent={
+                <AppText variant="body" color="textMuted" align="center" style={{ marginTop: space.xxl }}>
+                  Nothing matches “{query}”.
+                </AppText>
+              }
+              renderItem={({ item: row }) =>
+                row.type === 'header' ? (
+                  <View style={{ paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.xs }}>
+                    <AppText variant="title" accessibilityRole="header">
+                      {row.category.name}
                     </AppText>
-                  ) : null}
-                </View>
-              ) : (
-                <MenuItemRow item={row.item} />
-              )
-            }
-          />
+                    {row.category.description ? (
+                      <AppText variant="callout" color="textMuted">
+                        {row.category.description}
+                      </AppText>
+                    ) : null}
+                  </View>
+                ) : (
+                  <MenuItemRow item={row.item} />
+                )
+              }
+            />
+          </View>
         </>
       )}
     </View>

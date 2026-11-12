@@ -50,9 +50,10 @@
       "checkedOn": "2026-11-11"
     },
     "20261111090100_orders_messenger_psid_idx.sql": {
-      "status": "pending",
+      "status": "applied",
       "arrivesWith": "PR #118",
-      "checkedOn": "2026-11-11"
+      "note": "Built CONCURRENTLY; probed valid (pg_index.indisvalid) 2026-11-13.",
+      "checkedOn": "2026-11-13"
     },
     "20261111090200_messenger_sessions_drop_psid_unique.sql": {
       "status": "pending",
@@ -386,6 +387,8 @@
     "20261026120000_drawer_expense_stock_flag.sql",
     "20261026130000_staff_write_permissions.sql",
     "20261026140000_tenant_secrets_server_only.sql",
+    "20261026150000_tenant_apps.sql",
+    "20261026160000_customer_app_auth.sql",
     "20261027120000_business_day_cutoffs.sql",
     "20261027120100_cash_manage_permission.sql",
     "20261027120200_cash_settings.sql",
@@ -411,7 +414,10 @@
     "20261103130200_inventory_tenant_consistency.sql",
     "20261103130300_inventory_unit_and_delete_guards.sql",
     "20261103140000_order_stock_atomic_claim.sql",
+    "20261104120000_customer_app_orders.sql",
     "20261104120000_page_designer.sql",
+    "20261104120100_customer_app_account_delete_orders.sql",
+    "20261104120200_customer_app_orders_no_app_fk.sql",
     "20261104140000_shift_report_cashier_scope.sql",
     "20261104150000_tenants_pos_stock_policy.sql",
     "20261105120000_inventory_followups.sql",
@@ -429,7 +435,11 @@
     "20261109120000_design_columns_need_store_setup.sql",
     "20261110112841_checkout_leads_meta_attribution.sql",
     "20261111090000_library_writes_need_menu.sql",
+    "20261111212438_messenger_settings_messages.sql",
+    "20261111223138_customer_app_loyalty.sql",
+    "20261111224021_messenger_chat_log.sql",
     "20261112022453_owl_assistant_access_and_kinds.sql",
-    "20261112120000_tenants_payment_step_style.sql"
+    "20261112120000_tenants_payment_step_style.sql",
+    "20261112150000_customer_app_push.sql"
   ]
 }

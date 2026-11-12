@@ -7,13 +7,52 @@ Every API route and server action that is declared through `defineRoute` / `defi
 which inputs it validates. Entry points that still check access by hand are listed in
 `tests/unit/guardrails/entry-point-exceptions.json`; that list can only shrink.
 
-## Declared entry points (6)
+## Declared entry points (45)
 
 | Entry | Who may call | Store | Branch | Rate limit | Validates |
 |---|---|---|---|---|---|
+| listAppStudioAppsAction (src/app/actions/app-studio.ts) | console: `customer_apps.view` | — | — | not stated | args |
+| listStoresWithoutAppAction (src/app/actions/app-studio.ts) | console: `customer_apps.view` | — | — | not stated | args |
+| createAppStudioAppAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| saveAppIdentityAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| saveAppListingAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| saveAppReleaseAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| issueAppReviewCodeAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| clearAppReviewCodeAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| saveAppDraftAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| publishAppDraftAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
+| discardAppDraftAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
 | checkQuotationValidity (src/app/actions/lalamove.ts) | anyone | — | — | 10 per 1m per ip (`lalamove-quote-check-client`) | args |
+| saveMessengerAutomationsAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
+| createMessengerTesterCodeAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
+| readMessengerTesterAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
+| sendMessengerTestAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
+| saveMessengerOrderUpdatesAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
+| saveMessengerMessagesAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
 | saveReceiptLayoutAction (src/app/actions/receipt.ts) | staff: `store_setup` (edit, session) | named, checked | any | not stated | args |
+| POST /api/app/v1/auth/otp/request | anyone | — | — | 10 per 1m per ip (`app:otp-request`) | — |
+| POST /api/app/v1/auth/otp/verify | anyone | — | — | 20 per 1m per ip (`app:otp-verify`) | — |
+| DELETE /api/app/v1/auth/session | anyone | — | — | 30 per 1m per ip (`app:session`) | — |
+| GET /api/app/v1/catalog | anyone | — | — | 120 per 1m per ip (`app:catalog`) | — |
+| GET /api/app/v1/config | anyone | — | — | 120 per 1m per ip (`app:config`) | — |
+| POST /api/app/v1/delivery/quote | anyone | — | — | 30 per 1m per ip (`app:delivery-quote`) | — |
+| POST /api/app/v1/me/loyalty/claims | anyone | — | — | 30 per 1m per ip (`app:loyalty-claim`) | — |
+| GET /api/app/v1/me/loyalty | anyone | — | — | 120 per 1m per ip (`app:my-loyalty`) | — |
+| GET /api/app/v1/me/orders | anyone | — | — | 120 per 1m per ip (`app:my-orders`) | — |
+| POST /api/app/v1/me/push-token | anyone | — | — | 30 per 1m per ip (`app:push-token`) | — |
+| DELETE /api/app/v1/me/push-token | anyone | — | — | 30 per 1m per ip (`app:push-token`) | — |
+| GET /api/app/v1/me | anyone | — | — | 120 per 1m per ip (`app:me`) | — |
+| PATCH /api/app/v1/me | anyone | — | — | 120 per 1m per ip (`app:me`) | — |
+| DELETE /api/app/v1/me | anyone | — | — | 120 per 1m per ip (`app:me`) | — |
+| GET /api/app/v1/orders/[id] | anyone | — | — | 120 per 1m per ip (`app:order`) | params |
+| POST /api/app/v1/orders | anyone | — | — | 20 per 1m per ip (`app:orders`) | — |
+| GET /api/app/v1/places | anyone | — | — | 60 per 1m per ip (`app:places`) | — |
+| GET /api/app/v1/resolve | anyone | — | — | 60 per 1m per ip (`app:resolve`) | — |
+| POST /api/app/v1/vouchers/preview | anyone | — | — | 30 per 1m per ip (`app:voucher-preview`) | — |
 | POST /api/customers/sync-order-lifecycle | staff: `ORDER_READ_KEYS` (edit, app token) | named, checked | own | not stated | body |
 | GET /api/gov-discounts/approvers | staff: `pos` (view, app token) | named, checked | any | not stated | query |
 | GET /api/loyalty/maintenance | cron secret | — | — | not stated | — |
+| POST /api/messenger/chat-cart | anyone | — | — | 30 per 1m per ip (`msgr-chat-cart`) | body |
+| POST /api/messenger/order-update | anyone | — | — | 600 per 1m per ip (`msgr-order-update`) | body |
+| POST /api/push/customer-order | anyone | — | — | PG_NET_IP_LIMIT.limit per 1m per ip (`customer-order-push`) | body |
 | POST /api/staff/order-activity | staff: `ORDER_READ_KEYS` (create, app token) | named, checked | own | not stated | body |

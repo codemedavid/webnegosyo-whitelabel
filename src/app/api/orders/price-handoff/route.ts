@@ -26,16 +26,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const outletId = pinnedOutlet ?? (body.outletId as string | null | undefined) ?? null
   try {
     const client = createAdminClient()
-    if (outletId) {
-      const { data, error } = await client.from('outlets').select('id')
-        .eq('tenant_id', body.tenantId).eq('id', outletId).eq('is_active', true).maybeSingle()
-      if (error) return respond({ error: 'Could not verify the branch.' }, 503)
-      if (!data) return respond({ error: 'This branch is not available.' }, 422)
-    }
+    // How the store shows its dishes decides which add-ons a line may carry;
+    // read alongside the branch check, never in front of it.
+    const [storeRead, branchRead] = await Promise.all([
+      client.from('tenants').select('modifier_groups_enabled').eq('id', body.tenantId).maybeSingle(),
+      outletId
+        ? client.from('outlets').select('id').eq('tenant_id', body.tenantId).eq('id', outletId).eq('is_active', true).maybeSingle()
+        : null,
+    ])
+    if (branchRead?.error) return respond({ error: 'Could not verify the branch.' }, 503)
+    if (branchRead && !branchRead.data) return respond({ error: 'This branch is not available.' }, 422)
+    if (storeRead.error) return respond({ error: 'Could not verify this cart. Please scan again.' }, 503)
     const priced = await loadAndPriceOrderLines(
       client, body.tenantId,
       parsed.lines.map((line, sourceIndex) => ({ ...line, sourceIndex })),
       outletId,
+      { modifierGroupsEnabled: (storeRead.data as { modifier_groups_enabled?: unknown } | null)?.modifier_groups_enabled === true },
     )
     if (!priced.ok) return respond({ error: priced.error }, priced.refused ? 422 : 503)
     return respond({ lines: priced.lines, total: priced.itemsSubtotal }, 200)

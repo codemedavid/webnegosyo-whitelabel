@@ -17,6 +17,11 @@ function labelsFor(kind: AppOrderKind): Record<(typeof FLOW)[number], string> {
   return { ...base, ready: 'Ready for pickup', delivered: 'Picked up' }
 }
 
+/** One status in words, for a pill or a headline: "Ready for pickup", "Order cancelled". */
+export function statusLabel(status: AppOrderStatus, kind: AppOrderKind): string {
+  return status === 'cancelled' ? 'Order cancelled' : labelsFor(kind)[status]
+}
+
 /** The tracker's steps. `delivered` is the platform's terminal "completed" for every kind. */
 export function trackingSteps(status: AppOrderStatus, kind: AppOrderKind): TrackingStep[] {
   if (status === 'cancelled') return [{ key: 'cancelled', label: 'Order cancelled', state: 'current' }]

@@ -110,6 +110,7 @@ Each feature keeps its rules in a `CLAUDE.md` beside its code. Claude Code loads
 | Inventory ledger and frozen costs | `src/lib/inventory/CLAUDE.md` | stock movements, `current_qty`, recipes, costs, `order_item_costs` |
 | Loyalty wallet passes | `src/lib/loyalty/wallet-pass/CLAUDE.md` | Apple / Google Wallet cards, pass sync |
 | Merchant admin app | `webnegosyo-app/CLAUDE.md` | Expo app shared by all merchants, Reports tab, receipt payment lines |
+| Messenger automations | `src/lib/messenger/CLAUDE.md` | webhook, rules, replies, chat cart, order status messages, Messenger Studio, chat log |
 | Merchant notifications (the app's bell) | `webnegosyo-app/lib/merchant-notifications/CLAUDE.md` | `merchant_notifications`, push wording parity, unread rule |
 | Order status and loyalty card look | `src/lib/tracking-style/CLAUDE.md` | `tracking_style`, `--trk-*` variables, Studio preview |
 | Owl mascot | `src/components/mascot/CLAUDE.md` | generated SVG art, states, where it may appear |
@@ -164,7 +165,7 @@ Two-path architecture with graceful degradation:
 
 ### Key Integrations
 
-- **Facebook Messenger**: Webhook at `/api/webhook`, OAuth at `/api/auth/facebook/`, sends orders/carts via `/api/messenger/`
+- **Facebook Messenger**: Webhook at `/api/webhook` (automations: `src/lib/messenger/CLAUDE.md`), OAuth at `/api/auth/facebook/`, sends orders/carts via `/api/messenger/`
 - **Cloudinary**: Image uploads (`src/lib/cloudinary-utils.ts`)
 - **Maps (Apple MapKit JS / Mapbox)**: every address field renders `AddressAutocomplete` (`src/components/shared/address-autocomplete.tsx`), which picks the provider from `NEXT_PUBLIC_MAPS_PROVIDER` (`apple` → MapKit JS, else Mapbox; `src/lib/maps/provider.ts`). Apple: browsers get 30-min origin-bound tokens from `GET /api/maps/token` (ES256, signed server-side from `APPLE_MAPKIT_TEAM_ID/KEY_ID/PRIVATE_KEY`); server geocoding uses the Maps Server API (`src/lib/maps/apple/maps-server-api.ts`). No Apple key on a deploy → the field falls back to Mapbox. Customer-facing "directions" links still open Google Maps (Apple Maps on the web doesn't cover Android browsers).
 - **Lalamove**: Delivery service via `@lalamove/lalamove-js` SDK (`src/lib/lalamove-service.ts`). Quotation, booking, tracking, cancellation. Markets: PH, SG, HK, TH, TW, MY, VN.

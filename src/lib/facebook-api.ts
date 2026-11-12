@@ -5,8 +5,7 @@
 
 import { createHmac } from 'crypto'
 import { createLogger } from '@/lib/logger'
-
-const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v20.0'
+import { FACEBOOK_GRAPH_API } from '@/lib/facebook/graph'
 
 /** Tracing is opt-in (DEBUG_MESSENGER): these lines carry PSIDs. */
 const log = createLogger('[Facebook API]', 'DEBUG_MESSENGER')
@@ -343,7 +342,9 @@ async function postTextMessage(
       },
       body: JSON.stringify({
         recipient: { id: psid },
-        message: { text: message },
+        // Marks the echo as ours, so the automations never read an order
+        // summary as a staff reply and pause the bot (handle-event.ts).
+        message: { text: message, metadata: 'wn' },
       }),
     }
   )
@@ -381,149 +382,6 @@ async function takeThreadControl(psid: string, pageAccessToken: string): Promise
     return false
   }
   return true
-}
-
-/**
- * Send a menu card via Messenger using Generic Template
- * Used for auto-reply when customers ask about menu/products
- */
-export async function sendMenuCard(
-  psid: string,
-  pageAccessToken: string,
-  tenant: {
-    name: string
-    logo_url?: string | null
-    domain?: string | null
-    slug: string
-  }
-): Promise<boolean> {
-  // Construct the tenant's website URL with PSID for tracking
-  const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'
-  let baseUrl: string
-
-  if (tenant.domain) {
-    // Use custom domain if set
-    baseUrl = tenant.domain.startsWith('http') ? tenant.domain : `https://${tenant.domain}`
-  } else {
-    // Use subdomain format
-    baseUrl = `https://${tenant.slug}.${rootDomain}`
-  }
-
-  // Append PSID to URL for customer tracking
-  const websiteUrl = `${baseUrl}?psid=${encodeURIComponent(psid)}`
-
-  // Use a default image if no logo is set
-  // Fallback to a configurable internal/CDN-backed image (avoids external service reliability issues)
-  const fallbackImageUrl = process.env.FALLBACK_IMAGE_URL || '/images/default-menu-card.png'
-  const imageUrl = tenant.logo_url || fallbackImageUrl
-
-  const payload = {
-    recipient: { id: psid },
-    message: {
-      attachment: {
-        type: 'template',
-        payload: {
-          template_type: 'generic',
-          elements: [
-            {
-              title: `📍 ${tenant.name}`,
-              image_url: imageUrl,
-              subtitle: '👇 Tap below to view items and order now!',
-              default_action: {
-                type: 'web_url',
-                url: websiteUrl,
-                messenger_extensions: false,
-              },
-              buttons: [
-                {
-                  type: 'web_url',
-                  url: websiteUrl,
-                  title: '🛒 View Items Now',
-                  messenger_extensions: false,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
-  }
-
-  try {
-    // Log payload structure for debugging (without sensitive data)
-    log.debug('Sending menu card payload', { recipient: { id: '***' }, message: payload.message })
-
-    const response = await fetch(
-      `${FACEBOOK_GRAPH_API}/me/messages?access_token=${pageAccessToken}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      }
-    )
-
-    const responseText = await response.text()
-
-    if (!response.ok) {
-      console.error(`[Facebook API] Failed to send menu card (HTTP ${response.status}): ${responseText}`)
-      // Try to parse error for more details
-      try {
-        const errorData = JSON.parse(responseText)
-        console.error(`[Facebook API] Error details:`, {
-          code: errorData.error?.code,
-          type: errorData.error?.type,
-          message: errorData.error?.message,
-          fbtrace_id: errorData.error?.fbtrace_id,
-        })
-      } catch {
-        // Response wasn't JSON, already logged above
-      }
-      return false
-    }
-
-    // Parse successful response
-    let data: { recipient_id?: string; message_id?: string }
-    try {
-      data = JSON.parse(responseText)
-    } catch {
-      console.error('[Facebook API] Failed to parse success response:', responseText)
-      return false
-    }
-
-    if (data.message_id) {
-      if (process.env.NODE_ENV === 'development') {
-        log.debug(`✅ Menu card sent successfully to ${psid}, message_id: ${data.message_id}`)
-      } else {
-        // Mask PSID in production: show only last 4 characters
-        const maskedPsid = psid.length > 4 ? '*'.repeat(psid.length - 4) + psid.slice(-4) : '****'
-        log.debug(`✅ Menu card sent successfully to ${maskedPsid}`)
-      }
-      // Optionally send a fallback text message with the link
-      // Only sent when ENABLE_FALLBACK_LINK is explicitly enabled to avoid duplicate/noisy messages
-      const enableFallbackLink = process.env.ENABLE_FALLBACK_LINK === 'true'
-      if (enableFallbackLink) {
-        try {
-          await sendMessage(
-            psid,
-            pageAccessToken,
-            `👆 Tap the card above to browse our menu!\n\nOr use this link: ${websiteUrl}`
-          )
-        } catch (fallbackError) {
-          // Non-critical, log but don't fail the overall operation
-          console.warn('[Facebook API] Failed to send fallback link message:', fallbackError)
-        }
-      }
-      return true
-    } else {
-      console.warn(`[Facebook API] ⚠️ Menu card API returned OK but no message_id:`, data)
-      return false
-    }
-  } catch (error) {
-    console.error(`[Facebook API] Exception sending menu card:`, error)
-    return false
-  }
 }
 
 /**

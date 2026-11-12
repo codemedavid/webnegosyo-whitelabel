@@ -93,8 +93,9 @@ describe('gov claim limits', () => {
   })
 
   it('createOrderAction checks the claim limit only after the store is known', () => {
-    const source = readFileSync(join(process.cwd(), 'src/app/actions/orders.ts'), 'utf8')
-    const check = source.search(/govClaimLimitRefusal\(tenantId, governmentClaim,/)
+    // The check lives in the order engine createOrderAction calls.
+    const source = readFileSync(join(process.cwd(), 'src/lib/checkout/place-order/admit-order.ts'), 'utf8')
+    const check = source.search(/govClaimLimitRefusal\(tenantId, input\.governmentClaim,/)
     const context = source.indexOf('await loadOrderTenantContext(')
     expect(check).toBeGreaterThan(-1)
     expect(context).toBeGreaterThan(-1)

@@ -18,6 +18,11 @@ describe('customer app contract copy', () => {
     expect(tsFiles(COPY)).toEqual(tsFiles(SOURCE))
   })
 
+  it('pins every contract module the app imports', () => {
+    expect(tsFiles(SOURCE)).toEqual(expect.arrayContaining(['delivery.ts', 'vouchers.ts', 'orders.ts', 'auth.ts', 'index.ts']))
+    expect(readFileSync(join(SOURCE, 'index.ts'), 'utf8')).toContain("export * from './delivery'")
+  })
+
   it.each(tsFiles(SOURCE))('%s is identical', (name) => {
     expect(readFileSync(join(COPY, name), 'utf8')).toBe(readFileSync(join(SOURCE, name), 'utf8'))
   })

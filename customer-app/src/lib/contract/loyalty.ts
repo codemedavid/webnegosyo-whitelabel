@@ -1,6 +1,17 @@
 import { z } from 'zod'
 import { isoDateTimeSchema } from './primitives'
 
+/** One rung of a program's reward ladder, lowest first; the last one resets the card. */
+export const appRewardStepSchema = z.object({
+  at: z.number().int().positive(),
+  label: z.string().min(1),
+  emoji: z.string().min(1),
+  imageUrl: z.string().nullable(),
+  isFinal: z.boolean(),
+})
+
+export type AppRewardStep = z.infer<typeof appRewardStepSchema>
+
 export const appLoyaltyProgramSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -11,6 +22,8 @@ export const appLoyaltyProgramSchema = z.object({
   rewardLabel: z.string().min(1),
   minSpend: z.number().nonnegative().nullable().optional(),
   branchName: z.string().nullable(),
+  /** Absent from older servers; one final rung when the program has no milestones. */
+  rewardSteps: z.array(appRewardStepSchema).optional(),
 })
 
 export type AppLoyaltyProgram = z.infer<typeof appLoyaltyProgramSchema>
@@ -21,6 +34,9 @@ export const appRewardSchema = z.object({
   label: z.string().min(1),
   expiresAt: isoDateTimeSchema.nullable(),
   branchName: z.string().nullable(),
+  emoji: z.string().nullable().optional(),
+  /** The menu photo of a free item, when the catalog has one. */
+  imageUrl: z.string().nullable().optional(),
 })
 
 export type AppReward = z.infer<typeof appRewardSchema>
@@ -43,6 +59,28 @@ export const appLoyaltySchema = z.object({
   programs: z.array(appLoyaltyProgramSchema),
   rewards: z.array(appRewardSchema),
   activity: z.array(appLoyaltyActivitySchema),
+  /**
+   * Whether "Use now" can mint a claim QR (the store's counter can redeem it).
+   * False = the reward is shown and the customer asks the cashier.
+   */
+  claimsAvailable: z.boolean().default(false),
 })
 
 export type AppLoyalty = z.infer<typeof appLoyaltySchema>
+
+export const appRewardClaimRequestSchema = z.object({
+  rewardId: z.string().uuid(),
+})
+
+export type AppRewardClaimRequest = z.infer<typeof appRewardClaimRequestSchema>
+
+/**
+ * A single-use reward QR, good for about two minutes: the same token the
+ * web rewards page shows and the register's scanner reads.
+ */
+export const appRewardClaimSchema = z.object({
+  token: z.string().regex(/^v1\.[A-Za-z0-9_-]{43}\.[a-f0-9]{64}$/),
+  expiresAt: isoDateTimeSchema,
+})
+
+export type AppRewardClaim = z.infer<typeof appRewardClaimSchema>

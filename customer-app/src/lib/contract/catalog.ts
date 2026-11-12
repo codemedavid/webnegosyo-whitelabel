@@ -83,10 +83,56 @@ export const appOutletSchema = z.object({
 
 export type AppOutlet = z.infer<typeof appOutletSchema>
 
+/**
+ * How a customer can pay. `online` is the merchant's own PayMongo and only
+ * appears when `features.onlinePayments`; `manual` is a transfer (GCash, bank)
+ * shown with the store's instructions; `cash` is paid on pickup or delivery.
+ */
+export const APP_PAYMENT_KINDS = ['cash', 'online', 'manual'] as const
+export type AppPaymentKind = (typeof APP_PAYMENT_KINDS)[number]
+
+export const appPaymentMethodSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  kind: z.enum(APP_PAYMENT_KINDS),
+  instructions: z.string().max(2000).nullable(),
+  /** The store wants a screenshot or reference number before it confirms. */
+  requiresProof: z.boolean(),
+  /** Order types this method is offered for (the web's payment_method_order_types); empty = none, as on the web. */
+  orderTypeIds: z.array(z.string().min(1)),
+})
+
+export type AppPaymentMethod = z.infer<typeof appPaymentMethodSchema>
+
 export const appPairingSchema = z.object({
   sourceItemId: z.string().min(1),
   targetItemIds: z.array(z.string().min(1)).max(6),
 })
+
+/** How the app draws a checkout question; anything else the store uses arrives as `text`. */
+export const APP_QUESTION_TYPES = ['text', 'textarea', 'number', 'email', 'phone', 'choice', 'checkbox', 'date'] as const
+
+export type AppQuestionType = (typeof APP_QUESTION_TYPES)[number]
+
+/**
+ * One of the store's own checkout questions (`customer_form_fields`) for one
+ * order type. Name, phone and delivery-address questions are never listed:
+ * the server answers them from the session and the picked place. The answer
+ * goes back in the draft's `answers` under `name`. A `checkbox` is answered
+ * by 'yes'; a `date` by `YYYY-MM-DD`; a `choice` by one of `options`.
+ */
+export const appCheckoutQuestionSchema = z.object({
+  id: z.string().min(1),
+  orderTypeId: z.string().min(1),
+  name: z.string().min(1).max(200),
+  label: z.string().min(1).max(200),
+  type: z.enum(APP_QUESTION_TYPES),
+  isRequired: z.boolean(),
+  placeholder: z.string().max(200).nullable(),
+  options: z.array(z.string().min(1).max(200)).max(50),
+})
+
+export type AppCheckoutQuestion = z.infer<typeof appCheckoutQuestionSchema>
 
 export const appCatalogSchema = z.object({
   /** Changes whenever the menu does; the app uses it to drop a stale cart line. */
@@ -96,6 +142,9 @@ export const appCatalogSchema = z.object({
   orderTypes: z.array(appOrderTypeSchema),
   outlets: z.array(appOutletSchema),
   pairings: z.array(appPairingSchema),
+  paymentMethods: z.array(appPaymentMethodSchema),
+  /** In form order per order type. Absent from servers older than 2026-11-12. */
+  questions: z.array(appCheckoutQuestionSchema).max(500).default([]),
 })
 
 export type AppCatalog = z.infer<typeof appCatalogSchema>

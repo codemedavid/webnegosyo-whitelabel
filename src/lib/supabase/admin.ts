@@ -49,3 +49,6 @@ export function createAdminClient(options: AdminClientOptions = {}) {
   })
 }
 
+
+/** The service-role client's type, for code that is HANDED one (it never creates it). */
+export type AdminClient = ReturnType<typeof createAdminClient>

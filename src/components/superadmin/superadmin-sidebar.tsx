@@ -22,6 +22,7 @@ import {
   MapPinned,
   Activity,
   UserCog,
+  Smartphone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -66,6 +67,7 @@ const navGroups: SidebarGroup[] = [
       { label: 'Leads', href: '/superadmin/leads', icon: Users },
       { label: 'Checkout Leads', href: '/superadmin/checkout-leads', icon: ShoppingCart },
       { label: 'Onboarding Funnel', href: '/superadmin/onboarding-funnel', icon: Filter },
+      { label: 'Customer Apps', href: '/superadmin/apps', icon: Smartphone },
       { label: 'MCP Keys', href: '/superadmin/mcp-keys', icon: KeyRound },
       { label: 'Subscriptions', href: '/superadmin/subscriptions', icon: CreditCard },
       { label: 'Billing Calendar', href: '/superadmin/subscriptions/calendar', icon: CalendarDays },

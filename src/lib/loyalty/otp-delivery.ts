@@ -14,7 +14,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import type { createLoyaltyClaimCrypto } from './claim-crypto'
-import { loyaltyOtpTemplate } from './otp-message'
+import { otpTemplateFor, type OtpPurpose } from './otp-message'
 import type { SemaphoreConfig, SemaphoreSendResult } from './semaphore'
 
 /** Phones poll every 5s, 30s after a failure; a minute of silence means offline. */
@@ -91,7 +91,7 @@ export type ServerDispatchOutcome = 'sent' | 'failed' | 'not_started' | 'sent_un
  * SQL guarantees exactly one sender.
  */
 export async function dispatchOtpViaSemaphore(
-  input: { tenantId: string; challengeId: string; storeName: string | null },
+  input: { tenantId: string; challengeId: string; storeName: string | null; purpose?: OtpPurpose },
   deps: {
     database: RpcClient
     crypto: ReturnType<typeof createLoyaltyClaimCrypto>
@@ -110,7 +110,7 @@ export async function dispatchOtpViaSemaphore(
   let result: SemaphoreSendResult
   try {
     const payload = deps.crypto.decryptSms({ tenantId: input.tenantId, challengeId: input.challengeId }, data.payloadEncrypted)
-    result = await deps.send(deps.semaphore, { ...payload, template: loyaltyOtpTemplate(input.storeName) })
+    result = await deps.send(deps.semaphore, { ...payload, template: otpTemplateFor(input.purpose ?? 'claim', input.storeName) })
   } catch {
     result = { ok: false, reason: 'rejected' }
   }
