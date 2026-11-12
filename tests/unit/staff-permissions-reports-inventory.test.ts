@@ -24,6 +24,7 @@ import {
   PAYMENT_READ_KEYS,
   hasAnyPermission,
   editablePermissions,
+  OPT_IN_PERMISSION_KEYS,
   hasPermission,
   impliedPermissions,
   permissionForAdminPath,
@@ -42,7 +43,7 @@ describe('the three report & inventory keys', () => {
     // `expenses` (the expense book) and `cash_manage` were added after them.
     const start = STAFF_PERMISSION_KEYS.indexOf('reports')
     expect(STAFF_PERMISSION_KEYS.slice(start, start + 3)).toEqual(['reports', 'inventory', 'costs'])
-    expect(STAFF_PERMISSION_KEYS.slice(start + 3)).toEqual(['expenses', 'cash_manage'])
+    expect(STAFF_PERMISSION_KEYS.slice(start + 3)).toEqual(['expenses', 'cash_manage', 'assistant'])
     for (const key of ['reports', 'inventory', 'costs'] as const) {
       expect(STAFF_PERMISSION_LABELS[key].label).not.toHaveLength(0)
       expect(STAFF_PERMISSION_LABELS[key].description).not.toHaveLength(0)
@@ -108,7 +109,11 @@ describe('editablePermissions', () => {
   it('opens a legacy full-access account with everything it can do ticked', () => {
     // Opening it with nothing ticked made "Save" strip every grant at once —
     // the exact edit the Review staff access prompt sends owners to make.
-    expect(editablePermissions(null)).toEqual([...STAFF_PERMISSION_KEYS])
+    expect(editablePermissions(null)).toEqual(STAFF_PERMISSION_KEYS.filter((key) => !(OPT_IN_PERMISSION_KEYS as readonly string[]).includes(key)))
+  })
+
+  it('never ticks an opt-in key for a legacy account: saving it must not grant Owl, Expenses or Cash', () => {
+    for (const key of OPT_IN_PERMISSION_KEYS) expect(editablePermissions(null)).not.toContain(key)
   })
 
   it('copies a list unchanged, unknown keys included', () => {

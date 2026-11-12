@@ -108,6 +108,10 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
     description:
       "Set up cash drawers, pick up cash, close others' shifts, receive remittances, close the business day and see that day's sales. Give it to supervisors you trust with cash.",
   },
+  assistant: {
+    label: "Use the Owl assistant",
+    description: "Chat with Owl. It only shows and suggests what their other permissions already allow.",
+  },
 };
 
 /** Every grantable permission, in registry order, labelled for the owner. */

@@ -4,7 +4,9 @@
  * Mirrors the web's mount rule (admin-layout-client.tsx): the store has the
  * assistant switched on, and the account is store-wide — a branch-locked
  * account is refused by the server, so it is not offered a button that only
- * says no. Demo mode has no real session to ask with.
+ * says no. Demo mode has no real session to ask with. Staff also need the
+ * owner's "Use the Owl assistant" grant (`assistant`, opt-in — full access
+ * does not hold it); owners always have it. The server refuses without it.
  *
  * The web hides the owl on its full-bleed studios; the app's equivalents are
  * the shift screens where a floating button would sit on top of the work
@@ -20,6 +22,8 @@ export interface OwlVisibilityInput {
   assistantEnabled: boolean;
   /** Set for a branch-locked account. */
   outletId: string | null;
+  /** The account holds `assistant` (owners always do). */
+  canUseAssistant: boolean;
   /** The focused route's segments, e.g. ["(main)", "product", "[productId]"]. */
   routeSegments: readonly string[];
 }
@@ -35,7 +39,14 @@ export const OWL_HIDDEN_ROUTES: ReadonlySet<string> = new Set([
 ]);
 
 export function isOwlAvailable(input: Omit<OwlVisibilityInput, "routeSegments">): boolean {
-  return input.isAuthenticated && !input.isDemo && input.tenantId !== null && input.assistantEnabled && input.outletId === null;
+  return (
+    input.isAuthenticated &&
+    !input.isDemo &&
+    input.tenantId !== null &&
+    input.assistantEnabled &&
+    input.outletId === null &&
+    input.canUseAssistant
+  );
 }
 
 export function shouldShowOwlButton(input: OwlVisibilityInput): boolean {

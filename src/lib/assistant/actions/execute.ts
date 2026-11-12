@@ -23,6 +23,7 @@ import type { StoredAction } from '@/lib/assistant/actions/store'
 import type {
   CampaignStatusPayload,
   ExecuteOutcome,
+  IngredientPayload,
   LastCallPayload,
   LoyaltyProgramPayload,
   LoyaltyStatusPayload,
@@ -31,6 +32,8 @@ import type {
   MenuItemPayload,
   OfferChangePayload,
   OfferPayload,
+  PaymentMethodChangePayload,
+  PaymentMethodPayload,
   SmsAutomationPayload,
   SmsAutomationRunPayload,
   SmsAutomationStatusPayload,
@@ -49,6 +52,7 @@ import {
 } from '@/lib/assistant/actions/execute-manage'
 import { executeMenuImport } from '@/lib/assistant/actions/execute-menu-import'
 import { executeSmsAutomation, executeSmsAutomationRun, executeSmsAutomationStatus } from '@/lib/assistant/actions/execute-automation'
+import { executeIngredient, executePaymentMethod, executePaymentMethodChange } from '@/lib/assistant/actions/execute-setup'
 
 const BOOST_TENANT_SELECT =
   'id, order_backend, convex_deployment_url, menu_engineering_enabled, checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items'
@@ -165,6 +169,12 @@ export async function executeAction(action: StoredAction, store: StoreRef): Prom
         return await executeSmsAutomationStatus(store, action.payload as SmsAutomationStatusPayload)
       case 'sms_automation_run':
         return await executeSmsAutomationRun(store, action.payload as SmsAutomationRunPayload)
+      case 'payment_method':
+        return await executePaymentMethod(store, action.payload as PaymentMethodPayload)
+      case 'payment_method_change':
+        return await executePaymentMethodChange(store, action.payload as PaymentMethodChangePayload)
+      case 'ingredient':
+        return await executeIngredient(store, action.payload as IngredientPayload)
       default:
         return { ok: false, error: 'This kind of change is not supported yet.' }
     }

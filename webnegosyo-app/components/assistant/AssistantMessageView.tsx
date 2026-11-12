@@ -4,6 +4,7 @@ import { asToolResult, isToolPart, TOOL_LABELS, toolNameOf, userPhotosOf, userTe
 import type { AssistantLink, AssistantMessage, ToolPart } from "../../lib/assistant/types";
 import { AssistantCardView } from "./AssistantCards";
 import { ConfirmCardView } from "./ConfirmCardView";
+import { LessonsCardView } from "./LessonsCardView";
 import { SafeTextView } from "./SafeTextView";
 
 type Props = {
@@ -30,6 +31,8 @@ function ToolPartView({ part, tenantId, onOpenLink }: { part: ToolPart } & Omit<
     <View style={styles.toolStack}>
       {result.card?.type === "confirm" ? (
         <ConfirmCardView card={result.card} tenantId={tenantId} onOpenLink={onOpenLink} />
+      ) : result.card?.type === "lessons" ? (
+        <LessonsCardView card={result.card} onOpenLink={onOpenLink} />
       ) : (
         <AssistantCardView card={result.card} />
       )}

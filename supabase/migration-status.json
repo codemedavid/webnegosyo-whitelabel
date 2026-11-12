@@ -429,6 +429,7 @@
     "20261109120000_design_columns_need_store_setup.sql",
     "20261110112841_checkout_leads_meta_attribution.sql",
     "20261111090000_library_writes_need_menu.sql",
+    "20261112022453_owl_assistant_access_and_kinds.sql",
     "20261112120000_tenants_payment_step_style.sql"
   ]
 }

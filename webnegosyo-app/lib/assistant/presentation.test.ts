@@ -65,6 +65,13 @@ describe("resolveOwlLink", () => {
       href: "/(main)/product/0b6c1f8e-4b1a-4c3e-9d2a-1234567890ab",
     });
     expect(resolveOwlLink("/boost-sales", "seacook", WEB)).toEqual({ kind: "web", url: `${WEB}/seacook/admin/boost-sales` });
+    expect(resolveOwlLink("/payment-methods", "seacook", WEB)).toEqual({ kind: "app", href: "/(main)/payments" });
+    // Web-only screens Owl links to: Delivery settings (Lalamove keys) and University lessons.
+    expect(resolveOwlLink("/settings/delivery", "seacook", WEB)).toEqual({ kind: "web", url: `${WEB}/seacook/admin/settings/delivery` });
+    expect(resolveOwlLink("/learn/getting-started/connecting-sa-printer", "seacook", WEB)).toEqual({
+      kind: "web",
+      url: `${WEB}/seacook/admin/learn/getting-started/connecting-sa-printer`,
+    });
   });
 
   test("never builds an off-platform or malformed link", () => {
@@ -75,7 +82,7 @@ describe("resolveOwlLink", () => {
 });
 
 describe("owl visibility", () => {
-  const base = { isAuthenticated: true, isDemo: false, tenantId: "t", assistantEnabled: true, outletId: null, routeSegments: ["(main)", "dashboard"] };
+  const base = { isAuthenticated: true, isDemo: false, tenantId: "t", assistantEnabled: true, outletId: null, canUseAssistant: true, routeSegments: ["(main)", "dashboard"] };
 
   test("shows for a store-wide account on a store with the assistant on", () => {
     expect(shouldShowOwlButton(base)).toBe(true);
@@ -87,6 +94,10 @@ describe("owl visibility", () => {
     expect(isOwlAvailable({ ...base, isAuthenticated: false })).toBe(false);
     expect(isOwlAvailable({ ...base, outletId: "branch-1" })).toBe(false);
     expect(isOwlAvailable({ ...base, tenantId: null })).toBe(false);
+  });
+
+  test("hidden for staff the owner has not given Owl (opt-in `assistant`)", () => {
+    expect(isOwlAvailable({ ...base, canUseAssistant: false })).toBe(false);
   });
 
   test("stays off the register, tender, kitchen and scanner", () => {

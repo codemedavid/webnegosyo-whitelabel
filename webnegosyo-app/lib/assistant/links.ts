@@ -23,6 +23,7 @@ const APP_ROUTES: Readonly<Record<string, string>> = {
   "/orders": "/(main)/orders",
   "/expenses": "/(main)/expenses",
   "/reports/profit": "/(main)/profit",
+  "/payment-methods": "/(main)/payments",
 };
 
 const MENU_ITEM_PATH = /^\/menu\/([0-9a-f-]{36})$/i;

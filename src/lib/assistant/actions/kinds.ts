@@ -33,6 +33,9 @@ export type ActionKind =
   | 'sms_automation'
   | 'sms_automation_status'
   | 'sms_automation_run'
+  | 'payment_method'
+  | 'payment_method_change'
+  | 'ingredient'
 
 export const ACTION_PERMISSION: Readonly<Record<ActionKind, StaffPermissionKey>> = {
   bundle: 'analytics',
@@ -56,6 +59,13 @@ export const ACTION_PERMISSION: Readonly<Record<ActionKind, StaffPermissionKey>>
   sms_automation: 'customers',
   sms_automation_status: 'customers',
   sms_automation_run: 'customers',
+  // Payment methods are store setup; the writers re-check it on the session.
+  payment_method: 'store_setup',
+  payment_method_change: 'store_setup',
+  // The ingredient master is `menu` (inventory ledger rules); an opening
+  // count is a stocktake movement, which also needs `inventory` — the
+  // executor checks that one itself.
+  ingredient: 'menu',
 }
 
 export interface OfferPayload {
@@ -163,6 +173,43 @@ export interface SmsAutomationStatusPayload {
 export interface SmsAutomationRunPayload {
   automationId: string
   name: string
+}
+
+/** A new payment method; `orderTypeIds` are the store's own, checked when proposed. */
+export interface PaymentMethodPayload {
+  name: string
+  details: string | null
+  /** Already hosted on our CDN (uploaded when proposed, shown on the card). */
+  qrCodeUrl: string | null
+  orderTypeIds: string[]
+  requireProof: boolean
+}
+
+/** A change to an existing payment method; null = leave as is. */
+export interface PaymentMethodChangePayload {
+  paymentMethodId: string
+  name: string
+  changes: {
+    name: string | null
+    details: string | null
+    /** '' removes the QR. */
+    qrCodeUrl: string | null
+    isActive: boolean | null
+    requireProof: boolean | null
+    orderTypeIds: string[] | null
+  }
+  /** The row's updated_at when the card was shown; anything else refuses. */
+  expectedUpdatedAt: string | null
+}
+
+/** A new ingredient, optionally with an opening count (filed as a stocktake). */
+export interface IngredientPayload {
+  name: string
+  stockUnitId: string
+  unitLabel: string
+  reorderLevel: number
+  openingCount: number | null
+  category: string | null
 }
 
 export type ActionPayload = OfferPayload | MenuItemPayload | StockPayload | Record<string, unknown>

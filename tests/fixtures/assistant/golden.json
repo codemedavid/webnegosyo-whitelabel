@@ -22,5 +22,12 @@
   {"prompt": "Are my SMS campaigns sending?", "expectTools": ["get_sms_campaigns"]},
   {"prompt": "Which vouchers are being used the most?", "expectTools": ["get_vouchers"], "argsSubset": {"get_vouchers": {"show": "all"}}},
   {"prompt": "Set up a stamp card: 10 visits gets ₱100 off", "expectTools": ["get_loyalty", "propose_loyalty_program"]},
-  {"prompt": "Mark the halo-halo as sold out", "expectTools": ["search_menu", "propose_menu_item_change"]}
+  {"prompt": "Mark the halo-halo as sold out", "expectTools": ["search_menu", "propose_menu_item_change"]},
+  {"prompt": "Paano tumatanggap ng GCash ang store ko?", "expectTools": ["get_payment_methods"]},
+  {"prompt": "Add Maya as a payment method: 0918 000 0000, Juan Dela Cruz", "expectTools": ["propose_payment_method"], "argsSubset": {"propose_payment_method": {"name": "Maya"}}},
+  {"prompt": "How much rice do I have left?", "expectTools": ["get_ingredient"]},
+  {"prompt": "What goes into my Sisig and how much does it cost to make?", "expectTools": ["get_dish_recipe"]},
+  {"prompt": "Add a new ingredient: calamansi, counted in pieces", "expectTools": ["propose_ingredient"]},
+  {"prompt": "Is Lalamove ready for my store?", "expectTools": ["get_delivery_setup"]},
+  {"prompt": "How do I connect my printer?", "expectTools": ["find_lessons"]}
 ]

@@ -111,6 +111,9 @@ export function AssistantCardView({ card }: { card: AssistantCard | undefined })
     // Interactive; rendered by ConfirmCardView, which needs the store context.
     case 'confirm':
       return null
+    // Needs the admin base path for its links; rendered by LessonsCardView.
+    case 'lessons':
+      return null
     default:
       return null
   }

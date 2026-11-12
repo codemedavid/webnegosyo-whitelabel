@@ -33,6 +33,12 @@ import { proposeMenuItemChangeTool } from '@/lib/assistant/tools/propose/menu-it
 import { proposeMenuFromPhotoTool, proposeMenuImportEditTool } from '@/lib/assistant/tools/propose/menu-photo'
 import { getSmsAutomationsTool } from '@/lib/assistant/tools/reads/automations'
 import { proposeRunSmsAutomationTool, proposeSmsAutomationStatusTool, proposeSmsAutomationTool } from '@/lib/assistant/tools/propose/automation'
+import { getPaymentMethodsTool } from '@/lib/assistant/tools/reads/payment-methods'
+import { proposePaymentMethodChangeTool, proposePaymentMethodTool } from '@/lib/assistant/tools/propose/payment-method'
+import { getDishRecipeTool, getIngredientTool } from '@/lib/assistant/tools/reads/ingredient'
+import { proposeIngredientTool } from '@/lib/assistant/tools/propose/ingredient'
+import { getDeliverySetupTool } from '@/lib/assistant/tools/reads/delivery-setup'
+import { findLessonsTool } from '@/lib/assistant/tools/reads/lessons'
 
 export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   getSalesOverviewTool,
@@ -72,4 +78,13 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   proposeSmsAutomationTool,
   proposeSmsAutomationStatusTool,
   proposeRunSmsAutomationTool,
+  // Store set-up, inventory detail, Lalamove readiness, University lessons (2026-11-12).
+  getPaymentMethodsTool,
+  proposePaymentMethodTool,
+  proposePaymentMethodChangeTool,
+  getIngredientTool,
+  getDishRecipeTool,
+  proposeIngredientTool,
+  getDeliverySetupTool,
+  findLessonsTool,
 ] as AssistantToolDef[]
