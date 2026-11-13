@@ -104,6 +104,7 @@ Each feature keeps its rules in a `CLAUDE.md` beside its code. Claude Code loads
 | Bills: combine and split | `webnegosyo-app/lib/bill/CLAUDE.md` | bill engine, `settleBill`, receipts for bills |
 | Boost Sales | `src/lib/boost/CLAUDE.md` | combos, upgrades, pairings, cart last call, Boost AI |
 | Convex backend (per-store, legacy) | `convex-template/CLAUDE.md` | template schema, orders, analytics, Lalamove, cron |
+| Customer app store builds | `src/lib/app-builds/CLAUDE.md` | App Studio → Builds, build workflow, EAS webhook, store icons |
 | Customer app (older, per-store builds) | `mobile/CLAUDE.md` | white-labeled customer app |
 | Delivery address and rider notes | `src/lib/delivery/CLAUDE.md` | address search, pin step, rider remarks, pin links |
 | Hero Builder | `src/lib/hero-builder/CLAUDE.md` | v5 flow designs, scoped CSS, custom code blocks |

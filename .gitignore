@@ -113,3 +113,7 @@ __pycache__/
 
 # Client working folders (photos, spreadsheets): never product code
 /Lolys-cafe/
+
+# Customer-app store build workspace (build-customer-app workflow)
+build-work/
+customer-app/build-assets/

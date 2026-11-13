@@ -1,0 +1,9 @@
+{
+  "name": "customer-app-build",
+  "private": true,
+  "description": "What the build-customer-app workflow installs to make store icons (sharp only).",
+  "type": "module",
+  "dependencies": {
+    "sharp": "0.35.5"
+  }
+}

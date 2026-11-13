@@ -11,6 +11,7 @@ import { APP_CORNER_STYLES, APP_FONT_KEYS, type AppCatalog, type AppConfig } fro
 import { previewConfig, sameDraft, type AppStudioDraft } from '@/lib/app-studio/home-draft'
 import type { AppStudioApp } from '@/lib/app-studio/service'
 import { cn } from '@/lib/utils'
+import { BuildsTab } from './builds-tab'
 import { HomeTab } from './home-tab'
 import { IdentityTab } from './identity-tab'
 import { ListingTab, ReleaseTab } from './listing-release-tabs'
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'home', label: 'Home' },
   { id: 'listing', label: 'Store listing' },
   { id: 'release', label: 'Release' },
+  { id: 'builds', label: 'Builds' },
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
@@ -222,6 +224,7 @@ export function AppStudioEditor(props: AppStudioEditorProps) {
           ) : null}
           {tab === 'listing' ? <ListingTab tenantId={tenantId} app={app} onSaved={setApp} canEdit={canEdit} /> : null}
           {tab === 'release' ? <ReleaseTab tenantId={tenantId} app={app} onSaved={setApp} canEdit={canEdit} /> : null}
+          {tab === 'builds' ? <BuildsTab tenantId={tenantId} canEdit={canEdit} /> : null}
         </div>
 
         <aside className="space-y-3 xl:sticky xl:top-6 xl:self-start">

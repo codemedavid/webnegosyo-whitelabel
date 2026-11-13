@@ -1,0 +1,130 @@
+name: Build Customer App (store build)
+
+# One store app, one platform, started by App Studio → Builds
+# (docs/plans/2026-11-13-customer-app-p9-build-pipeline.md, runbook
+# docs/runbooks/customer-app-builds.md). Never run by hand: App Studio makes
+# the build row and its one-time token, and this run trades the token for
+# the manifest it snapshotted.
+#
+# The repository is PUBLIC, so this run's inputs and logs are public. The
+# build token in the inputs is not a secret on its own: every call back to
+# the web also sends APP_BUILD_CI_SECRET (masked). Steps print no store
+# details of their own; `eas build` prints the app's name and bundle id,
+# which are public on the store listing anyway.
+#
+# EAS compiles (cloud): iOS needs a Mac, and the build only has to start
+# here. EAS then reports the outcome to /api/app-builds/eas-webhook, and
+# `--auto-submit` sends the build to TestFlight / Play internal testing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_token:
+        description: 'Set by App Studio (useless without the CI secret)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Pipeline check: stop before eas build and close the build as failed'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: customer-app-build-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Store build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BUILD_TOKEN: ${{ inputs.build_token }}
+      APP_BUILD_API_URL: ${{ secrets.APP_BUILD_API_URL }}
+      APP_BUILD_CI_SECRET: ${{ secrets.APP_BUILD_CI_SECRET }}
+      EAS_PROJECT_ID: ${{ vars.CUSTOMER_APP_EAS_PROJECT_ID }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Mask the build token
+        run: echo "::add-mask::$BUILD_TOKEN"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            customer-app/package-lock.json
+            scripts/customer-app-build/package-lock.json
+
+      - name: Fetch the manifest
+        run: node scripts/customer-app-build/ci.mjs fetch-manifest
+
+      - name: Install the icon tools
+        run: npm ci --prefix scripts/customer-app-build --no-audit --no-fund
+
+      - name: Make icons and splash
+        run: node scripts/customer-app-build/ci.mjs prepare
+
+      - name: Install the app
+        working-directory: customer-app
+        run: npm ci --no-audit --no-fund
+
+      - name: Check the app config
+        working-directory: customer-app
+        run: npx expo config --type public > /dev/null
+
+      - name: Stop here (dry run)
+        if: ${{ inputs.dry_run }}
+        run: |
+          node scripts/customer-app-build/ci.mjs report-failed "Dry run: the pipeline worked up to the EAS build, which was skipped."
+
+      - name: Setup EAS
+        if: ${{ !inputs.dry_run }}
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Store keys and submit profile
+        if: ${{ !inputs.dry_run }}
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: node scripts/customer-app-build/ci.mjs submit-profile
+
+      - name: Start the EAS build
+        id: eas
+        if: ${{ !inputs.dry_run }}
+        working-directory: customer-app
+        run: |
+          set -euo pipefail
+          mkdir -p ../build-work
+          submit=()
+          if [ "${APP_SUBMIT:-false}" = "true" ]; then submit=(--auto-submit); fi
+          eas build --platform "$APP_PLATFORM" --profile store --non-interactive --no-wait --json \
+            --message "$APP_BUILD_MESSAGE" "${submit[@]}" > ../build-work/eas-build.json
+
+      - name: Report the EAS build
+        if: ${{ !inputs.dry_run }}
+        run: node scripts/customer-app-build/ci.mjs report-started build-work/eas-build.json
+
+      # Only while EAS doesn't have the build: once it does, EAS's webhook reports the outcome.
+      - name: Report a failure
+        if: ${{ failure() && steps.eas.outcome != 'success' }}
+        run: |
+          node scripts/customer-app-build/ci.mjs report-failed "A step failed before EAS had the build. Details: $RUN_URL"
+
+      - name: Remove store keys
+        if: ${{ always() }}
+        run: rm -rf "${RUNNER_TEMP}/store-keys"

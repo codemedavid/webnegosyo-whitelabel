@@ -9,11 +9,22 @@ import type { ConfigContext, ExpoConfig } from 'expo/config'
  * OTA update replaces that manifest. The app resolves its tenant from the
  * native application id (see src/lib/api/tenant-identity.ts).
  *
- * Build-time env (set by the build pipeline from tenant_apps):
+ * Build-time env (set by the build pipeline from tenant_apps, see
+ * scripts/customer-app-build/ci-lib.mjs `identityEnv`):
  *   APP_NAME, APP_BUNDLE_ID, APP_ANDROID_PACKAGE, APP_ICON, APP_ADAPTIVE_ICON,
+ *   APP_ADAPTIVE_MONOCHROME, APP_ADAPTIVE_BACKGROUND, APP_NOTIFICATION_ICON,
  *   APP_SPLASH_IMAGE, APP_SPLASH_BACKGROUND
  *   EAS_PROJECT_ID  the one EAS project every store app is built in; without
  *                   it (Expo Go, local runs) the app can't get a push token
+ *                   and has no over-the-air updates
+ *
+ * Over-the-air updates: ONE `production` channel for every store app, and the
+ * runtime version is the app `version` (policy `appVersion`), NOT the native
+ * fingerprint: a fingerprint hashes the resolved config, which differs per
+ * store (name, ids, icons), so each store app would sit on its own runtime and
+ * one update could never reach them all. So: bump `version` whenever native
+ * code or a native module changes, or an update would reach binaries that
+ * can't run it.
  */
 
 const DEV_IDENTITY = {
@@ -22,6 +33,9 @@ const DEV_IDENTITY = {
   androidPackage: 'com.webnegosyo.customer.dev',
   icon: './assets/icon.png',
   adaptiveIcon: './assets/android-icon-foreground.png',
+  adaptiveMonochrome: './assets/android-icon-monochrome.png',
+  adaptiveBackground: undefined as string | undefined,
+  notificationIcon: undefined as string | undefined,
   splashImage: './assets/splash-icon.png',
   splashBackground: '#FFFFFF',
 }
@@ -34,6 +48,9 @@ function readIdentity() {
     androidPackage: env.APP_ANDROID_PACKAGE ?? DEV_IDENTITY.androidPackage,
     icon: env.APP_ICON ?? DEV_IDENTITY.icon,
     adaptiveIcon: env.APP_ADAPTIVE_ICON ?? DEV_IDENTITY.adaptiveIcon,
+    adaptiveMonochrome: env.APP_ADAPTIVE_MONOCHROME ?? DEV_IDENTITY.adaptiveMonochrome,
+    adaptiveBackground: env.APP_ADAPTIVE_BACKGROUND ?? DEV_IDENTITY.adaptiveBackground,
+    notificationIcon: env.APP_NOTIFICATION_ICON ?? DEV_IDENTITY.notificationIcon,
     splashImage: env.APP_SPLASH_IMAGE ?? DEV_IDENTITY.splashImage,
     splashBackground: env.APP_SPLASH_BACKGROUND ?? DEV_IDENTITY.splashBackground,
   }
@@ -41,6 +58,7 @@ function readIdentity() {
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const identity = readIdentity()
+  const easProjectId = process.env.EAS_PROJECT_ID
   return {
     ...config,
     name: identity.name,
@@ -60,7 +78,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       package: identity.androidPackage,
       adaptiveIcon: {
         foregroundImage: identity.adaptiveIcon,
-        backgroundColor: identity.splashBackground,
+        monochromeImage: identity.adaptiveMonochrome,
+        // The icon's own corner colour, so the inset icon continues into it.
+        backgroundColor: identity.adaptiveBackground ?? identity.splashBackground,
       },
       predictiveBackGestureEnabled: false,
     },
@@ -70,8 +90,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-secure-store',
       'expo-web-browser',
       'expo-font',
-      // Android: the notification icon falls back to the app icon until the pipeline (P9) makes a monochrome one.
-      ['expo-notifications', { defaultChannel: 'orders' }],
+      // Android draws the notification icon as a white mask; the pipeline makes one from the app icon.
+      ['expo-notifications', { defaultChannel: 'orders', ...(identity.notificationIcon ? { icon: identity.notificationIcon, color: identity.splashBackground } : {}) }],
       [
         'expo-splash-screen',
         {
@@ -81,10 +101,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
     ],
+    runtimeVersion: { policy: 'appVersion' },
+    ...(easProjectId ? { updates: { url: `https://u.expo.dev/${easProjectId}`, checkAutomatically: 'ON_LOAD', fallbackToCacheTimeout: 0 } } : {}),
     experiments: { typedRoutes: true },
     extra: {
       ...config.extra,
-      ...(process.env.EAS_PROJECT_ID ? { eas: { projectId: process.env.EAS_PROJECT_ID } } : {}),
+      ...(easProjectId ? { eas: { projectId: easProjectId } } : {}),
     },
   }
 }
