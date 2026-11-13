@@ -115,6 +115,9 @@ export const useOrder = (orderId: string, visibility: OrderVisibility) =>
     refetchInterval: (query) => orderPollInterval({ status: query.state.data?.status, ...visibility }),
   })
 
+/** Upload a payment screenshot (live: the web checkout's upload route). */
+export const uploadPaymentProof = (file: Parameters<AppDataSource['uploadPaymentProof']>[0]) => source.uploadPaymentProof(file)
+
 export function usePlaceOrder() {
   return useMutation({
     mutationFn: ({ draft, idempotencyKey }: { draft: AppOrderDraft; idempotencyKey: string }) => source.placeOrder(draft, idempotencyKey),

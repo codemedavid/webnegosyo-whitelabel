@@ -24,6 +24,7 @@ export const SETTINGS_SECTION_KEYS = [
   'delivery',
   'tax',
   'messenger',
+  'sms',
   'footer',
   'splash',
   'team',
@@ -53,6 +54,7 @@ export type SettingsIconKey =
   | 'user'
   | 'trash'
   | 'percent'
+  | 'sms'
 
 /** Who is looking — resolved once on the server from the signed-in account. */
 export interface SettingsViewer {
@@ -171,6 +173,7 @@ const CATALOG: readonly GroupDef[] = [
     title: 'Messenger & connections',
     entries: [
       section('messenger', 'Messenger', 'Connect your Facebook Page and choose how orders reach you.', 'message'),
+      section('sms', 'Text messages (SMS)', 'Your Semaphore account for sign-in and reward codes when no store phone can send.', 'sms'),
       tool('connect-ai', 'Connect AI', 'Let an AI assistant work on your store with a private key.', 'key', '/mcp'),
     ],
   },
@@ -210,6 +213,9 @@ const SECTION_GATES: Record<SettingsSectionKey, (ctx: CatalogContext) => boolean
   tax: ({ viewer }) =>
     viewer.isOwner || viewer.hasPermission('settings') || viewer.hasPermission('discount_review'),
   messenger: ({ viewer }) => viewer.hasPermission('settings'),
+  // The route reads with loyalty access and lets only the owner change the key;
+  // a branch account never sees store-wide sending.
+  sms: ({ viewer }) => viewer.isOwner || (viewer.hasPermission('loyalty_manage') && !viewer.isBranchScopedAccount),
   footer: ({ viewer }) => viewer.hasPermission('settings'),
   splash: ({ viewer, tenant }) => viewer.hasPermission('settings') && tenant.flash_screen_feature_enabled === true,
   team: ({ viewer }) => viewer.canManageAnyStaff,
@@ -342,6 +348,8 @@ export function describeSectionStatus(
       return extras.accountEmail ? { tone: 'neutral', label: extras.accountEmail } : null
     case 'team':
     case 'data':
+    // Read live from the sending phone and tenant_secrets inside the section.
+    case 'sms':
     // Its state lives in store_tax_profiles, not on the tenant row; the page says it.
     case 'tax':
       return null

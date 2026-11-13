@@ -115,6 +115,32 @@ describe('buildPlaceOrderInput', () => {
     expect(built.ok && built.input).not.toHaveProperty('paymentMethodDetails')
   })
 
+  it('takes a payment screenshot as the proof, as the web checkout does', () => {
+    const image = { url: 'https://ik.imagekit.io/demo/payment-proofs/proof.jpg', fileId: 'file-1' }
+    const built = buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH, paymentProofImage: image }) }))
+    expect(built.ok && built.input.paymentProof).toEqual({ url: image.url, publicId: 'file-1' })
+  })
+
+  it('keeps both a screenshot and a reference when both are sent', () => {
+    const image = { url: 'https://ik.imagekit.io/demo/payment-proofs/proof.jpg', fileId: 'file-1' }
+    const built = buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH, paymentReference: 'REF9', paymentProofImage: image }) }))
+    expect(built.ok && built.input.paymentProof).toEqual({ url: image.url, publicId: 'file-1', reference: 'REF9' })
+  })
+
+  it('treats a screenshot from anywhere but ImageKit as missing', () => {
+    const forged = { url: 'https://evil.example/proof.jpg', fileId: 'x' }
+    expect(buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH, paymentProofImage: forged }) }))).toEqual({ ok: false, message: PROOF_NEEDED })
+    const withReference = buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: GCASH, paymentReference: 'REF9', paymentProofImage: forged }) }))
+    expect(withReference.ok && withReference.input.paymentProof).toEqual({ reference: 'REF9' })
+  })
+
+  it('sends no proof for a method that never asked for one', () => {
+    const image = { url: 'https://ik.imagekit.io/demo/payment-proofs/proof.jpg', fileId: 'file-1' }
+    const built = buildPlaceOrderInput(request({ draft: draft({ paymentMethodId: CASH, paymentReference: 'REF9', paymentProofImage: image }) }))
+    expect(built.ok).toBe(true)
+    expect(built.ok && built.input).not.toHaveProperty('paymentProof')
+  })
+
   it('requires a picked place for delivery and writes the web address keys', () => {
     expect(buildPlaceOrderInput(request({}, DELIVERY_TYPE))).toEqual({ ok: false, message: DELIVERY_NEEDED })
     const built = buildPlaceOrderInput(request({ draft: draft({ orderTypeId: DELIVERY_TYPE, delivery: PLACE }) }, DELIVERY_TYPE))

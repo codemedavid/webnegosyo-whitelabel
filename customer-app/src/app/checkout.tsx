@@ -61,6 +61,7 @@ export default function CheckoutScreen() {
           onSelect={model.pickPayment}
           reference={model.paymentReference}
           onReferenceChange={model.setPaymentReference}
+          proof={model.paymentProof}
         />
         {model.isMember ? <SavingsSection model={model} /> : null}
         <NotesSection value={model.notes} onChange={model.setNotes} />

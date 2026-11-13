@@ -70,6 +70,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-secure-store',
       'expo-web-browser',
       'expo-font',
+      // Payment screenshots come from the photo library only (no camera).
+      ['expo-image-picker', { photosPermission: 'Choose a screenshot of your payment to attach to your order.', cameraPermission: false, microphonePermission: false }],
       // Android: the notification icon falls back to the app icon until the pipeline (P9) makes a monochrome one.
       ['expo-notifications', { defaultChannel: 'orders' }],
       [

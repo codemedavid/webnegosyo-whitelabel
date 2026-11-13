@@ -47,6 +47,14 @@ describe('buildOrderDraft', () => {
     expect(appOrderDraftSchema.safeParse(draft).success).toBe(true)
   })
 
+  it('sends an uploaded screenshot only when there is one', () => {
+    const image = { url: 'https://ik.imagekit.io/demo/payment-proofs/p.jpg', fileId: 'f1' }
+    const draft = buildOrderDraft({ ...input, paymentProofImage: image })
+    expect(appOrderDraftSchema.parse(draft).paymentProofImage).toEqual(image)
+    expect(buildOrderDraft(input)).not.toHaveProperty('paymentProofImage')
+    expect(draftFingerprint(draft)).not.toBe(draftFingerprint(buildOrderDraft(input)))
+  })
+
   it('sends a blank reference or code as null', () => {
     expect(buildOrderDraft({ ...input, paymentReference: '   ', voucherCode: '' })).toMatchObject({ paymentReference: null, voucherCode: null })
   })
