@@ -7,10 +7,12 @@ Every API route and server action that is declared through `defineRoute` / `defi
 which inputs it validates. Entry points that still check access by hand are listed in
 `tests/unit/guardrails/entry-point-exceptions.json`; that list can only shrink.
 
-## Declared entry points (45)
+## Declared entry points (50)
 
 | Entry | Who may call | Store | Branch | Rate limit | Validates |
 |---|---|---|---|---|---|
+| getAppBuildsAction (src/app/actions/app-builds.ts) | console: `customer_apps.view` | — | — | not stated | args |
+| startAppBuildsAction (src/app/actions/app-builds.ts) | console: `customer_apps.edit` | — | — | not stated | args |
 | listAppStudioAppsAction (src/app/actions/app-studio.ts) | console: `customer_apps.view` | — | — | not stated | args |
 | listStoresWithoutAppAction (src/app/actions/app-studio.ts) | console: `customer_apps.view` | — | — | not stated | args |
 | createAppStudioAppAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
@@ -30,6 +32,9 @@ which inputs it validates. Entry points that still check access by hand are list
 | saveMessengerOrderUpdatesAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
 | saveMessengerMessagesAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
 | saveReceiptLayoutAction (src/app/actions/receipt.ts) | staff: `store_setup` (edit, session) | named, checked | any | not stated | args |
+| POST /api/app-builds/eas-webhook | signature: expo-signature (HMAC-SHA1, EAS_WEBHOOK_SECRET) | — | — | 300 per 1m per ip (`app-build-eas-webhook`) | body |
+| GET /api/app-builds/manifest | device: app build CI secret + build token | — | — | 30 per 1m per ip (`app-build-manifest`) | — |
+| POST /api/app-builds/report | device: app build CI secret + build token | — | — | 30 per 1m per ip (`app-build-report`) | body |
 | POST /api/app/v1/auth/otp/request | anyone | — | — | 10 per 1m per ip (`app:otp-request`) | — |
 | POST /api/app/v1/auth/otp/verify | anyone | — | — | 20 per 1m per ip (`app:otp-verify`) | — |
 | DELETE /api/app/v1/auth/session | anyone | — | — | 30 per 1m per ip (`app:session`) | — |

@@ -9675,6 +9675,74 @@ export type Database = {
           },
         ]
       }
+      tenant_app_builds: {
+        Row: {
+          app_version: string | null
+          artifact_url: string | null
+          build_number: string | null
+          created_at: string
+          created_by: string | null
+          eas_build_id: string | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          manifest: Json | null
+          platform: string
+          status: string
+          submit_status: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          app_version?: string | null
+          artifact_url?: string | null
+          build_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          eas_build_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          manifest?: Json | null
+          platform: string
+          status?: string
+          submit_status?: string
+          tenant_id: string
+          token_expires_at: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          app_version?: string | null
+          artifact_url?: string | null
+          build_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          eas_build_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          manifest?: Json | null
+          platform?: string
+          status?: string
+          submit_status?: string
+          tenant_id?: string
+          token_expires_at?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_app_builds_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_apps"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
       tenant_app_configs: {
         Row: {
           draft: Json
