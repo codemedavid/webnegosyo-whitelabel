@@ -13,6 +13,8 @@ const updateCheckoutLeadStatus = jest.fn(async (...args: unknown[]): Promise<{ e
 const applyLeadStatusWithLaunch = jest.fn(async (...args: unknown[]) => { void args; return { handled: false, isPublished: false } })
 const sendLeadConversion = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
 const sendLeadPurchaseOnce = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
+const sendProofPurchaseOnce = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
+const uploadPaymentProof = jest.fn(async (...args: unknown[]): Promise<{ error: string | null }> => { void args; return { error: null } })
 
 jest.mock('@/lib/action-rate-limit', () => ({
   checkActionRateLimit: async () => ({ allowed: true, retryAfterSec: 0 }),
@@ -21,7 +23,9 @@ jest.mock('@/lib/action-rate-limit', () => ({
 jest.mock('@/lib/checkout-leads/checkout-leads-service', () => ({
   createCheckoutLead: (...args: unknown[]) => createCheckoutLead(...args),
   updateCheckoutLeadStatus: (...args: unknown[]) => updateCheckoutLeadStatus(...args),
+  uploadPaymentProof: (...args: unknown[]) => uploadPaymentProof(...args),
 }))
+jest.mock('@/lib/imagekit-utils', () => ({ getImageKitEndpoint: () => 'https://ik.imagekit.io/webnegosyo' }))
 jest.mock('@/lib/checkout-leads/meta-events', () => {
   const actual = jest.requireActual('@/lib/checkout-leads/meta-events') as Record<string, unknown>
   return {
@@ -29,6 +33,7 @@ jest.mock('@/lib/checkout-leads/meta-events', () => {
     runAfterResponse: async (task: () => Promise<unknown>) => { await task() },
     sendLeadConversion: (...args: unknown[]) => sendLeadConversion(...args),
     sendLeadPurchaseOnce: (...args: unknown[]) => sendLeadPurchaseOnce(...args),
+    sendProofPurchaseOnce: (...args: unknown[]) => sendProofPurchaseOnce(...args),
   }
 })
 jest.mock('@/lib/checkout-leads/platform-payment-methods-service', () => ({}))
@@ -54,7 +59,7 @@ const actions = () => import('@/app/actions/checkout-leads')
 
 describe('funnel Meta wiring', () => {
   beforeEach(() => {
-    for (const mock of [createCheckoutLead, updateCheckoutLeadStatus, applyLeadStatusWithLaunch, sendLeadConversion, sendLeadPurchaseOnce]) {
+    for (const mock of [createCheckoutLead, updateCheckoutLeadStatus, applyLeadStatusWithLaunch, sendLeadConversion, sendLeadPurchaseOnce, sendProofPurchaseOnce, uploadPaymentProof]) {
       mock.mockClear()
     }
   })
@@ -101,5 +106,19 @@ describe('funnel Meta wiring', () => {
     const { changeCheckoutLeadStatus } = await actions()
     await changeCheckoutLeadStatus('lead-1', 'paid')
     expect(sendLeadPurchaseOnce).not.toHaveBeenCalled()
+  })
+
+  test('a saved payment screenshot reports the Purchase (the thank-you screen)', async () => {
+    const { submitPaymentProof } = await actions()
+    const ref = 'WN-20261026-ABCD2345'
+    expect(await submitPaymentProof(ref, 'https://ik.imagekit.io/webnegosyo/checkout-proofs/p.png')).toEqual({ error: null })
+    expect(sendProofPurchaseOnce).toHaveBeenCalledWith({ admin: true }, ref)
+  })
+
+  test('a refused screenshot sends no Purchase', async () => {
+    uploadPaymentProof.mockResolvedValueOnce({ error: 'This order is no longer waiting for a payment proof.' })
+    const { submitPaymentProof } = await actions()
+    await submitPaymentProof('WN-20261026-ABCD2345', 'https://ik.imagekit.io/webnegosyo/checkout-proofs/p.png')
+    expect(sendProofPurchaseOnce).not.toHaveBeenCalled()
   })
 })

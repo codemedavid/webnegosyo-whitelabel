@@ -1,14 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendMetaConversionEvent } from '@/lib/meta-conversions'
+import { purchaseEventId } from './meta-event-ids'
 
 /**
  * The funnel's server-side Meta events (Conversions API).
  *
  * - Lead: when the order form saves a lead. Same event id as the browser's
  *   pixel Lead, so Meta counts the pair once.
- * - Purchase: when staff first mark the lead paid. Server only (the buyer is
- *   long gone), sent with the browser signals stored on the lead at order
- *   time, so Meta can tie the payment back to the ad click.
+ * - Purchase: ONCE per lead, at whichever comes first:
+ *   1. the buyer's payment screenshot is saved (the thank-you screen). The
+ *      browser fires the pixel Purchase with the same event id
+ *      (`purchaseEventId`), so Meta counts the pair once;
+ *   2. staff mark the lead paid (a buyer who paid without a screenshot).
+ *   Both carry the browser signals stored on the lead at order time, so Meta
+ *   can tie the payment back to the ad click. A screenshot is the buyer's
+ *   word, not staff's: Purchase counts buyers who say they paid.
  *
  * Only leads that came through a browser carry `meta_attribution`; staff
  * invites and sign-up links never send either event.
@@ -146,23 +152,32 @@ export async function sendLeadConversion(lead: LeadForMeta, attribution: LeadMet
 /** Statuses that mean staff confirmed the money (paid_at is set by trigger). */
 export const META_PURCHASE_STATUSES: ReadonlySet<string> = new Set(['paid', 'setup_in_progress', 'live'])
 
+/** Which lead to claim, and what must be true of it besides "browser lead, never sent". */
+interface PurchaseClaim {
+  column: 'id' | 'reference_number'
+  value: string
+  /** paid_at (staff confirmed) or payment_proof_url (buyer uploaded a screenshot). */
+  requires: 'paid_at' | 'payment_proof_url'
+}
+
 /**
  * Send the lead's Purchase once. The claim is ONE conditional UPDATE
- * (paid, browser lead, never claimed); a send that was skipped or refused
- * gives the claim back so the next status change can try again. A send that
- * Meta accepted keeps it forever.
+ * (browser lead, never claimed, plus `requires`); a send that was skipped or
+ * refused gives the claim back so a later moment can try again. A send that
+ * Meta accepted keeps it forever, so the proof and the staff path never both
+ * send.
  */
-export async function sendLeadPurchaseOnce(
+async function claimAndSendPurchase(
   admin: SupabaseClient,
-  leadId: string
+  claim: PurchaseClaim
 ): Promise<{ sent: boolean; reason?: string }> {
   const claimedAt = new Date().toISOString()
   const { data, error } = await admin
     .from('checkout_leads')
     .update({ meta_purchase_sent_at: claimedAt })
-    .eq('id', leadId)
+    .eq(claim.column, claim.value)
     .is('meta_purchase_sent_at', null)
-    .not('paid_at', 'is', null)
+    .not(claim.requires, 'is', null)
     .not('meta_attribution', 'is', null)
     .select('id, reference_number, email, phone, amount, meta_attribution')
     .maybeSingle()
@@ -178,7 +193,7 @@ export async function sendLeadPurchaseOnce(
   const result = attribution
     ? await sendMetaConversionEvent({
         eventName: 'Purchase',
-        eventId: `purchase_${lead.reference_number}`,
+        eventId: purchaseEventId(lead.reference_number),
         eventSourceUrl: attribution.eventSourceUrl,
         userData: {
           email: lead.email,
@@ -201,12 +216,22 @@ export async function sendLeadPurchaseOnce(
 
   if (result.sent) return { sent: true }
 
-  // Not sent: give the claim back (only our own claim) so a later status change retries.
+  // Not sent: give the claim back (only our own claim) so a later moment retries.
   await admin
     .from('checkout_leads')
     .update({ meta_purchase_sent_at: null })
-    .eq('id', leadId)
+    .eq('id', lead.id)
     .eq('meta_purchase_sent_at', claimedAt)
   console.error('[Meta CAPI] Purchase not sent', { reference: lead.reference_number })
   return { sent: false, reason: 'send-failed' }
+}
+
+/** Staff marked the lead paid: Purchase, unless the screenshot already sent it. */
+export function sendLeadPurchaseOnce(admin: SupabaseClient, leadId: string) {
+  return claimAndSendPurchase(admin, { column: 'id', value: leadId, requires: 'paid_at' })
+}
+
+/** The buyer's screenshot was saved (thank-you screen): Purchase, once. */
+export function sendProofPurchaseOnce(admin: SupabaseClient, referenceNumber: string) {
+  return claimAndSendPurchase(admin, { column: 'reference_number', value: referenceNumber, requires: 'payment_proof_url' })
 }

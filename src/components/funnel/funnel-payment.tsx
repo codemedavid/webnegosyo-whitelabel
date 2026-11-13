@@ -1,59 +1,23 @@
 'use client'
 
-import Image from 'next/image'
-import { Check, Lock, MessageCircle, ShieldCheck } from 'lucide-react'
-import { BRAND } from '@/components/landing/landing-theme'
+import { useState } from 'react'
+import { ShieldCheck } from 'lucide-react'
 import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
+import { purchaseEventId } from '@/lib/checkout-leads/meta-event-ids'
 import { getPaymentTermLabel } from '@/lib/checkout-leads/payment-term-labels'
 import { getCheckoutBalanceDue, isCheckoutPaymentTerm, isFunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import { GUARANTEES } from './funnel-copy'
 import { formatPeso } from './funnel-offer'
 import { PAYMENT } from './funnel-payment-copy'
 import { FunnelPaymentMethod } from './funnel-payment-method'
 import { FunnelPaymentProof } from './funnel-payment-proof'
-import { CopyButton } from './funnel-payment-ui'
+import { CopyButton, MessengerHelp, PaymentHeader, ProgressSteps } from './funnel-payment-ui'
+import { FunnelThankYou } from './funnel-thank-you'
 import { Kicker, Marker } from './funnel-ui'
 
-const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 /** Details → Payment → Setup: the buyer is on the middle step. */
-const CURRENT_STEP = 1
-
-function PaymentHeader() {
-  return (
-    <header className="fn-nav sticky top-0 z-40">
-      <div className="mx-auto flex h-16 max-w-[1000px] items-center justify-between gap-3 px-5">
-        <span className="flex items-center gap-2.5">
-          <Image src="/smartmenu-mark.png" alt="" width={32} height={32} className="h-8 w-8 rounded-[9px] bg-[#FBF6ED] object-contain p-0.5" />
-          <span className="text-[15px] font-semibold tracking-[-0.01em] text-white">{BRAND.name}</span>
-        </span>
-        <span className="flex items-center gap-1.5 text-[12.5px] text-[#A99C8D]">
-          <Lock aria-hidden className="h-3.5 w-3.5 text-[#3CC47C]" strokeWidth={2.25} />
-          {PAYMENT.secure}
-        </span>
-      </div>
-    </header>
-  )
-}
-
-function ProgressSteps() {
-  return (
-    <ol className="mx-auto mt-7 flex w-fit items-center gap-2 text-[12.5px] font-medium" aria-label="Checkout progress">
-      {PAYMENT.progress.map((step, index) => {
-        const isDone = index < CURRENT_STEP
-        const isCurrent = index === CURRENT_STEP
-        return (
-          <li key={step} className="flex items-center gap-2" aria-current={isCurrent ? 'step' : undefined}>
-            {index > 0 && <span aria-hidden className={`h-px w-6 sm:w-10 ${isDone || isCurrent ? 'bg-[#F5A623]/60' : 'bg-white/15'}`} />}
-            <span className={`fn-progress ${isDone ? 'fn-progress--done' : ''} ${isCurrent ? 'fn-progress--current' : ''}`}>
-              {isDone ? <Check aria-hidden className="h-3 w-3" strokeWidth={3} /> : <span aria-hidden>{index + 1}</span>}
-              {step}
-            </span>
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
+const PAYMENT_STEP = 1
 
 /** Reference (copyable), amount due and, on a downpayment or installments, what is left. */
 function ReceiptStrip({ lead, balanceDue }: { lead: CheckoutLeadConfirmation; balanceDue: number }) {
@@ -115,16 +79,7 @@ function NextSteps({ isPlan }: { isPlan: boolean }) {
         </ul>
       )}
       <div className="border-t border-white/10 pt-5">
-        <p className="text-[13px] text-[#A99C8D]">{PAYMENT.help}</p>
-        <a
-          href={`https://m.me/${FACEBOOK_PAGE_USERNAME}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="fn-ghost-btn mt-2.5"
-        >
-          <MessageCircle aria-hidden className="h-4 w-4" />
-          {PAYMENT.helpCta}
-        </a>
+        <MessengerHelp />
       </div>
     </aside>
   )
@@ -134,8 +89,35 @@ function NextSteps({ isPlan }: { isPlan: boolean }) {
  * The funnel's payment step: shown in place right after the order form saves
  * a lead, and as /checkout/confirmation?confirm=<ref> (reload, shared link,
  * the older /checkout form). Renders inside `.funnel-world`.
+ *
+ * Once a screenshot is on file (just uploaded, or stored from an earlier
+ * visit) the whole step gives way to the thank-you screen, so a buyer who has
+ * paid is never shown "bayaran ang ₱…" again. "Palitan" there brings the
+ * payment step back with the upload box, to send a different screenshot.
  */
 export function FunnelPayment({ lead }: { lead: CheckoutLeadConfirmation }) {
+  const [proofUrl, setProofUrl] = useState(lead.payment_proof_url ?? '')
+  const [isReplacing, setIsReplacing] = useState(false)
+
+  function handleUploaded(url: string) {
+    // First screenshot = the buyer reaches the thank-you screen: Purchase.
+    // Same event id as the server's (submitPaymentProof), so Meta counts one.
+    // A replaced screenshot or a revisit fires nothing.
+    if (!proofUrl) {
+      trackMetaEvent(
+        'Purchase',
+        { content_name: 'Smart Menu System', currency: 'PHP', value: lead.amount, order_id: lead.reference_number },
+        purchaseEventId(lead.reference_number)
+      )
+    }
+    setProofUrl(url)
+    setIsReplacing(false)
+  }
+
+  if (proofUrl && !isReplacing) {
+    return <FunnelThankYou lead={lead} proofUrl={proofUrl} onReplace={() => setIsReplacing(true)} />
+  }
+
   const method = lead.platform_payment_methods
   const balanceDue =
     lead.payment_term && isCheckoutPaymentTerm(lead.payment_term) ? getCheckoutBalanceDue(lead.payment_term) : 0
@@ -152,13 +134,18 @@ export function FunnelPayment({ lead }: { lead: CheckoutLeadConfirmation }) {
             </h1>
             <p className="fn-lead mx-auto mt-4 max-w-xl">{PAYMENT.subtitle}</p>
           </div>
-          <ProgressSteps />
+          <ProgressSteps currentStep={PAYMENT_STEP} />
           <ReceiptStrip lead={lead} balanceDue={balanceDue} />
 
           <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
             <div className="space-y-5">
               <FunnelPaymentMethod method={method} />
-              <FunnelPaymentProof referenceNumber={lead.reference_number} initialProofUrl={lead.payment_proof_url} amount={lead.amount} />
+              <FunnelPaymentProof
+                referenceNumber={lead.reference_number}
+                amount={lead.amount}
+                onUploaded={handleUploaded}
+                onKeep={isReplacing ? () => setIsReplacing(false) : undefined}
+              />
             </div>
             <NextSteps isPlan={isFunnelPlanTerm(lead.payment_term)} />
           </div>
