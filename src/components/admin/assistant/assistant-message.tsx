@@ -54,6 +54,8 @@ const TOOL_LABELS: Record<string, string> = {
   propose_ingredient: 'Preparing the new ingredient…',
   get_delivery_setup: 'Checking your Lalamove set-up…',
   find_lessons: 'Finding the right video…',
+  get_activity_log: 'Checking the activity log…',
+  get_order: 'Looking up that order…',
 }
 
 interface ToolPartLike {
