@@ -71,8 +71,15 @@ function ScreenshotField({ method, proof }: { method: AppPaymentMethod; proof: P
               {state.error}
             </AppText>
           ) : null}
+          {state.status === 'uploading' ? null : (
+            <Button
+              label={state.status === 'failed' ? 'Choose another' : 'Remove'}
+              variant="ghost"
+              onPress={state.status === 'failed' ? proof.pick : proof.remove}
+              style={{ alignSelf: 'flex-start', paddingHorizontal: 0 }}
+            />
+          )}
         </View>
-        <Button label={state.status === 'failed' ? 'Try another' : 'Remove'} variant="ghost" onPress={state.status === 'failed' ? proof.pick : proof.remove} />
       </View>
     </View>
   )

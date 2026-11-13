@@ -34,8 +34,8 @@ describe('uploadProofFile', () => {
     const fetchImpl = jest.fn().mockResolvedValue({ status: 200, json: async () => ({ url: 'https://ik.imagekit.io/u.jpg', fileId: 'f' }) })
     const result = await uploadProofFile('https://store.example/', { uri: 'file:///a.jpg', name: 'a.jpg', type: 'image/jpeg' }, fetchImpl)
     expect(result).toEqual({ url: 'https://ik.imagekit.io/u.jpg', fileId: 'f' })
-    expect(fetchImpl).toHaveBeenCalledWith('https://store.example/api/payment-proof/upload', expect.objectContaining({ method: 'POST' }))
-    const form = fetchImpl.mock.calls[0][1].body as FormData
+    expect(fetchImpl).toHaveBeenCalledWith('https://store.example/api/payment-proof/upload', expect.any(FormData))
+    const form = fetchImpl.mock.calls[0][1] as FormData
     expect(form.get('purpose')).toBe('order')
   })
 

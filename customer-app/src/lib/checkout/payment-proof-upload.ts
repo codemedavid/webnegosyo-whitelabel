@@ -29,7 +29,27 @@ interface UploadResponse {
   json(): Promise<unknown>
 }
 
-type UploadFetch = (url: string, init: { method: 'POST'; body: FormData; headers: Record<string, string> }) => Promise<UploadResponse>
+type UploadTransport = (url: string, form: FormData) => Promise<UploadResponse>
+
+/**
+ * React Native's XMLHttpRequest, not `fetch`: Expo's fetch refuses a FormData
+ * file part given as `{ uri, name, type }` ("Unsupported FormDataPart
+ * implementation"), while the native XHR streams it from disk.
+ */
+export const xhrTransport: UploadTransport = (url, form) =>
+  new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', url)
+    request.setRequestHeader('Accept', 'application/json')
+    request.timeout = 60_000
+    request.onload = () => {
+      const text = request.responseText
+      resolve({ status: request.status, json: async () => JSON.parse(text) })
+    }
+    request.onerror = () => reject(new Error('network'))
+    request.ontimeout = () => reject(new Error('timeout'))
+    request.send(form)
+  })
 
 const GENERIC = 'We couldn’t upload your screenshot. Check your connection and try again.'
 
@@ -51,18 +71,14 @@ export function shrinkTarget(width: number, height: number): { width: number } |
   return width >= height ? { width: PROOF_MAX_EDGE } : { height: PROOF_MAX_EDGE }
 }
 
-export async function uploadProofFile(baseUrl: string, file: ProofFile, fetchImpl: UploadFetch = fetch as unknown as UploadFetch): Promise<UploadedProof> {
+export async function uploadProofFile(baseUrl: string, file: ProofFile, transport: UploadTransport = xhrTransport): Promise<UploadedProof> {
   const form = new FormData()
   // React Native's FormData takes a file as { uri, name, type }.
   form.append('file', file as unknown as Blob)
   form.append('purpose', 'order')
   let response: UploadResponse
   try {
-    response = await fetchImpl(`${baseUrl.replace(/\/+$/, '')}/api/payment-proof/upload`, {
-      method: 'POST',
-      body: form,
-      headers: { Accept: 'application/json' },
-    })
+    response = await transport(`${baseUrl.replace(/\/+$/, '')}/api/payment-proof/upload`, form)
   } catch {
     throw new Error(GENERIC)
   }
