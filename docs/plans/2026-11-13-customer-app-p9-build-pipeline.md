@@ -5,7 +5,7 @@ feat/customer-app-p9-builds (9be26832). Changes while building: the ASC key also
 secrets (non-interactive credential repair + submit need it on the runner); Expo's docs don't promise
 non-interactive credentials for a NEW bundle id/package, so the first build per app may need one
 `eas credentials` run (runbook); `APP_BUILD_DRY_RUN=1` proves the workflow without EAS; OTA uses
-runtime policy `appVersion` (a fingerprint differs per store). Migration APPLIED 2026-11-13 (as `tenant_app_builds`) and probed: anon read + authenticated insert 42501, second open build 23505, queued→building→finished, finished→errored 23514, submit after finish ok, rolled back; generated types match live.
+runtime policy `appVersion` (a fingerprint differs per store). Migration APPLIED 2026-11-13 (as `tenant_app_builds`) and probed: anon read + authenticated insert 42501, second open build 23505, queued→building→finished, finished→errored 23514, submit after finish ok, rolled back; generated types match live. Live test (`tests/live/app-builds-live.test.ts`) passed on platform. Browser 2026-11-13: Builds tab on the sample-demo test app shows the identity refusals with Build disabled; a seeded build moved to Built · On Play internal testing · v1.0.0 (3) · Download through two signed webhooks, picked up by the 15 s poll; row deleted.
 Goal "Customer app: one codebase…", phase P9 (and the Builds panel left over from P8).
 
 ## Goal

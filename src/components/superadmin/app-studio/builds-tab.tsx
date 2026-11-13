@@ -42,13 +42,15 @@ export function BuildsTab({ tenantId, canEdit }: { tenantId: string; canEdit: bo
   const [error, setError] = useState<string | null>(null)
   const [isStarting, startTransition] = useTransition()
 
-  const load = useCallback(async () => {
+  /** Re-reads the list. Returns the read's error so a caller can decide what to show. */
+  const read = useCallback(async (): Promise<string | null> => {
     const result = await getAppBuildsAction(tenantId)
-    if (result.ok) {
-      setOverview(result.data)
-      setError(null)
-    } else setError(result.error)
+    if (!result.ok) return result.error
+    setOverview(result.data)
+    return null
   }, [tenantId])
+
+  const load = useCallback(async () => setError(await read()), [read])
 
   useEffect(() => {
     void load()
@@ -65,8 +67,9 @@ export function BuildsTab({ tenantId, canEdit }: { tenantId: string; canEdit: bo
     startTransition(async () => {
       setError(null)
       const result = await startAppBuildsAction(tenantId, platforms)
-      if (!result.ok) setError(result.error)
-      await load()
+      // A refused start keeps its reason on screen; the re-read must not wipe it.
+      const readError = await read()
+      setError(result.ok ? readError : result.error)
     })
 
   if (!overview) {
