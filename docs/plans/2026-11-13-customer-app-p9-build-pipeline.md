@@ -1,6 +1,11 @@
 # Customer app P9: build and submit pipeline
 
-Status: DRAFT 2026-11-13, awaiting the owner's OK and the 4 decisions at the end.
+Status: APPROVED 2026-11-13 ("ok lets do it": the recommended answers to the 4 decisions) and BUILT on
+feat/customer-app-p9-builds (9be26832). Changes while building: the ASC key also lives in GitHub
+secrets (non-interactive credential repair + submit need it on the runner); Expo's docs don't promise
+non-interactive credentials for a NEW bundle id/package, so the first build per app may need one
+`eas credentials` run (runbook); `APP_BUILD_DRY_RUN=1` proves the workflow without EAS; OTA uses
+runtime policy `appVersion` (a fingerprint differs per store). Migration NOT applied yet.
 Goal "Customer app: one codebase…", phase P9 (and the Builds panel left over from P8).
 
 ## Goal
