@@ -7,11 +7,6 @@
   ],
   "verifiedOn": "2026-11-11",
   "notApplied": {
-    "20261113120000_tenant_app_builds.sql": {
-      "status": "held",
-      "gate": "Written 2026-11-13; apply_migration confirmation expired twice (owner not at the prompt). Apply, then probe: table + one-open index + forward-only trigger exist; anon/authenticated 42501 on select/insert; a service-role queued → finished → errored update is refused. Then regenerate database.generated.ts (the tenant_app_builds block was hand-added in the generator's format).",
-      "checkedOn": "2026-11-13"
-    },
     "20261027130100_shift_expectations_authoritative.sql": {
       "status": "held",
       "gate": "Compare the server's expected cash with the stored device figure over real closed shifts (CASH_LIVE=1 cash-expectation-live) and explain every difference. The 14 days of shadow mode ended 2026-11-10; the probe has not been run.",
@@ -445,6 +440,7 @@
     "20261111224021_messenger_chat_log.sql",
     "20261112022453_owl_assistant_access_and_kinds.sql",
     "20261112120000_tenants_payment_step_style.sql",
-    "20261112150000_customer_app_push.sql"
+    "20261112150000_customer_app_push.sql",
+    "20261113120000_tenant_app_builds.sql"
   ]
 }

@@ -5,7 +5,7 @@ feat/customer-app-p9-builds (9be26832). Changes while building: the ASC key also
 secrets (non-interactive credential repair + submit need it on the runner); Expo's docs don't promise
 non-interactive credentials for a NEW bundle id/package, so the first build per app may need one
 `eas credentials` run (runbook); `APP_BUILD_DRY_RUN=1` proves the workflow without EAS; OTA uses
-runtime policy `appVersion` (a fingerprint differs per store). Migration NOT applied yet.
+runtime policy `appVersion` (a fingerprint differs per store). Migration APPLIED 2026-11-13 (as `tenant_app_builds`) and probed: anon read + authenticated insert 42501, second open build 23505, queued→building→finished, finished→errored 23514, submit after finish ok, rolled back; generated types match live.
 Goal "Customer app: one codebase…", phase P9 (and the Builds panel left over from P8).
 
 ## Goal
