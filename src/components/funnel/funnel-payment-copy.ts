@@ -34,9 +34,8 @@ export const PAYMENT = {
   proofPick: 'Pumili ng screenshot',
   proofTypes: 'PNG, JPG o WEBP, hanggang 5MB',
   proofUploading: (percent: number) => `Ina-upload… ${percent}%`,
-  proofDone: 'Natanggap na namin ang screenshot mo.',
-  proofDoneBody: 'Iche-check namin ito at ise-send ang setup link mo by SMS o email.',
-  proofReplace: 'Palitan ang screenshot',
+  proofReplacing: 'Pumili ng bagong screenshot. Papalitan nito ang na-upload mo kanina.',
+  proofKeep: 'Huwag nang palitan',
   proofWrongType: 'PNG, JPG o WEBP lang ang pwede.',
   proofTooLarge: 'Masyadong malaki ang file. Hanggang 5MB lang.',
   proofUnavailable: 'Hindi available ang upload ngayon. I-message kami sa Messenger.',
@@ -52,4 +51,38 @@ export const PAYMENT = {
   haveReady: 'Ihanda na: picture ng menu mo, logo (kung meron), at GCash o Maya number mo.',
   help: 'May tanong?',
   helpCta: 'Chat with us on Messenger',
+} as const
+
+/**
+ * The thank-you screen shown once the buyer's screenshot is saved (right after
+ * the upload, and on every later visit to the same confirmation link). The page
+ * is public to anyone holding the reference, so it never prints the buyer's
+ * phone or email, only that we will use the ones they gave.
+ */
+export const THANKS = {
+  kicker: 'Screenshot received',
+  titleLead: 'Salamat!',
+  title: 'Natanggap na namin ang screenshot mo.',
+  subtitle:
+    'Ire-review namin ang lahat: ang payment at ang details mo. Pag okay na, ite-text at ie-email ka namin ng private setup link mo.',
+  nextTitle: 'Ano ang susunod',
+  nextSteps: [
+    { title: 'Ire-review namin ang payment at details mo.', note: 'Ginagawa na namin' },
+    { title: 'Ite-text at ie-email namin ang private setup link mo.', note: null },
+    {
+      title: 'Sagutin ang ilang tanong (mga 5 minutes) at i-upload ang menu photo mo.',
+      note: 'Live ka within 48 hours, madalas same day.',
+    },
+  ],
+  contactTitle: 'Saan mo matatanggap ang setup link',
+  contactSms: 'Text',
+  contactSmsBody: 'Sa phone number na binigay mo.',
+  contactEmail: 'Email',
+  contactEmailBody: 'Sa email na binigay mo. I-check din ang Spam o Promotions.',
+  reference: 'Reference number',
+  referenceHint: 'Gamitin ito kung magme-message ka sa amin.',
+  shotTitle: 'Ang na-upload mo',
+  shotAlt: 'Ang payment screenshot na na-upload mo',
+  replace: 'Mali ang na-upload? Palitan',
+  closeNote: 'Pwede mo nang isara ang page na ito. Kami na ang bahala.',
 } as const

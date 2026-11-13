@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import Image from 'next/image'
+import { Check, Copy, Lock, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { BRAND } from '@/components/landing/landing-theme'
 import { paymentBrandFor } from '@/lib/checkout-leads/payment-brand'
 import { PAYMENT } from './funnel-payment-copy'
 
@@ -69,6 +71,60 @@ export function CopyRow({ label, value, copyValue, copyLabel }: { label: string;
         <dd className="fn-tabular mt-0.5 truncate text-[17px] font-semibold tracking-[0.01em] text-white">{value}</dd>
       </div>
       {copyValue && <CopyButton value={copyValue} label={copyLabel ?? label} />}
+    </div>
+  )
+}
+
+const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
+
+/** The payment step's and thank-you screen's top bar: brand + "Secure checkout". */
+export function PaymentHeader() {
+  return (
+    <header className="fn-nav sticky top-0 z-40">
+      <div className="mx-auto flex h-16 max-w-[1000px] items-center justify-between gap-3 px-5">
+        <span className="flex items-center gap-2.5">
+          <Image src="/smartmenu-mark.png" alt="" width={32} height={32} className="h-8 w-8 rounded-[9px] bg-[#FBF6ED] object-contain p-0.5" />
+          <span className="text-[15px] font-semibold tracking-[-0.01em] text-white">{BRAND.name}</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-[12.5px] text-[#A99C8D]">
+          <Lock aria-hidden className="h-3.5 w-3.5 text-[#3CC47C]" strokeWidth={2.25} />
+          {PAYMENT.secure}
+        </span>
+      </div>
+    </header>
+  )
+}
+
+/** Details → Payment → Setup, with every step before `currentStep` ticked. */
+export function ProgressSteps({ currentStep }: { currentStep: number }) {
+  return (
+    <ol className="mx-auto mt-7 flex w-fit items-center gap-2 text-[12.5px] font-medium" aria-label="Checkout progress">
+      {PAYMENT.progress.map((step, index) => {
+        const isDone = index < currentStep
+        const isCurrent = index === currentStep
+        return (
+          <li key={step} className="flex items-center gap-2" aria-current={isCurrent ? 'step' : undefined}>
+            {index > 0 && <span aria-hidden className={`h-px w-6 sm:w-10 ${isDone || isCurrent ? 'bg-[#F5A623]/60' : 'bg-white/15'}`} />}
+            <span className={`fn-progress ${isDone ? 'fn-progress--done' : ''} ${isCurrent ? 'fn-progress--current' : ''}`}>
+              {isDone ? <Check aria-hidden className="h-3 w-3" strokeWidth={3} /> : <span aria-hidden>{index + 1}</span>}
+              {step}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** "May tanong?" + the Messenger button. */
+export function MessengerHelp() {
+  return (
+    <div>
+      <p className="text-[13px] text-[#A99C8D]">{PAYMENT.help}</p>
+      <a href={`https://m.me/${FACEBOOK_PAGE_USERNAME}`} target="_blank" rel="noopener noreferrer" className="fn-ghost-btn mt-2.5">
+        <MessageCircle aria-hidden className="h-4 w-4" />
+        {PAYMENT.helpCta}
+      </a>
     </div>
   )
 }

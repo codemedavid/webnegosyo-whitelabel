@@ -174,6 +174,45 @@ describe('sendLeadPurchaseOnce', () => {
   })
 })
 
+describe('sendProofPurchaseOnce (the thank-you screen)', () => {
+  let sendProofPurchaseOnce: Awaited<ReturnType<typeof load>>['sendProofPurchaseOnce']
+  beforeAll(async () => ({ sendProofPurchaseOnce } = await load()))
+  beforeEach(() => {
+    sendMetaConversionEvent.mockReset()
+  })
+
+  it('claims a browser lead with a screenshot that never sent a Purchase (by reference)', async () => {
+    const { admin, calls } = fakeAdmin(LEAD)
+    sendMetaConversionEvent.mockResolvedValue({ sent: true })
+
+    expect(await sendProofPurchaseOnce(admin, 'SM-123')).toEqual({ sent: true })
+
+    expect(calls[0].filters).toEqual([
+      ['eq', 'reference_number', 'SM-123'],
+      ['is', 'meta_purchase_sent_at', null],
+      ['not', 'payment_proof_url is', null],
+      ['not', 'meta_attribution is', null],
+    ])
+    // The SAME event id as the browser pixel's Purchase and the staff path's.
+    expect(sendMetaConversionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: 'Purchase', eventId: 'purchase_SM-123' })
+    )
+  })
+
+  it('sends nothing once a Purchase went out (staff paid, or an earlier screenshot)', async () => {
+    const { admin } = fakeAdmin(null)
+    expect(await sendProofPurchaseOnce(admin, 'SM-123')).toEqual({ sent: false, reason: 'not-eligible' })
+    expect(sendMetaConversionEvent).not.toHaveBeenCalled()
+  })
+
+  it('gives the claim back by row id when Meta refused', async () => {
+    const { admin, calls } = fakeAdmin(LEAD)
+    sendMetaConversionEvent.mockResolvedValue({ sent: false, error: 'bad' })
+    expect(await sendProofPurchaseOnce(admin, 'SM-123')).toEqual({ sent: false, reason: 'send-failed' })
+    expect(calls[1].filters[0]).toEqual(['eq', 'id', 'lead-1'])
+  })
+})
+
 describe('META_PURCHASE_STATUSES', () => {
   it('are exactly the statuses whose trigger stamps paid_at', async () => {
     const { META_PURCHASE_STATUSES } = await load()

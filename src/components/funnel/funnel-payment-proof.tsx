@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { CheckCircle2, ImageUp, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ImageUp, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
 import { isImageKitConfigured, uploadPaymentProofImage } from '@/lib/imagekit-upload'
@@ -20,8 +20,7 @@ function proofFileProblem(file: File): string | null {
   return null
 }
 
-function usePaymentProofUpload(referenceNumber: string, initialUrl: string | null, amount?: number) {
-  const [proofUrl, setProofUrl] = useState(initialUrl ?? '')
+function usePaymentProofUpload(referenceNumber: string, onUploaded: (url: string) => void, amount?: number) {
   const [isUploading, setIsUploading] = useState(false)
   const [progress, setProgress] = useState(0)
 
@@ -41,9 +40,9 @@ function usePaymentProofUpload(referenceNumber: string, initialUrl: string | nul
         toast.error(PAYMENT.proofSaveFailed)
         return
       }
-      setProofUrl(url)
       // The buyer says they paid: the step between Lead and staff's Purchase.
       trackMetaEvent('AddPaymentInfo', { content_name: 'Smart Menu System', currency: 'PHP', value: amount })
+      onUploaded(url)
     } catch (error) {
       console.error('[funnel] payment proof upload failed', error)
       toast.error(PAYMENT.proofUploadFailed)
@@ -53,7 +52,7 @@ function usePaymentProofUpload(referenceNumber: string, initialUrl: string | nul
     }
   }
 
-  return { proofUrl, isUploading, progress, upload }
+  return { isUploading, progress, upload }
 }
 
 function ProofInput({ onPick, isDisabled }: { onPick: (file: File) => void; isDisabled: boolean }) {
@@ -74,61 +73,63 @@ function ProofInput({ onPick, isDisabled }: { onPick: (file: File) => void; isDi
   )
 }
 
-/** The screenshot upload: a big drop target, then a "received" state with the image. */
+/**
+ * The screenshot upload: one big drop target. A saved screenshot is handed to
+ * `onUploaded` (the payment step then shows the thank-you screen). `onKeep` is
+ * set while the buyer is replacing an earlier screenshot, to go back without
+ * sending a new one.
+ */
 export function FunnelPaymentProof({
   referenceNumber,
-  initialProofUrl,
   amount,
+  onUploaded,
+  onKeep,
 }: {
   referenceNumber: string
-  initialProofUrl: string | null
   amount?: number
+  onUploaded: (url: string) => void
+  onKeep?: () => void
 }) {
-  const { proofUrl, isUploading, progress, upload } = usePaymentProofUpload(referenceNumber, initialProofUrl, amount)
+  const { isUploading, progress, upload } = usePaymentProofUpload(referenceNumber, onUploaded, amount)
+  const sectionRef = useRef<HTMLElement>(null)
+  const isReplacing = Boolean(onKeep)
+
+  // Arriving from the thank-you screen's "Palitan": bring the upload box into
+  // view, it sits below the QR and account details.
+  useEffect(() => {
+    if (isReplacing) sectionRef.current?.scrollIntoView?.({ block: 'center' })
+  }, [isReplacing])
 
   return (
-    <section className="fn-card p-6 sm:p-8" aria-labelledby="funnel-pay-proof">
+    <section ref={sectionRef} className="fn-card p-6 sm:p-8" aria-labelledby="funnel-pay-proof">
       <h2 id="funnel-pay-proof" className="text-[18px] font-semibold tracking-[-0.01em] text-white">
         {PAYMENT.proofTitle}
       </h2>
-      <p className="mt-1 text-[14px] text-[#A99C8D]">{PAYMENT.proofBody}</p>
+      <p className="mt-1 text-[14px] text-[#A99C8D]">{isReplacing ? PAYMENT.proofReplacing : PAYMENT.proofBody}</p>
 
-      {proofUrl ? (
-        <div className="mt-5 space-y-4">
-          <div className="flex gap-3 rounded-2xl border border-[#3CC47C]/35 bg-[#3CC47C]/[0.08] p-4" role="status">
-            <CheckCircle2 aria-hidden className="h-5 w-5 shrink-0 text-[#3CC47C]" />
-            <div>
-              <p className="text-[14.5px] font-semibold text-white">{PAYMENT.proofDone}</p>
-              <p className="mt-0.5 text-[13px] text-[#A99C8D]">{PAYMENT.proofDoneBody}</p>
-            </div>
-          </div>
-          {/* eslint-disable-next-line @next/next/no-img-element -- the buyer's own upload */}
-          <img src={proofUrl} alt="" className="max-h-64 rounded-xl border border-white/10 object-contain" />
-          <label className="fn-ghost-btn cursor-pointer">
-            <ImageUp aria-hidden className="h-4 w-4" />
-            {PAYMENT.proofReplace}
-            <ProofInput onPick={upload} isDisabled={isUploading} />
-          </label>
-        </div>
-      ) : (
-        <label className="fn-drop mt-5" data-busy={isUploading || undefined}>
-          {isUploading ? (
-            <>
-              <Loader2 aria-hidden className="h-7 w-7 animate-spin text-[#F5A623]" />
-              <span className="mt-3 text-[14px] font-medium text-white">{PAYMENT.proofUploading(progress)}</span>
-              <span className="mt-3 h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
-                <span className="block h-full rounded-full bg-[#F5A623] transition-[width] duration-300" style={{ width: `${progress}%` }} />
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="fn-tile !h-14 !w-14"><ImageUp aria-hidden className="h-6 w-6" strokeWidth={1.75} /></span>
-              <span className="mt-4 text-[15px] font-semibold text-white">{PAYMENT.proofPick}</span>
-              <span className="mt-1 text-[12.5px] text-[#A99C8D]">{PAYMENT.proofTypes}</span>
-            </>
-          )}
-          <ProofInput onPick={upload} isDisabled={isUploading} />
-        </label>
+      <label className="fn-drop mt-5" data-busy={isUploading || undefined}>
+        {isUploading ? (
+          <>
+            <Loader2 aria-hidden className="h-7 w-7 animate-spin text-[#F5A623]" />
+            <span className="mt-3 text-[14px] font-medium text-white">{PAYMENT.proofUploading(progress)}</span>
+            <span className="mt-3 h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
+              <span className="block h-full rounded-full bg-[#F5A623] transition-[width] duration-300" style={{ width: `${progress}%` }} />
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="fn-tile !h-14 !w-14"><ImageUp aria-hidden className="h-6 w-6" strokeWidth={1.75} /></span>
+            <span className="mt-4 text-[15px] font-semibold text-white">{PAYMENT.proofPick}</span>
+            <span className="mt-1 text-[12.5px] text-[#A99C8D]">{PAYMENT.proofTypes}</span>
+          </>
+        )}
+        <ProofInput onPick={upload} isDisabled={isUploading} />
+      </label>
+
+      {onKeep && (
+        <button type="button" onClick={onKeep} disabled={isUploading} className="fn-ghost-btn mt-4">
+          {PAYMENT.proofKeep}
+        </button>
       )}
     </section>
   )

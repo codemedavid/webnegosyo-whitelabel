@@ -33,6 +33,7 @@ import {
   runAfterResponse,
   sendLeadConversion,
   sendLeadPurchaseOnce,
+  sendProofPurchaseOnce,
   toLeadMetaAttribution,
 } from '@/lib/checkout-leads/meta-events'
 import type { RateLimitOptions } from '@/lib/distributed-rate-limit'
@@ -234,7 +235,18 @@ export async function submitPaymentProof(
 
   const rate = await checkActionRateLimit('checkout-lead-proof', CHECKOUT_LEAD_PROOF_RATE_LIMIT)
   if (!rate.allowed) return { error: 'Too many uploads. Please try again later.' }
-  return uploadPaymentProof(referenceNumber, proofUrl)
+  const result = await uploadPaymentProof(referenceNumber, proofUrl)
+  // The buyer reached the thank-you screen: the server half of the Purchase
+  // the browser fires there (same event id, once per lead; a replaced
+  // screenshot finds the claim taken and sends nothing).
+  if (!result.error) {
+    await runAfterResponse(() =>
+      sendProofPurchaseOnce(createAdminClient(), referenceNumber).catch((error: unknown) => {
+        console.error('[Meta CAPI] Purchase dispatch failed', error)
+      })
+    )
+  }
+  return result
 }
 
 // ---- Platform Payment Methods ----
