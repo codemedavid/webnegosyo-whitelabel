@@ -155,4 +155,24 @@ describe('POST /api/exports (the preview)', () => {
     expect((await post({ ...body, everything: true })).status).toBe(400)
     expect((await post('nope')).status).toBe(400)
   })
+
+  it('lists what this account may pick, without reading an order', async () => {
+    const response = await post({ ...body, mode: 'catalogue', sheets: ['summary'] })
+    expect(response.status).toBe(200)
+    const { catalogue } = await response.json()
+    const cards = catalogue.groups.flatMap((group: { cards: { id: string; lockedNote: string | null }[] }) => group.cards)
+    // The fixture account holds `reports` only: sales sheets are open, the books are locked with a reason.
+    expect(cards.find((card: { id: string }) => card.id === 'orders').lockedNote).toBeNull()
+    expect(cards.find((card: { id: string }) => card.id === 'expenses').lockedNote).toMatch(/Not on your account/)
+    // Single-branch store: the branches sheet is not offered at all.
+    expect(cards.some((card: { id: string }) => card.id === 'branches')).toBe(false)
+    expect(catalogue.defaults).toEqual(['summary', 'sales_by_day', 'items', 'orders'])
+    for (const pack of catalogue.packs) {
+      expect(pack.sheets.length).toBeGreaterThan(0)
+      expect(pack.sheets).not.toContain('expenses')
+    }
+    expect(catalogue.packs.map((pack: { id: string }) => pack.id)).toEqual(['everything', 'accountant'])
+    expect(catalogue).toMatchObject({ maxDetailDays: 93, today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), branchLabel: null })
+    expect(mockLog).not.toHaveBeenCalled()
+  })
 })

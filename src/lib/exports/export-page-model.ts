@@ -103,6 +103,33 @@ export function packSheets(pack: ExportPack, groups: readonly ExportCardGroup[])
   return pack.sheets === null ? open : open.filter((id) => pack.sheets?.includes(id))
 }
 
+export interface ExportCatalogue {
+  groups: ExportCardGroup[]
+  /** Each ready-made set with the sheets it ticks for THIS account; a set missing its main sheet is not offered. */
+  packs: { id: string; label: string; about: string; sheets: SheetId[] }[]
+  /** Ticked when the screen opens. */
+  defaults: SheetId[]
+  /** Row-by-row sheets cover at most this many days in one file. */
+  maxDetailDays: number
+}
+
+/** Everything a screen needs to offer an export to this account (the merchant app reads it; the web page builds the same). */
+export function exportCatalogue(access: ExportAccess, isMultiBranch: boolean): ExportCatalogue {
+  const groups = exportCardGroups(access, isMultiBranch)
+  return {
+    groups,
+    // A set is named after its first sheet ("Profit statement" → profit): without that one it is not offered.
+    packs: EXPORT_PACKS.flatMap((pack) => {
+      const sheets = packSheets(pack, groups)
+      const lead = pack.sheets?.[0]
+      if (sheets.length === 0 || (lead !== undefined && !sheets.includes(lead))) return []
+      return [{ id: pack.id, label: pack.label, about: pack.about, sheets }]
+    }),
+    defaults: initialSheets([], groups),
+    maxDetailDays: MAX_DETAIL_DAYS,
+  }
+}
+
 const KNOWN = new Set<string>(SHEET_IDS)
 
 /** `?sheets=orders,items` → known ids, in catalogue order, no repeats. */

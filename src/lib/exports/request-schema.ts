@@ -17,8 +17,11 @@ export type ExportSource = (typeof EXPORT_SOURCES)[number]
 export const exportRequestSchema = z
   .object({
     tenantId: z.uuid(),
-    /** `preview` = what the file would hold (sheets, row counts, a peek); nothing is stored. */
-    mode: z.enum(['preview', 'file']).default('file'),
+    /**
+     * `preview` = what the file would hold (sheets, row counts, a peek); nothing is stored.
+     * `catalogue` = the sheets and ready-made sets THIS account may pick (the merchant app's Export screen).
+     */
+    mode: z.enum(['preview', 'file', 'catalogue']).default('file'),
     sheets: z
       .array(z.enum(SHEET_IDS))
       .min(1)

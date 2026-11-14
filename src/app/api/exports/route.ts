@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { ExportError } from '@/lib/exports/errors'
+import { exportCatalogue } from '@/lib/exports/export-page-model'
 import { exportQuerySchema, exportRequestSchema, type ExportRequest } from '@/lib/exports/request-schema'
 import { previewExport, runExport, toExportFile } from '@/lib/exports/run-export'
 import { logExport } from '@/lib/exports/server/export-log'
@@ -50,7 +51,8 @@ function failure(error: unknown, what: string): NextResponse {
 /**
  * POST /api/exports — what a file WOULD hold: the sheets this caller gets,
  * their columns, row counts and first rows, and anything left out and why.
- * Nothing is logged; nothing leaves but the peek.
+ * Nothing is logged; nothing leaves but the peek. `mode: 'catalogue'` answers
+ * with the sheets and ready-made sets this account may pick instead.
  *
  * Reads run as the CALLER (cookie session or the app's Bearer token), so RLS
  * and the staff keys decide every row; a branch-locked account always gets its
@@ -65,6 +67,22 @@ export const POST = defineRoute({
     try {
       const loaded = await loadExportInput(body)
       if (loaded.kind !== 'ready') return refusalFor(loaded)
+      if (body.mode === 'catalogue') {
+        // The merchant app's Export screen: what this account may pick. No order is read.
+        const { context, access } = loaded.input
+        return NextResponse.json(
+          {
+            success: true,
+            catalogue: {
+              ...exportCatalogue(access, context.isMultiBranch),
+              today: context.today,
+              branchLabel: context.lockedBranchLabel,
+              isMixedBackend: context.isMixedBackend,
+            },
+          },
+          { headers: NO_STORE },
+        )
+      }
       const preview = await previewExport(loaded.input)
       return NextResponse.json({ success: true, preview }, { headers: NO_STORE })
     } catch (error) {

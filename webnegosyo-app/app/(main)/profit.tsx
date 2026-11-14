@@ -8,6 +8,8 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { ReportRangePicker } from "../../components/ReportRangePicker";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { ExportDoorButton } from "../../components/export/ExportDoorButton";
+import { SCREEN_EXPORT_SHEETS } from "../../lib/export/export-routes";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { useIsWideReports } from "../../components/reports/ReportsColumns";
 import { CashFlowCard } from "../../components/profit/CashFlowCard";
@@ -141,7 +143,18 @@ export default function ProfitScreen() {
 
   const isOpen = state.kind !== "locked" && state.kind !== "not_set_up";
   const header = (
-    <ScreenHeader title="Profit" subtitle={branchView.label ?? "Sales, minus ingredients and expenses"}>
+    <ScreenHeader
+      title="Profit"
+      subtitle={branchView.label ?? "Sales, minus ingredients and expenses"}
+      actions={
+        isOpen ? (
+          <ExportDoorButton
+            sheets={SCREEN_EXPORT_SHEETS.profit}
+            start={period.preset === "this_month" || period.preset === "last_month" ? { preset: period.preset } : { from: period.fromKey, to: period.toKey }}
+          />
+        ) : undefined
+      }
+    >
       {isOpen ? <SegmentedControl options={VIEWS} value={view} onChange={setView} accessibilityPrefix="Show" /> : null}
     </ScreenHeader>
   );
