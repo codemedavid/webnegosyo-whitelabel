@@ -2,9 +2,14 @@ import React, { memo, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import {
   formatTicketTimer,
-  kitchenItemLabel,
+  kitchenAddonLines,
+  kitchenOptionLines,
+  kitchenTicketSections,
+  type KitchenItemLike,
   type KitchenTicket,
 } from "../../lib/kitchen-tickets";
+import { formatDailyOrderNumber } from "../../lib/order-number";
+import { getScheduledLabel } from "../../lib/scheduled-orders";
 import { displayCustomerName, getUrgency, getOrderTypeMeta, type Urgency } from "../../lib/order-visuals";
 import { getOrderTableNumber } from "../../lib/order-table-number";
 import { kitchenNotesOf } from "../../lib/kitchen-order-note";
@@ -32,6 +37,8 @@ export const kds = {
   card: "#1C1C1F",
   cardBorder: "#2A2A2E",
   ink: "#F5F5F4",
+  /** A dish's choices and add-ons: a step under the dish name, never grey. */
+  inkDetail: "#E4E4E7",
   inkSoft: "#A1A1AA",
   struck: "#52525B",
   fresh: "#34D399",
@@ -106,6 +113,11 @@ export const TicketCard = memo(function TicketCard({
   const typeLabel = order.orderType ? getOrderTypeMeta(order.orderType).label : null;
   const tableNumber = getOrderTableNumber(order.customerData);
   const orderNotes = kitchenNotesOf(order.customerData);
+  // The same number the cashier's order card and the "kitchen confirmed"
+  // banner show, so "#12 is ready" means one order to everyone.
+  const orderRef = formatDailyOrderNumber(order.dailyNumber, order._id);
+  const scheduledLabel = getScheduledLabel(order);
+  const sections = kitchenTicketSections(items);
 
   const promisedMs = order.promisedReadyAt ? Date.parse(order.promisedReadyAt) : null;
   const promise = prepPromiseState(
@@ -136,7 +148,7 @@ export const TicketCard = memo(function TicketCard({
     >
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.orderRef}>#{order._id.slice(-4).toUpperCase()}</Text>
+          <Text style={styles.orderRef}>{orderRef}</Text>
           {typeLabel ? <Text style={styles.typeChip}>{typeLabel.toUpperCase()}</Text> : null}
         </View>
         <Text style={[styles.timer, { color: accent }]}>
@@ -148,6 +160,9 @@ export const TicketCard = memo(function TicketCard({
         {order.status === "preparing" ? "  ·  PREPARING" : ""}
       </Text>
       {tableNumber ? <Text style={styles.table}>Table {tableNumber}</Text> : null}
+      {scheduledLabel ? (
+        <Text style={styles.scheduled}>SCHEDULED · {scheduledLabel}</Text>
+      ) : null}
 
       <KitchenStatusStrip status={kitchenStatus} rangAtMs={rangAtMs} />
 
@@ -166,44 +181,34 @@ export const TicketCard = memo(function TicketCard({
         {items.length === 0 ? (
           <Text style={styles.loadingItems}>Loading items…</Text>
         ) : (
-          items.map((item, index) => {
-            const isStruck = struck.has(index);
-            return (
-              <TouchableOpacity
-                key={index}
-                onPress={() => toggleStruck(index)}
-                activeOpacity={0.7}
-                style={styles.itemRow}
+          sections.map((section) =>
+            section.kind === "item" ? (
+              <TicketItemRow
+                key={section.index}
+                item={items[section.index]}
+                index={section.index}
+                isStruck={struck.has(section.index)}
+                onToggle={toggleStruck}
+              />
+            ) : (
+              <View
+                key={`combo-${section.bundleId}`}
+                style={styles.combo}
+                testID={`ticket-combo-${section.bundleId}`}
               >
-                <Text style={[styles.itemQty, isStruck && styles.itemStruck]}>
-                  {item.quantity}×
-                </Text>
-                <View style={styles.itemBody}>
-                  <Text style={[styles.itemName, isStruck && styles.itemStruck]}>
-                    {kitchenItemLabel(item)}
-                  </Text>
-                  {(item.addons ?? []).map((addon, addonIndex) => (
-                    <Text
-                      key={addonIndex}
-                      style={[styles.itemDetail, isStruck && styles.itemStruck]}
-                    >
-                      + {addon.name}
-                    </Text>
-                  ))}
-                  {item.specialInstructions ? (
-                    <View
-                      testID={`ticket-item-note-${index}`}
-                      style={[styles.itemNoteBox, isStruck && styles.itemNoteBoxStruck]}
-                    >
-                      <Text style={[styles.itemNote, isStruck && styles.itemStruck]}>
-                        ✱ {item.specialInstructions}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </TouchableOpacity>
-            );
-          })
+                <Text style={styles.comboTitle}>COMBO · {section.bundleName}</Text>
+                {section.indexes.map((index) => (
+                  <TicketItemRow
+                    key={index}
+                    item={items[index]}
+                    index={index}
+                    isStruck={struck.has(index)}
+                    onToggle={toggleStruck}
+                  />
+                ))}
+              </View>
+            ),
+          )
         )}
       </View>
 
@@ -290,6 +295,61 @@ export const TicketCard = memo(function TicketCard({
     </View>
   );
 });
+
+/**
+ * One dish: quantity, name, then everything that changes how it is made —
+ * each choice group on its own line ("Size: Large"), every add-on with its
+ * count, the combo slot it fills, and the customer's note in a box. Tapping
+ * the row strikes it through on this display only.
+ */
+function TicketItemRow({
+  item,
+  index,
+  isStruck,
+  onToggle,
+}: {
+  item: KitchenItemLike;
+  index: number;
+  isStruck: boolean;
+  onToggle: (index: number) => void;
+}) {
+  const slotName = item.isBundleItem && item.slotName ? item.slotName.trim() : "";
+  return (
+    <TouchableOpacity onPress={() => onToggle(index)} activeOpacity={0.7} style={styles.itemRow}>
+      <Text style={[styles.itemQty, isStruck && styles.itemStruck]}>{item.quantity}×</Text>
+      <View style={styles.itemBody}>
+        {slotName ? (
+          <Text style={[styles.itemSlot, isStruck && styles.itemStruck]}>{slotName.toUpperCase()}</Text>
+        ) : null}
+        <Text style={[styles.itemName, isStruck && styles.itemStruck]}>{item.menuItemName}</Text>
+        {kitchenOptionLines(item).map((line, lineIndex) => (
+          <Text
+            key={`option-${lineIndex}`}
+            testID={`ticket-item-option-${index}-${lineIndex}`}
+            style={[styles.itemOption, isStruck && styles.itemStruck]}
+          >
+            {line}
+          </Text>
+        ))}
+        {kitchenAddonLines(item).map((line, lineIndex) => (
+          <Text key={`addon-${lineIndex}`} style={[styles.itemDetail, isStruck && styles.itemStruck]}>
+            + {line}
+          </Text>
+        ))}
+        {item.specialInstructions ? (
+          <View
+            testID={`ticket-item-note-${index}`}
+            style={[styles.itemNoteBox, isStruck && styles.itemNoteBoxStruck]}
+          >
+            <Text style={[styles.itemNote, isStruck && styles.itemStruck]}>
+              ✱ {item.specialInstructions}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 /**
  * What the cashier side will see about this ticket. A ringing card says WHEN
@@ -444,11 +504,44 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 22,
   },
-  itemDetail: {
-    color: kds.inkSoft,
-    fontSize: 14,
-    fontWeight: "600",
+  itemOption: {
+    color: kds.inkDetail,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 20,
     marginTop: 1,
+  },
+  itemDetail: {
+    color: kds.inkDetail,
+    fontSize: 15,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginTop: 1,
+  },
+  itemSlot: {
+    color: kds.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  combo: {
+    borderWidth: 1,
+    borderColor: kds.cardBorder,
+    borderRadius: 8,
+    padding: 8,
+    gap: 8,
+  },
+  comboTitle: {
+    color: kds.ink,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+  scheduled: {
+    color: kds.warning,
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 2,
   },
   itemNoteBox: {
     alignSelf: "flex-start",
