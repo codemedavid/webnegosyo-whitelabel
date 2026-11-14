@@ -132,10 +132,23 @@ describe('cashier and shift', () => {
 })
 
 describe('preview', () => {
-  it('counts the orders without reading them all, and shows the first rows', async () => {
+  it('reads a short period whole, so every count is exact', async () => {
     const store = seedStore(orders)
-    const preview = await previewExport(input({ detailClient: store.client, sheets: ['orders', 'order_lines'] }))
-    const [ordersSheet, lines] = preview.sheets
+    const preview = await previewExport(input({ detailClient: store.client, sheets: ['orders', 'order_lines', 'sales_by_cashier'] }))
+    const full = await runExport(input({ detailClient: seedStore(orders).client, sheets: ['orders', 'order_lines', 'sales_by_cashier'] }))
+    expect(preview.sheets.map((sheet) => sheet.rows)).toEqual(full.sheets.map((sheet) => sheet.rows.length))
+    expect(preview.sheets[2].peek).toEqual(full.sheets[2].rows.slice(0, PEEK_ROWS))
+  })
+
+  it('counts a long period without reading it all, and never shows a tally of five orders', async () => {
+    const store = seedStore(orders)
+    const preview = await previewExport(
+      input({ detailClient: store.client, sheets: ['orders', 'order_lines', 'sales_by_cashier'], previewFullReadOrders: 0 }),
+    )
+    const [ordersSheet, lines, cashiers] = preview.sheets
+    expect(cashiers.rows).toBeNull()
+    expect(cashiers.peek).toEqual([])
+    expect(cashiers.notes.join(' ')).toMatch(/worked out when the file is made/)
     expect(ordersSheet.rows).toBe(orders.length)
     expect(ordersSheet.peek).toHaveLength(Math.min(PEEK_ROWS, orders.length))
     expect(ordersSheet.columns).toContain('Order total')

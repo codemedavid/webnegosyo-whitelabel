@@ -46,7 +46,7 @@ import {
   type DetailWindow,
 } from './read/detail-read'
 import type { DetailData } from './sheets/detail-data'
-import { customerRows, orderLineRows, orderRows, paymentRows } from './sheets/detail-sheets'
+import { cancelledRows, cashierRows, customerRows, discountRows, orderLineRows, orderRows, paymentRows } from './sheets/detail-sheets'
 import { breakdownRows, itemRows, paymentMethodRows, salesByDayRows, summaryRows } from './sheets/summary-sheets'
 import type { BuiltSheet, ExportAccess, ExportCellKind, ExportFile, ExportFormat, ExportHeader, ExportRow } from './types'
 
@@ -66,6 +66,8 @@ export interface ExportInput {
   now: number
   /** Tests only: rows per request, to page over a small fake. */
   pageSize?: number
+  /** Tests only: stands in for `PREVIEW_FULL_READ_ORDERS`. */
+  previewFullReadOrders?: number
 }
 
 export interface LeftOutSheet {
@@ -88,7 +90,7 @@ export interface PreviewSheet {
   columns: string[]
   /** How each column's cells are written, in the same order as `columns`. */
   kinds: ExportCellKind[]
-  /** Exact for every sheet but order lines and payments, which are only known once built (null). */
+  /** Exact, or null when a long period's rows are only known once the file is built. */
   rows: number | null
   peek: BuiltSheet['rows']
   notes: readonly string[]
@@ -180,7 +182,7 @@ async function readDetail(input: ExportInput, sheets: readonly SheetDef[], peek:
   const [itemsByOrder, paymentsByOrder, shifts, customers] = await Promise.all([
     readItems(client, orderIds, input.pageSize),
     readPayments(client, orderIds, input.pageSize),
-    wanted.has('orders') || wanted.has('payments_received') ? readShifts(client, window) : Promise.resolve([]),
+    SHEETS_WITH_STAFF_NAMES.some((id) => wanted.has(id)) ? readShifts(client, window) : Promise.resolve([]),
     wanted.has('customers') ? readCustomers(client, window.tenantId, customerIds) : Promise.resolve(new Map()),
   ])
   return {
@@ -195,6 +197,9 @@ async function readDetail(input: ExportInput, sheets: readonly SheetDef[], peek:
     end: window.end,
   }
 }
+
+/** Sheets that name a cashier: names come from the shifts on record. */
+const SHEETS_WITH_STAFF_NAMES: readonly SheetId[] = ['orders', 'payments_received', 'discounts', 'cancelled', 'sales_by_cashier']
 
 function rowsFor(sheet: SheetDef, sections: ReportSections, detail: DetailData | null): ExportRow[] {
   const data = (): DetailData => {
@@ -226,6 +231,12 @@ function rowsFor(sheet: SheetDef, sections: ReportSections, detail: DetailData |
       return paymentRows(data())
     case 'customers':
       return customerRows(data())
+    case 'discounts':
+      return discountRows(data())
+    case 'cancelled':
+      return cancelledRows(data())
+    case 'sales_by_cashier':
+      return cashierRows(data())
   }
 }
 
@@ -239,6 +250,8 @@ function sheetNotes(sheet: SheetDef, input: ExportInput, detail: DetailData | nu
       'An order marked paid with no payment recorded has no row here, so this sheet can add up to less than Money received on the Summary.',
     )
   }
+  if (sheet.id === 'sales_by_cashier') notes.push('Only orders rung up on the register have a cashier. Names come from the shifts on record for these dates.')
+  if (sheet.id === 'discounts') notes.push('Cancelled orders are not listed. A discount off a delivery fee is counted here too, so this can add up to more than “Less: discounts” on the Summary, which is food only.')
   if (sheet.id === 'customers') notes.push('Cancelled orders are not counted. A first-timer placed their first order ever inside this period.')
   if (input.context.isMixedBackend && sheet.source === 'detail') notes.push('Orders from before this store moved to the current system are not included.')
   return notes
@@ -261,32 +274,43 @@ export async function runExport(input: ExportInput): Promise<ExportResult> {
   }
 }
 
+/** Up to this many orders a preview reads every row, so its counts and first rows are exact. */
+export const PREVIEW_FULL_READ_ORDERS = 1500
+/** Sheets that add orders up (a customer, a cashier): their rows mean nothing over a handful of orders. */
+const TALLY_SHEETS: ReadonlySet<SheetId> = new Set<SheetId>(['customers', 'sales_by_cashier'])
+const TALLY_PREVIEW_NOTE = 'This sheet adds up every order, so its rows are worked out when the file is made.'
+
 /**
- * What the file would hold, cheaply: summary sheets are read (a handful of
- * report calls), row-level sheets are COUNTED and only their first orders
- * read for the peek. Refuses exactly what `runExport` would refuse.
+ * What the file would hold. Summary sheets are read (a handful of report
+ * calls). Row-level sheets: a period of up to `PREVIEW_FULL_READ_ORDERS`
+ * orders is read whole, so every count is exact; a bigger one is COUNTED and
+ * only its first orders read, and a sheet that adds orders up shows its
+ * columns without rows rather than figures for five orders.
+ * Refuses exactly what `runExport` would refuse.
  */
 export async function previewExport(input: ExportInput): Promise<ExportPreview> {
   const { included, leftOut } = choose(input)
   const hasDetail = included.some((sheet) => sheet.source === 'detail')
-  const [sections, detail, orderCount] = await Promise.all([
+  const [sections, orderCount] = await Promise.all([
     readSections(input, included),
-    readDetail(input, included, PEEK_ROWS),
     hasDetail ? countOrders(input.detailClient, detailWindow(input)) : Promise.resolve(0),
   ])
   if (orderCount > MAX_DETAIL_ORDERS) throw tooManyOrders(orderCount)
+  const isWhole = orderCount <= (input.previewFullReadOrders ?? PREVIEW_FULL_READ_ORDERS)
+  const detail = await readDetail(input, included, isWhole ? null : PEEK_ROWS)
   const sheets = included.map((sheet): PreviewSheet => {
     const built = build(sheet, input, sections, detail)
-    const rows = sheet.source === 'summary' ? built.rows.length : sheet.id === 'orders' ? orderCount : null
+    const isExact = sheet.source === 'summary' || isWhole
+    const isHeld = !isExact && TALLY_SHEETS.has(sheet.id)
     return {
       id: sheet.id,
       name: sheet.name,
       rowIs: sheet.rowIs,
       columns: built.columns.map((column) => column.header),
       kinds: built.columns.map((column) => column.kind),
-      rows,
-      peek: built.rows.slice(0, PEEK_ROWS),
-      notes: built.notes,
+      rows: isExact ? built.rows.length : sheet.id === 'orders' ? orderCount : null,
+      peek: isHeld ? [] : built.rows.slice(0, PEEK_ROWS),
+      notes: isHeld ? [...built.notes, TALLY_PREVIEW_NOTE] : built.notes,
     }
   })
   return { header: exportHeader(input.context, input.storeName, input.now), sheets, leftOut }

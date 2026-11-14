@@ -25,16 +25,20 @@ export const SHEET_IDS = [
   'order_lines',
   'payments_received',
   'customers',
+  'discounts',
+  'cancelled',
+  'sales_by_cashier',
 ] as const
 export type SheetId = (typeof SHEET_IDS)[number]
 
-export const SHEET_GROUPS = ['sales', 'orders', 'customers'] as const
+export const SHEET_GROUPS = ['sales', 'orders', 'customers', 'staff'] as const
 export type SheetGroup = (typeof SHEET_GROUPS)[number]
 
 export const SHEET_GROUP_LABELS: Readonly<Record<SheetGroup, string>> = {
   sales: 'Sales',
   orders: 'Orders',
   customers: 'Customers',
+  staff: 'Staff and cash',
 }
 
 /**
@@ -261,6 +265,74 @@ const SHEET_LIST: readonly SheetDef[] = [
       { id: 'first_order', header: 'First order in period', kind: 'text' },
       { id: 'last_order', header: 'Last order in period', kind: 'text' },
       { id: 'lifetime_orders', header: 'Orders ever', kind: 'count' },
+    ],
+  },
+  {
+    id: 'discounts',
+    name: 'Discounts given',
+    group: 'orders',
+    rowIs: 'one kind of discount on one order: Senior/PWD, voucher, manual or promo, and how much came off',
+    source: 'detail',
+    needs: ['reports'],
+    sections: [],
+    columns: [
+      { id: 'order_no', header: 'Order no.', kind: 'text' },
+      { id: 'business_day', header: 'Business day', kind: 'text' },
+      { id: 'date', header: 'Date', kind: 'text' },
+      { id: 'time', header: 'Time', kind: 'text' },
+      { id: 'branch', header: 'Branch', kind: 'text' },
+      { id: 'cashier', header: 'Cashier', kind: 'text' },
+      { id: 'kind', header: 'Kind of discount', kind: 'text' },
+      { id: 'detail', header: 'Voucher / reason', kind: 'text' },
+      { id: 'amount', header: 'Amount off', kind: 'money' },
+      { id: 'gross', header: 'Order before discounts', kind: 'money' },
+      { id: 'order_id', header: 'Order ID', kind: 'text' },
+    ],
+  },
+  {
+    id: 'cancelled',
+    name: 'Cancelled orders',
+    group: 'orders',
+    rowIs: 'one cancelled order: when, who rang it up, how much it was, and the reason',
+    source: 'detail',
+    needs: ['reports'],
+    sections: [],
+    columns: [
+      { id: 'order_no', header: 'Order no.', kind: 'text' },
+      { id: 'business_day', header: 'Business day', kind: 'text' },
+      { id: 'date', header: 'Date', kind: 'text' },
+      { id: 'time', header: 'Time', kind: 'text' },
+      { id: 'branch', header: 'Branch', kind: 'text' },
+      { id: 'order_type', header: 'Order type', kind: 'text' },
+      { id: 'channel', header: 'Channel', kind: 'text' },
+      { id: 'cashier', header: 'Cashier', kind: 'text' },
+      { id: 'customer', header: 'Customer', kind: 'text', needs: 'customers' },
+      { id: 'items', header: 'Items', kind: 'count' },
+      { id: 'total', header: 'Order total', kind: 'money' },
+      { id: 'refunded', header: 'Money returned', kind: 'money' },
+      { id: 'cancel_reason', header: 'Cancel reason', kind: 'text' },
+      { id: 'order_id', header: 'Order ID', kind: 'text' },
+    ],
+  },
+  {
+    id: 'sales_by_cashier',
+    name: 'Sales by cashier',
+    group: 'staff',
+    rowIs: 'one cashier: the orders they rang up on the register, and what those sold',
+    source: 'detail',
+    needs: ['reports'],
+    sections: [],
+    columns: [
+      { id: 'cashier', header: 'Cashier', kind: 'text' },
+      { id: 'orders', header: 'Orders', kind: 'count' },
+      { id: 'gross', header: 'Sales before discounts', kind: 'money' },
+      { id: 'discounts', header: 'Discounts', kind: 'money' },
+      { id: 'net', header: 'Sales', kind: 'money' },
+      { id: 'aov', header: 'Average order', kind: 'money' },
+      { id: 'collected', header: 'Money received', kind: 'money' },
+      { id: 'unpaid', header: 'Still to collect', kind: 'money' },
+      { id: 'cancelled', header: 'Cancelled orders', kind: 'count' },
+      { id: 'share', header: 'Share of sales', kind: 'percent' },
     ],
   },
 ]

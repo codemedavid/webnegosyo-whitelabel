@@ -12,6 +12,7 @@ import { SALE_CHANNEL_LABELS } from '@/lib/dashboard/sale-record'
 import { describeOrderItem } from '@/lib/order-item-display'
 import { getOrderTableNumber } from '@/lib/order-table-number'
 import { bucketKey } from '@/lib/reports/period'
+import { DISCOUNT_KINDS, DISCOUNT_KIND_LABELS } from '@/lib/reports/discount-allocation'
 import { toCents } from '@/lib/reports/money'
 import { toReportOrder } from '@/lib/reports/read/platform-order-row'
 import { orderFigures, orderLineFigures, type OrderFigures, type ReportOrder } from '@/lib/reports/sales-model'
@@ -249,4 +250,125 @@ export function customerRows(data: DetailData): ExportRow[] {
         lifetime_orders: known?.order_count ?? null,
       }
     })
+}
+
+/** The vouchers and reasons stored on an order, as one cell: "SAVE50, Birthday treat". */
+function discountDetail(order: ReportOrder): string | null {
+  const lines = Array.isArray(order.discount?.lines) ? order.discount.lines : []
+  const labels = lines.flatMap((line) => {
+    const label = text((line as { code?: unknown } | null)?.code) ?? text((line as { label?: unknown } | null)?.label)
+    return label ? [label] : []
+  })
+  return [...new Set(labels)].join(', ') || null
+}
+
+/**
+ * One row per kind of discount on a live order. The amounts are the sales
+ * model's own split (food and delivery fee together), so the column adds up
+ * to the model's food discounts plus its delivery discounts.
+ */
+export function discountRows(data: DetailData): ExportRow[] {
+  const names = staffNames(data.shifts)
+  return views(data).flatMap(({ row, order, figures, at, orderNo, businessDay }): ExportRow[] => {
+    if (!figures.isLive) return []
+    const cashierId = cashierIdOf(row)
+    const detail = discountDetail(order)
+    return DISCOUNT_KINDS.filter((kind) => figures.discountByKind[kind] !== 0).map((kind) => ({
+      order_no: orderNo,
+      business_day: businessDay,
+      date: manilaDate(at),
+      time: manilaTime(at),
+      branch: branchName(row.outlet_id, data.outletNames),
+      cashier: cashierId ? (names.get(cashierId) ?? null) : null,
+      kind: DISCOUNT_KIND_LABELS[kind],
+      detail,
+      amount: pesos(figures.discountByKind[kind]),
+      gross: pesos(figures.grossCents),
+      order_id: row.id,
+    }))
+  })
+}
+
+/** Orders that do not count as sales any more. They happened, so they are listed with what they were. */
+export function cancelledRows(data: DetailData): ExportRow[] {
+  const names = staffNames(data.shifts)
+  return views(data).flatMap(({ row, order, figures, at, orderNo, businessDay }): ExportRow[] => {
+    if (figures.isLive) return []
+    const cashierId = cashierIdOf(row)
+    return [
+      {
+        order_no: orderNo,
+        business_day: businessDay,
+        date: manilaDate(at),
+        time: manilaTime(at),
+        branch: branchName(row.outlet_id, data.outletNames),
+        order_type: order.orderType,
+        channel: SALE_CHANNEL_LABELS[order.channel],
+        cashier: cashierId ? (names.get(cashierId) ?? null) : null,
+        customer: text(row.customer_name),
+        items: row.item_count ?? null,
+        total: pesos(figures.billedCents),
+        refunded: figures.refundCents ? pesos(figures.refundCents) : null,
+        cancel_reason: text(row.cancel_reason),
+        order_id: row.id,
+      },
+    ]
+  })
+}
+
+export const NO_CASHIER_LABEL = 'Online and other orders (no cashier)'
+export const UNKNOWN_CASHIER_LABEL = 'Register (cashier not on a shift)'
+
+interface CashierTally {
+  label: string
+  orders: number
+  grossCents: number
+  discountCents: number
+  netCents: number
+  collectedCents: number
+  unpaidCents: number
+  cancelled: number
+}
+
+/**
+ * Every order lands on exactly one row, so Sales adds up to the Summary's.
+ * A register order whose cashier has no shift on record (so no name) is kept
+ * apart from online orders, which have no cashier at all.
+ */
+export function cashierRows(data: DetailData): ExportRow[] {
+  const names = staffNames(data.shifts)
+  const tallies = new Map<string, CashierTally>()
+  for (const { row, figures } of views(data)) {
+    const cashierId = cashierIdOf(row)
+    const name = cashierId ? names.get(cashierId) : undefined
+    const key = cashierId ? (name ? `id:${cashierId}` : 'unknown') : 'none'
+    const label = cashierId ? (name ?? UNKNOWN_CASHIER_LABEL) : NO_CASHIER_LABEL
+    const tally = tallies.get(key) ?? { label, orders: 0, grossCents: 0, discountCents: 0, netCents: 0, collectedCents: 0, unpaidCents: 0, cancelled: 0 }
+    if (figures.isLive) {
+      tally.orders += 1
+      tally.grossCents += figures.grossCents
+      tally.discountCents += figures.discountCents
+      tally.netCents += figures.netCents
+      tally.collectedCents += figures.collectedCents
+      tally.unpaidCents += figures.unpaidCents
+    } else {
+      tally.cancelled += 1
+    }
+    tallies.set(key, tally)
+  }
+  const totalNet = [...tallies.values()].reduce((sum, tally) => sum + tally.netCents, 0)
+  return [...tallies.entries()]
+    .sort(([aKey, a], [bKey, b]) => Number(aKey === 'none') - Number(bKey === 'none') || b.netCents - a.netCents || a.label.localeCompare(b.label))
+    .map(([, tally]) => ({
+      cashier: tally.label,
+      orders: tally.orders,
+      gross: pesos(tally.grossCents),
+      discounts: pesos(tally.discountCents),
+      net: pesos(tally.netCents),
+      aov: tally.orders > 0 ? pesos(Math.round(tally.netCents / tally.orders)) : null,
+      collected: pesos(tally.collectedCents),
+      unpaid: pesos(tally.unpaidCents),
+      cancelled: tally.cancelled,
+      share: totalNet > 0 ? tally.netCents / totalNet : null,
+    }))
 }

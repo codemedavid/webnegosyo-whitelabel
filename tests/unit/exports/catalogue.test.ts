@@ -67,15 +67,18 @@ describe("export catalogue", () => {
     ).toMatchInlineSnapshot(`
      {
        "branches": "name orders quantity gross discounts net share",
+       "cancelled": "order_no business_day date time branch order_type channel cashier customer items total refunded cancel_reason order_id",
        "categories": "name orders quantity gross discounts net share",
        "channels": "name orders quantity gross discounts net share",
        "customers": "customer contact kind orders net aov first_order last_order lifetime_orders",
+       "discounts": "order_no business_day date time branch cashier kind detail amount gross order_id",
        "items": "name category quantity orders gross discounts net avg_price share",
        "order_lines": "order_no business_day date time status item category choices addons combo quantity unit_price line_total discounts net notes order_id",
        "order_types": "name orders quantity gross discounts net share",
        "orders": "order_no business_day date time branch order_type channel status cashier shift table customer contact items gross discounts net service delivery total collected unpaid payment_method payment_status cancel_reason order_id",
        "payments_by_method": "name orders collected share",
        "payments_received": "order_no date time kind method amount reference recorded_by note order_id",
+       "sales_by_cashier": "cashier orders gross discounts net aov collected unpaid cancelled share",
        "sales_by_day": "day weekday orders gross discounts net aov collected",
        "summary": "line value note",
      }

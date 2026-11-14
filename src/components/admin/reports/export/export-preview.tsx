@@ -60,7 +60,7 @@ function SheetPreview({ sheet }: { sheet: PreviewSheet }) {
                 ))}
               </tr>
             ))}
-            {sheet.peek.length === 0 && (
+            {sheet.peek.length === 0 && sheet.rows !== null && (
               <tr className="border-t border-border">
                 <td colSpan={sheet.columns.length} className="px-3 py-3 text-muted-foreground">
                   Nothing to list for these dates. The tab will hold the headings only.

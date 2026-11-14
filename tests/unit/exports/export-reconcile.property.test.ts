@@ -35,11 +35,11 @@ describe('row-level sheets reconcile with the one sales definition', () => {
           access: access('reports', 'customers'),
           reportClient: noReports,
           detailClient: store.client,
-          sheets: ['orders', 'order_lines', 'payments_received', 'customers'],
+          sheets: ['orders', 'order_lines', 'payments_received', 'customers', 'discounts', 'cancelled', 'sales_by_cashier'],
           now: NOW,
           pageSize: PAGE,
         })
-        const [ordersSheet, lines, payments, customers] = result.sheets
+        const [ordersSheet, lines, payments, customers, discounts, cancelled, cashiers] = result.sheets
         const expected = summarizeSales(orders)
 
         expect(ordersSheet.rows).toHaveLength(orders.length)
@@ -50,6 +50,14 @@ describe('row-level sheets reconcile with the one sales definition', () => {
         expect(cents(ordersSheet, 'unpaid')).toBe(expected.unpaidCents)
         expect(cents(lines, 'net')).toBe(expected.netCents)
         expect(cents(customers, 'net')).toBe(expected.netCents)
+        // Every discount is on the Discounts sheet once; every order is on exactly one cashier row.
+        expect(cents(discounts, 'amount')).toBe(expected.discountCents + expected.deliveryDiscountCents)
+        expect(cents(cashiers, 'net')).toBe(expected.netCents)
+        expect(cents(cashiers, 'gross')).toBe(expected.grossCents)
+        expect(cents(cashiers, 'collected')).toBe(expected.collectedCents)
+        expect(cents(cashiers, 'orders') / 100 + cents(cashiers, 'cancelled') / 100).toBe(orders.length)
+        expect(cancelled.rows).toHaveLength(cents(cashiers, 'cancelled') / 100)
+        expect(cancelled.rows.length + expected.orders).toBe(orders.length)
 
         const ledger = orders.map((order) => ledgerTotals(order.payments))
         expect(payments.rows).toHaveLength(orders.reduce((sum, order) => sum + order.payments.length, 0))
