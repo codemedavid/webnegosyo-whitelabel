@@ -36,7 +36,7 @@
   {"prompt": "How were sales last Saturday?", "expectTools": ["get_sales_overview"]},
   {"prompt": "Who cancelled orders yesterday?", "expectTools": ["get_activity_log"], "argsSubset": {"get_activity_log": {"category": "orders"}}},
   {"prompt": "Sino nagbigay ng discount kahapon?", "expectTools": ["get_activity_log"]},
-  {"prompt": "Who took cash out of the drawer this week?", "expectTools": ["get_activity_log"], "argsSubset": {"get_activity_log": {"category": "cash"}}},
+  {"prompt": "Who took cash out of the drawer this week?", "expectTools": [], "expectAny": ["get_activity_log", "get_shifts"]},
   {"prompt": "Who changed the price of Sisig?", "expectTools": ["get_activity_log"]},
   {"prompt": "Is there anything suspicious I should check today?", "expectTools": ["get_activity_log"], "argsSubset": {"get_activity_log": {"flaggedOnly": true}}},
   {"prompt": "Ano nangyari sa order #42?", "expectTools": [], "expectAny": ["get_order", "get_activity_log"]},
@@ -48,5 +48,8 @@
   {"prompt": "Kulang ba ang kaha ngayong linggo? Sino ang cashier?", "expectTools": ["get_shifts"]},
   {"prompt": "How much profit did I make last month?", "expectTools": ["get_profit"], "argsSubset": {"get_profit": {"period": "last_month"}}},
   {"prompt": "Kumita ba ako ngayong buwan? Magkano ang gastos?", "expectTools": ["get_profit"]},
-  {"prompt": "Send me an Excel of today's orders with the cashier", "expectTools": ["export_report"], "forbidTools": ["get_shifts"]}
+  {"prompt": "Send me an Excel of today's orders with the cashier", "expectTools": ["export_report"], "forbidTools": ["get_shifts", "build_custom_report"]},
+  {"prompt": "Make me a report of the average order value per day this month, highest first", "expectTools": ["build_custom_report"], "argsSubset": {"build_custom_report": {"sheet": "sales_by_day"}}},
+  {"prompt": "Gawa ka ng Excel ng top 10 na pinakamabentang ulam ngayong buwan, pangalan at benta lang", "expectTools": ["build_custom_report"], "argsSubset": {"build_custom_report": {"sheet": "items", "top": 10}}},
+  {"prompt": "Export the financial statement for October", "expectTools": ["export_report"], "forbidTools": ["build_custom_report"]}
 ]

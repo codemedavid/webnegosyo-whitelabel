@@ -3,6 +3,7 @@ import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { ExportError } from '@/lib/exports/errors'
 import { exportCatalogue } from '@/lib/exports/export-page-model'
 import { exportQuerySchema, exportRequestSchema, type ExportRequest } from '@/lib/exports/request-schema'
+import { previewCustomExport, runCustomExport } from '@/lib/exports/run-custom-export'
 import { previewExport, runExport, toExportFile } from '@/lib/exports/run-export'
 import { logExport } from '@/lib/exports/server/export-log'
 import { loadExportInput, type LoadedExport } from '@/lib/exports/server/load-export-input'
@@ -83,7 +84,7 @@ export const POST = defineRoute({
           { headers: NO_STORE },
         )
       }
-      const preview = await previewExport(loaded.input)
+      const preview = body.custom ? await previewCustomExport(loaded.input, body.custom) : await previewExport(loaded.input)
       return NextResponse.json({ success: true, preview }, { headers: NO_STORE })
     } catch (error) {
       return failure(error, 'preview')
@@ -108,7 +109,7 @@ async function buildFile(request: ExportRequest): Promise<Response> {
   const store = await checkRateLimit(`exports:store:${request.tenantId}`, STORE_FILE_LIMIT)
   if (!store.allowed) return fail(429, 'Your store is exporting a lot right now. Give it a minute.', { 'Retry-After': String(store.retryAfterSec) })
 
-  const result = await runExport(loaded.input)
+  const result = request.custom ? await runCustomExport(loaded.input, request.custom) : await runExport(loaded.input)
   const file = await toExportFile(result, loaded.input.context, request.format)
   // The log row is the record that this data left: no row, no file.
   await logExport(loaded.userId, request, loaded.input.context, result, file.bytes.length)
@@ -126,7 +127,7 @@ async function buildFile(request: ExportRequest): Promise<Response> {
 }
 
 /**
- * GET /api/exports?tenantId=…&sheets=orders,order_lines&period=custom&from=…&to=…[&branch=…][&format=csv][&source=owl]
+ * GET /api/exports?tenantId=…&sheets=orders,order_lines&period=custom&from=…&to=…[&branch=…][&format=csv][&source=owl][&custom=…]
  * — the file itself, built now, as the CALLER. A plain link, so a browser
  * saves it and "Recent exports" can run one again. Nothing is stored: the
  * file is read, logged (`report_exports`) and streamed.

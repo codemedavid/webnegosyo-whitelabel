@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { REPORT_PRESETS, UNASSIGNED_BRANCH } from '@/lib/reports/period'
 import { SHEET_IDS } from './catalogue'
+import { MAX_CUSTOM_PARAM_LENGTH, customReportSpecSchema, decodeCustomSpec, encodeCustomSpec, type CustomReportSpec } from './custom-report'
 
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
@@ -31,8 +32,14 @@ export const exportRequestSchema = z
     branch: z.union([z.literal(UNASSIGNED_BRANCH), z.uuid()]).nullable().default(null),
     format: z.enum(EXPORT_FORMATS).default('xlsx'),
     source: z.enum(EXPORT_SOURCES).default('page'),
+    /** A custom report: ONE sheet reshaped (`custom-report.ts`). `sheets` must then be that sheet alone. */
+    custom: customReportSpecSchema.nullish(),
   })
   .strict()
+  .refine((request) => !request.custom || (request.sheets.length === 1 && request.sheets[0] === request.custom.sheet), {
+    message: 'A custom report is made from one sheet: sheets must name that sheet only.',
+    path: ['sheets'],
+  })
 
 export type ExportRequest = z.infer<typeof exportRequestSchema>
 
@@ -61,10 +68,18 @@ export const exportQuerySchema = z
     branch: z.string().optional(),
     format: z.string().optional(),
     source: z.string().optional(),
+    /** `encodeCustomSpec` of a custom report. */
+    custom: z.string().max(MAX_CUSTOM_PARAM_LENGTH).optional(),
   })
   .strict()
   .transform((query, ctx): ExportRequest => {
+    const custom: CustomReportSpec | null = query.custom ? decodeCustomSpec(query.custom) : null
+    if (query.custom && !custom) {
+      ctx.addIssue({ code: 'custom', message: 'That export link is not valid.' })
+      return z.NEVER
+    }
     const parsed = exportRequestSchema.safeParse({
+      ...(custom ? { custom } : {}),
       tenantId: query.tenantId,
       mode: 'file',
       sheets: query.sheets.split(',').filter(Boolean),
@@ -79,12 +94,13 @@ export const exportQuerySchema = z
   })
 
 /** The link that downloads this export. */
-export function exportHref(request: Pick<ExportRequest, 'tenantId' | 'sheets' | 'period' | 'branch' | 'format' | 'source'>): string {
+export function exportHref(request: Pick<ExportRequest, 'tenantId' | 'sheets' | 'period' | 'branch' | 'format' | 'source'> & { custom?: CustomReportSpec | null }): string {
   const params = new URLSearchParams({ tenantId: request.tenantId, sheets: request.sheets.join(','), period: request.period.preset })
   if (request.period.from) params.set('from', request.period.from)
   if (request.period.to) params.set('to', request.period.to)
   if (request.branch) params.set('branch', request.branch)
   params.set('format', request.format)
   params.set('source', request.source)
+  if (request.custom) params.set('custom', encodeCustomSpec(request.custom))
   return `/api/exports?${params.toString()}`
 }

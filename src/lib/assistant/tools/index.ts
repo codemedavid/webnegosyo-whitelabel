@@ -41,6 +41,7 @@ import { getDeliverySetupTool } from '@/lib/assistant/tools/reads/delivery-setup
 import { findLessonsTool } from '@/lib/assistant/tools/reads/lessons'
 import { getActivityLogTool } from '@/lib/assistant/tools/reads/activity-log'
 import { getOrderTool } from '@/lib/assistant/tools/reads/order-lookup'
+import { buildCustomReportTool } from '@/lib/assistant/tools/reads/custom-report'
 import { exportReportTool } from '@/lib/assistant/tools/reads/export-report'
 import { getProfitTool, getShiftsTool } from '@/lib/assistant/tools/reads/money-books'
 
@@ -99,4 +100,6 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   // The books behind those files: shifts and drawers, profit (2026-11-14).
   getShiftsTool,
   getProfitTool,
+  // A file shaped to order: one sheet, chosen columns, filters, sort, top N (2026-11-14).
+  buildCustomReportTool,
 ] as AssistantToolDef[]

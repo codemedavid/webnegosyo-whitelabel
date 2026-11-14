@@ -2,6 +2,7 @@
 
 import fc from 'fast-check'
 import { NextRequest } from 'next/server'
+import { customReportSpecSchema, encodeCustomSpec } from '@/lib/exports/custom-report'
 import type { ExportInput } from '@/lib/exports/run-export'
 import { DAY, NOW, TENANT, access, contextFor, noReports, ordersArb, seedStore } from './export-fixtures'
 
@@ -135,6 +136,54 @@ describe('GET /api/exports (the file)', () => {
     const response = await get()
     expect(response.status).toBe(400)
     expect((await response.json()).error).toMatch(/up to 93 days/)
+  })
+})
+
+describe('a custom report (one sheet, reshaped)', () => {
+  const custom = customReportSpecSchema.parse({
+    title: 'Biggest orders',
+    sheet: 'orders',
+    columns: [{ id: 'total', header: 'Bill' }, { id: 'order_no' }],
+    sort: { column: 'total', descending: true },
+    top: 3,
+  })
+
+  it('the link builds the reshaped file and logs it under the sheet it came from', async () => {
+    const response = await get(`${QUERY}&custom=${encodeCustomSpec(custom)}&source=owl`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="shop-biggest-orders-2026-10-01.xlsx"')
+    expect(response.headers.get('x-export-sheets')).toBe('orders')
+    const [, request, , result] = mockLog.mock.calls[0]
+    expect(request).toMatchObject({ source: 'owl', sheets: ['orders'] })
+    const [sheet] = result.sheets
+    expect(sheet.name).toBe('Biggest orders')
+    expect(sheet.columns.map((column: { header: string }) => column.header)).toEqual(['Bill', 'Order no.'])
+    expect(sheet.rows).toHaveLength(Math.min(3, orders.length))
+    const bills = sheet.rows.map((row: number[]) => row[0])
+    expect(bills).toEqual([...bills].sort((a, b) => b - a))
+  })
+
+  it('refuses a link whose spec is not a spec, or that asks for another sheet than its own', async () => {
+    expect((await get(`${QUERY}&custom=AAAA`)).status).toBe(400)
+    expect((await get(`${QUERY.replace('sheets=orders', 'sheets=items')}&custom=${encodeCustomSpec(custom)}`)).status).toBe(400)
+    expect(mockLoad).not.toHaveBeenCalled()
+  })
+
+  it('refuses a column this account does not get, with the columns it has', async () => {
+    const hidden = customReportSpecSchema.parse({ ...custom, columns: [{ id: 'order_no' }, { id: 'margin' }], sort: null })
+    const response = await get(`${QUERY}&custom=${encodeCustomSpec(hidden)}`)
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/no column called "margin"/)
+    expect(mockLog).not.toHaveBeenCalled()
+  })
+
+  it('previews exactly what the file will hold', async () => {
+    const response = await post({ tenantId: TENANT, mode: 'preview', sheets: ['orders'], period: { preset: 'custom', ...DAY }, custom })
+    expect(response.status).toBe(200)
+    const { preview } = await response.json()
+    expect(preview.sheets).toHaveLength(1)
+    expect(preview.sheets[0]).toMatchObject({ id: 'orders', name: 'Biggest orders', columns: ['Bill', 'Order no.'], rows: Math.min(3, orders.length) })
+    expect(mockLog).not.toHaveBeenCalled()
   })
 })
 
