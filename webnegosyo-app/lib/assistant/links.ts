@@ -23,6 +23,7 @@ const APP_ROUTES: Readonly<Record<string, string>> = {
   "/orders": "/(main)/orders",
   "/expenses": "/(main)/expenses",
   "/reports/profit": "/(main)/profit",
+  "/cash": "/(main)/remittances",
   "/payment-methods": "/(main)/payments",
 };
 

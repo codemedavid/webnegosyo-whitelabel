@@ -73,7 +73,7 @@ describe('who gets the tool', () => {
     expect(names(staff(['assistant', 'reports']), { ...flags, isPlatformOrders: false })).not.toContain('export_report')
   })
 
-  it('is appended last, so the cached prompt prefix before it is unchanged', () => {
-    expect(ASSISTANT_TOOLS[ASSISTANT_TOOLS.length - 1]).toBe(exportReportTool)
+  it('is appended after every older tool, so the cached prompt prefix before it is unchanged', () => {
+    expect(ASSISTANT_TOOLS.slice(-3).map((tool) => tool.name)).toEqual([exportReportTool.name, 'get_shifts', 'get_profit'])
   })
 })

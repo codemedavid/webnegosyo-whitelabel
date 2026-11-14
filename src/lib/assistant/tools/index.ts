@@ -42,6 +42,7 @@ import { findLessonsTool } from '@/lib/assistant/tools/reads/lessons'
 import { getActivityLogTool } from '@/lib/assistant/tools/reads/activity-log'
 import { getOrderTool } from '@/lib/assistant/tools/reads/order-lookup'
 import { exportReportTool } from '@/lib/assistant/tools/reads/export-report'
+import { getProfitTool, getShiftsTool } from '@/lib/assistant/tools/reads/money-books'
 
 export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   getSalesOverviewTool,
@@ -95,4 +96,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   getOrderTool,
   // Files: Excel / CSV from the export catalogue (2026-11-14).
   exportReportTool,
+  // The books behind those files: shifts and drawers, profit (2026-11-14).
+  getShiftsTool,
+  getProfitTool,
 ] as AssistantToolDef[]

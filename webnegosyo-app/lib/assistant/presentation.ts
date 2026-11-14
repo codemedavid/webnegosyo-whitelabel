@@ -62,6 +62,8 @@ export const TOOL_LABELS: Readonly<Record<string, string>> = {
   get_activity_log: "Checking the activity log…",
   get_order: "Looking up that order…",
   export_report: "Preparing your file…",
+  get_shifts: "Checking the shifts and drawers…",
+  get_profit: "Working out your profit…",
 };
 
 export const WORKING_LABEL = "Working on it…";

@@ -417,6 +417,19 @@ export async function readExpenseSheet(window: BookWindow): Promise<BookSheetRow
 
 // ── Profit statement ──────────────────────────────────────────────────────
 
+/** The statement's fixed lines. Owl's get_profit finds its figures by these, so a reworded line stays found. */
+export const PROFIT_LINES = {
+  orders: 'Orders',
+  sales: 'Sales',
+  ingredients: 'Less: cost of ingredients',
+  gross: 'Gross profit',
+  expensesHeading: 'Expenses',
+  expenses: 'Total expenses',
+  profit: 'Profit',
+  categoriesHeading: 'Expenses by category',
+  capex: 'Equipment bought (not in profit)',
+} as const
+
 export async function readProfitSheet(window: BookWindow): Promise<BookSheetRows> {
   const [figures, categories] = await Promise.all([
     readProfitSummary(window.reportClient, window.reportWindow),
@@ -434,18 +447,18 @@ export async function readProfitSheet(window: BookWindow): Promise<BookSheetRows
       ? 'From what was sold, at the cost recorded when it left the shelf, plus waste and count losses'
       : 'From the ingredient expenses recorded, because this store does not track stock'
   const rows: ExportRow[] = [
-    { line: 'Orders', value: typed(report.orders, 'count'), share: null, note: 'Cancelled orders are not counted' },
-    line('Sales', net, 'Food and drinks after discounts; no service charge or delivery fee'),
-    line('Less: cost of ingredients', report.ingredientCostCents, basisNote),
-    line('Gross profit', gross),
-    { line: 'Expenses', value: null, share: null, note: null },
+    { line: PROFIT_LINES.orders, value: typed(report.orders, 'count'), share: null, note: 'Cancelled orders are not counted' },
+    line(PROFIT_LINES.sales, net, 'Food and drinks after discounts; no service charge or delivery fee'),
+    line(PROFIT_LINES.ingredients, report.ingredientCostCents, basisNote),
+    line(PROFIT_LINES.gross, gross),
+    { line: PROFIT_LINES.expensesHeading, value: null, share: null, note: null },
     ...EXPENSE_LINE_GROUPS.filter((group) => report.byGroup[group] !== 0).map((group) => line(`  ${GROUP_LABELS[group]}`, report.byGroup[group])),
-    line('Total expenses', report.expensesCents),
-    line('Profit', report.profitCents, 'Gross profit less total expenses'),
-    { line: 'Expenses by category', value: null, share: null, note: null },
+    line(PROFIT_LINES.expenses, report.expensesCents),
+    line(PROFIT_LINES.profit, report.profitCents, 'Gross profit less total expenses'),
+    { line: PROFIT_LINES.categoriesHeading, value: null, share: null, note: null },
     ...report.byCategory.map((category) => line(`  ${category.name}`, category.cents, GROUP_LABELS[category.group])),
   ]
-  if (report.capexCents !== 0) rows.push(line('Equipment bought (not in profit)', report.capexCents, 'Money out, but not an expense of this period'))
+  if (report.capexCents !== 0) rows.push(line(PROFIT_LINES.capex, report.capexCents, 'Money out, but not an expense of this period'))
   return {
     rows,
     total: rows.length,

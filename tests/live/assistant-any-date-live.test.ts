@@ -96,6 +96,26 @@ maybe('Owl any-date tools, live, as the real user', () => {
     expect(staff.facts.available).not.toBe(false)
   })
 
+  test('get_shifts: one day first, then the week', async () => {
+    const day = await run('get_shifts', { period: 'yesterday' })
+    expect(day.facts.available).toBe(true)
+    expect(typeof day.facts.shifts).toBe('number')
+    const week = await run('get_shifts', { period: 'last_7_days' })
+    expect(week.facts.available).toBe(true)
+    expect(JSON.stringify(week.facts)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/)
+  })
+
+  test('get_profit: one day first, then this month; the statement adds up', async () => {
+    const day = await run('get_profit', { period: 'yesterday' })
+    expect(day.facts.available).toBe(true)
+    const month = await run('get_profit', { period: 'this_month' })
+    expect(month.facts.available).toBe(true)
+    const amount = (key: string) => (month.facts[key] as { amount: number | null } | null)?.amount ?? 0
+    // Sales − ingredients − expenses = profit, to the centavo.
+    expect(Math.round((amount('sales') - amount('costOfIngredients') - amount('expenses')) * 100)).toBe(Math.round(amount('profit') * 100))
+    expect(month.result.card?.type).toBe('stats')
+  })
+
   test('get_order: the newest order number of the last 7 days', async () => {
     const { createClient } = await import('@supabase/supabase-js')
     const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL as string, process.env.SUPABASE_SERVICE_ROLE_KEY as string, { auth: { persistSession: false } })

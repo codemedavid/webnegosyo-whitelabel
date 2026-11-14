@@ -41,7 +41,12 @@
   {"prompt": "Is there anything suspicious I should check today?", "expectTools": ["get_activity_log"], "argsSubset": {"get_activity_log": {"flaggedOnly": true}}},
   {"prompt": "Ano nangyari sa order #42?", "expectTools": [], "expectAny": ["get_order", "get_activity_log"]},
   {"prompt": "Show me order 15 from yesterday", "expectTools": ["get_order"], "argsSubset": {"get_order": {"number": "15"}}},
-  {"prompt": "Who rang up the most sales last week?", "expectTools": [], "expectAny": ["get_staff_activity", "get_activity_log"]},
+  {"prompt": "Who rang up the most sales last week?", "expectTools": [], "expectAny": ["get_staff_activity", "get_activity_log", "get_shifts"]},
   {"prompt": "What's happening in the store right now?", "expectTools": ["get_orders_now"]},
-  {"prompt": "How do I connect my printer?", "expectTools": ["find_lessons"]}
+  {"prompt": "How do I connect my printer?", "expectTools": ["find_lessons"]},
+  {"prompt": "Was the drawer short yesterday?", "expectTools": ["get_shifts"], "argsSubset": {"get_shifts": {"period": "yesterday"}}},
+  {"prompt": "Kulang ba ang kaha ngayong linggo? Sino ang cashier?", "expectTools": ["get_shifts"]},
+  {"prompt": "How much profit did I make last month?", "expectTools": ["get_profit"], "argsSubset": {"get_profit": {"period": "last_month"}}},
+  {"prompt": "Kumita ba ako ngayong buwan? Magkano ang gastos?", "expectTools": ["get_profit"]},
+  {"prompt": "Send me an Excel of today's orders with the cashier", "expectTools": ["export_report"], "forbidTools": ["get_shifts"]}
 ]

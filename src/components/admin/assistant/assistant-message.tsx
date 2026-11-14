@@ -57,6 +57,8 @@ const TOOL_LABELS: Record<string, string> = {
   find_lessons: 'Finding the right video…',
   get_activity_log: 'Checking the activity log…',
   export_report: 'Preparing your file…',
+  get_shifts: 'Checking the shifts and drawers…',
+  get_profit: 'Working out your profit…',
   get_order: 'Looking up that order…',
 }
 
