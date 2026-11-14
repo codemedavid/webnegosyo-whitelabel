@@ -9,7 +9,10 @@ Extends `docs/plans/2026-11-05-reports-redesign/plan.md` (approved; its §6.6 "E
 - **No stored files.** §5 planned a private bucket, signed links and a 24 h purge. Built instead: `POST /api/exports` = preview, `GET /api/exports?…` builds the file, writes one `report_exports` row as the caller, and **streams** it (a stream is not held to the 4.5 MB response cap). Why: every read and the log write stay on the caller's own session (RLS), no service-role client and no new place where customer data sits. Cost: "Recent exports" runs the same dates again instead of re-serving the old file, and says so.
 - **Store Activity line `report.exported` is not written yet** (needs a category added to the activity constraint). The `report_exports` log is the record; owner + `activity_view` read all of it.
 - **Payments received lists ledger rows only.** "Money received" on Summary also counts orders marked paid without a ledger row, so the two can differ; the sheet needs a note saying so (E3).
-- Not yet in the sheets: money per payment method on Sales by day, customers per day.
+- Not yet in the sheets: money per payment method on Sales by day, customers per day, remittances, day closes, Store Activity, stock used & missing (daily stock report). The Profit statement is one column for the whole period, not one per month.
+- **Owl's `export_report` does not build a file.** It previews as the caller and answers with a card whose links are `/api/exports?…`; the file is built when the link is tapped. Same reason as above, and Owl never sees the rows.
+- **Previews are exact up to 1,500 orders** (the period is read whole); over that, sheets that add orders up show columns only.
+- **E4 (app Export screen) not started**: a new Reports tab touches eight app registries with parity tests and needs a simulator walk + OTA. The app's Owl file card is built (untested on a device).
 
 ## 1. What the owner asked for
 
