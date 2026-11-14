@@ -41,6 +41,7 @@ import { getDeliverySetupTool } from '@/lib/assistant/tools/reads/delivery-setup
 import { findLessonsTool } from '@/lib/assistant/tools/reads/lessons'
 import { getActivityLogTool } from '@/lib/assistant/tools/reads/activity-log'
 import { getOrderTool } from '@/lib/assistant/tools/reads/order-lookup'
+import { exportReportTool } from '@/lib/assistant/tools/reads/export-report'
 
 export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   getSalesOverviewTool,
@@ -92,4 +93,6 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   // Any point in time: who did what, one order (2026-11-13).
   getActivityLogTool,
   getOrderTool,
+  // Files: Excel / CSV from the export catalogue (2026-11-14).
+  exportReportTool,
 ] as AssistantToolDef[]

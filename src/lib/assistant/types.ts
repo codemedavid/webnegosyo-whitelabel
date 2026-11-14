@@ -7,7 +7,7 @@
  * the tool writes deterministically, so suggesting "what next" costs no tokens.
  */
 
-export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard
+export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard | FileCard
 
 export interface StatsCard {
   type: 'stats'
@@ -62,6 +62,23 @@ export interface LessonsCard {
     watchUrl: string | null
     thumbnailUrl: string | null
   }>
+}
+
+/**
+ * A file Owl prepared (Excel / CSV). Nothing is stored: each download link
+ * builds the file then, as the person who taps it, through `/api/exports`.
+ */
+export interface FileCard {
+  type: 'file'
+  title: string
+  /** "2026-11-01 to 2026-11-14 · Whole store" */
+  subtitle: string
+  /** One per tab; `rows` null = counted when the file is made. */
+  sheets: Array<{ name: string; rows: number | null }>
+  /** Sheets left out and why, and anything else the owner should know before opening it. */
+  notes: string[]
+  /** Site-relative `/api/exports?…` links (never another host). */
+  downloads: Array<{ label: string; href: string }>
 }
 
 /** A one-tap follow-up: tapping it sends `prompt` as the owner's next message. */

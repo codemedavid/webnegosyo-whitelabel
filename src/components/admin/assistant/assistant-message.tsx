@@ -8,6 +8,7 @@ import type { AssistantChip, ToolResult } from '@/lib/assistant/types'
 import { AssistantCardView } from './assistant-cards'
 import { SafeTextView } from './safe-text-view'
 import { ConfirmCardView } from './confirm-card'
+import { FileCardView } from './file-card'
 import { LessonsCardView } from './lessons-card'
 
 /** What the owner sees while a tool runs. */
@@ -55,6 +56,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_delivery_setup: 'Checking your Lalamove set-up…',
   find_lessons: 'Finding the right video…',
   get_activity_log: 'Checking the activity log…',
+  export_report: 'Preparing your file…',
   get_order: 'Looking up that order…',
 }
 
@@ -157,6 +159,8 @@ export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate,
               <ConfirmCardView card={result.card} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onNavigate} onApplied={onApplied} />
             ) : result.card?.type === 'lessons' ? (
               <LessonsCardView card={result.card} adminBasePath={adminBasePath} onNavigate={onNavigate} />
+            ) : result.card?.type === 'file' ? (
+              <FileCardView card={result.card} />
             ) : (
               <AssistantCardView card={result.card} />
             )}
