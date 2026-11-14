@@ -17,7 +17,7 @@ function fixture() {
  const from=jest.fn((table:string)=>{
   filters[table]=[]
   const query:Record<string,unknown>={}
-  for(const method of ['select','eq','in','maybeSingle'])query[method]=(...args:unknown[])=>{if(method==='eq')filters[table].push(args);return query}
+  for(const method of ['select','eq','in','maybeSingle'])query[method]=(...args:unknown[])=>{if(method==='eq')filters[table].push(args);if(method==='in')filters[table].push(['in',...args]);return query}
   query.then=(resolve:(value:unknown)=>unknown)=>Promise.resolve({data:rows[table],error:failedTable===table?{message:'private failure'}:null}).then(resolve)
   return query
  })
@@ -30,6 +30,8 @@ it('prices a free base unit from branch catalog prices and freezes a supported p
  expect(f.rpc).toHaveBeenCalledWith('issue_loyalty_pos_quote',expect.objectContaining({p_actor:'actor',p_claim_hash:'hash',p_total_centavos:12000,p_snapshot:expect.objectContaining({paymentPolicy:{totalCentavos:12000,allowedMethods:[{id:'cash',kind:'cash',requiresReference:false}]}})}))
  expect(f.filters.menu_items).toContainEqual(['tenant_id','tenant'])
  expect(f.filters.outlet_menu_items).toContainEqual(['outlet_id','branch'])
+ // Only the cart's dishes: a whole branch board could pass the 1,000-row cap.
+ expect(f.filters.outlet_menu_items).toContainEqual(['in','menu_item_id',['coffee']])
 })
 it.each(['outlet_menu_items','menu_items','order_types','payment_methods','order_type_item_prices'])('does not reserve a claim when %s cannot be read',async table=>{
  const f=fixture();f.fail(table)

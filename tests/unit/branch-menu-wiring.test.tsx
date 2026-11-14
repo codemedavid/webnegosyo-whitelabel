@@ -139,8 +139,11 @@ describe('storefront wiring', () => {
   const menuClient = read('src/storefront/catalog/use-storefront-menu.ts')
 
   it('fetches branch overrides on the menu query', () => {
-    expect(menuServer).toContain('outlet_menu_items')
-    expect(menuServer).toContain('OUTLET_MENU_OVERRIDE_SELECT')
+    // Through the shared paged reader, which owns the table and the projection.
+    expect(menuServer).toContain('readTenantOverrides')
+    const reader = read('src/lib/outlets/read-tenant-overrides.ts')
+    expect(reader).toContain('outlet_menu_items')
+    expect(reader).toContain('OUTLET_MENU_OVERRIDE_SELECT')
   })
 
   it('hands the overrides to the client', () => {
