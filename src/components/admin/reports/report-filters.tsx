@@ -16,6 +16,7 @@ interface ReportFiltersProps {
   today: string
   /** Params the page keeps across filter changes (the Items view). */
   pageParams?: Record<string, string | null>
+  hasCompare?: boolean
 }
 
 /**
@@ -31,6 +32,7 @@ export function ReportFilters({
   lockedBranchLabel,
   today,
   pageParams,
+  hasCompare,
 }: ReportFiltersProps) {
   return (
     <ReportFilterBar
@@ -42,6 +44,7 @@ export function ReportFilters({
       buildHref={(next) => reportHref(path, next, pageParams)}
       maxDays={MAX_REPORT_DAYS}
       today={today}
+      hasCompare={hasCompare}
     />
   )
 }

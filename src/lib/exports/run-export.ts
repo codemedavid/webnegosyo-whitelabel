@@ -48,7 +48,7 @@ import {
 import type { DetailData } from './sheets/detail-data'
 import { customerRows, orderLineRows, orderRows, paymentRows } from './sheets/detail-sheets'
 import { breakdownRows, itemRows, paymentMethodRows, salesByDayRows, summaryRows } from './sheets/summary-sheets'
-import type { BuiltSheet, ExportAccess, ExportFile, ExportFormat, ExportHeader, ExportRow } from './types'
+import type { BuiltSheet, ExportAccess, ExportCellKind, ExportFile, ExportFormat, ExportHeader, ExportRow } from './types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 /** Rows of each sheet a preview shows. */
@@ -86,6 +86,8 @@ export interface PreviewSheet {
   name: string
   rowIs: string
   columns: string[]
+  /** How each column's cells are written, in the same order as `columns`. */
+  kinds: ExportCellKind[]
   /** Exact for every sheet but order lines and payments, which are only known once built (null). */
   rows: number | null
   peek: BuiltSheet['rows']
@@ -276,6 +278,7 @@ export async function previewExport(input: ExportInput): Promise<ExportPreview> 
       name: sheet.name,
       rowIs: sheet.rowIs,
       columns: built.columns.map((column) => column.header),
+      kinds: built.columns.map((column) => column.kind),
       rows,
       peek: built.rows.slice(0, PEEK_ROWS),
       notes: built.notes,
