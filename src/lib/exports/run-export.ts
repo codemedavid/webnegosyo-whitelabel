@@ -233,7 +233,12 @@ function sheetNotes(sheet: SheetDef, input: ExportInput, detail: DetailData | nu
   const notes: string[] = []
   if (sheet.id === 'orders' && detail && detail.shifts.length === 0) notes.push('Cashier and Shift are blank: no shifts on record for these dates, or your account cannot see shifts.')
   if (sheet.id === 'orders' && !input.access.has('customers')) notes.push('Customer names and numbers are left out: your account does not have access to customers.')
-  if (sheet.id === 'payments_received') notes.push('Payments recorded on the orders placed in this period, whenever the money came in.')
+  if (sheet.id === 'payments_received') {
+    notes.push(
+      'Payments recorded on the orders placed in this period, whenever the money came in.',
+      'An order marked paid with no payment recorded has no row here, so this sheet can add up to less than Money received on the Summary.',
+    )
+  }
   if (sheet.id === 'customers') notes.push('Cancelled orders are not counted. A first-timer placed their first order ever inside this period.')
   if (input.context.isMixedBackend && sheet.source === 'detail') notes.push('Orders from before this store moved to the current system are not included.')
   return notes
