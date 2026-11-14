@@ -51,7 +51,7 @@ export async function countActionCall(
   subject: RateSubject,
 ): Promise<RateVerdict> {
   if (!declared || declared.per === 'none') return ALLOWED
-  // `checkActionRateLimit` allows an unreadable address: refusing it would block every proxy that strips headers.
+  // An unreadable address shares `<bucket>:unknown` there too; a call with no request at all is not counted.
   if (declared.per === 'ip') return checkActionRateLimit(declared.bucket, limiterOptions(declared))
   const key = subjectKey(declared, subject)
   if (key === null) return { allowed: false, retryAfterSec: windowSeconds(declared.window) }
