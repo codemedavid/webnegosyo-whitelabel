@@ -1,12 +1,16 @@
 export const META_PIXEL_READY_EVENT = 'smartmenu:meta-pixel-ready'
 
+/**
+ * Events the BROWSER may fire. Purchase is deliberately missing: it is sent
+ * only by the server once staff confirm the money (checkout-leads/meta-events),
+ * because anything a browser fires can be faked by a buyer.
+ */
 export type MetaEventName =
   | 'PageView'
   | 'ViewContent'
   | 'InitiateCheckout'
   | 'Lead'
   | 'AddPaymentInfo'
-  | 'Purchase'
 
 type MetaPixelFunction = ((...args: unknown[]) => void) & {
   callMethod?: (...args: unknown[]) => void

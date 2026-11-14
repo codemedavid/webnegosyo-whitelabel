@@ -3,10 +3,8 @@
 import { useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import type { CheckoutLeadConfirmation } from '@/lib/checkout-leads/confirmation'
-import { purchaseEventId } from '@/lib/checkout-leads/meta-event-ids'
 import { getPaymentTermLabel } from '@/lib/checkout-leads/payment-term-labels'
 import { getCheckoutBalanceDue, isCheckoutPaymentTerm, isFunnelPlanTerm } from '@/lib/checkout-leads/payment-terms'
-import { trackMetaEvent } from '@/lib/meta-pixel'
 import { GUARANTEES } from './funnel-copy'
 import { formatPeso } from './funnel-offer'
 import { PAYMENT } from './funnel-payment-copy'
@@ -100,16 +98,10 @@ export function FunnelPayment({ lead }: { lead: CheckoutLeadConfirmation }) {
   const [isReplacing, setIsReplacing] = useState(false)
 
   function handleUploaded(url: string) {
-    // First screenshot = the buyer reaches the thank-you screen: Purchase.
-    // Same event id as the server's (submitPaymentProof), so Meta counts one.
-    // A replaced screenshot or a revisit fires nothing.
-    if (!proofUrl) {
-      trackMetaEvent(
-        'Purchase',
-        { content_name: 'Smart Menu System', currency: 'PHP', value: lead.amount, order_id: lead.reference_number },
-        purchaseEventId(lead.reference_number)
-      )
-    }
+    // No Purchase here: anyone can upload any picture, and a fake screenshot
+    // once counted as a Purchase in Ads Manager (2026-11-13/14). The upload
+    // fires AddPaymentInfo (funnel-payment-proof.tsx); Purchase is sent by the
+    // server only when staff confirm the money (sendLeadPurchaseOnce).
     setProofUrl(url)
     setIsReplacing(false)
   }

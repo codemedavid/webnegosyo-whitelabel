@@ -71,8 +71,12 @@ describe('startBuilds', () => {
   })
 
   it('refuses a second open build on the same platform', async () => {
-    await startBuilds(db.client, STORE, ['ios'], USER)
-    await expect(startBuilds(db.client, STORE, ['ios'], USER)).rejects.toThrow('An iOS build is already running for this app.')
+    // The fake DB stamps rows from 2026-11-13T12:00Z: pass a clock just after
+    // it, or the real clock (hours later) sees the first build as stuck and
+    // closes it, and the test fails on every day after it was written.
+    const justAfter = new Date('2026-11-13T12:01:00Z')
+    await startBuilds(db.client, STORE, ['ios'], USER, justAfter)
+    await expect(startBuilds(db.client, STORE, ['ios'], USER, justAfter)).rejects.toThrow('An iOS build is already running for this app.')
   })
 
   it('closes a stuck build first, so a lost CI run never blocks the app', async () => {
