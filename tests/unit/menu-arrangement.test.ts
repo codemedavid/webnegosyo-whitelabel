@@ -19,12 +19,20 @@ import { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } fro
 function fakeClient(existingIds: string[], updateError: { message: string } | null = null) {
   const updates: Array<{ id: string; order: number }> = []
 
+  // Honours .range() and caps every response at 1,000 rows, like the platform.
   const selectBuilder = (rows: unknown[]) => {
     const b: Record<string, unknown> = {}
+    let window: [number, number] = [0, 999]
     Object.assign(b, {
       select: () => b,
       eq: () => b,
-      then: (resolve: (v: unknown) => unknown) => resolve({ data: rows, error: null }),
+      order: () => b,
+      range: (from: number, to: number) => {
+        window = [from, to]
+        return b
+      },
+      then: (resolve: (v: unknown) => unknown) =>
+        resolve({ data: rows.slice(window[0], Math.min(window[1], window[0] + 999) + 1), error: null }),
     })
     return b
   }
@@ -59,6 +67,23 @@ function fakeClient(existingIds: string[], updateError: { message: string } | nu
 const ctxOf = (client: unknown) => ({ client: client as never })
 
 describe('reorderCategoriesForProvisioning', () => {
+  it('checks the list against every category, past the first 1,000', async () => {
+    // A store with 2,500 rows: an unpaged read saw 1,000 and refused the rest as foreign.
+    const ids = Array.from({ length: 2500 }, (_, index) => `c-${String(index).padStart(5, '0')}`)
+    const { client, updates } = fakeClient(ids)
+
+    await expect(reorderCategoriesForProvisioning('t1', [...ids].reverse(), ctxOf(client))).resolves.toEqual({ reordered: 2500 })
+    expect(updates).toHaveLength(2500)
+  })
+
+  it('still refuses a list missing one of the rows past the first 1,000', async () => {
+    const ids = Array.from({ length: 2500 }, (_, index) => `c-${String(index).padStart(5, '0')}`)
+    const { client, updates } = fakeClient(ids)
+
+    await expect(reorderCategoriesForProvisioning('t1', ids.slice(0, 2499), ctxOf(client))).rejects.toThrow(/1 missing/)
+    expect(updates).toHaveLength(0)
+  })
+
   it('writes each category its index in the given order', async () => {
     // Arrange
     const { client, updates } = fakeClient(['a', 'b', 'c'])
