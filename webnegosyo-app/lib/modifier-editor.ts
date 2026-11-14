@@ -6,7 +6,7 @@
  * and DB-free — persistence lives in `lib/products.ts`.
  */
 
-import type { ModifierGroup, ModifierOption } from "./modifier-groups";
+import { isSingleSelectGroup, type ModifierGroup, type ModifierOption } from "./modifier-groups";
 
 let idCounter = 0;
 
@@ -51,6 +51,8 @@ export function createAddonGroup(): ModifierGroup {
   return {
     ...createEmptyGroup(),
     name: DEFAULT_ADDON_GROUP_NAME,
+    // An amount of each add-on, like the web's "Add-ons" mode.
+    selection_mode: "quantity",
     min_select: 0,
     max_select: null,
   };
@@ -137,7 +139,7 @@ export function moveOption(
 
 /** Whether a group is single-select (variation-style) or multi-select (add-ons). */
 export function groupSelectionMode(group: ModifierGroup): "single" | "multi" {
-  return group.max_select === 1 ? "single" : "multi";
+  return isSingleSelectGroup(group) ? "single" : "multi";
 }
 
 /**
@@ -161,5 +163,7 @@ export function setGroupMultiple(
   groupId: string,
   multiple: boolean
 ): ModifierGroup[] {
-  return updateGroup(groups, groupId, { max_select: multiple ? null : 1 });
+  // A one-pick group is a choice: left as an add-on amount group, the register
+  // would show it as a stepper that cannot swap one pick for another.
+  return updateGroup(groups, groupId, multiple ? { max_select: null } : { max_select: 1, selection_mode: "choice" });
 }

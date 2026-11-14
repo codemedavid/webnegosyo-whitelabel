@@ -54,15 +54,21 @@ describe("ModifierSheet sold-out options", () => {
   it("never starts on a sold-out default, and will not pick a sold-out option", () => {
     const onConfirm = renderSheet([MILK]);
 
-    // The default (Whole) is sold out, so the required group starts empty.
-    expect(screen.getByText(/Choose at least 1 from Milk/)).toBeTruthy();
+    // The default (Whole) is sold out, so the required single choice starts on
+    // the first option still available — the web product page's rule.
+    expect(screen.getByText("Add ₱120.00")).toBeTruthy();
     fireEvent.press(screen.getByText(/Soy/));
-    expect(screen.getByText(/Choose at least 1 from Milk/)).toBeTruthy();
+    expect(screen.getByText("Add ₱120.00")).toBeTruthy();
 
-    fireEvent.press(screen.getByText(/Oat/));
     fireEvent.press(screen.getByText(/^Add /));
     const [selections] = onConfirm.mock.calls[0] as [PosCartSelection[], number];
     expect(selections.map((s) => s.optionId)).toEqual(["o-oat"]);
+  });
+
+  it("starts an optional single choice empty when its default is sold out", () => {
+    const onConfirm = renderSheet([{ ...MILK, min_select: 0 }]);
+    fireEvent.press(screen.getByText(/^Add /));
+    expect((onConfirm.mock.calls[0] as [PosCartSelection[], number])[0]).toEqual([]);
   });
 
   it("refuses the dish with a reason when a required group has nothing left", () => {
