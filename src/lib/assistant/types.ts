@@ -7,6 +7,8 @@
  * the tool writes deterministically, so suggesting "what next" costs no tokens.
  */
 
+import type { CustomReportSpec } from '@/lib/exports/custom-report'
+
 export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard | FileCard
 
 export interface StatsCard {
@@ -79,6 +81,11 @@ export interface FileCard {
   notes: string[]
   /** Site-relative `/api/exports?…` links (never another host). */
   downloads: Array<{ label: string; href: string }>
+  /**
+   * A custom report the owner may keep ("Save to My formats"): the tap posts
+   * this to `/api/exports/formats`, which checks it again. Owl never saves.
+   */
+  save?: { tenantId: string; name: string; spec: CustomReportSpec }
 }
 
 /** A one-tap follow-up: tapping it sends `prompt` as the owner's next message. */

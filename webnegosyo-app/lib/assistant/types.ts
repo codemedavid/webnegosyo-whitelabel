@@ -55,6 +55,8 @@ export interface FileCard {
   notes: string[];
   /** Paths on the web app, always `/api/exports?…`. */
   downloads: Array<{ label: string; href: string }>;
+  /** A custom report the owner may keep ("Save to My formats"); the server checks it again on the tap. */
+  save?: { tenantId: string; name: string; spec: unknown };
 }
 
 /** SmartMenu University lessons (web: LessonsCard). The app opens them in the browser. */

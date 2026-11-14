@@ -60,6 +60,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_shifts: 'Checking the shifts and drawers…',
   get_profit: 'Working out your profit…',
   build_custom_report: 'Building your report…',
+  run_saved_report: 'Making your saved report…',
   get_order: 'Looking up that order…',
 }
 

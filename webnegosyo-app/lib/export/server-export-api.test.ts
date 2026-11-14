@@ -10,10 +10,13 @@ import {
   exportStartChoice,
   fetchExportCatalogue,
   fetchExportPreview,
+  formatDownloadPath,
+  formatPeriodProblem,
   openCards,
   parseCatalogue,
   parsePreview,
   previewRowsText,
+  saveExportFormat,
   toggleSheet,
   type ExportCatalogue,
 } from "./server-export-api";
@@ -263,5 +266,70 @@ describe("a report screen's Export button", () => {
       expect(read("app", "(main)", screen)).toMatch(new RegExp(`<ExportDoorButton\\s+sheets=\\{SCREEN_EXPORT_SHEETS\\.${key}\\}`));
     }
     expect(read("components", "export", "ExportDoorButton.tsx")).toMatch(/if \(!canOpen\) return null;/);
+  });
+});
+
+describe("saved formats (My formats)", () => {
+  // base64url of a custom report spec, as the server's encodeCustomSpec writes it.
+  const CUSTOM = "eyJ0aXRsZSI6IkF2ZXJhZ2Ugb3JkZXIgcGVyIGRheSIsInNoZWV0Ijoic2FsZXNfYnlfZGF5In0";
+  const saved = (extra: Record<string, unknown> = {}) => ({ id: "f1", name: "Weekly owner report", summary: "Sales by day · Day, Avg ticket", savedBy: "Ana", sheet: "sales_by_day", isDetail: false, lockedNote: null, custom: CUSTOM, ...extra });
+  const catalogueWith = (formats: unknown) =>
+    parseCatalogue({ catalogue: { groups: [{ id: "sales", label: "Sales", cards: [card("summary")] }], packs: [], defaults: ["summary"], maxDetailDays: 93, today: "2026-11-14", formats } });
+
+  it("keeps the formats the server sent and drops anything that could not be a link", () => {
+    const catalogue = catalogueWith([
+      saved(),
+      saved({ id: "f2", name: "Costs", lockedNote: "Not on your account: it uses a column your account does not have access to." }),
+      saved({ id: "f3", custom: "https://evil.example/?x=1" }),
+      saved({ id: "f4", sheet: "orders&branch=x" }),
+      saved({ id: "", name: "No id" }),
+      "nonsense",
+    ]);
+    expect(catalogue?.formats.map((format) => format.id)).toEqual(["f1", "f2"]);
+    expect(catalogue?.formats[1].lockedNote).toMatch(/does not have access/);
+    expect(catalogueWith(undefined)?.formats).toEqual([]);
+  });
+
+  it("links a format to its one sheet with its own spec, a path the downloader accepts", () => {
+    const path = formatDownloadPath(TENANT, saved(), exportPeriod("custom", "2026-11-02", "2026-11-08"), "xlsx");
+    expect(path).toBe(`/api/exports?tenantId=${TENANT}&sheets=sales_by_day&period=custom&from=2026-11-02&to=2026-11-08&format=xlsx&source=page&custom=${CUSTOM}`);
+    expect(isServerExportPath(path)).toBe(true);
+    // The server's link reader takes the same key.
+    const server = readFileSync(join(__dirname, "..", "..", "..", "src", "lib", "exports", "request-schema.ts"), "utf8");
+    expect(server).toMatch(/custom: z\.string\(\)\.max\(MAX_CUSTOM_PARAM_LENGTH\)/);
+  });
+
+  it("checks the dates before a format is asked for", () => {
+    const limits = { today: "2026-11-14", maxDetailDays: 93 };
+    expect(formatPeriodProblem(exportPeriod("this_month", "", ""), saved(), limits)).toBeNull();
+    expect(formatPeriodProblem(exportPeriod("custom", "2026-11-10", "2026-11-02"), saved(), limits)).toBe("The start day is after the end day.");
+    expect(formatPeriodProblem(exportPeriod("custom", "2026-01-01", "2026-11-14"), saved(), limits)).toBeNull();
+    expect(formatPeriodProblem(exportPeriod("custom", "2026-01-01", "2026-11-14"), saved({ name: "GCash orders", isDetail: true }), limits)).toBe(
+      "GCash orders lists every row, so one file covers up to 93 days. You picked 318.",
+    );
+  });
+
+  describe("saving one from Owl's card", () => {
+    const fetchMock = jest.fn();
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockToken.mockResolvedValue("tok");
+      (globalThis as { fetch: unknown }).fetch = fetchMock;
+    });
+    const spec = { title: "Average order per day", sheet: "sales_by_day", columns: [{ id: "day" }] };
+
+    it("posts the card's report to the formats route as this account", async () => {
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      await saveExportFormat({ tenantId: TENANT, name: "Average order per day", spec });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe("https://web.example/api/exports/formats");
+      expect(init.headers.Authorization).toBe("Bearer tok");
+      expect(JSON.parse(init.body)).toEqual({ action: "save", tenantId: TENANT, name: "Average order per day", spec });
+    });
+
+    it("passes on the server's sentence when the name is taken", async () => {
+      fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ success: false, error: "You already have a format called “Average order per day”." }) });
+      await expect(saveExportFormat({ tenantId: TENANT, name: "Average order per day", spec })).rejects.toThrow(/already have a format/);
+    });
   });
 });

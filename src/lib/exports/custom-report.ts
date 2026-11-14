@@ -26,7 +26,7 @@ export type CustomFilterOp = (typeof CUSTOM_FILTER_OPS)[number]
 
 const columnId = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
 /** Starts with a letter or digit (never `=`, `+`, `-`, `@`), no control characters. */
-const plainWords = (max: number) =>
+export const plainWords = (max: number) =>
   z
     .string()
     .trim()

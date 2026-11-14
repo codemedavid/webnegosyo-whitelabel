@@ -42,6 +42,22 @@ export interface ExportPackChoice {
   sheets: string[];
 }
 
+/** A report the store saved ("My formats"): made again for any dates, as this account. */
+export interface ExportSavedFormat {
+  id: string;
+  name: string;
+  /** "Sales by day · Day, Avg ticket · first 5" */
+  summary: string;
+  savedBy: string | null;
+  sheet: string;
+  /** Row-by-row formats take a shorter range. */
+  isDetail: boolean;
+  /** Why this account cannot run it, or null. */
+  lockedNote: string | null;
+  /** The format's shape, ready for the download link (`&custom=`). The server checks it again. */
+  custom: string;
+}
+
 export interface ExportCatalogue {
   groups: ExportCardGroup[];
   packs: ExportPackChoice[];
@@ -52,6 +68,8 @@ export interface ExportCatalogue {
   /** Set for a branch account: every file is that branch's. */
   branchLabel: string | null;
   isMixedBackend: boolean;
+  /** Saved formats this account may see (none for a branch account). */
+  formats: ExportSavedFormat[];
 }
 
 export interface ExportPreviewSheet {
@@ -119,6 +137,15 @@ export function exportPeriodProblem(period: ExportPeriod, picked: readonly Expor
     return `${detail.name} lists every row, so one file covers up to ${catalogue.maxDetailDays} days. You picked ${days}. Shorten the dates, or untick the row-by-row sheets.`;
   }
   return null;
+}
+
+/** Why these dates cannot be used for this saved format, or null. */
+export function formatPeriodProblem(period: ExportPeriod, format: Pick<ExportSavedFormat, "name" | "isDetail">, catalogue: Pick<ExportCatalogue, "today" | "maxDetailDays">): string | null {
+  const dates = exportPeriodProblem(period, [], catalogue);
+  if (dates) return dates;
+  if (period.preset !== "custom" || !format.isDetail || !period.from || !period.to) return null;
+  const days = dayCountInclusive(period.from, period.to);
+  return days > catalogue.maxDetailDays ? `${format.name} lists every row, so one file covers up to ${catalogue.maxDetailDays} days. You picked ${days}.` : null;
 }
 
 export interface ExportStartParams {
@@ -208,6 +235,15 @@ export function exportDownloadPath(choice: ExportChoice, format: ExportFormat): 
   return `/api/exports?${parts.join("&")}`;
 }
 
+/** The link that makes a saved format for these dates: its one sheet, reshaped by the format's own spec. */
+export function formatDownloadPath(tenantId: string, saved: Pick<ExportSavedFormat, "sheet" | "custom">, period: ExportPeriod, format: ExportFormat): string {
+  return `${exportDownloadPath({ tenantId, sheets: [saved.sheet], period }, format)}&custom=${saved.custom}`;
+}
+
+const SHEET_ID = /^[a-z][a-z0-9_]{0,39}$/;
+/** base64url, as `encodeCustomSpec` writes it on the server. */
+const CUSTOM_PARAM = /^[A-Za-z0-9_-]{1,2400}$/;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -257,6 +293,21 @@ export function parseCatalogue(body: unknown): ExportCatalogue | null {
     today: text(raw.today),
     branchLabel: text(raw.branchLabel) || null,
     isMixedBackend: raw.isMixedBackend === true,
+    formats: (Array.isArray(raw.formats) ? raw.formats : [])
+      .filter(isRecord)
+      .filter((format) => text(format.id) !== "" && text(format.name) !== "" && SHEET_ID.test(text(format.sheet)) && CUSTOM_PARAM.test(text(format.custom)))
+      .map(
+        (format): ExportSavedFormat => ({
+          id: text(format.id),
+          name: text(format.name),
+          summary: text(format.summary),
+          savedBy: text(format.savedBy) || null,
+          sheet: text(format.sheet),
+          isDetail: format.isDetail === true,
+          lockedNote: text(format.lockedNote) || null,
+          custom: text(format.custom),
+        }),
+      ),
   };
 }
 
@@ -291,7 +342,7 @@ export async function exportToken(): Promise<string> {
 }
 
 /** One bounded POST as the signed-in person. Throws a sentence the owner can read. */
-async function postExports(body: unknown): Promise<unknown> {
+async function postExports(body: unknown, path: "/api/exports" | "/api/exports/formats" = "/api/exports"): Promise<unknown> {
   const token = await exportToken();
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -304,7 +355,7 @@ async function postExports(body: unknown): Promise<unknown> {
   });
   try {
     const response = await Promise.race([
-      fetch(`${getWebAppUrl()}/api/exports`, {
+      fetch(`${getWebAppUrl()}${path}`, {
         method: "POST",
         signal: controller.signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -338,4 +389,16 @@ export async function fetchExportPreview(choice: ExportChoice): Promise<ExportPr
   const preview = parsePreview(await postExports({ tenantId: choice.tenantId, mode: "preview", sheets: choice.sheets, period: choice.period }));
   if (!preview) throw new ExportRequestError(GENERIC_FAILURE);
   return preview;
+}
+
+/** What Owl's file card carries for "Save to My formats": a custom report's shape, never its figures. */
+export interface ExportFormatToSave {
+  tenantId: string;
+  name: string;
+  spec: unknown;
+}
+
+/** Keeps a custom report as a saved format (`POST /api/exports/formats`). The server checks every part again. */
+export async function saveExportFormat(save: ExportFormatToSave): Promise<void> {
+  await postExports({ action: "save", tenantId: save.tenantId, name: save.name, spec: save.spec }, "/api/exports/formats");
 }

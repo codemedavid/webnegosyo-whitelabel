@@ -7,6 +7,8 @@ import { previewCustomExport, runCustomExport } from '@/lib/exports/run-custom-e
 import { previewExport, runExport, toExportFile } from '@/lib/exports/run-export'
 import { logExport } from '@/lib/exports/server/export-log'
 import { loadExportInput, type LoadedExport } from '@/lib/exports/server/load-export-input'
+import { loadTemplateCards } from '@/lib/exports/server/report-templates'
+import { encodeCustomSpec } from '@/lib/exports/custom-report'
 import { defineRoute } from '@/platform/http/define-route'
 
 export const runtime = 'nodejs'
@@ -71,6 +73,17 @@ export const POST = defineRoute({
       if (body.mode === 'catalogue') {
         // The merchant app's Export screen: what this account may pick. No order is read.
         const { context, access } = loaded.input
+        // Saved formats ("My formats"): the spec travels ready for a link, so the app only appends it.
+        const formats = (await loadTemplateCards(body.tenantId, access, context.isMultiBranch)).map((card) => ({
+          id: card.id,
+          name: card.name,
+          summary: card.summary,
+          savedBy: card.savedBy,
+          sheet: card.spec.sheet,
+          isDetail: card.isDetail,
+          lockedNote: card.lockedNote,
+          custom: encodeCustomSpec(card.spec),
+        }))
         return NextResponse.json(
           {
             success: true,
@@ -79,6 +92,7 @@ export const POST = defineRoute({
               today: context.today,
               branchLabel: context.lockedBranchLabel,
               isMixedBackend: context.isMixedBackend,
+              formats,
             },
           },
           { headers: NO_STORE },

@@ -1,11 +1,17 @@
 import { Download, FileSpreadsheet } from 'lucide-react'
 import type { FileCard } from '@/lib/assistant/types'
+import { SaveFormatButton } from './save-format-button'
 
 const COUNT = new Intl.NumberFormat('en-PH')
 
 /** Only our own export route, on this site: a card can never send the owner elsewhere. */
 export function isExportHref(href: unknown): href is string {
   return typeof href === 'string' && href.startsWith('/api/exports?') && !href.includes('//') && !href.includes('\\')
+}
+
+/** A card comes back from stored history: offer Save only when its parts are there (the route checks them properly). */
+function canSave(save: FileCard['save']): save is NonNullable<FileCard['save']> {
+  return !!save && typeof save.tenantId === 'string' && typeof save.name === 'string' && typeof save.spec === 'object' && save.spec !== null
 }
 
 function rowsText(rows: number | null): string {
@@ -65,6 +71,11 @@ export function FileCardView({ card }: { card: FileCard }) {
           </a>
         ))}
       </div>
+      {canSave(card.save) && (
+        <div className="border-t border-border px-4 py-3">
+          <SaveFormatButton save={card.save} />
+        </div>
+      )}
     </section>
   )
 }

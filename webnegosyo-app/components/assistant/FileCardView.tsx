@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { colors, radius } from "../../theme/colors";
 import { assistantToken } from "../../lib/assistant/api";
 import { downloadServerExport, isServerExportPath } from "../../lib/export/server-export";
+import { saveExportFormat } from "../../lib/export/server-export-api";
 import type { FileCard } from "../../lib/assistant/types";
 
 type Props = { card: FileCard };
@@ -19,6 +20,7 @@ function rowsText(rows: number | null): string {
 export function FileCardView({ card }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved">("idle");
   const downloads = (Array.isArray(card.downloads) ? card.downloads : []).filter((download) => isServerExportPath(download.href));
   if (downloads.length === 0) return null;
   const sheets = Array.isArray(card.sheets) ? card.sheets : [];
@@ -34,6 +36,21 @@ export function FileCardView({ card }: Props) {
       setError(cause instanceof Error && cause.message ? cause.message : "The file could not be prepared. Try again in a moment.");
     } finally {
       setBusy(null);
+    }
+  };
+
+  // A card comes back from stored history: offer Save only when its parts are there.
+  const save = card.save && typeof card.save.tenantId === "string" && typeof card.save.name === "string" && typeof card.save.spec === "object" && card.save.spec !== null ? card.save : null;
+  const keep = async () => {
+    if (!save || saving !== "idle" || busy) return;
+    setSaving("saving");
+    setError(null);
+    try {
+      await saveExportFormat(save);
+      setSaving("saved");
+    } catch (cause) {
+      setSaving("idle");
+      setError(cause instanceof Error && cause.message ? cause.message : "That could not be saved. Try again in a moment.");
     }
   };
 
@@ -71,6 +88,24 @@ export function FileCardView({ card }: Props) {
           </Pressable>
         ))}
       </View>
+      {save && saving === "saved" ? (
+        <Text style={styles.saved} accessibilityLiveRegion="polite">
+          Saved as “{save.name}”. Find it under My formats in Export.
+        </Text>
+      ) : save ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Save to My formats"
+          accessibilityState={{ busy: saving === "saving", disabled: saving === "saving" || busy !== null }}
+          disabled={saving === "saving" || busy !== null}
+          onPress={() => void keep()}
+          style={[styles.keep, (saving === "saving" || busy !== null) && styles.dimmed]}
+          hitSlop={6}
+        >
+          {saving === "saving" ? <ActivityIndicator size="small" color={colors.textPrimary} /> : null}
+          <Text style={styles.secondaryText}>{saving === "saving" ? "Saving…" : "Save to My formats"}</Text>
+        </Pressable>
+      ) : null}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}
@@ -93,6 +128,8 @@ const styles = StyleSheet.create({
   primaryText: { fontSize: 14, fontWeight: "700", color: colors.card },
   secondary: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 12 },
   secondaryText: { fontSize: 13, fontWeight: "600", color: colors.textPrimary },
+  keep: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 8, minHeight: 44, borderRadius: radius.full, borderWidth: 1, borderColor: colors.separator, paddingHorizontal: 14, marginTop: 4 },
+  saved: { fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginTop: 4 },
   dimmed: { opacity: 0.6 },
   error: { fontSize: 12, color: colors.danger, marginTop: 4 },
 });

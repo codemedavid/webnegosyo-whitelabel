@@ -12,6 +12,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { OptionPills } from "../../components/OptionPills";
 import { SectionHeader } from "../../components/SectionHeader";
 import { ExportDayPicker } from "../../components/export/ExportDayPicker";
+import { ExportFormats } from "../../components/export/ExportFormats";
 import { resourceKey } from "../../lib/backends/query-keys";
 import { downloadServerExport } from "../../lib/export/server-export";
 import {
@@ -193,6 +194,8 @@ function ExportBuilder({ tenantId, catalogue, start }: ExportBuilderProps) {
           <DayButton label="To" day={to} onPress={() => setDayField("to")} />
         </View>
       ) : null}
+
+      <ExportFormats tenantId={tenantId} formats={catalogue.formats} period={period} catalogue={catalogue} />
 
       <SectionHeader title="2 · What to include" hint="Each one is a tab in the file" />
       {catalogue.packs.length > 0 ? (

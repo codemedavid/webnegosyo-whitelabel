@@ -4,13 +4,16 @@ import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { getRequestCaller } from '@/lib/auth/request-caller'
 import { exportCardGroups, parseSheetsParam } from '@/lib/exports/export-page-model'
+import { loadTemplateCards } from '@/lib/exports/server/report-templates'
 import type { ExportRequest } from '@/lib/exports/request-schema'
+import type { ExportAccess } from '@/lib/exports/types'
 import { loadReportPage } from '@/lib/reports/read/load-report-context'
 import { reportHref } from '@/lib/reports/report-links'
 import { hasPermission } from '@/lib/staff-permissions'
 import { CoverageNote } from '@/components/admin/reports'
 import { ReportFilters } from '@/components/admin/reports/report-filters'
 import { ExportBuilder } from '@/components/admin/reports/export/export-builder'
+import { MyFormats } from '@/components/admin/reports/export/my-formats'
 import { RecentExports } from '@/components/admin/reports/export/recent-exports'
 import { ReportFooter, ReportPageFrame, reportsPath } from '@/components/admin/reports/sales/report-page-chrome'
 import { ReportRefused, ReportUnsupported } from '@/components/admin/reports/sales/report-states'
@@ -41,7 +44,10 @@ export default async function ExportPage({ params, searchParams }: ExportPagePro
   const { appUser, roleError } = await getRequestCaller()
   // Fail closed: an account that could not be read holds no key, so every extra sheet stays locked.
   const caller = roleError ? null : appUser
-  const groups = exportCardGroups({ has: (key) => (caller ? hasPermission(caller, key) : false) }, context.isMultiBranch)
+  const access: ExportAccess = { has: (key) => (caller ? hasPermission(caller, key) : false) }
+  const groups = exportCardGroups(access, context.isMultiBranch)
+  // Saved formats are for accounts that see the whole store (RLS answers a branch-locked one with none).
+  const formats = await loadTemplateCards(context.tenantId, access, context.isMultiBranch)
   const { preset, from, to, branch } = context.filter
   const period: ExportRequest['period'] = preset === 'custom' && from && to ? { preset, from, to } : { preset: context.period.preset }
   const path = `${reportsPath(context)}/export`
@@ -89,6 +95,15 @@ export default async function ExportPage({ params, searchParams }: ExportPagePro
           Exports read orders saved in WebNegosyo’s main database. Orders your store took on its earlier real-time system are not included.
         </CoverageNote>
       )}
+      <MyFormats
+        tenantId={context.tenantId}
+        formats={formats}
+        period={period}
+        periodFrom={context.period.from}
+        periodTo={context.period.to}
+        branch={branch}
+        periodError={context.periodError}
+      />
       <ExportBuilder
         tenantId={context.tenantId}
         groups={groups}

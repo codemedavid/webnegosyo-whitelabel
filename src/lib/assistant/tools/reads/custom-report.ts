@@ -142,6 +142,8 @@ export function buildCustomReportResult(
   spec: CustomReportSpec,
   request: Pick<ExportRequest, 'tenantId' | 'period' | 'branch' | 'format'>,
   exportPagePath: string,
+  /** `savedAs` = this ran a format the store already keeps under that name, so the card offers no Save. */
+  options: { savedAs?: string } = {},
 ): ToolResult {
   const [sheet] = result.sheets
   const mayRead = SHEETS_OWL_MAY_READ.has(spec.sheet)
@@ -161,6 +163,7 @@ export function buildCustomReportResult(
       say: mayRead
         ? 'The file is on the card. You may quote firstRows (percent columns are ratios: 0.25 = 25%); say nothing about rows you were not given.'
         : 'The file is on the card. Its rows hold people’s details, so you were not given them: say what the report lists, not what it says.',
+      ...(options.savedAs ? {} : { keep: 'To keep this report for other dates the owner taps "Save to My formats" on the card. You cannot save it for them; a different name = build it again with that title.' }),
     },
     card: {
       type: 'file',
@@ -172,11 +175,14 @@ export function buildCustomReportResult(
         { label: request.format === 'xlsx' ? 'Download Excel' : 'Download CSV', href: link(request.format) },
         { label: other === 'xlsx' ? 'Excel' : 'CSV', href: link(other) },
       ],
+      ...(options.savedAs ? {} : { save: { tenantId: request.tenantId, name: spec.title, spec } }),
     },
-    chips: [
-      { label: 'Same for last month', prompt: 'Make the same report for last month.' },
-      { label: 'Add a column', prompt: 'What other columns can that report have?' },
-    ],
+    chips: options.savedAs
+      ? [{ label: 'Same for last month', prompt: `Make my saved format "${options.savedAs}" for last month.` }]
+      : [
+          { label: 'Same for last month', prompt: 'Make the same report for last month.' },
+          { label: 'Add a column', prompt: 'What other columns can that report have?' },
+        ],
     links: [{ label: 'Open Export', path: exportPagePath }],
   }
 }

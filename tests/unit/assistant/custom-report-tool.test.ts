@@ -131,7 +131,7 @@ describe('who gets the tool', () => {
     expect(names(staff(['assistant', 'reports']), { ...flags, isPlatformOrders: false })).not.toContain('build_custom_report')
   })
 
-  it('is the newest tool, appended after every older one', () => {
-    expect(ASSISTANT_TOOLS[ASSISTANT_TOOLS.length - 1].name).toBe(buildCustomReportTool.name)
+  it('sits right before run_saved_report, after every older tool', () => {
+    expect(ASSISTANT_TOOLS[ASSISTANT_TOOLS.length - 2].name).toBe(buildCustomReportTool.name)
   })
 })
