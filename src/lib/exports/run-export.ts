@@ -46,18 +46,10 @@ import {
   type DetailClient,
   type DetailWindow,
 } from './read/detail-read'
-import {
-  readCashMoveSheet,
-  readDayCloseSheet,
-  readExpenseSheet,
-  readProfitSheet,
-  readRemittanceSheet,
-  readShiftSheet,
-  readStockMovementSheet,
-  readStockOnHandSheet,
-  type BookSheetRows,
-  type BookWindow,
-} from './read/book-read'
+import { readActivitySheet } from './read/activity-read'
+import { readCashMoveSheet, readDayCloseSheet, readExpenseSheet, readProfitSheet, readRemittanceSheet, readShiftSheet } from './read/book-read'
+import type { BookSheetRows, BookWindow } from './read/book-window'
+import { readStockMovementSheet, readStockOnHandSheet, readStockUsageSheet } from './read/stock-read'
 import type { DetailData } from './sheets/detail-data'
 import { cancelledRows, cashierRows, customerRows, discountRows, orderLineRows, orderRows, paymentRows } from './sheets/detail-sheets'
 import { breakdownRows, itemRows, paymentMethodRows, salesByDayRows, summaryRows } from './sheets/summary-sheets'
@@ -228,10 +220,14 @@ function readBook(id: SheetId, window: BookWindow, now: number): Promise<BookShe
       return readRemittanceSheet(window)
     case 'day_closes':
       return readDayCloseSheet(window)
+    case 'activity':
+      return readActivitySheet(window)
     case 'stock_on_hand':
       return readStockOnHandSheet(window, now)
     case 'stock_movements':
       return readStockMovementSheet(window)
+    case 'stock_usage':
+      return readStockUsageSheet(window)
     case 'expenses':
       return readExpenseSheet(window)
     case 'profit':
@@ -259,6 +255,7 @@ async function readBooks(input: ExportInput, sheets: readonly SheetDef[], peek: 
     client: input.bookClient,
     reportClient: input.reportClient,
     reportWindow: current,
+    schedule: input.context.schedule,
     peek,
     pageSize: input.pageSize,
   }

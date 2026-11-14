@@ -71,7 +71,7 @@ function SheetPreview({ sheet }: { sheet: PreviewSheet }) {
         </table>
       </div>
       {sheet.peek.length > 0 && (sheet.rows === null || sheet.rows > sheet.peek.length) && (
-        <p className="border-t border-border px-4 py-2 text-[12.5px] text-muted-foreground">First {sheet.peek.length} rows shown. The file has all of them.</p>
+        <p className="border-t border-border px-4 py-2 text-[12.5px] text-muted-foreground">{sheet.peek.length} rows shown. The file has all of them.</p>
       )}
     </article>
   )

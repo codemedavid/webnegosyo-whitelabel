@@ -49,6 +49,6 @@ export const SCREEN_EXPORT_SHEETS = {
   orders: ["orders", "order_lines"],
   sales: ["summary", "sales_by_day", "items"],
   profit: ["profit", "expenses", "summary"],
-  stock: ["stock_on_hand", "stock_movements"],
+  stock: ["stock_on_hand", "stock_usage", "stock_movements"],
   cash: ["shifts", "sales_by_cashier", "cash_moves", "remittances", "day_closes"],
 } as const;

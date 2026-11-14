@@ -1,6 +1,7 @@
 /**
- * Reads the store's other books for an export: shifts, cash in and out,
- * stock, expenses and profit. Each goes through the CALLER's session client
+ * Reads the store's cash and money books for an export: shifts, cash in and
+ * out, remittances, day closes, expenses and profit (stock is `stock-read.ts`,
+ * the activity log `activity-read.ts`). Each goes through the CALLER's session client
  * (or the reader that book's own screen uses), so row-level security and the
  * book's own staff key decide what comes back. Never a service-role client.
  *
@@ -8,7 +9,6 @@
  * one the database would not hand over, is an `ExportError` with a sentence.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { asCashRpcClient } from '@/lib/cash/cash-rpc'
 import { readCashSummary } from '@/lib/cash/cash-reports'
 import { DAY_CLOSE_COLUMNS, parseDayClose } from '@/lib/cash/day-close'
@@ -16,63 +16,14 @@ import { REMITTANCE_COLUMNS, parseRemittance, remittanceDifferenceCents, type Re
 import { GROUP_LABELS } from '@/lib/expenses/categories'
 import { buildExportRows } from '@/lib/expenses/export'
 import { loadExpenseExport } from '@/lib/expenses/read/export-read'
-import { readItemCosts, readMovementCosts } from '@/lib/inventory/item-costs'
 import { EXPENSE_LINE_GROUPS } from '@/lib/reports/profit-facts'
 import { buildProfitReport } from '@/lib/reports/profit-model'
-import { readExpenseCategories, readProfitSummary, type ReportRpcClient, type ReportWindow } from '@/lib/reports/read/report-rpc'
-import type { ReportBranchArgs } from '@/lib/reports/read/report-scope'
+import { readExpenseCategories, readProfitSummary } from '@/lib/reports/read/report-rpc'
 import { manilaDate, manilaDateTime, manilaTime, pesos, text, typed, words } from '../cells'
 import { ExportError } from '../errors'
-import type { ExportAccess, ExportRow } from '../types'
+import type { ExportRow } from '../types'
+import { MAX_BOOK_ROWS, branchName, countOf, inBranch, iso, round2, tooMany, type BookSheetRows, type BookWindow } from './book-window'
 import { readAll } from './detail-read'
-
-/** Rows one book sheet may list. Over it the export is refused, never cut short. */
-export const MAX_BOOK_ROWS = 20_000
-
-export interface BookWindow {
-  tenantId: string
-  /** Business days, inclusive. */
-  fromDay: string
-  toDay: string
-  /** Half-open [start, end), epoch ms. */
-  start: number
-  end: number
-  branch: ReportBranchArgs
-  outletNames: ReadonlyMap<string, string>
-  access: ExportAccess
-  /** The caller's session client. */
-  client: SupabaseClient
-  /** The report engine's client (caller's session), for the profit functions. */
-  reportClient: ReportRpcClient
-  reportWindow: ReportWindow
-  /** Preview: read only the first rows of a long book. */
-  peek: number | null
-  pageSize?: number
-}
-
-export interface BookSheetRows {
-  rows: ExportRow[]
-  /** The whole book's row count when only its first rows were read; else rows.length. */
-  total: number | null
-  notes: string[]
-}
-
-function branchName(outletId: string | null, names: ReadonlyMap<string, string>): string | null {
-  return outletId ? (names.get(outletId) ?? 'Unknown branch') : null
-}
-
-function inBranch(outletId: string | null, branch: ReportBranchArgs): boolean {
-  if (branch.p_unassigned) return outletId === null
-  return branch.p_outlet === null || outletId === branch.p_outlet
-}
-
-function tooMany(what: string): ExportError {
-  return new ExportError(`There are more than ${MAX_BOOK_ROWS.toLocaleString('en-PH')} ${what} in these dates. Pick a shorter range.`, 400)
-}
-
-const iso = (ms: number): string => new Date(ms).toISOString()
-const round2 = (value: number): number => Math.round(value * 100) / 100
-const num = (value: unknown): number | null => (value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value))
 
 // ── Shifts ────────────────────────────────────────────────────────────────
 
@@ -141,13 +92,6 @@ function cashMovesQuery(window: BookWindow, columns: string, options?: { count: 
   if (window.branch.p_outlet !== null) query = query.eq('outlet_id', window.branch.p_outlet)
   if (window.branch.p_unassigned) query = query.is('outlet_id', null)
   return query
-}
-
-async function countOf(what: string, query: PromiseLike<{ count: number | null; error: { message: string } | null }>): Promise<number> {
-  const { count, error } = await query
-  if (error || count === null) throw new ExportError(`The ${what} could not be counted. Try again in a moment.`, 502)
-  if (count > MAX_BOOK_ROWS) throw tooMany(what)
-  return count
 }
 
 export async function readCashMoveSheet(window: BookWindow): Promise<BookSheetRows> {
@@ -344,201 +288,6 @@ export async function readDayCloseSheet(window: BookWindow): Promise<BookSheetRo
       'Blank Sales = this store’s sales are not on the main database, so the close holds the drawers only.',
     ],
   }
-}
-
-// ── Stock ─────────────────────────────────────────────────────────────────
-
-interface ItemRow {
-  id: string
-  name: string | null
-  category: string | null
-  stock_unit_id: string | null
-  current_qty: number | string | null
-  reorder_level: number | string | null
-  is_active: boolean | null
-  counted_at: string | null
-}
-
-interface UnitRow {
-  id: string
-  abbreviation: string | null
-}
-
-interface ShelfRow {
-  inventory_item_id: string
-  current_qty: number | string | null
-  reorder_level: number | string | null
-  counted_at: string | null
-}
-
-async function readItems(window: BookWindow): Promise<ItemRow[]> {
-  return (await readAll(
-    'ingredients',
-    ((from: number, to: number) =>
-      window.client
-        .from('inventory_items')
-        .select('id, name, category, stock_unit_id, current_qty, reorder_level, is_active, counted_at')
-        .eq('tenant_id', window.tenantId)
-        .order('name', { ascending: true })
-        .order('id', { ascending: true })
-        .range(from, to)) as never,
-    { pageSize: window.pageSize },
-  )) as ItemRow[]
-}
-
-async function readUnits(window: BookWindow): Promise<Map<string, string>> {
-  const units = (await readAll(
-    'units',
-    ((from: number, to: number) =>
-      window.client.from('inventory_units').select('id, abbreviation').eq('tenant_id', window.tenantId).order('id', { ascending: true }).range(from, to)) as never,
-    { pageSize: window.pageSize },
-  )) as UnitRow[]
-  return new Map(units.map((unit) => [unit.id, unit.abbreviation?.trim() ?? '']))
-}
-
-async function costsFor(window: BookWindow): Promise<Map<string, number> | null> {
-  if (!window.access.has('costs')) return null
-  return readItemCosts(window.client as never, window.tenantId)
-}
-
-function stockState(quantity: number, reorder: number): string {
-  if (quantity <= 0) return 'Out'
-  return reorder > 0 && quantity <= reorder ? 'Low' : 'OK'
-}
-
-export async function readStockOnHandSheet(window: BookWindow, now: number): Promise<BookSheetRows> {
-  const oneBranch = window.branch.p_outlet
-  const [items, units, costs, shelves] = await Promise.all([
-    readItems(window),
-    readUnits(window),
-    costsFor(window),
-    oneBranch === null
-      ? Promise.resolve(null)
-      : (readAll(
-          'branch stock',
-          ((from: number, to: number) =>
-            window.client
-              .from('inventory_stock')
-              .select('inventory_item_id, current_qty, reorder_level, counted_at')
-              .eq('tenant_id', window.tenantId)
-              .eq('outlet_id', oneBranch)
-              .order('inventory_item_id', { ascending: true })
-              .range(from, to)) as never,
-          { pageSize: window.pageSize },
-        ) as Promise<ShelfRow[]>),
-  ])
-  const shelfByItem = shelves ? new Map(shelves.map((shelf) => [shelf.inventory_item_id, shelf])) : null
-  const rows = items
-    .filter((item) => item.is_active !== false)
-    .map((item): ExportRow => {
-      // One branch: its own shelf, and no shelf row means zero. Whole store: the ingredient's total.
-      const shelf = shelfByItem ? shelfByItem.get(item.id) : undefined
-      const quantity = Number((shelfByItem ? shelf?.current_qty : item.current_qty) ?? 0)
-      const reorder = Number((shelfByItem ? shelf?.reorder_level : item.reorder_level) ?? 0)
-      const countedAt = shelfByItem ? (shelf?.counted_at ?? null) : item.counted_at
-      const cost = costs?.get(item.id) ?? null
-      return {
-        ingredient: text(item.name),
-        category: text(item.category),
-        quantity,
-        unit: item.stock_unit_id ? (units.get(item.stock_unit_id) ?? null) : null,
-        reorder_level: reorder > 0 ? reorder : null,
-        state: stockState(quantity, reorder),
-        unit_cost: cost === null ? null : round2(cost),
-        value: cost === null ? null : round2(Math.max(0, quantity) * cost),
-        last_counted: countedAt ? manilaDate(Date.parse(countedAt)) : null,
-      }
-    })
-  return {
-    rows,
-    total: rows.length,
-    notes: [`What is on the shelf now (${manilaDateTime(now)}), not on the dates picked. Ingredients switched off are left out.`],
-  }
-}
-
-interface MovementRow {
-  id: string
-  inventory_item_id: string
-  outlet_id: string | null
-  reason: string
-  quantity_delta: number | string
-  balance_after: number | string | null
-  note: string | null
-  order_id: string | null
-  created_at: string | null
-}
-
-const MOVEMENT_COLUMNS = 'id, inventory_item_id, outlet_id, reason, quantity_delta, balance_after, note, order_id, created_at'
-const MOVEMENT_LABELS: Readonly<Record<string, string>> = {
-  receive: 'Received',
-  sale: 'Sold',
-  void: 'Sale taken back',
-  waste: 'Wasted',
-  stocktake: 'Counted',
-  transfer_out: 'Sent to a branch',
-  transfer_in: 'Arrived from a branch',
-}
-
-function movementsQuery(window: BookWindow, columns: string, options?: { count: 'exact'; head: true }) {
-  let query = window.client
-    .from('stock_movements')
-    .select(columns, options)
-    .eq('tenant_id', window.tenantId)
-    .gte('created_at', iso(window.start))
-    .lt('created_at', iso(window.end))
-  if (window.branch.p_outlet !== null) query = query.eq('outlet_id', window.branch.p_outlet)
-  if (window.branch.p_unassigned) query = query.is('outlet_id', null)
-  return query
-}
-
-export async function readStockMovementSheet(window: BookWindow): Promise<BookSheetRows> {
-  const page = (from: number, to: number) =>
-    movementsQuery(window, MOVEMENT_COLUMNS).order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, to)
-  let stored: MovementRow[]
-  let total: number
-  if (window.peek !== null) {
-    total = await countOf('stock movements', movementsQuery(window, 'id', { count: 'exact', head: true }))
-    const { data, error } = await page(0, window.peek - 1)
-    if (error) throw new ExportError('The stock movements could not be read. Try again in a moment.', 502)
-    stored = (data ?? []) as unknown as MovementRow[]
-  } else {
-    stored = (await readAll('stock movements', page as never, { cap: MAX_BOOK_ROWS, pageSize: window.pageSize })) as MovementRow[]
-    if (stored.length > MAX_BOOK_ROWS) throw tooMany('stock movements')
-    total = stored.length
-  }
-  const [items, units, costs] = await Promise.all([
-    readItems(window),
-    readUnits(window),
-    window.access.has('costs') && stored.length > 0
-      ? readMovementCosts(
-          window.client as never,
-          window.tenantId,
-          stored.map((movement) => movement.id),
-        )
-      : Promise.resolve(null),
-  ])
-  const itemById = new Map(items.map((item) => [item.id, item]))
-  const rows = stored.map((movement): ExportRow => {
-    const at = movement.created_at ? Date.parse(movement.created_at) : Number.NaN
-    const item = itemById.get(movement.inventory_item_id)
-    const change = Number(movement.quantity_delta ?? 0)
-    const cost = costs?.get(movement.id) ?? null
-    return {
-      date: Number.isNaN(at) ? null : manilaDate(at),
-      time: Number.isNaN(at) ? null : manilaTime(at),
-      branch: branchName(movement.outlet_id, window.outletNames),
-      ingredient: text(item?.name) ?? 'Deleted ingredient',
-      reason: MOVEMENT_LABELS[movement.reason] ?? words(movement.reason),
-      change,
-      unit: item?.stock_unit_id ? (units.get(item.stock_unit_id) ?? null) : null,
-      balance: num(movement.balance_after),
-      unit_cost: cost === null ? null : round2(cost),
-      value: cost === null ? null : round2(change * cost),
-      note: text(movement.note),
-      order_id: text(movement.order_id),
-    }
-  })
-  return { rows, total, notes: ['A plus adds to the shelf, a minus takes from it. A blank cost means none was recorded for that movement.'] }
 }
 
 // ── Expenses ──────────────────────────────────────────────────────────────

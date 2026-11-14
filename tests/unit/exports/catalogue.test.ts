@@ -66,6 +66,7 @@ describe("export catalogue", () => {
       ),
     ).toMatchInlineSnapshot(`
      {
+       "activity": "date time branch category what details who approved_by amount quantity unit order_no reason note needs_look reviewed_by",
        "branches": "name orders quantity gross discounts net share",
        "cancelled": "order_no business_day date time branch order_type channel cashier customer items total refunded cancel_reason order_id",
        "cash_moves": "date time branch kind amount reason recorded_by taken_by to_safe shift_id",
@@ -88,6 +89,7 @@ describe("export catalogue", () => {
        "shifts": "business_day branch cashier drawer opened closed hours close_kind expected first_count final_count difference remittance shift_id",
        "stock_movements": "date time branch ingredient reason change unit balance unit_cost value note order_id",
        "stock_on_hand": "ingredient category quantity unit reorder_level state unit_cost value last_counted",
+       "stock_usage": "day ingredient unit opening received used wasted transferred count_change missing closing counted used_cost wasted_cost missing_cost",
        "summary": "line value note",
      }
     `);

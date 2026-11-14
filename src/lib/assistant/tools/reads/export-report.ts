@@ -80,7 +80,7 @@ export function buildExportResult(preview: ExportPreview, request: Omit<ExportRe
 export const exportReportTool: AssistantToolDef<Input> = {
   name: 'export_report',
   description:
-    'Make an Excel/CSV file for any dates: sales summary, by day, items, categories, payments, orders (with cashier, shift, customer), order_lines, customers, discounts, cancelled, sales_by_cashier, shifts, cash_moves, remittances (cash handed over), day_closes, stock_on_hand, stock_movements, expenses, profit (statement). "Export today/everything" = pack everything. Answers with a download card.',
+    'Make an Excel/CSV file for any dates: sales summary, by day, items, categories, payments, orders (with cashier, shift, customer), order_lines, customers, discounts, cancelled, sales_by_cashier, shifts, cash_moves, remittances (cash handed over), day_closes, activity (who did what), stock_on_hand, stock_movements, stock_usage (used, wasted and missing per ingredient per day), expenses, profit (statement). "Export today/everything" = pack everything. Answers with a download card.',
   access: { permission: 'reports' },
   isAvailable: (flags) => flags.isPlatformOrders === true,
   input,
