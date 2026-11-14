@@ -109,7 +109,8 @@ export async function readConvexSales(
     settle(
       client.query<ConvexOrderRow[]>('orders:getOrdersInternal', {
         startMs: window.readStart,
-        endMs: window.now + 1,
+        // getOrdersInternal is half-open (`lt endMs`), like readEnd.
+        endMs: window.readEnd ?? window.now + 1,
         limit: CONVEX_ROW_LIMIT,
         ...branch,
       }),

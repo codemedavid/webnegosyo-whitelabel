@@ -39,6 +39,8 @@ import { getDishRecipeTool, getIngredientTool } from '@/lib/assistant/tools/read
 import { proposeIngredientTool } from '@/lib/assistant/tools/propose/ingredient'
 import { getDeliverySetupTool } from '@/lib/assistant/tools/reads/delivery-setup'
 import { findLessonsTool } from '@/lib/assistant/tools/reads/lessons'
+import { getActivityLogTool } from '@/lib/assistant/tools/reads/activity-log'
+import { getOrderTool } from '@/lib/assistant/tools/reads/order-lookup'
 
 export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   getSalesOverviewTool,
@@ -87,4 +89,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   proposeIngredientTool,
   getDeliverySetupTool,
   findLessonsTool,
+  // Any point in time: who did what, one order (2026-11-13).
+  getActivityLogTool,
+  getOrderTool,
 ] as AssistantToolDef[]
