@@ -40,6 +40,14 @@ function makeQuery(table: string) {
   return chain
 }
 
+// This suite places far more than 20 orders for one store in a minute, and jest
+// requests carry no client address, so they share the per-store unknown-address
+// bucket. The limit has its own tests (tests/unit/lib/action-rate-limit.test.ts).
+jest.mock('@/lib/action-rate-limit', () => ({
+  ...jest.requireActual<typeof import('@/lib/action-rate-limit')>('@/lib/action-rate-limit'),
+  checkOrderRateLimit: async () => ({ allowed: true, retryAfterSec: 0 }),
+}))
+
 jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => {

@@ -126,8 +126,9 @@ export function PaymentMethodsList({
       } else {
         throw new Error(result.error)
       }
-    } catch {
-      toast.error('Failed to reorder payment methods')
+    } catch (error) {
+      // The action says why (a refused write names itself); keep its words.
+      toast.error(error instanceof Error && error.message ? error.message : 'Failed to reorder payment methods')
       setItems(paymentMethods) // Revert on error
     }
   }

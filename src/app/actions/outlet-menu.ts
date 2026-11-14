@@ -50,26 +50,6 @@ async function denyUnlessBranchMenuManager(outletId: string): Promise<string | n
   return canManageBranchMenu(appUser, outletId) ? null : NOT_ALLOWED
 }
 
-/** Every override the tenant has — the admin's cross-branch views. */
-export async function listOutletMenuOverridesAction(tenantId: string) {
-  try {
-    const data = await createSupabaseOutletMenuRepository().listByTenant(tenantId)
-    return { success: true as const, data }
-  } catch (error) {
-    return fail(error, 'Failed to load branch menus')
-  }
-}
-
-/** One branch's whole opinion — its Menu tab. */
-export async function listOutletMenuForOutletAction(tenantId: string, outletId: string) {
-  try {
-    const data = await createSupabaseOutletMenuRepository().listByOutlet(tenantId, outletId)
-    return { success: true as const, data }
-  } catch (error) {
-    return fail(error, 'Failed to load this branch menu')
-  }
-}
-
 /**
  * Change one branch's opinion about one dish.
  *
