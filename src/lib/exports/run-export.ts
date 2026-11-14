@@ -17,6 +17,7 @@ import { runReportQuery, type ReportSections } from '@/lib/reports/api/run-repor
 import type { ReportContext } from '@/lib/reports/read/report-context'
 import type { ReportRpcClient } from '@/lib/reports/read/report-rpc'
 import { UNASSIGNED_LABEL } from '@/lib/reports/report-view-model'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildWorkbook } from './build/workbook'
 import { fileSlug, sheetToCsv, zipCsvSheets } from './build/csv'
 import {
@@ -45,6 +46,16 @@ import {
   type DetailClient,
   type DetailWindow,
 } from './read/detail-read'
+import {
+  readCashMoveSheet,
+  readExpenseSheet,
+  readProfitSheet,
+  readShiftSheet,
+  readStockMovementSheet,
+  readStockOnHandSheet,
+  type BookSheetRows,
+  type BookWindow,
+} from './read/book-read'
 import type { DetailData } from './sheets/detail-data'
 import { cancelledRows, cashierRows, customerRows, discountRows, orderLineRows, orderRows, paymentRows } from './sheets/detail-sheets'
 import { breakdownRows, itemRows, paymentMethodRows, salesByDayRows, summaryRows } from './sheets/summary-sheets'
@@ -62,6 +73,8 @@ export interface ExportInput {
   reportClient: ReportRpcClient
   /** The caller's session client, for row-level sheets. */
   detailClient: DetailClient
+  /** The caller's full session client, for the store's other books (shifts, stock, expenses). */
+  bookClient?: SupabaseClient
   sheets: readonly SheetId[]
   now: number
   /** Tests only: rows per request, to page over a small fake. */
@@ -147,7 +160,7 @@ function choose(input: ExportInput): Chosen {
     throw new ExportError(leftOut[0] ? `Nothing to export. ${leftOut[0].note}` : 'Pick at least one sheet to export.', 403)
   }
   const days = dayCount(input.context.period.from, input.context.period.to)
-  const detail = included.find((sheet) => sheet.source === 'detail')
+  const detail = included.find((sheet) => sheet.source !== 'summary')
   if (detail && days > MAX_DETAIL_DAYS) {
     throw new ExportError(
       `${detail.name} lists every row, so one file covers up to ${MAX_DETAIL_DAYS} days (you picked ${days}). Pick a shorter range, or export the summary sheets only.`,
@@ -201,7 +214,59 @@ async function readDetail(input: ExportInput, sheets: readonly SheetDef[], peek:
 /** Sheets that name a cashier: names come from the shifts on record. */
 const SHEETS_WITH_STAFF_NAMES: readonly SheetId[] = ['orders', 'payments_received', 'discounts', 'cancelled', 'sales_by_cashier']
 
-function rowsFor(sheet: SheetDef, sections: ReportSections, detail: DetailData | null): ExportRow[] {
+type Books = ReadonlyMap<SheetId, BookSheetRows>
+
+function readBook(id: SheetId, window: BookWindow, now: number): Promise<BookSheetRows> | null {
+  switch (id) {
+    case 'shifts':
+      return readShiftSheet(window)
+    case 'cash_moves':
+      return readCashMoveSheet(window)
+    case 'stock_on_hand':
+      return readStockOnHandSheet(window, now)
+    case 'stock_movements':
+      return readStockMovementSheet(window)
+    case 'expenses':
+      return readExpenseSheet(window)
+    case 'profit':
+      return readProfitSheet(window)
+    default:
+      return null
+  }
+}
+
+/** The store's other books, each through its own reader. `peek` = a preview: long books are counted, not read whole. */
+async function readBooks(input: ExportInput, sheets: readonly SheetDef[], peek: number | null): Promise<Books> {
+  const wanted = sheets.filter((sheet) => sheet.source === 'book')
+  if (wanted.length === 0) return new Map()
+  if (!input.bookClient) throw new ExportError(`${wanted[0].name} could not be read. Try again in a moment.`, 502)
+  const current = input.context.windows.current
+  const window: BookWindow = {
+    tenantId: current.tenantId,
+    fromDay: input.context.period.from,
+    toDay: input.context.period.to,
+    start: current.start,
+    end: current.end,
+    branch: current.branch,
+    outletNames: input.context.outletNames,
+    access: input.access,
+    client: input.bookClient,
+    reportClient: input.reportClient,
+    reportWindow: current,
+    peek,
+    pageSize: input.pageSize,
+  }
+  const read = await Promise.all(
+    wanted.map(async (sheet) => {
+      const pending = readBook(sheet.id, window, input.now)
+      if (!pending) throw new ExportError(`${sheet.name} has no reader.`, 500)
+      return [sheet.id, await pending] as const
+    }),
+  )
+  return new Map(read)
+}
+
+function rowsFor(sheet: SheetDef, sections: ReportSections, detail: DetailData | null, books: Books): ExportRow[] {
   const data = (): DetailData => {
     if (!detail) throw new ExportError(`${sheet.name} could not be read. Try again in a moment.`, 502)
     return detail
@@ -237,6 +302,11 @@ function rowsFor(sheet: SheetDef, sections: ReportSections, detail: DetailData |
       return cancelledRows(data())
     case 'sales_by_cashier':
       return cashierRows(data())
+    default: {
+      const book = books.get(sheet.id)
+      if (!book) throw new ExportError(`${sheet.name} could not be read. Try again in a moment.`, 502)
+      return book.rows
+    }
   }
 }
 
@@ -257,19 +327,23 @@ function sheetNotes(sheet: SheetDef, input: ExportInput, detail: DetailData | nu
   return notes
 }
 
-function build(sheet: SheetDef, input: ExportInput, sections: ReportSections, detail: DetailData | null): BuiltSheet {
+function build(sheet: SheetDef, input: ExportInput, sections: ReportSections, detail: DetailData | null, books: Books): BuiltSheet {
   const columns = visibleColumns(sheet, input.access)
-  const rows = rowsFor(sheet, sections, detail).map((row) => columns.map((column) => row[column.id] ?? null))
-  return { id: sheet.id, name: sheet.name, columns, rows, notes: sheetNotes(sheet, input, detail) }
+  const rows = rowsFor(sheet, sections, detail, books).map((row) => columns.map((column) => row[column.id] ?? null))
+  return { id: sheet.id, name: sheet.name, columns, rows, notes: [...(books.get(sheet.id)?.notes ?? []), ...sheetNotes(sheet, input, detail)] }
 }
 
 /** Every sheet the caller asked for and may have, fully read. */
 export async function runExport(input: ExportInput): Promise<ExportResult> {
   const { included, leftOut } = choose(input)
-  const [sections, detail] = await Promise.all([readSections(input, included), readDetail(input, included, null)])
+  const [sections, detail, books] = await Promise.all([
+    readSections(input, included),
+    readDetail(input, included, null),
+    readBooks(input, included, null),
+  ])
   return {
     header: exportHeader(input.context, input.storeName, input.now),
-    sheets: included.map((sheet) => build(sheet, input, sections, detail)),
+    sheets: included.map((sheet) => build(sheet, input, sections, detail, books)),
     leftOut,
   }
 }
@@ -291,16 +365,18 @@ const TALLY_PREVIEW_NOTE = 'This sheet adds up every order, so its rows are work
 export async function previewExport(input: ExportInput): Promise<ExportPreview> {
   const { included, leftOut } = choose(input)
   const hasDetail = included.some((sheet) => sheet.source === 'detail')
-  const [sections, orderCount] = await Promise.all([
+  const [sections, orderCount, books] = await Promise.all([
     readSections(input, included),
     hasDetail ? countOrders(input.detailClient, detailWindow(input)) : Promise.resolve(0),
+    readBooks(input, included, PEEK_ROWS),
   ])
   if (orderCount > MAX_DETAIL_ORDERS) throw tooManyOrders(orderCount)
   const isWhole = orderCount <= (input.previewFullReadOrders ?? PREVIEW_FULL_READ_ORDERS)
   const detail = await readDetail(input, included, isWhole ? null : PEEK_ROWS)
   const sheets = included.map((sheet): PreviewSheet => {
-    const built = build(sheet, input, sections, detail)
-    const isExact = sheet.source === 'summary' || isWhole
+    const built = build(sheet, input, sections, detail, books)
+    const book = books.get(sheet.id)
+    const isExact = sheet.source === 'summary' || (sheet.source === 'detail' && isWhole)
     const isHeld = !isExact && TALLY_SHEETS.has(sheet.id)
     return {
       id: sheet.id,
@@ -308,7 +384,7 @@ export async function previewExport(input: ExportInput): Promise<ExportPreview> 
       rowIs: sheet.rowIs,
       columns: built.columns.map((column) => column.header),
       kinds: built.columns.map((column) => column.kind),
-      rows: isExact ? built.rows.length : sheet.id === 'orders' ? orderCount : null,
+      rows: book ? book.total : isExact ? built.rows.length : sheet.id === 'orders' ? orderCount : null,
       peek: isHeld ? [] : built.rows.slice(0, PEEK_ROWS),
       notes: isHeld ? [...built.notes, TALLY_PREVIEW_NOTE] : built.notes,
     }

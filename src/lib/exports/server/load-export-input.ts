@@ -37,6 +37,7 @@ export async function loadExportInput(request: ExportRequest, now: number = Date
 
   // Fail closed: an errored account read holds no key.
   const caller = roleError ? null : appUser
+  const sessionClient = await createClient()
   return {
     kind: 'ready',
     userId: user.id,
@@ -45,7 +46,8 @@ export async function loadExportInput(request: ExportRequest, now: number = Date
       storeName: tenant.name?.trim() || tenant.slug,
       access: { has: (key) => (caller ? hasPermission(caller, key) : false) },
       reportClient: await reportClient(),
-      detailClient: await createClient(),
+      detailClient: sessionClient,
+      bookClient: sessionClient,
       sheets: request.sheets,
       now,
     },

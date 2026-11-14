@@ -55,7 +55,7 @@ interface Page<Row> {
 }
 
 /** Every row of a query, one page at a time. `page(from, to)` must order its rows the same way each call. */
-async function readAll<Row>(
+export async function readAll<Row>(
   what: string,
   page: (from: number, to: number) => PromiseLike<Page<Row>>,
   { cap = Number.POSITIVE_INFINITY, pageSize = PAGE_SIZE }: { cap?: number; pageSize?: number } = {},

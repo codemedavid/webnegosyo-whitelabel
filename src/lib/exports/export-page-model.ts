@@ -53,7 +53,7 @@ export function exportCardGroups(access: ExportAccess, isMultiBranch: boolean): 
             name: sheet.name,
             rowIs: sheet.rowIs,
             columns: visibleColumns(sheet, access).map((column) => column.header),
-            isDetail: sheet.source === 'detail',
+            isDetail: sheet.source !== 'summary',
             lockedNote: refusal ? `Not on your account: ${SHEET_REFUSAL_NOTES[refusal]}.` : null,
           },
         ]

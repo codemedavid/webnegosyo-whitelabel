@@ -28,10 +28,16 @@ export const SHEET_IDS = [
   'discounts',
   'cancelled',
   'sales_by_cashier',
+  'shifts',
+  'cash_moves',
+  'stock_on_hand',
+  'stock_movements',
+  'expenses',
+  'profit',
 ] as const
 export type SheetId = (typeof SHEET_IDS)[number]
 
-export const SHEET_GROUPS = ['sales', 'orders', 'customers', 'staff'] as const
+export const SHEET_GROUPS = ['sales', 'orders', 'customers', 'staff', 'stock', 'books'] as const
 export type SheetGroup = (typeof SHEET_GROUPS)[number]
 
 export const SHEET_GROUP_LABELS: Readonly<Record<SheetGroup, string>> = {
@@ -39,14 +45,19 @@ export const SHEET_GROUP_LABELS: Readonly<Record<SheetGroup, string>> = {
   orders: 'Orders',
   customers: 'Customers',
   staff: 'Staff and cash',
+  stock: 'Stock',
+  books: 'Expenses and profit',
 }
 
 /**
  * `summary` sheets are totals from the report engine (up to 13 months).
  * `detail` sheets are one row per order / dish / payment, read row by row,
  * so they take a shorter range and a row cap.
+ * `book` sheets come from the store's other books (shifts, cash, stock,
+ * expenses, profit), each read through its own reader and its own staff key;
+ * they take the shorter range too.
  */
-export type SheetSource = 'summary' | 'detail'
+export type SheetSource = 'summary' | 'detail' | 'book'
 
 export interface SheetDef {
   id: SheetId
@@ -333,6 +344,139 @@ const SHEET_LIST: readonly SheetDef[] = [
       { id: 'unpaid', header: 'Still to collect', kind: 'money' },
       { id: 'cancelled', header: 'Cancelled orders', kind: 'count' },
       { id: 'share', header: 'Share of sales', kind: 'percent' },
+    ],
+  },
+  {
+    id: 'shifts',
+    name: 'Shifts',
+    group: 'staff',
+    rowIs: 'one shift: who, which drawer, when, cash expected, cash counted, over or short',
+    source: 'book',
+    needs: ['reports', 'cash_manage'],
+    sections: [],
+    columns: [
+      { id: 'business_day', header: 'Business day', kind: 'text' },
+      { id: 'branch', header: 'Branch', kind: 'text' },
+      { id: 'cashier', header: 'Cashier', kind: 'text' },
+      { id: 'drawer', header: 'Drawer', kind: 'text' },
+      { id: 'opened', header: 'Opened', kind: 'text' },
+      { id: 'closed', header: 'Closed', kind: 'text' },
+      { id: 'hours', header: 'Hours', kind: 'number' },
+      { id: 'close_kind', header: 'How it closed', kind: 'text' },
+      { id: 'expected', header: 'Cash expected', kind: 'money' },
+      { id: 'first_count', header: 'First count', kind: 'money' },
+      { id: 'final_count', header: 'Final count', kind: 'money' },
+      { id: 'difference', header: 'Over / short', kind: 'money' },
+      { id: 'remittance', header: 'Remittance', kind: 'text' },
+      { id: 'shift_id', header: 'Shift ID', kind: 'text' },
+    ],
+  },
+  {
+    id: 'cash_moves',
+    name: 'Cash in and out',
+    group: 'staff',
+    rowIs: 'one time cash went into or out of a drawer outside a sale: amount, reason, who',
+    source: 'book',
+    needs: ['reports', 'cash_manage'],
+    sections: [],
+    columns: [
+      { id: 'date', header: 'Date', kind: 'text' },
+      { id: 'time', header: 'Time', kind: 'text' },
+      { id: 'branch', header: 'Branch', kind: 'text' },
+      { id: 'kind', header: 'Kind', kind: 'text' },
+      { id: 'amount', header: 'Amount', kind: 'money' },
+      { id: 'reason', header: 'Reason', kind: 'text' },
+      { id: 'recorded_by', header: 'Recorded by', kind: 'text' },
+      { id: 'taken_by', header: 'Taken by', kind: 'text' },
+      { id: 'to_safe', header: 'To the safe', kind: 'text' },
+      { id: 'shift_id', header: 'Shift ID', kind: 'text' },
+    ],
+  },
+  {
+    id: 'stock_on_hand',
+    name: 'Stock on hand',
+    group: 'stock',
+    rowIs: 'one ingredient: how much is on the shelf right now (not the dates above)',
+    source: 'book',
+    needs: ['reports', 'inventory'],
+    sections: [],
+    columns: [
+      { id: 'ingredient', header: 'Ingredient', kind: 'text' },
+      { id: 'category', header: 'Category', kind: 'text' },
+      { id: 'quantity', header: 'On hand', kind: 'number' },
+      { id: 'unit', header: 'Unit', kind: 'text' },
+      { id: 'reorder_level', header: 'Reorder at', kind: 'number' },
+      { id: 'state', header: 'State', kind: 'text' },
+      { id: 'unit_cost', header: 'Cost per unit', kind: 'money', needs: 'costs' },
+      { id: 'value', header: 'Stock value', kind: 'money', needs: 'costs' },
+      { id: 'last_counted', header: 'Last counted', kind: 'text' },
+    ],
+  },
+  {
+    id: 'stock_movements',
+    name: 'Stock movements',
+    group: 'stock',
+    rowIs: 'one change to an ingredient: received, sold, wasted, counted or transferred',
+    source: 'book',
+    needs: ['reports', 'inventory'],
+    sections: [],
+    columns: [
+      { id: 'date', header: 'Date', kind: 'text' },
+      { id: 'time', header: 'Time', kind: 'text' },
+      { id: 'branch', header: 'Branch', kind: 'text' },
+      { id: 'ingredient', header: 'Ingredient', kind: 'text' },
+      { id: 'reason', header: 'What happened', kind: 'text' },
+      { id: 'change', header: 'Change', kind: 'number' },
+      { id: 'unit', header: 'Unit', kind: 'text' },
+      { id: 'balance', header: 'On hand after', kind: 'number' },
+      { id: 'unit_cost', header: 'Cost per unit', kind: 'money', needs: 'costs' },
+      { id: 'value', header: 'Value of the change', kind: 'money', needs: 'costs' },
+      { id: 'note', header: 'Note', kind: 'text' },
+      { id: 'order_id', header: 'Order ID', kind: 'text' },
+    ],
+  },
+  {
+    id: 'expenses',
+    name: 'Expenses',
+    group: 'books',
+    rowIs: 'one expense: date, category, who was paid, amount, VAT, paid from',
+    source: 'book',
+    needs: ['reports', 'expenses'],
+    sections: [],
+    columns: [
+      { id: 'date', header: 'Date', kind: 'text' },
+      { id: 'branch', header: 'Branch', kind: 'text' },
+      { id: 'category', header: 'Category', kind: 'text' },
+      { id: 'pl_line', header: 'P&L line', kind: 'text' },
+      { id: 'paid_to', header: 'Paid to', kind: 'text' },
+      { id: 'tin', header: 'TIN', kind: 'text' },
+      { id: 'doc_type', header: 'Doc type', kind: 'text' },
+      { id: 'invoice_no', header: 'Invoice no.', kind: 'text' },
+      { id: 'gross', header: 'Gross', kind: 'money' },
+      { id: 'vatable', header: 'VATable', kind: 'money' },
+      { id: 'input_vat', header: 'Input VAT', kind: 'money' },
+      { id: 'ewt', header: 'EWT', kind: 'money' },
+      { id: 'net_paid', header: 'Net paid', kind: 'money' },
+      { id: 'paid_from', header: 'Paid from', kind: 'text' },
+      { id: 'status', header: 'Status', kind: 'text' },
+      { id: 'void_reason', header: 'Void reason', kind: 'text' },
+      { id: 'recorded_by', header: 'Recorded by', kind: 'text' },
+      { id: 'notes', header: 'Notes', kind: 'text' },
+    ],
+  },
+  {
+    id: 'profit',
+    name: 'Profit statement',
+    group: 'books',
+    rowIs: 'one line of the statement: sales, cost of ingredients, each expense, and what was left',
+    source: 'book',
+    needs: ['reports', 'expenses', 'costs'],
+    sections: [],
+    columns: [
+      { id: 'line', header: 'Line', kind: 'text' },
+      { id: 'value', header: 'Amount', kind: 'money' },
+      { id: 'share', header: 'Share of sales', kind: 'percent' },
+      { id: 'note', header: 'Note', kind: 'text' },
     ],
   },
 ]
