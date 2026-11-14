@@ -11,6 +11,7 @@
 import type { z } from 'zod'
 import { canManageStaff, hasPermission, type PermissionHolder, type StaffPermissionKey } from '@/lib/staff-permissions'
 import { MAX_FACTS_CHARS } from '@/lib/assistant/config'
+import type { SpreadsheetOutline } from '@/lib/assistant/spreadsheet'
 import { isUuidLike, type RefBook } from '@/lib/assistant/refs'
 import type { ToolResult } from '@/lib/assistant/types'
 
@@ -41,6 +42,8 @@ export interface AssistantToolContext {
   refs: RefBook
   /** Menu photos attached to THIS message (data URLs); empty on every other turn. */
   photos: readonly string[]
+  /** The outline of a spreadsheet attached to THIS message (the owner's own report format); absent on every other turn. */
+  spreadsheet?: SpreadsheetOutline | null
   /** One read per key per turn: several tools in one answer share the menu read. */
   memo<T>(key: string, load: () => Promise<T>): Promise<T>
 }

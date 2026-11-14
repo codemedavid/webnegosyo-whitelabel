@@ -53,5 +53,8 @@
   {"prompt": "Gawa ka ng Excel ng top 10 na pinakamabentang ulam ngayong buwan, pangalan at benta lang", "expectTools": ["build_custom_report"], "argsSubset": {"build_custom_report": {"sheet": "items", "top": 10}}},
   {"prompt": "Export the financial statement for October", "expectTools": ["export_report"], "forbidTools": ["build_custom_report"]},
   {"prompt": "Make my saved Weekly owner report for last week", "expectTools": ["run_saved_report"], "forbidTools": ["build_custom_report"], "argsSubset": {"run_saved_report": {"period": "last_week"}}},
-  {"prompt": "Anong mga report format ang naka-save ko?", "expectTools": ["run_saved_report"], "forbidTools": ["build_custom_report", "export_report"]}
+  {"prompt": "Anong mga report format ang naka-save ko?", "expectTools": ["run_saved_report"], "forbidTools": ["build_custom_report", "export_report"]},
+  {"prompt": "Make my reports follow this format.", "spreadsheet": "Monthly report.xlsx", "expectTools": ["follow_report_format"], "forbidTools": ["build_custom_report", "export_report", "run_saved_report"]},
+  {"prompt": "Ganito ang gusto kong itsura ng report ko buwan-buwan, sundin mo ito", "spreadsheet": "Report ni Ate.xlsx", "expectTools": ["follow_report_format"], "forbidTools": ["build_custom_report", "export_report"]},
+  {"prompt": "Export my sales by day for last week as Excel", "expectTools": ["export_report"], "forbidTools": ["follow_report_format"]}
 ]

@@ -32,8 +32,9 @@ type PreviewState =
 const REFRESH_AFTER_DOWNLOAD_MS = 4000
 
 /**
- * "My formats": reports the store saved (from Owl's custom report card), each
- * made again for the dates picked above. A format is a shape, not figures:
+ * "My formats": reports the store saved from Owl's cards (a custom report, or
+ * the owner's own layout), each made again for the dates picked above. The
+ * link names the format by id; the server reads its shape. A format is a shape, not figures:
  * the file is read now, as this person, by the same engine as every export.
  */
 export function MyFormats({ tenantId, formats, period, periodFrom, periodTo, branch, periodError }: MyFormatsProps) {
@@ -60,7 +61,7 @@ export function MyFormats({ tenantId, formats, period, periodFrom, periodTo, bra
       const response = await fetch('/api/exports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId, mode: 'preview', sheets: [card.spec.sheet], period, branch, custom: card.spec }),
+        body: JSON.stringify({ tenantId, mode: 'preview', sheets: card.sheets, period, branch, template: card.id }),
       })
       const body = (await response.json().catch(() => null)) as { success?: boolean; preview?: ExportPreview; error?: string } | null
       if (response.ok && body?.success && body.preview) setPreview({ kind: 'ready', id: card.id, preview: body.preview })
@@ -107,7 +108,7 @@ export function MyFormats({ tenantId, formats, period, periodFrom, periodTo, bra
         {formats.map((card) => {
           const problem = card.lockedNote ?? periodError ?? templateRangeProblem(days, card)
           const href = (format: 'xlsx' | 'csv') =>
-            exportHref({ tenantId, sheets: [card.spec.sheet], period, branch, format, source: 'page', custom: card.spec })
+            exportHref({ tenantId, sheets: card.sheets, period, branch, format, source: 'page', template: card.id })
           const isOpen = preview.kind !== 'closed' && preview.id === card.id
           const isArmed = armed === card.id
           return (

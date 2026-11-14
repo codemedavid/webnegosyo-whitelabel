@@ -24,7 +24,8 @@ export const MAX_CUSTOM_PARAM_LENGTH = 2400
 export const CUSTOM_FILTER_OPS = ['is', 'is_not', 'contains', 'at_least', 'at_most'] as const
 export type CustomFilterOp = (typeof CUSTOM_FILTER_OPS)[number]
 
-const columnId = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
+export const columnIdSchema = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/)
+const columnId = columnIdSchema
 /** Starts with a letter or digit (never `=`, `+`, `-`, `@`), no control characters. */
 export const plainWords = (max: number) =>
   z
@@ -34,10 +35,12 @@ export const plainWords = (max: number) =>
     .max(max)
     .regex(/^[\p{L}\p{N}][^\u0000-\u001f\u007f]*$/u)
 
+/** An Excel tab name: ≤ 31 characters, none of \ / ? * [ ] : */
+export const tabTitleSchema = plainWords(31).regex(/^[^\\/?*[\]:]+$/)
+
 export const customReportSpecSchema = z
   .object({
-    /** Also the Excel tab name: ≤ 31 characters, none of \ / ? * [ ] : */
-    title: plainWords(31).regex(/^[^\\/?*[\]:]+$/),
+    title: tabTitleSchema,
     sheet: z.enum(SHEET_IDS),
     columns: z
       .array(z.object({ id: columnId, header: plainWords(40).optional() }).strict())

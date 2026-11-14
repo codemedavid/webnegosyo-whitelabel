@@ -74,6 +74,6 @@ describe('who gets the tool', () => {
   })
 
   it('is appended after every older tool, so the cached prompt prefix before it is unchanged', () => {
-    expect(ASSISTANT_TOOLS.slice(-5).map((tool) => tool.name)).toEqual([exportReportTool.name, 'get_shifts', 'get_profit', 'build_custom_report', 'run_saved_report'])
+    expect(ASSISTANT_TOOLS.slice(-6).map((tool) => tool.name)).toEqual([exportReportTool.name, 'get_shifts', 'get_profit', 'build_custom_report', 'run_saved_report', 'follow_report_format'])
   })
 })

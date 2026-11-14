@@ -258,6 +258,39 @@ describe('POST /api/assistant/chat', () => {
     expect(JSON.stringify(mockStore.saveMessage.mock.calls)).not.toContain(photo)
   })
 
+  test('a spreadsheet’s outline reaches the tool for this turn only: storage keeps its name, the instructions a cleaned name', async () => {
+    const sheet = { name: 'Monthly <b>report</b>.xlsx', tabs: [{ name: 'Benta', headers: ['Petsa', 'Benta', 'SECRET-HEADING'], samples: [['2026-11-01', '12500', 'x']], rows: 30 }] }
+    const { POST } = await import('@/app/api/assistant/chat/route')
+
+    await drain(await POST(post({ ...validBody, message: { id: 'm1', text: 'Follow this', sheet } })))
+
+    expect(toolRun.mock.calls[0][0]).toMatchObject({ spreadsheet: { name: 'Monthly <b>report</b>.xlsx', tabs: [{ name: 'Benta', headers: ['Petsa', 'Benta', 'SECRET-HEADING'], moreColumns: 0 }], moreTabs: 0 } })
+    // The headings travel only as a tool result; the instructions name the file with its markup cut out.
+    expect(JSON.stringify(prompts[0])).toContain('Attached to this message: a spreadsheet, their own report format (\\"Monthly b report b .xlsx\\")')
+    expect(JSON.stringify(prompts[0])).not.toContain('SECRET-HEADING')
+    const savedUser = mockStore.saveMessage.mock.calls[0][2] as { parts: unknown[] }
+    expect(savedUser.parts).toEqual([{ type: 'text', text: 'Follow this' }, { type: 'data-sheet', data: { name: 'Monthly b report b .xlsx', tabs: 1 } }])
+    expect(JSON.stringify(mockStore.saveMessage.mock.calls)).not.toContain('SECRET-HEADING')
+  })
+
+  test('an outline that is not one, or carries more than headings, is refused before the budget is touched', async () => {
+    const { POST } = await import('@/app/api/assistant/chat/route')
+    const tab = { name: 'Benta', headers: ['Petsa'], samples: [], rows: 0 }
+
+    for (const sheet of [
+      'data:application/json,{}',
+      { name: 'x.xlsx', tabs: [] },
+      { name: 'x.xlsx', tabs: [{ ...tab, formulas: ['=SUM(A1)'] }] },
+      { name: 'x.xlsx', tabs: [{ ...tab, samples: Array.from({ length: 4 }, () => ['1']) }] },
+      { name: 'x.xlsx', tabs: [{ ...tab, headers: Array.from({ length: 26 }, (_, index) => `H${index}`) }] },
+      { name: 'x.xlsx', tabs: Array.from({ length: 5 }, () => tab) },
+    ]) {
+      const response = await POST(post({ ...validBody, message: { id: 'm1', text: 'Follow this', sheet } }))
+      expect(response.status).toBe(400)
+    }
+    expect(mockStore.claimAssistantTurn).not.toHaveBeenCalled()
+  })
+
   test('a photo that is not an image is refused before the budget is touched', async () => {
     const { POST } = await import('@/app/api/assistant/chat/route')
 

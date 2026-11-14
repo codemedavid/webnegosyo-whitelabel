@@ -88,6 +88,8 @@ export interface ExportResult {
   header: ExportHeader
   sheets: BuiltSheet[]
   leftOut: LeftOutSheet[]
+  /** A saved format's own name: the file is called after it instead of "export". */
+  title?: string
 }
 
 export interface PreviewSheet {
@@ -396,7 +398,7 @@ export async function previewExport(input: ExportInput): Promise<ExportPreview> 
 }
 
 function fileBase(result: ExportResult, context: ReportContext): string {
-  const what = result.sheets.length === 1 ? fileSlug(result.sheets[0].name) : 'export'
+  const what = result.title ? fileSlug(result.title) : result.sheets.length === 1 ? fileSlug(result.sheets[0].name) : 'export'
   const range = context.period.from === context.period.to ? context.period.from : `${context.period.from}_to_${context.period.to}`
   return `${fileSlug(result.header.storeName)}-${what}-${range}`
 }

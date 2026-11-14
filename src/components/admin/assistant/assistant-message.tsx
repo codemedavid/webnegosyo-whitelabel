@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, ImageIcon, Loader2 } from 'lucide-react'
+import { ArrowRight, FileSpreadsheet, ImageIcon, Loader2 } from 'lucide-react'
+import { SHEET_MEDIA_TYPE } from '@/lib/assistant/spreadsheet'
 import type { UIMessage } from 'ai'
 import { cn } from '@/lib/utils'
 import type { AssistantChip, ToolResult } from '@/lib/assistant/types'
@@ -61,6 +62,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_profit: 'Working out your profit…',
   build_custom_report: 'Building your report…',
   run_saved_report: 'Making your saved report…',
+  follow_report_format: 'Reading your format…',
   get_order: 'Looking up that order…',
 }
 
@@ -102,6 +104,21 @@ function UserPhotos({ message }: { message: UIMessage }) {
   )
 }
 
+/** The spreadsheet the owner attached as their report format: its name, this session and once reopened (only its headings were ever sent). */
+function UserSheet({ message }: { message: UIMessage }) {
+  const sent = message.parts.find((part) => part.type === 'file' && part.mediaType === SHEET_MEDIA_TYPE) as { filename?: unknown } | undefined
+  const marker = message.parts.find((part) => part.type === 'data-sheet') as { data?: { name?: unknown } } | undefined
+  const name = typeof sent?.filename === 'string' ? sent.filename : typeof marker?.data?.name === 'string' ? marker.data.name : null
+  if (!name) return null
+  return (
+    <p className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground">
+      <FileSpreadsheet className="h-3 w-3" aria-hidden />
+      <span className="max-w-[220px] truncate">{name}</span>
+      <span>· headings sent</span>
+    </p>
+  )
+}
+
 /** Every follow-up chip in a message, de-duplicated, at most four. */
 export function collectChips(message: UIMessage): AssistantChip[] {
   const seen = new Set<string>()
@@ -125,6 +142,7 @@ export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate,
     return (
       <div className="space-y-1.5">
         <UserPhotos message={message} />
+        <UserSheet message={message} />
         <div className="flex justify-end">
           <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-900 px-3.5 py-2 text-[14px] text-white">{text}</p>
         </div>

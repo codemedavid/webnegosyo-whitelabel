@@ -132,6 +132,6 @@ describe('who gets the tool', () => {
   })
 
   it('sits right before run_saved_report, after every older tool', () => {
-    expect(ASSISTANT_TOOLS[ASSISTANT_TOOLS.length - 2].name).toBe(buildCustomReportTool.name)
+    expect(ASSISTANT_TOOLS[ASSISTANT_TOOLS.length - 3].name).toBe(buildCustomReportTool.name)
   })
 })

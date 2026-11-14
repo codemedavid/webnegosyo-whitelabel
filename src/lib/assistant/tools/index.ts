@@ -43,6 +43,7 @@ import { getActivityLogTool } from '@/lib/assistant/tools/reads/activity-log'
 import { getOrderTool } from '@/lib/assistant/tools/reads/order-lookup'
 import { buildCustomReportTool } from '@/lib/assistant/tools/reads/custom-report'
 import { runSavedReportTool } from '@/lib/assistant/tools/reads/saved-report'
+import { followReportFormatTool } from '@/lib/assistant/tools/reads/follow-format'
 import { exportReportTool } from '@/lib/assistant/tools/reads/export-report'
 import { getProfitTool, getShiftsTool } from '@/lib/assistant/tools/reads/money-books'
 
@@ -105,4 +106,6 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   buildCustomReportTool,
   // A report the store saved ("My formats"), run again for any dates (2026-11-14).
   runSavedReportTool,
+  // The owner's own spreadsheet layout, filled from the catalogue (2026-11-14).
+  followReportFormatTool,
 ] as AssistantToolDef[]

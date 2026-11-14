@@ -3,10 +3,27 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { colors, radius } from "../../theme/colors";
 import { assistantToken } from "../../lib/assistant/api";
 import { downloadServerExport, isServerExportPath } from "../../lib/export/server-export";
-import { saveExportFormat } from "../../lib/export/server-export-api";
+import { formatDownloadPath, saveExportFormat } from "../../lib/export/server-export-api";
 import type { FileCard } from "../../lib/assistant/types";
 
 type Props = { card: FileCard };
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const SHEET_ID = /^[a-z][a-z0-9_]{0,39}$/;
+
+/** The file of a just-saved layout, for the dates Owl previewed it with. Every part is checked: the card is stored history. */
+function savedLayoutDownloads(save: FileCard["save"] | null, id: string | null): FileCard["downloads"] {
+  if (!save || save.kind !== "format" || !id) return [];
+  const sheets = Array.isArray(save.sheets) ? save.sheets.filter((sheet) => typeof sheet === "string" && SHEET_ID.test(sheet)) : [];
+  const from = save.period?.from;
+  const to = save.period?.to;
+  if (sheets.length === 0 || typeof from !== "string" || typeof to !== "string" || !DAY_KEY.test(from) || !DAY_KEY.test(to)) return [];
+  const path = (format: "xlsx" | "csv") => formatDownloadPath(save.tenantId, { id, sheets }, { preset: "custom", from, to }, format, "owl");
+  return [
+    { label: "Download Excel", href: path("xlsx") },
+    { label: "CSV", href: path("csv") },
+  ];
+}
 
 function rowsText(rows: number | null): string {
   if (rows === null) return "counted in the file";
@@ -21,8 +38,14 @@ export function FileCardView({ card }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved">("idle");
-  const downloads = (Array.isArray(card.downloads) ? card.downloads : []).filter((download) => isServerExportPath(download.href));
-  if (downloads.length === 0) return null;
+  const [savedId, setSavedId] = useState<string | null>(null);
+  // A card comes back from stored history: offer Save only when its parts are there.
+  const save = card.save && typeof card.save.tenantId === "string" && typeof card.save.name === "string" && typeof card.save.spec === "object" && card.save.spec !== null ? card.save : null;
+  const isLayout = save?.kind === "format";
+  const cardDownloads = (Array.isArray(card.downloads) ? card.downloads : []).filter((download) => isServerExportPath(download.href));
+  // A layout Owl has just matched has no file until it is saved: the file for its dates is offered after the tap.
+  const downloads = cardDownloads.length > 0 ? cardDownloads : savedLayoutDownloads(save, savedId);
+  if (downloads.length === 0 && !save) return null;
   const sheets = Array.isArray(card.sheets) ? card.sheets : [];
   const notes = Array.isArray(card.notes) ? card.notes : [];
 
@@ -39,14 +62,12 @@ export function FileCardView({ card }: Props) {
     }
   };
 
-  // A card comes back from stored history: offer Save only when its parts are there.
-  const save = card.save && typeof card.save.tenantId === "string" && typeof card.save.name === "string" && typeof card.save.spec === "object" && card.save.spec !== null ? card.save : null;
   const keep = async () => {
     if (!save || saving !== "idle" || busy) return;
     setSaving("saving");
     setError(null);
     try {
-      await saveExportFormat(save);
+      setSavedId(await saveExportFormat(save));
       setSaving("saved");
     } catch (cause) {
       setSaving("idle");
@@ -71,23 +92,25 @@ export function FileCardView({ card }: Props) {
           {note}
         </Text>
       ))}
-      <View style={styles.actions}>
-        {downloads.map((item, index) => (
-          <Pressable
-            key={item.href}
-            accessibilityRole="button"
-            accessibilityLabel={item.label}
-            accessibilityState={{ busy: busy === item.href, disabled: busy !== null }}
-            disabled={busy !== null}
-            onPress={() => void download(item.href)}
-            style={[index === 0 ? styles.primary : styles.secondary, busy !== null && styles.dimmed]}
-            hitSlop={6}
-          >
-            {busy === item.href ? <ActivityIndicator size="small" color={index === 0 ? colors.card : colors.textPrimary} /> : null}
-            <Text style={index === 0 ? styles.primaryText : styles.secondaryText}>{item.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {downloads.length > 0 ? (
+        <View style={styles.actions}>
+          {downloads.map((item, index) => (
+            <Pressable
+              key={item.href}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+              accessibilityState={{ busy: busy === item.href, disabled: busy !== null }}
+              disabled={busy !== null}
+              onPress={() => void download(item.href)}
+              style={[index === 0 ? styles.primary : styles.secondary, busy !== null && styles.dimmed]}
+              hitSlop={6}
+            >
+              {busy === item.href ? <ActivityIndicator size="small" color={index === 0 ? colors.card : colors.textPrimary} /> : null}
+              <Text style={index === 0 ? styles.primaryText : styles.secondaryText}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       {save && saving === "saved" ? (
         <Text style={styles.saved} accessibilityLiveRegion="polite">
           Saved as “{save.name}”. Find it under My formats in Export.
@@ -95,7 +118,7 @@ export function FileCardView({ card }: Props) {
       ) : save ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Save to My formats"
+          accessibilityLabel={isLayout ? "Save this format" : "Save to My formats"}
           accessibilityState={{ busy: saving === "saving", disabled: saving === "saving" || busy !== null }}
           disabled={saving === "saving" || busy !== null}
           onPress={() => void keep()}
@@ -103,7 +126,7 @@ export function FileCardView({ card }: Props) {
           hitSlop={6}
         >
           {saving === "saving" ? <ActivityIndicator size="small" color={colors.textPrimary} /> : null}
-          <Text style={styles.secondaryText}>{saving === "saving" ? "Saving…" : "Save to My formats"}</Text>
+          <Text style={styles.secondaryText}>{saving === "saving" ? "Saving…" : isLayout ? "Save this format" : "Save to My formats"}</Text>
         </Pressable>
       ) : null}
       {error ? (

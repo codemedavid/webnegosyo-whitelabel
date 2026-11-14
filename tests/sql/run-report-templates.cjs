@@ -2,7 +2,8 @@
 // read, save and remove their store's formats; a branch-locked account, an
 // account without the key, another store and anon get nothing; nobody edits
 // one in place; a store keeps at most 50; names are unique per store. Runs
-// the REAL migration over PGlite with Supabase's default grants.
+// the REAL migrations over PGlite with Supabase's default grants: the table,
+// then the 'format' kind (the owner's own layout) and its larger shape.
 //   node tests/sql/run-report-templates.cjs
 const { PGlite } = require('@electric-sql/pglite')
 const assert = require('node:assert/strict')
@@ -76,6 +77,10 @@ $function$;
 
 const SPEC = JSON.stringify({ title: 'Average order per day', sheet: 'sales_by_day', columns: [{ id: 'day' }, { id: 'aov', header: 'Avg ticket' }], filters: [], sort: { column: 'aov', descending: true }, top: 5 })
 
+const FORMAT_SPEC = JSON.stringify({
+  tabs: [{ title: 'Benta', sheet: 'sales_by_day', columns: [{ header: 'Petsa', id: 'day' }, { header: 'Benta', id: 'net' }, { header: 'Upa', id: null }], sort: null, top: null }],
+})
+
 function insertSql(overrides = {}) {
   const row = { tenant_id: STORE, name: 'Average order per day', kind: 'custom', spec: SPEC, ...overrides }
   const columns = Object.keys(row)
@@ -124,6 +129,16 @@ async function main() {
     `)
     await db.exec(HELPERS)
     await db.exec(readMigration('20261114150000_report_templates.sql'))
+
+    // Before the second migration only a custom report can be kept.
+    await db.exec('begin')
+    await rejects(db, () => insertAs(db, REPORTER, { name: 'early', kind: 'format', spec: FORMAT_SPEC }), /violates check/, 'the format kind does not exist yet')
+    await db.exec('rollback')
+    await reset(db)
+
+    await db.exec(`begin; ${readMigration('20261114160000_report_templates_format_kind.sql')}; commit;`)
+    // Run twice: the migration can be applied again without harm.
+    await db.exec(`begin; ${readMigration('20261114160000_report_templates_format_kind.sql')}; commit;`)
     await db.exec('begin')
 
     // Store-wide accounts that hold `reports` (outright, through analytics, as owner, legacy full access) save a format.
@@ -150,9 +165,20 @@ async function main() {
     await rejects(db, () => insertAs(db, REPORTER, { name: ' padded ' }), /violates check/, 'a name is trimmed')
     await rejects(db, () => insertAs(db, REPORTER, { name: '' }), /violates check/, 'a name is not empty')
     await rejects(db, () => insertAs(db, REPORTER, { name: 'x'.repeat(61) }), /violates check/, 'a name is at most 60 characters')
-    await rejects(db, () => insertAs(db, REPORTER, { name: 'x8', kind: 'format' }), /violates check/, 'only the custom kind exists')
+    await rejects(db, () => insertAs(db, REPORTER, { name: 'x8', kind: 'layout' }), /violates check/, 'only the custom and format kinds exist')
     await rejects(db, () => insertAs(db, REPORTER, { name: 'x9', spec: '[]' }), /violates check/, 'spec is an object')
-    await rejects(db, () => insertAs(db, REPORTER, { name: 'x10', spec: JSON.stringify({ pad: 'x'.repeat(8000) }) }), /violates check/, 'spec is small')
+    await rejects(db, () => insertAs(db, REPORTER, { name: 'x10', spec: JSON.stringify({ pad: 'x'.repeat(20000) }) }), /violates check/, 'spec is small')
+
+    // The owner's own layout: same people, and a shape longer than a custom report's fits.
+    const { rows: layout } = await insertAs(db, REPORTER, { name: 'My monthly sheet', kind: 'format', spec: FORMAT_SPEC })
+    assert.equal(layout.length, 1, 'a reports account keeps its own layout')
+    const { rows: wide } = await insertAs(db, OWNER, { name: 'Wide layout', kind: 'format', spec: JSON.stringify({ pad: 'x'.repeat(15000) }) })
+    assert.equal(wide.length, 1, 'a 15 kB shape fits')
+    await rejects(db, () => insertAs(db, CASHIER, { name: 'x11', kind: 'format', spec: FORMAT_SPEC }), /row-level security/, 'the format kind is refused to a cashier too')
+    await rejects(db, () => insertAs(db, BRANCH_REPORTER, { name: 'x12', kind: 'format', spec: FORMAT_SPEC }), /row-level security/, 'and to a branch-locked account')
+    await as(db, 'authenticated', OWNER)
+    const cleared = await db.query("delete from public.report_templates where tenant_id = $1 and kind = 'format' returning id", [STORE])
+    assert.equal(cleared.rows.length, 2, 'layouts are removed like any format')
 
     // The same name in another store is fine.
     const { rows: abroad } = await insertAs(db, STRANGER, { tenant_id: OTHER, name: 'Average order per day' })

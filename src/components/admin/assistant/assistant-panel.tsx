@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, type UIMessage } from 'ai'
-import { ArrowUp, Check, History, ImagePlus, Loader2, Mic, Plus, Square, Users, X } from 'lucide-react'
+import { ArrowUp, Check, FileSpreadsheet, History, ImagePlus, Loader2, Mic, Paperclip, Plus, Square, Users, X } from 'lucide-react'
 import { Owl } from '@/components/mascot/owl'
 import { cn } from '@/lib/utils'
 import { MAX_INPUT_CHARS, MAX_PHOTOS_PER_MESSAGE, MAX_PHOTOS_TOTAL_CHARS, PHOTO_ONLY_TEXT } from '@/lib/assistant/limits'
+import { SHEET_MEDIA_TYPE, SHEET_ONLY_TEXT, sheetFromDataUrl, sheetToDataUrl, type SpreadsheetOutline } from '@/lib/assistant/spreadsheet'
 import { AssistantMessage, collectChips } from './assistant-message'
 import { PhotoError, prepareMenuPhoto } from './menu-photos'
+import { SheetError, readSpreadsheetOutline } from './read-spreadsheet'
 import { assistantOwlState } from './owl-mood'
 import { useVoiceInput } from './voice-input'
 import { OwlAccessView } from './owl-access-view'
@@ -37,6 +39,8 @@ interface AssistantPanelProps {
   tenantSlug: string
   adminBasePath: string
   canManageOwlAccess: boolean
+  /** Shows the paperclip: the account may have Owl lay a report out in its own spreadsheet's format. */
+  canFollowFormat?: boolean
   isOpen: boolean
   onClose: () => void
 }
@@ -72,13 +76,18 @@ function conversationIdOf(messages: UIMessage[]): string | null {
   return null
 }
 
-export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageOwlAccess, isOpen, onClose }: AssistantPanelProps) {
+export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageOwlAccess, canFollowFormat = false, isOpen, onClose }: AssistantPanelProps) {
   const [isAccessOpen, setIsAccessOpen] = useState(false)
   const conversationRef = useRef<string | null>(null)
   const [draft, setDraft] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [isPreparingPhotos, setIsPreparingPhotos] = useState(false)
+  // The owner's own report format: only its outline (headings, a few sample rows) is kept, never the file.
+  const [sheet, setSheet] = useState<SpreadsheetOutline | null>(null)
+  const [sheetError, setSheetError] = useState<string | null>(null)
+  const [isReadingSheet, setIsReadingSheet] = useState(false)
+  const sheetInputRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -91,8 +100,9 @@ export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageO
         prepareSendMessagesRequest: ({ messages }) => {
           const last = messages[messages.length - 1]
           const text = last.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(' ')
-          const images = last.parts.flatMap((part) => (part.type === 'file' ? [part.url] : []))
-          const message = images.length > 0 ? { id: last.id, text, images } : { id: last.id, text }
+          const images = last.parts.flatMap((part) => (part.type === 'file' && part.mediaType.startsWith('image/') ? [part.url] : []))
+          const outline = last.parts.flatMap((part) => (part.type === 'file' && part.mediaType === SHEET_MEDIA_TYPE ? [sheetFromDataUrl(part.url)] : []))[0]
+          const message = { id: last.id, text, ...(images.length > 0 ? { images } : {}), ...(outline ? { sheet: outline } : {}) }
           return { body: { tenantId, conversationId: conversationRef.current, message } }
         },
       }),
@@ -186,15 +196,35 @@ export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageO
     }
   }
 
+  const addSheet = async (files: FileList | null) => {
+    const file = files?.[0]
+    if (!file) return
+    setSheetError(null)
+    setIsReadingSheet(true)
+    try {
+      setSheet(await readSpreadsheetOutline(file))
+    } catch (sheetFailure) {
+      setSheet(null)
+      setSheetError(sheetFailure instanceof SheetError ? sheetFailure.message : 'That file could not be read.')
+    } finally {
+      setIsReadingSheet(false)
+    }
+  }
+
   const send = (text: string) => {
-    const trimmed = text.trim() || (photos.length > 0 ? PHOTO_ONLY_TEXT : '')
-    if (!trimmed || isBusy || isPreparingPhotos) return
+    const trimmed = text.trim() || (sheet ? SHEET_ONLY_TEXT : photos.length > 0 ? PHOTO_ONLY_TEXT : '')
+    if (!trimmed || isBusy || isPreparingPhotos || isReadingSheet) return
     setIsAccessOpen(false)
     clearError()
     setDraft('')
     setPhotos([])
     setPhotoError(null)
-    const files = photos.map((url) => ({ type: 'file' as const, mediaType: 'image/jpeg', url }))
+    setSheet(null)
+    setSheetError(null)
+    const files = [
+      ...photos.map((url) => ({ type: 'file' as const, mediaType: 'image/jpeg', url })),
+      ...(sheet ? [{ type: 'file' as const, mediaType: SHEET_MEDIA_TYPE, filename: sheet.name, url: sheetToDataUrl(sheet) }] : []),
+    ]
     void sendMessage({ text: trimmed.slice(0, MAX_INPUT_CHARS), ...(files.length > 0 ? { files } : {}) })
   }
 
@@ -348,7 +378,40 @@ export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageO
             {photoError ? <p className="text-[12px] text-rose-700">{photoError}</p> : null}
           </div>
         ) : null}
+        {sheet || isReadingSheet || sheetError ? (
+          <div className="mb-2 space-y-1.5">
+            {sheet ? (
+              <div className="flex items-center gap-2 rounded-xl bg-muted/60 px-3 py-2 text-[13px]">
+                <FileSpreadsheet className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+                <span className="min-w-0 flex-1 truncate font-medium">{sheet.name}</span>
+                <span className="shrink-0 text-[12px] text-muted-foreground">
+                  {sheet.tabs.length} {sheet.tabs.length === 1 ? 'tab' : 'tabs'} · headings only
+                </span>
+                <button type="button" onClick={() => setSheet(null)} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Remove the spreadsheet">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+            {isReadingSheet ? (
+              <p role="status" className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                Reading your headings…
+              </p>
+            ) : null}
+            {sheetError ? <p className="text-[12px] text-rose-700">{sheetError}</p> : null}
+          </div>
+        ) : null}
         <div className="flex items-end gap-2">
+          <input
+            ref={sheetInputRef}
+            type="file"
+            accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              void addSheet(event.target.files)
+              event.target.value = ''
+            }}
+          />
           <input
             ref={fileInputRef}
             type="file"
@@ -370,6 +433,18 @@ export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageO
           >
             <ImagePlus className="h-5 w-5" />
           </button>
+          {canFollowFormat ? (
+            <button
+              type="button"
+              onClick={() => sheetInputRef.current?.click()}
+              disabled={isBusy || isReadingSheet}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-30"
+              aria-label="Attach your own report format (Excel or CSV)"
+              title="Attach your own report format (Excel or CSV)"
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
+          ) : null}
           {voice.state === 'recording' ? (
             <div className="flex min-h-[40px] flex-1 items-center gap-2 rounded-2xl bg-rose-50 px-3.5 py-2.5 text-[14px] text-rose-900" role="status">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-600" aria-hidden />
@@ -395,9 +470,12 @@ export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageO
               placeholder={
                 voice.state === 'transcribing'
                   ? 'Turning your voice into text…'
-                  : photos.length > 0
+                  : photos.length > 0 || sheet
                     ? 'Add a note, or just send'
-                    : 'Ask about sales, menu, customers…'
+                    : canFollowFormat
+                      ? // One line beside two attach buttons on a phone.
+                        'Ask about your store…'
+                      : 'Ask about sales, menu, customers…'
               }
               aria-label="Message Owl"
               className="max-h-32 min-h-[40px] flex-1 resize-none rounded-2xl bg-muted/60 px-3.5 py-2.5 text-[14px] outline-none focus:ring-2 focus:ring-neutral-900/10"
@@ -415,7 +493,7 @@ export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageO
             <span className="grid h-10 w-10 place-items-center rounded-full bg-neutral-900 text-white" aria-label="Turning your voice into text">
               <Loader2 className="h-4 w-4 animate-spin" />
             </span>
-          ) : voice.isSupported && !draft.trim() && photos.length === 0 ? (
+          ) : voice.isSupported && !draft.trim() && photos.length === 0 && !sheet ? (
             <button
               type="button"
               onClick={() => void voice.start()}
@@ -426,7 +504,7 @@ export function AssistantPanel({ tenantId, tenantSlug, adminBasePath, canManageO
               <Mic className="h-4 w-4" />
             </button>
           ) : (
-            <button type="submit" disabled={(!draft.trim() && photos.length === 0) || isPreparingPhotos} className="grid h-10 w-10 place-items-center rounded-full bg-neutral-900 text-white disabled:opacity-30" aria-label="Send">
+            <button type="submit" disabled={(!draft.trim() && photos.length === 0 && !sheet) || isPreparingPhotos || isReadingSheet} className="grid h-10 w-10 place-items-center rounded-full bg-neutral-900 text-white disabled:opacity-30" aria-label="Send">
               <ArrowUp className="h-4 w-4" />
             </button>
           )}

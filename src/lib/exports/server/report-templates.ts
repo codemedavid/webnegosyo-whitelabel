@@ -2,8 +2,7 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import { ExportError } from '../errors'
-import type { CustomReportSpec } from '../custom-report'
-import { MAX_REPORT_TEMPLATES, templateCard, templateSpecProblem, toReportTemplate, type ReportTemplate, type TemplateCard } from '../report-templates'
+import { MAX_REPORT_TEMPLATES, templateCard, templateSpecProblem, toReportTemplate, type ReportTemplate, type TemplateCard, type TemplateShape } from '../report-templates'
 import type { ExportAccess } from '../types'
 
 const COLUMNS = 'id, name, kind, spec, created_by_label, created_at'
@@ -60,11 +59,22 @@ async function userLabel(client: TemplateClient, userId: string): Promise<string
   return label ? label.slice(0, 120) : null
 }
 
+/**
+ * One saved format by its id, as the CALLER, or null: gone, another store's,
+ * or not this account's to read (RLS answers all three with no row).
+ */
+export async function getReportTemplate(tenantId: string, id: string): Promise<ReportTemplate | null> {
+  const client = await templateClient()
+  const { data, error } = await client.from('report_templates').select(COLUMNS).eq('tenant_id', tenantId).eq('id', id).maybeSingle()
+  if (error) throw new Error(`saved format could not be read: ${error.message}`)
+  return data ? toReportTemplate(data) : null
+}
+
 export interface SaveTemplateInput {
   tenantId: string
   userId: string
   name: string
-  spec: CustomReportSpec
+  shape: TemplateShape
 }
 
 /**
@@ -73,7 +83,7 @@ export interface SaveTemplateInput {
  * `ExportError` with its own sentence; the row is asserted, never assumed.
  */
 export async function saveReportTemplate(input: SaveTemplateInput): Promise<ReportTemplate> {
-  const problem = templateSpecProblem(input.spec)
+  const problem = templateSpecProblem(input.shape)
   if (problem) throw new ExportError(problem, 400)
   const client = await templateClient()
   const { data, error } = await client
@@ -81,8 +91,8 @@ export async function saveReportTemplate(input: SaveTemplateInput): Promise<Repo
     .insert({
       tenant_id: input.tenantId,
       name: input.name,
-      kind: 'custom',
-      spec: input.spec,
+      kind: input.shape.kind,
+      spec: input.shape.spec,
       created_by: input.userId,
       created_by_label: await userLabel(client, input.userId),
     })

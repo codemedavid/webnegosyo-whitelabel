@@ -2,8 +2,8 @@
  * run_saved_report — "make my Weekly owner report for last week",
  * "anong mga naka-save kong report?".
  *
- * A saved format ("My formats" on the Export page) is a custom report spec
- * the store kept under a name. This tool only FINDS one by name and runs it
+ * A saved format ("My formats" on the Export page) is a custom report spec,
+ * or the owner's own layout, that the store kept under a name. This tool only FINDS one by name and runs it
  * for the dates asked: the spec comes from the database, read as the caller
  * (store-wide accounts with `reports`), and the file is built by the same
  * engine as every export. Without a name it lists what is saved. Owl never
@@ -16,11 +16,13 @@ import { resolveWhen, WHEN_PERIODS } from '@/lib/assistant/insights/when'
 import type { AssistantToolDef } from '@/lib/assistant/tools/registry'
 import type { ToolResult } from '@/lib/assistant/types'
 import { ExportError } from '@/lib/exports/errors'
-import { findTemplate, templateSummary, type ReportTemplate } from '@/lib/exports/report-templates'
+import { findTemplate, templateSheets, templateSummary, type ReportTemplate } from '@/lib/exports/report-templates'
 import { runCustomExport } from '@/lib/exports/run-custom-export'
+import { runFormatExport } from '@/lib/exports/run-format-export'
 import { loadExportInput } from '@/lib/exports/server/load-export-input'
 import { listReportTemplates } from '@/lib/exports/server/report-templates'
 import { buildCustomReportResult } from './custom-report'
+import { buildFormatReportResult } from './format-report'
 
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/
 
@@ -46,7 +48,7 @@ function unavailable(reason: string, extra: Record<string, unknown> = {}): ToolR
 
 /** What the model may know about the saved formats: their names and what each is made of. */
 export function savedFormatFacts(templates: readonly ReportTemplate[]): Array<{ name: string; madeOf: string }> {
-  return templates.map((template) => ({ name: template.name, madeOf: templateSummary(template.spec) }))
+  return templates.map((template) => ({ name: template.name, madeOf: templateSummary(template) }))
 }
 
 export const runSavedReportTool: AssistantToolDef<Input> = {
@@ -85,12 +87,18 @@ export const runSavedReportTool: AssistantToolDef<Input> = {
       format: args.format ?? ('xlsx' as const),
       source: 'owl' as const,
     }
-    const loaded = await loadExportInput({ ...request, mode: 'preview', sheets: [template.spec.sheet] })
+    const loaded = await loadExportInput({ ...request, mode: 'preview', sheets: templateSheets(template) })
     if (loaded.kind !== 'ready') return unavailable(REFUSALS[loaded.kind])
 
     try {
-      const result = await runCustomExport(loaded.input, template.spec)
       const query = new URLSearchParams({ period: 'custom', from: when.from, to: when.to, compare: '0' })
+      if (template.kind === 'format') {
+        // The owner's own layout: every tab filled from its sheet, the file fetched by the format's id.
+        const laidOut = await runFormatExport(loaded.input, template.spec, template.name)
+        const answer = buildFormatReportResult(laidOut, template.spec, request, `/reports/export?${query.toString()}`, { savedAs: { id: template.id, name: template.name } })
+        return { ...answer, facts: { ...answer.facts, savedFormat: template.name } }
+      }
+      const result = await runCustomExport(loaded.input, template.spec)
       const built = buildCustomReportResult(result, template.spec, request, `/reports/export?${query.toString()}`, { savedAs: template.name })
       // The owner knows it by the name they saved it under, which may differ from the tab's title.
       const card = built.card?.type === 'file' ? { ...built.card, title: template.name } : built.card

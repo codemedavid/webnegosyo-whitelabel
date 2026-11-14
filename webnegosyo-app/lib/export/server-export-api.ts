@@ -49,13 +49,12 @@ export interface ExportSavedFormat {
   /** "Sales by day · Day, Avg ticket · first 5" */
   summary: string;
   savedBy: string | null;
-  sheet: string;
+  /** The sheets it reads. The link names the format by its id (`&template=`); the server reads its shape. */
+  sheets: string[];
   /** Row-by-row formats take a shorter range. */
   isDetail: boolean;
   /** Why this account cannot run it, or null. */
   lockedNote: string | null;
-  /** The format's shape, ready for the download link (`&custom=`). The server checks it again. */
-  custom: string;
 }
 
 export interface ExportCatalogue {
@@ -227,22 +226,33 @@ export function previewRowsText(rows: number | null): string {
 }
 
 /** The link that downloads this choice (`GET /api/exports?…`), the same one the web Export page uses. */
-export function exportDownloadPath(choice: ExportChoice, format: ExportFormat): string {
+export function exportDownloadPath(choice: ExportChoice, format: ExportFormat, source: "page" | "owl" = "page"): string {
   const parts = [`tenantId=${encodeURIComponent(choice.tenantId)}`, `sheets=${choice.sheets.map(encodeURIComponent).join(",")}`, `period=${choice.period.preset}`];
   if (choice.period.from) parts.push(`from=${choice.period.from}`);
   if (choice.period.to) parts.push(`to=${choice.period.to}`);
-  parts.push(`format=${format}`, "source=page");
+  parts.push(`format=${format}`, `source=${source}`);
   return `/api/exports?${parts.join("&")}`;
 }
 
-/** The link that makes a saved format for these dates: its one sheet, reshaped by the format's own spec. */
-export function formatDownloadPath(tenantId: string, saved: Pick<ExportSavedFormat, "sheet" | "custom">, period: ExportPeriod, format: ExportFormat): string {
-  return `${exportDownloadPath({ tenantId, sheets: [saved.sheet], period }, format)}&custom=${saved.custom}`;
+/** The link that makes a saved format for these dates: the format is named by its id and the server reads its shape. */
+export function formatDownloadPath(
+  tenantId: string,
+  saved: Pick<ExportSavedFormat, "id" | "sheets">,
+  period: ExportPeriod,
+  format: ExportFormat,
+  source: "page" | "owl" = "page",
+): string {
+  return `${exportDownloadPath({ tenantId, sheets: saved.sheets, period }, format, source)}&template=${saved.id}`;
 }
 
 const SHEET_ID = /^[a-z][a-z0-9_]{0,39}$/;
-/** base64url, as `encodeCustomSpec` writes it on the server. */
-const CUSTOM_PARAM = /^[A-Za-z0-9_-]{1,2400}$/;
+const FORMAT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A saved format's sheets as the server listed them, or none when any is not a sheet id. */
+function formatSheets(value: unknown): string[] {
+  const sheets = texts(value);
+  return sheets.length > 0 && sheets.length === (Array.isArray(value) ? value.length : 0) && sheets.every((sheet) => SHEET_ID.test(sheet)) ? sheets : [];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -295,17 +305,16 @@ export function parseCatalogue(body: unknown): ExportCatalogue | null {
     isMixedBackend: raw.isMixedBackend === true,
     formats: (Array.isArray(raw.formats) ? raw.formats : [])
       .filter(isRecord)
-      .filter((format) => text(format.id) !== "" && text(format.name) !== "" && SHEET_ID.test(text(format.sheet)) && CUSTOM_PARAM.test(text(format.custom)))
+      .filter((format) => FORMAT_ID.test(text(format.id)) && text(format.name) !== "" && formatSheets(format.sheets).length > 0)
       .map(
         (format): ExportSavedFormat => ({
           id: text(format.id),
           name: text(format.name),
           summary: text(format.summary),
           savedBy: text(format.savedBy) || null,
-          sheet: text(format.sheet),
+          sheets: formatSheets(format.sheets),
           isDetail: format.isDetail === true,
           lockedNote: text(format.lockedNote) || null,
-          custom: text(format.custom),
         }),
       ),
   };
@@ -391,14 +400,22 @@ export async function fetchExportPreview(choice: ExportChoice): Promise<ExportPr
   return preview;
 }
 
-/** What Owl's file card carries for "Save to My formats": a custom report's shape, never its figures. */
+/** What Owl's file card carries for "Save to My formats": a report's shape, never its figures. */
 export interface ExportFormatToSave {
   tenantId: string;
   name: string;
+  /** `format` = the owner's own layout (their tabs and columns); otherwise a custom report. */
+  kind?: "custom" | "format";
   spec: unknown;
 }
 
-/** Keeps a custom report as a saved format (`POST /api/exports/formats`). The server checks every part again. */
-export async function saveExportFormat(save: ExportFormatToSave): Promise<void> {
-  await postExports({ action: "save", tenantId: save.tenantId, name: save.name, spec: save.spec }, "/api/exports/formats");
+/**
+ * Keeps a report as a saved format (`POST /api/exports/formats`) and answers
+ * with its id when the server gave one. The server checks every part again.
+ */
+export async function saveExportFormat(save: ExportFormatToSave): Promise<string | null> {
+  const action = save.kind === "format" ? "save_format" : "save";
+  const body = await postExports({ action, tenantId: save.tenantId, name: save.name, spec: save.spec }, "/api/exports/formats");
+  const id = isRecord(body) && isRecord(body.format) ? text(body.format.id) : "";
+  return FORMAT_ID.test(id) ? id : null;
 }

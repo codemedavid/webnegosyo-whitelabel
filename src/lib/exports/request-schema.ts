@@ -34,8 +34,14 @@ export const exportRequestSchema = z
     source: z.enum(EXPORT_SOURCES).default('page'),
     /** A custom report: ONE sheet reshaped (`custom-report.ts`). `sheets` must then be that sheet alone. */
     custom: customReportSpecSchema.nullish(),
+    /**
+     * A saved format ("My formats") by its id. The server reads its shape as the caller and takes the
+     * sheets from it: whatever `sheets` says is ignored.
+     */
+    template: z.uuid().nullish(),
   })
   .strict()
+  .refine((request) => !(request.custom && request.template), { message: 'A file is made from a saved format or a custom report, not both.', path: ['template'] })
   .refine((request) => !request.custom || (request.sheets.length === 1 && request.sheets[0] === request.custom.sheet), {
     message: 'A custom report is made from one sheet: sheets must name that sheet only.',
     path: ['sheets'],
@@ -70,6 +76,8 @@ export const exportQuerySchema = z
     source: z.string().optional(),
     /** `encodeCustomSpec` of a custom report. */
     custom: z.string().max(MAX_CUSTOM_PARAM_LENGTH).optional(),
+    /** A saved format's id. */
+    template: z.string().max(40).optional(),
   })
   .strict()
   .transform((query, ctx): ExportRequest => {
@@ -80,6 +88,7 @@ export const exportQuerySchema = z
     }
     const parsed = exportRequestSchema.safeParse({
       ...(custom ? { custom } : {}),
+      ...(query.template ? { template: query.template } : {}),
       tenantId: query.tenantId,
       mode: 'file',
       sheets: query.sheets.split(',').filter(Boolean),
@@ -94,7 +103,9 @@ export const exportQuerySchema = z
   })
 
 /** The link that downloads this export. */
-export function exportHref(request: Pick<ExportRequest, 'tenantId' | 'sheets' | 'period' | 'branch' | 'format' | 'source'> & { custom?: CustomReportSpec | null }): string {
+export function exportHref(
+  request: Pick<ExportRequest, 'tenantId' | 'sheets' | 'period' | 'branch' | 'format' | 'source'> & { custom?: CustomReportSpec | null; template?: string | null },
+): string {
   const params = new URLSearchParams({ tenantId: request.tenantId, sheets: request.sheets.join(','), period: request.period.preset })
   if (request.period.from) params.set('from', request.period.from)
   if (request.period.to) params.set('to', request.period.to)
@@ -102,5 +113,6 @@ export function exportHref(request: Pick<ExportRequest, 'tenantId' | 'sheets' | 
   params.set('format', request.format)
   params.set('source', request.source)
   if (request.custom) params.set('custom', encodeCustomSpec(request.custom))
+  if (request.template) params.set('template', request.template)
   return `/api/exports?${params.toString()}`
 }

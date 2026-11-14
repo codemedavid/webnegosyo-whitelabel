@@ -26,6 +26,8 @@ interface GoldenCase {
   expectAny?: string[]
   argsSubset?: Record<string, Record<string, unknown>>
   forbidTools?: string[]
+  /** The name of a spreadsheet attached to the message (their own report format). */
+  spreadsheet?: string
 }
 
 const maybe = isLive ? describe : describe.skip
@@ -44,13 +46,14 @@ maybe('assistant golden routing (live model)', () => {
     const tools = Object.fromEntries(
       ASSISTANT_TOOLS.map((def) => [def.name, tool({ description: def.description, inputSchema: def.input, execute: async () => ({ available: false, reason: 'eval stub' }) })]),
     )
-    const system = `${SYSTEM_PROMPT}\n\n${buildContextNote({ storeName: 'Eval Store', now: new Date(), toolNames: ASSISTANT_TOOLS.map((t) => t.name) })}`
+    const toolNames = ASSISTANT_TOOLS.map((t) => t.name)
+    const systemFor = (spreadsheetName: string | null): string => `${SYSTEM_PROMPT}\n\n${buildContextNote({ storeName: 'Eval Store', now: new Date(), toolNames, spreadsheetName })}`
 
     let passed = 0
     let cost = 0
     const failures: string[] = []
     for (const testCase of golden as GoldenCase[]) {
-      const result = streamText({ model: assistantModel('golden-eval'), system, prompt: testCase.prompt, tools, stopWhen: stepCountIs(1) })
+      const result = streamText({ model: assistantModel('golden-eval'), system: systemFor(testCase.spreadsheet ?? null), prompt: testCase.prompt, tools, stopWhen: stepCountIs(1) })
       await result.consumeStream()
       const steps = await result.steps
       cost += summarizeTurnUsage(steps).costUsd

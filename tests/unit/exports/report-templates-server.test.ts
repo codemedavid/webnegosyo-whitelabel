@@ -70,7 +70,7 @@ describe('listReportTemplates', () => {
 })
 
 describe('saveReportTemplate', () => {
-  const input = { tenantId: TENANT, userId: 'user-1', name: 'Weekly', spec }
+  const input = { tenantId: TENANT, userId: 'user-1', name: 'Weekly', shape: { kind: 'custom' as const, spec } }
 
   it('writes the caller’s own row and answers with the saved format', async () => {
     const calls = client({ insert: { data: [stored()] } })
@@ -81,7 +81,7 @@ describe('saveReportTemplate', () => {
   it('refuses a spec whose column the sheet does not have, before anything is written', async () => {
     const calls = client({ insert: { data: [stored()] } })
     const bad = { ...spec, columns: [{ id: 'day' }, { id: 'profit' }] }
-    await expect(saveReportTemplate({ ...input, spec: bad })).rejects.toMatchObject({ status: 400, message: 'Sales by day has no column called "profit".' })
+    await expect(saveReportTemplate({ ...input, shape: { kind: 'custom', spec: bad } })).rejects.toMatchObject({ status: 400, message: 'Sales by day has no column called "profit".' })
     expect(calls).toEqual([])
   })
 

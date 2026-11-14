@@ -25,7 +25,9 @@ function rowsText(rows: number | null): string {
  */
 export function FileCardView({ card }: { card: FileCard }) {
   const downloads = (Array.isArray(card.downloads) ? card.downloads : []).filter((download) => isExportHref(download.href))
-  if (downloads.length === 0) return null
+  const save = canSave(card.save) ? card.save : null
+  // A layout Owl has just matched has no file until the owner saves it: the card is then the mapping and the Save tap.
+  if (downloads.length === 0 && !save) return null
   const [main, ...others] = downloads
   return (
     <section className="rounded-2xl bg-white ring-1 ring-border">
@@ -46,34 +48,41 @@ export function FileCardView({ card }: { card: FileCard }) {
       </ul>
       {card.notes.length > 0 && (
         <ul className="px-4 pt-2 text-xs leading-snug text-muted-foreground">
-          {card.notes.map((note) => (
-            <li key={note}>{note}</li>
+          {card.notes.map((note, index) => (
+            // A layout's matching can say the same line under two tabs ("Benta → Sales").
+            <li key={`${index}:${note}`} className="whitespace-pre-wrap">
+              {note}
+            </li>
           ))}
         </ul>
       )}
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-4 pt-3">
-        <a
-          href={main.href}
-          download
-          className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-foreground px-4 text-[13px] font-bold text-background outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-        >
-          <Download className="h-4 w-4" aria-hidden />
-          {main.label}
-        </a>
-        {others.map((download) => (
+      {main ? (
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-4 pt-3">
           <a
-            key={download.href}
-            href={download.href}
+            href={main.href}
             download
-            className="inline-flex min-h-11 items-center rounded-full px-3 text-[13px] font-semibold text-foreground/80 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-foreground px-4 text-[13px] font-bold text-background outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
           >
-            {download.label}
+            <Download className="h-4 w-4" aria-hidden />
+            {main.label}
           </a>
-        ))}
-      </div>
-      {canSave(card.save) && (
+          {others.map((download) => (
+            <a
+              key={download.href}
+              href={download.href}
+              download
+              className="inline-flex min-h-11 items-center rounded-full px-3 text-[13px] font-semibold text-foreground/80 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60"
+            >
+              {download.label}
+            </a>
+          ))}
+        </div>
+      ) : (
+        <div className="pb-3" />
+      )}
+      {save && (
         <div className="border-t border-border px-4 py-3">
-          <SaveFormatButton save={card.save} />
+          <SaveFormatButton save={save} />
         </div>
       )}
     </section>

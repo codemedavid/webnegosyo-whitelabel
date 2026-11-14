@@ -7,8 +7,10 @@ import { previewCustomExport, runCustomExport } from '@/lib/exports/run-custom-e
 import { previewExport, runExport, toExportFile } from '@/lib/exports/run-export'
 import { logExport } from '@/lib/exports/server/export-log'
 import { loadExportInput, type LoadedExport } from '@/lib/exports/server/load-export-input'
-import { loadTemplateCards } from '@/lib/exports/server/report-templates'
-import { encodeCustomSpec } from '@/lib/exports/custom-report'
+import { templateSheets, type ReportTemplate } from '@/lib/exports/report-templates'
+import { previewFormatExport, runFormatExport } from '@/lib/exports/run-format-export'
+import type { ExportInput, ExportPreview, ExportResult } from '@/lib/exports/run-export'
+import { getReportTemplate, loadTemplateCards } from '@/lib/exports/server/report-templates'
 import { defineRoute } from '@/platform/http/define-route'
 
 export const runtime = 'nodejs'
@@ -51,6 +53,26 @@ function failure(error: unknown, what: string): NextResponse {
   return fail(500, 'The export could not be prepared. Try again in a moment.')
 }
 
+/** The saved format a request names, read as the CALLER. Gone, another store's or not this account's = the same refusal. */
+async function templateFor(request: ExportRequest): Promise<ReportTemplate | null> {
+  if (!request.template) return null
+  const template = await getReportTemplate(request.tenantId, request.template)
+  if (!template) throw new ExportError('That saved format is gone, or this account may not use it. Open Export to see what is saved.', 404)
+  return template
+}
+
+/** A saved format decides its own sheets; the file is called after it. */
+async function runTemplate(input: ExportInput, template: ReportTemplate): Promise<ExportResult> {
+  const own = { ...input, sheets: templateSheets(template) }
+  if (template.kind === 'format') return runFormatExport(own, template.spec, template.name)
+  return { ...(await runCustomExport(own, template.spec)), title: template.name }
+}
+
+async function previewTemplate(input: ExportInput, template: ReportTemplate): Promise<ExportPreview> {
+  const own = { ...input, sheets: templateSheets(template) }
+  return template.kind === 'format' ? previewFormatExport(own, template.spec) : previewCustomExport(own, template.spec)
+}
+
 /**
  * POST /api/exports — what a file WOULD hold: the sheets this caller gets,
  * their columns, row counts and first rows, and anything left out and why.
@@ -73,17 +95,8 @@ export const POST = defineRoute({
       if (body.mode === 'catalogue') {
         // The merchant app's Export screen: what this account may pick. No order is read.
         const { context, access } = loaded.input
-        // Saved formats ("My formats"): the spec travels ready for a link, so the app only appends it.
-        const formats = (await loadTemplateCards(body.tenantId, access, context.isMultiBranch)).map((card) => ({
-          id: card.id,
-          name: card.name,
-          summary: card.summary,
-          savedBy: card.savedBy,
-          sheet: card.spec.sheet,
-          isDetail: card.isDetail,
-          lockedNote: card.lockedNote,
-          custom: encodeCustomSpec(card.spec),
-        }))
+        // Saved formats ("My formats"): a link names one by id (`&template=`), the server reads its shape.
+        const formats = await loadTemplateCards(body.tenantId, access, context.isMultiBranch)
         return NextResponse.json(
           {
             success: true,
@@ -98,7 +111,12 @@ export const POST = defineRoute({
           { headers: NO_STORE },
         )
       }
-      const preview = body.custom ? await previewCustomExport(loaded.input, body.custom) : await previewExport(loaded.input)
+      const template = await templateFor(body)
+      const preview = template
+        ? await previewTemplate(loaded.input, template)
+        : body.custom
+          ? await previewCustomExport(loaded.input, body.custom)
+          : await previewExport(loaded.input)
       return NextResponse.json({ success: true, preview }, { headers: NO_STORE })
     } catch (error) {
       return failure(error, 'preview')
@@ -123,7 +141,12 @@ async function buildFile(request: ExportRequest): Promise<Response> {
   const store = await checkRateLimit(`exports:store:${request.tenantId}`, STORE_FILE_LIMIT)
   if (!store.allowed) return fail(429, 'Your store is exporting a lot right now. Give it a minute.', { 'Retry-After': String(store.retryAfterSec) })
 
-  const result = request.custom ? await runCustomExport(loaded.input, request.custom) : await runExport(loaded.input)
+  const template = await templateFor(request)
+  const result = template
+    ? await runTemplate(loaded.input, template)
+    : request.custom
+      ? await runCustomExport(loaded.input, request.custom)
+      : await runExport(loaded.input)
   const file = await toExportFile(result, loaded.input.context, request.format)
   // The log row is the record that this data left: no row, no file.
   await logExport(loaded.userId, request, loaded.input.context, result, file.bytes.length)
@@ -141,7 +164,7 @@ async function buildFile(request: ExportRequest): Promise<Response> {
 }
 
 /**
- * GET /api/exports?tenantId=…&sheets=orders,order_lines&period=custom&from=…&to=…[&branch=…][&format=csv][&source=owl][&custom=…]
+ * GET /api/exports?tenantId=…&sheets=orders,order_lines&period=custom&from=…&to=…[&branch=…][&format=csv][&source=owl][&custom=…|&template=<saved format id>]
  * — the file itself, built now, as the CALLER. A plain link, so a browser
  * saves it and "Recent exports" can run one again. Nothing is stored: the
  * file is read, logged (`report_exports`) and streamed.

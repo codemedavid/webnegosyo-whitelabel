@@ -66,6 +66,7 @@ export const TOOL_LABELS: Readonly<Record<string, string>> = {
   get_profit: "Working out your profit…",
   build_custom_report: "Building your report…",
   run_saved_report: "Making your saved report…",
+  follow_report_format: "Reading your format…",
 };
 
 export const WORKING_LABEL = "Working on it…";

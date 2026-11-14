@@ -4,11 +4,13 @@
  * owner says finds the format they meant.
  */
 import { customReportSpecSchema, type CustomReportSpec } from '@/lib/exports/custom-report'
+import { reportFormatSpecSchema, type ReportFormatSpec } from '@/lib/exports/report-format'
 import {
   findTemplate,
   templateActionSchema,
   templateCard,
   templateRangeProblem,
+  templateSheets,
   templateSpecProblem,
   templateSummary,
   toReportTemplate,
@@ -31,21 +33,70 @@ function spec(overrides: Record<string, unknown> = {}): CustomReportSpec {
   })
 }
 
+function layout(overrides: Record<string, unknown> = {}): ReportFormatSpec {
+  return reportFormatSpecSchema.parse({
+    tabs: [
+      { title: 'Benta', sheet: 'sales_by_day', columns: [{ header: 'Petsa', id: 'day' }, { header: 'Benta', id: 'net' }, { header: 'Upa', id: null }] },
+      { title: 'Stock', sheet: 'stock_usage', columns: [{ header: 'Sangkap', id: 'ingredient' }, { header: 'Nagamit', id: 'used' }] },
+    ],
+    ...overrides,
+  })
+}
+const custom = (overrides: Record<string, unknown> = {}) => ({ kind: 'custom' as const, spec: spec(overrides) })
+const own = (overrides: Record<string, unknown> = {}) => ({ kind: 'format' as const, spec: layout(overrides) })
+
 const row = (overrides: Record<string, unknown> = {}) => ({ id: ID, name: 'Weekly owner report', kind: 'custom', spec: spec(), created_by_label: ' Ana ', created_at: '2026-11-14T02:00:00Z', ...overrides })
 const access = (...keys: StaffPermissionKey[]) => ({ has: (key: StaffPermissionKey) => keys.includes(key) })
 
 describe('toReportTemplate', () => {
   it('reads a stored row as a format', () => {
-    expect(toReportTemplate(row())).toEqual({ id: ID, name: 'Weekly owner report', spec: spec(), savedBy: 'Ana', savedAt: '2026-11-14T02:00:00Z' })
+    expect(toReportTemplate(row())).toEqual({ id: ID, name: 'Weekly owner report', kind: 'custom', spec: spec(), savedBy: 'Ana', savedAt: '2026-11-14T02:00:00Z' })
     expect(toReportTemplate(row({ created_by_label: null }))?.savedBy).toBeNull()
   })
 
   it('leaves out a row this build cannot read: another kind, a sheet it does not know, a spec with extra fields, a name that starts a formula', () => {
     expect(toReportTemplate(row({ kind: 'format' }))).toBeNull()
+    expect(toReportTemplate(row({ kind: 'layout', spec: layout() }))).toBeNull()
     expect(toReportTemplate(row({ spec: { ...spec(), sheet: 'payroll' } }))).toBeNull()
     expect(toReportTemplate(row({ spec: { ...spec(), figures: [[1, 2]] } }))).toBeNull()
     expect(toReportTemplate(row({ name: '=HYPERLINK("x")' }))).toBeNull()
     expect(toReportTemplate(null)).toBeNull()
+  })
+})
+
+describe('the owner’s own layout (kind format)', () => {
+  it('reads a stored layout, and not a custom spec filed under that kind', () => {
+    expect(toReportTemplate(row({ kind: 'format', spec: layout() }))).toMatchObject({ kind: 'format', spec: layout(), savedBy: 'Ana' })
+    expect(toReportTemplate(row({ kind: 'custom', spec: layout() }))).toBeNull()
+  })
+
+  it('names the sheets it reads once each, and says what it is made of', () => {
+    expect(templateSheets(own())).toEqual(['sales_by_day', 'stock_usage'])
+    expect(templateSheets(custom())).toEqual(['sales_by_day'])
+    expect(templateSummary(own())).toBe('Your format · 2 tabs · Benta (Sales by day), Stock (Stock used and missing) · 1 column left blank')
+  })
+
+  it('refuses a column no account has, naming the tab', () => {
+    const bad = own({ tabs: [{ title: 'Benta', sheet: 'sales_by_day', columns: [{ header: 'Tubo', id: 'profit' }] }] })
+    expect(templateSpecProblem(bad)).toBe('Sales by day has no column called "profit" (the “Benta” tab).')
+    expect(templateSpecProblem(own())).toBeNull()
+  })
+
+  it('is saved with its own action, strictly', () => {
+    expect(templateActionSchema.safeParse({ action: 'save_format', tenantId: TENANT, name: 'Monthly', spec: layout() }).success).toBe(true)
+    expect(templateActionSchema.safeParse({ action: 'save_format', tenantId: TENANT, name: 'Monthly', spec: spec() }).success).toBe(false)
+    expect(templateActionSchema.safeParse({ action: 'save', tenantId: TENANT, name: 'Monthly', spec: layout() }).success).toBe(false)
+  })
+
+  it('runs for an account that may have one of its tabs, is locked without any, and locked on a hidden column', () => {
+    const template: ReportTemplate = { id: ID, name: 'Monthly', savedBy: null, savedAt: '2026-11-14T02:00:00Z', ...own() }
+    expect(templateCard(template, access('reports', 'inventory'), false)).toMatchObject({ kind: 'format', sheets: ['sales_by_day', 'stock_usage'], isDetail: true, lockedNote: null })
+    // No inventory key: the Stock tab is left out when it runs, the Benta tab still comes.
+    expect(templateCard(template, access('reports'), false).lockedNote).toBeNull()
+    expect(templateCard(template, access(), false).lockedNote).toBe('Not on your account: your account does not have access to it.')
+    const costed: ReportTemplate = { ...template, ...own({ tabs: [{ title: 'Stock', sheet: 'stock_usage', columns: [{ header: 'Halaga', id: 'used_cost' }] }] }) }
+    expect(templateCard(costed, access('reports', 'inventory'), false).lockedNote).toBe('Not on your account: it uses a column your account does not have access to.')
+    expect(templateCard(costed, access('reports', 'inventory', 'costs'), false).lockedNote).toBeNull()
   })
 })
 
@@ -63,24 +114,24 @@ describe('what a client may ask the formats route for', () => {
 
 describe('templateSpecProblem', () => {
   it('passes a spec whose columns the sheet has, even ones only some accounts see', () => {
-    expect(templateSpecProblem(spec())).toBeNull()
-    expect(templateSpecProblem(spec({ sheet: 'stock_usage', columns: [{ id: 'ingredient' }, { id: 'used_cost' }], filters: [], sort: null }))).toBeNull()
+    expect(templateSpecProblem(custom())).toBeNull()
+    expect(templateSpecProblem(custom({ sheet: 'stock_usage', columns: [{ id: 'ingredient' }, { id: 'used_cost' }], filters: [], sort: null }))).toBeNull()
   })
 
   it('refuses a column the sheet does not have for anyone', () => {
-    expect(templateSpecProblem(spec({ columns: [{ id: 'day' }, { id: 'profit' }] }))).toBe('Sales by day has no column called "profit".')
+    expect(templateSpecProblem(custom({ columns: [{ id: 'day' }, { id: 'profit' }] }))).toBe('Sales by day has no column called "profit".')
   })
 })
 
 describe('templateSummary', () => {
   it('says what the format is made of, under its own headings', () => {
-    expect(templateSummary(spec())).toBe('Sales by day · Day, Avg ticket, Orders · 1 filter · highest Avg ticket first · first 5')
-    expect(templateSummary(spec({ filters: [], sort: null, top: null }))).toBe('Sales by day · Day, Avg ticket, Orders')
+    expect(templateSummary(custom())).toBe('Sales by day · Day, Avg ticket, Orders · 1 filter · highest Avg ticket first · first 5')
+    expect(templateSummary(custom({ filters: [], sort: null, top: null }))).toBe('Sales by day · Day, Avg ticket, Orders')
   })
 })
 
 describe('templateCard', () => {
-  const template = (overrides: Record<string, unknown> = {}): ReportTemplate => ({ id: ID, name: 'Weekly owner report', spec: spec(overrides), savedBy: 'Ana', savedAt: '2026-11-14T02:00:00Z' })
+  const template = (overrides: Record<string, unknown> = {}): ReportTemplate => ({ id: ID, name: 'Weekly owner report', kind: 'custom', spec: spec(overrides), savedBy: 'Ana', savedAt: '2026-11-14T02:00:00Z' })
 
   it('is open to an account that may have the sheet and every column', () => {
     expect(templateCard(template(), access('reports'), false)).toMatchObject({ name: 'Weekly owner report', isDetail: false, lockedNote: null, savedBy: 'Ana' })

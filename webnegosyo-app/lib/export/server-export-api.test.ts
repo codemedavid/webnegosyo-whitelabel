@@ -270,33 +270,39 @@ describe("a report screen's Export button", () => {
 });
 
 describe("saved formats (My formats)", () => {
-  // base64url of a custom report spec, as the server's encodeCustomSpec writes it.
-  const CUSTOM = "eyJ0aXRsZSI6IkF2ZXJhZ2Ugb3JkZXIgcGVyIGRheSIsInNoZWV0Ijoic2FsZXNfYnlfZGF5In0";
-  const saved = (extra: Record<string, unknown> = {}) => ({ id: "f1", name: "Weekly owner report", summary: "Sales by day · Day, Avg ticket", savedBy: "Ana", sheet: "sales_by_day", isDetail: false, lockedNote: null, custom: CUSTOM, ...extra });
+  const F1 = "bbbbbbbb-0000-4000-8000-000000000001";
+  const F2 = "bbbbbbbb-0000-4000-8000-000000000002";
+  const saved = (extra: Record<string, unknown> = {}) => ({ id: F1, name: "Weekly owner report", kind: "custom", summary: "Sales by day · Day, Avg ticket", savedBy: "Ana", sheets: ["sales_by_day"], isDetail: false, lockedNote: null, ...extra });
   const catalogueWith = (formats: unknown) =>
     parseCatalogue({ catalogue: { groups: [{ id: "sales", label: "Sales", cards: [card("summary")] }], packs: [], defaults: ["summary"], maxDetailDays: 93, today: "2026-11-14", formats } });
 
   it("keeps the formats the server sent and drops anything that could not be a link", () => {
     const catalogue = catalogueWith([
       saved(),
-      saved({ id: "f2", name: "Costs", lockedNote: "Not on your account: it uses a column your account does not have access to." }),
-      saved({ id: "f3", custom: "https://evil.example/?x=1" }),
-      saved({ id: "f4", sheet: "orders&branch=x" }),
+      saved({ id: F2, name: "Costs", kind: "format", sheets: ["sales_by_day", "items"], lockedNote: "Not on your account: it uses a column your account does not have access to." }),
+      saved({ id: "f3&branch=x" }),
+      saved({ id: "bbbbbbbb-0000-4000-8000-000000000004", sheets: ["orders&branch=x"] }),
+      saved({ id: "bbbbbbbb-0000-4000-8000-000000000005", sheets: ["orders", 7] }),
+      saved({ id: "bbbbbbbb-0000-4000-8000-000000000006", sheets: [] }),
       saved({ id: "", name: "No id" }),
       "nonsense",
     ]);
-    expect(catalogue?.formats.map((format) => format.id)).toEqual(["f1", "f2"]);
+    expect(catalogue?.formats.map((format) => format.id)).toEqual([F1, F2]);
+    expect(catalogue?.formats[1].sheets).toEqual(["sales_by_day", "items"]);
     expect(catalogue?.formats[1].lockedNote).toMatch(/does not have access/);
     expect(catalogueWith(undefined)?.formats).toEqual([]);
   });
 
-  it("links a format to its one sheet with its own spec, a path the downloader accepts", () => {
+  it("links a format by its id (the server reads its shape), a path the downloader accepts", () => {
     const path = formatDownloadPath(TENANT, saved(), exportPeriod("custom", "2026-11-02", "2026-11-08"), "xlsx");
-    expect(path).toBe(`/api/exports?tenantId=${TENANT}&sheets=sales_by_day&period=custom&from=2026-11-02&to=2026-11-08&format=xlsx&source=page&custom=${CUSTOM}`);
+    expect(path).toBe(`/api/exports?tenantId=${TENANT}&sheets=sales_by_day&period=custom&from=2026-11-02&to=2026-11-08&format=xlsx&source=page&template=${F1}`);
     expect(isServerExportPath(path)).toBe(true);
+    expect(formatDownloadPath(TENANT, { id: F2, sheets: ["sales_by_day", "items"] }, exportPeriod("today", "", ""), "csv", "owl")).toBe(
+      `/api/exports?tenantId=${TENANT}&sheets=sales_by_day,items&period=today&format=csv&source=owl&template=${F2}`,
+    );
     // The server's link reader takes the same key.
     const server = readFileSync(join(__dirname, "..", "..", "..", "src", "lib", "exports", "request-schema.ts"), "utf8");
-    expect(server).toMatch(/custom: z\.string\(\)\.max\(MAX_CUSTOM_PARAM_LENGTH\)/);
+    expect(server).toMatch(/template: z\.string\(\)\.max\(40\)\.optional\(\)/);
   });
 
   it("checks the dates before a format is asked for", () => {
@@ -319,12 +325,19 @@ describe("saved formats (My formats)", () => {
     const spec = { title: "Average order per day", sheet: "sales_by_day", columns: [{ id: "day" }] };
 
     it("posts the card's report to the formats route as this account", async () => {
-      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
-      await saveExportFormat({ tenantId: TENANT, name: "Average order per day", spec });
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true, format: { id: F1, name: "Average order per day" } }) });
+      await expect(saveExportFormat({ tenantId: TENANT, name: "Average order per day", spec })).resolves.toBe(F1);
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe("https://web.example/api/exports/formats");
       expect(init.headers.Authorization).toBe("Bearer tok");
       expect(JSON.parse(init.body)).toEqual({ action: "save", tenantId: TENANT, name: "Average order per day", spec });
+    });
+
+    it("posts the owner's own layout under its own action, and answers with no id when the server sent none", async () => {
+      const layout = { tabs: [{ title: "Benta", sheet: "sales_by_day", columns: [{ header: "Petsa", id: "day" }] }] };
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true, format: { id: "not-an-id" } }) });
+      await expect(saveExportFormat({ tenantId: TENANT, name: "Monthly", kind: "format", spec: layout })).resolves.toBeNull();
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ action: "save_format", tenantId: TENANT, name: "Monthly", spec: layout });
     });
 
     it("passes on the server's sentence when the name is taken", async () => {

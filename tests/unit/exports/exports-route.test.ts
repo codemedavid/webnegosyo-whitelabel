@@ -3,6 +3,8 @@
 import fc from 'fast-check'
 import { NextRequest } from 'next/server'
 import { customReportSpecSchema, encodeCustomSpec } from '@/lib/exports/custom-report'
+import { reportFormatSpecSchema } from '@/lib/exports/report-format'
+import type { ReportTemplate } from '@/lib/exports/report-templates'
 import type { ExportInput } from '@/lib/exports/run-export'
 import { DAY, NOW, TENANT, access, contextFor, noReports, ordersArb, seedStore } from './export-fixtures'
 
@@ -10,6 +12,8 @@ const mockRateLimit = jest.fn()
 const mockLoad = jest.fn()
 const mockLog = jest.fn()
 const mockVerifyPermission = jest.fn()
+const mockTemplate = jest.fn()
+const mockCards = jest.fn()
 
 // The access check is the app's existing helper; `defineRoute` and everything after it are real.
 jest.mock('@/lib/admin-service', () => ({
@@ -19,6 +23,10 @@ jest.mock('@/lib/admin-service', () => ({
 
 jest.mock('@/lib/distributed-rate-limit', () => ({ checkRateLimit: (...args: unknown[]) => mockRateLimit(...args) }))
 jest.mock('@/lib/exports/server/load-export-input', () => ({ loadExportInput: (...args: unknown[]) => mockLoad(...args) }))
+jest.mock('@/lib/exports/server/report-templates', () => ({
+  getReportTemplate: (...args: unknown[]) => mockTemplate(...args),
+  loadTemplateCards: (...args: unknown[]) => mockCards(...args),
+}))
 jest.mock('@/lib/exports/server/export-log', () => ({ logExport: (...args: unknown[]) => mockLog(...args) }))
 
 const orders = fc.sample(ordersArb(8), { numRuns: 1, seed: 3 })[0]
@@ -62,6 +70,8 @@ beforeEach(() => {
   })
   mockLoad.mockResolvedValue(ready())
   mockLog.mockResolvedValue(undefined)
+  mockTemplate.mockResolvedValue(null)
+  mockCards.mockResolvedValue([])
 })
 afterEach(() => jest.restoreAllMocks())
 
@@ -184,6 +194,95 @@ describe('a custom report (one sheet, reshaped)', () => {
     expect(preview.sheets).toHaveLength(1)
     expect(preview.sheets[0]).toMatchObject({ id: 'orders', name: 'Biggest orders', columns: ['Bill', 'Order no.'], rows: Math.min(3, orders.length) })
     expect(mockLog).not.toHaveBeenCalled()
+  })
+})
+
+describe('a saved format (named by its id; the server reads its shape)', () => {
+  const ID = 'bbbbbbbb-0000-4000-8000-000000000001'
+  const layout: ReportTemplate = {
+    id: ID,
+    name: 'Monthly para kay Ate',
+    kind: 'format',
+    savedBy: 'Ana',
+    savedAt: '2026-11-14T02:00:00Z',
+    spec: reportFormatSpecSchema.parse({
+      tabs: [
+        { title: 'Mga bill', sheet: 'orders', columns: [{ header: 'Halaga', id: 'total' }, { header: 'Resibo', id: 'order_no' }, { header: 'Remarks', id: null }], sort: { column: 'total', descending: true }, top: 3 },
+        { title: 'Lahat', sheet: 'orders', columns: [{ header: 'Resibo', id: 'order_no' }] },
+      ],
+    }),
+  }
+  const saved: ReportTemplate = {
+    id: ID,
+    name: 'Biggest bills',
+    kind: 'custom',
+    savedBy: null,
+    savedAt: '2026-11-14T02:00:00Z',
+    spec: customReportSpecSchema.parse({ title: 'Biggest orders', sheet: 'orders', columns: [{ id: 'total', header: 'Bill' }], sort: { column: 'total', descending: true }, top: 2 }),
+  }
+
+  it('builds the owner’s tabs from the format’s own sheets, whatever the link says, and names the file after it', async () => {
+    mockTemplate.mockResolvedValue(layout)
+    // The link asks for another sheet: the format decides.
+    const response = await get(`${QUERY.replace('sheets=orders', 'sheets=summary')}&template=${ID}&source=owl`)
+    expect(response.status).toBe(200)
+    expect(mockTemplate).toHaveBeenCalledWith(TENANT, ID)
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="shop-monthly-para-kay-ate-2026-10-01.xlsx"')
+    const [, , , result] = mockLog.mock.calls[0]
+    expect(result.sheets.map((sheet: { name: string }) => sheet.name)).toEqual(['Mga bill', 'Lahat'])
+    const [bills, all] = result.sheets
+    expect(bills.columns.map((column: { header: string }) => column.header)).toEqual(['Halaga', 'Resibo', 'Remarks'])
+    expect(bills.rows).toHaveLength(Math.min(3, orders.length))
+    // The column the store has no figure for is there, and empty.
+    expect(bills.rows.every((row: unknown[]) => row[2] === null)).toBe(true)
+    const amounts = bills.rows.map((row: number[]) => row[0])
+    expect(amounts).toEqual([...amounts].sort((a, b) => b - a))
+    expect(all.rows).toHaveLength(orders.length)
+  })
+
+  it('runs a saved custom report the same way', async () => {
+    mockTemplate.mockResolvedValue(saved)
+    const response = await get(`${QUERY}&template=${ID}`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="shop-biggest-bills-2026-10-01.xlsx"')
+    const [, , , result] = mockLog.mock.calls[0]
+    expect(result.sheets[0]).toMatchObject({ name: 'Biggest orders' })
+    expect(result.sheets[0].rows).toHaveLength(Math.min(2, orders.length))
+  })
+
+  it('refuses a format that is gone or not this account’s, an id that is not one, and a link that names both', async () => {
+    const gone = await get(`${QUERY}&template=${ID}`)
+    expect(gone.status).toBe(404)
+    expect((await gone.json()).error).toMatch(/saved format is gone/)
+    expect((await get(`${QUERY}&template=1`)).status).toBe(400)
+    expect((await get(`${QUERY}&template=${ID}&custom=${encodeCustomSpec(saved.spec as never)}`)).status).toBe(400)
+    expect(mockLog).not.toHaveBeenCalled()
+  })
+
+  it('refuses a format whose column this account does not get', async () => {
+    mockTemplate.mockResolvedValue({ ...layout, spec: reportFormatSpecSchema.parse({ tabs: [{ title: 'Kita', sheet: 'orders', columns: [{ header: 'Tubo', id: 'margin' }] }] }) })
+    const response = await get(`${QUERY}&template=${ID}`)
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/“Kita” tab uses "margin"/)
+    expect(mockLog).not.toHaveBeenCalled()
+  })
+
+  it('previews each of its tabs, told apart even when two come from one sheet', async () => {
+    mockTemplate.mockResolvedValue(layout)
+    const response = await post({ tenantId: TENANT, mode: 'preview', sheets: ['orders'], period: { preset: 'custom', ...DAY }, template: ID })
+    expect(response.status).toBe(200)
+    const { preview } = await response.json()
+    expect(preview.sheets.map((sheet: { id: string; name: string }) => [sheet.id, sheet.name])).toEqual([['orders:1', 'Mga bill'], ['orders:2', 'Lahat']])
+    expect(preview.sheets[0]).toMatchObject({ columns: ['Halaga', 'Resibo', 'Remarks'], rows: Math.min(3, orders.length) })
+    expect(preview.sheets[0].notes).toContain('Left blank (the store has no figure for it): Remarks.')
+    expect(mockLog).not.toHaveBeenCalled()
+  })
+
+  it('lists the saved formats in the catalogue without their shape', async () => {
+    mockCards.mockResolvedValue([{ id: ID, name: 'Monthly para kay Ate', kind: 'format', summary: 'Your format · 2 tabs', savedBy: 'Ana', sheets: ['orders'], isDetail: true, lockedNote: null }])
+    const response = await post({ tenantId: TENANT, mode: 'catalogue', sheets: ['summary'], period: { preset: 'custom', ...DAY } })
+    const { catalogue } = await response.json()
+    expect(catalogue.formats).toEqual([{ id: ID, name: 'Monthly para kay Ate', kind: 'format', summary: 'Your format · 2 tabs', savedBy: 'Ana', sheets: ['orders'], isDetail: true, lockedNote: null }])
   })
 })
 

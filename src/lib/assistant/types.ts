@@ -8,6 +8,7 @@
  */
 
 import type { CustomReportSpec } from '@/lib/exports/custom-report'
+import type { ReportFormatSpec } from '@/lib/exports/report-format'
 
 export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard | FileCard
 
@@ -82,11 +83,19 @@ export interface FileCard {
   /** Site-relative `/api/exports?…` links (never another host). */
   downloads: Array<{ label: string; href: string }>
   /**
-   * A custom report the owner may keep ("Save to My formats"): the tap posts
-   * this to `/api/exports/formats`, which checks it again. Owl never saves.
+   * A report the owner may keep ("Save to My formats"): the tap posts this
+   * to `/api/exports/formats`, which checks it again. Owl never saves.
    */
-  save?: { tenantId: string; name: string; spec: CustomReportSpec }
+  save?: FileCardSave
 }
+
+export type FileCardSave =
+  | { tenantId: string; name: string; kind?: 'custom'; spec: CustomReportSpec }
+  /**
+   * The owner's own layout (plan §6.3). Its shape is too long for a link, so the card has no
+   * download until it is saved: the tap saves it and then offers the file for `period`.
+   */
+  | { tenantId: string; name: string; kind: 'format'; spec: ReportFormatSpec; sheets: string[]; period: { from: string; to: string } }
 
 /** A one-tap follow-up: tapping it sends `prompt` as the owner's next message. */
 export interface AssistantChip {

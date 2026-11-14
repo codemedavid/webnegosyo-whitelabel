@@ -56,7 +56,8 @@ export async function logExport(
       tenant_id: request.tenantId,
       user_id: userId,
       user_label: await userLabel(client, userId),
-      sheets: result.sheets.map((sheet) => sheet.id),
+      // A format may fill two tabs from one sheet: the log names each sheet once.
+      sheets: [...new Set(result.sheets.map((sheet) => sheet.id))],
       left_out: result.leftOut.map((sheet) => sheet.id),
       preset: request.period.preset,
       period_from: context.period.from,
@@ -64,7 +65,7 @@ export async function logExport(
       branch: context.branch.branch,
       format: request.format,
       source: request.source,
-      row_counts: Object.fromEntries(result.sheets.map((sheet) => [sheet.id, sheet.rows.length])),
+      row_counts: result.sheets.reduce<Record<string, number>>((counts, sheet) => ({ ...counts, [sheet.id]: (counts[sheet.id] ?? 0) + sheet.rows.length }), {}),
       bytes,
     })
     .select('id')

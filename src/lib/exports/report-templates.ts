@@ -1,7 +1,7 @@
 /**
- * Saved report formats ("My formats", plan §6.2): a custom report the store
- * kept under a name, to run again for any dates. A format holds a SHAPE (the
- * custom report spec), never a figure: running one goes through the export
+ * Saved report formats ("My formats", plan §6.2, §6.3): a custom report, or
+ * the owner's own layout, kept under a name to run again for any dates. A
+ * format holds a SHAPE (`TemplateShape`), never a figure: running one goes through the export
  * engine as the person who runs it, so their staff keys and their branch
  * decide what comes back, whoever saved it.
  *
@@ -11,8 +11,9 @@
  */
 
 import { z } from 'zod'
-import { EXPORT_SHEETS, MAX_DETAIL_DAYS, SHEET_REFUSAL_NOTES, sheetRefusal, visibleColumns } from './catalogue'
+import { EXPORT_SHEETS, MAX_DETAIL_DAYS, SHEET_REFUSAL_NOTES, sheetRefusal, visibleColumns, type SheetId } from './catalogue'
 import { customColumnProblem, customReportSpecSchema, plainWords, type CustomReportSpec } from './custom-report'
+import { formatColumnProblems, formatSheets, formatSummary, reportFormatSpecSchema, type ReportFormatSpec } from './report-format'
 import type { ExportAccess } from './types'
 
 /** Mirrors the limit trigger in `20261114150000_report_templates.sql`. */
@@ -21,48 +22,66 @@ export const MAX_TEMPLATE_NAME = 60
 
 export const templateNameSchema = plainWords(MAX_TEMPLATE_NAME)
 
-/** What a client may ask `POST /api/exports/formats` for. Strict: an unknown field is refused. */
+/**
+ * What a client may ask `POST /api/exports/formats` for. Strict: an unknown
+ * field is refused. `save` keeps a custom report (one sheet reshaped),
+ * `save_format` keeps the owner's own layout (their tabs and columns, §6.3).
+ */
 export const templateActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('save'), tenantId: z.uuid(), name: templateNameSchema, spec: customReportSpecSchema }).strict(),
+  z.object({ action: z.literal('save_format'), tenantId: z.uuid(), name: templateNameSchema, spec: reportFormatSpecSchema }).strict(),
   z.object({ action: z.literal('remove'), tenantId: z.uuid(), id: z.uuid() }).strict(),
 ])
 export type TemplateAction = z.infer<typeof templateActionSchema>
 
-export interface ReportTemplate {
+/** What a saved format holds: a custom report's spec, or the owner's own layout. */
+export type TemplateShape = { kind: 'custom'; spec: CustomReportSpec } | { kind: 'format'; spec: ReportFormatSpec }
+
+export type ReportTemplate = TemplateShape & {
   id: string
   name: string
-  spec: CustomReportSpec
   /** Who saved it, as the store typed their name. */
   savedBy: string | null
   savedAt: string
 }
 
-const rowSchema = z.object({
-  id: z.uuid(),
-  name: templateNameSchema,
-  kind: z.literal('custom'),
-  spec: customReportSpecSchema,
-  created_by_label: z.string().nullish(),
-  created_at: z.string(),
-})
+const rowBase = { id: z.uuid(), name: templateNameSchema, created_by_label: z.string().nullish(), created_at: z.string() }
+const rowSchema = z.discriminatedUnion('kind', [
+  z.object({ ...rowBase, kind: z.literal('custom'), spec: customReportSpecSchema }),
+  z.object({ ...rowBase, kind: z.literal('format'), spec: reportFormatSpecSchema }),
+])
 
 /** A stored row as a format, or null when it no longer reads as one (unknown kind, a sheet or spec this build does not know). */
 export function toReportTemplate(row: unknown): ReportTemplate | null {
   const parsed = rowSchema.safeParse(row)
   if (!parsed.success) return null
-  const { id, name, spec, created_by_label, created_at } = parsed.data
-  return { id, name, spec, savedBy: created_by_label?.trim() || null, savedAt: created_at }
+  const { id, name, created_by_label, created_at } = parsed.data
+  const shape: TemplateShape = parsed.data.kind === 'custom' ? { kind: 'custom', spec: parsed.data.spec } : { kind: 'format', spec: parsed.data.spec }
+  return { ...shape, id, name, savedBy: created_by_label?.trim() || null, savedAt: created_at }
 }
 
-/** Why a spec cannot be saved at all: it names a column its sheet does not have for ANY account. */
-export function templateSpecProblem(spec: CustomReportSpec): string | null {
-  const sheet = EXPORT_SHEETS[spec.sheet]
-  const problem = customColumnProblem(spec, sheet.columns)
-  return problem ? `${sheet.name} has no column called ${problem.unknown.map((id) => `"${id}"`).join(', ')}.` : null
+/** The catalogue sheets a saved format reads. */
+export function templateSheets(shape: TemplateShape): SheetId[] {
+  return shape.kind === 'custom' ? [shape.spec.sheet] : formatSheets(shape.spec)
+}
+
+function quoted(ids: readonly string[]): string {
+  return ids.map((id) => `"${id}"`).join(', ')
+}
+
+/** Why a shape cannot be saved at all: it names a column its sheet does not have for ANY account. */
+export function templateSpecProblem(shape: TemplateShape): string | null {
+  if (shape.kind === 'custom') {
+    const sheet = EXPORT_SHEETS[shape.spec.sheet]
+    const problem = customColumnProblem(shape.spec, sheet.columns)
+    return problem ? `${sheet.name} has no column called ${quoted(problem.unknown)}.` : null
+  }
+  const [problem] = formatColumnProblems(shape.spec, (sheet) => EXPORT_SHEETS[sheet].columns)
+  return problem ? `${EXPORT_SHEETS[problem.sheet].name} has no column called ${quoted(problem.unknown)} (the “${problem.tab}” tab).` : null
 }
 
 /** "Sales by day · Day, Avg ticket, Orders · highest Avg ticket first · first 5" */
-export function templateSummary(spec: CustomReportSpec): string {
+function customSummary(spec: CustomReportSpec): string {
   const sheet = EXPORT_SHEETS[spec.sheet]
   const header = (id: string): string => spec.columns.find((column) => column.id === id)?.header ?? sheet.columns.find((column) => column.id === id)?.header ?? id
   const parts = [sheet.name, spec.columns.map((column) => header(column.id)).join(', ')]
@@ -72,35 +91,52 @@ export function templateSummary(spec: CustomReportSpec): string {
   return parts.join(' · ')
 }
 
+/** One line saying what a saved format is made of. */
+export function templateSummary(shape: TemplateShape): string {
+  return shape.kind === 'custom' ? customSummary(shape.spec) : `Your format · ${formatSummary(shape.spec)}`
+}
+
 export interface TemplateCard {
   id: string
   name: string
+  kind: TemplateShape['kind']
   summary: string
   savedBy: string | null
-  spec: CustomReportSpec
+  /** The catalogue sheets it reads; the link names the format by id, the server reads its shape. */
+  sheets: SheetId[]
   /** Row-by-row sheets take a shorter range. */
   isDetail: boolean
   /** Why THIS account cannot run it, or null. */
   lockedNote: string | null
 }
 
+const COLUMN_LOCK = 'Not on your account: it uses a column your account does not have access to.'
+
+/** Why this account cannot run the format at all, or null. A format whose OTHER tabs are open still runs, with the closed tab left out and named. */
+function lockedNote(shape: TemplateShape, access: ExportAccess, isMultiBranch: boolean): string | null {
+  const audience = { has: access.has, isMultiBranch }
+  const sheets = templateSheets(shape)
+  const refusals = sheets.map((id) => sheetRefusal(EXPORT_SHEETS[id], audience))
+  const firstRefusal = refusals.find((refusal) => refusal !== null)
+  if (firstRefusal && refusals.every((refusal) => refusal !== null)) return `Not on your account: ${SHEET_REFUSAL_NOTES[firstRefusal]}.`
+  if (shape.kind === 'custom') return customColumnProblem(shape.spec, visibleColumns(EXPORT_SHEETS[shape.spec.sheet], access)) ? COLUMN_LOCK : null
+  const open = new Set(sheets.filter((_, index) => refusals[index] === null))
+  const problems = formatColumnProblems(shape.spec, (sheet) => visibleColumns(EXPORT_SHEETS[sheet], access))
+  return problems.some((problem) => open.has(problem.sheet)) ? COLUMN_LOCK : null
+}
+
 /** A format as the Export page (and the app) lists it for one account. */
 export function templateCard(template: ReportTemplate, access: ExportAccess, isMultiBranch: boolean): TemplateCard {
-  const sheet = EXPORT_SHEETS[template.spec.sheet]
-  const refusal = sheetRefusal(sheet, { has: access.has, isMultiBranch })
-  const missing = refusal ? null : customColumnProblem(template.spec, visibleColumns(sheet, access))
+  const sheets = templateSheets(template)
   return {
     id: template.id,
     name: template.name,
-    summary: templateSummary(template.spec),
+    kind: template.kind,
+    summary: templateSummary(template),
     savedBy: template.savedBy,
-    spec: template.spec,
-    isDetail: sheet.source !== 'summary',
-    lockedNote: refusal
-      ? `Not on your account: ${SHEET_REFUSAL_NOTES[refusal]}.`
-      : missing
-        ? 'Not on your account: it uses a column your account does not have access to.'
-        : null,
+    sheets,
+    isDetail: sheets.some((id) => EXPORT_SHEETS[id].source !== 'summary'),
+    lockedNote: lockedNote(template, access, isMultiBranch),
   }
 }
 

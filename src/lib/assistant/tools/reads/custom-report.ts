@@ -133,7 +133,7 @@ function forModel(cell: ExportCell): string | number | null {
 }
 
 /** The first rows as heading → value, for sheets the model may read. */
-function firstRows(sheet: BuiltSheet): Array<Record<string, string | number | null>> {
+export function firstRows(sheet: BuiltSheet): Array<Record<string, string | number | null>> {
   return sheet.rows.slice(0, ROWS_FOR_MODEL).map((row) => Object.fromEntries(sheet.columns.map((column, index) => [column.header, forModel(row[index])])))
 }
 

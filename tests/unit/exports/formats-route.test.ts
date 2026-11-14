@@ -48,9 +48,23 @@ describe('POST /api/exports/formats', () => {
     const response = await post({ action: 'save', tenantId: TENANT, name: 'Weekly', spec })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ success: true, format: { id: ID, name: 'Weekly' } })
-    expect(mockSave).toHaveBeenCalledWith({ tenantId: TENANT, userId: 'user-1', name: 'Weekly', spec })
+    expect(mockSave).toHaveBeenCalledWith({ tenantId: TENANT, userId: 'user-1', name: 'Weekly', shape: { kind: 'custom', spec } })
     // A write: a platform-staff account would need `stores.edit`.
     expect(mockVerifyPermission).toHaveBeenCalledWith(TENANT, 'reports', 'edit')
+  })
+
+  it('saves the owner’s own layout under its own action, and refuses one filed as a custom report', async () => {
+    const layout = { tabs: [{ title: 'Benta', sheet: 'sales_by_day', columns: [{ header: 'Petsa', id: 'day' }, { header: 'Upa', id: null }] }] }
+    const response = await post({ action: 'save_format', tenantId: TENANT, name: 'Weekly', spec: layout })
+    expect(response.status).toBe(200)
+    expect(mockSave).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      userId: 'user-1',
+      name: 'Weekly',
+      shape: { kind: 'format', spec: { tabs: [{ ...layout.tabs[0], sort: null, top: null }] } },
+    })
+    expect((await post({ action: 'save', tenantId: TENANT, name: 'Weekly', spec: layout })).status).toBe(400)
+    expect((await post({ action: 'save_format', tenantId: TENANT, name: 'Weekly', spec: { ...layout, rows: [[1]] } })).status).toBe(400)
   })
 
   it('removes one', async () => {
