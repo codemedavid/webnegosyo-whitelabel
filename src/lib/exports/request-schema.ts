@@ -43,3 +43,45 @@ export function toExportSearchRecord(request: Pick<ExportRequest, 'period' | 'br
     compare: '0',
   }
 }
+
+/**
+ * The same request as a link's query string (`GET /api/exports?…`): sheets
+ * comma-separated, the period as `period` + `from` + `to`. Always a file.
+ */
+export const exportQuerySchema = z
+  .object({
+    tenantId: z.string(),
+    sheets: z.string(),
+    period: z.string(),
+    from: z.string().optional(),
+    to: z.string().optional(),
+    branch: z.string().optional(),
+    format: z.string().optional(),
+    source: z.string().optional(),
+  })
+  .strict()
+  .transform((query, ctx): ExportRequest => {
+    const parsed = exportRequestSchema.safeParse({
+      tenantId: query.tenantId,
+      mode: 'file',
+      sheets: query.sheets.split(',').filter(Boolean),
+      period: { preset: query.period, ...(query.from ? { from: query.from } : {}), ...(query.to ? { to: query.to } : {}) },
+      branch: query.branch || null,
+      ...(query.format ? { format: query.format } : {}),
+      ...(query.source ? { source: query.source } : {}),
+    })
+    if (parsed.success) return parsed.data
+    ctx.addIssue({ code: 'custom', message: 'That export link is not valid.' })
+    return z.NEVER
+  })
+
+/** The link that downloads this export. */
+export function exportHref(request: Pick<ExportRequest, 'tenantId' | 'sheets' | 'period' | 'branch' | 'format' | 'source'>): string {
+  const params = new URLSearchParams({ tenantId: request.tenantId, sheets: request.sheets.join(','), period: request.period.preset })
+  if (request.period.from) params.set('from', request.period.from)
+  if (request.period.to) params.set('to', request.period.to)
+  if (request.branch) params.set('branch', request.branch)
+  params.set('format', request.format)
+  params.set('source', request.source)
+  return `/api/exports?${params.toString()}`
+}
