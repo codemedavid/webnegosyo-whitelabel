@@ -16,6 +16,9 @@ import {
 } from '@/components/admin/reports/sales/report-page-chrome'
 import { ReportRefused, ReportUnsupported } from '@/components/admin/reports/sales/report-states'
 
+/** What the Export link on this page starts with. */
+const PROFIT_EXPORT_SHEETS = ['profit', 'expenses', 'summary'] as const
+
 interface ProfitPageProps {
   params: Promise<{ tenant: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
@@ -72,6 +75,7 @@ export default async function ProfitPage({ params, searchParams }: ProfitPagePro
         path={path}
         backHref={reportHref(reportsPath(context), context.filter)}
         pageParams={pageParams}
+        exportSheets={PROFIT_EXPORT_SHEETS}
       />
       <ProfitTabs tenantSlug={tenantSlug} filter={context.filter} active={view} />
       <ReportNotices context={context} />

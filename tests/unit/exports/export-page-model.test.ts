@@ -1,6 +1,8 @@
 import { EXPORT_SHEETS, MAX_DETAIL_DAYS, SHEET_IDS } from '@/lib/exports/catalogue'
 import {
   DEFAULT_EXPORT_SHEETS,
+  EXPORT_PACKS,
+  packSheets,
   REPORT_EXPORT_SHEETS,
   dayCountInclusive,
   exportCardGroups,
@@ -89,5 +91,18 @@ describe('preview cells', () => {
     expect(formatPreviewCell({ value: null, kind: 'money' }, 'money')).toBe('')
     expect(formatPreviewCell(0, 'money')).toBe('₱0.00')
     expect(formatPreviewCell('Dine In', 'text')).toBe('Dine In')
+  })
+})
+
+describe('ready-made sets', () => {
+  it('only names known sheets, and never ticks one the account may not have', () => {
+    const groups = exportCardGroups(access('reports'), false)
+    const open = groups.flatMap((group) => group.cards.filter((card) => !card.lockedNote).map((card) => card.id))
+    for (const pack of EXPORT_PACKS) {
+      for (const id of pack.sheets ?? []) expect(SHEET_IDS).toContain(id)
+      for (const id of packSheets(pack, groups)) expect(open).toContain(id)
+    }
+    expect(packSheets(EXPORT_PACKS[0], groups)).toEqual(open)
+    expect(packSheets(EXPORT_PACKS.find((pack) => pack.id === 'staff')!, groups)).toEqual(['sales_by_cashier'])
   })
 })

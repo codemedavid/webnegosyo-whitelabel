@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { SheetId } from '@/lib/exports/catalogue'
 import {
+  EXPORT_PACKS,
   dayCountInclusive,
   initialSheets,
+  packSheets,
   rangeProblem,
   type ExportCard,
   type ExportCardGroup,
@@ -111,7 +113,6 @@ export function ExportBuilder({ tenantId, groups, askedSheets, period, periodFro
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const cards = useMemo(() => groups.flatMap((group) => group.cards), [groups])
-  const open = useMemo(() => cards.filter((card) => !card.lockedNote), [cards])
   const pickedCards = useMemo(() => cards.filter((card) => picked.includes(card.id)), [cards, picked])
   const problem = periodError ?? rangeProblem(dayCountInclusive(periodFrom, periodTo), pickedCards)
   // Catalogue order, whatever order they were ticked in: the file's tabs follow it.
@@ -160,7 +161,6 @@ export function ExportBuilder({ tenantId, groups, askedSheets, period, periodFro
 
   const canDownload = state.kind === 'ready'
   const href = (format: 'xlsx' | 'csv') => exportHref({ tenantId, sheets, period, branch, format, source: 'page' })
-  const isAllPicked = open.length > 0 && open.every((card) => picked.includes(card.id))
 
   return (
     <div className="flex flex-col gap-6">
@@ -169,14 +169,33 @@ export function ExportBuilder({ tenantId, groups, askedSheets, period, periodFro
           <div id="export-step-sheets">
             <StepHeading step={2} title="What goes in the file" hint="Each one becomes a tab." />
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 bg-white font-semibold"
-            onClick={() => setPicked(isAllPicked ? [] : open.map((card) => card.id))}
-          >
-            {isAllPicked ? 'Clear all' : 'Select everything'}
-          </Button>
+          {picked.length > 0 && (
+            <Button type="button" variant="outline" className="h-11 bg-white font-semibold" onClick={() => setPicked([])}>
+              Clear all
+            </Button>
+          )}
+        </div>
+        <div role="group" aria-label="Ready-made sets" className="flex flex-wrap gap-2">
+          {EXPORT_PACKS.map((pack) => {
+            const sheetsOfPack = packSheets(pack, groups)
+            if (sheetsOfPack.length === 0) return null
+            const isOn = sheetsOfPack.length === picked.length && sheetsOfPack.every((id) => picked.includes(id))
+            return (
+              <button
+                key={pack.id}
+                type="button"
+                title={pack.about}
+                aria-pressed={isOn}
+                onClick={() => setPicked(sheetsOfPack)}
+                className={cn(
+                  'inline-flex min-h-11 items-center rounded-full px-4 text-[13.5px] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50',
+                  isOn ? 'bg-wn-ink text-white' : 'bg-white text-wn-ink ring-1 ring-border hover:ring-wn-ink',
+                )}
+              >
+                {pack.label}
+              </button>
+            )
+          })}
         </div>
         {groups.map((group) => (
           <fieldset key={group.id} className="flex flex-col gap-2">

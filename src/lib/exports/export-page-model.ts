@@ -76,6 +76,33 @@ export const REPORT_EXPORT_SHEETS = {
 } as const satisfies Record<string, readonly SheetId[]>
 export type ReportExportSource = keyof typeof REPORT_EXPORT_SHEETS
 
+export interface ExportPack {
+  id: string
+  label: string
+  about: string
+  /** null = every sheet the account may have. */
+  sheets: readonly SheetId[] | null
+}
+
+/** Ready-made sets (plan §4). A sheet the account may not have is simply not ticked. */
+export const EXPORT_PACKS: readonly ExportPack[] = [
+  { id: 'everything', label: 'Everything that happened', about: 'Every sheet: sales, orders, customers, staff, cash, stock, expenses.', sheets: null },
+  {
+    id: 'accountant',
+    label: 'For my accountant',
+    about: 'Totals with their checks, sales by day, payments, discounts, cancelled orders, items, expenses.',
+    sheets: ['summary', 'sales_by_day', 'payments_by_method', 'payments_received', 'discounts', 'cancelled', 'items', 'expenses'],
+  },
+  { id: 'profit', label: 'Profit statement', about: 'Sales, cost of ingredients, expenses and what was left.', sheets: ['profit', 'expenses', 'summary'] },
+  { id: 'staff', label: 'Staff and cash', about: 'Shifts, over or short, sales by cashier, cash in and out.', sheets: ['shifts', 'sales_by_cashier', 'cash_moves'] },
+]
+
+/** The sheets a pack ticks for this account, in catalogue order. */
+export function packSheets(pack: ExportPack, groups: readonly ExportCardGroup[]): SheetId[] {
+  const open = groups.flatMap((group) => group.cards.filter((card) => !card.lockedNote).map((card) => card.id))
+  return pack.sheets === null ? open : open.filter((id) => pack.sheets?.includes(id))
+}
+
 const KNOWN = new Set<string>(SHEET_IDS)
 
 /** `?sheets=orders,items` → known ids, in catalogue order, no repeats. */
