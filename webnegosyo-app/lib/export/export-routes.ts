@@ -50,5 +50,5 @@ export const SCREEN_EXPORT_SHEETS = {
   sales: ["summary", "sales_by_day", "items"],
   profit: ["profit", "expenses", "summary"],
   stock: ["stock_on_hand", "stock_movements"],
-  cash: ["shifts", "sales_by_cashier", "cash_moves"],
+  cash: ["shifts", "sales_by_cashier", "cash_moves", "remittances", "day_closes"],
 } as const;

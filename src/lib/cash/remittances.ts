@@ -137,7 +137,9 @@ export function needsReceiverNote(handedOverCents: number | null, receivedCents:
   return handedOverCents !== null && receivedCents !== handedOverCents
 }
 
-const COLUMNS = FIELDS.map(([, column]) => column).join(', ')
+/** The table columns `parseRemittance` reads (also what an export of the book selects). */
+export const REMITTANCE_COLUMNS = FIELDS.map(([, column]) => column).join(', ')
+const COLUMNS = REMITTANCE_COLUMNS
 const LIST_LIMIT = 200
 
 interface ListQuery {

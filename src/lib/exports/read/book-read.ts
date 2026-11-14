@@ -11,6 +11,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { asCashRpcClient } from '@/lib/cash/cash-rpc'
 import { readCashSummary } from '@/lib/cash/cash-reports'
+import { DAY_CLOSE_COLUMNS, parseDayClose } from '@/lib/cash/day-close'
+import { REMITTANCE_COLUMNS, parseRemittance, remittanceDifferenceCents, type Remittance } from '@/lib/cash/remittances'
 import { GROUP_LABELS } from '@/lib/expenses/categories'
 import { buildExportRows } from '@/lib/expenses/export'
 import { loadExpenseExport } from '@/lib/expenses/read/export-read'
@@ -181,6 +183,167 @@ export async function readCashMoveSheet(window: BookWindow): Promise<BookSheetRo
     }
   })
   return { rows, total, notes: ['Cash put in is a plus; cash paid out or collected from the drawer is a minus. Sales are not listed here.'] }
+}
+
+// ── Remittances ───────────────────────────────────────────────────────────
+
+const REMITTANCE_KIND_LABELS: Readonly<Record<Remittance['kind'], string>> = { shift: 'End of shift', pickup: 'Collected mid-shift' }
+const REMITTANCE_STATUS_LABELS: Readonly<Record<Remittance['status'], string>> = {
+  pending: 'Waiting to be received',
+  accepted: 'Received',
+  disputed: 'Disputed',
+  resolved: 'Settled',
+}
+
+interface Counted {
+  count: number | null
+  error: { message: string } | null
+}
+interface Paged {
+  data: unknown[] | null
+  error: { message: string } | null
+}
+
+/**
+ * One table of a book through the caller's session: every row past the page
+ * size, or (a preview) the count and the first rows only.
+ */
+async function readBookTable(
+  window: BookWindow,
+  what: string,
+  count: () => PromiseLike<Counted>,
+  page: (from: number, to: number) => PromiseLike<Paged>,
+): Promise<{ stored: unknown[]; total: number }> {
+  if (window.peek !== null) {
+    const total = await countOf(what, count())
+    const { data, error } = await page(0, window.peek - 1)
+    if (error) throw new ExportError(`The ${what} could not be read. Try again in a moment.`, 502)
+    return { stored: data ?? [], total }
+  }
+  const stored = await readAll<unknown>(what, page, { cap: MAX_BOOK_ROWS, pageSize: window.pageSize })
+  if (stored.length > MAX_BOOK_ROWS) throw tooMany(what)
+  return { stored, total: stored.length }
+}
+
+function remittancesQuery(window: BookWindow, columns: string, options?: { count: 'exact'; head: true }) {
+  // By when the cash was handed over, like Cash in and out (a pickup may carry no business day).
+  let query = window.client
+    .from('cash_remittances')
+    .select(columns, options)
+    .eq('tenant_id', window.tenantId)
+    .gte('created_at', iso(window.start))
+    .lt('created_at', iso(window.end))
+  if (window.branch.p_outlet !== null) query = query.eq('outlet_id', window.branch.p_outlet)
+  if (window.branch.p_unassigned) query = query.is('outlet_id', null)
+  return query
+}
+
+export async function readRemittanceSheet(window: BookWindow): Promise<BookSheetRows> {
+  const { stored, total } = await readBookTable(
+    window,
+    'remittances',
+    () => remittancesQuery(window, 'id', { count: 'exact', head: true }),
+    (from, to) => remittancesQuery(window, REMITTANCE_COLUMNS).order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, to),
+  )
+  const rows = stored.map((raw): ExportRow => {
+    const remittance = parseRemittance(raw)
+    const at = Date.parse(remittance.createdAt)
+    const difference = remittanceDifferenceCents(remittance)
+    const how = remittance.acceptMethod === 'pin' ? 'PIN on the cashier’s device' : remittance.acceptMethod === 'app' ? 'In the receiver’s app' : null
+    return {
+      business_day: remittance.businessDay,
+      date: manilaDate(at),
+      time: manilaTime(at),
+      branch: branchName(remittance.outletId, window.outletNames),
+      kind: REMITTANCE_KIND_LABELS[remittance.kind],
+      cashier: remittance.cashierName,
+      handed_over: remittance.handedOverCents === null ? null : pesos(remittance.handedOverCents),
+      given_to: remittance.toSafe ? 'The store safe' : text(remittance.remittedToName),
+      status: REMITTANCE_STATUS_LABELS[remittance.status],
+      received: remittance.receivedCents === null ? null : pesos(remittance.receivedCents),
+      difference: difference === null ? null : pesos(difference),
+      received_by: text(remittance.receivedByName),
+      received_at: remittance.receivedAt ? manilaDateTime(Date.parse(remittance.receivedAt)) : null,
+      how: how && remittance.isSelfReceived ? `${how} (received by the same person)` : how,
+      receiver_note: text(remittance.receiverNote),
+      dispute_reason: text(remittance.disputeReason),
+      resolved_by: text(remittance.resolvedByName),
+      resolved_note: text(remittance.resolvedNote),
+      shift_id: remittance.shiftId,
+    }
+  })
+  return {
+    rows,
+    total,
+    notes: ['Difference = received minus handed over; a minus means less arrived. Blank “Handed over” = the drawer was closed without a count.'],
+  }
+}
+
+// ── Day closes ────────────────────────────────────────────────────────────
+
+function dayClosesQuery(window: BookWindow, columns: string, options?: { count: 'exact'; head: true }) {
+  let query = window.client
+    .from('business_day_closes')
+    .select(columns, options)
+    .eq('tenant_id', window.tenantId)
+    .gte('business_day', window.fromDay)
+    .lte('business_day', window.toDay)
+  if (window.branch.p_outlet !== null) query = query.eq('outlet_id', window.branch.p_outlet)
+  if (window.branch.p_unassigned) query = query.is('outlet_id', null)
+  return query
+}
+
+export async function readDayCloseSheet(window: BookWindow): Promise<BookSheetRows> {
+  const { stored, total } = await readBookTable(
+    window,
+    'day closes',
+    () => dayClosesQuery(window, 'id', { count: 'exact', head: true }),
+    (from, to) =>
+      dayClosesQuery(window, DAY_CLOSE_COLUMNS)
+        .order('business_day', { ascending: true })
+        .order('version', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+  )
+  const money = (cents: number | null | undefined): number | null => (cents === null || cents === undefined ? null : pesos(cents))
+  const rows = stored.map((raw): ExportRow => {
+    const close = parseDayClose(raw)
+    const { sales, drawers } = close.snapshot
+    return {
+      business_day: close.businessDay,
+      branch: branchName(close.outletId, window.outletNames),
+      version: close.version,
+      status: close.status === 'reopened' ? 'Reopened' : 'Closed',
+      closed_by: close.closedByName,
+      closed_at: manilaDateTime(Date.parse(close.closedAt)),
+      orders: sales ? sales.orders : null,
+      net: sales ? pesos(sales.netCents) : null,
+      discounts: money(sales?.discountCents),
+      expected: money(drawers.totals.expectedCents),
+      counted: money(drawers.totals.countedCents),
+      difference: money(drawers.totals.varianceCents),
+      handed_over: money(drawers.totals.handedOverCents),
+      received: money(drawers.totals.receivedCents),
+      cash_to_account: money(close.snapshot.cashToAccountForCents),
+      deposit: money(close.depositCents),
+      deposit_to: text(close.depositTo),
+      deposit_ref: text(close.depositRef),
+      forced_shifts: close.forcedShiftIds.length,
+      open_remittances: close.unsettledRemittanceIds.length,
+      note: text(close.note),
+      reopened_by: text(close.reopenedByName),
+      reopened_at: close.reopenedAt ? manilaDateTime(Date.parse(close.reopenedAt)) : null,
+      reopen_reason: text(close.reopenReason),
+    }
+  })
+  return {
+    rows,
+    total,
+    notes: [
+      'The figures are the ones frozen when the day was closed. A day that was reopened and closed again has one row per version; the highest version is the current one.',
+      'Blank Sales = this store’s sales are not on the main database, so the close holds the drawers only.',
+    ],
+  }
 }
 
 // ── Stock ─────────────────────────────────────────────────────────────────

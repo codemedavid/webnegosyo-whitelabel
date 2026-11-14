@@ -94,7 +94,7 @@ export const EXPORT_PACKS: readonly ExportPack[] = [
     sheets: ['summary', 'sales_by_day', 'payments_by_method', 'payments_received', 'discounts', 'cancelled', 'items', 'expenses'],
   },
   { id: 'profit', label: 'Profit statement', about: 'Sales, cost of ingredients, expenses and what was left.', sheets: ['profit', 'expenses', 'summary'] },
-  { id: 'staff', label: 'Staff and cash', about: 'Shifts, over or short, sales by cashier, cash in and out.', sheets: ['shifts', 'sales_by_cashier', 'cash_moves'] },
+  { id: 'staff', label: 'Staff and cash', about: 'Shifts, over or short, sales by cashier, cash in and out, remittances, day closes.', sheets: ['shifts', 'sales_by_cashier', 'cash_moves', 'remittances', 'day_closes'] },
 ]
 
 /** The sheets a pack ticks for this account, in catalogue order. */

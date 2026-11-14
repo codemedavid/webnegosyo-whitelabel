@@ -42,8 +42,86 @@ const movements = Array.from({ length: 8 }, (_, index) => ({
   created_at: AT(8 + index),
 }))
 
+const remittance = (id: string, hour: number, extra: Record<string, unknown> = {}) => ({
+  id,
+  tenant_id: TENANT,
+  outlet_id: null,
+  kind: 'shift',
+  shift_id: 's1',
+  business_day: DAY.from,
+  cashier_user_id: 'u-ana',
+  cashier_name: 'Ana',
+  handed_over_cents: 500000,
+  remitted_to: 'u-owner',
+  remitted_to_name: 'Owner',
+  to_safe: false,
+  status: 'accepted',
+  received_cents: 500000,
+  received_by_name: 'Owner',
+  received_at: AT(hour + 1),
+  accept_method: 'app',
+  is_self_received: false,
+  receiver_note: null,
+  dispute_reason: null,
+  resolved_at: null,
+  resolved_by_name: null,
+  resolved_note: null,
+  created_at: AT(hour),
+  ...extra,
+})
+const remittances = [
+  remittance('r1', 9),
+  remittance('r2', 10, { received_cents: 495000, receiver_note: 'One ₱50 short', accept_method: 'pin', is_self_received: true }),
+  remittance('r3', 11, { kind: 'pickup', business_day: null, to_safe: true, remitted_to: null, remitted_to_name: null, status: 'pending', received_cents: null, received_by_name: null, received_at: null, accept_method: null }),
+  remittance('r4', 12, { handed_over_cents: null, status: 'disputed', received_cents: null, received_by_name: null, received_at: null, accept_method: null, dispute_reason: 'Envelope was empty' }),
+  remittance('r5', 13, { status: 'resolved', resolved_by_name: 'Owner', resolved_note: 'Found in the safe' }),
+  remittance('other', 9, { tenant_id: 'another-store' }),
+  // The next day: outside the dates.
+  remittance('late', 9, { created_at: '2026-10-02T09:00:00+08:00' }),
+]
+
+const dayClose = (id: string, version: number, extra: Record<string, unknown> = {}) => ({
+  id,
+  tenant_id: TENANT,
+  outlet_id: null,
+  business_day: DAY.from,
+  version,
+  status: 'closed',
+  window_start: AT(0),
+  window_end: AT(23),
+  snapshot: {
+    sales: { netCents: 1234500, orders: 42, discountCents: 30000, collectedByMethod: [], unpaidCents: 0, overpaidCents: 0 },
+    drawers: { shifts: [], totals: { expectedCents: 800000, countedCents: 795000, varianceCents: -5000, handedOverCents: 795000, receivedCents: 795000, collectedMidShiftCents: 0 } },
+    cashToAccountForCents: 795000,
+  },
+  sales_source: 'platform_sql',
+  forced_shift_ids: [],
+  unsettled_remittance_ids: [],
+  note: null,
+  closed_by_name: 'Owner',
+  closed_at: AT(22),
+  deposit_cents: null,
+  deposit_to: null,
+  deposit_ref: null,
+  deposit_proof_url: null,
+  deposit_recorded_at: null,
+  reopened_by_name: null,
+  reopened_at: null,
+  reopen_reason: null,
+  ...extra,
+})
+const dayCloses = [
+  dayClose('d1', 1, { status: 'reopened', reopened_by_name: 'Owner', reopened_at: AT(23), reopen_reason: 'Late order' }),
+  dayClose('d2', 2, { deposit_cents: 795000, deposit_to: 'BDO savings', deposit_ref: 'TX-1', forced_shift_ids: ['s9'], unsettled_remittance_ids: ['r3', 'r4'], note: 'All good' }),
+  // A store whose sales are not on the main database: the close holds the drawers only.
+  dayClose('d3', 3, { sales_source: 'drawers_only', snapshot: { sales: null, drawers: { shifts: [], totals: {} } } }),
+  dayClose('d4', 4),
+  dayClose('other', 1, { tenant_id: 'another-store' }),
+  dayClose('next', 1, { business_day: '2026-10-02' }),
+]
+
 function input(sheets: ExportInput['sheets'], keys: Parameters<typeof access> = ['reports', 'cash_manage', 'inventory']): ExportInput {
-  const store = seedStore([], { shift_cash_movements: moves, inventory_items: items, inventory_units: units, stock_movements: movements, inventory_stock: [] }, PAGE)
+  const store = seedStore([], { cash_remittances: remittances, business_day_closes: dayCloses, shift_cash_movements: moves, inventory_items: items, inventory_units: units, stock_movements: movements, inventory_stock: [] }, PAGE)
   return {
     context: contextFor({ period: 'custom', ...DAY }),
     storeName: 'Shop',
@@ -82,6 +160,49 @@ describe('cash in and out', () => {
     expect(preview.sheets[0].rows).toBe(4)
     // The fake hands back three rows a response: the count is of the whole book, the peek is one page.
     expect(preview.sheets[0].peek).toHaveLength(PAGE)
+  })
+})
+
+describe('remittances', () => {
+  it('lists every hand-over of the dates past the page size, with what arrived and how it ended', async () => {
+    const { sheets } = await runExport(input(['remittances']))
+    expect(column(sheets[0], 'handed_over')).toEqual([5000, 5000, 5000, null, 5000])
+    expect(column(sheets[0], 'received')).toEqual([5000, 4950, null, null, 5000])
+    expect(column(sheets[0], 'difference')).toEqual([0, -50, null, null, 0])
+    expect(column(sheets[0], 'status')).toEqual(['Received', 'Received', 'Waiting to be received', 'Disputed', 'Settled'])
+    expect(column(sheets[0], 'kind')).toEqual(['End of shift', 'End of shift', 'Collected mid-shift', 'End of shift', 'End of shift'])
+    expect(column(sheets[0], 'given_to')).toEqual(['Owner', 'Owner', 'The store safe', 'Owner', 'Owner'])
+    expect(column(sheets[0], 'how')).toEqual(['In the receiver’s app', 'PIN on the cashier’s device (received by the same person)', null, null, 'In the receiver’s app'])
+    expect(column(sheets[0], 'receiver_note')[1]).toBe('One ₱50 short')
+    expect(column(sheets[0], 'dispute_reason')[3]).toBe('Envelope was empty')
+    expect(column(sheets[0], 'resolved_note')[4]).toBe('Found in the safe')
+    // A pickup carries no business day and is still listed, by when it was handed over.
+    expect(column(sheets[0], 'business_day')[2]).toBeNull()
+  })
+
+  it('needs the cash key, and previews the count with the first rows only', async () => {
+    const refused = await runExport(input(['remittances', 'stock_on_hand'], ['reports', 'inventory']))
+    expect(refused.leftOut.map((sheet) => sheet.id)).toEqual(['remittances'])
+    const preview = await previewExport({ ...input(['remittances', 'day_closes']), pageSize: undefined })
+    expect(preview.sheets.map((sheet) => [sheet.id, sheet.rows])).toEqual([['remittances', 5], ['day_closes', 4]])
+    expect(preview.sheets[0].peek.length).toBeLessThanOrEqual(5)
+  })
+})
+
+describe('day closes', () => {
+  it('lists every version of every closed day with the figures frozen at the close', async () => {
+    const { sheets } = await runExport(input(['day_closes']))
+    expect(column(sheets[0], 'version')).toEqual([1, 2, 3, 4])
+    expect(column(sheets[0], 'status')).toEqual(['Reopened', 'Closed', 'Closed', 'Closed'])
+    expect(column(sheets[0], 'net')).toEqual([12345, 12345, null, 12345])
+    expect(column(sheets[0], 'orders')).toEqual([42, 42, null, 42])
+    expect(column(sheets[0], 'expected')).toEqual([8000, 8000, null, 8000])
+    expect(column(sheets[0], 'difference')).toEqual([-50, -50, null, -50])
+    expect(column(sheets[0], 'deposit')).toEqual([null, 7950, null, null])
+    expect(column(sheets[0], 'deposit_to')[1]).toBe('BDO savings')
+    expect(column(sheets[0], 'forced_shifts')).toEqual([0, 1, 0, 0])
+    expect(column(sheets[0], 'open_remittances')).toEqual([0, 2, 0, 0])
+    expect(column(sheets[0], 'reopen_reason')[0]).toBe('Late order')
   })
 })
 

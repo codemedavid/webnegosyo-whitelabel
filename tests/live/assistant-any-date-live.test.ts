@@ -96,6 +96,14 @@ maybe('Owl any-date tools, live, as the real user', () => {
     expect(staff.facts.available).not.toBe(false)
   })
 
+  test('export_report: the cash books are readable as this account (real columns, RLS)', async () => {
+    const file = await run('export_report', { sheets: ['shifts', 'cash_moves', 'remittances', 'day_closes'], period: 'yesterday' })
+    expect(file.facts.ready).toBe(true)
+    expect((file.facts.tabs as { name: string }[]).map((tab) => tab.name)).toEqual(['Shifts', 'Cash in and out', 'Remittances', 'Day closes'])
+    const month = await run('export_report', { sheets: ['remittances', 'day_closes'], period: 'last_30_days' })
+    expect(month.facts.ready).toBe(true)
+  })
+
   test('get_shifts: one day first, then the week', async () => {
     const day = await run('get_shifts', { period: 'yesterday' })
     expect(day.facts.available).toBe(true)

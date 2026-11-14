@@ -48,8 +48,10 @@ import {
 } from './read/detail-read'
 import {
   readCashMoveSheet,
+  readDayCloseSheet,
   readExpenseSheet,
   readProfitSheet,
+  readRemittanceSheet,
   readShiftSheet,
   readStockMovementSheet,
   readStockOnHandSheet,
@@ -222,6 +224,10 @@ function readBook(id: SheetId, window: BookWindow, now: number): Promise<BookShe
       return readShiftSheet(window)
     case 'cash_moves':
       return readCashMoveSheet(window)
+    case 'remittances':
+      return readRemittanceSheet(window)
+    case 'day_closes':
+      return readDayCloseSheet(window)
     case 'stock_on_hand':
       return readStockOnHandSheet(window, now)
     case 'stock_movements':
