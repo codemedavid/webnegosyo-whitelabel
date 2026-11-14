@@ -4,6 +4,13 @@ Status: **APPROVED 2026-11-14** — owner said "go" to every §10 recommendation
 
 Extends `docs/plans/2026-11-05-reports-redesign/plan.md` (approved; its §6.6 "Exports" and phases A5 / W4 are replaced by this plan). The Reports tidy-up itself stays in that plan (§9 below says what is left of it).
 
+## 0. Changes made while building (2026-11-14)
+
+- **No stored files.** §5 planned a private bucket, signed links and a 24 h purge. Built instead: `POST /api/exports` = preview, `GET /api/exports?…` builds the file, writes one `report_exports` row as the caller, and **streams** it (a stream is not held to the 4.5 MB response cap). Why: every read and the log write stay on the caller's own session (RLS), no service-role client and no new place where customer data sits. Cost: "Recent exports" runs the same dates again instead of re-serving the old file, and says so.
+- **Store Activity line `report.exported` is not written yet** (needs a category added to the activity constraint). The `report_exports` log is the record; owner + `activity_view` read all of it.
+- **Payments received lists ledger rows only.** "Money received" on Summary also counts orders marked paid without a ledger row, so the two can differ; the sheet needs a note saying so (E3).
+- Not yet in the sheets: money per payment method on Sales by day, customers per day.
+
 ## 1. What the owner asked for
 
 1. **Exports that are complete and easy to find.** "Export today" should give everything that happened: items sold, sales, customers, shifts, who the cashier was, inventory. Any date range, not only presets. The owner must know what a file contains before downloading it.
