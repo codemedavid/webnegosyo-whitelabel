@@ -14,7 +14,7 @@
  * caller supplies `clientOrderId` so the idempotency key survives a retry.
  */
 
-import { cartTotals, type PosCartLine, type ServiceCharge } from "./pos-cart";
+import { cartTotals, selectionLabel, type PosCartLine, type ServiceCharge } from "./pos-cart";
 import type { StoredGovDiscount } from "./gov-discount";
 import { orderLineAllocations } from "./pos-gov-discount";
 import { lineItemAllocations, mergeAllocations, toOrderLineDiscounts } from "./pos-line-discounts";
@@ -230,7 +230,9 @@ function toOrderItem(line: PosCartLine): PosOrderItem {
       ? {
           variationSelections: line.selections.map((s) => ({
             typeName: s.groupName,
-            optionName: s.optionName,
+            // "Fried Rice ×2": the label web checkout writes for an amount, so
+            // every reader (receipts, chits, web order page, edits) shows it.
+            optionName: selectionLabel(s),
             priceAdjustment: s.priceModifier,
           })),
         }

@@ -22,7 +22,7 @@
  * Pure and side-effect free: no network, no clock, no id generation.
  */
 
-import type { ModifierGroup } from "./modifier-groups";
+import { isSingleSelectGroup, type ModifierGroup } from "./modifier-groups";
 import type { OrderAddon, OrderItemDto, OrderVariationSelection } from "./backends/supabase-orders";
 import {
   addLine,
@@ -179,22 +179,36 @@ interface AddonAmount {
  */
 function addonAmount(addon: OrderAddon, groups: ModifierGroup[]): AddonAmount {
   const label = addon.name.trim();
-  const parsed = ADDON_PORTION_LABEL.exec(label);
+  const parsed = splitPortionLabel(label, groups);
   const structured = isPortionCount(addon.quantity) ? addon.quantity : null;
 
-  if (parsed && isPortionCount(Number(parsed[2]))) {
-    const name = parsed[1].trim();
-    if (findOption(groups, name) || !findOption(groups, label)) {
-      return {
-        name,
-        portions: structured ?? Number(parsed[2]),
-        priceModifier: addon.price * (structured ?? 1),
-      };
-    }
+  if (parsed) {
+    return {
+      name: parsed.name,
+      portions: structured ?? parsed.portions,
+      priceModifier: addon.price * (structured ?? 1),
+    };
   }
 
   const portions = structured ?? 1;
   return { name: label, portions, priceModifier: addon.price * portions };
+}
+
+/**
+ * "Kimchi ×2" → Kimchi, 2 portions; null when the label carries no amount.
+ * A label whose stripped name matches no option but whose FULL text does is
+ * an option that happens to end in "×2", and stays whole.
+ */
+function splitPortionLabel(
+  label: string,
+  groups: ModifierGroup[],
+  groupName?: string,
+): { name: string; portions: number } | null {
+  const parsed = ADDON_PORTION_LABEL.exec(label);
+  if (!parsed || !isPortionCount(Number(parsed[2]))) return null;
+  const name = parsed[1].trim();
+  if (!findOption(groups, name, groupName) && findOption(groups, label, groupName)) return null;
+  return { name, portions: Number(parsed[2]) };
 }
 
 /**
@@ -232,15 +246,20 @@ function selectionsFor(
   groups: ModifierGroup[],
   onUnresolved: (groupName: string | undefined, optionName: string) => void,
 ): PosCartSelection[] {
-  const variations = (item.variationSelections ?? []).map((selection) =>
-    toSelection(
+  // The register writes an add-on amount here as "Kimchi ×2", its price
+  // already covering every portion (`pos-order.ts`).
+  const variations = (item.variationSelections ?? []).map((selection) => {
+    const label = selection.optionName.trim();
+    const amount = splitPortionLabel(label, groups, selection.typeName);
+    return toSelection(
       groups,
-      selection.optionName,
+      amount?.name ?? selection.optionName,
       selection.priceAdjustment,
       selection.typeName,
       onUnresolved,
-    ),
-  );
+      amount?.portions,
+    );
+  });
 
   // Only when no structured selections exist — a row carrying both formats
   // describes the same choice twice, and the structured one carries prices.
@@ -351,8 +370,8 @@ export function hydratePosCart(
  * Is this selection an add-on rather than a variation?
  *
  * The unified modifier model already draws this line by selection rule:
- * `max_select === 1` is variation-style, anything else is add-on style (see
- * `modifier-groups.ts`). Deriving it from the live group means a line the
+ * a single-select group is variation-style, anything else (an add-on amount
+ * group included, even capped at one) is add-on style (`isSingleSelectGroup`). Deriving it from the live group means a line the
  * cashier just added through ModifierSheet serialises the same way a hydrated
  * one does — there is no historical flag to keep in sync.
  *
@@ -362,7 +381,7 @@ export function hydratePosCart(
 function isAddonSelection(selection: PosCartSelection, catalog: ModifierCatalog): boolean {
   for (const groups of Object.values(catalog)) {
     const group = groups.find((candidate) => candidate.id === selection.groupId);
-    if (group) return group.max_select !== 1;
+    if (group) return !isSingleSelectGroup(group);
   }
   return selection.groupName === ORPHAN_GROUP;
 }
@@ -387,7 +406,8 @@ function partitionSelections(
     }
     variations.push({
       typeName: selection.groupName,
-      optionName: selection.optionName,
+      // An orphaned register amount keeps its "×2" through the edit.
+      optionName: selectionLabel(selection),
       priceAdjustment: selection.priceModifier,
     });
   }

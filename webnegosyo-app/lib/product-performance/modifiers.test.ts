@@ -120,6 +120,18 @@ describe("parseLineModifiers", () => {
     expect(modifiers[0]).toMatchObject({ kind: "variation", groupName: "Size", name: "Large" });
   });
 
+  it("reads a register add-on amount as its portions, priced per portion", () => {
+    // The register writes "Bacon ×2" priced for both portions (pos-order.ts).
+    const modifiers = parseLineModifiers(
+      line({ variationSelections: [{ typeName: "Add-ons", optionName: "Bacon ×2", priceAdjustment: 40 }] }),
+      BURGER
+    );
+
+    expect(modifiers[0]).toMatchObject({
+      kind: "addon", groupName: "Add-ons", name: "Bacon", perUnit: 2, unitPrice: 20, priceSource: "recorded",
+    });
+  });
+
   it("matches option names without caring about case or stray spaces", () => {
     const modifiers = parseLineModifiers(line({ variation: " large " }), BURGER);
 
