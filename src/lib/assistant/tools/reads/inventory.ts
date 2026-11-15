@@ -17,6 +17,7 @@ import type { ActivityFeedEntry } from '@/lib/inventory/activity-feed'
 import type { AssistantToolDef } from '@/lib/assistant/tools/registry'
 import type { RefBook } from '@/lib/assistant/refs'
 import type { ToolResult } from '@/lib/assistant/types'
+import { manilaStamp } from '@/lib/assistant/insights/manila-stamp'
 
 const LIST_LIMIT = 8
 
@@ -67,7 +68,7 @@ export function buildMovementsResult(entries: readonly ActivityFeedEntry[], load
       movements: shown.map((entry) => ({
         what: entry.title,
         lines: entry.lines.slice(0, 4),
-        when: entry.createdAt.slice(0, 16),
+        when: manilaStamp(entry.createdAt),
         by: entry.isAutomatic ? 'automatic (orders)' : (entry.actorName ?? 'unknown'),
       })),
     },

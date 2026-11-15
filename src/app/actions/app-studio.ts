@@ -44,6 +44,10 @@ import { storefrontTenantIdTag } from '@/lib/storefront/cached-read'
 import { z } from 'zod'
 import { defineAction } from '@/platform/http/define-action'
 import type { Refusal } from '@/platform/http/entry'
+import { readAllRows } from '@/platform/db/read-all-rows'
+
+/** "Set up an app" lists every active store; past this, refuse instead of a silently short list. */
+const STORE_LIST_MAX = 20_000
 
 const LIST_PATH = '/superadmin/apps'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -97,14 +101,23 @@ export const listStoresWithoutAppAction = defineAction({
   onRefusal: refusedList,
   handler: async (): Promise<{ id: string; name: string; slug: string }[]> => {
     const client = db()
+    // Paged: one response never carries more than 1,000 rows, so a plain
+    // `.limit(2000)` silently dropped stores (and listed stores that already
+    // have an app) once either table passed 1,000 rows.
     const [stores, apps] = await Promise.all([
-      client.from('tenants').select('id, name, slug').eq('is_active', true).order('name').limit(2000),
-      client.from('tenant_apps').select('tenant_id').limit(2000),
+      readAllRows<{ id: string; name: string; slug: string }>(
+        (from, to) => client.from('tenants').select('id, name, slug').eq('is_active', true).order('name').order('id').range(from, to),
+        { maxRows: STORE_LIST_MAX },
+      ),
+      readAllRows<{ tenant_id: string }>(
+        (from, to) => client.from('tenant_apps').select('tenant_id').order('tenant_id').range(from, to),
+        { maxRows: STORE_LIST_MAX },
+      ),
     ])
-    if (stores.error) throw new Error(stores.error.message)
-    if (apps.error) throw new Error(apps.error.message)
-    const taken = new Set((apps.data ?? []).map((row) => row.tenant_id))
-    return (stores.data ?? []).filter((store) => !taken.has(store.id))
+    if (!stores.ok) throw new Error(stores.reason === 'error' ? stores.error.message : 'Too many stores to list')
+    if (!apps.ok) throw new Error(apps.reason === 'error' ? apps.error.message : 'Too many apps to list')
+    const taken = new Set(apps.rows.map((row) => row.tenant_id))
+    return stores.rows.filter((store) => !taken.has(store.id))
   },
 })
 

@@ -173,7 +173,7 @@ export async function buildStaffCard(facts: StaffChatFacts, card: StaffCard): Pr
       return view && view.lines.length > 0 ? buildChatOrderSummary(orderCtx, view) : []
     }
     case 'pay': {
-      if (!order || order.isPaid || order.status === 'cancelled') return []
+      if (!order || !order.isChatOrder || order.isPaid || order.status === 'cancelled') return []
       const methods = await loadPayChoices(bundle.tenantId, order.orderTypeId)
       const view: ChatOrderView = {
         id: order.id, label: order.label, status: order.status, orderType: order.orderType, lines: [],

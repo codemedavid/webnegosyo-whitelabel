@@ -8,7 +8,7 @@ import { ASSISTANT_TOOLS } from '@/lib/assistant/tools'
 import { buildProfitResult, buildShiftsResult, getProfitTool, getShiftsTool, sheetRows } from '@/lib/assistant/tools/reads/money-books'
 import { availableTools, factsForModel } from '@/lib/assistant/tools/registry'
 import { EXPORT_SHEETS, visibleColumns, type SheetId } from '@/lib/exports/catalogue'
-import { PROFIT_LINES } from '@/lib/exports/read/book-read'
+import { NO_FOOD_COST_NOTE, PROFIT_LINES } from '@/lib/exports/read/book-read'
 import type { ExportResult } from '@/lib/exports/run-export'
 import type { BuiltSheet, ExportRow } from '@/lib/exports/types'
 
@@ -194,6 +194,22 @@ describe('get_profit', () => {
       { label: 'Profit', value: '₱30,000', hint: '30% of sales' },
     ])
     expect(answer.links).toEqual([{ label: 'Open Profit', path: '/reports/profit' }])
+  })
+
+  it('passes on a blank gross profit (no food cost recorded) instead of a 100% margin', () => {
+    const uncosted = buildProfitResult(
+      result(
+        built('profit', [
+          line(PROFIT_LINES.sales, 50000, 1),
+          line(PROFIT_LINES.ingredients, 0, 0),
+          line(PROFIT_LINES.gross, null, null, NO_FOOD_COST_NOTE),
+          line(PROFIT_LINES.expenses, 10000, 0.2),
+          line(PROFIT_LINES.profit, 40000, 0.8),
+        ]),
+      ),
+      when({ period: 'last_month' }),
+    )
+    expect(uncosted.facts.grossProfit).toEqual({ amount: null, sharePct: null, note: NO_FOOD_COST_NOTE })
   })
 
   it('does not guess when the statement has no totals', () => {

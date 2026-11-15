@@ -13,6 +13,8 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { assertRowsChangedOrGone } from '@/platform/db/assert-rows-changed-or-gone'
+import { writeFailure } from '@/platform/db/assert-rows-changed'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { ModifierGroupLibraryEntry } from '@/types/database'
 import { isSameLibraryGroup } from '@/lib/addon-groups/library-duplicates'
@@ -110,11 +112,11 @@ export async function deleteModifierGroupLibraryEntry(
   await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('modifier_group_library')
-    .delete()
-    .eq('id', entryId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
+  // Zero rows deleted with the entry still there = row-level security refused
+  // it (no error is raised); zero rows with it gone = a repeated tap.
+  const result = await assertRowsChangedOrGone(
+    await supabase.from('modifier_group_library').delete().eq('id', entryId).eq('tenant_id', tenantId).select('id'),
+    () => supabase.from('modifier_group_library').select('id').eq('id', entryId).eq('tenant_id', tenantId).limit(1),
+  )
+  if (!result.ok) throw writeFailure(result)
 }

@@ -235,8 +235,18 @@ export function kitchenOptionLines(item: Pick<KitchenItemLike, "variation" | "va
   return variation ? [variation] : [];
 }
 
-/** "×2" / "x2" already on the end of a name (web checkout writes it in). */
-const TRAILING_QUANTITY = /[×x]\s*\d+$/i;
+/**
+ * "Extra Shot ×2" / "Extra Shot x2": the count the web checkout writes onto the
+ * name. A separate word, so a name that merely ends in "x" + a number ("Wings
+ * Box 6", "Sauce Mix 2") is not mistaken for one — that dropped the real
+ * quantity and the cook made one portion.
+ */
+const TRAILING_QUANTITY = /\s[×x]\s?(\d+)$/i;
+
+function nameCarriesCount(name: string, quantity: number): boolean {
+  const match = TRAILING_QUANTITY.exec(name);
+  return match !== null && Number(match[1]) === quantity;
+}
 
 /**
  * Add-ons as the cook reads them: "Extra Shot ×2". The platform stores names
@@ -250,7 +260,7 @@ export function kitchenAddonLines(item: Pick<KitchenItemLike, "addons">): string
     if (!name) continue;
     const quantity = addon?.quantity;
     const needsCount =
-      typeof quantity === "number" && Number.isFinite(quantity) && quantity > 1 && !TRAILING_QUANTITY.test(name);
+      typeof quantity === "number" && Number.isFinite(quantity) && quantity > 1 && !nameCarriesCount(name, quantity);
     lines.push(needsCount ? `${name} ×${quantity}` : name);
   }
   return lines;

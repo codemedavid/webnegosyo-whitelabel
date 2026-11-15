@@ -108,7 +108,10 @@ export function staffChips(input: StaffChipInput): StaffChip[] {
     } else {
       chips.push({ card: 'order_status', label: `${order.label} ${STATUS_WORDS[order.status]}`, orderId: order.id })
     }
-    if (!order.isPaid && order.status !== 'cancelled' && order.payMethodCount > 0) {
+    // Only a chat order can take the tap: the customer's GCash/Cash buttons
+    // answer through its `messenger_chat_orders` row, so on a web order they
+    // replied "That order is no longer open" and saved nothing.
+    if (order.isChatOrder && !order.isPaid && order.status !== 'cancelled' && order.payMethodCount > 0) {
       chips.push({ card: 'pay', label: 'How to pay', orderId: order.id })
     }
   }

@@ -11,6 +11,7 @@ import { maskCustomerName } from '@/lib/assistant/insights/customer-label'
 import type { AssistantToolDef } from '@/lib/assistant/tools/registry'
 import type { RefBook } from '@/lib/assistant/refs'
 import type { ToolResult } from '@/lib/assistant/types'
+import { manilaDay } from '@/lib/assistant/insights/manila-stamp'
 
 const TOP_LIMIT = 8
 const HISTORY_DAYS = 90
@@ -37,7 +38,7 @@ export function buildCustomersResult(overview: CustomerHubOverview, view: Input[
           name: maskCustomerName(customer.name),
           visits: customer.visits,
           spend: customer.spend,
-          lastVisit: customer.lastVisitAt.slice(0, 10),
+          lastVisit: manilaDay(customer.lastVisitAt),
         })),
         ...coverage,
       },

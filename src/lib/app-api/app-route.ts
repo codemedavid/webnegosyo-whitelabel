@@ -27,7 +27,12 @@ export interface AppRouteContext {
 
 interface AppRouteOptions {
   scope: string
-  /** Resolve answers a paused store (so the app can say so); data routes refuse it. */
+  /**
+   * Resolve answers a paused store (so the app can say so); store data routes
+   * refuse it. The customer's OWN account routes (profile + delete, sign out,
+   * push token, past orders) set this too: a store paused for an unpaid bill
+   * must not stop a customer deleting their account (App Store 5.1.1(v)).
+   */
   allowPaused?: boolean
 }
 

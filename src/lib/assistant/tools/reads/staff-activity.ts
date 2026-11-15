@@ -15,6 +15,7 @@ import { staffLabel } from '@/lib/assistant/insights/customer-label'
 import type { AssistantToolDef } from '@/lib/assistant/tools/registry'
 import type { RefBook } from '@/lib/assistant/refs'
 import type { ToolResult } from '@/lib/assistant/types'
+import { manilaStamp } from '@/lib/assistant/insights/manila-stamp'
 
 const ROW_LIMIT = 8
 
@@ -35,7 +36,7 @@ export function buildStaffActivityResult(rows: readonly StaffActivityRow[], when
         completed: row.completed,
         cancelled: row.cancelled,
         kitchenMoves: row.progressed,
-        lastActive: row.lastActiveAt?.slice(0, 16) ?? null,
+        lastActive: manilaStamp(row.lastActiveAt),
       })),
       ...(isTruncated ? { caveat: 'Very busy period: the oldest activity was not read.' } : {}),
       ...(shown.length === 0 ? { note: 'No recorded staff activity in this period.' } : {}),

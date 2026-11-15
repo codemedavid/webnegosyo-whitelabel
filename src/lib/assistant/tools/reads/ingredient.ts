@@ -22,6 +22,7 @@ import { hasPermission } from '@/lib/staff-permissions'
 import { foldName } from '@/lib/assistant/insights/menu-import'
 import { MOVEMENT_LABEL, dishRecipe, ingredientUsage, quantityLabel } from '@/lib/assistant/insights/ingredient-detail'
 import type { AssistantToolContext, AssistantToolDef } from '@/lib/assistant/tools/registry'
+import { manilaDay, manilaStamp } from '@/lib/assistant/insights/manila-stamp'
 
 const DISH_LIMIT = 8
 const MOVEMENT_LIMIT = 5
@@ -66,7 +67,7 @@ export function pickIngredient(items: readonly InventoryItem[], wanted: string, 
 /** The read selects `counted_at` (INVENTORY_ITEM_COLUMNS) though the generated row type predates it. */
 function countedOn(item: InventoryItem): string | null {
   const counted = (item as InventoryItem & { counted_at?: string | null }).counted_at
-  return typeof counted === 'string' ? counted.slice(0, 10) : null
+  return typeof counted === 'string' ? manilaDay(counted) : null
 }
 
 interface BranchRow { outlet_id: string; current_qty: number | string | null }
@@ -128,7 +129,7 @@ export const getIngredientTool: AssistantToolDef<IngredientInput> = {
         ...(showCosts ? { costPerUnit: Number(picked.unit_cost) || 0 } : {}),
         lastCounted: countedOn(picked),
         recentMovements:
-          extra.movements?.map((row) => ({ what: MOVEMENT_LABEL[row.reason] ?? row.reason, change: quantityLabel(Number(row.quantity_delta) || 0, unit), when: row.created_at.slice(0, 16) })) ??
+          extra.movements?.map((row) => ({ what: MOVEMENT_LABEL[row.reason] ?? row.reason, change: quantityLabel(Number(row.quantity_delta) || 0, unit), when: manilaStamp(row.created_at) })) ??
           'unavailable',
         usedIn: usage
           ? {

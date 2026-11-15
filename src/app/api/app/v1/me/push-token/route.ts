@@ -7,7 +7,7 @@ import { handlePushToken } from '@/lib/app-api/push/push-tokens'
  *   POST   {token, platform, appVersion} → {registered: true}   this install gets order pushes
  *   DELETE → {registered: false}                                 notifications off on this install
  */
-const pushTokenHandler = appRoute({ scope: 'push-token' }, handlePushToken)
+const pushTokenHandler = appRoute({ scope: 'push-token', allowPaused: true }, handlePushToken)
 export const POST = defineRoute({
   auth: { kind: 'public' },
   rateLimit: { bucket: 'app:push-token', per: 'ip', max: 30, window: '1m', onRedisFailure: 'instance' },

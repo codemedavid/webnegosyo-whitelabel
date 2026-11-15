@@ -7,7 +7,7 @@ Every API route and server action that is declared through `defineRoute` / `defi
 which inputs it validates. Entry points that still check access by hand are listed in
 `tests/unit/guardrails/entry-point-exceptions.json`; that list can only shrink.
 
-## Declared entry points (55)
+## Declared entry points (54)
 
 | Entry | Who may call | Store | Branch | Rate limit | Validates |
 |---|---|---|---|---|---|
@@ -24,7 +24,6 @@ which inputs it validates. Entry points that still check access by hand are list
 | saveAppDraftAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
 | publishAppDraftAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
 | discardAppDraftAction (src/app/actions/app-studio.ts) | console: `customer_apps.edit` | — | — | not stated | args |
-| checkQuotationValidity (src/app/actions/lalamove.ts) | anyone | — | — | 10 per 1m per ip (`lalamove-quote-check-client`) | args |
 | saveMessengerAutomationsAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
 | createMessengerTesterCodeAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |
 | readMessengerTesterAction (src/app/actions/messenger-automations.ts) | staff: `settings` (edit, session) | named, checked | store-wide | not stated | args |

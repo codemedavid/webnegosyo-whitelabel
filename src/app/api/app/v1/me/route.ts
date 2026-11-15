@@ -8,7 +8,7 @@ import { handleMe } from '@/lib/customer-auth/sign-in-http'
  *   PATCH  {name} → profile
  *   DELETE → delete the app account (Apple 5.1.1(v)); the store keeps its orders and stamps
  */
-const meHandler = appRoute({ scope: 'me' }, handleMe)
+const meHandler = appRoute({ scope: 'me', allowPaused: true }, handleMe)
 export const GET = defineRoute({
   auth: { kind: 'public' },
   rateLimit: { bucket: 'app:me', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },

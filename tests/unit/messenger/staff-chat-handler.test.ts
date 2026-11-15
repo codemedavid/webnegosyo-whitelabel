@@ -27,7 +27,7 @@ function facts(extra: { lastInboundAt?: Date | null; pausedUntil?: Date | null; 
     },
     cart: null,
     order: extra.withOrder
-      ? { id: ORDER, label: '#03', status: 'preparing', isPaid: false, isChatOrder: false, payMethodCount: 2, orderTypeId: null, orderType: 'Pickup', totalCentavos: 25500 }
+      ? { id: ORDER, label: '#03', status: 'preparing', isPaid: false, isChatOrder: true, payMethodCount: 2, orderTypeId: null, orderType: 'Pickup', totalCentavos: 25500 }
       : null,
   }
 }

@@ -20,6 +20,13 @@ export const maxDuration = 60
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' }
 /** Every store shares one database: a store's staff together get this many files a minute. */
 const STORE_FILE_LIMIT = { limit: 12, windowSec: 60 } as const
+/**
+ * A custom report or saved-format preview reads the WHOLE period (up to the
+ * file's own cap), unlike the plain preview's first 1,500 orders, so it is a
+ * file read in all but name: counted per store like files, on its own bucket
+ * so previewing never eats the store's downloads.
+ */
+const STORE_FULL_PREVIEW_LIMIT = { limit: 20, windowSec: 60 } as const
 const STREAM_CHUNK_BYTES = 64 * 1024
 
 const REFUSAL_MESSAGES: Readonly<Record<string, string>> = {
@@ -112,6 +119,10 @@ export const POST = defineRoute({
         )
       }
       const template = await templateFor(body)
+      if (template || body.custom) {
+        const store = await checkRateLimit(`exports:store-preview:${body.tenantId}`, STORE_FULL_PREVIEW_LIMIT)
+        if (!store.allowed) return fail(429, 'Your store is previewing a lot of reports right now. Give it a minute.', { 'Retry-After': String(store.retryAfterSec) })
+      }
       const preview = template
         ? await previewTemplate(loaded.input, template)
         : body.custom

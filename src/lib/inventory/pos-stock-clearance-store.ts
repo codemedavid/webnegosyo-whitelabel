@@ -5,6 +5,7 @@
  * and the one INSERT into `pos_stock_clearances` (service role only).
  */
 
+import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { createSupabaseApprovalStore } from '@/lib/gov-discount-ledger/supabase-approval-store'
@@ -20,12 +21,33 @@ type Db = SupabaseClient<Database>
 interface UntypedInsert {
   from(table: string): {
     insert(row: Record<string, unknown>): {
-      select(columns: string): { single(): PromiseLike<{ data: { id: string } | null; error: { message: string } | null }> }
+      select(columns: string): {
+        single(): PromiseLike<{ data: { id: string } | null; error: { message: string; code?: string } | null }>
+      }
     }
   }
 }
 
 const UNNAMED_DISH = 'An item'
+
+/**
+ * `pos_stock_clearances` arrives with `20261110120000_pos_stock_block_server.sql`,
+ * which is not applied on platform yet (2026-11-15). Until it is, the insert
+ * fails with "relation does not exist" — and a 500 from this route made the
+ * register treat the server as unreachable and sell with `stockCheck =
+ * 'offline'`, skipping the manager PIN. The DECISION (cleared / approved /
+ * needs a manager) is made here in the route, not by the table, so a missing
+ * table must not undo it: answer with an unrecorded id. The database refuses
+ * nothing yet either way; once the migration lands the row is written and
+ * this branch is dead.
+ */
+const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST205'])
+
+export function isMissingClearanceTable(error: { message: string; code?: string } | null): boolean {
+  if (!error) return false
+  if (error.code && MISSING_TABLE_CODES.has(error.code)) return true
+  return /pos_stock_clearances/.test(error.message) && /does not exist|could not find the table/i.test(error.message)
+}
 
 function toCartLine(line: StockClearanceLine) {
   const optionIds = line.optionIds ?? []
@@ -97,6 +119,7 @@ export function createClearanceStore(db: Db): ClearanceStore {
         })
         .select('id')
         .single()
+      if (isMissingClearanceTable(error)) return { id: `unrecorded-${randomUUID()}` }
       if (error || !data) throw new Error(`[pos-stock-clearance] insert: ${error?.message ?? 'no row'}`)
       return { id: data.id }
     },

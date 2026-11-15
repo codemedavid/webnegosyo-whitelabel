@@ -342,6 +342,9 @@ export const PROFIT_LINES = {
   capex: 'Equipment bought (not in profit)',
 } as const
 
+/** Shown in place of gross profit when no recipe, dish cost or ingredient purchase exists for the period. */
+export const NO_FOOD_COST_NOTE = 'Not worked out: no food cost is recorded yet (add recipes or dish costs)'
+
 export async function readProfitSheet(window: BookWindow): Promise<BookSheetRows> {
   const [figures, categories] = await Promise.all([
     readProfitSummary(window.reportClient, window.reportWindow),
@@ -362,7 +365,12 @@ export async function readProfitSheet(window: BookWindow): Promise<BookSheetRows
     { line: PROFIT_LINES.orders, value: typed(report.orders, 'count'), share: null, note: 'Cancelled orders are not counted' },
     line(PROFIT_LINES.sales, net, 'Food and drinks after discounts; no service charge or delivery fee'),
     line(PROFIT_LINES.ingredients, report.ingredientCostCents, basisNote),
-    line(PROFIT_LINES.gross, gross),
+    // No food cost recorded at all = gross profit would equal sales (a false
+    // 100% margin). Same rule as the Reports screen (`profitValues` in
+    // reports/metrics/compute.ts): leave it blank and say why.
+    report.ingredientCostCents === 0
+      ? { line: PROFIT_LINES.gross, value: null, share: null, note: NO_FOOD_COST_NOTE }
+      : line(PROFIT_LINES.gross, gross),
     { line: PROFIT_LINES.expensesHeading, value: null, share: null, note: null },
     ...EXPENSE_LINE_GROUPS.filter((group) => report.byGroup[group] !== 0).map((group) => line(`  ${GROUP_LABELS[group]}`, report.byGroup[group])),
     line(PROFIT_LINES.expenses, report.expensesCents),
