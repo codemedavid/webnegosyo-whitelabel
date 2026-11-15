@@ -23,6 +23,8 @@ export const DELIVERY_ADDRESS_FIELD_NAME = 'delivery_address';
 /** Fields rendered elsewhere on the screen, or never meant for merchant eyes. */
 const HIDDEN_FIELDS = new Set([
   'messenger_psid',
+  // The chat a register order was rung up for (set by the app, resolved by the server).
+  'messenger_session_id',
   'delivery_lat',
   'delivery_lng',
   // The confirm-pin address field's bookkeeping: the label the pin was

@@ -36,6 +36,8 @@ export async function writeChatLog(input: { tenantId: string; sessionId: string;
         body: line.body,
         mid: line.mid,
         sent_at: line.sentAt.toISOString(),
+        // Only app replies name a sender: every other line writes exactly what it did before 20261115073959.
+        ...(line.sentBy ? { sent_by: line.sentBy } : {}),
       })) as never,
       { onConflict: 'mid', ignoreDuplicates: true },
     )

@@ -228,6 +228,13 @@ describe("formatNotificationTime", () => {
 });
 
 describe("routeFromPushData", () => {
+  it("opens the chat a customer is waiting in", () => {
+    expect(routeFromPushData({ type: "messenger_chat", sessionId: "5dc3f672-3ab0-43b3-a6fd-958176b9f5c4" })).toBe(
+      "/(main)/chat/5dc3f672-3ab0-43b3-a6fd-958176b9f5c4"
+    );
+    expect(routeFromPushData({ type: "messenger_chat", sessionId: "../../x" })).toBe("/(main)/chats");
+  });
+
   it("opens the ingredient a single stock push is about", () => {
     expect(routeFromPushData({ type: "stock_alert", inventoryItemId: "item-flour" })).toBe(
       "/(main)/ingredient/item-flour"

@@ -30,6 +30,7 @@ const CARRIER_KEYS: ReadonlySet<string> = new Set([
   'delivery_lng',
   // Routing internals.
   'messenger_psid',
+  'messenger_session_id',
   'outlet_id',
   'outlet_name',
   // SMS opt-in bookkeeping for the audience list; the customer never wrote it.

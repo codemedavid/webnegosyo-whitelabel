@@ -61,6 +61,10 @@ interface CartItemForSync {
     quantity: number
     subtotal: number
     variation?: string
+    /** The menu item's id: the only thing used to NAME a dish in the message (never `name`). */
+    itemId?: string
+    /** A size, flavour or add-on was picked, so the menu price is not this line's price. */
+    hasChoices?: boolean
 }
 
 /** Payload bounds: this route is public and its text is relayed to Messenger. */
@@ -86,7 +90,7 @@ const SAME_COUNT_WINDOW = { limit: 1, windowSec: 60 }
 function isValidCartItem(item: unknown): item is CartItemForSync {
     if (!item || typeof item !== 'object') return false
     const candidate = item as Record<string, unknown>
-    const { name, quantity, subtotal, variation } = candidate
+    const { name, quantity, subtotal, variation, itemId, hasChoices } = candidate
     return (
         typeof name === 'string' &&
         name.length <= MAX_ITEM_NAME_LENGTH &&
@@ -100,7 +104,9 @@ function isValidCartItem(item: unknown): item is CartItemForSync {
         subtotal <= MAX_ITEM_SUBTOTAL &&
         (variation === undefined ||
             variation === null ||
-            (typeof variation === 'string' && variation.length <= MAX_VARIATION_LENGTH))
+            (typeof variation === 'string' && variation.length <= MAX_VARIATION_LENGTH)) &&
+        (itemId === undefined || itemId === null || (typeof itemId === 'string' && itemId.length <= MAX_ID_LENGTH)) &&
+        (hasChoices === undefined || typeof hasChoices === 'boolean')
     )
 }
 
@@ -254,14 +260,14 @@ export async function POST(request: NextRequest) {
             )
         }
         const sameCount = await checkRateLimit(
-            `send-cart-same:${tenantId}:${person}:${countItems(cartItems)}`,
+            `send-cart-same:${tenantId}:${person}:${cartShape(cartItems)}`,
             SAME_COUNT_WINDOW
         )
         if (!sameCount.allowed) {
             return corsJson(request, { success: true, duplicate: true })
         }
 
-        const message = formatCartSummary(cartItems, tenant.name, tenant.slug)
+        const message = await formatCartSummary(cartItems, tenant)
 
         const sent = await sendMessage(
             recipient,
@@ -290,19 +296,41 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Only server-known text goes out: the store's name, a count and the checkout
- * link. This route is public, so naming dishes or prices from the request let
- * anyone who knows a PSID make the store's Page say whatever they wrote.
+ * Only server-known text goes out: the store's words (Studio → Messages), a
+ * count, the checkout link and, when the owner switched them on, dish names and
+ * menu prices looked up BY ITEM ID. This route is public, so naming dishes or
+ * prices from the request would let anyone who knows a link token make the
+ * store's Page say whatever they wrote. Blank wording = the text it always sent.
  */
-function formatCartSummary(items: CartItemForSync[], tenantName: string, tenantSlug: string): string {
-    if (items.length === 0) {
-        return `🛒 Your cart at ${ tenantName } is empty.\n\nBrowse our menu and add some items!`
-    }
-
-    const itemCount = countItems(items)
+async function formatCartSummary(items: CartItemForSync[], tenant: { id: string; name: string; slug: string }): Promise<string> {
     const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'
-    const checkoutUrl = `https://${tenantSlug}.${rootDomain}/checkout`
-    return `🛒 Your cart at ${ tenantName }: ${ itemCount } item${ itemCount !== 1 ? 's' : '' }.\n\nReady to order?\n${checkoutUrl}`
+    const checkoutUrl = `https://${tenant.slug}.${rootDomain}/checkout`
+    const [{ buildWebCartText, webCartLines }, { readStoreWording }, { isToggleOn }] = await Promise.all([
+        import('@/lib/messenger/web-messages'),
+        import('@/lib/messenger/store-wording'),
+        import('@/lib/messenger/messages/registry'),
+    ])
+    const messages = await readStoreWording(tenant.id)
+    const itemCount = countItems(items)
+
+    let menu: Parameters<typeof webCartLines>[1] = []
+    const needsMenu = itemCount > 0 && (isToggleOn(messages, 'webcart.list_dishes') || isToggleOn(messages, 'webcart.show_total'))
+    if (needsMenu) {
+        try {
+            const { loadStoreBundle } = await import('@/lib/messenger/load-store')
+            menu = (await loadStoreBundle(tenant.id))?.store?.items ?? []
+        } catch (error) {
+            console.error('[Send Cart] menu unreadable, sending the count only:', error instanceof Error ? error.message : error)
+        }
+    }
+    const { lines, isComplete } = webCartLines(items, menu)
+    return buildWebCartText({ storeName: tenant.name, checkoutUrl, itemCount, lines, isComplete }, messages)
+}
+
+/** The same dishes and counts twice in a row say nothing new (ids only, hashed; names are never trusted). */
+function cartShape(items: CartItemForSync[]): string {
+    const shape = items.map((item) => `${item.itemId ?? '-'}:${Math.max(0, Math.round(item.quantity))}`).join(',')
+    return createHash('sha256').update(shape).digest('hex').slice(0, 16)
 }
 
 function countItems(items: CartItemForSync[]): number {

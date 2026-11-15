@@ -22,6 +22,7 @@ import {
   type ToggleId,
 } from './messages/registry'
 import { fillTemplate, type FillValues } from './messages/fill'
+import { storeWords } from './messages/say'
 
 /** Dishes per carousel page; the 10th card is "See more". */
 export const ITEMS_PER_PAGE = MESSENGER_LIMITS.cardElements - 1
@@ -116,8 +117,7 @@ export function fillPlaceholders(text: string, ctx: ReplyContext, extra: FillVal
  * else the default in the store's language.
  */
 export function say(ctx: ReplyContext, id: TextMessageId, extra: FillValues = {}, kind: OrderKind = null): string {
-  const custom = ctx.messages?.texts[id]
-  return (custom ? fillPlaceholders(custom, ctx, extra) : '') || fillPlaceholders(defaultText(id, ctx.messages?.lang, kind), ctx, extra)
+  return storeWords(ctx.messages, id, { ...baseValues(ctx), ...extra }, kind)
 }
 
 function shows(ctx: ReplyContext, id: ToggleId): boolean {
@@ -292,6 +292,16 @@ export function buildTalkToStaff(ctx: ReplyContext, text?: string): OutgoingMess
   return [textMessage(wording(ctx, text, 'handover.staff_reply'))]
 }
 
+/** T1: a typed order was noticed; staff take it from here. */
+export function buildTypedOrderHandover(ctx: ReplyContext): OutgoingMessage[] {
+  return [textMessage(wording(ctx, undefined, 'handover.typed_order'))]
+}
+
+/** Whether the bot notices typed orders at this store (Studio toggle, off by default). */
+export function noticesTypedOrders(ctx: Pick<ReplyContext, 'messages'>): boolean {
+  return isToggleOn(ctx.messages, 'handover.notice_typed_orders')
+}
+
 function orderCard(ctx: ReplyContext, order: ReplyOrder): CardElement {
   return {
     title: clip(say(ctx, 'orders.card_title', { order: order.label, status: statusLabel(order.status, order.kind) }), MESSENGER_LIMITS.cardTitle),
@@ -450,8 +460,7 @@ export interface OrderUpdateContext {
 export function orderUpdateText(ctx: OrderUpdateContext, status: UpdateStatus, order: Pick<ReplyOrder, 'label' | 'kind'>): string {
   const id = UPDATE_MESSAGE_IDS[status]
   const values: FillValues = { store: ctx.storeName, order: order.label, name: ctx.customerName ?? '' }
-  const custom = ctx.messages?.texts[id]
-  return (custom ? fillTemplate(custom, values) : '') || fillTemplate(defaultText(id, ctx.messages?.lang, order.kind), values)
+  return storeWords(ctx.messages, id, values, order.kind)
 }
 
 /** A status message: the owner's (or default) words, and the tracking link. */

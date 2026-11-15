@@ -72,8 +72,14 @@ function getStarted(rules: readonly MessengerRule[], isOpen: boolean): ReplyDeci
   return fromAction(rule?.action ?? { kind: 'menu_card' }, false, rule?.id)
 }
 
-function fromPayload(payload: MessengerPayload, rules: readonly MessengerRule[], isOpen: boolean): ReplyDecision {
+function fromPayload(payload: MessengerPayload, rules: readonly MessengerRule[], isOpen: boolean): ReplyDecision | null {
   switch (payload.verb) {
+    // A staff-rung order's Confirm / Change / payment taps write to the order,
+    // so the webhook answers them itself (`chat-order.ts`), before any rule.
+    case 'order_ok':
+    case 'order_change':
+    case 'order_pay':
+      return null
     case 'start':
       return getStarted(rules, isOpen)
     case 'rule': {

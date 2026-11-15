@@ -64,7 +64,7 @@ import { isOffline } from "../../lib/offline/connectivity";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
 import {
-  canOfferPayLater,
+  tenderShape,
   describeCompletedSale,
   tenderBlockedReason,
   tenderSwipeLabel,
@@ -102,6 +102,8 @@ import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
 import { printPosKitchenChit, readPosKitchenPrintDeps } from "../../lib/pos-kitchen-print";
+import { ChatOrderBanner } from "../../components/chat/ChatOrderBanner";
+import { chatOrderCustomerData } from "../../lib/messenger-chat/chat-order";
 import { useGovIdPhotoStore } from "../../stores/gov-id-photo-store";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
@@ -167,6 +169,7 @@ export default function PosTenderScreen() {
   const setCheckoutAnswer = usePosCartStore((s) => s.setCheckoutAnswer);
   const reset = usePosCartStore((s) => s.reset);
   const editContext = usePosCartStore((s) => s.editContext);
+  const chat = usePosCartStore((s) => s.chat);
   const endEdit = usePosCartStore((s) => s.endEdit);
 
   const role = useAuthStore((s) => s.role);
@@ -293,8 +296,16 @@ export default function PosTenderScreen() {
     if (!isSelectionValid) setSelectedId(methods.length === 1 ? methods[0].id : null);
   }, [methods, selectedId]);
 
-  const isPayLaterOffered = canOfferPayLater({ isEditing: editContext !== null });
-  const isPayLater = isPayLaterOffered && mode === "later";
+  // Rung up for a Messenger chat: the order waits for the customer's OK and is
+  // collected afterwards, so there is no "pay now" to choose. Every way that
+  // changes this screen is decided in `tenderShape` (pos-tender-mode.ts).
+  const shape = tenderShape({
+    mode,
+    hasChat: chat !== null,
+    isEditing: editContext !== null,
+    isPlatformBackend: resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl }) === "platform",
+  });
+  const { isChatOrder, isPayLater, printsKitchenChitNow } = shape;
 
   const method = methods.find((m) => m.id === selectedId) ?? null;
   const isCash = method ? isCashMethod(method) : false;
@@ -314,11 +325,15 @@ export default function PosTenderScreen() {
   // Dine-in walk-ins may leave a number so the store can reach them again.
   // Optional, but a typed number that is not a mobile number holds the sale
   // rather than being dropped behind the cashier's back.
-  const isPhoneOffered = offersWalkInPhone({
-    orderTypeKind,
-    attached: attachedCustomer,
-    isEditing: editContext !== null,
-  });
+  // A chat order keeps the number for every order type: it usually came from
+  // the chat, and it is how the store reaches the customer about a pickup.
+  const isPhoneOffered =
+    offersWalkInPhone({
+      orderTypeKind,
+      attached: attachedCustomer,
+      isEditing: editContext !== null,
+    }) ||
+    (shape.offersPhoneOnEveryType && attachedCustomer === null);
   const phoneProblem = isPhoneOffered ? walkInPhoneProblem(customerPhone) : null;
 
   const paymentBlockedReason = tenderBlockedReason({
@@ -627,6 +642,8 @@ export default function PosTenderScreen() {
         checkoutAnswers: answersCustomerData(customFields, usePosCartStore.getState().checkoutAnswers),
         // Keep the branch that supplied the cart's prices and stock.
         outlet: saleOutlet,
+        // The chat this order is for; the server turns it into the customer.
+        ...(isChatOrder ? { customerData: chatOrderCustomerData(chat) } : {}),
       });
 
       if (!tenantId) throw new Error("No store selected");
@@ -660,6 +677,8 @@ export default function PosTenderScreen() {
             id: localId,
             createdAt: new Date(createdAt).toISOString(),
             ...(isPaidNow ? { paymentStatus: "paid" as const } : {}),
+            // Waits for the customer's Confirm in Messenger (or staff's).
+            ...(isChatOrder ? { holdForCustomer: true } : {}),
           }
         : {};
       const orderArgs = { ...rest, ...serviceChargeArg(builtCharge), ...platformFields };
@@ -764,12 +783,16 @@ export default function PosTenderScreen() {
       // The kitchen chit too, from the lines this register already holds,
       // instead of waiting for the auto-print watcher to hear about the sale
       // from the server.
-      void printPosKitchenChit(
-        String(orderId),
-        args,
-        createdAt,
-        readPosKitchenPrintDeps(useAuthStore.getState().isDemo),
-      );
+      // Not for an order still waiting on the customer: its chit prints when
+      // it is confirmed and joins the kitchen queue.
+      if (printsKitchenChitNow) {
+        void printPosKitchenChit(
+          String(orderId),
+          args,
+          createdAt,
+          readPosKitchenPrintDeps(useAuthStore.getState().isDemo),
+        );
+      }
 
       // Hand the till back NOW: an empty register, ready for the next customer,
       // with a line saying what just happened. Everything below is bookkeeping
@@ -781,6 +804,7 @@ export default function PosTenderScreen() {
           changeDue: tender?.changeDue,
           isPayLater: !isPaidNow,
           isSavedOffline,
+          ...(isChatOrder && chat ? { sentToChat: chat.name } : {}),
         }),
         canOpenOrder: !isSavedOffline,
         // The banner's "Reprint" prints this same paper again, marked REPRINT.
@@ -848,6 +872,9 @@ export default function PosTenderScreen() {
     customerName,
     customerPhone,
     isPhoneOffered,
+    isChatOrder,
+    printsKitchenChitNow,
+    chat,
     customFields,
     // Without this the callback closes over the attachment as it was when the
     // screen last rendered, so a guest picked and then immediately charged
@@ -993,7 +1020,9 @@ export default function PosTenderScreen() {
           "Pay later" sends the order to the kitchen unpaid; it is collected
           from the order screen, where the cash and change are entered.
         */}
-        {isPayLaterOffered && (
+        <ChatOrderBanner variant="tender" style={styles.modeBlock} />
+
+        {shape.showsModeSwitch && (
           <View style={styles.modeBlock}>
             <SegmentedControl
               options={TENDER_MODE_OPTIONS}
@@ -1074,7 +1103,7 @@ export default function PosTenderScreen() {
           </>
         )}
 
-        {isPayLater && (
+        {shape.showsPayLaterCard && (
           <View style={styles.payLaterCard} accessibilityLabel="Pay later">
             <View style={styles.payLaterHeader}>
               <Icon name="clock" size={20} color={colors.warning} strokeWidth={2} />
@@ -1228,7 +1257,7 @@ export default function PosTenderScreen() {
           <LoadingState surface="card" message="Completing sale..." />
         ) : (
           <SwipeToComplete
-            label={tenderSwipeLabel({ mode: isPayLater ? "later" : "now", edit: editIntent, amountDue })}
+            label={tenderSwipeLabel({ mode: isPayLater ? "later" : "now", edit: editIntent, amountDue, isChatOrder })}
             blockedReason={blockedReason}
             disabled={blockedReason !== undefined}
             onComplete={edit ? handleSaveEdit : handleComplete}

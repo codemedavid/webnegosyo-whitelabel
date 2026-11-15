@@ -5102,6 +5102,70 @@ export type Database = {
           },
         ]
       }
+      messenger_chat_orders: {
+        Row: {
+          change_requested_at: string | null
+          created_at: string
+          customer_confirmed_at: string | null
+          order_id: string
+          outcome: string
+          payment_method_id: string | null
+          session_id: string | null
+          state: string
+          summary_sent_at: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          change_requested_at?: string | null
+          created_at?: string
+          customer_confirmed_at?: string | null
+          order_id: string
+          outcome?: string
+          payment_method_id?: string | null
+          session_id?: string | null
+          state?: string
+          summary_sent_at?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          change_requested_at?: string | null
+          created_at?: string
+          customer_confirmed_at?: string | null
+          order_id?: string
+          outcome?: string
+          payment_method_id?: string | null
+          session_id?: string | null
+          state?: string
+          summary_sent_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messenger_chat_orders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messenger_chat_orders_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "messenger_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messenger_chat_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messenger_messages: {
         Row: {
           body: string
@@ -5111,6 +5175,7 @@ export type Database = {
           kind: string
           mid: string | null
           sent_at: string
+          sent_by: string | null
           session_id: string
           tenant_id: string
         }
@@ -5122,6 +5187,7 @@ export type Database = {
           kind: string
           mid?: string | null
           sent_at: string
+          sent_by?: string | null
           session_id: string
           tenant_id: string
         }
@@ -5133,6 +5199,7 @@ export type Database = {
           kind?: string
           mid?: string | null
           sent_at?: string
+          sent_by?: string | null
           session_id?: string
           tenant_id?: string
         }
@@ -5255,6 +5322,7 @@ export type Database = {
           last_message_at: string | null
           last_message_preview: string | null
           last_name: string | null
+          needs_reply_since: string | null
           page_id: string | null
           profile_fetched_at: string | null
           profile_pic_url: string | null
@@ -5275,6 +5343,7 @@ export type Database = {
           last_message_at?: string | null
           last_message_preview?: string | null
           last_name?: string | null
+          needs_reply_since?: string | null
           page_id?: string | null
           profile_fetched_at?: string | null
           profile_pic_url?: string | null
@@ -5295,6 +5364,7 @@ export type Database = {
           last_message_at?: string | null
           last_message_preview?: string | null
           last_name?: string | null
+          needs_reply_since?: string | null
           page_id?: string | null
           profile_fetched_at?: string | null
           profile_pic_url?: string | null
@@ -7820,6 +7890,109 @@ export type Database = {
           },
         ]
       }
+      report_exports: {
+        Row: {
+          branch: string | null
+          bytes: number
+          created_at: string
+          format: string
+          id: string
+          left_out: string[]
+          period_from: string
+          period_to: string
+          preset: string
+          row_counts: Json
+          sheets: string[]
+          source: string
+          tenant_id: string
+          user_id: string
+          user_label: string | null
+        }
+        Insert: {
+          branch?: string | null
+          bytes: number
+          created_at?: string
+          format: string
+          id?: string
+          left_out?: string[]
+          period_from: string
+          period_to: string
+          preset: string
+          row_counts?: Json
+          sheets: string[]
+          source: string
+          tenant_id: string
+          user_id?: string
+          user_label?: string | null
+        }
+        Update: {
+          branch?: string | null
+          bytes?: number
+          created_at?: string
+          format?: string
+          id?: string
+          left_out?: string[]
+          period_from?: string
+          period_to?: string
+          preset?: string
+          row_counts?: Json
+          sheets?: string[]
+          source?: string
+          tenant_id?: string
+          user_id?: string
+          user_label?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_exports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_templates: {
+        Row: {
+          created_at: string
+          created_by: string
+          created_by_label: string | null
+          id: string
+          kind: string
+          name: string
+          spec: Json
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          created_by_label?: string | null
+          id?: string
+          kind: string
+          name: string
+          spec: Json
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          created_by_label?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          spec?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_periods: {
         Row: {
           archived_at: string | null
@@ -9793,6 +9966,7 @@ export type Database = {
           latest_version_android: string | null
           latest_version_ios: string | null
           listing: Json
+          menu_rules: Json
           min_version_android: string | null
           min_version_ios: string | null
           play_store_url: string | null
@@ -9817,6 +9991,7 @@ export type Database = {
           latest_version_android?: string | null
           latest_version_ios?: string | null
           listing?: Json
+          menu_rules?: Json
           min_version_android?: string | null
           min_version_ios?: string | null
           play_store_url?: string | null
@@ -9841,6 +10016,7 @@ export type Database = {
           latest_version_android?: string | null
           latest_version_ios?: string | null
           listing?: Json
+          menu_rules?: Json
           min_version_android?: string | null
           min_version_ios?: string | null
           play_store_url?: string | null
@@ -12464,6 +12640,10 @@ export type Database = {
         Returns: Json
       }
       mark_store_activity_reviewed: { Args: { p_id: string }; Returns: string }
+      messenger_attach_chat_order_customer: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
       messenger_chat_for_order: {
         Args: { p_limit?: number; p_order_id: string }
         Returns: Json
@@ -12477,6 +12657,7 @@ export type Database = {
           last_message_at: string
           last_message_preview: string
           last_name: string
+          needs_reply_since: string
           order_created_at: string
           order_daily_number: number
           order_id: string

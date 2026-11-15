@@ -6,7 +6,7 @@
 
 import { announcementRouteFromPushData } from "../announcements/popup";
 import { billReminderRouteFromPushData } from "../expenses/bill-links";
-import { ingredientHref } from "../navigation";
+import { chatHref, ingredientHref } from "../navigation";
 
 export const NOTIFICATIONS_ROUTE = "/(main)/notifications" as const;
 
@@ -36,9 +36,18 @@ function cashAlertRouteFromPushData(data: unknown): string | null {
   return kind === "shift_overdue" || kind === "remittance_pending" ? CASH_ALERT_ROUTES[kind] : NOTIFICATIONS_ROUTE;
 }
 
+/** A Messenger customer waiting for a person (`staff-alert.ts` on the web): open that chat. */
+function chatAlertRouteFromPushData(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const { type, sessionId } = data as { type?: unknown; sessionId?: unknown };
+  if (type !== "messenger_chat") return null;
+  return typeof sessionId === "string" && /^[0-9a-f-]{36}$/i.test(sessionId) ? chatHref(sessionId) : "/(main)/chats";
+}
+
 export function routeFromPushData(data: unknown): string | null {
   return (
     announcementRouteFromPushData(data) ??
+    chatAlertRouteFromPushData(data) ??
     stockAlertRouteFromPushData(data) ??
     cashAlertRouteFromPushData(data) ??
     billReminderRouteFromPushData(data)

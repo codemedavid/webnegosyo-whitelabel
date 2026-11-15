@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { sendMessage } from '@/lib/facebook-api'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
+import { readStoreWording } from '@/lib/messenger/store-wording'
 
 /**
  * Proactive order message sending endpoint
@@ -166,7 +167,8 @@ export async function POST(request: NextRequest) {
     // Format and send message
     const message = formatOrderMessage(
       orderWithItems as unknown as Parameters<typeof formatOrderMessage>[0],
-      tenantData as unknown as Parameters<typeof formatOrderMessage>[1]
+      tenantData as unknown as Parameters<typeof formatOrderMessage>[1],
+      await readStoreWording(tenantId)
     )
 
     const sent = await sendMessage(

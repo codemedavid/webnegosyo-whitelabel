@@ -165,3 +165,16 @@ export function textsHref(
 export function automationHref(recipe: string): `/(main)/automation/${string}` {
   return `/(main)/automation/${encodeURIComponent(recipe)}`;
 }
+
+/** The store's Messenger conversations, opened from the Orders header. */
+export const CHATS_HREF = "/(main)/chats" as const;
+
+/**
+ * Build the href for one customer's Messenger chat.
+ *
+ * Keyed by the `messenger_sessions` row id, never the customer's Messenger id:
+ * a route sits in navigation state and crash reports.
+ */
+export function chatHref(sessionId: string): `/(main)/chat/${string}` {
+  return `/(main)/chat/${encodeURIComponent(sessionId)}`;
+}

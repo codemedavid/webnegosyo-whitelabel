@@ -17,6 +17,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "../../stores/auth-store";
 import { realtimeHub } from "../backends/realtime-hub-singleton";
 import { dropCacheForOtherTenants } from "./cache-scope";
+import { useRegisterChatScope } from "../messenger-chat/chat-scope";
 import { bindQueryManagersToAppState, queryClient } from "./query-client";
 
 // Same arrangement as the auth-refresh timer in `supabase.ts`: bound once for
@@ -36,5 +37,6 @@ interface QueryProviderProps {
 
 export function QueryProvider({ children }: QueryProviderProps) {
   useCacheScope();
+  useRegisterChatScope();
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

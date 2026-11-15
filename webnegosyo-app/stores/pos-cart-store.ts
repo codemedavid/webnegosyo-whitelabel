@@ -91,6 +91,7 @@ import {
 } from "../lib/pos-delivery";
 import { clearedSaleAnswers, withAnswer, type CheckoutAnswers } from "../lib/pos-checkout-answers";
 import { clearedSaleTable, isDineInType, type PosTableDetails } from "../lib/pos-table";
+import { appendChatNote, type PosChatOrder } from "../lib/messenger-chat/chat-order";
 import type { OrderTypePricing } from "../lib/order-type-pricing";
 import {
   priceLineInputForOrderType,
@@ -157,6 +158,12 @@ interface PosCartState {
    * field name. Cleared with the sale like the delivery details.
    */
   checkoutAnswers: CheckoutAnswers;
+  /**
+   * The Messenger chat this sale is being rung up for (set by "Make order" on
+   * a chat), or null for an ordinary sale. Cleared with the sale like the
+   * attached guest: the next customer's order must never go to this chat.
+   */
+  chat: PosChatOrder | null;
 
   add: (input: PosLineInput) => void;
   setQty: (key: string, quantity: number) => void;
@@ -181,6 +188,10 @@ interface PosCartState {
   ) => void;
   setCustomerName: (name: string) => void;
   setCustomerPhone: (phone: string) => void;
+  /** Ring this sale up for a Messenger chat, or pass null to make it an ordinary sale. */
+  setChat: (chat: { sessionId: string; name: string } | null) => void;
+  /** Keep a line of the chat as this order's note. */
+  addChatNote: (line: string) => void;
   /** Attach a guest to this sale, or pass null to make it a walk-in again. */
   setAttachedCustomer: (customer: AttachedCustomer | null) => void;
   /** Merge a partial update into this sale's delivery details. */
@@ -325,6 +336,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   ...clearedSaleDelivery(),
   ...clearedSaleAnswers(),
   ...clearedSaleTable(),
+  chat: null,
   discount: EMPTY_POS_DISCOUNT_SESSION,
 
   // A placed order's lines are priced as quoted; the register never marks
@@ -419,6 +431,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       ...clearedSaleDelivery(),
       ...clearedSaleAnswers(),
       ...clearedSaleTable(),
+      chat: null,
       editContext: null,
       editWarnings: [],
       discount: EMPTY_POS_DISCOUNT_SESSION,
@@ -440,6 +453,8 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       ...clearedSaleTable(),
       discount: { ...EMPTY_POS_DISCOUNT_SESSION, government: placedGovernmentSession(entered) },
       ...clearedSaleAnswers(),
+      // An edited order is never re-sent to a chat.
+      chat: null,
     }),
 
   /**
@@ -478,6 +493,8 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   // them anyway (no list price), but the edit must not depend on that.
   // Leaving dine-in also drops the typed walk-in phone: its box is only shown
   // on dine-in, and a number the cashier can no longer see must not ride along.
+  // A chat order keeps it: its box shows on every order type, and the number
+  // was usually tapped in from the chat before the type was picked.
   setOrderType: (orderTypeId, orderTypeName, serviceCharge, pricing = null, orderTypeKind = null) =>
     set((s) => ({
       orderTypeId,
@@ -488,11 +505,13 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       lines: s.editContext ? s.lines : repriceLinesForOrderType(s.lines, pricing),
       ...(isDineInType(orderTypeKind ? { type: orderTypeKind } : null)
         ? {}
-        : { ...clearedSaleTable(), customerPhone: "" }),
+        : { ...clearedSaleTable(), ...(s.chat ? {} : { customerPhone: "" }) }),
     })),
 
   setCustomerName: (customerName) => set({ customerName }),
   setCustomerPhone: (customerPhone) => set({ customerPhone }),
+  setChat: (chat) => set({ chat: chat ? { sessionId: chat.sessionId, name: chat.name, note: "" } : null }),
+  addChatNote: (line) => set((s) => (s.chat ? { chat: { ...s.chat, note: appendChatNote(s.chat.note, line) } } : {})),
 
   applyVoucher: (voucher) => set((s) => ({ discount: addSessionVoucher(s.discount, voucher) })),
   removeVoucher: (code) => set((s) => ({ discount: removeSessionVoucher(s.discount, code) })),

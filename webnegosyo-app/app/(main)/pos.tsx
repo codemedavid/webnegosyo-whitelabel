@@ -60,7 +60,7 @@ import { usePosLastSaleStore } from "../../stores/pos-last-sale-store";
 import { StockShortSheet } from "../../components/pos/StockShortSheet";
 import { SoldOutSheet } from "../../components/pos/SoldOutSheet";
 import { formatPeso } from "../../lib/format";
-import { resolvePosLayout } from "../../lib/pos-layout";
+import { resolvePosLayout, withChatColumn } from "../../lib/pos-layout";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
@@ -75,6 +75,8 @@ import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { OfflineBanner } from "../../components/pos/OfflineBanner";
+import { ChatOrderBanner } from "../../components/chat/ChatOrderBanner";
+import { ChatSplitPane } from "../../components/chat/ChatSplitPane";
 import { OfflineReadyStatus } from "../../components/pos/OfflineReadyStatus";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
@@ -168,10 +170,14 @@ export default function PosScreen() {
   // (lib/pos-layout.ts). A tablet gets the sale as a column beside the grid; a
   // phone keeps the bottom sheet it has always had.
   const windowSize = useWindowDimensions();
-  const layout = useMemo(
-    () => resolvePosLayout({ width: windowSize.width, height: windowSize.height }),
-    [windowSize.width, windowSize.height],
-  );
+  // Ringing up an order for a Messenger chat keeps the chat on screen: a
+  // column on a wide tablet, above the grid otherwise (canvas 4a / 4c).
+  const chatForSale = usePosCartStore((s) => (s.editContext ? null : s.chat));
+  const layout = useMemo(() => {
+    const size = { width: windowSize.width, height: windowSize.height };
+    const base = resolvePosLayout(size);
+    return chatForSale ? withChatColumn(base, size) : { ...base, chatWidth: 0 };
+  }, [windowSize.width, windowSize.height, chatForSale]);
   // Each column clears the notch itself: the grid above its banners and list,
   // the sale column on a tablet above the sale. Zero under the impersonation
   // banner, which already cleared it.
@@ -481,6 +487,22 @@ export default function PosScreen() {
     ),
   );
 
+  // "Found in chat" (T2): the register's dishes by name, for matching what a Messenger customer typed.
+  const chatDishes = useMemo(
+    () => items.map((item) => ({ id: item.product.id, name: item.product.name ?? "" })).filter((dish) => dish.name !== ""),
+    [items],
+  );
+  const pickChatDish = (dishId: string, quantity: number) => {
+    const item = items.find((entry) => entry.product.id === dishId);
+    if (!item) return;
+    if (item.soldOutReason || item.groups.length > 0) {
+      // Sold out explains itself; a dish with choices opens them (quantity is set there).
+      handleTap(item);
+      return;
+    }
+    addToCart(item, [], quantity);
+  };
+
   const handleTap = (item: RegisterItem) => {
     // The merchant's switch: the tile explains itself and adds nothing.
     if (item.soldOutReason) {
@@ -575,6 +597,8 @@ export default function PosScreen() {
 
       {/* Whether this device can sell without internet, and the button that makes it so. */}
       <OfflineReadyStatus />
+      {/* "Ordering for Ana C." while a sale is being rung up for a Messenger chat. */}
+      <ChatOrderBanner style={styles.chatBanner} dishes={chatDishes} onPickDish={pickChatDish} />
     </>
   );
 
@@ -614,10 +638,21 @@ export default function PosScreen() {
     </ScrollView>
   );
 
+  // A phone, or a tablet too narrow for a chat column: the chat sits above the grid.
+  const chatAbove = chatForSale && layout.chatWidth === 0 ? (
+    <ChatSplitPane
+      variant="split"
+      sessionId={chatForSale.sessionId}
+      name={chatForSale.name}
+      windowHeight={windowSize.height}
+      topInset={edit ? 0 : topInset}
+    />
+  ) : null;
+
   const productColumn = (
     <>
-      {/* Clears the notch, unless the edit banner above already did. */}
-      <View style={{ height: edit ? 0 : topInset }} />
+      {/* Clears the notch, unless the edit banner or the chat above already did. */}
+      <View style={{ height: edit || chatAbove ? 0 : topInset }} />
 
       {/* Silent while online with nothing queued; see components/pos/OfflineBanner. */}
       <OfflineBanner />
@@ -867,7 +902,19 @@ export default function PosScreen() {
       */}
       {layout.isTwoPane ? (
         <View style={styles.panes}>
+          {chatForSale && layout.chatWidth > 0 ? (
+            <View style={{ width: layout.chatWidth }}>
+              <ChatSplitPane
+                variant="column"
+                sessionId={chatForSale.sessionId}
+                name={chatForSale.name}
+                windowHeight={windowSize.height}
+                topInset={topInset}
+              />
+            </View>
+          ) : null}
           <View style={styles.gridColumn}>
+            {chatAbove}
             {productColumn}
             {backdrop}
             {incomingSheet}
@@ -879,6 +926,7 @@ export default function PosScreen() {
         </View>
       ) : (
         <>
+          {chatAbove}
           {productColumn}
           {backdrop}
           {incomingSheet}
@@ -968,6 +1016,7 @@ export default function PosScreen() {
 }
 
 const styles = StyleSheet.create({
+  chatBanner: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
   saleNotice: { paddingHorizontal: spacing.lg },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {

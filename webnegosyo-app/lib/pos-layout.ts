@@ -105,3 +105,29 @@ export function resolvePosLayout(size: ScreenSize): PosLayout {
   );
   return { isTwoPane: true, panelWidth, columns: columnsForGridWidth(size.width - panelWidth) };
 }
+
+/**
+ * Taking an order for a Messenger chat on a tablet (plan
+ * 2026-11-15-messenger-reply-from-app, canvas 4c): the chat stands as its own
+ * column left of the grid, so the cashier reads what the customer typed while
+ * tapping dishes. Only when the grid keeps room for its tiles; otherwise the
+ * chat sits above the grid as on a phone (`chatWidth` 0).
+ */
+export const POS_CHAT_COLUMN_MIN_WIDTH = 260;
+export const POS_CHAT_COLUMN_MAX_WIDTH = 340;
+const POS_CHAT_COLUMN_RATIO = 0.24;
+/** The grid never gets narrower than this beside a chat column. */
+export const POS_GRID_MIN_WIDTH_BESIDE_CHAT = 420;
+
+export interface PosLayoutWithChat extends PosLayout {
+  /** Width of the chat column; 0 = the chat sits above the grid instead. */
+  chatWidth: number;
+}
+
+export function withChatColumn(layout: PosLayout, size: ScreenSize): PosLayoutWithChat {
+  if (!layout.isTwoPane) return { ...layout, chatWidth: 0 };
+  const chatWidth = Math.round(clamp(size.width * POS_CHAT_COLUMN_RATIO, POS_CHAT_COLUMN_MIN_WIDTH, POS_CHAT_COLUMN_MAX_WIDTH));
+  const gridWidth = size.width - layout.panelWidth - chatWidth;
+  if (gridWidth < POS_GRID_MIN_WIDTH_BESIDE_CHAT) return { ...layout, chatWidth: 0 };
+  return { ...layout, chatWidth, columns: columnsForGridWidth(gridWidth) };
+}

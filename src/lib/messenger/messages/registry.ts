@@ -51,6 +51,9 @@ export const PLACEHOLDER_INFO = {
   items: { label: 'Dish names', sample: 'Sisig, Halo-halo' },
   order: { label: 'Order number', sample: '#07' },
   status: { label: 'Order status', sample: 'Preparing' },
+  method: { label: 'Payment method', sample: 'GCash' },
+  details: { label: 'Payment details', sample: '0917 123 4567 · Karamotan Grill' },
+  checkout_link: { label: 'Checkout link', sample: 'https://karamotan.webnegosyo.com/checkout' },
 } as const
 
 export type Placeholder = keyof typeof PLACEHOLDER_INFO
@@ -100,8 +103,8 @@ const btn = (id: string, moment: MessageMoment, label: string, en: string, tl: s
   id, moment, label, kind: 'button', max: MESSENGER_LIMITS.buttonTitle, placeholders: [], default: { en, tl }, ...(help ? { help } : {}),
 })
 
-const toggle = (id: string, moment: MessageMoment, label: string, help: string): ToggleEntry => ({
-  id, moment, label, kind: 'toggle', default: true, help,
+const toggle = (id: string, moment: MessageMoment, label: string, help: string, isOnByDefault = true): ToggleEntry => ({
+  id, moment, label, kind: 'toggle', default: isOnByDefault, help,
 })
 
 const CARD = MESSENGER_LIMITS.cardTitle
@@ -185,6 +188,23 @@ export const MESSAGES = [
   text('cart.cleared', 'cart', 'Cart emptied', TEXT_MAX, BASE, 'Your cart is empty now.', 'Wala nang laman ang cart mo.',
     { help: 'Followed by the "Pick a category" message.' }),
 
+  // The cart a customer who came from Messenger builds on the website
+  // (`/api/messenger/send-cart`). Blank = the pre-2026-11-15 text exactly. The
+  // route is public: dish names and prices come from the menu, never from the
+  // browser.
+  text('webcart.intro', 'cart', 'Cart from your website: first line', TEXT_MAX, ['store', 'count'],
+    '🛒 Your cart at {store}: {count}.', '🛒 Cart mo sa {store}: {count}.',
+    { help: 'Sent to a customer who came from Messenger and adds dishes on your website.' }),
+  toggle('webcart.list_dishes', 'cart', 'Cart from your website: list each dish', '"2x Chicken Inasal", names from your menu.', false),
+  toggle('webcart.show_total', 'cart', 'Cart from your website: show the total',
+    'Only when every dish has its menu price (no choices, add-ons or combos in the cart).', false),
+  text('webcart.total', 'cart', 'Cart from your website: total line', CARD, ['total'], '💰 Total: {total}', '💰 Total: {total}'),
+  text('webcart.closing', 'cart', 'Cart from your website: last line', TEXT_MAX, ['store', 'checkout_link'],
+    'Ready to order?\n{checkout_link}', 'Order na?\n{checkout_link}',
+    { help: 'The checkout link is added at the end if you leave {checkout_link} out.' }),
+  text('webcart.empty', 'cart', 'Cart from your website: emptied', TEXT_MAX, ['store'],
+    '🛒 Your cart at {store} is empty.\n\nBrowse our menu and add some items!', '🛒 Wala nang laman ang cart mo sa {store}.\n\nMag-browse sa menu at pumili!'),
+
   // ── After ordering ────────────────────────────────────────────────────────
   text('orders.intro', 'after', 'Above recent orders', TEXT_MAX, STORE_INFO, 'Your recent orders 👇', 'Ang mga order mo 👇'),
   text('orders.card_title', 'after', 'Order card', CARD, ['order', 'status', 'store'], 'Order {order} · {status}', 'Order {order} · {status}'),
@@ -223,9 +243,60 @@ export const MESSAGES = [
     '❌ Your order {order} was cancelled. Please message us here if you have questions.',
     '❌ Na-cancel ang order mo {order}. I-message lang kami dito kung may tanong ka.'),
 
+  // The order summary sent after a website checkout (`formatOrderMessage`).
+  // Blank = the pre-2026-11-15 text exactly (golden test).
+  text('weborder.intro', 'after', 'Order from your website: first line', ORDER_UPDATE_MAX, ['store'],
+    '🍽️ New Order from {store}', '🍽️ Bagong order sa {store}',
+    { help: 'Followed by the order number, the dishes and the total. Sent after a customer orders on your website.' }),
+  toggle('weborder.show_customer', 'after', 'Order from your website: customer details', 'Name, phone, address and table.'),
+  toggle('weborder.show_item_prices', 'after', 'Order from your website: price per dish', 'Off: dishes and quantities only; the total stays.'),
+  toggle('weborder.show_payment', 'after', 'Order from your website: payment details', 'The payment method the customer picked and its details.'),
+  text('weborder.closing', 'after', 'Order from your website: last line', ORDER_UPDATE_MAX, ['store'],
+    '📍 Please confirm your order!', '📍 Paki-confirm po ang order ninyo!'),
+
+  // Orders staff ring up for a chat customer (plan 2026-11-14, C2): the summary
+  // goes out by itself and the order waits for the customer's OK.
+  text('chatorder.intro', 'after', 'Order taken by staff: first line', ORDER_UPDATE_MAX, ['store', 'order', 'name'],
+    '🧾 Here is your order at {store}, {name}:', '🧾 Ito ang order mo sa {store}, {name}:',
+    { help: 'Followed by the dishes and the total. Sent when staff ring up an order for this chat.' }),
+  text('chatorder.total', 'after', 'Order taken by staff: total line', CARD, ['total', 'order'], 'Total: {total}', 'Total: {total}'),
+  text('chatorder.ask', 'after', 'Order taken by staff: asking to confirm', ORDER_UPDATE_MAX, ['store', 'order', 'total', 'name'],
+    'Is everything right? Tap Confirm and we will start on it.', 'Tama ba lahat? I-tap ang Confirm para masimulan na namin.'),
+  btn('chatorder.confirm_button', 'after', 'Confirm order button', '✅ Confirm order', '✅ I-confirm'),
+  btn('chatorder.change_button', 'after', 'Change something button', '✏️ Change something', '✏️ May papalitan'),
+  text('chatorder.confirmed', 'after', 'Customer confirmed', ORDER_UPDATE_MAX, ['store', 'order', 'total', 'name'],
+    '✅ Thank you, {name}! Your order {order} is confirmed.', '✅ Salamat, {name}! Confirmed na ang order mo {order}.'),
+  text('chatorder.already', 'after', 'Order was already confirmed', ORDER_UPDATE_MAX, ['store', 'order', 'name'],
+    '👍 Your order {order} is already confirmed.', '👍 Confirmed na ang order mo {order}.'),
+  text('chatorder.gone', 'after', 'Order can no longer be confirmed', TEXT_MAX, STORE_INFO,
+    'That order is no longer open. Please message us here and we will help you.',
+    'Hindi na open ang order na yan. I-message lang kami dito at tutulungan ka namin.'),
+  text('chatorder.updated', 'after', 'Order changed since the summary', TEXT_MAX, ['store', 'order', 'name'],
+    'Your order {order} was changed. Here it is again, please check it:', 'May binago sa order mo {order}. Ito ulit, paki-check:',
+    { help: 'Sent with the new summary when the customer taps Confirm on an older one.' }),
+  text('chatorder.try_again', 'after', 'A tap that did not go through', TEXT_MAX, STORE_INFO,
+    "Sorry, that didn't go through. Please tap the button again in a moment.",
+    'Pasensya na, hindi pumasok. Paki-tap ulit ang button maya-maya.'),
+  text('chatorder.change', 'after', 'Customer wants a change', TEXT_MAX, ['store', 'order', 'name'],
+    'Sure! Tell us here what to change and we will update your order.', 'Sige po! Sabihin lang dito kung ano ang papalitan at aayusin namin ang order mo.',
+    { help: 'The bot then stays quiet so staff can answer.' }),
+  text('chatorder.pay_ask', 'after', 'How will you pay?', TEXT_MAX, ['store', 'order', 'total', 'name'],
+    'How would you like to pay {total}?', 'Paano mo gustong bayaran ang {total}?',
+    { help: 'Followed by your payment methods as buttons. Skipped when the store has one method.' }),
+  text('chatorder.pay_line', 'after', 'After choosing a payment method', TEXT_MAX, ['method', 'details', 'total', 'order', 'store', 'name'],
+    '💳 {method}\n{details}\nTotal: {total}\nIf you pay ahead, please send the proof of payment here.',
+    '💳 {method}\n{details}\nTotal: {total}\nKung magbabayad na, i-send lang dito ang proof of payment.',
+    { help: 'The details line is left out for a method without details (cash).' }),
+
   // ── Handover ──────────────────────────────────────────────────────────────
   text('handover.staff_reply', 'handover', 'Customer asked for a person', TEXT_MAX, STORE_INFO,
     'Got it! Someone from {store} will reply here soon. 🙏', 'Sige po! May sasagot sa inyo mula sa {store} dito maya-maya. 🙏'),
+  // Off until the owner switches it on: it answers before the keyword replies and
+  // pauses the bot, so "Can I order 1 milktea" followed by "menu" gets no menu.
+  toggle('handover.notice_typed_orders', 'handover', 'Notice orders typed in the chat',
+    'A message like "2 chicken inasal po" gets the reply below, the bot steps back and your staff get a notification.', false),
+  text('handover.typed_order', 'handover', 'Customer typed their order', TEXT_MAX, STORE_INFO,
+    "Got it! We'll check your order and confirm it here shortly. 🙏", 'Sige po! Titingnan namin ang order ninyo at kukumpirmahin dito maya-maya. 🙏'),
 ] as const satisfies readonly MessageEntry[]
 
 type Entries = (typeof MESSAGES)[number]

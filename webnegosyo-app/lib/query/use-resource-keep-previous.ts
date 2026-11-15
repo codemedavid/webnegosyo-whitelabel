@@ -36,6 +36,7 @@ export function useResourceKeepPrevious<T>(
     queryFn: fetcher,
     enabled: isEnabled,
     staleTime: options.staleTime,
+    refetchInterval: options.refetchInterval ?? false,
     placeholderData: (previous, previousQuery) =>
       canKeepPreviousData(key, previousQuery?.queryKey) ? previous : undefined,
   });

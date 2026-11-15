@@ -22,6 +22,9 @@ import { isOrderUnpaid } from "../lib/order-paid-state";
 import { useTickerNow } from "./TickerProvider";
 import { TONE_COLORS } from "./loyalty/tone-colors";
 import type { OrderCustomerBadge } from "../lib/loyalty/order-customers";
+import type { OrderChatBadge } from "../lib/messenger-chat/chat";
+import { describeChatOrder } from "../lib/messenger-chat/chat-order";
+import { ChatAvatar } from "./chat/ChatAvatar";
 
 export interface OrderCardOrder {
   dailyNumber?: number | null;
@@ -71,6 +74,8 @@ interface OrderCardProps {
   compact?: boolean;
   /** A known customer — member card, stamp earned, or a regular. Omit for walk-ins. */
   customerBadge?: OrderCustomerBadge | null;
+  /** The order came from a Messenger chat: the customer's photo, a chip, and whether they wrote since. */
+  chat?: OrderChatBadge | null;
 }
 
 const MAX_THUMBNAILS = 4;
@@ -91,9 +96,11 @@ export const OrderCard = memo(function OrderCard({
   onCancel,
   compact = false,
   customerBadge,
+  chat,
 }: OrderCardProps) {
   const status = getStatusMeta(order.status);
-  const customerName = displayCustomerName(order.customerName);
+  // An order placed without a name still has one when it came from a chat.
+  const customerName = displayCustomerName(order.customerName?.trim() ? order.customerName : chat?.facebookName);
   const tableNumber = getOrderTableNumber(order.customerData);
   const kitchenChip = kitchenChipLabel(order.status);
   const typeMeta = getOrderTypeMeta(order.orderType);
@@ -109,6 +116,16 @@ export const OrderCard = memo(function OrderCard({
   const timeAgo = formatTimeAgo(order._creationTime, nowMs);
   const accentColor = isActive ? urgencyColor : colors.separator;
   const isUnpaid = isOrderUnpaid(order);
+  // Rung up for a Messenger chat: whether the customer confirmed yet. Only
+  // where the list looked the order up, so a card never guesses "not sent".
+  const chatOrder =
+    chat && chat.chatOrder !== undefined
+      ? describeChatOrder(
+          { status: order.status, createdAt: order._creationTime, customerData: order.customerData, offlineSync: order.offlineSync },
+          chat.chatOrder,
+          nowMs,
+        )
+      : null;
 
   const shownThumbs = (thumbnails ?? []).filter(Boolean).slice(0, MAX_THUMBNAILS);
   const extraThumbs = Math.max(0, order.itemCount - shownThumbs.length);
@@ -122,9 +139,13 @@ export const OrderCard = memo(function OrderCard({
       accessibilityLabel={`Order for ${customerName}, ${status.label}, ${formatPeso(order.total)}`}
     >
       <View style={styles.topRow}>
-        <View style={[styles.avatar, { backgroundColor: getAvatarColor(customerName) }]}>
-          <Text style={styles.avatarText}>{getInitials(customerName)}</Text>
-        </View>
+        {chat?.photoUrl ? (
+          <ChatAvatar name={customerName} photoUrl={chat.photoUrl} size={AVATAR_SIZE} />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: getAvatarColor(customerName) }]}>
+            <Text style={styles.avatarText}>{getInitials(customerName)}</Text>
+          </View>
+        )}
         <View style={styles.identity}>
           <Text style={styles.name} numberOfLines={1}>
             {customerName}
@@ -164,8 +185,18 @@ export const OrderCard = memo(function OrderCard({
         <Text style={styles.meta}>
           {order.itemCount} item{order.itemCount !== 1 ? "s" : ""}
         </Text>
-        {order.source ? <Text style={styles.metaDot}>·</Text> : null}
-        {order.source ? <Text style={styles.meta}>{order.source}</Text> : null}
+        {chat ? (
+          <View style={styles.chatChip} accessibilityLabel={`From ${chat.label}`}>
+            <Text style={styles.chatText} numberOfLines={1}>
+              {chat.label}
+            </Text>
+          </View>
+        ) : order.source ? (
+          <>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.meta}>{order.source}</Text>
+          </>
+        ) : null}
         <Text style={styles.metaDot}>·</Text>
         <Text style={styles.meta}>{timeAgo}</Text>
         {tableNumber ? (
@@ -186,6 +217,20 @@ export const OrderCard = memo(function OrderCard({
         {presellDate ? (
           <View style={styles.presellChip}>
             <Text style={styles.presellText}>Pre-order · {formatPresellDate(presellDate)}</Text>
+          </View>
+        ) : null}
+        {chatOrder ? (
+          <View style={chatOrder.tone === "attention" ? styles.unpaidChip : chatOrder.tone === "done" ? styles.chatDoneChip : styles.chatWaitingChip}>
+            <Text
+              style={chatOrder.tone === "attention" ? styles.unpaidText : chatOrder.tone === "done" ? styles.chatDoneText : styles.chatWaitingText}
+            >
+              {chatOrder.label}
+            </Text>
+          </View>
+        ) : null}
+        {chat?.hasNewMessage ? (
+          <View style={styles.newMessageChip}>
+            <Text style={styles.newMessageText}>New message</Text>
           </View>
         ) : null}
         {isUnpaid ? (
@@ -307,6 +352,36 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   meta: { ...typography.caption, color: colors.textSecondary },
+  // Messenger shows as a neutral chip, never Messenger blue.
+  chatChip: {
+    maxWidth: 190,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  chatText: { ...typography.small, color: colors.textPrimary, fontWeight: "700" },
+  newMessageChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentLight,
+  },
+  newMessageText: { ...typography.small, color: colors.statusPreparing.text, fontWeight: "700" },
+  chatWaitingChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.statusPending.bg,
+  },
+  chatWaitingText: { ...typography.small, color: colors.statusPending.text, fontWeight: "700" },
+  chatDoneChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.statusReady.bg,
+  },
+  chatDoneText: { ...typography.small, color: colors.statusReady.text, fontWeight: "700" },
   metaDot: { ...typography.caption, color: colors.textTertiary },
   scheduledChip: {
     paddingHorizontal: spacing.sm,

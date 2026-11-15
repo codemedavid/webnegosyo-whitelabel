@@ -1,6 +1,7 @@
 import React, { memo, useCallback } from "react";
 import { OrderCard, type OrderCardOrder } from "./OrderCard";
 import type { OrderCustomerBadge } from "../lib/loyalty/order-customers";
+import type { OrderChatBadge } from "../lib/messenger-chat/chat";
 import { canCancelOrder } from "../lib/order-status-change";
 
 /**
@@ -25,6 +26,8 @@ interface OrderListRowProps<O extends OrderListRowOrder> {
   isBusy: boolean;
   /** Known-customer chip; must be referentially stable across renders. */
   customerBadge?: OrderCustomerBadge | null;
+  /** The Messenger side of the order; must be referentially stable across renders. */
+  chat?: OrderChatBadge | null;
   /** The viewer holds the `orders` grant (see canUserCancelOrder); false hides Cancel. */
   mayCancelOrders: boolean;
   onOpen: (orderId: string) => void;
@@ -37,6 +40,7 @@ function OrderListRowInner<O extends OrderListRowOrder>({
   nextStatusLabel,
   isBusy,
   customerBadge,
+  chat,
   mayCancelOrders,
   onOpen,
   onAdvance,
@@ -54,6 +58,7 @@ function OrderListRowInner<O extends OrderListRowOrder>({
       order={order}
       onPress={handleOpen}
       customerBadge={customerBadge}
+      chat={chat}
       nextStatusLabel={canAdvance ? nextStatusLabel : undefined}
       onAdvance={canAdvance ? handleAdvance : undefined}
       onCancel={canCancel && !isBusy ? handleCancel : undefined}

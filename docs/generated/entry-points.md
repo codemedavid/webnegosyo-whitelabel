@@ -7,7 +7,7 @@ Every API route and server action that is declared through `defineRoute` / `defi
 which inputs it validates. Entry points that still check access by hand are listed in
 `tests/unit/guardrails/entry-point-exceptions.json`; that list can only shrink.
 
-## Declared entry points (50)
+## Declared entry points (52)
 
 | Entry | Who may call | Store | Branch | Rate limit | Validates |
 |---|---|---|---|---|---|
@@ -58,6 +58,8 @@ which inputs it validates. Entry points that still check access by hand are list
 | GET /api/gov-discounts/approvers | staff: `pos` (view, app token) | named, checked | any | not stated | query |
 | GET /api/loyalty/maintenance | cron secret | — | — | not stated | — |
 | POST /api/messenger/chat-cart | anyone | — | — | 30 per 1m per ip (`msgr-chat-cart`) | body |
+| POST /api/messenger/chat-order | anyone | — | — | 300 per 1m per ip (`msgr-chat-order`) | body |
+| POST /api/messenger/chat | staff: `pos` (edit, app token) | named, checked | store-wide | 60 per 1m per user (`messenger-chat`) | body |
 | POST /api/messenger/order-update | anyone | — | — | 600 per 1m per ip (`msgr-order-update`) | body |
 | POST /api/push/customer-order | anyone | — | — | PG_NET_IP_LIMIT.limit per 1m per ip (`customer-order-push`) | body |
 | POST /api/staff/order-activity | staff: `ORDER_READ_KEYS` (create, app token) | named, checked | own | not stated | body |

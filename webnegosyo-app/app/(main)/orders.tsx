@@ -81,6 +81,10 @@ import {
 } from "../../lib/orders-list-actions";
 import { useOrderCustomers } from "../../lib/query/use-order-customers";
 import { describeOrderCustomerBadge, type OrderCustomerBadge } from "../../lib/loyalty/order-customers";
+import { describeOrderChat, isSameOrderChatBadge, type OrderChatBadge } from "../../lib/messenger-chat/chat";
+import { useCanReadChats, useChatOrderRecords, useOrderChats } from "../../lib/messenger-chat/use-chats";
+import type { OfflineOrderFields } from "../../lib/offline/offline-order-view";
+import { CHATS_HREF } from "../../lib/navigation";
 import { useOfflineOrderList, useOfflineOrderMutation } from "../../lib/offline/use-offline-orders";
 import { isQueuedOrderWrite } from "../../lib/offline/write-order-change";
 import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
@@ -328,15 +332,52 @@ export default function OrdersScreen() {
     return badges;
   }, [orderCustomers]);
 
+  // The Messenger side of an order: the customer's photo, a chip, and whether
+  // they wrote after ordering. Asked for the whole queue, like the badges above.
+  const { canRead: canReadChats } = useCanReadChats();
+  const { byOrderId: orderChats, refetch: refetchOrderChats } = useOrderChats(allOrders);
+  // Orders staff rang up for a chat: whether the customer confirmed yet.
+  const {
+    byOrderId: chatOrderRecords,
+    knownOrderIds: knownChatOrderIds,
+    refetch: refetchChatOrders,
+  } = useChatOrderRecords(allOrders);
+  // A poll hands back a new order list; a row whose chip did not change keeps
+  // the badge object it had, so the memoised card does not redraw.
+  const previousChatBadges = useRef<ReadonlyMap<string, OrderChatBadge>>(new Map());
+  const chatBadges = useMemo(() => {
+    const badges = new Map<string, OrderChatBadge>();
+    for (const order of allOrders) {
+      const badge = describeOrderChat(
+        { customerName: order.customerName, customerData: order.customerData, createdAt: order._creationTime, status: order.status },
+        orderChats.get(order._id),
+      );
+      if (!badge) continue;
+      // Known = the read asked about it; a sale still on this phone is known too
+      // (the server cannot have a row for it), so it says "Saved on this phone".
+      if (knownChatOrderIds.has(order._id) || (order as OfflineOrderFields).offlineSync) {
+        badge.chatOrder = chatOrderRecords.get(order._id) ?? null;
+      }
+      const previous = previousChatBadges.current.get(order._id);
+      badges.set(order._id, previous && isSameOrderChatBadge(previous, badge) ? previous : badge);
+    }
+    previousChatBadges.current = badges;
+    return badges;
+  }, [allOrders, orderChats, chatOrderRecords, knownChatOrderIds]);
+  const newMessageCount = useMemo(
+    () => [...chatBadges.values()].filter((badge) => badge.hasNewMessage).length,
+    [chatBadges],
+  );
+
   // Pull-to-refresh re-reads every query this screen holds (the export reads
   // are no-ops while the sheet is closed).
   const onRefresh = useCallback(
     () =>
       refreshWithMinSpinner(
-        [refetchOrders, refetchExportOrders, refetchExportItems, refetchOrderCustomers],
+        [refetchOrders, refetchExportOrders, refetchExportItems, refetchOrderCustomers, refetchOrderChats, refetchChatOrders],
         setRefreshing,
       ),
-    [refetchOrders, refetchExportOrders, refetchExportItems, refetchOrderCustomers]
+    [refetchOrders, refetchExportOrders, refetchExportItems, refetchOrderCustomers, refetchOrderChats, refetchChatOrders]
   );
 
   const counts = useMemo(() => {
@@ -525,6 +566,7 @@ export default function OrdersScreen() {
           nextStatusLabel={nextStatus ? capitalize(nextStatus) : undefined}
           isBusy={busyIds.has(order._id)}
           customerBadge={customerBadges.get(order._id)}
+          chat={chatBadges.get(order._id)}
           mayCancelOrders={mayCancelOrders}
           onOpen={handleOpen}
           onAdvance={handleAdvance}
@@ -532,7 +574,7 @@ export default function OrdersScreen() {
         />
       );
     },
-    [busyIds, customerBadges, mayCancelOrders, handleOpen, handleAdvance, confirmCancel],
+    [busyIds, customerBadges, chatBadges, mayCancelOrders, handleOpen, handleAdvance, confirmCancel],
   );
 
   const listEmpty = error ? (
@@ -569,6 +611,15 @@ export default function OrdersScreen() {
           <>
             {/* Kitchen and Schedule hang under Orders (lib/subscreen-links.ts). */}
             <SubScreenLinks parent="orders" variant="actions" />
+            {/* Messenger conversations; the count is open orders whose customer wrote since. */}
+            {canReadChats ? (
+              <IconButton
+                icon="message"
+                label="Chats"
+                badge={newMessageCount}
+                onPress={() => router.push(CHATS_HREF)}
+              />
+            ) : null}
             <IconButton
               icon="export"
               label="Export"

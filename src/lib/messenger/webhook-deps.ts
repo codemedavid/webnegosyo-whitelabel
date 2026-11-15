@@ -14,6 +14,8 @@ import { setBotPause, touchSession } from './session'
 import { changeChatCart } from './chat-cart-store'
 import { loadRecentOrders } from './recent-orders'
 import { refreshCustomerProfile, writeChatLog } from './chat-log-store'
+import { applyChatOrderTap } from './chat-order-deps'
+import { alertStaff, clearNeedsReply } from './staff-alert-deps'
 
 /** Store the owner's PSID as the test recipient and spend the code. */
 async function linkTester(tenantId: string, psid: string): Promise<boolean> {
@@ -54,5 +56,8 @@ export function createWebhookDeps(): WebhookDeps {
     loadRecentOrders,
     logChat: writeChatLog,
     refreshProfile: (input) => refreshCustomerProfile(input),
+    applyChatOrderTap,
+    alertStaff,
+    clearNeedsReply,
   }
 }

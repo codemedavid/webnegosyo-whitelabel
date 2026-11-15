@@ -580,6 +580,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
           quantity: item.quantity,
           subtotal: item.subtotal,
           variation: variation || undefined,
+          // The server names dishes from the menu by id, never from `name`.
+          itemId: item.menu_item.id,
+          hasChoices: Boolean(variation) || (item.selected_addons?.length ?? 0) > 0,
         }
       })
 

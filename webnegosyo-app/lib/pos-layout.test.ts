@@ -1,9 +1,11 @@
 import {
+  POS_GRID_MIN_WIDTH_BESIDE_CHAT,
   POS_PANEL_MAX_WIDTH,
   POS_PANEL_MIN_WIDTH,
   POS_PHONE_COLUMNS,
   isPosDialogCentered,
   resolvePosLayout,
+  withChatColumn,
 } from "./pos-layout";
 
 const IPHONE_16_PORTRAIT = { width: 393, height: 852 };
@@ -103,5 +105,22 @@ describe("isPosDialogCentered", () => {
     ]) {
       expect(isPosDialogCentered(size)).toBe(resolvePosLayout(size).isTwoPane);
     }
+  });
+});
+
+describe("withChatColumn (taking an order for a Messenger chat)", () => {
+  it("adds a chat column on a landscape tablet and fits fewer tiles", () => {
+    const size = { width: 1180, height: 820 };
+    const layout = withChatColumn(resolvePosLayout(size), size);
+    expect(layout.chatWidth).toBe(283);
+    expect(layout.columns).toBeLessThan(resolvePosLayout(size).columns);
+    expect(1180 - layout.panelWidth - layout.chatWidth).toBeGreaterThanOrEqual(POS_GRID_MIN_WIDTH_BESIDE_CHAT);
+  });
+
+  it("puts the chat above the grid when a column would squeeze it (portrait tablet, phone)", () => {
+    const portrait = { width: 744, height: 1133 };
+    expect(withChatColumn(resolvePosLayout(portrait), portrait).chatWidth).toBe(0);
+    const phone = { width: 390, height: 844 };
+    expect(withChatColumn(resolvePosLayout(phone), phone)).toMatchObject({ chatWidth: 0, isTwoPane: false });
   });
 });

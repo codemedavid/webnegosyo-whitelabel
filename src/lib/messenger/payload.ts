@@ -14,6 +14,8 @@ const SEPARATOR = '|'
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 const MAX_PAGE = 50
 
+import { isUuid } from './ids'
+
 export type MessengerPayload =
   /** The Get Started button. */
   | { verb: 'start' }
@@ -32,6 +34,14 @@ export type MessengerPayload =
   | { verb: 'clear_yes' }
   /** This customer's recent orders. */
   | { verb: 'orders' }
+  /**
+   * An order staff rang up for this chat (plan 2026-11-14): the customer's
+   * Confirm / Change taps, and the payment method they pick after confirming.
+   */
+  /** `revision`: the order's `revision_number` when the summary went out (a Confirm under an older summary is not believed). */
+  | { verb: 'order_ok'; orderId: string; revision?: number }
+  | { verb: 'order_change'; orderId: string }
+  | { verb: 'order_pay'; orderId: string; methodId: string }
 
 export function encodePayload(payload: MessengerPayload): string {
   switch (payload.verb) {
@@ -51,6 +61,12 @@ export function encodePayload(payload: MessengerPayload): string {
       return [PREFIX, payload.verb, payload.itemId].join(SEPARATOR)
     case 'rule':
       return [PREFIX, 'rule', payload.ruleId].join(SEPARATOR)
+    case 'order_ok':
+      return [PREFIX, 'oc', payload.orderId, ...(payload.revision !== undefined ? [String(payload.revision)] : [])].join(SEPARATOR)
+    case 'order_change':
+      return [PREFIX, 'ox', payload.orderId].join(SEPARATOR)
+    case 'order_pay':
+      return [PREFIX, 'op', payload.orderId, payload.methodId].join(SEPARATOR)
     case 'category':
       return [PREFIX, 'cat', payload.categoryId, String(payload.page)].join(SEPARATOR)
   }
@@ -58,6 +74,11 @@ export function encodePayload(payload: MessengerPayload): string {
 
 function readId(value: string | undefined): string | null {
   return value && ID_PATTERN.test(value) ? value : null
+}
+
+/** Orders and payment methods are database rows: only a UUID is ever looked up. */
+function readUuid(value: string | undefined): string | null {
+  return isUuid(value) ? value : null
 }
 
 function readPage(value: string | undefined): number | null {
@@ -91,6 +112,22 @@ export function decodePayload(raw: string): MessengerPayload | null {
     case 'rule': {
       const ruleId = readId(first)
       return ruleId && parts.length === 3 ? { verb: 'rule', ruleId } : null
+    }
+    case 'oc': {
+      const orderId = readUuid(first)
+      if (!orderId) return null
+      if (parts.length === 3) return { verb: 'order_ok', orderId }
+      const revision = parts.length === 4 && /^\d{1,6}$/.test(second ?? '') ? Number(second) : null
+      return revision === null ? null : { verb: 'order_ok', orderId, revision }
+    }
+    case 'ox': {
+      const orderId = readUuid(first)
+      return orderId && parts.length === 3 ? { verb: 'order_change', orderId } : null
+    }
+    case 'op': {
+      const orderId = readUuid(first)
+      const methodId = readUuid(second)
+      return orderId && methodId && parts.length === 4 ? { verb: 'order_pay', orderId, methodId } : null
     }
     case 'cat': {
       const categoryId = readId(first)

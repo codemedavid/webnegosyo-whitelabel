@@ -441,6 +441,8 @@
     "20261112022453_owl_assistant_access_and_kinds.sql",
     "20261112120000_tenants_payment_step_style.sql",
     "20261112150000_customer_app_push.sql",
-    "20261113120000_tenant_app_builds.sql"
+    "20261113120000_tenant_app_builds.sql",
+    "20261115013219_messenger_chat_orders.sql",
+    "20261115073959_messenger_messages_sent_by.sql"
   ]
 }

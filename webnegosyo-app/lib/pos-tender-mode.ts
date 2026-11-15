@@ -9,6 +9,7 @@
  * difference against a bill that exists.
  */
 
+import { chatOrderSentNotice } from "./messenger-chat/chat-order";
 import { formatPeso } from "./format";
 
 export type TenderMode = "now" | "later";
@@ -52,6 +53,52 @@ export function canOfferPayLater({ isEditing }: { isEditing: boolean }): boolean
   return !isEditing;
 }
 
+export interface TenderShapeInput {
+  mode: TenderMode;
+  /** "Make order" put a Messenger chat on this sale. */
+  hasChat: boolean;
+  isEditing: boolean;
+  /** The store's orders are on the platform database (`resolveOrderBackend`). */
+  isPlatformBackend: boolean;
+}
+
+export interface TenderShape {
+  /**
+   * Rung up for a Messenger chat: saved waiting for the customer's OK, with
+   * its summary sent to them. Only on the platform order system, and never
+   * while editing a placed order.
+   */
+  isChatOrder: boolean;
+  /** Pay later is a choice on this sale (never on an edit). */
+  isPayLaterOffered: boolean;
+  /** Written unpaid: the cashier picked Pay later, or it is a chat order (collected after they confirm). */
+  isPayLater: boolean;
+  /** The "Customer pays now / later" switch: a chat order has no "now". */
+  showsModeSwitch: boolean;
+  /** The "Unpaid order" card: a chat order's banner already says it is collected later. */
+  showsPayLaterCard: boolean;
+  /** The register prints the kitchen chit at once; a chat order's prints when it is confirmed. */
+  printsKitchenChitNow: boolean;
+  /** The phone box shows on every order type: the number usually came from the chat. */
+  offersPhoneOnEveryType: boolean;
+}
+
+/** Every way a chat order changes the payment screen, in one place. */
+export function tenderShape({ mode, hasChat, isEditing, isPlatformBackend }: TenderShapeInput): TenderShape {
+  const isChatOrder = hasChat && !isEditing && isPlatformBackend;
+  const isPayLaterOffered = canOfferPayLater({ isEditing });
+  const isPayLater = isPayLaterOffered && (mode === "later" || isChatOrder);
+  return {
+    isChatOrder,
+    isPayLaterOffered,
+    isPayLater,
+    showsModeSwitch: isPayLaterOffered && !isChatOrder,
+    showsPayLaterCard: isPayLater && !isChatOrder,
+    printsKitchenChitNow: !isChatOrder,
+    offersPhoneOnEveryType: isChatOrder,
+  };
+}
+
 /** What an edit is doing to the money; `null` on a new counter sale. */
 export type EditIntent = "settled" | "refund" | "collect" | null;
 
@@ -59,14 +106,18 @@ export function tenderSwipeLabel({
   mode,
   edit,
   amountDue,
+  isChatOrder,
 }: {
   mode: TenderMode;
   edit: EditIntent;
   amountDue: number;
+  /** The sale is being rung up for a Messenger chat: it goes to the customer to confirm. */
+  isChatOrder?: boolean;
 }): string {
   if (edit === "settled") return "Swipe to save the changes";
   if (edit === "refund") return `Swipe to refund  ${formatPeso(amountDue)}`;
   if (edit === "collect") return `Swipe to save and collect  ${formatPeso(amountDue)}`;
+  if (isChatOrder) return "Swipe to send to the customer";
   if (mode === "later") return "Swipe to place order · pay later";
   return `Swipe to complete  ${formatPeso(amountDue)}`;
 }
@@ -78,6 +129,8 @@ export interface CompletedSale {
   isPayLater: boolean;
   /** Kept on the device because the server could not be reached. */
   isSavedOffline: boolean;
+  /** Rung up for a Messenger chat: who the summary went to. */
+  sentToChat?: string;
 }
 
 export interface CompletedSaleNotice {
@@ -94,6 +147,14 @@ export interface CompletedSaleNotice {
  */
 export function describeCompletedSale(sale: CompletedSale): CompletedSaleNotice {
   const offline = sale.isSavedOffline ? " · saved on this device, syncs when online" : "";
+
+  if (sale.sentToChat) {
+    return {
+      tone: "unpaid",
+      title: `Order sent · ${formatPeso(sale.total)} unpaid`,
+      detail: chatOrderSentNotice(sale.sentToChat, sale.isSavedOffline),
+    };
+  }
 
   if (sale.isPayLater) {
     return {
