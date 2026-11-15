@@ -16,6 +16,9 @@
 -- restated to be explicit). Before applying, compare the live body:
 --   select pg_get_functiondef('cash.tenant_order_backend(uuid)'::regprocedure);
 --
+-- APPLIED to platform 2026-11-16 by editing the live body (the whitespace class
+-- kept byte-for-byte); every store resolves the same as the web's rule.
+--
 -- Safe to apply before or after the web deploy: no tenants row holds
 -- order_backend = 'supabase' (probe it first:
 --   select count(*) from public.tenants where order_backend = 'supabase';  -- 0).

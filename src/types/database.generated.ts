@@ -5318,15 +5318,18 @@ export type Database = {
           created_at: string
           first_name: string | null
           id: string
+          last_customer_message_at: string | null
           last_inbound_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
           last_name: string | null
+          message_alert_at: string | null
           needs_reply_since: string | null
           page_id: string | null
           profile_fetched_at: string | null
           profile_pic_url: string | null
           psid: string
+          staff_read_at: string | null
           state: string
           tenant_id: string
           updated_at: string
@@ -5339,15 +5342,18 @@ export type Database = {
           created_at?: string
           first_name?: string | null
           id?: string
+          last_customer_message_at?: string | null
           last_inbound_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           last_name?: string | null
+          message_alert_at?: string | null
           needs_reply_since?: string | null
           page_id?: string | null
           profile_fetched_at?: string | null
           profile_pic_url?: string | null
           psid: string
+          staff_read_at?: string | null
           state?: string
           tenant_id: string
           updated_at?: string
@@ -5360,15 +5366,18 @@ export type Database = {
           created_at?: string
           first_name?: string | null
           id?: string
+          last_customer_message_at?: string | null
           last_inbound_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           last_name?: string | null
+          message_alert_at?: string | null
           needs_reply_since?: string | null
           page_id?: string | null
           profile_fetched_at?: string | null
           profile_pic_url?: string | null
           psid?: string
+          staff_read_at?: string | null
           state?: string
           tenant_id?: string
           updated_at?: string
@@ -7895,6 +7904,7 @@ export type Database = {
           branch: string | null
           bytes: number
           created_at: string
+          custom_spec: Json | null
           format: string
           id: string
           left_out: string[]
@@ -7902,8 +7912,10 @@ export type Database = {
           period_to: string
           preset: string
           row_counts: Json
+          shape: string
           sheets: string[]
           source: string
+          template_id: string | null
           tenant_id: string
           user_id: string
           user_label: string | null
@@ -7912,6 +7924,7 @@ export type Database = {
           branch?: string | null
           bytes: number
           created_at?: string
+          custom_spec?: Json | null
           format: string
           id?: string
           left_out?: string[]
@@ -7919,8 +7932,10 @@ export type Database = {
           period_to: string
           preset: string
           row_counts?: Json
+          shape?: string
           sheets: string[]
           source: string
+          template_id?: string | null
           tenant_id: string
           user_id?: string
           user_label?: string | null
@@ -7929,6 +7944,7 @@ export type Database = {
           branch?: string | null
           bytes?: number
           created_at?: string
+          custom_spec?: Json | null
           format?: string
           id?: string
           left_out?: string[]
@@ -7936,13 +7952,22 @@ export type Database = {
           period_to?: string
           preset?: string
           row_counts?: Json
+          shape?: string
           sheets?: string[]
           source?: string
+          template_id?: string | null
           tenant_id?: string
           user_id?: string
           user_label?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "report_exports_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "report_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "report_exports_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -10449,11 +10474,7 @@ export type Database = {
           storefront_pack_settings: Json
           storefront_palette: string | null
           success_color: string | null
-          supabase_order_anon_key: string | null
-          supabase_order_db_url: string | null
           supabase_order_schema_version: number | null
-          supabase_order_service_key: string | null
-          supabase_order_url: string | null
           text_muted_color: string | null
           text_primary_color: string | null
           text_secondary_color: string | null
@@ -10751,11 +10772,7 @@ export type Database = {
           storefront_pack_settings?: Json
           storefront_palette?: string | null
           success_color?: string | null
-          supabase_order_anon_key?: string | null
-          supabase_order_db_url?: string | null
           supabase_order_schema_version?: number | null
-          supabase_order_service_key?: string | null
-          supabase_order_url?: string | null
           text_muted_color?: string | null
           text_primary_color?: string | null
           text_secondary_color?: string | null
@@ -11053,11 +11070,7 @@ export type Database = {
           storefront_pack_settings?: Json
           storefront_palette?: string | null
           success_color?: string | null
-          supabase_order_anon_key?: string | null
-          supabase_order_db_url?: string | null
           supabase_order_schema_version?: number | null
-          supabase_order_service_key?: string | null
-          supabase_order_url?: string | null
           text_muted_color?: string | null
           text_primary_color?: string | null
           text_secondary_color?: string | null
@@ -12558,6 +12571,10 @@ export type Database = {
         }
         Returns: Json
       }
+      limit_menu_item_to_my_branch: {
+        Args: { p_menu_item_id: string }
+        Returns: number
+      }
       list_cash_receivers: {
         Args: { p_outlet?: string; p_tenant: string }
         Returns: {
@@ -12649,10 +12666,16 @@ export type Database = {
         Returns: Json
       }
       messenger_chats: {
-        Args: { p_before?: string; p_limit?: number; p_tenant_id: string }
+        Args: {
+          p_before?: string
+          p_limit?: number
+          p_tenant_id: string
+          p_waiting_only?: boolean
+        }
         Returns: {
           bot_paused_until: string
           first_name: string
+          last_customer_message_at: string
           last_inbound_at: string
           last_message_at: string
           last_message_preview: string
@@ -12664,8 +12687,18 @@ export type Database = {
           order_status: string
           profile_pic_url: string
           session_id: string
+          staff_read_at: string
         }[]
       }
+      messenger_claim_message_alert: {
+        Args: { p_gap_seconds?: number; p_session_id: string }
+        Returns: boolean
+      }
+      messenger_mark_chat_read: {
+        Args: { p_session_id: string }
+        Returns: string
+      }
+      messenger_unread_chats: { Args: { p_tenant_id: string }; Returns: number }
       next_daily_order_number: {
         Args: { p_order_date: string; p_tenant_id: string }
         Returns: number
