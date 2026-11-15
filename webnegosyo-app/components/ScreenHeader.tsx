@@ -76,15 +76,21 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     backgroundColor: colors.background,
   },
+  // Wide actions (Reports' three labelled pills) used to squeeze the title to
+  // "R." on a 390pt phone. The title keeps a readable minimum and the actions
+  // wrap under it instead.
   titleRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    columnGap: spacing.md,
+    rowGap: spacing.sm,
     minHeight: 44,
   },
   title: {
     flex: 1,
+    minWidth: 120,
     fontSize: 28,
     fontWeight: "800",
     letterSpacing: -0.4,

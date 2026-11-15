@@ -262,6 +262,19 @@ describe("dish details on a ticket", () => {
     ).toEqual(["Shot ×3", "Rice ×2", "Egg"]);
   });
 
+  it("does not take a name that merely ends in x + a number for a count", () => {
+    expect(
+      kitchenAddonLines({
+        addons: [
+          { name: "Wings Box 6", quantity: 2 },
+          { name: "Sauce Mix 2", quantity: 3 },
+          { name: "Rice x2", quantity: 2 },
+          { name: "Rice ×2", quantity: 3 },
+        ],
+      }),
+    ).toEqual(["Wings Box 6 ×2", "Sauce Mix 2 ×3", "Rice x2", "Rice ×2 ×3"]);
+  });
+
   it("folds each combo where its first line stood, keeping item indexes", () => {
     expect(
       kitchenTicketSections([
