@@ -298,7 +298,7 @@ export function buildProfitResult(result: ExportResult, when: ResolvedWhen): Too
       orders: find(PROFIT_LINES.orders)?.amount ?? null,
       sales: { amount: sales.amount, note: sales.note },
       costOfIngredients: ingredients ? { amount: ingredients.amount, sharePct: ingredients.sharePct, basis: ingredients.note } : null,
-      grossProfit: gross ? { amount: gross.amount, sharePct: gross.sharePct } : null,
+      grossProfit: gross ? { amount: gross.amount, sharePct: gross.sharePct, ...(gross.amount === null && gross.note ? { note: gross.note } : {}) } : null,
       expenses: expenses ? { amount: expenses.amount, sharePct: expenses.sharePct } : null,
       profit: { amount: profit.amount, sharePct: profit.sharePct },
       expenseGroups: groups.map((entry) => ({ name: entry.line, amount: entry.amount, sharePct: entry.sharePct })),
