@@ -180,6 +180,15 @@ describe("selection-rule helpers", () => {
     expect(next[0].max_select).toBe(1);
   });
 
+  it("setGroupMultiple(false) turns an add-on amount group into a choice", () => {
+    const next = setGroupMultiple([{ ...baseGroup(), max_select: null, selection_mode: "quantity" }], "g1", false);
+    expect(next[0]).toMatchObject({ max_select: 1, selection_mode: "choice" });
+  });
+
+  it("starts a new add-on group as add-on amounts, like the web", () => {
+    expect(createAddonGroup().selection_mode).toBe("quantity");
+  });
+
   it("groupSelectionMode reports single vs multi", () => {
     expect(groupSelectionMode(baseGroup())).toBe("single");
     expect(groupSelectionMode({ ...baseGroup(), max_select: null })).toBe("multi");

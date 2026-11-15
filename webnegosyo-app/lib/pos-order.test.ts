@@ -83,6 +83,25 @@ describe("buildPosOrder", () => {
     ]);
   });
 
+  it("writes an add-on amount as the web's ×N label, priced for every portion", () => {
+    // Receipts, kitchen chits, the web order page and an order edit all read
+    // this one label; the price already covers both portions.
+    const riceCart = addLine([], {
+      menuItemId: "m-adobo",
+      name: "Adobo",
+      basePrice: 100,
+      quantity: 1,
+      selections: [
+        { groupId: "g-addons", groupName: "Add-ons", optionId: "o-rice", optionName: "Fried Rice", priceModifier: 30, portions: 2 },
+      ],
+    });
+    const { items } = buildPosOrder({ ...context, cart: riceCart });
+    expect(items[0].variationSelections).toEqual([
+      { typeName: "Add-ons", optionName: "Fried Rice ×2", priceAdjustment: 30 },
+    ]);
+    expect(items[0].subtotal).toBe(130);
+  });
+
   it("passes a kitchen note through as the item's special instructions", () => {
     const { items } = buildPosOrder(context);
     expect(items[1].specialInstructions).toBe("warmed");

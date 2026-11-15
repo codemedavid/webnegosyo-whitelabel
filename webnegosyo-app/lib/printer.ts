@@ -1,4 +1,5 @@
 import { Platform, PermissionsAndroid } from "react-native";
+import { paperText } from "./paper-text";
 import Constants from "expo-constants";
 import { usePrinterStore } from "../stores/printer-store";
 import { buildQrBmpBase64 } from "./receipt-qr";
@@ -375,7 +376,7 @@ function printBillAsync(
   return new Promise((resolve, reject) => {
     let settled = false;
     try {
-      printerInstance.printBill(text, {
+      printerInstance.printBill(paperText(text), {
         beep: false,
         cut: options.cut,
         // The Android driver feeds five blank lines after every call with

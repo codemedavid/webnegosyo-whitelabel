@@ -117,25 +117,42 @@ function menuPrice(hit: OptionHit | undefined): Pick<LineModifier, "unitPrice" |
   return { unitPrice: hit.option.price_modifier, priceSource: "menu" };
 }
 
+/**
+ * "Bacon ×2" from the register → Bacon, 2 portions. An option whose own name
+ * ends in "×2" (it matches whole and its stripped form does not) stays whole.
+ */
+function selectionAmount(
+  selection: { typeName: string; optionName: string },
+  product: CatalogProduct | undefined,
+): { name: string; quantity: number } {
+  const whole = selection.optionName;
+  const split = splitAddonLabel(whole);
+  if (split.quantity === 1) return { name: whole, quantity: 1 };
+  const isWholeOption = Boolean(findOption(product, whole));
+  return isWholeOption && !findOption(product, split.name) ? { name: whole, quantity: 1 } : split;
+}
+
 function fromSelections(line: SalesLine, product: CatalogProduct | undefined): LineModifier[] {
   return (line.variationSelections ?? [])
     .filter((selection) => selection.optionName.trim() !== "")
     .map((selection) => {
+      const amount = selectionAmount(selection, product);
       const hit =
-        findOption(product, selection.optionName, { groupName: selection.typeName }) ??
-        findOption(product, selection.optionName);
+        findOption(product, amount.name, { groupName: selection.typeName }) ??
+        findOption(product, amount.name);
       const storedGroup = selection.typeName.trim();
       const kind: ModifierKind = hit
         ? kindOfGroup(hit.group)
         : ADDON_GROUP_PATTERN.test(storedGroup)
           ? "addon"
           : "variation";
-      const price = Number(selection.priceAdjustment);
+      // A register amount's price covers all its portions.
+      const price = Number(selection.priceAdjustment) / amount.quantity;
       return {
         kind,
         groupName: displayName(hit?.group.name ?? (storedGroup || LEGACY_VARIATION_GROUP_NAME)),
-        name: displayName(hit?.option.name ?? selection.optionName),
-        perUnit: 1,
+        name: displayName(hit?.option.name ?? amount.name),
+        perUnit: amount.quantity,
         ...(Number.isFinite(price)
           ? { unitPrice: price, priceSource: "recorded" as const }
           : menuPrice(hit)),

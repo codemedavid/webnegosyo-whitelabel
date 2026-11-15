@@ -157,6 +157,8 @@ interface BundleGroup {
 
 interface OrderDetail {
   dailyNumber?: number | null;
+  /** A pre-order's requested time (UTC ISO); the kitchen chit prints it. */
+  scheduledFor?: string | null;
   outlet_id?: string | null;
   outletId?: string | null;
   _id: string;
@@ -967,6 +969,8 @@ export default function OrderDetailScreen() {
               items: order.items ?? [],
               // The order-level NOTE (allergies, requests) prints from here.
               customerData: order.customerData,
+              dailyNumber: order.dailyNumber,
+              scheduledFor: order.scheduledFor,
             },
             chitOptions,
           ),

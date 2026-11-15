@@ -10,6 +10,9 @@ import {
   formatTicketTimer,
   aggregateAllDay,
   scanNewTickets,
+  kitchenOptionLines,
+  kitchenAddonLines,
+  kitchenTicketSections,
   type KitchenOrderLike,
   type KitchenItemLike,
 } from "./kitchen-tickets";
@@ -219,5 +222,61 @@ describe("aggregateAllDay", () => {
 
   it("is empty for an empty board", () => {
     expect(aggregateAllDay([])).toEqual([]);
+  });
+});
+
+describe("dish details on a ticket", () => {
+  it("falls back to the flat variation web checkout writes", () => {
+    expect(kitchenOptionLines({ variation: " Fried,  Garlic " })).toEqual(["Fried, Garlic"]);
+  });
+
+  it("prefers grouped choices over the flat variation, merging a group's picks", () => {
+    expect(
+      kitchenOptionLines({
+        variation: "ignored",
+        variationSelections: [
+          { typeName: "Size", optionName: "Large" },
+          { typeName: "add-ons", optionName: "Egg" },
+          { typeName: "Add-ons", optionName: "Cheese" },
+          { typeName: "", optionName: "Spicy" },
+        ],
+      }),
+    ).toEqual(["Size: Large", "add-ons: Egg, Cheese", "Spicy"]);
+  });
+
+  it("prints nothing for a dish without choices", () => {
+    expect(kitchenOptionLines({})).toEqual([]);
+    expect(kitchenAddonLines({})).toEqual([]);
+  });
+
+  it("adds an add-on's count only when its name does not carry one", () => {
+    expect(
+      kitchenAddonLines({
+        addons: [
+          { name: "Shot", quantity: 3 },
+          { name: "Rice ×2", quantity: 2 },
+          { name: "Egg", quantity: 1 },
+          { name: "  " },
+        ],
+      }),
+    ).toEqual(["Shot ×3", "Rice ×2", "Egg"]);
+  });
+
+  it("folds each combo where its first line stood, keeping item indexes", () => {
+    expect(
+      kitchenTicketSections([
+        { isBundleItem: true, bundleId: "b1", bundleName: "Meal" },
+        {},
+        { isBundleItem: true, bundleId: "b1", bundleName: "Meal" },
+        { isBundleItem: true, bundleId: "b2" },
+        // A stray bundle id without the flag is an ordinary line.
+        { bundleId: "b3" },
+      ]),
+    ).toEqual([
+      { kind: "combo", bundleId: "b1", bundleName: "Meal", indexes: [0, 2] },
+      { kind: "item", index: 1 },
+      { kind: "combo", bundleId: "b2", bundleName: "Combo", indexes: [3] },
+      { kind: "item", index: 4 },
+    ]);
   });
 });

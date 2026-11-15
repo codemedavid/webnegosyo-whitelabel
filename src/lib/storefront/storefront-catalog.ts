@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BundleWithSlots, Category, Database, MenuItem, Outlet, OutletMenuOverride, Tenant } from '@/types/database'
 import { MENU_ITEM_LIST_SELECT } from '@/lib/queries/menu-item-select'
 import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
-import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
+import { overrideReadProblem, readTenantOverrides } from '@/lib/outlets/read-tenant-overrides'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { hydrateBundleSlots } from '@/lib/bundles/slot-hydration'
 import { selectAllPages, type PageRequest } from '@/lib/storefront/paged-select'
@@ -108,10 +108,14 @@ export async function loadStorefrontCatalog(client: CatalogQueryClient, tenant: 
     ? client.from('outlets').select(OUTLET_SELECT).eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order', { ascending: true })
     : Promise.resolve(NO_QUERY)
 
-  // Every override for the tenant in one query, indexed in the browser: the
-  // branch is chosen client-side and one cached page serves every branch.
-  const overridesQuery = isMultiBranch
-    ? client.from('outlet_menu_items').select(OUTLET_MENU_OVERRIDE_SELECT).eq('tenant_id', tenant.id)
+  // Every override for the tenant, indexed in the browser: the branch is
+  // chosen client-side and one cached page serves every branch. Paged: a
+  // difference past the first 1,000 rows would otherwise read as "same as
+  // the store-wide menu", and too many fails like any other branch read.
+  const overridesQuery: Promise<QueryResult<OutletMenuOverride[]>> = isMultiBranch
+    ? readTenantOverrides(client, tenant.id).then((result) =>
+        result.ok ? { data: result.rows, error: null } : { data: null, error: { message: overrideReadProblem(result) } },
+      )
     : Promise.resolve(NO_QUERY)
 
   const [cats, items, bundleRows, outletRows, overrideRows] = await Promise.all([

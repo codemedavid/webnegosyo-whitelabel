@@ -1,7 +1,8 @@
 /**
  * The funnel actions' Meta wiring: a browser lead stores its pixel signals
  * with the IP the SERVER saw and sends a server Lead; staff confirming the
- * money sends the Purchase; other status changes send nothing.
+ * money sends the Purchase; other status changes send nothing, and a payment
+ * screenshot NEVER sends a Purchase (anyone can upload a fake one).
  */
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 
@@ -13,7 +14,7 @@ const updateCheckoutLeadStatus = jest.fn(async (...args: unknown[]): Promise<{ e
 const applyLeadStatusWithLaunch = jest.fn(async (...args: unknown[]) => { void args; return { handled: false, isPublished: false } })
 const sendLeadConversion = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
 const sendLeadPurchaseOnce = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
-const sendProofPurchaseOnce = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
+const sendMetaConversionEvent = jest.fn(async (...args: unknown[]) => { void args; return { sent: true } })
 const uploadPaymentProof = jest.fn(async (...args: unknown[]): Promise<{ error: string | null }> => { void args; return { error: null } })
 
 jest.mock('@/lib/action-rate-limit', () => ({
@@ -33,9 +34,11 @@ jest.mock('@/lib/checkout-leads/meta-events', () => {
     runAfterResponse: async (task: () => Promise<unknown>) => { await task() },
     sendLeadConversion: (...args: unknown[]) => sendLeadConversion(...args),
     sendLeadPurchaseOnce: (...args: unknown[]) => sendLeadPurchaseOnce(...args),
-    sendProofPurchaseOnce: (...args: unknown[]) => sendProofPurchaseOnce(...args),
   }
 })
+jest.mock('@/lib/meta-conversions', () => ({
+  sendMetaConversionEvent: (...args: unknown[]) => sendMetaConversionEvent(...args),
+}))
 jest.mock('@/lib/checkout-leads/platform-payment-methods-service', () => ({}))
 jest.mock('@/lib/platform-staff/guard', () => ({ requirePlatformPermission: async () => {} }))
 jest.mock('@/lib/posthog', () => ({ captureCheckoutLeadCreated: async () => {} }))
@@ -59,7 +62,7 @@ const actions = () => import('@/app/actions/checkout-leads')
 
 describe('funnel Meta wiring', () => {
   beforeEach(() => {
-    for (const mock of [createCheckoutLead, updateCheckoutLeadStatus, applyLeadStatusWithLaunch, sendLeadConversion, sendLeadPurchaseOnce, sendProofPurchaseOnce, uploadPaymentProof]) {
+    for (const mock of [createCheckoutLead, updateCheckoutLeadStatus, applyLeadStatusWithLaunch, sendLeadConversion, sendLeadPurchaseOnce, sendMetaConversionEvent, uploadPaymentProof]) {
       mock.mockClear()
     }
   })
@@ -108,17 +111,19 @@ describe('funnel Meta wiring', () => {
     expect(sendLeadPurchaseOnce).not.toHaveBeenCalled()
   })
 
-  test('a saved payment screenshot reports the Purchase (the thank-you screen)', async () => {
+  test('a saved payment screenshot sends NO Purchase: a fake screenshot once counted as one in Ads Manager', async () => {
     const { submitPaymentProof } = await actions()
     const ref = 'WN-20261026-ABCD2345'
     expect(await submitPaymentProof(ref, 'https://ik.imagekit.io/webnegosyo/checkout-proofs/p.png')).toEqual({ error: null })
-    expect(sendProofPurchaseOnce).toHaveBeenCalledWith({ admin: true }, ref)
+    expect(uploadPaymentProof).toHaveBeenCalledTimes(1)
+    expect(sendLeadPurchaseOnce).not.toHaveBeenCalled()
+    expect(sendMetaConversionEvent).not.toHaveBeenCalled()
   })
 
   test('a refused screenshot sends no Purchase', async () => {
     uploadPaymentProof.mockResolvedValueOnce({ error: 'This order is no longer waiting for a payment proof.' })
     const { submitPaymentProof } = await actions()
     await submitPaymentProof('WN-20261026-ABCD2345', 'https://ik.imagekit.io/webnegosyo/checkout-proofs/p.png')
-    expect(sendProofPurchaseOnce).not.toHaveBeenCalled()
+    expect(sendMetaConversionEvent).not.toHaveBeenCalled()
   })
 })

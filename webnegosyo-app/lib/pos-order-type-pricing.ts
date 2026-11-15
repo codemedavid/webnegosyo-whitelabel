@@ -25,6 +25,7 @@ import {
 } from "./order-type-pricing";
 import {
   priceLine,
+  round2,
   type PosCartLine,
   type PosCartSelection,
   type PosLineInput,
@@ -44,10 +45,12 @@ export function priceSelectionsForOrderType(
 ): PosCartSelection[] {
   return selections.map((selection) => {
     const listPriceModifier = selection.listPriceModifier ?? selection.priceModifier;
+    // Marked up per portion, as the sheet priced it, so ×2 stays twice ×1.
+    const portions = selection.portions ?? 1;
     return {
       ...selection,
       listPriceModifier,
-      priceModifier: resolveModifierPrice(listPriceModifier, pricing),
+      priceModifier: round2(resolveModifierPrice(listPriceModifier / portions, pricing) * portions),
     };
   });
 }

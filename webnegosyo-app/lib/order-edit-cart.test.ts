@@ -585,6 +585,47 @@ describe("add-on amounts", () => {
     expect(lines).toHaveLength(2);
   });
 
+  it("reads a register sale's ×N amount back with its portions and total price", () => {
+    // The register writes add-on amounts into variationSelections, priced for
+    // every portion; an edit must recover the option and its count from it.
+    const { lines, unresolved } = hydratePosCart(
+      [
+        orderItem({
+          subtotal: 140,
+          variationSelections: [{ typeName: "Sides", optionName: "Kimchi ×2", priceAdjustment: 20 }],
+        }),
+      ],
+      catalog,
+    );
+    expect(unresolved).toEqual([]);
+    expect(lines[0].selections).toEqual([
+      expect.objectContaining({ optionId: "opt-kimchi", optionName: "Kimchi", portions: 2, priceModifier: 20 }),
+    ]);
+  });
+
+  it("keeps the ×2 of a register amount whose add-on was since deleted", () => {
+    const { lines } = hydratePosCart(
+      [orderItem({ subtotal: 140, variationSelections: [{ typeName: "Extras", optionName: "Gravy ×2", priceAdjustment: 20 }] })],
+      catalog,
+    );
+    expect(posCartToOrderItems(lines, catalog)[0].variationSelections).toEqual([
+      { typeName: "Extras", optionName: "Gravy ×2", priceAdjustment: 20 },
+    ]);
+  });
+
+  it("keeps an option whose own name ends in ×2 whole", () => {
+    const twoForOne: ModifierGroup = {
+      ...SIDES,
+      options: [{ id: "opt-b1t1", name: "Buy 1 Take 1 ×2", price_modifier: 0, display_order: 0 }],
+    };
+    const { lines } = hydratePosCart(
+      [orderItem({ variationSelections: [{ typeName: "Sides", optionName: "Buy 1 Take 1 ×2", priceAdjustment: 0 }] })],
+      { "item-latte": [twoForOne] },
+    );
+    expect(lines[0].selections[0]).toMatchObject({ optionId: "opt-b1t1", optionName: "Buy 1 Take 1 ×2" });
+    expect(lines[0].selections[0].portions).toBeUndefined();
+  });
+
   it("keeps a name that merely contains × as a name when nothing matches the stripped form", () => {
     const { unresolved } = hydratePosCart([orderItem({ addons: [{ name: "Chef ×Special", price: 0 }] })], catalog);
     expect(unresolved).toEqual([expect.objectContaining({ optionName: "Chef ×Special" })]);

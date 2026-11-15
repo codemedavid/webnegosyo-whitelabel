@@ -56,6 +56,60 @@ describe("buildKitchenChitText", () => {
   });
 });
 
+describe("buildKitchenChitText — every detail of a dish", () => {
+  it("prints each choice group on its own line, named", () => {
+    const text = buildKitchenChitText({
+      ...CHIT_ORDER,
+      items: [
+        {
+          menuItemName: "Milk Tea",
+          quantity: 1,
+          variationSelections: [
+            { typeName: "Size", optionName: "Large", priceAdjustment: 20 },
+            { typeName: "Add-ons", optionName: "Pearls", priceAdjustment: 15 },
+            { typeName: "Add-ons", optionName: "Nata", priceAdjustment: 15 },
+          ],
+        },
+      ],
+    });
+    expect(text).toContain("1x Milk Tea\n");
+    expect(text).toContain("   - Size: Large\n");
+    expect(text).toContain("   - Add-ons: Pearls, Nata\n");
+  });
+
+  it("prints an add-on's count when it rides in `quantity`", () => {
+    const text = buildKitchenChitText({
+      ...CHIT_ORDER,
+      items: [{ menuItemName: "Latte", quantity: 1, addons: [{ name: "Extra Shot", price: 30, quantity: 2 }] }],
+    });
+    expect(text).toContain("   + Extra Shot ×2");
+  });
+
+  it("prints a combo's lines under a COMBO heading with their slots", () => {
+    const line = { quantity: 1, isBundleItem: true, bundleId: "b1", bundleName: "Family Meal" };
+    const text = buildKitchenChitText({
+      ...CHIT_ORDER,
+      items: [
+        { ...line, menuItemName: "Chicken", slotName: "Main" },
+        { ...line, menuItemName: "Iced Tea", slotName: "Drink" },
+      ],
+    });
+    expect(text).toContain("COMBO: Family Meal\n  1x [Main] Chicken\n  1x [Drink] Iced Tea\n");
+  });
+
+  it("prints the day's order number when it is known", () => {
+    expect(buildKitchenChitText({ ...CHIT_ORDER, dailyNumber: 7 })).toContain("Order #: 07");
+  });
+
+  it("prints a pre-order's requested time", () => {
+    const text = buildKitchenChitText({
+      ...CHIT_ORDER,
+      customerData: { scheduled_for_label: "Sat, Nov 15 · 5:30 PM" },
+    });
+    expect(text).toContain("SCHEDULED: Sat, Nov 15 · 5:30 PM");
+  });
+});
+
 describe("buildKitchenChitSegments", () => {
   it("wraps the chit as a single text segment for printReceiptSegments", () => {
     const segments = buildKitchenChitSegments(CHIT_ORDER);

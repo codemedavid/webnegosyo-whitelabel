@@ -167,7 +167,7 @@ describe('FunnelPayment', () => {
     expect(document.body.textContent).not.toMatch(/@|\b09\d{9}\b/)
   })
 
-  it('marks the first screenshot as a Purchase, with the event id the server sends too', async () => {
+  it('a screenshot is AddPaymentInfo, never a Purchase (anyone can upload a fake one; Purchase = staff confirmed)', async () => {
     uploadPaymentProofImage.mockResolvedValue({ url: 'https://media.webnegosyo.com/payment-proofs/p.png' })
     submitPaymentProof.mockResolvedValue({ error: null })
     const user = userEvent.setup()
@@ -176,14 +176,7 @@ describe('FunnelPayment', () => {
     await user.upload(screen.getByLabelText('Upload payment screenshot'), new File(['png'], 'proof.png', { type: 'image/png' }))
     await screen.findByRole('heading', { level: 1, name: /natanggap na namin ang screenshot/i })
 
-    const purchases = trackMetaEvent.mock.calls.filter(([name]) => name === 'Purchase')
-    expect(purchases).toEqual([
-      [
-        'Purchase',
-        { content_name: 'Smart Menu System', currency: 'PHP', value: 5499, order_id: 'WN-20261105-ABCDEFGH' },
-        'purchase_WN-20261105-ABCDEFGH',
-      ],
-    ])
+    expect(trackMetaEvent.mock.calls.map(([name]) => name)).toEqual(['AddPaymentInfo'])
   })
 
   it('fires no Purchase when the save failed, on a revisit, or for a replaced screenshot', async () => {
