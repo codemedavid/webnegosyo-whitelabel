@@ -83,7 +83,7 @@ Moving them onto `Tables<'…'>` turns column typos into compile errors.
 ## Not refactors: decisions only the owner can make
 
 1. **`20261110120000_pos_stock_block_server`**: block stores refuse register oversells server-side. App ≥1.0.19 asks for a clearance at Charge, and 1.0.19 is the live iOS version. Android phones still on a 1.0.18-or-older APK don't ask, so their sales on the one active block store would get 42501. Apply once that store's registers are confirmed on ≥1.0.19.
-2. **`20261107130100` (revoke cost columns)**: held by the owner on 2026-11-07. The readers were moved to `inventory_costs_for_tenant` on that date. A fresh probe of client reads is needed before applying.
+2. **`20261107130100` (revoke cost columns)**: held (`supabase/migration-status.json`). Every merchant-app binary before 1.0.18 reads `unit_cost` directly and would get 42501. The gate is to raise `platform_app_releases.minimum_version` to 1.0.18 on both platforms first, which forces older phones to update. That is the owner's call.
 3. **Customer app App Review number**: works only while the store's app is `draft`. Apple re-reviews every update, so the review number has to keep working after go-live. Two options:
    - (a) allow it whenever the app has a pending store submission;
    - (b) allow it always, but sessions expire after 24 h and only see a demo customer.

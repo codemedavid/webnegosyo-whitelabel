@@ -5,7 +5,7 @@
     "The live ledger (supabase_migrations.schema_migrations) uses its own version numbers because migrations are applied through the Supabase MCP, so match by name and probe the objects, never by version.",
     "`npm run db:status` prints everything that is not fully live."
   ],
-  "verifiedOn": "2026-11-11",
+  "verifiedOn": "2026-11-16",
   "notApplied": {
     "20261027130100_shift_expectations_authoritative.sql": {
       "status": "held",
@@ -34,8 +34,8 @@
     },
     "20261110120000_pos_stock_block_server.sql": {
       "status": "held",
-      "gate": "Ship the merchant-app OTA that asks /api/pos/stock-clearance first: an older build on a 'block' store has every sale refused at sync. One store is on 'block' today (2026-11-10).",
-      "checkedOn": "2026-11-10"
+      "gate": "The register asks /api/pos/stock-clearance from app 1.0.19 (iOS live 1.0.19, Android 1.0.22 on /download). Android phones still on a <=1.0.18 APK would have every sale on a 'block' store refused at sync: confirm the one block store's registers are on >=1.0.19 first. 2026-11-16: the web now tolerates the table being absent (unrecorded clearance id), so nothing is broken while it waits.",
+      "checkedOn": "2026-11-16"
     }
   },
   "expected": {
@@ -54,22 +54,6 @@
       "arrivesWith": "PR #118",
       "note": "Built CONCURRENTLY; probed valid (pg_index.indisvalid) 2026-11-13.",
       "checkedOn": "2026-11-13"
-    },
-    "20261111090200_messenger_sessions_drop_psid_unique.sql": {
-      "status": "pending",
-      "arrivesWith": "PR #118",
-      "checkedOn": "2026-11-11"
-    },
-    "20261110150000_drop_per_store_supabase_columns.sql": {
-      "status": "held",
-      "arrivesWith": "PR #119",
-      "gate": "Only after the web deploy and the merchant-app OTA that no longer select the four columns are live, and after re-probing that all four are empty on every row.",
-      "checkedOn": "2026-11-11"
-    },
-    "20261110150100_cash_order_backend_two_backends.sql": {
-      "status": "pending",
-      "arrivesWith": "PR #119",
-      "checkedOn": "2026-11-11"
     }
   },
   "liveOnly": {
@@ -434,7 +418,10 @@
     "20261109025736_funnel_six_month_installment_term.sql",
     "20261109120000_design_columns_need_store_setup.sql",
     "20261110112841_checkout_leads_meta_attribution.sql",
+    "20261110150000_drop_per_store_supabase_columns.sql",
+    "20261110150100_cash_order_backend_two_backends.sql",
     "20261111090000_library_writes_need_menu.sql",
+    "20261111090200_messenger_sessions_drop_psid_unique.sql",
     "20261111212438_messenger_settings_messages.sql",
     "20261111223138_customer_app_loyalty.sql",
     "20261111224021_messenger_chat_log.sql",
@@ -446,6 +433,7 @@
     "20261114150000_report_templates.sql",
     "20261114160000_report_templates_format_kind.sql",
     "20261115013219_messenger_chat_orders.sql",
-    "20261115073959_messenger_messages_sent_by.sql"
+    "20261115073959_messenger_messages_sent_by.sql",
+    "20261115150000_report_exports_branch_scope_and_shape.sql"
   ]
 }
