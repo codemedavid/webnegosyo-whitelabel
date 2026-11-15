@@ -7,5 +7,5 @@ export const DELETE = defineRoute({
   auth: { kind: 'public' },
   rateLimit: { bucket: 'app:session', per: 'ip', max: 30, window: '1m', onRedisFailure: 'instance' },
   onRefusal: appRefusal,
-  handler: appRoute({ scope: 'session' }, handleSignOut),
+  handler: appRoute({ scope: 'session', allowPaused: true }, handleSignOut),
 })

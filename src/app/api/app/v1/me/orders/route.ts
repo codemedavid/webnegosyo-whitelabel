@@ -13,5 +13,5 @@ export const GET = defineRoute({
   auth: { kind: 'public' },
   rateLimit: { bucket: 'app:my-orders', per: 'ip', max: 120, window: '1m', onRedisFailure: 'instance' },
   onRefusal: appRefusal,
-  handler: appRoute({ scope: 'my-orders' }, (context) => handleListOrders(context)),
+  handler: appRoute({ scope: 'my-orders', allowPaused: true }, (context) => handleListOrders(context)),
 })
