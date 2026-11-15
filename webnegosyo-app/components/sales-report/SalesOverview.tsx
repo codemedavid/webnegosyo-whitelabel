@@ -9,7 +9,7 @@ import type { ReportSelection } from "../../lib/report-window";
 import { hasPermission } from "../../lib/staff-permissions";
 import { cardChoices, cardValues, overviewSections, resolveCards } from "../../lib/sales-report/cards";
 import { readCardPrefs, writeCardPrefs } from "../../lib/sales-report/card-prefs";
-import { shareRows, whatChanged } from "../../lib/sales-report/overview-view";
+import { paymentRowsForDisplay, receivedBridge, shareRows, whatChanged } from "../../lib/sales-report/overview-view";
 import type { CompareTo, MetricDef, MetricId, ReportPayload, ReportPreset, ReportQuery } from "../../lib/sales-report/types";
 import { useSalesReport } from "../../lib/sales-report/use-sales-report";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -18,7 +18,7 @@ import { ErrorState } from "../ErrorState";
 import { ReportRangePicker } from "../ReportRangePicker";
 import { ScreenHeader } from "../ScreenHeader";
 import { KpiGrid } from "./KpiGrid";
-import { ChangesCard, ShareListCard } from "./ListCards";
+import { ChangesCard, ReceivedBridgeRows, ShareListCard } from "./ListCards";
 import { EditCardsSheet, MetricInfoSheet } from "./MetricSheets";
 import { RangeBar } from "./RangeBar";
 import { TrendCard } from "./TrendCard";
@@ -77,7 +77,8 @@ function OverviewBody({ payload, cards, onOpenMetric, onEditCards }: OverviewBod
   const changes = whatChanged(sections, metrics, comparePhrase);
   const items = sections.items?.ok ? sections.items.data.rows : [];
   const orderTypes = sections.order_types?.ok ? sections.order_types.data.rows : [];
-  const payments = sections.payments?.ok ? sections.payments.data.rows : [];
+  const payments = sections.payments?.ok ? paymentRowsForDisplay(sections.payments.data.rows) : [];
+  const bridge = receivedBridge(sections.summary?.ok ? sections.summary.data.values : null);
   const periods = sections.periods?.ok ? sections.periods.data : null;
   const go = (href: string) => router.push(href as never);
 
@@ -99,8 +100,15 @@ function OverviewBody({ payload, cards, onOpenMetric, onEditCards }: OverviewBod
         footerLabel="See every item"
         onFooter={() => go(ITEMS_ROUTE)}
       />
-      <ShareListCard title="Order types" rows={shareRows(orderTypes, "net_sales", "money", MIX_ROWS)} emptyText="No orders in this period." />
-      <ShareListCard title="Payments" rows={shareRows(payments, "money_received", "money", MIX_ROWS)} emptyText="No money received in this period." />
+      <ShareListCard title="Order types" subtitle="Net sales by order type" rows={shareRows(orderTypes, "net_sales", "money", MIX_ROWS)} emptyText="No orders in this period." />
+      <ShareListCard
+        title="Money received"
+        subtitle="By payment method · delivery fees included"
+        rows={shareRows(payments, "money_received", "money", MIX_ROWS)}
+        emptyText="No money received in this period."
+      >
+        {bridge ? <ReceivedBridgeRows bridge={bridge} /> : null}
+      </ShareListCard>
     </>
   );
 }

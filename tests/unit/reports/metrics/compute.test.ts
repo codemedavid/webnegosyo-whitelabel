@@ -102,6 +102,25 @@ describe('summaryValues', () => {
       cost_coverage_pct: 0.95,
     })
   })
+
+  // Koko Coffee 2026-11-14: no recipes or costs recorded, the Sales screen read
+  // "Gross margin 100.0%" and the owner took it as real.
+  it('shows gross profit, margin and food cost % as — while no food cost is recorded', () => {
+    const values = summaryValues({ totals: TOTALS, days: 8, profit: { ...PROFIT, ingredientCostCents: 0, profitCents: 600_000 } })
+    expect(values).toMatchObject({
+      cost_of_food: 0,
+      gross_profit: null,
+      gross_margin_pct: null,
+      food_cost_pct: null,
+      expenses: 400_000,
+      profit: 600_000,
+    })
+    const day = periodValues(
+      { bucket: '2026-11-14', label: 'Nov 14', orders: 11, grossCents: 1000, discountCents: 0, netCents: 1000, billedCents: 1000, collectedCents: 1000 } as never,
+      { bucket: '2026-11-14', netSalesCents: 1000, ingredientCostCents: 0, expensesCents: 0, profitCents: 1000, cashInCents: 1000, cashOutCents: 0 },
+    )
+    expect(day).toMatchObject({ gross_profit: null, gross_margin_pct: null, food_cost_pct: null, cost_of_food: 0 })
+  })
 })
 
 describe('row values', () => {
