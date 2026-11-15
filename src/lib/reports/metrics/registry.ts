@@ -72,8 +72,8 @@ const glossary = (key: keyof typeof METRIC_GLOSSARY): string => METRIC_GLOSSARY[
 
 const DEFINITIONS: Readonly<Record<MetricId, Entry>> = {
   net_sales: {
-    label: 'Sales',
-    hint: 'Benta matapos ang discount',
+    label: 'Net sales',
+    hint: 'Benta matapos ang discount, walang delivery fee',
     definition: glossary('net'),
     format: 'money',
     aggregation: 'sum',
@@ -245,7 +245,8 @@ const DEFINITIONS: Readonly<Record<MetricId, Entry>> = {
   gross_profit: {
     label: 'Gross profit',
     hint: 'Kita bago ang ibang gastos',
-    definition: 'Sales minus the cost of food: what is left to pay staff, rent and the rest.',
+    definition:
+      'Sales minus the cost of food: what is left to pay staff, rent and the rest. Shows — until you record what your food costs (recipes, dish costs or ingredient purchases).',
     format: 'money',
     aggregation: 'sum',
     goodDirection: 'up',
@@ -255,7 +256,8 @@ const DEFINITIONS: Readonly<Record<MetricId, Entry>> = {
   gross_margin_pct: {
     label: 'Gross margin',
     hint: 'Ilan sa bawat ₱100 ang natitira',
-    definition: 'Gross profit as a part of sales: of every ₱100 sold, how much is left after the food.',
+    definition:
+      'Gross profit as a part of sales: of every ₱100 sold, how much is left after the food. Shows — until you record what your food costs (recipes, dish costs or ingredient purchases).',
     format: 'percent',
     aggregation: 'ratio',
     goodDirection: 'up',
@@ -265,7 +267,8 @@ const DEFINITIONS: Readonly<Record<MetricId, Entry>> = {
   food_cost_pct: {
     label: 'Food cost %',
     hint: 'Bahagi ng benta na napunta sa sangkap',
-    definition: 'Cost of food as a part of sales. Most food businesses aim for about 28–35%.',
+    definition:
+      'Cost of food as a part of sales. Most food businesses aim for about 28–35%. Shows — until you record what your food costs.',
     format: 'percent',
     aggregation: 'ratio',
     goodDirection: 'down',

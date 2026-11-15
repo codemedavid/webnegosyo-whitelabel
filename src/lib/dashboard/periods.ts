@@ -115,6 +115,31 @@ export function resolveDashboardWindow(
   return { range, start, end: now, previousStart, previousEnd, bucket: 'day', bucketCount: days, bucketMs: DAY_MS }
 }
 
+export interface WindowBounds {
+  /** Half-open [start, end); end = now for a period still running. */
+  start: number
+  end: number
+  previousStart: number
+  previousEnd: number
+  /** Business days the window covers: one day buckets by hour, longer by day. */
+  dayCount: number
+}
+
+/**
+ * A window for any period (yesterday, Nov 1 – 10), for readers that ask about
+ * a date rather than a dashboard range. Bucket arithmetic is the dashboard's
+ * (fixed hours / days from the start). `range` is only read by the Growth tab,
+ * which never receives one of these windows; it is set to the nearest range.
+ */
+export function windowFromBounds(bounds: WindowBounds): DashboardWindow {
+  const { start, end, previousStart, previousEnd, dayCount } = bounds
+  if (dayCount <= 1) {
+    return { range: 'today', start, end, previousStart, previousEnd, bucket: 'hour', bucketCount: 24, bucketMs: HOUR_MS }
+  }
+  const range: DashboardRange = dayCount <= 7 ? '7d' : dayCount <= 30 ? '30d' : '90d'
+  return { range, start, end, previousStart, previousEnd, bucket: 'day', bucketCount: dayCount, bucketMs: DAY_MS }
+}
+
 export function isInCurrent(window: DashboardWindow, at: number): boolean {
   return at >= window.start && at < window.end
 }

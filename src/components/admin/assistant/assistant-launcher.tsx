@@ -16,10 +16,12 @@ interface AssistantLauncherProps {
   adminBasePath: string
   /** The owner (or a superadmin): may choose which staff use Owl. */
   canManageOwlAccess: boolean
+  /** Reports on a store whose orders are on the main database: may attach their own report format. */
+  canFollowFormat: boolean
 }
 
 /** The floating owl. Stays mounted after the first open so a closed chat keeps its thread. */
-export function AssistantLauncher({ tenantId, tenantSlug, adminBasePath, canManageOwlAccess }: AssistantLauncherProps) {
+export function AssistantLauncher({ tenantId, tenantSlug, adminBasePath, canManageOwlAccess, canFollowFormat }: AssistantLauncherProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [hasOpened, setHasOpened] = useState(false)
 
@@ -36,6 +38,7 @@ export function AssistantLauncher({ tenantId, tenantSlug, adminBasePath, canMana
           tenantSlug={tenantSlug}
           adminBasePath={adminBasePath}
           canManageOwlAccess={canManageOwlAccess}
+          canFollowFormat={canFollowFormat}
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}
         />

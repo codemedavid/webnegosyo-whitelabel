@@ -380,7 +380,9 @@ export async function getBusinessDayClose(client: CashRpcClient, closeId: string
   return cashFailure(result.reason === 'forbidden' ? 'forbidden' : 'failed', result.reason === 'forbidden' ? result.message : DAY_CLOSE_COPY.loadFailed)
 }
 
-const LIST_COLUMNS = FIELDS.map(([, column]) => column).join(', ')
+/** The table columns `parseDayClose` reads (also what an export of the book selects). */
+export const DAY_CLOSE_COLUMNS = FIELDS.map(([, column]) => column).join(', ')
+const LIST_COLUMNS = DAY_CLOSE_COLUMNS
 const LIST_LIMIT = 120
 
 /** Closes for a range of business days (history), newest first, every version. Through RLS. */

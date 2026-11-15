@@ -34,6 +34,8 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
+import { ExportDoorButton } from "../../components/export/ExportDoorButton";
+import { SCREEN_EXPORT_SHEETS } from "../../lib/export/export-routes";
 import { Icon } from "../../components/Icon";
 import { InventoryHero, type LevelFilter } from "../../components/inventory/InventoryHero";
 import {
@@ -410,9 +412,10 @@ export default function InventoryScreen() {
         title="Stock"
         subtitle={scope.kind === "branch" ? "This branch's shelf" : "Ingredients, counts and deliveries"}
         actions={
-          canAddIngredient ? (
-            <IconButton icon="plus" label="Add ingredient" tone="primary" onPress={openEditor} />
-          ) : undefined
+          <>
+            <ExportDoorButton sheets={SCREEN_EXPORT_SHEETS.stock} start={{ preset: "this_month" }} label="Export stock" />
+            {canAddIngredient ? <IconButton icon="plus" label="Add ingredient" tone="primary" onPress={openEditor} /> : null}
+          </>
         }
       />
 

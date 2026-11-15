@@ -26,13 +26,20 @@ function centsPer(cents: number, count: number): number | null {
 
 type ProfitParts = Pick<ProfitReport, 'netSalesCents' | 'ingredientCostCents' | 'expensesCents' | 'profitCents'>
 
+/**
+ * With no food cost recorded at all (no recipes, dish costs or ingredient
+ * purchases) gross profit would equal sales and the margin read 100%: an
+ * owner took that as real (Koko Coffee, 2026-11-14). Those three are "—"
+ * until a cost exists; cost of food itself stays ₱0, which is true.
+ */
 function profitValues(profit: ProfitParts): MetricValues {
   const grossProfit = profit.netSalesCents - profit.ingredientCostCents
+  const hasFoodCost = profit.ingredientCostCents !== 0
   return {
     cost_of_food: profit.ingredientCostCents,
-    gross_profit: grossProfit,
-    gross_margin_pct: divide(grossProfit, profit.netSalesCents),
-    food_cost_pct: divide(profit.ingredientCostCents, profit.netSalesCents),
+    gross_profit: hasFoodCost ? grossProfit : null,
+    gross_margin_pct: hasFoodCost ? divide(grossProfit, profit.netSalesCents) : null,
+    food_cost_pct: hasFoodCost ? divide(profit.ingredientCostCents, profit.netSalesCents) : null,
     expenses: profit.expensesCents,
     profit: profit.profitCents,
   }

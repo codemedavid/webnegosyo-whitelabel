@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { getRequestCaller } from '@/lib/auth/request-caller'
+import { REPORT_EXPORT_SHEETS } from '@/lib/exports/export-page-model'
 import { canSeeProfit } from '@/lib/reports/profit-view'
 import { loadReportPage } from '@/lib/reports/read/load-report-context'
 import { reportHref } from '@/lib/reports/report-links'
@@ -49,7 +50,7 @@ export default async function SalesReportPage({ params, searchParams }: SalesRep
   const showsProfit = canSeeProfit(roleError ? null : appUser, context.tenantId)
   return (
     <ReportPageFrame>
-      <ReportHeader context={context} title={TITLE} description={DESCRIPTION} path={path} />
+      <ReportHeader context={context} title={TITLE} description={DESCRIPTION} path={path} exportSheets={REPORT_EXPORT_SHEETS.overview} />
       <ReportNotices context={context} />
       {/* A new filter is a new key: the skeleton shows instead of stale figures. */}
       <Suspense

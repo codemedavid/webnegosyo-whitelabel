@@ -40,6 +40,7 @@ import { moneyAccess } from "../../lib/expenses/money-glance";
 import { PastShiftsSheet } from "../../components/cash-rules/PastShiftsSheet";
 import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import { REMITTANCES_ROUTE, periodSalesHref } from "../../lib/cash-routes";
+import { canOpenExport, exportHref } from "../../lib/export/export-routes";
 import { useServicePeriods } from "../../lib/cash/use-cash-rules";
 import { hasPermission, isTabAllowed } from "../../lib/staff-permissions";
 
@@ -187,11 +188,27 @@ export default function ReportsScreen() {
       </>
     ) : null;
 
+  // The web Export page's files (sales, orders, customers, staff, stock, books), built by the server.
+  const exportDoor = canOpenExport({ caller: ctx.caller, isDemo, orderBackend }) ? (
+    <>
+      <SectionHeader title="Take it out" hint="Your figures as a file for Excel or your accountant" />
+      <View style={styles.group}>
+        <ListRow
+          icon="export"
+          title="Export"
+          subtitle="Pick the dates, tick what you want, download"
+          onPress={() => router.push(exportHref() as never)}
+          testID="reports-export-door"
+        />
+      </View>
+    </>
+  ) : null;
+
   const moneySection = <ReportsMoneySection access={money} onOpen={open} />;
   const hasMoney = money.canSeeExpenses || money.canSeeProfitRow;
 
   const digDeeper =
-    sections.length > 0 || complianceDoor || cashDoor || hasMoney ? (
+    sections.length > 0 || complianceDoor || cashDoor || exportDoor || hasMoney ? (
       <>
         {moneySection}
         {sections.length > 0 ? (
@@ -215,6 +232,7 @@ export default function ReportsScreen() {
           </>
         ) : null}
         {cashDoor}
+        {exportDoor}
         {complianceDoor}
       </>
     ) : null;

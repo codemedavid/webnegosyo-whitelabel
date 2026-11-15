@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
+import { REPORT_EXPORT_SHEETS } from '@/lib/exports/export-page-model'
 import { loadReportPage } from '@/lib/reports/read/load-report-context'
 import type { ReportContext } from '@/lib/reports/read/report-context'
 import { reportHref } from '@/lib/reports/report-links'
@@ -86,6 +87,7 @@ export default async function BreakdownPage({ params, searchParams }: BreakdownP
         path={path}
         backHref={reportHref(reportsPath(context), context.filter)}
         pageParams={pageParams}
+        exportSheets={REPORT_EXPORT_SHEETS[dim]}
       />
       <BreakdownTabs context={context} active={dim} />
       <ReportNotices context={context} />

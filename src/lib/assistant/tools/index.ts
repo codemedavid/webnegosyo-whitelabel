@@ -39,6 +39,13 @@ import { getDishRecipeTool, getIngredientTool } from '@/lib/assistant/tools/read
 import { proposeIngredientTool } from '@/lib/assistant/tools/propose/ingredient'
 import { getDeliverySetupTool } from '@/lib/assistant/tools/reads/delivery-setup'
 import { findLessonsTool } from '@/lib/assistant/tools/reads/lessons'
+import { getActivityLogTool } from '@/lib/assistant/tools/reads/activity-log'
+import { getOrderTool } from '@/lib/assistant/tools/reads/order-lookup'
+import { buildCustomReportTool } from '@/lib/assistant/tools/reads/custom-report'
+import { runSavedReportTool } from '@/lib/assistant/tools/reads/saved-report'
+import { followReportFormatTool } from '@/lib/assistant/tools/reads/follow-format'
+import { exportReportTool } from '@/lib/assistant/tools/reads/export-report'
+import { getProfitTool, getShiftsTool } from '@/lib/assistant/tools/reads/money-books'
 
 export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   getSalesOverviewTool,
@@ -87,4 +94,18 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDef[] = [
   proposeIngredientTool,
   getDeliverySetupTool,
   findLessonsTool,
+  // Any point in time: who did what, one order (2026-11-13).
+  getActivityLogTool,
+  getOrderTool,
+  // Files: Excel / CSV from the export catalogue (2026-11-14).
+  exportReportTool,
+  // The books behind those files: shifts and drawers, profit (2026-11-14).
+  getShiftsTool,
+  getProfitTool,
+  // A file shaped to order: one sheet, chosen columns, filters, sort, top N (2026-11-14).
+  buildCustomReportTool,
+  // A report the store saved ("My formats"), run again for any dates (2026-11-14).
+  runSavedReportTool,
+  // The owner's own spreadsheet layout, filled from the catalogue (2026-11-14).
+  followReportFormatTool,
 ] as AssistantToolDef[]

@@ -7,7 +7,7 @@
  * the owner sees), `chips` (one-tap follow-ups).
  */
 
-export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard;
+export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard | FileCard;
 
 export interface StatsCard {
   type: "stats";
@@ -44,6 +44,22 @@ export interface ConfirmCard {
   expiresAt: string;
   /** Filled in when a past conversation is reopened: the proposal's outcome so far. */
   status?: string;
+}
+
+/** A file Owl prepared (web: FileCard). Each link builds the file when tapped, as this account. */
+export interface FileCard {
+  type: "file";
+  title: string;
+  subtitle: string;
+  sheets: Array<{ name: string; rows: number | null }>;
+  notes: string[];
+  /** Paths on the web app, always `/api/exports?…`. */
+  downloads: Array<{ label: string; href: string }>;
+  /**
+   * A report the owner may keep ("Save to My formats"); the server checks it again on the tap.
+   * `kind: "format"` = their own layout: no file until it is saved, then one for `period` (web: FileCardSave).
+   */
+  save?: { tenantId: string; name: string; spec: unknown; kind?: "custom" | "format"; sheets?: string[]; period?: { from: string; to: string } };
 }
 
 /** SmartMenu University lessons (web: LessonsCard). The app opens them in the browser. */

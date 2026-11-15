@@ -9,6 +9,7 @@ import {
   Store,
   ShoppingBag,
   BarChart3,
+  FileDown,
   Users,
   Ticket,
   Gift,
@@ -367,6 +368,9 @@ export const adminSidebarItems: SidebarEntry[] = [
   // keeps Product Analytics here until its reports land (Phase 7), and on a
   // platform store Product Analytics redirects into Sales → Items.
   { label: 'Sales', href: '/admin/reports', icon: BarChart3, section: 'Reports' },
+  // Excel / CSV files of the same figures (export plan §6). Under /admin/reports,
+  // so it rides `reports` and is hidden with Sales on a non-platform store.
+  { label: 'Export', href: '/admin/reports/export', icon: FileDown, section: 'Reports' },
   { label: 'Product Analytics', href: '/admin/product-analytics', icon: LineChart, section: 'Reports' },
   // Shifts, remittances and day closes (cashier plan §8). Gated by `cash` →
   // `cash_manage`, so the permission filter hides it from everyone else.

@@ -83,3 +83,13 @@ export function orderHistoryExportFileName(selection: ReportSelection): string |
   const [fromKey, toKey] = selection.kind === "day" ? [selection.dayKey, selection.dayKey] : [selection.fromKey, selection.toKey];
   return fromKey === toKey ? `orders_${fromKey}.csv` : `orders_${fromKey}_${toKey}.csv`;
 }
+
+/**
+ * The dates the Export screen opens with from the Orders tab: the picked
+ * business days, the last N days of a preset, or (live queue) today.
+ */
+export function orderExportStart(selection: ReportSelection | null): { from: string; to: string } | { days: number } | undefined {
+  if (!selection) return undefined;
+  if (selection.kind === "preset") return selection.days >= 1 ? { days: Math.floor(selection.days) } : undefined;
+  return selection.kind === "day" ? { from: selection.dayKey, to: selection.dayKey } : { from: selection.fromKey, to: selection.toKey };
+}

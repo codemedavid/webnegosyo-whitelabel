@@ -23,7 +23,9 @@ import {
   compareLabelFor,
   resolveDashboardWindow,
   tradingDayStart,
+  windowFromBounds,
   type DashboardRange,
+  type WindowBounds,
 } from './periods'
 import { isCompletedSale } from './sale-record'
 import { readConvexSales } from './read-convex-sales'
@@ -175,4 +177,36 @@ export async function loadAdminDashboard(
     { revalidate: DASHBOARD_REVALIDATE_SECONDS, tags: [`admin-dashboard:${tenantId}`] },
   )
   return cached()
+}
+
+export interface SalesWindowRequest extends WindowBounds {
+  /** Branch-scoped viewers see one branch; null is the whole business. */
+  outletId: string | null
+  /** "the same day last week" — shown as what the numbers are compared with. */
+  compareLabel: string
+}
+
+/**
+ * The Overview for ANY window (yesterday, Nov 1 – 10, 2 – 5 PM on Tuesday),
+ * read from the store's real backend like the dashboard. Not cached: the
+ * window is the question, so two askers rarely share one, and a running
+ * window ends at now.
+ *
+ * Callers MUST verify the viewer's permission first (service-role read).
+ */
+export async function loadSalesForWindow(tenantId: string, request: SalesWindowRequest): Promise<AdminDashboardData> {
+  const window = windowFromBounds(request)
+  const now = Date.now()
+  const read = await readTenantSales(tenantId, {
+    readStart: Math.min(window.previousStart, window.start),
+    currentStart: window.start,
+    now,
+    readEnd: Math.max(window.end, window.previousEnd),
+    outletId: request.outletId,
+    includeItems: true,
+    includePriorVisits: false,
+  })
+  const base = { range: window.range, compareLabel: request.compareLabel, generatedAt: now, growth: null }
+  if (read.failed) return { ...base, overview: null, notes: read.notes, failed: true }
+  return { ...base, overview: buildOverview(read.sales, window), notes: read.notes, failed: false }
 }

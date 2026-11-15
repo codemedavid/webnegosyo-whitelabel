@@ -39,6 +39,8 @@ import { FilterChipsRow } from "../../components/FilterChipsRow";
 import { ProductFilterSheet } from "../../components/ProductFilterSheet";
 import { DailyProductBreakdown } from "../../components/DailyProductBreakdown";
 import { ExportSheet } from "../../components/ExportSheet";
+import { SCREEN_EXPORT_SHEETS, exportHref } from "../../lib/export/export-routes";
+import { useCanOpenExport } from "../../lib/export/use-can-open-export";
 import {
   BCG_PRESENTATION,
   ProductLifetimeRow,
@@ -60,6 +62,7 @@ import {
   listAvailableDays,
   resolveDateWindow,
   resolveSingleDayWindow,
+  presetDayCount,
   type DateRangePreset,
 } from "../../lib/product-analytics-filters";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
@@ -179,6 +182,8 @@ export default function ProductAnalyticsScreen() {
   const [preset, setPreset] = useState<DateRangePreset>("7d");
   const [filters, setFilters] = useState<ProductFilterState>(DEFAULT_PRODUCT_FILTERS);
   const [isFilterSheetOpen, setFilterSheetOpen] = useState(false);
+  // Main-database stores export from the Export screen (the one sales definition, any dates).
+  const hasServerExport = useCanOpenExport();
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -688,12 +693,16 @@ export default function ProductAnalyticsScreen() {
               <TouchableOpacity
                 style={styles.filterButton}
                 onPress={() => {
+                  if (hasServerExport) {
+                    router.push(exportHref(SCREEN_EXPORT_SHEETS.sales, { days: presetDayCount(preset) }) as never);
+                    return;
+                  }
                   setExportError(null);
                   setExportOpen(true);
                 }}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="Export daily sales as CSV"
+                accessibilityLabel={hasServerExport ? "Export these sales" : "Export daily sales as CSV"}
               >
                 <Text style={styles.filterButtonText}>Export</Text>
               </TouchableOpacity>

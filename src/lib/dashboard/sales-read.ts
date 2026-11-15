@@ -8,6 +8,12 @@ export interface SalesReadWindow {
   /** Start of the current reporting window; line items are read from here on. */
   currentStart: number
   now: number
+  /**
+   * Latest sale to read, exclusive, epoch ms. Absent = up to now (every
+   * dashboard range ends now); a window in the past sets it so the read stops
+   * there instead of carrying every order since.
+   */
+  readEnd?: number
   /** Branch-scoped accounts see one branch; null is the whole business. */
   outletId: string | null
   includeItems: boolean

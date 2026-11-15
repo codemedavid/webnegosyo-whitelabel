@@ -57,7 +57,7 @@ export const METRIC_GLOSSARY: Readonly<Record<MetricKey, MetricEntry>> = {
   collected: {
     term: 'Collected',
     definition:
-      'Money actually received for these orders. An order marked paid, or handed over and not on a table tab, counts as paid in full.',
+      'Money actually received for these orders. It includes delivery fees and service charge, so it is usually a little more than net sales, and it leaves out what is still to collect. An order marked paid, or handed over and not on a table tab, counts as paid in full.',
     formula: 'Payments received − change handed back',
   },
   unpaid: {
