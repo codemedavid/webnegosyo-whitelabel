@@ -195,6 +195,19 @@ describe('a custom report (one sheet, reshaped)', () => {
     expect(preview.sheets[0]).toMatchObject({ id: 'orders', name: 'Biggest orders', columns: ['Bill', 'Order no.'], rows: Math.min(3, orders.length) })
     expect(mockLog).not.toHaveBeenCalled()
   })
+
+  it('counts its preview against the store (it reads the whole period, like a file)', async () => {
+    mockRateLimit.mockImplementation(async (key: string) => ({ allowed: !key.startsWith('exports:store-preview:'), remaining: 0, retryAfterSec: 9 }))
+    const response = await post({ tenantId: TENANT, mode: 'preview', sheets: ['orders'], period: { preset: 'custom', ...DAY }, custom })
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('9')
+    expect(mockRateLimit.mock.calls.map(([key]) => String(key))).toContain(`exports:store-preview:${TENANT}`)
+  })
+
+  it('leaves the plain preview (first 1,500 orders) out of the store count', async () => {
+    await post({ tenantId: TENANT, mode: 'preview', sheets: ['orders'], period: { preset: 'custom', ...DAY } })
+    expect(mockRateLimit.mock.calls.map(([key]) => String(key))).not.toContain(`exports:store-preview:${TENANT}`)
+  })
 })
 
 describe('a saved format (named by its id; the server reads its shape)', () => {
