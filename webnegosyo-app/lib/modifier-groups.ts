@@ -29,9 +29,17 @@ export interface ModifierOption {
   is_available?: boolean;
 }
 
+/**
+ * `quantity` = add-ons the customer picks an AMOUNT of ("Fried Rice ×2"), and
+ * the group's min/max count portions. Anything else is a pick-from-a-list
+ * group. Same field and meaning as the web's `ModifierGroup.selection_mode`.
+ */
+export type ModifierSelectionMode = "choice" | "quantity";
+
 export interface ModifierGroup {
   id: string;
   name: string;
+  selection_mode?: ModifierSelectionMode;
   display_order: number;
   // Selection rules. min_select === 0 → optional; max_select === 1 → single-select
   // (variation-style); max_select === null → unlimited (add-on style).
@@ -155,6 +163,8 @@ function groupFromLegacyVariations(variations: readonly LegacyVariation[]): Modi
 function groupFromAddons(addons: readonly LegacyAddon[]): ModifierGroup {
   return {
     id: "legacy-addons",
+    // Legacy add-ons are amounts on the web too (`groupFromAddons` there).
+    selection_mode: "quantity",
     name: LEGACY_ADDON_GROUP_NAME,
     display_order: 1000,
     min_select: 0,
@@ -240,9 +250,62 @@ export interface LegacyColumns {
   addons: LegacyAddon[];
 }
 
-/** A group is single-select (variation-style) when its cap is exactly 1. */
+/** Add-ons picked by amount: the register shows a − n + stepper per option. */
+export function isQuantityGroup(group: ModifierGroup): boolean {
+  return group.selection_mode === "quantity";
+}
+
+/**
+ * A group is single-select (variation-style) when its cap is exactly 1 — unless
+ * it is an add-on amount group, which stays add-ons even when capped to one
+ * portion. Same rule as the web's `modifier-groups-form.ts` / `-cart.ts`.
+ */
 export function isSingleSelectGroup(group: ModifierGroup): boolean {
-  return group.max_select === 1;
+  return group.selection_mode !== "quantity" && group.max_select === 1;
+}
+
+/**
+ * The rule under a group's name — "Required — choose 2 to 3", "Optional — up
+ * to 3 portions". Word for word the web product page's `describeSelectionRule`
+ * (`src/lib/modifier-groups.ts`, without the store's custom prefixes), so a
+ * cashier reads what the customer reads. `max_select === null` = unlimited.
+ */
+export function describeSelectionRule(group: ModifierGroup): string {
+  const { min_select: min, max_select: max } = group;
+  const prefix = min > 0 ? "Required" : "Optional";
+  if (isQuantityGroup(group)) {
+    if (min === 0) return max === null ? `${prefix} — add any extras` : `${prefix} — up to ${max} portions`;
+    return max === null ? `${prefix} — at least ${min} portions`
+      : min === max ? `${prefix} — ${min} portions` : `${prefix} — ${min} to ${max} portions`;
+  }
+  if (min === 0) return max === null ? `${prefix} — choose any` : `${prefix} — choose up to ${max}`;
+  if (max === null) return min === 1 ? `${prefix} — choose 1` : `${prefix} — choose at least ${min}`;
+  if (min === max) return `${prefix} — choose ${min}`;
+  return `${prefix} — choose ${min} to ${max}`;
+}
+
+/**
+ * Live progress toward a group's rule — "1 more to go", "2 of 3 selected" —
+ * or null where a running count would be noise (single-select groups and
+ * optional uncapped groups with nothing picked). Web `describeSelectionProgress`.
+ * For an add-on amount group the count is portions.
+ */
+export function describeSelectionProgress(group: ModifierGroup, selectedCount: number): string | null {
+  if (group.max_select === 1) return null;
+  const remaining = group.min_select - selectedCount;
+  if (remaining > 0) return `${remaining} more to go`;
+  if (group.max_select === null) return selectedCount > 0 ? `${selectedCount} selected` : null;
+  return `${selectedCount} of ${group.max_select} selected`;
+}
+
+/**
+ * Whether a pick-several group is full, so the options not yet chosen can be
+ * greyed out (web `isSelectionAtMax`). A single-select group is never "full":
+ * tapping another option swaps the pick.
+ */
+export function isSelectionAtMax(group: ModifierGroup, selectedCount: number): boolean {
+  if (group.max_select === null || group.max_select <= 1) return false;
+  return selectedCount >= group.max_select;
 }
 
 /**

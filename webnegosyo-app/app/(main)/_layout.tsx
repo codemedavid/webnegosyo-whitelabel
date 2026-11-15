@@ -263,6 +263,8 @@ export default function MainLayout() {
         <Tabs.Screen name="cash-rules" options={{ href: null, title: "Shift & remit rules" }} />
         <Tabs.Screen name="shift-sales" options={{ href: null, title: "Shift sales" }} />
         <Tabs.Screen name="my-shifts" options={{ href: null, title: "My shifts" }} />
+        {/* Export: the web Export page's files, built by the server as this account — pushed from Reports. */}
+        <Tabs.Screen name="export" options={{ href: null, title: "Export" }} />
         {/* The 4-step count and remit needs the whole screen; ExpenseUndoHost lists it too. */}
         <Tabs.Screen name="end-shift" options={{ href: null, title: "End shift", tabBarStyle: { display: "none" } }} />
         <Tabs.Screen name="remittance" options={{ href: null, title: "Remittance" }} />

@@ -3,6 +3,8 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native
 import { router } from "expo-router";
 
 import { BackHeader } from "../../components/BackHeader";
+import { ExportDoorButton } from "../../components/export/ExportDoorButton";
+import { SCREEN_EXPORT_SHEETS } from "../../lib/export/export-routes";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
@@ -102,7 +104,13 @@ export default function RemittancesScreen() {
     }
   };
 
-  const header = <BackHeader title="Remittances" subtitle={outletName ?? "Every branch you can reach"} />;
+  const header = (
+    <BackHeader
+      title="Remittances"
+      subtitle={outletName ?? "Every branch you can reach"}
+      actions={<ExportDoorButton sheets={SCREEN_EXPORT_SHEETS.cash} start={{ preset: "last_7_days" }} label="Export shifts and cash" />}
+    />
+  );
 
   if (!isAllowed) {
     return (

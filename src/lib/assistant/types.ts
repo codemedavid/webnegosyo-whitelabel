@@ -7,7 +7,10 @@
  * the tool writes deterministically, so suggesting "what next" costs no tokens.
  */
 
-export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard
+import type { CustomReportSpec } from '@/lib/exports/custom-report'
+import type { ReportFormatSpec } from '@/lib/exports/report-format'
+
+export type AssistantCard = StatsCard | RankedCard | BarsCard | ConfirmCard | LessonsCard | FileCard
 
 export interface StatsCard {
   type: 'stats'
@@ -63,6 +66,36 @@ export interface LessonsCard {
     thumbnailUrl: string | null
   }>
 }
+
+/**
+ * A file Owl prepared (Excel / CSV). Nothing is stored: each download link
+ * builds the file then, as the person who taps it, through `/api/exports`.
+ */
+export interface FileCard {
+  type: 'file'
+  title: string
+  /** "2026-11-01 to 2026-11-14 · Whole store" */
+  subtitle: string
+  /** One per tab; `rows` null = counted when the file is made. */
+  sheets: Array<{ name: string; rows: number | null }>
+  /** Sheets left out and why, and anything else the owner should know before opening it. */
+  notes: string[]
+  /** Site-relative `/api/exports?…` links (never another host). */
+  downloads: Array<{ label: string; href: string }>
+  /**
+   * A report the owner may keep ("Save to My formats"): the tap posts this
+   * to `/api/exports/formats`, which checks it again. Owl never saves.
+   */
+  save?: FileCardSave
+}
+
+export type FileCardSave =
+  | { tenantId: string; name: string; kind?: 'custom'; spec: CustomReportSpec }
+  /**
+   * The owner's own layout (plan §6.3). Its shape is too long for a link, so the card has no
+   * download until it is saved: the tap saves it and then offers the file for `period`.
+   */
+  | { tenantId: string; name: string; kind: 'format'; spec: ReportFormatSpec; sheets: string[]; period: { from: string; to: string } }
 
 /** A one-tap follow-up: tapping it sends `prompt` as the owner's next message. */
 export interface AssistantChip {

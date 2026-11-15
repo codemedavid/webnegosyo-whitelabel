@@ -133,6 +133,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
           tenantSlug={tenantSlug}
           adminBasePath={`${basePath}/admin`}
           canManageOwlAccess={caller ? canManageStaff(caller) : false}
+          canFollowFormat={tenant.is_platform_backend && caller !== null && caller !== undefined && hasPermission(caller, 'reports')}
         />
       ) : null}
     </div>

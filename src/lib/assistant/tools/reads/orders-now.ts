@@ -38,7 +38,7 @@ export function buildOrdersNowResult(stats: OrderStats | null): ToolResult {
 
 export const getOrdersNowTool: AssistantToolDef<Input> = {
   name: 'get_orders_now',
-  description: "Today's live order queue (new/confirmed/preparing/ready) and today's sales so far.",
+  description: "Right now only: live order queue (new/confirmed/preparing/ready) and today's sales so far. Past days: get_sales_overview.",
   access: { permission: 'orders' },
   input,
   async run(ctx) {

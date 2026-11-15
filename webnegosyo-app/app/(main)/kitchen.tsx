@@ -68,6 +68,7 @@ import { ScreenHeader } from "../../components/ScreenHeader";
 import { TicketCard, kds } from "../../components/kitchen/TicketCard";
 import { RingStatusBar } from "../../components/kitchen/RingStatusBar";
 import { TickerProvider } from "../../components/TickerProvider";
+import { formatDailyOrderNumber } from "../../lib/order-number";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
@@ -257,6 +258,8 @@ export default function KitchenScreen() {
         Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
         return;
       }
+      // The ticket's own number ("#12"), read while it is still on the board.
+      const bumpedRef = formatDailyOrderNumber(ticketsByIdRef.current.get(orderId)?.order.dailyNumber, orderId);
       // The board can be seconds behind. Ask the server first: a ticket
       // cancelled elsewhere must not be written back to life (its stock was
       // restored by the cancel), so the bump is refused instead.
@@ -280,7 +283,7 @@ export default function KitchenScreen() {
         if (!isQueuedOrderWrite(written)) {
           void syncStockForStatusChange({ orderId, newStatus, previousStatus });
         }
-        setLastBumped({ orderId, ref: orderId.slice(-4).toUpperCase() });
+        setLastBumped({ orderId, ref: bumpedRef });
       } catch {
         Alert.alert("Error", "Failed to bump the order. Check your connection and try again.");
       }
@@ -528,7 +531,7 @@ export default function KitchenScreen() {
 
       {lastBumped ? (
         <TouchableOpacity style={styles.recallBar} onPress={handleRecall} activeOpacity={0.85}>
-          <Text style={styles.recallText}>Recall #{lastBumped.ref} — back to preparing</Text>
+          <Text style={styles.recallText}>Recall {lastBumped.ref} — back to preparing</Text>
         </TouchableOpacity>
       ) : null}
     </View>

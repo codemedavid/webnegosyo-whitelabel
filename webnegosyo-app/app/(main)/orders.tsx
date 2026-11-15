@@ -39,6 +39,7 @@ import { useTradingDay } from "../../lib/business-day/use-trading-day";
 import {
   datedOrdersArgs,
   orderHistoryCapNotice,
+  orderExportStart,
   orderHistoryExportFileName,
   orderHistoryQuickPicks,
 } from "../../lib/orders-history";
@@ -67,6 +68,8 @@ import { formatDailyOrderNumber } from "../../lib/order-number";
 import { IconButton } from "../../components/IconButton";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { ExportSheet } from "../../components/ExportSheet";
+import { SCREEN_EXPORT_SHEETS, exportHref } from "../../lib/export/export-routes";
+import { useCanOpenExport } from "../../lib/export/use-can-open-export";
 import { runOrdersExport } from "../../lib/export/run-export";
 import { formatExportDay } from "../../lib/export/dates";
 import type { ExportOrderItemInput } from "../../lib/export/orders-export";
@@ -233,6 +236,9 @@ export default function OrdersScreen() {
   // are mounted only while the sheet is open, so the queue screen itself
   // never pays for them. With days picked, the export IS that period: the
   // dated list already holds its orders, so only their line items are read.
+  // Stores on the main database export from the Export screen (the server's file: every order of the
+  // dates, with cashier, shift and payments); every other store keeps the file built on this phone.
+  const hasServerExport = useCanOpenExport();
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -624,6 +630,10 @@ export default function OrdersScreen() {
               icon="export"
               label="Export"
               onPress={() => {
+                if (hasServerExport) {
+                  router.push(exportHref(SCREEN_EXPORT_SHEETS.orders, orderExportStart(dateSelection)) as never);
+                  return;
+                }
                 setExportError(null);
                 setExportOpen(true);
               }}

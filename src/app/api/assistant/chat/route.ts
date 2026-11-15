@@ -17,6 +17,7 @@ import {
 } from '@/lib/assistant/config'
 import { compactHistory, type StoredMessage } from '@/lib/assistant/history'
 import { checkMessagePhotos, photoMarkerPart } from '@/lib/assistant/photos'
+import { checkMessageSheet, safeFileLabel, sheetMarkerPart } from '@/lib/assistant/spreadsheet'
 import { loadActionStatuses } from '@/lib/assistant/actions/store'
 import { withActionStatuses } from '@/lib/assistant/actions/status'
 import { SYSTEM_PROMPT, buildContextNote } from '@/lib/assistant/prompt'
@@ -52,6 +53,8 @@ const bodySchema = z.object({
     text: z.string().trim().min(1).max(MAX_INPUT_CHARS),
     /** Menu photos as data URLs; checked by checkMessagePhotos, never stored. */
     images: z.array(z.unknown()).optional(),
+    /** The outline of the owner's own report format (headings and sample rows, never the file); checked by checkMessageSheet, never stored. */
+    sheet: z.unknown().optional(),
   }),
 })
 
@@ -77,6 +80,9 @@ async function handleChat(request: NextRequest): Promise<Response> {
   const photoCheck = checkMessagePhotos(message.images)
   if (!photoCheck.ok) return fail(400, photoCheck.error)
   const { photos } = photoCheck
+  const sheetCheck = checkMessageSheet(message.sheet)
+  if (!sheetCheck.ok) return fail(400, sheetCheck.error)
+  const { sheet } = sheetCheck
 
   const access = await resolveAssistantAccess(tenantId)
   if (!access.ok) return fail(access.status, access.error)
@@ -99,11 +105,11 @@ async function handleChat(request: NextRequest): Promise<Response> {
   ])
   // Proposals confirmed or cancelled since: the model must hear the outcome.
   const history = withActionStatuses(stored, actionStatuses)
-  // Only a count is stored: the photos themselves live for this turn alone.
+  // Only a count is stored: the photos themselves live for this turn alone. The same goes for a spreadsheet's outline.
   const userMessage: StoredMessage = {
     id: message.id,
     role: 'user',
-    parts: [{ type: 'text', text: message.text }, ...(photos.length > 0 ? [photoMarkerPart(photos.length)] : [])],
+    parts: [{ type: 'text', text: message.text }, ...(photos.length > 0 ? [photoMarkerPart(photos.length)] : []), ...(sheet ? [sheetMarkerPart(sheet)] : [])],
   }
   await saveMessage(store.id, conversation.id, userMessage)
 
@@ -117,6 +123,7 @@ async function handleChat(request: NextRequest): Promise<Response> {
     flags,
     refs,
     photos,
+    spreadsheet: sheet,
     memo: createTurnMemo(),
   })
 
@@ -129,7 +136,7 @@ async function handleChat(request: NextRequest): Promise<Response> {
 
   const result = streamText({
     model: assistantModel(caller.userId),
-    system: `${SYSTEM_PROMPT}\n\n${buildContextNote({ storeName: store.name, now: new Date(), toolNames: tools.map((t) => t.name), photoCount: photos.length })}`,
+    system: `${SYSTEM_PROMPT}\n\n${buildContextNote({ storeName: store.name, now: new Date(), toolNames: tools.map((t) => t.name), photoCount: photos.length, spreadsheetName: sheet ? safeFileLabel(sheet.name) : null })}`,
     messages: modelMessages,
     tools: toolSet,
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),

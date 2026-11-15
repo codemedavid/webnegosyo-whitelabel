@@ -9,7 +9,7 @@
  */
 
 import type { OrderTypePricing } from "./order-type-pricing";
-import { addLine, type PosCartLine, type PosLineInput } from "./pos-cart";
+import { addLine, type PosCartLine, type PosCartSelection, type PosLineInput } from "./pos-cart";
 import {
   displayPriceForOrderType,
   priceLineInputForOrderType,
@@ -167,5 +167,23 @@ describe("displayPriceForOrderType", () => {
     expect(
       displayPriceForOrderType({ id: "m-latte", price: 100, discounted_price: null }, null),
     ).toBe(100);
+  });
+});
+
+describe("priceSelectionsForOrderType with add-on portions", () => {
+  it("marks up each portion, so ×2 costs exactly twice ×1 on the channel", () => {
+    const riceTimesTwo: PosCartSelection = {
+      groupId: "g-addons",
+      groupName: "Add-ons",
+      optionId: "o-rice",
+      optionName: "Fried Rice",
+      priceModifier: 30,
+      listPriceModifier: 30,
+      portions: 2,
+    };
+    const [marked] = priceSelectionsForOrderType([riceTimesTwo], GRAB_20);
+    expect(marked).toMatchObject({ priceModifier: 36, listPriceModifier: 30, portions: 2 });
+    const [back] = priceSelectionsForOrderType([marked], null);
+    expect(back.priceModifier).toBe(30);
   });
 });

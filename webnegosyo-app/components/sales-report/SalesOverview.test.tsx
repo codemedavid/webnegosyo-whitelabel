@@ -57,7 +57,7 @@ const PAYLOAD: ReportPayload = {
     isScheduleFallback: false,
   },
   metrics: [
-    def("net_sales", "Sales"),
+    def("net_sales", "Net sales"),
     def("orders", "Orders", "count"),
     def("aov", "Average order"),
     def("avg_orders_per_day", "Orders per day", "decimal", { scopes: ["summary"] }),
@@ -71,7 +71,17 @@ const PAYLOAD: ReportPayload = {
       ok: true,
       data: {
         days: 5,
-        values: { net_sales: 4_821_000, orders: 193, aov: 24_979, avg_orders_per_day: 38.6, items_sold: 412, still_to_collect: 111_000 },
+        values: {
+          net_sales: 4_821_000,
+          orders: 193,
+          aov: 24_979,
+          avg_orders_per_day: 38.6,
+          items_sold: 412,
+          still_to_collect: 111_000,
+          delivery_fees: 12_000,
+          service_charge: 0,
+          money_received: 4_722_000,
+        },
         previous: { net_sales: 4_207_000, orders: 175, aov: 24_040, avg_orders_per_day: 35, items_sold: 380 },
       },
     },
@@ -125,13 +135,24 @@ describe("SalesOverview", () => {
   it("shows the tracked figures with their change, and what changed", () => {
     ready();
     render(<SalesOverview />);
-    expect(screen.getByText("₱48,210")).toBeTruthy();
+    expect(screen.getAllByText("₱48,210").length).toBe(2); // the hero and the money-received bridge
     expect(screen.getByText("61.0%")).toBeTruthy();
     expect(screen.getAllByText(/▲ ₱6,140 \(\+15%\)/).length).toBeGreaterThan(0);
-    expect(screen.getByText("Sales are up ₱6,140 (+15%) on last month.")).toBeTruthy();
+    expect(screen.getByText("Net sales are up ₱6,140 (+15%) on last month.")).toBeTruthy();
     expect(screen.getByText("Iced Spanish Latte brought in ₱2,300 more than before.")).toBeTruthy();
     expect(screen.getByText("₱1,110 is still to collect.")).toBeTruthy();
     expect(screen.getByText("96 sold")).toBeTruthy();
+  });
+
+  it("shows money received by method and how net sales add up to it", () => {
+    ready();
+    render(<SalesOverview />);
+    expect(screen.getByText("Money received")).toBeTruthy();
+    expect(screen.getByText("By payment method · delivery fees included")).toBeTruthy();
+    expect(screen.getByText("+ Delivery fees")).toBeTruthy();
+    expect(screen.getByText("− Still to collect")).toBeTruthy();
+    expect(screen.getByText("= Money received")).toBeTruthy();
+    expect(screen.getByText("₱47,220")).toBeTruthy();
   });
 
   it("explains a figure in plain words when tapped", () => {

@@ -1,9 +1,19 @@
 /** @jest-environment node */
 import { createRefBook } from '@/lib/assistant/refs'
 import type { AdminDashboardData } from '@/lib/dashboard/load-admin-dashboard'
+import { resolveWhen, type ResolvedWhen } from '@/lib/assistant/insights/when'
+
+// Friday 2026-11-13, 2:30 PM Manila.
+const NOW = Date.parse('2026-11-13T06:30:00Z')
+function when(input: Parameters<typeof resolveWhen>[0]): ResolvedWhen {
+  const result = resolveWhen(input, NOW)
+  if (!result.ok) throw new Error(result.error)
+  return result.when
+}
 
 jest.mock('server-only', () => ({}))
-jest.mock('@/lib/dashboard/load-admin-dashboard', () => ({ loadAdminDashboard: jest.fn() }))
+jest.mock('@/lib/dashboard/load-admin-dashboard', () => ({ loadAdminDashboard: jest.fn(), loadSalesForWindow: jest.fn() }))
+jest.mock('@/lib/assistant/data/cutoff-schedule', () => ({ cutoffScheduleFor: jest.fn(async () => []) }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }))
 
 const kpi = (current: number, previous: number, change: number | null) => ({ key: 'sales', current, previous, change, series: [], previousSeries: [] })
@@ -37,7 +47,7 @@ describe('get_sales_overview result', () => {
     const { buildSalesOverviewResult } = await import('@/lib/assistant/tools/reads/sales-overview')
     const refs = createRefBook({})
 
-    const result = buildSalesOverviewResult(dashboard(), '7d', refs)
+    const result = buildSalesOverviewResult(dashboard(), when({ period: 'last_7_days' }), refs)
 
     expect(JSON.stringify(result.facts)).not.toMatch(/6f1c2b0e/)
     expect(result.facts.topItems).toEqual([
@@ -52,10 +62,62 @@ describe('get_sales_overview result', () => {
   test('reports a failed read as unavailable, never as zero sales', async () => {
     const { buildSalesOverviewResult } = await import('@/lib/assistant/tools/reads/sales-overview')
 
-    const result = buildSalesOverviewResult(dashboard({ failed: true, overview: null, notes: ['This store is on Convex but its credentials are missing.'] }), '7d', createRefBook({}))
+    const result = buildSalesOverviewResult(dashboard({ failed: true, overview: null, notes: ['This store is on Convex but its credentials are missing.'] }), when({ period: 'last_7_days' }), createRefBook({}))
 
     expect(result.facts).toEqual({ available: false, reason: 'This store is on Convex but its credentials are missing.' })
     expect(result.card).toBeUndefined()
+  })
+})
+
+describe('get_sales_overview for any point in time', () => {
+  afterEach(() => jest.useRealTimers())
+
+  test('yesterday reads exactly yesterday and the same day last week, and says which day it was', async () => {
+    jest.useFakeTimers({ now: NOW })
+    const { loadSalesForWindow } = jest.requireMock('@/lib/dashboard/load-admin-dashboard') as { loadSalesForWindow: jest.Mock }
+    loadSalesForWindow.mockResolvedValue(
+      dashboard({ compareLabel: 'the same day last week', overview: { ...dashboard().overview!, hours: [
+        { hour: 0, label: '12 AM', orders: 0, sales: 0 },
+        { hour: 15, label: '3 PM', orders: 4, sales: 1200 },
+      ] } }),
+    )
+    const { getSalesOverviewTool } = await import('@/lib/assistant/tools/reads/sales-overview')
+    const { createTurnMemo } = await import('@/lib/assistant/tools/registry')
+
+    const result = await getSalesOverviewTool.run(
+      { tenantId: 't1', refs: createRefBook({}), memo: createTurnMemo() } as never,
+      getSalesOverviewTool.input.parse({ period: 'yesterday' }),
+    )
+
+    const yesterday = Date.parse('2026-11-12T00:00:00+08:00')
+    expect(loadSalesForWindow).toHaveBeenCalledWith('t1', {
+      start: yesterday,
+      end: yesterday + 86_400_000,
+      previousStart: yesterday - 7 * 86_400_000,
+      previousEnd: yesterday - 6 * 86_400_000,
+      dayCount: 1,
+      outletId: null,
+      compareLabel: 'the same day last week',
+    })
+    expect(result.facts).toMatchObject({ period: 'Yesterday', dates: '2026-11-12', comparedWith: 'the same day last week', byHour: [{ hour: '3 PM', orders: 4, sales: 1200 }] })
+    expect(result.facts.soFar).toBeUndefined()
+    expect(result.card).toMatchObject({ title: 'Sales — Yesterday' })
+  })
+
+  test('a date that has not happened is refused before anything is read', async () => {
+    jest.useFakeTimers({ now: NOW })
+    const { loadSalesForWindow } = jest.requireMock('@/lib/dashboard/load-admin-dashboard') as { loadSalesForWindow: jest.Mock }
+    loadSalesForWindow.mockClear()
+    const { getSalesOverviewTool } = await import('@/lib/assistant/tools/reads/sales-overview')
+    const { createTurnMemo } = await import('@/lib/assistant/tools/registry')
+
+    const result = await getSalesOverviewTool.run(
+      { tenantId: 't1', refs: createRefBook({}), memo: createTurnMemo() } as never,
+      getSalesOverviewTool.input.parse({ from: '2026-12-01' }),
+    )
+
+    expect(result.facts).toEqual({ available: false, reason: "The end date can't be in the future." })
+    expect(loadSalesForWindow).not.toHaveBeenCalled()
   })
 })
 

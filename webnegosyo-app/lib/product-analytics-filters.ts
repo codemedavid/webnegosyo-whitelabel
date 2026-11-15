@@ -40,6 +40,11 @@ const PRESET_DAYS: Record<DateRangePreset, number> = {
   "90d": 90,
 };
 
+/** Days a preset covers, counting today. */
+export function presetDayCount(preset: DateRangePreset): number {
+  return PRESET_DAYS[preset] ?? 1;
+}
+
 export const DATE_RANGE_PRESETS: readonly Option<DateRangePreset>[] = [
   { label: "Today", value: "today" },
   { label: "7 Days", value: "7d" },

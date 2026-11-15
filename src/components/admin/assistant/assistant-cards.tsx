@@ -114,6 +114,9 @@ export function AssistantCardView({ card }: { card: AssistantCard | undefined })
     // Needs the admin base path for its links; rendered by LessonsCardView.
     case 'lessons':
       return null
+    // Rendered by FileCardView (it checks its links).
+    case 'file':
+      return null
     default:
       return null
   }

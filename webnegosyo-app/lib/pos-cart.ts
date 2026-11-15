@@ -384,14 +384,17 @@ export interface SelectionValidation {
 
 /**
  * Enforce each group's min/max selection rules before a line can be added.
- * `max_select: null` means unlimited (add-on style).
+ * `max_select: null` means unlimited (add-on style). An add-on picked ×2
+ * counts twice: an amount group's limits are portions, as on the web.
  */
 export function validateSelection(
   groups: ModifierGroup[],
   selections: PosCartSelection[],
 ): SelectionValidation {
   const errors = groups.reduce<Record<string, string>>((acc, group) => {
-    const chosen = selections.filter((s) => s.groupId === group.id).length;
+    const chosen = selections
+      .filter((s) => s.groupId === group.id)
+      .reduce((sum, s) => sum + (s.portions ?? 1), 0);
 
     if (chosen < group.min_select) {
       return { ...acc, [group.id]: `Choose at least ${group.min_select} from ${group.name}` };

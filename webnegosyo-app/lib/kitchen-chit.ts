@@ -5,8 +5,15 @@
 
 import type { PrintSegment } from "./printer";
 import { getOrderTypeMeta } from "./order-visuals";
-import { kitchenItemLabel, type KitchenItemLike } from "./kitchen-tickets";
+import {
+  kitchenAddonLines,
+  kitchenOptionLines,
+  kitchenTicketSections,
+  type KitchenItemLike,
+} from "./kitchen-tickets";
 import { kitchenNotesOf } from "./kitchen-order-note";
+import { formatDailyOrderNumber } from "./order-number";
+import { getScheduledLabel } from "./scheduled-orders";
 
 export interface KitchenChitOrder {
   _id: string;
@@ -19,7 +26,13 @@ export interface KitchenChitOrder {
    * `NOTE: …` (`kitchenNotesOf`); absent prints no note.
    */
   customerData?: unknown;
+  /** The day's order number ("#12"); absent prints the id reference. */
+  dailyNumber?: number | null;
+  /** A pre-order's requested time (UTC ISO); absent = cook now. */
+  scheduledFor?: string | null;
 }
+
+type ChitItem = KitchenChitOrder["items"][number];
 
 /** 58mm printhead width in characters, matching the receipt layouts. */
 const CHIT_WIDTH = 32;
@@ -66,16 +79,65 @@ export function wrapChitText(text: string, width: number, firstPrefix: string, i
   return lines;
 }
 
-/** One line item: "2x Burger (Large)" plus indented addon and note lines. */
-function chitItemLines(item: KitchenChitOrder["items"][number]): string[] {
-  const lines = [`${item.quantity}x ${kitchenItemLabel(item as KitchenItemLike)}`];
-  for (const addon of item.addons ?? []) {
-    lines.push(`   + ${addon.name}`);
+/**
+ * One line item: "2x Burger", then each choice group, add-on and note on its
+ * own indented line — the same breakdown as the board's ticket card.
+ * `indent` nests a combo's lines under the combo's heading.
+ */
+function chitItemLines(item: ChitItem, indent = ""): string[] {
+  const slot = item.isBundleItem && item.slotName ? item.slotName.trim() : "";
+  const lines = wrapChitText(
+    `${item.quantity}x ${slot ? `[${slot}] ` : ""}${item.menuItemName}`,
+    CHIT_WIDTH,
+    indent,
+    `${indent}   `,
+  );
+  const detailIndent = `${indent}   `;
+  for (const option of kitchenOptionLines(item)) {
+    lines.push(...wrapChitText(option, CHIT_WIDTH, `${detailIndent}- `, `${detailIndent}  `));
+  }
+  for (const addon of kitchenAddonLines(item)) {
+    lines.push(...wrapChitText(addon, CHIT_WIDTH, `${detailIndent}+ `, `${detailIndent}  `));
   }
   if (item.specialInstructions) {
-    lines.push(...wrapChitText(`${item.specialInstructions} **`, CHIT_WIDTH, "   ** ", "      "));
+    lines.push(
+      ...wrapChitText(`${item.specialInstructions} **`, CHIT_WIDTH, `${detailIndent}** `, `${detailIndent}   `),
+    );
   }
   return lines;
+}
+
+/** Every line in rung-up order, each combo's lines under a COMBO heading. */
+function chitItemsLines(items: readonly ChitItem[]): string[] {
+  return kitchenTicketSections(items).flatMap((section) =>
+    section.kind === "item"
+      ? chitItemLines(items[section.index])
+      : [
+          ...wrapChitText(`COMBO: ${section.bundleName}`, CHIT_WIDTH, "", "  "),
+          ...section.indexes.flatMap((index) => chitItemLines(items[index], "  ")),
+        ],
+  );
+}
+
+/** "12" when the day's number is known, else the id reference chits always printed. */
+function chitOrderRef(order: KitchenChitOrder): string {
+  const daily = formatDailyOrderNumber(order.dailyNumber).replace(/^#/, "");
+  return daily || order._id.slice(-8).toUpperCase();
+}
+
+/** "For: Thu, Nov 14 · 5:30 PM" on a pre-order; nothing otherwise. */
+function chitScheduleLines(order: KitchenChitOrder): string[] {
+  const customerData =
+    typeof order.customerData === "object" && order.customerData !== null && !Array.isArray(order.customerData)
+      ? (order.customerData as Record<string, unknown>)
+      : null;
+  const label = getScheduledLabel({
+    _id: order._id,
+    status: "",
+    scheduledFor: order.scheduledFor,
+    customerData,
+  });
+  return label ? wrapChitText(`SCHEDULED: ${label}`, CHIT_WIDTH, "", "  ") : [];
 }
 
 /** The order's own note(s), wrapped, with a divider under them; none = nothing. */
@@ -106,13 +168,14 @@ export function buildKitchenChitText(order: KitchenChitOrder, options: KitchenCh
     center("*** KITCHEN ***"),
     ...chitReprintLines(options),
     DIVIDER,
-    `Order #: ${order._id.slice(-8).toUpperCase()}`,
+    `Order #: ${chitOrderRef(order)}`,
     chitTimeLine(order._creationTime),
+    ...chitScheduleLines(order),
     ...(typeLabel ? [`Type: ${typeLabel}`] : []),
     `For: ${order.customerName}`,
     DIVIDER,
     ...chitNoteLines(order.customerData),
-    ...order.items.flatMap(chitItemLines),
+    ...chitItemsLines(order.items),
     DIVIDER,
   ];
 

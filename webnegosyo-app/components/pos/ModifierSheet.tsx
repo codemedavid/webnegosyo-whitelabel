@@ -15,7 +15,12 @@ import { KitchenNoteField } from "./KitchenNoteField";
 import { useScrollNoteIntoView } from "./use-scroll-note-into-view";
 import { formatPeso } from "../../lib/format";
 import {
+  describeSelectionProgress,
+  describeSelectionRule,
   isOptionAvailable,
+  isQuantityGroup,
+  isSelectionAtMax,
+  isSingleSelectGroup,
   unfillableRequiredGroup,
   type ModifierGroup,
   type ModifierOption,
@@ -31,6 +36,14 @@ import {
   validateSelection,
   type PosCartSelection,
 } from "../../lib/pos-cart";
+import {
+  canAddPortion,
+  groupPortions,
+  maxOptionPortions,
+  optionPortions,
+  selectionFor,
+  setOptionPortions,
+} from "../../lib/pos-addon-portions";
 
 interface ModifierSheetProps {
   visible: boolean;
@@ -53,43 +66,40 @@ interface ModifierSheetProps {
   onConfirm: (selections: PosCartSelection[], quantity: number, note?: string) => void;
 }
 
-function toSelection(
-  group: ModifierGroup,
-  option: ModifierOption,
-  pricing: OrderTypePricing | null,
-): PosCartSelection {
-  return {
-    groupId: group.id,
-    groupName: group.name,
-    optionId: option.id,
-    optionName: option.name,
-    priceModifier: resolveModifierPrice(option.price_modifier, pricing),
-    listPriceModifier: option.price_modifier,
-  };
-}
-
 /**
- * Options a group starts with — its defaults, clamped to the group's maximum.
- * A sold-out default is skipped: the cashier must never ring up a choice the
- * kitchen switched off just because it was pre-ticked.
+ * Options a group starts with — the web product page's `getDefaultSelection`:
+ * a single choice takes its default, or (when required) the first option still
+ * available; any other group takes its defaults, clamped to its maximum (an
+ * add-on amount group at one portion each). A sold-out default is skipped:
+ * the cashier must never ring up a choice the kitchen switched off just
+ * because it was pre-ticked.
  */
 function initialSelections(
   groups: ModifierGroup[],
   pricing: OrderTypePricing | null,
 ): PosCartSelection[] {
   return groups.flatMap((group) => {
+    if (isSingleSelectGroup(group)) {
+      const pick =
+        group.options.find((o) => o.is_default && isOptionAvailable(o)) ??
+        (group.min_select > 0 ? group.options.find(isOptionAvailable) : undefined);
+      return pick ? [selectionFor(group, pick, pricing)] : [];
+    }
     const defaults = group.options.filter((o) => o.is_default && isOptionAvailable(o));
     const limit = group.max_select ?? defaults.length;
-    return defaults.slice(0, limit).map((o) => toSelection(group, o, pricing));
+    return defaults.slice(0, limit).map((o) => selectionFor(group, o, pricing));
   });
 }
 
 /**
  * Option picker shown before a configurable item joins the cart.
  *
- * Single-select groups (max_select === 1) swap the chosen option; multi-select
- * groups toggle and are blocked at their maximum, so the cashier physically
- * cannot build an invalid line.
+ * Single-select groups swap the chosen option; pick-several groups toggle and
+ * grey out what is left once full, so the cashier physically cannot build an
+ * invalid line. Add-on amount groups (`selection_mode: "quantity"`, the web's
+ * "Add-ons" mode) get a − n + stepper per add-on instead, and their limits
+ * count portions — "Fried Rice ×2" is one pick, as on web checkout. Each
+ * group shows the web product page's own rule and progress wording.
  *
  * A sold-out option (switched off, or simple stock at zero) is listed but
  * cannot be picked; a required group with nothing left refuses the dish.
@@ -142,11 +152,14 @@ export function ModifierSheet({
         return current.filter((s) => s.optionId !== option.id);
       }
 
-      if (group.max_select === 1) return [...others, toSelection(group, option, pricing)];
+      if (isSingleSelectGroup(group)) return [...others, selectionFor(group, option, pricing)];
       if (group.max_select !== null && inGroup.length >= group.max_select) return current;
-      return [...current, toSelection(group, option, pricing)];
+      return [...current, selectionFor(group, option, pricing)];
     });
   };
+
+  const setPortions = (group: ModifierGroup, option: ModifierOption, portions: number) =>
+    setSelections((current) => setOptionPortions(current, group, option, portions, pricing));
 
   // The note goes along only when one was written, so a caller that never
   // asked for one sees the call it always did.
@@ -186,18 +199,42 @@ export function ModifierSheet({
                 Every {unfillable.name} choice is sold out, so this can&apos;t be added right now.
               </Text>
             )}
-            {groups.map((group) => (
+            {groups.map((group) => {
+              const isAmounts = isQuantityGroup(group);
+              const picked = groupPortions(selections, group.id);
+              const isFull = isSelectionAtMax(group, picked);
+              const progress = describeSelectionProgress(group, picked);
+              return (
               <View key={group.id} style={styles.group}>
-                <Text style={styles.groupName}>
-                  {group.name}
-                  <Text style={styles.groupRule}>
-                    {group.min_select > 0 ? "  Required" : "  Optional"}
-                  </Text>
-                </Text>
+                <Text style={styles.groupName}>{group.name}</Text>
+                <View style={styles.ruleRow}>
+                  <Text style={styles.groupRule}>{describeSelectionRule(group)}</Text>
+                  {progress && <Text style={styles.groupProgress}>{progress}</Text>}
+                </View>
 
-                {group.options.map((option) => {
+                {isAmounts && group.options.map((option) => {
+                  const hint = isOptionAvailable(option)
+                    ? describeStockHint(optionCeilings?.get(option.id), 0)
+                    : null;
+                  return (
+                    <PortionRow
+                      key={option.id}
+                      name={option.name}
+                      price={resolveModifierPrice(option.price_modifier, pricing)}
+                      portions={optionPortions(selections, option.id)}
+                      maxPortions={maxOptionPortions(option)}
+                      canAddMore={canAddPortion(selections, group)}
+                      stockHint={hint}
+                      onChange={(portions) => setPortions(group, option, portions)}
+                    />
+                  );
+                })}
+
+                {!isAmounts && group.options.map((option) => {
                   const chosen = isChosen(option);
                   const isSoldOut = !isOptionAvailable(option);
+                  // Full pick-several group: what is not chosen waits greyed out.
+                  const isBlocked = !chosen && !isSoldOut && isFull;
                   const modifier = resolveModifierPrice(option.price_modifier, pricing);
                   const hint = isSoldOut ? null : describeStockHint(optionCeilings?.get(option.id), 0);
                   return (
@@ -207,11 +244,12 @@ export function ModifierSheet({
                         styles.option,
                         chosen && styles.optionChosen,
                         isSoldOut && styles.optionSoldOut,
+                        isBlocked && styles.optionFull,
                       ]}
                       onPress={() => toggle(group, option)}
-                      disabled={isSoldOut}
+                      disabled={isSoldOut || isBlocked}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: chosen, disabled: isSoldOut }}
+                      accessibilityState={{ selected: chosen, disabled: isSoldOut || isBlocked }}
                       accessibilityLabel={isSoldOut ? `${option.name}, sold out` : undefined}
                     >
                       <Text
@@ -246,7 +284,8 @@ export function ModifierSheet({
                   <Text style={styles.error}>{validation.errors[group.id]}</Text>
                 )}
               </View>
-            ))}
+              );
+            })}
             <View style={styles.note}>
               <KitchenNoteField value={note} onChange={setNote} onFocus={onNoteFocus} />
             </View>
@@ -285,6 +324,98 @@ export function ModifierSheet({
   );
 }
 
+interface PortionRowProps {
+  name: string;
+  /** One portion's charge on this channel. */
+  price: number;
+  portions: number;
+  /** What this add-on alone allows (`maxOptionPortions`); 0 = sold out. */
+  maxPortions: number;
+  /** False once the group's portion limit is reached. */
+  canAddMore: boolean;
+  stockHint: { label: string; isOut: boolean } | null;
+  onChange: (portions: number) => void;
+}
+
+/** One add-on with its amount: tap the name for the first, then − n +. */
+function PortionRow({ name, price, portions, maxPortions, canAddMore, stockHint, onChange }: PortionRowProps) {
+  const isChosen = portions > 0;
+  const isSoldOut = maxPortions === 0;
+  const isAddDisabled = !canAddMore || portions >= maxPortions;
+  return (
+    <View
+      style={[
+        styles.option,
+        isChosen && styles.optionChosen,
+        isSoldOut && !isChosen && styles.optionSoldOut,
+        !isSoldOut && !isChosen && isAddDisabled && styles.optionFull,
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.portionLabel}
+        onPress={() => onChange(1)}
+        disabled={isChosen || isAddDisabled}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isChosen, disabled: !isChosen && isAddDisabled }}
+        accessibilityLabel={isSoldOut ? `${name}, sold out` : undefined}
+      >
+        <Text
+          style={[
+            styles.optionName,
+            isChosen && styles.optionNameChosen,
+            isSoldOut && !isChosen && styles.optionNameSoldOut,
+          ]}
+        >
+          {name}
+        </Text>
+        <View style={styles.portionMeta}>
+          {isSoldOut && <Text style={styles.soldOutLabel}>Sold out</Text>}
+          {stockHint && (
+            <Text style={[styles.stockHint, stockHint.isOut && styles.stockHintOut]}>
+              {stockHint.label}
+            </Text>
+          )}
+          {price !== 0 && (
+            <Text style={styles.optionPrice}>
+              {price > 0 ? "+" : ""}
+              {formatPeso(price)}
+              {portions > 1 ? ` each · ${formatPeso(price * portions)}` : ""}
+            </Text>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      <View style={styles.portionStepper}>
+        {isChosen && (
+          <>
+            <TouchableOpacity
+              style={styles.portionButton}
+              onPress={() => onChange(portions - 1)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove one ${name}`}
+            >
+              <Text style={styles.stepText}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.portionCount}>{portions}</Text>
+          </>
+        )}
+        <TouchableOpacity
+          style={[styles.portionButton, isAddDisabled && styles.portionButtonDisabled]}
+          onPress={() => onChange(portions + 1)}
+          disabled={isAddDisabled}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Add one ${name}`}
+          accessibilityState={{ disabled: isAddDisabled }}
+        >
+          <Text style={[styles.stepText, isAddDisabled && styles.stepTextDisabled]}>+</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(29,24,21,0.5)", justifyContent: "flex-end" },
   sheet: {
@@ -306,7 +437,16 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: spacing.xl },
   group: { marginTop: spacing.xl },
   groupName: { ...typography.eyebrow, color: colors.textSecondary },
+  ruleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginTop: 2,
+  },
   groupRule: { ...typography.small, color: colors.textTertiary, letterSpacing: 0 },
+  groupProgress: { ...typography.small, color: colors.textSecondary, fontWeight: "600" },
   option: {
     flexDirection: "row",
     alignItems: "center",
@@ -364,4 +504,22 @@ const styles = StyleSheet.create({
   },
   addButtonDisabled: { backgroundColor: colors.textTertiary },
   addText: { ...typography.heading, color: colors.textOnDark },
+  /** An option that cannot be picked because its group is full. */
+  optionFull: { opacity: 0.5 },
+  portionLabel: { flex: 1, paddingRight: spacing.md },
+  portionMeta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm, marginTop: 2 },
+  portionStepper: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  portionButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    backgroundColor: colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  portionButtonDisabled: { opacity: 0.4 },
+  portionCount: { ...typography.heading, color: colors.textPrimary, minWidth: 24, textAlign: "center" },
+  stepTextDisabled: { color: colors.textTertiary },
 });

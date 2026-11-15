@@ -7,7 +7,7 @@ Every API route and server action that is declared through `defineRoute` / `defi
 which inputs it validates. Entry points that still check access by hand are listed in
 `tests/unit/guardrails/entry-point-exceptions.json`; that list can only shrink.
 
-## Declared entry points (52)
+## Declared entry points (55)
 
 | Entry | Who may call | Store | Branch | Rate limit | Validates |
 |---|---|---|---|---|---|
@@ -55,6 +55,9 @@ which inputs it validates. Entry points that still check access by hand are list
 | GET /api/app/v1/resolve | anyone | — | — | 60 per 1m per ip (`app:resolve`) | — |
 | POST /api/app/v1/vouchers/preview | anyone | — | — | 30 per 1m per ip (`app:voucher-preview`) | — |
 | POST /api/customers/sync-order-lifecycle | staff: `ORDER_READ_KEYS` (edit, app token) | named, checked | own | not stated | body |
+| POST /api/exports/formats | staff: `reports` (edit, session or app token) | named, checked | store-wide | 20 per 1m per user (`exports-formats`) | body |
+| POST /api/exports | staff: `reports` (view, session or app token) | named, checked | any | 30 per 1m per user (`exports-preview`) | body |
+| GET /api/exports | staff: `reports` (view, session or app token) | named, checked | any | 6 per 1m per user (`exports-file`) | query |
 | GET /api/gov-discounts/approvers | staff: `pos` (view, app token) | named, checked | any | not stated | query |
 | GET /api/loyalty/maintenance | cron secret | — | — | not stated | — |
 | POST /api/messenger/chat-cart | anyone | — | — | 30 per 1m per ip (`msgr-chat-cart`) | body |

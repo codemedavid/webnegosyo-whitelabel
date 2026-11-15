@@ -25,6 +25,10 @@ export interface KitchenOrderLike {
   promisedReadyAt?: string;
   /** Raw checkout payload; carries `table_number` for a seated order. */
   customerData?: Record<string, unknown> | null;
+  /** The day's order number the cashier sees ("#12"); absent on older rows. */
+  dailyNumber?: number | null;
+  /** Requested time of a pre-order (UTC ISO). Absent = cook now. */
+  scheduledFor?: string | null;
 }
 
 export interface KitchenItemLike {
@@ -33,8 +37,14 @@ export interface KitchenItemLike {
   quantity: number;
   variation?: string;
   variationSelections?: { typeName: string; optionName: string; priceAdjustment?: number }[];
-  addons?: { name: string; price?: number }[];
+  addons?: { name: string; price?: number; quantity?: number }[];
   specialInstructions?: string;
+  /** Set on the lines of a combo, so the board can fold them under its name. */
+  isBundleItem?: boolean;
+  bundleId?: string;
+  bundleName?: string;
+  /** The combo slot this line fills ("Drink", "Side"). */
+  slotName?: string;
 }
 
 export interface KitchenTicket<
@@ -185,4 +195,102 @@ export function aggregateAllDay(tickets: readonly KitchenTicket[]): AllDayLine[]
   return [...totals.entries()]
     .map(([label, quantity]) => ({ label, quantity }))
     .sort((a, b) => b.quantity - a.quantity);
+}
+
+const WHITESPACE_RUN = /\s+/g;
+
+function cleanText(value: unknown): string {
+  return typeof value === "string" ? value.replace(WHITESPACE_RUN, " ").trim() : "";
+}
+
+/**
+ * How the dish varies, one line per choice group: "Size: Large",
+ * "Add-ons: Cheese, Egg ×2". Several picks from one group share its line, in
+ * the order they were chosen. A line with no grouped choices falls back to the
+ * flat `variation` text web checkout writes ("Fried, Garlic").
+ *
+ * The board used to squeeze all of this into brackets after the dish name, so
+ * "Milk Tea (UPSIZE, Iced, 50%)" never said which choice was which and a long
+ * order read as one run-on line.
+ */
+export function kitchenOptionLines(item: Pick<KitchenItemLike, "variation" | "variationSelections">): string[] {
+  const groups: { title: string; options: string[] }[] = [];
+  for (const selection of item.variationSelections ?? []) {
+    const option = cleanText(selection?.optionName);
+    if (!option) continue;
+    const title = cleanText(selection?.typeName);
+    const group = groups.find((entry) => entry.title.toLowerCase() === title.toLowerCase());
+    if (group) {
+      group.options.push(option);
+    } else {
+      groups.push({ title, options: [option] });
+    }
+  }
+  if (groups.length > 0) {
+    return groups.map(({ title, options }) =>
+      title ? `${title}: ${options.join(", ")}` : options.join(", "),
+    );
+  }
+  const variation = cleanText(item.variation);
+  return variation ? [variation] : [];
+}
+
+/** "×2" / "x2" already on the end of a name (web checkout writes it in). */
+const TRAILING_QUANTITY = /[×x]\s*\d+$/i;
+
+/**
+ * Add-ons as the cook reads them: "Extra Shot ×2". The platform stores names
+ * with the count already written in; Convex keeps it in `quantity` — which the
+ * board dropped, so two extra shots read as one.
+ */
+export function kitchenAddonLines(item: Pick<KitchenItemLike, "addons">): string[] {
+  const lines: string[] = [];
+  for (const addon of item.addons ?? []) {
+    const name = cleanText(addon?.name);
+    if (!name) continue;
+    const quantity = addon?.quantity;
+    const needsCount =
+      typeof quantity === "number" && Number.isFinite(quantity) && quantity > 1 && !TRAILING_QUANTITY.test(name);
+    lines.push(needsCount ? `${name} ×${quantity}` : name);
+  }
+  return lines;
+}
+
+export type KitchenTicketSection =
+  | { kind: "item"; index: number }
+  | { kind: "combo"; bundleId: string; bundleName: string; indexes: number[] };
+
+const DEFAULT_COMBO_NAME = "Combo";
+
+/**
+ * A ticket's lines in the order they were rung up, with each combo's lines
+ * folded under one heading where its first line stood. Indexes point into the
+ * ticket's `items`, so a struck-through line stays struck however it is drawn.
+ */
+export function kitchenTicketSections(
+  items: readonly Pick<KitchenItemLike, "isBundleItem" | "bundleId" | "bundleName">[],
+): KitchenTicketSection[] {
+  const sections: KitchenTicketSection[] = [];
+  const combos = new Map<string, Extract<KitchenTicketSection, { kind: "combo" }>>();
+  items.forEach((item, index) => {
+    const bundleId = item.isBundleItem ? cleanText(item.bundleId) : "";
+    if (!bundleId) {
+      sections.push({ kind: "item", index });
+      return;
+    }
+    const existing = combos.get(bundleId);
+    if (existing) {
+      existing.indexes.push(index);
+      return;
+    }
+    const combo = {
+      kind: "combo" as const,
+      bundleId,
+      bundleName: cleanText(item.bundleName) || DEFAULT_COMBO_NAME,
+      indexes: [index],
+    };
+    combos.set(bundleId, combo);
+    sections.push(combo);
+  });
+  return sections;
 }

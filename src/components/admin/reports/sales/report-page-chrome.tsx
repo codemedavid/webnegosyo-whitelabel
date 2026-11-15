@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Download } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import type { ReportContext } from '@/lib/reports/read/report-context'
@@ -38,9 +38,16 @@ interface ReportHeaderProps {
   /** A breakdown links back to the overview. */
   backHref?: string
   pageParams?: Record<string, string | null>
+  /** The sheets this page's Export button starts with; absent = no button. */
+  exportSheets?: readonly string[]
 }
 
-export function ReportHeader({ context, title, description, path, backHref, pageParams }: ReportHeaderProps) {
+/** The Export page with this report's dates, branch and sheets already picked. */
+export function exportPageHref(context: ReportContext, sheets: readonly string[]): string {
+  return reportHref(`${reportsPath(context)}/export`, { ...context.filter, compare: false }, { sheets: sheets.join(',') })
+}
+
+export function ReportHeader({ context, title, description, path, backHref, pageParams, exportSheets }: ReportHeaderProps) {
   return (
     <header className="flex flex-col gap-4">
       <div className="min-w-0">
@@ -69,7 +76,18 @@ export function ReportHeader({ context, title, description, path, backHref, page
           today={context.today}
           pageParams={pageParams}
         />
-        <p className="text-[13px] font-medium text-muted-foreground tabular-nums">{periodCaption(context)}</p>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <p className="text-[13px] font-medium text-muted-foreground tabular-nums">{periodCaption(context)}</p>
+          {exportSheets && exportSheets.length > 0 && (
+            <Link
+              href={exportPageHref(context, exportSheets)}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-md text-[13.5px] font-bold text-wn-ink underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <Download className="size-4" aria-hidden />
+              Export these figures
+            </Link>
+          )}
+        </div>
       </div>
     </header>
   )

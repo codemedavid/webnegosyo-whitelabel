@@ -164,6 +164,7 @@ function readOrders(client: SupabaseClient, tenantId: string, window: SalesReadW
       .select(ORDER_SELECT)
       .eq('tenant_id', tenantId)
       .gte('created_at', new Date(window.readStart).toISOString())
+    if (window.readEnd !== undefined) query = query.lt('created_at', new Date(window.readEnd).toISOString())
     if (window.outletId) query = query.eq('outlet_id', window.outletId)
     return query.order('created_at', { ascending: false }).order('id').range(from, to)
   })

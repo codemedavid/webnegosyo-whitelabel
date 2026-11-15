@@ -45,6 +45,8 @@ export interface ReportFilterBarProps {
   today: string
   /** The page's default Compare state; only a change from it counts in "Filters · N". */
   defaultCompare?: boolean
+  /** false = no Compare switch (an export never compares periods). */
+  hasCompare?: boolean
   className?: string
 }
 
@@ -130,6 +132,7 @@ interface FilterControlsProps {
   lockedBranchLabel?: string
   onBranch: (branch: string | null) => void
   onCompare: (compare: boolean) => void
+  hasCompare: boolean
 }
 
 /** Custom dates, branch and Compare: one row on desktop, stacked in the sheet. */
@@ -145,6 +148,7 @@ function FilterControls({
   lockedBranchLabel,
   onBranch,
   onCompare,
+  hasCompare,
 }: FilterControlsProps) {
   return (
     <>
@@ -168,7 +172,7 @@ function FilterControls({
           hasVisibleLabel={layout === 'stacked'}
         />
       )}
-      <CompareSwitch isOn={value.compare} onChange={onCompare} />
+      {hasCompare && <CompareSwitch isOn={value.compare} onChange={onCompare} />}
     </>
   )
 }
@@ -195,6 +199,7 @@ export function ReportFilterBar({
   maxDays,
   today,
   defaultCompare = true,
+  hasCompare = true,
   className,
 }: ReportFilterBarProps) {
   const router = useRouter()
@@ -204,7 +209,7 @@ export function ReportFilterBar({
   const go = (next: ReportFilterValue) => router.push(buildHref(next), { scroll: false })
   const isCustomShown = value.preset === CUSTOM_PRESET || isCustomPicked
   const hasBranchPicker = !isBranchLocked && Array.isArray(branches) && branches.length > 0
-  const activeCount = (hasBranchPicker && value.branch ? 1 : 0) + (value.compare !== defaultCompare ? 1 : 0)
+  const activeCount = (hasBranchPicker && value.branch ? 1 : 0) + (hasCompare && value.compare !== defaultCompare ? 1 : 0)
 
   const choosePreset = (preset: string) => {
     if (preset === CUSTOM_PRESET) {
@@ -235,6 +240,7 @@ export function ReportFilterBar({
       lockedBranchLabel={lockedBranchLabel}
       onBranch={(branch) => go({ ...value, branch })}
       onCompare={(compare) => go({ ...value, compare })}
+      hasCompare={hasCompare}
     />
   )
 

@@ -59,6 +59,14 @@ export const TOOL_LABELS: Readonly<Record<string, string>> = {
   propose_ingredient: "Preparing the new ingredient…",
   get_delivery_setup: "Checking your Lalamove set-up…",
   find_lessons: "Finding the right video…",
+  get_activity_log: "Checking the activity log…",
+  get_order: "Looking up that order…",
+  export_report: "Preparing your file…",
+  get_shifts: "Checking the shifts and drawers…",
+  get_profit: "Working out your profit…",
+  build_custom_report: "Building your report…",
+  run_saved_report: "Making your saved report…",
+  follow_report_format: "Reading your format…",
 };
 
 export const WORKING_LABEL = "Working on it…";

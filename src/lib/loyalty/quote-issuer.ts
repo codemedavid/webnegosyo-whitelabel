@@ -84,6 +84,7 @@ export async function issueLoyaltyQuote(
   if (claimResult.error) throw new Error('Claim read failed')
   if (!claimResult.data)
     throw new LoyaltyQuoteError('The claim is invalid or expired.')
+  const cartItemIds = [...new Set(cart.lines.map((line) => line.menuItemId))]
   const [
     entitlement,
     tenant,
@@ -109,13 +110,16 @@ export async function issueLoyaltyQuote(
       .from('menu_items')
       .select('*')
       .eq('tenant_id', tenantId)
-      .in('id', [...new Set(cart.lines.map((line) => line.menuItemId))]),
+      .in('id', cartItemIds),
+    // Only the cart's dishes: a branch's whole board could pass the 1,000-row
+    // cap, and a difference cut off there would price the dish store-wide.
     outletId
       ? admin
           .from('outlet_menu_items')
           .select('*')
           .eq('tenant_id', tenantId)
           .eq('outlet_id', outletId)
+          .in('menu_item_id', cartItemIds)
       : Promise.resolve({ data: [], error: null }),
     admin
       .from('order_types')

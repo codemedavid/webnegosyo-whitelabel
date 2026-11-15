@@ -17,6 +17,8 @@ interface GoldenCase {
   expectAny?: string[]
   argsSubset?: Record<string, Record<string, unknown>>
   forbidTools?: string[]
+  /** The name of a spreadsheet attached to the message (their own report format). */
+  spreadsheet?: string
 }
 
 test.each(golden as GoldenCase[])('golden case is valid: $prompt', async (testCase) => {

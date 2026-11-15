@@ -15,7 +15,7 @@
  */
 
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import { render, screen, fireEvent, within } from "@testing-library/react-native";
 import { TicketCard } from "./TicketCard";
 import type { KitchenTicket } from "../../lib/kitchen-tickets";
 
@@ -80,17 +80,122 @@ function renderCard(props: Partial<React.ComponentProps<typeof TicketCard>> = {}
 }
 
 describe("ticket content", () => {
-  it("shows the short order reference the pass calls out", () => {
+  it("shows the id reference the cashier's order card falls back to", () => {
     renderCard();
-    expect(screen.getByText("#89EF")).toBeTruthy();
+    expect(screen.getByText("#J57ABC12")).toBeTruthy();
   });
 
-  it("lists every line with its quantity", () => {
+  it("shows the day's order number — the one the cashier calls out", () => {
+    renderCard({ ticket: { ...ticket(), order: { ...ticket().order, dailyNumber: 12 } } });
+    expect(screen.getByText("#12")).toBeTruthy();
+  });
+
+  it("lists every line with its quantity, the variation on its own line", () => {
     renderCard();
     expect(screen.getByText("2×")).toBeTruthy();
-    expect(screen.getByText("Burger (Large)")).toBeTruthy();
+    expect(screen.getByText("Burger")).toBeTruthy();
+    expect(screen.getByText("Large")).toBeTruthy();
     expect(screen.getByText("1×")).toBeTruthy();
     expect(screen.getByText("Coke")).toBeTruthy();
+  });
+
+  it("names each choice group, one line per group, picks from one group together", () => {
+    renderCard({
+      ticket: {
+        ...ticket(),
+        items: [
+          {
+            orderId: "j57abc123xyz789ef",
+            menuItemName: "Milk Tea",
+            quantity: 1,
+            variationSelections: [
+              { typeName: "SIZE", optionName: "UPSIZE", priceAdjustment: 10 },
+              { typeName: "Sugar", optionName: "50%", priceAdjustment: 0 },
+              { typeName: "Add-ons", optionName: "Pearls", priceAdjustment: 15 },
+              { typeName: "Add-ons", optionName: "Cheese foam ×2", priceAdjustment: 40 },
+              { typeName: "Options", optionName: "", priceAdjustment: 0 },
+            ],
+          },
+        ],
+      },
+    });
+    expect(screen.getByText("Milk Tea")).toBeTruthy();
+    expect(screen.getByText("SIZE: UPSIZE")).toBeTruthy();
+    expect(screen.getByText("Sugar: 50%")).toBeTruthy();
+    expect(screen.getByText("Add-ons: Pearls, Cheese foam ×2")).toBeTruthy();
+    // An empty pick from a group prints nothing, not "Options: ".
+    expect(screen.queryByTestId("ticket-item-option-0-3")).toBeNull();
+  });
+
+  it("shows how many of each add-on, when the count rides in `quantity`", () => {
+    renderCard({
+      ticket: {
+        ...ticket(),
+        items: [
+          {
+            orderId: "j57abc123xyz789ef",
+            menuItemName: "Latte",
+            quantity: 1,
+            addons: [
+              { name: "Extra Shot", price: 30, quantity: 2 },
+              // The platform writes the count into the name; never doubled.
+              { name: "Oat Milk ×2", price: 0, quantity: 2 },
+            ],
+          },
+        ],
+      },
+    });
+    expect(screen.getByText("+ Extra Shot ×2")).toBeTruthy();
+    expect(screen.getByText("+ Oat Milk ×2")).toBeTruthy();
+  });
+
+  it("folds a combo's lines under its name, each with the slot it fills", () => {
+    const comboLine = {
+      orderId: "j57abc123xyz789ef",
+      quantity: 1,
+      isBundleItem: true,
+      bundleId: "b1",
+      bundleName: "Family Meal",
+    };
+    renderCard({
+      ticket: {
+        ...ticket(),
+        items: [
+          { ...comboLine, menuItemName: "Fried Chicken", slotName: "Main" },
+          { orderId: "j57abc123xyz789ef", menuItemName: "Halo-halo", quantity: 1 },
+          {
+            ...comboLine,
+            menuItemName: "Iced Tea",
+            slotName: "Drink",
+            variationSelections: [{ typeName: "Size", optionName: "Large", priceAdjustment: 0 }],
+          },
+        ],
+      },
+    });
+    const combo = screen.getByTestId("ticket-combo-b1");
+    expect(within(combo).getByText("COMBO · Family Meal")).toBeTruthy();
+    expect(within(combo).getByText("MAIN")).toBeTruthy();
+    expect(within(combo).getByText("Fried Chicken")).toBeTruthy();
+    expect(within(combo).getByText("DRINK")).toBeTruthy();
+    expect(within(combo).getByText("Iced Tea")).toBeTruthy();
+    expect(within(combo).getByText("Size: Large")).toBeTruthy();
+    expect(within(combo).queryByText("Halo-halo")).toBeNull();
+    expect(screen.getByText("Halo-halo")).toBeTruthy();
+  });
+
+  it("says when a pre-order is wanted", () => {
+    renderCard({
+      ticket: {
+        ...ticket(),
+        order: { ...ticket().order, customerData: { scheduled_for_label: "Sat, Nov 15 · 5:30 PM" } },
+      },
+    });
+    expect(screen.getByText("SCHEDULED · Sat, Nov 15 · 5:30 PM")).toBeTruthy();
+  });
+
+  it("says nothing about a schedule on a cook-now order", () => {
+    renderCard();
+    expect(screen.queryByText(/SCHEDULED/)).toBeNull();
   });
 
   it("shows add-ons, so a cook does not plate a bare burger", () => {
@@ -184,19 +289,22 @@ describe("ticket actions", () => {
 describe("striking items off", () => {
   it("strikes a line when the cook taps it, and only that line", () => {
     renderCard();
-    const burger = screen.getByText("Burger (Large)");
+    const burger = screen.getByText("Burger");
     fireEvent.press(burger);
 
     expect(flatStyle(burger).textDecorationLine).toBe("line-through");
+    // The whole dish goes: its variation and add-on with it.
+    expect(flatStyle(screen.getByText("Large")).textDecorationLine).toBe("line-through");
+    expect(flatStyle(screen.getByText("+ Extra Cheese")).textDecorationLine).toBe("line-through");
     expect(flatStyle(screen.getByText("Coke")).textDecorationLine).toBeUndefined();
   });
 
   it("un-strikes on a second tap, so a misfire is recoverable", () => {
     renderCard();
-    const burger = screen.getByText("Burger (Large)");
+    const burger = screen.getByText("Burger");
     fireEvent.press(burger);
     fireEvent.press(burger);
-    expect(flatStyle(screen.getByText("Burger (Large)")).textDecorationLine).toBeUndefined();
+    expect(flatStyle(screen.getByText("Burger")).textDecorationLine).toBeUndefined();
   });
 });
 

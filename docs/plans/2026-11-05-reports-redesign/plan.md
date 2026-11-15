@@ -301,3 +301,67 @@ Every phase is built **TDD** (registry contract tests, parity property tests for
 5. **Scheduled emails**: defer to Phase 8 because outbound email isn't set up. A daily push summary in the app could come sooner.
 6. **Convex / tenant-DB stores**: new reports are platform-only for now; their current pages stay. *(Recommended)*
 7. **Tax wording**: VAT block labelled "for your records". No BIR-compliance claim until a PH accountant reviews it. *(Recommended)*
+
+---
+
+## 10. Addendum (2026-11-14): three doors — Today · Reports · Export
+
+Status: **PROPOSED, awaiting the owner's OK.** Nothing in this section is built. It changes the SHAPE of §4 (what the owner sees first), not the engine or the phases' content. It exists because the Export center (`docs/plans/2026-11-14-export-center-and-owl-reports.md`) is now built, which makes part of §6.6, A5 and W4 done and gives every report a way out.
+
+### 10.1 Why
+
+Measured on 2026-11-14: ~15 report destinations on web and ~22 in the app; sales, orders and average order appear in ≥ 6 places on web and ≥ 9 in the app; the app has ~14 different date pickers. An owner asks one of three things, so the landing should have three doors and nothing else:
+
+| Door | The question | What it is |
+|---|---|---|
+| **Today** | "Kumusta ngayon?" | Live: orders in progress, today vs the same weekday, money received, what needs me. No date picker. Web = Home; app = Home. |
+| **Reports** | "Kumusta ang negosyo?" | ONE period bar, then Overview, then the short report list of §4.1. Any date. |
+| **Export** | "Bigyan mo ako ng file." | Built: 25 sheets, packs, any date range, preview, My formats, Recent exports; Owl makes the same files. |
+
+### 10.2 What moves (no report is deleted)
+
+**Web sidebar**
+
+| Today | After |
+|---|---|
+| Reports group: Sales · Export · Cash & remits; Money: Expenses · Profit; Stock: Stock history | **Reports** (one entry, opens Overview) with the §4.1 list inside it; **Export** stays its own entry beside it |
+| Cash & remits, Senior & PWD book, Expenses, Stock history, Store activity as separate hubs | The pages stay where they are. Reports lists them under **Books** as links, and each gets "Export these figures" (opens Export with its sheets and dates filled in) |
+| A date picker per page | The Reports period bar. A linked Book page opens on the period Reports was showing |
+
+**Merchant app** (`REPORTS_SECTIONS` / `REPORTS_DOORS` in `lib/hubs.ts`)
+
+| Today | After |
+|---|---|
+| Reports tab = customer dashboard + "Dig deeper": Money (Expenses, Profit) · Sales (Analytics › Trends, Growth) · Products (Performance, Daily report) · Branches · Store (Activity) + doors (Guest list, Rewards, Texts) + Export | Reports tab = **period bar + three rows of cards**: Overview (A1, shipped) · the report list · **Export**. The customer dashboard becomes the **Customers** report, one tap in |
+| Analytics, Trends, Growth | **Overview** + **Sales by day/month** (A2). The three screens are removed once A2 covers their numbers |
+| Performance (on-device engine) | **Items** (A3) |
+| Expenses, Profit, Daily report, Activity, Cash, Senior & PWD | Unchanged screens, listed under **Books**, opened on the Reports period |
+| ~14 date pickers | `ReportPeriodBar` only. A screen that must keep its own (Drawer, a single shift) says why in code |
+| On-device CSVs | Already retired on platform stores for Orders and Sales (Export E4). Customer list and expenses keep theirs until Export has the same content |
+
+### 10.3 Rules
+
+1. **A number has one home.** Sales, orders and average order are stated on Today (today only) and on Reports › Overview. Everywhere else shows its own subject (cash, stock, guests) and links to Overview instead of repeating them.
+2. **One period.** Picking dates in Reports carries into every report and Book opened from it, and into Export ("Export these figures").
+3. **Every report has the same way out**: an Export button pre-filled with its sheets, dates and branch. No screen builds its own file.
+4. **Reading keys decide what is listed**, as today (`reports`, `costs`, `cash_manage`, `inventory`, `customers`, `activity_view`). A door with nothing behind it for an account is not drawn.
+5. **Convex and tenant-DB stores keep today's screens** until the coverage phase (decision 6 of §9 stands).
+
+### 10.4 Build order (replaces nothing in §7; slots in)
+
+| Step | Scope | Ships |
+|---|---|---|
+| **T1** | App Reports landing: period bar + Overview + report list + Export; customer dashboard moves to Customers. No screen removed yet | OTA |
+| **T2** | A2 Sales by day/month, then remove Analytics / Trends / Growth on platform stores | OTA |
+| **T3** | A3 Items, then remove Performance's on-device engine on platform stores | OTA |
+| **T4** | Web: one Reports entry + Books links + "Export these figures" on Cash, Stock, Expenses, Senior & PWD, Activity (W1's sidebar part) | Web |
+| **T5** | Period carried into Book pages (web + app); delete the leftover date pickers | Web + OTA |
+
+Each removal ships only after the replacement shows the same figures on a real store for the same dates (the parity rule of §3.1).
+
+### 10.5 Decisions for the owner
+
+1. **Landing**: the app's Reports tab opens on the period bar + Overview, with the customer dashboard one tap in as "Customers". *(Recommended: it answers "kumusta ang negosyo" first.)* Or keep the customer dashboard as the landing and add the three doors above it.
+2. **Export**: its own sidebar entry and its own row in the app. *(Recommended.)* Or only a button inside Reports.
+3. **Removal**: delete Analytics, Trends, Growth and Performance once A2 / A3 match them. *(Recommended.)* Or keep them one release behind a "Classic reports" link.
+4. **Order**: T1 → T5 as listed, app first, as decided on 2026-11-05. Or T4 (web sidebar) first because it is the smallest.

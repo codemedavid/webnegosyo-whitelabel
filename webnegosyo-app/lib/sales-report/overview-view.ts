@@ -4,7 +4,7 @@
  */
 
 import { describeChange, formatMetric } from "./format";
-import type { CompareTo, MetricDef, MetricId, ReportPreset, ReportRow, ReportSections } from "./types";
+import type { CompareTo, MetricDef, MetricId, MetricValues, ReportPreset, ReportRow, ReportSections } from "./types";
 
 /** The period chips, in the order an owner reaches for them. Custom opens the calendar. */
 export const OVERVIEW_PRESETS: readonly { label: string; value: ReportPreset }[] = [
@@ -45,7 +45,7 @@ export function trendMetrics(rows: readonly ReportRow[], metrics: readonly Metri
   const byId = new Map(metrics.map((metric) => [metric.id, metric]));
   return TREND_METRICS.flatMap((id) => {
     const metric = byId.get(id);
-    return metric && rows.some((row) => row.values[id] !== undefined) ? [metric] : [];
+    return metric && rows.some((row) => row.values[id] != null) ? [metric] : [];
   });
 }
 
@@ -99,7 +99,7 @@ export function whatChanged(sections: ReportSections, metrics: readonly MetricDe
     const change = describeChange(summary.values.net_sales, summary.previous.net_sales, net);
     if (change.arrow !== "flat") {
       const verb = change.arrow === "up" ? "up" : "down";
-      lines.push({ key: "sales", text: `Sales are ${verb} ${change.text.slice(2)} ${comparePhrase}.`, tone: change.tone, target: null });
+      lines.push({ key: "sales", text: `Net sales are ${verb} ${change.text.slice(2)} ${comparePhrase}.`, tone: change.tone, target: null });
     }
   }
   const items = sections.items?.ok ? sections.items.data.rows : [];
@@ -137,4 +137,57 @@ export function shareRows(rows: readonly ReportRow[], metric: MetricId, format: 
       detail: detailOf ? detailOf(row) : null,
     };
   });
+}
+
+/** The server's label for money taken with no method picked ("Not recorded"). */
+const UNSPECIFIED_PAYMENT_KEY = "unspecified";
+export const UNSPECIFIED_PAYMENT_LABEL = "Paid, method not picked";
+
+/** Payment rows as the Money received card names them. */
+export function paymentRowsForDisplay(rows: readonly ReportRow[]): ReportRow[] {
+  return rows.map((row) => (row.key === UNSPECIFIED_PAYMENT_KEY ? { ...row, label: UNSPECIFIED_PAYMENT_LABEL } : row));
+}
+
+export interface ReceivedLine {
+  key: "net_sales" | "delivery_fees" | "service_charge" | "still_to_collect" | "other";
+  label: string;
+  /** Signed centavos as they add up to money received. */
+  cents: number;
+  text: string;
+}
+
+export interface ReceivedBridge {
+  lines: ReceivedLine[];
+  receivedCents: number;
+  receivedText: string;
+}
+
+/**
+ * How net sales become the money received, so the two never look "off"
+ * (Koko Coffee 2026-11-14: Sales ₱2,575 beside payments adding to ₱2,605 —
+ * the ₱30 was a delivery fee). Received = net sales + delivery fees + service
+ * charge − still to collect; whatever is left (money taken beyond what an
+ * order owed) shows as its own line, so the sum always closes to the centavo.
+ * Null when the summary lacks a figure: never a guessed bridge.
+ */
+export function receivedBridge(values: MetricValues | null | undefined): ReceivedBridge | null {
+  if (!values) return null;
+  const net = values.net_sales;
+  const received = values.money_received;
+  if (typeof net !== "number" || typeof received !== "number") return null;
+  const delivery = values.delivery_fees ?? 0;
+  const service = values.service_charge ?? 0;
+  const unpaid = values.still_to_collect ?? 0;
+  const other = received - (net + delivery + service - unpaid);
+  const parts: Array<Omit<ReceivedLine, "text">> = [
+    { key: "net_sales", label: "Net sales", cents: net },
+    { key: "delivery_fees", label: "+ Delivery fees", cents: delivery },
+    { key: "service_charge", label: "+ Service charge", cents: service },
+    { key: "still_to_collect", label: "− Still to collect", cents: -unpaid },
+    { key: "other", label: other > 0 ? "+ Paid more than owed" : "− Other", cents: other },
+  ];
+  const lines = parts
+    .filter((part) => part.key === "net_sales" || part.cents !== 0)
+    .map((part) => ({ ...part, text: formatMetric(Math.abs(part.cents), "money") }));
+  return { lines, receivedCents: received, receivedText: formatMetric(received, "money") };
 }

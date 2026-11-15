@@ -1,4 +1,4 @@
-import { buildTrend, labelledBarIndexes, shareRows, trendMetrics, whatChanged } from "./overview-view";
+import { buildTrend, labelledBarIndexes, paymentRowsForDisplay, receivedBridge, shareRows, trendMetrics, whatChanged } from "./overview-view";
 import type { MetricDef, MetricId, ReportRow, ReportSections } from "./types";
 
 const metric = (id: MetricId, format: MetricDef["format"] = "money"): MetricDef => ({
@@ -52,7 +52,7 @@ describe("what changed", () => {
 
   it("says how sales moved, which dish moved them most, and what is unpaid", () => {
     expect(whatChanged(sections, METRICS, "on last week")).toEqual([
-      { key: "sales", text: "Sales are up ₱200 (+20%) on last week.", tone: "good", target: null },
+      { key: "sales", text: "Net sales are up ₱200 (+20%) on last week.", tone: "good", target: null },
       { key: "mover", text: "Tapsilog brought in ₱200 more than before.", tone: "good", target: "items" },
       { key: "unpaid", text: "₱500 is still to collect.", tone: "neutral", target: "orders" },
     ]);
@@ -74,5 +74,63 @@ describe("share rows", () => {
       { key: "a", label: "a", valueText: "₱3", share: 0.75, detail: null },
       { key: "b", label: "b", valueText: "₱1", share: 0.25, detail: null },
     ]);
+  });
+});
+
+describe("how net sales become money received", () => {
+  it("closes Koko Coffee's day: ₱2,575 net sales + ₱30 delivery = ₱2,605 received", () => {
+    const bridge = receivedBridge({ net_sales: 257_500, delivery_fees: 3_000, service_charge: 0, still_to_collect: 0, money_received: 260_500 });
+    expect(bridge).toEqual({
+      lines: [
+        { key: "net_sales", label: "Net sales", cents: 257_500, text: "₱2,575" },
+        { key: "delivery_fees", label: "+ Delivery fees", cents: 3_000, text: "₱30" },
+      ],
+      receivedCents: 260_500,
+      receivedText: "₱2,605",
+    });
+  });
+
+  it("takes out what is still owed and names money taken beyond the bill", () => {
+    const bridge = receivedBridge({ net_sales: 100_000, delivery_fees: 0, service_charge: 5_000, still_to_collect: 20_000, money_received: 86_000 });
+    expect(bridge?.lines.map((line) => [line.label, line.cents])).toEqual([
+      ["Net sales", 100_000],
+      ["+ Service charge", 5_000],
+      ["− Still to collect", -20_000],
+      ["+ Paid more than owed", 1_000],
+    ]);
+  });
+
+  it("always sums to the money received, to the centavo", () => {
+    const cases = [
+      { net_sales: 0, money_received: 0 },
+      { net_sales: 12_345, delivery_fees: 678, still_to_collect: 999, money_received: 11_000 },
+      { net_sales: 50_000, money_received: 70_000 },
+      { net_sales: 50_000, service_charge: 2_500, money_received: 30_000 },
+    ];
+    for (const values of cases) {
+      const bridge = receivedBridge(values);
+      expect(bridge?.lines.reduce((sum, line) => sum + line.cents, 0)).toBe(values.money_received);
+    }
+  });
+
+  it("draws nothing without both figures", () => {
+    expect(receivedBridge(null)).toBeNull();
+    expect(receivedBridge({ net_sales: 100 })).toBeNull();
+    expect(receivedBridge({ money_received: 100 })).toBeNull();
+  });
+
+  it("names money taken with no method in words an owner reads", () => {
+    const rows = paymentRowsForDisplay([
+      { key: "id:cash", label: "Cash", values: { money_received: 1 } },
+      { key: "unspecified", label: "Not recorded", values: { money_received: 2 } },
+    ]);
+    expect(rows.map((r) => r.label)).toEqual(["Cash", "Paid, method not picked"]);
+  });
+});
+
+describe("the trend without food costs", () => {
+  it("offers no gross profit tab when every bucket is — (nothing costed)", () => {
+    const rows: ReportRow[] = [{ key: "a", label: "a", values: { net_sales: 1, gross_profit: null } }];
+    expect(trendMetrics(rows, [metric("net_sales"), metric("gross_profit")]).map((m) => m.id)).toEqual(["net_sales"]);
   });
 });
