@@ -3,7 +3,6 @@
   "looseAdminComponentFiles": 110,
   "filesOver800Lines": [
     "src/actions/tenants.ts",
-    "src/app/actions/lalamove.ts",
     "src/components/customer/product-detail-content.tsx",
     "src/components/shared/mapbox-address-autocomplete.tsx",
     "src/components/superadmin/tenant-form-wrapper.tsx",

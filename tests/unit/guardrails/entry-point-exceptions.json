@@ -6,7 +6,6 @@
     "src/app/actions/analytics.ts",
     "src/app/actions/announcements.ts",
     "src/app/actions/app-releases.ts",
-    "src/app/actions/bookings.ts",
     "src/app/actions/boost-ai.ts",
     "src/app/actions/boost.ts",
     "src/app/actions/branding.ts",
