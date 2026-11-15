@@ -69,34 +69,11 @@ export async function touchSession(input: {
     .select('*')
     .single()
 
-  if (error && PRE_MIGRATION_CODES.has(error.code ?? '')) return touchLegacySession(input)
   if (error || !data) {
     console.error('[Messenger] session not written', { psid: maskPsid(input.psid), code: error?.code, message: error?.message })
     return null
   }
   return toSession(data as SessionRow)
-}
-
-/** Undefined column / no (tenant_id, psid) unique index: 20261110000421 is not applied yet. */
-const PRE_MIGRATION_CODES = new Set(['42703', '42P10', 'PGRST204'])
-
-/**
- * The pre-2026-11-10 session write (keyed on psid alone). Keeps link tokens
- * working on a database without the new columns, so deploying the code
- * before the migration never drops customers' Messenger links.
- */
-async function touchLegacySession(input: { tenantId: string; psid: string; now: Date }): Promise<MessengerSession | null> {
-  const { data, error } = await messengerDb()
-    .from('messenger_sessions')
-    .upsert({ psid: input.psid, tenant_id: input.tenantId, state: 'menu', updated_at: input.now.toISOString() }, { onConflict: 'psid' })
-    .select('id, tenant_id')
-    .single()
-  const row = data as { id: string; tenant_id: string } | null
-  if (error || !row || row.tenant_id !== input.tenantId) {
-    console.error('[Messenger] legacy session not written', { psid: maskPsid(input.psid), code: error?.code })
-    return null
-  }
-  return { id: row.id, botPausedUntil: null, firstName: null, profileFetchedAt: null }
 }
 
 /** Pause (or, with `until = null`, resume) the bot for one customer. Asserts the row changed. */

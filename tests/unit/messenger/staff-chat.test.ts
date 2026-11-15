@@ -50,10 +50,16 @@ describe('staffChips', () => {
     expect(staffChips({ ...base, hasCategories: false }).map((chip) => chip.card)).toEqual(['menu', 'hours'])
   })
 
-  it('offers the status and how to pay for an unpaid order', () => {
-    const chips = staffChips({ ...base, order: order() })
+  it('offers the status and how to pay for an unpaid chat order', () => {
+    const chips = staffChips({ ...base, order: order({ isChatOrder: true }) })
     expect(chips).toContainEqual({ card: 'order_status', label: '#03 Preparing', orderId: ORDER })
     expect(chips).toContainEqual({ card: 'pay', label: 'How to pay', orderId: ORDER })
+  })
+
+  it('never offers how to pay for a web order (its pay buttons have no chat order to answer)', () => {
+    const chips = staffChips({ ...base, order: order({ isChatOrder: false }) })
+    expect(chips).toContainEqual({ card: 'order_status', label: '#03 Preparing', orderId: ORDER })
+    expect(chips.map((chip) => chip.card)).not.toContain('pay')
   })
 
   it('re-sends a waiting chat order instead of a status, and nothing for a waiting web order', () => {
@@ -66,13 +72,13 @@ describe('staffChips', () => {
 
   it('never asks a paid or cancelled order to pay, or an order type without methods', () => {
     for (const extra of [{ isPaid: true }, { status: 'cancelled' as const }, { payMethodCount: 0 }]) {
-      expect(staffChips({ ...base, order: order(extra) }).map((chip) => chip.card)).not.toContain('pay')
+      expect(staffChips({ ...base, order: order({ isChatOrder: true, ...extra }) }).map((chip) => chip.card)).not.toContain('pay')
     }
   })
 })
 
 describe('isOfferedCard', () => {
-  const chips = staffChips({ window: open, cartCount: 0, cartTotalCentavos: 0, hasCategories: true, order: order() })
+  const chips = staffChips({ window: open, cartCount: 0, cartTotalCentavos: 0, hasCategories: true, order: order({ isChatOrder: true }) })
 
   it('accepts an offered card and refuses one that is not', () => {
     expect(isOfferedCard(chips, 'menu', undefined)).not.toBeNull()

@@ -32,10 +32,10 @@ it('reads the stored Messenger profile with the session', async () => {
   expect(await touchSession(input)).toEqual({ id: 's1', botPausedUntil: null, firstName: 'Juan', profileFetchedAt: new Date('2026-11-01T00:00:00Z') })
 })
 
-it('before the migration (no new columns) it falls back to the old psid-keyed write', async () => {
-  replies = [{ data: null, error: { code: '42703', message: 'column page_id does not exist' } }, { data: { id: 's-old', tenant_id: 't1' }, error: null }]
-  expect(await touchSession(input)).toEqual({ id: 's-old', botPausedUntil: null, firstName: null, profileFetchedAt: null })
-  expect(upserts[1]).toMatchObject({ onConflict: 'psid', row: { psid: input.psid, tenant_id: 't1', state: 'menu' } })
+it('a missing column is an ordinary failure now that the migration is live (no psid-keyed fallback)', async () => {
+  replies = [{ data: null, error: { code: '42703', message: 'column page_id does not exist' } }]
+  expect(await touchSession(input)).toBeNull()
+  expect(upserts).toHaveLength(1)
 })
 
 it('any other failure: no session (the reply still goes out, without a link token)', async () => {
