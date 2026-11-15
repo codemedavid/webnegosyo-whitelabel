@@ -95,7 +95,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // choice group by name, add-on counts, combos, the day's order number,
   // pre-order time) and the register sells add-ons by amount ("Tapa ×2").
   // 1.0.18 went READY_FOR_SALE, closing that train.
-  version: "1.0.19",
+  version: "1.0.20",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the
