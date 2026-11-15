@@ -76,6 +76,7 @@ import { canFixDelivery, deliveryPinNotice } from "../../../lib/delivery-fix";
 import { buildRiderMessage, buildRiderRemarks } from "../../../lib/rider-remarks";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
+import { OrderChatCard } from "../../../components/chat/OrderChatCard";
 import { GovDiscountCard } from "../../../components/order/GovDiscountCard";
 import { CancelReasonSheet, type CancelReasonChoice } from "../../../components/order/CancelReasonSheet";
 import { OrderHistoryCard } from "../../../components/order/OrderHistoryCard";
@@ -1111,6 +1112,8 @@ export default function OrderDetailScreen() {
       </Card>
 
       <OrderCustomerCard order={order} style={styles.section} />
+
+      <OrderChatCard order={order} style={styles.section} />
 
       {customerDetailRows.length > 0 && (
         <Card title="Customer Details" style={styles.section}>

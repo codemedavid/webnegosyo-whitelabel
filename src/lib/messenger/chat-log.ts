@@ -25,6 +25,8 @@ export interface ChatLogLine {
   /** Meta's message id (a retried webhook never logs twice); null for our summaries. */
   mid: string | null
   sentAt: Date
+  /** The staff account that sent it from the merchant app (`messenger_messages.sent_by`). */
+  sentBy?: string | null
 }
 
 export const CHAT_LINE_MAX = 1000

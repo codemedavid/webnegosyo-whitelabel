@@ -27,11 +27,14 @@ export interface GraphError {
   message?: string
 }
 
-export type SendResult = { ok: true; sent: number } | { ok: false; sent: number; error: GraphError }
+export type SendResult =
+  /** `messageIds`: Meta's id of each message that went out, when it gave one. */
+  | { ok: true; sent: number; messageIds?: string[] }
+  | { ok: false; sent: number; error: GraphError }
 
 type Fetch = typeof fetch
 
-async function postGraph(path: string, token: string, body: unknown, fetchImpl: Fetch): Promise<{ ok: true } | { ok: false; error: GraphError }> {
+async function postGraph(path: string, token: string, body: unknown, fetchImpl: Fetch): Promise<{ ok: true; messageId?: string } | { ok: false; error: GraphError }> {
   try {
     const response = await fetchImpl(`${FACEBOOK_GRAPH_API}${path}?access_token=${encodeURIComponent(token)}`, {
       method: 'POST',
@@ -39,7 +42,10 @@ async function postGraph(path: string, token: string, body: unknown, fetchImpl: 
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     })
-    if (response.ok) return { ok: true }
+    if (response.ok) {
+      const sent = (await response.json().catch(() => null)) as { message_id?: unknown } | null
+      return typeof sent?.message_id === 'string' ? { ok: true, messageId: sent.message_id } : { ok: true }
+    }
     const text = await response.text()
     try {
       const parsed = JSON.parse(text) as { error?: { code?: number; error_subcode?: number; message?: string } }
@@ -83,6 +89,7 @@ export async function sendMessages(
   void postGraph('/me/messages', token, { recipient: { id: psid }, sender_action: 'typing_on' }, fetchImpl)
 
   let sent = 0
+  const messageIds: string[] = []
   let tookControl = false
   for (const message of messages) {
     let result = await sendOne(token, psid, message, fetchImpl, messagingType)
@@ -96,9 +103,10 @@ export async function sendMessages(
       return { ok: false, sent, error: result.error }
     }
     sent += 1
+    if (result.messageId) messageIds.push(result.messageId)
   }
   log.debug('sent', { psid: maskPsid(psid), sent })
-  return { ok: true, sent }
+  return { ok: true, sent, messageIds }
 }
 
 /** POST or DELETE on /me/messenger_profile (Get Started, ice breakers, persistent menu). */

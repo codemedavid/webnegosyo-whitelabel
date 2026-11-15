@@ -13,6 +13,9 @@ import { getStorefrontMenu } from '@/lib/storefront/storefront-menu'
 import { ORDER_BACKEND_TENANT_COLUMNS, resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import type { MessengerRule } from './rules'
 import { buildReplyStore } from './store-view'
+import { DEFAULT_MESSAGE_SETTINGS, type MessageSettings } from './messages/registry'
+import { readMessages } from './messages/stored'
+import { readOrderUpdates } from './order-view'
 import {
   activeRules, DEFAULT_SETTINGS, rowsToRules, toSettings,
   type MessengerSettings, type RuleRow, type SettingsRow, type StoreBundle,
@@ -44,6 +47,23 @@ export async function loadMessengerSettingsAndRules(tenantId: string): Promise<{
   // Unreadable rules on a customised store: fall back to the built-ins rather than go silent.
   const useStored = settings.isCustomized && !rulesRead.error
   return { settings: useStored ? settings : { ...settings, isCustomized: false }, storedRules }
+}
+
+/**
+ * Only the store's message wording (Studio → Messages), for texts the website
+ * sends (cart, order summary). One indexed row; unreadable = the built-in
+ * words, never a failed send.
+ */
+export async function loadMessageSettings(tenantId: string): Promise<MessageSettings> {
+  const { data, error } = await messengerDb()
+    .from('messenger_settings')
+    .select('messages, order_updates')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) console.error('[Messenger] message wording unreadable, using defaults:', error.message)
+  if (error || !data) return DEFAULT_MESSAGE_SETTINGS
+  const row = data as { messages: unknown; order_updates: unknown }
+  return readMessages(row.messages, readOrderUpdates(row.order_updates ?? null).texts)
 }
 
 export async function loadStoreBundle(tenantId: string, now: Date = new Date()): Promise<StoreBundle | null> {

@@ -290,6 +290,9 @@ export default function MainLayout() {
         <Tabs.Screen name="whats-new/[announcementId]" options={{ href: null, title: "Update" }} />
         {/* The bell's list (low / out of stock) — reached from the header bell or a push. */}
         <Tabs.Screen name="notifications" options={{ href: null, title: "Notifications" }} />
+        {/* Messenger conversations and one chat: reached from the Orders header or an order. */}
+        <Tabs.Screen name="chats" options={{ href: null, title: "Chats" }} />
+        <Tabs.Screen name="chat/[sessionId]" options={{ href: null, title: "Chat" }} />
         {/* Guided tour: the chapter list and one chapter — reached from the greeter or Manage. */}
         <Tabs.Screen name="tutorial/index" options={{ href: null, title: "Learn the app" }} />
         {/* The chapter draws its own bar inside the simulation, so the real one hides. */}

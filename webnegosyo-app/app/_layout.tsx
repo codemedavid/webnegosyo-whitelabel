@@ -84,6 +84,7 @@ import {
   ensureOrdersChannel,
   ensureStockAlertsChannel,
   ensureCashAlertsChannel,
+  ensureChatAlertsChannel,
   deviceChannels,
 } from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
@@ -339,6 +340,7 @@ function usePushNotifications() {
     ensureOrdersChannel().catch(() => {});
     ensureStockAlertsChannel().catch(() => {});
     ensureCashAlertsChannel().catch(() => {});
+    ensureChatAlertsChannel().catch(() => {});
   }, []);
 
   useEffect(() => {

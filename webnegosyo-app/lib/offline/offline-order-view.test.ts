@@ -89,6 +89,12 @@ describe("queuedSaleToOrder", () => {
     expect(order.customerData).toEqual({ outlet_id: "branch-a", pos: { cashierId: "u1" } });
   });
 
+  it("shows a queued chat order as waiting, so it is not started before the customer confirms", () => {
+    const held = sale("local-1", { paidAtTender: false });
+    held.orderArgs = { ...held.orderArgs, holdForCustomer: true };
+    expect(queuedSaleToOrder(held).status).toBe("pending");
+  });
+
   it("keeps a pay-later sale unpaid", () => {
     expect(queuedSaleToOrder(sale("local-1", { paidAtTender: false })).paymentStatus).toBe("pending");
   });

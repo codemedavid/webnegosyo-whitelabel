@@ -10,6 +10,8 @@ import { getOrderScheduledLabel } from './advance-order-utils'
 import { getOrderOutletLabel } from './outlets/order-outlet-display'
 import { readOrderDiscount } from './order-discount'
 import { discountItemsText, orderSummaryRows, type OrderSummaryRow } from './order-summary-rows'
+import type { MessageSettings } from './messenger/messages/registry'
+import { webOrderWording } from './messenger/web-messages'
 
 /**
  * The ticket's own wording for a money row.
@@ -34,11 +36,16 @@ function formatSummaryRow(row: OrderSummaryRow): string {
 }
 
 /**
- * Format order details into a message for Messenger
+ * Format order details into a message for Messenger.
+ *
+ * `messages` = the store's Messenger Studio wording (first and last line,
+ * whether customer details / per-dish prices / payment show). Absent or
+ * uncustomised = exactly the text this ticket always printed.
  */
-export function formatOrderMessage(order: Order, tenant: Tenant): string {
+export function formatOrderMessage(order: Order, tenant: Tenant, messages?: MessageSettings): string {
+  const wording = webOrderWording(tenant.name, messages)
   const lines = [
-    `🍽️ New Order from ${tenant.name}`,
+    wording.intro,
     `🧾 Order ${formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}`,
     '',
   ]
@@ -73,7 +80,7 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
   }
 
   // Add customer information
-  if (order.customer_name || order.customer_contact) {
+  if (wording.showsCustomer && (order.customer_name || order.customer_contact)) {
     lines.push('👤 Customer Information:')
     if (order.customer_name) {
       lines.push(`   👤 Name: ${order.customer_name}`)
@@ -85,7 +92,7 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
   }
 
   // Add customer data (from form fields)
-  if (order.customer_data && typeof order.customer_data === 'object') {
+  if (wording.showsCustomer && order.customer_data && typeof order.customer_data === 'object') {
     const customerData = order.customer_data as Record<string, unknown>
     const additionalInfo: string[] = []
 
@@ -132,7 +139,7 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
       }
 
       lines.push(`   Quantity: ${item.quantity}`)
-      lines.push(`   Price: ${formatPrice(item.subtotal)}`)
+      if (wording.showsItemPrices) lines.push(`   Price: ${formatPrice(item.subtotal)}`)
       lines.push('')
     })
   }
@@ -161,7 +168,7 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
   lines.push('')
 
   // Add payment method information
-  if (order.payment_method_name) {
+  if (wording.showsPayment && order.payment_method_name) {
     lines.push('💳 Payment Method:')
     lines.push(`   ${order.payment_method_name}`)
     if (order.payment_method_details) {
@@ -173,7 +180,7 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
   // Add order status
   lines.push(`📊 Status: ${order.status}`)
   lines.push('')
-  lines.push('📍 Please confirm your order!')
+  lines.push(wording.closing)
 
   return lines.join('\n')
 }

@@ -16,6 +16,11 @@ jest.mock('@/lib/facebook-api', () => ({ sendMessage: jest.fn() }))
 // The reference → PSID check has its own tests (tests/unit/messenger/recipient.test.ts).
 const resolveMessengerRecipient = jest.fn(async (_tenant: string, reference: string) => (reference === 'psid-1234' ? '24000000000001234' : null))
 jest.mock('@/lib/messenger/recipient', () => ({ resolveMessengerRecipient: (...args: [string, string]) => resolveMessengerRecipient(...args) }))
+// The store's Studio wording and its menu (both read server-side; nothing from the browser is printed).
+const readStoreWording = jest.fn(async (): Promise<unknown> => undefined)
+jest.mock('@/lib/messenger/store-wording', () => ({ readStoreWording: () => readStoreWording() }))
+const loadStoreBundle = jest.fn(async (): Promise<unknown> => null)
+jest.mock('@/lib/messenger/load-store', () => ({ loadStoreBundle: () => loadStoreBundle() }))
 jest.mock('@/lib/distributed-rate-limit', () => ({
   checkRateLimit: jest.fn(async () => ({ allowed: true, remaining: 10, retryAfterSec: 0 })),
 }))
@@ -185,6 +190,29 @@ describe('POST /api/messenger/send-cart', () => {
     expect(message).toContain('2 items')
     expect(message).toContain('https://retiro.webnegosyo.app/checkout')
     expect(message).not.toMatch(/evil\.example|0917|GCASH/)
+  })
+
+  it('names dishes from the MENU by id when the owner lists them, never the name the browser sent', async () => {
+    const { route, sendMessage } = await load()
+    const { readMessages } = await import('@/lib/messenger/messages/stored')
+    readStoreWording.mockResolvedValueOnce(readMessages({ 'webcart.list_dishes': true, 'webcart.show_total': true }))
+    loadStoreBundle.mockResolvedValueOnce({
+      store: { items: [{ id: 'i-milk', categoryId: 'c', name: 'Milktea', description: '', price: 122.99, discountedPrice: null, imageUrl: null, needsChoices: false, isFeatured: false }] },
+    })
+    const items = [{ name: 'FREE GCASH: visit evil.example', quantity: 1, subtotal: 1, itemId: 'i-milk' }]
+
+    const res = await route.POST(post({ tenantId: 'tenant-1', psid: 'psid-1234', items }))
+
+    expect(res.status).toBe(200)
+    expect(sendMessage.mock.calls[0][2]).toBe(
+      '🛒 Your cart at Retiro Cafe: 1 item.\n\n1x Milktea\n💰 Total: ₱122.99\n\nReady to order?\nhttps://retiro.webnegosyo.app/checkout',
+    )
+  })
+
+  it('refuses an item id that is not a short string', async () => {
+    const { route } = await load()
+    const res = await route.POST(post({ tenantId: 'tenant-1', psid: 'psid-1234', items: [{ name: 'x', quantity: 1, subtotal: 1, itemId: 'x'.repeat(65) }] }))
+    expect(res.status).toBe(400)
   })
 
   it('does not repeat the same count to the same person within the dedupe window', async () => {

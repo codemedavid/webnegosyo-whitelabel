@@ -12,6 +12,7 @@ import { sendMessage } from '@/lib/facebook-api'
 import { messengerDb } from './service-db'
 import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
+import { readStoreWording } from '@/lib/messenger/store-wording'
 import { createLogger } from '@/lib/logger'
 import { mayAnswerOrderReferral, ORDER_REFERRAL_REFUSED_MESSAGE } from './order-referral'
 
@@ -99,6 +100,7 @@ export async function answerOrderReferral(input: {
   const message = formatOrderMessage(
     orderWithItems as unknown as Parameters<typeof formatOrderMessage>[0],
     tenantData as unknown as Parameters<typeof formatOrderMessage>[1],
+    await readStoreWording(tenant.id),
   )
 
   if (!(await sendMessage(senderId, page.page_access_token, message))) {

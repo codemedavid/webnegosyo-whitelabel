@@ -37,3 +37,18 @@ describe("buildCreateOrderRows — a sale the register identified and timed itse
     expect("created_at" in order).toBe(false);
   });
 });
+
+describe("buildCreateOrderRows — a sale rung up for a Messenger chat", () => {
+  it("saves a counter sale confirmed, as it always has", () => {
+    expect(buildCreateOrderRows("tenant-1", base).order.status).toBe("confirmed");
+    expect(buildCreateOrderRows("tenant-1", { ...base, holdForCustomer: false }).order.status).toBe("confirmed");
+  });
+
+  it("holds a chat order until the customer (or staff) confirms it", () => {
+    expect(buildCreateOrderRows("tenant-1", { ...base, holdForCustomer: true }).order.status).toBe("pending");
+  });
+
+  it("never un-holds a source that already waits for the store", () => {
+    expect(buildCreateOrderRows("tenant-1", { ...base, source: "web" }).order.status).toBe("pending");
+  });
+});

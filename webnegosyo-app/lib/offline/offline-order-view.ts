@@ -133,7 +133,9 @@ export function queuedSaleToOrder(sale: QueuedSale): LocalOrder {
     customerName: asString(args.customerName) ?? sale.bookkeeping.customerName,
     customerContact: asString(args.customerContact) ?? sale.bookkeeping.customerContact,
     customerData: asRecord(args.customerData),
-    status: COUNTER_SALE_STATUS,
+    // A sale rung up for a Messenger chat waits for the customer's OK: shown
+    // (and kept off the kitchen queue) as waiting from the first moment.
+    status: args.holdForCustomer === true ? "pending" : COUNTER_SALE_STATUS,
     source: asString(args.source) ?? "pos",
     total: asNumber(args.total) ?? sale.bookkeeping.total,
     itemCount: asNumber(args.itemCount) ?? items.reduce((sum, item) => sum + item.quantity, 0),

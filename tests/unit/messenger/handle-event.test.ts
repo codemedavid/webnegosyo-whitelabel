@@ -8,6 +8,7 @@ import type { OutgoingMessage } from '@/lib/messenger/graph-message'
 import { applyCartOp, priceChatCart, type CartOp, type ChatCartLine } from '@/lib/messenger/chat-cart'
 import type { ReplyOrder } from '@/lib/messenger/order-view'
 import type { ChatLogLine } from '@/lib/messenger/chat-log'
+import type { ChatOrderTap, ChatOrderTapResult } from '@/lib/messenger/chat-order'
 import { NOW, sampleStore } from './sample-store'
 
 const PAGE = 'page-1'
@@ -23,7 +24,11 @@ function harness(options: {
   bundle?: StoreBundle | null; pausedUntil?: Date | null; seen?: boolean; page?: boolean; testerAllowed?: boolean
   cart?: ChatCartLine[]; cartUnreadable?: boolean; orders?: ReplyOrder[]
   firstName?: string | null; profileFetchedAt?: Date | null; fetchedName?: string | null; profileThrows?: boolean
+  tapResult?: ChatOrderTapResult; tapThrows?: boolean
 } = {}) {
+  const taps: Array<{ tenantId: string; psid: string; tap: ChatOrderTap }> = []
+  const alerts: Array<{ reason: string; sessionId: string; text: string }> = []
+  const cleared: string[] = []
   const logs: Array<{ sessionId: string; lines: readonly ChatLogLine[] }> = []
   const profileFetches: string[] = []
   let cart: ChatCartLine[] = options.cart ?? []
@@ -70,8 +75,15 @@ function harness(options: {
       if (options.profileThrows) throw new Error('graph down')
       return options.fetchedName ?? null
     },
+    applyChatOrderTap: async ({ tenantId, psid, tap }) => {
+      taps.push({ tenantId, psid, tap })
+      if (options.tapThrows) throw new Error('db down')
+      return options.tapResult ?? { kind: 'gone' }
+    },
+    alertStaff: async (input) => { alerts.push(input) },
+    clearNeedsReply: async (sessionId) => { cleared.push(sessionId) },
   }
-  return { deps, sent, pauses, touches, referrals, linked, cartOps, orderReads, logs, profileFetches, cart: () => cart }
+  return { deps, alerts, cleared, taps, sent, pauses, touches, referrals, linked, cartOps, orderReads, logs, profileFetches, cart: () => cart }
 }
 
 const base = { pageId: PAGE, psid: PSID, timestamp: 1, dedupeKey: 'mid:1' }
@@ -176,6 +188,70 @@ describe('handleEvent', () => {
       expect(await handleEvent(postback(encodePayload({ verb: 'staff' })), h.deps)).toBe('replied')
       expect(h.pauses).toHaveLength(1)
       expect(h.sent[0].messages[0]).toMatchObject({ kind: 'text', text: expect.stringContaining('Karamotan Grill') })
+    })
+
+    it('"talk to staff" marks the chat Needs a reply and alerts staff', async () => {
+      const h = harness()
+      await handleEvent(postback(encodePayload({ verb: 'staff' })), h.deps)
+      expect(h.alerts).toEqual([expect.objectContaining({ reason: 'asked', sessionId: '0b0c9d3c-1111-4000-8000-000000000001' })])
+    })
+
+    it('a message typed while paused alerts staff, rule or not', async () => {
+      for (const words of ['menu', 'salamat po, nasaan na po?']) {
+        const h = harness({ pausedUntil: new Date(NOW.getTime() + 60_000) })
+        expect(await handleEvent(text(words), h.deps)).toBe('paused')
+        expect(h.alerts).toEqual([expect.objectContaining({ reason: 'while_paused', text: words })])
+        expect(h.sent).toEqual([])
+      }
+    })
+
+    it('a button tap while paused answers without alerting anyone', async () => {
+      const h = harness({ pausedUntil: new Date(NOW.getTime() + 60_000) })
+      expect(await handleEvent(postback(encodePayload({ verb: 'categories' })), h.deps)).toBe('replied')
+      expect(h.alerts).toEqual([])
+    })
+
+    it('a staff reply in Page Inbox clears Needs a reply', async () => {
+      const h = harness()
+      await handleEvent(echo('Hi! Yes we have sisig', '263902037430900'), h.deps)
+      expect(h.cleared).toEqual(['0b0c9d3c-1111-4000-8000-000000000001'])
+    })
+  })
+
+  describe('typed orders (T1)', () => {
+    // Off by default (a reviewer's "Can I order 1 milktea" then "menu" must get the menu).
+    const noticing = () => bundle({
+      settings: { ...DEFAULT_SETTINGS, messages: { ...DEFAULT_SETTINGS.messages, toggles: { 'handover.notice_typed_orders': true } } },
+    })
+
+    it('is off until the owner switches it on: the automations answer as before', async () => {
+      const h = harness()
+      expect(await handleEvent(text('pa order po 2 iced tea'), h.deps)).not.toBe('typed_order')
+      expect(h.alerts).toEqual([])
+      expect(h.pauses).toEqual([])
+    })
+
+    it('hands a typed order to staff once switched on: the reply, a pause, an alert', async () => {
+      const h = harness({ bundle: noticing() })
+      expect(await handleEvent(text('pa order po 2 iced tea'), h.deps)).toBe('typed_order')
+      expect(h.sent).toHaveLength(1)
+      expect(h.sent[0].messages).toEqual([{ kind: 'text', text: "Got it! We'll check your order and confirm it here shortly. 🙏" }])
+      expect(h.pauses).toEqual([new Date(NOW.getTime() + 60 * 60 * 1000)])
+      expect(h.alerts).toEqual([expect.objectContaining({ reason: 'typed_order', text: 'pa order po 2 iced tea' })])
+    })
+
+    it('leaves questions and plain keywords to the automations', async () => {
+      for (const words of ['magkano po iced tea?', 'order', 'menu po']) {
+        const h = harness({ bundle: noticing() })
+        expect(await handleEvent(text(words), h.deps)).not.toBe('typed_order')
+        expect(h.alerts).toEqual([])
+      }
+    })
+
+    it('says nothing when the bot is off for the store', async () => {
+      const h = harness({ bundle: bundle({ settings: { ...DEFAULT_SETTINGS, botEnabled: false } }) })
+      expect(await handleEvent(text('pa order po 2 iced tea'), h.deps)).toBe('bot_off')
+      expect(h.sent).toEqual([])
     })
   })
 
@@ -424,5 +500,80 @@ describe('readStaffCommand', () => {
   })
   it.each(['menu', 'see /menu', '/unknown'])('%p is not a command', (input) => {
     expect(readStaffCommand(input)).toBeNull()
+  })
+})
+
+describe('taps on an order staff rang up for the chat', () => {
+  const ORDER_ID = '0b0c9d3c-2222-4000-8000-000000000001'
+  const METHOD_ID = '0b0c9d3c-3333-4000-8000-000000000001'
+  const order = {
+    id: ORDER_ID, label: '#07', status: 'confirmed', orderType: 'Pickup', lines: [], totalCentavos: 51800, isPaid: false, hasPaymentMethod: false,
+  }
+  const confirmTap = postback(encodePayload({ verb: 'order_ok', orderId: ORDER_ID }))
+  const quickReply = (payload: string): InboundEvent => ({ ...base, kind: 'quick_reply', text: 'GCash', payload })
+
+  it('Confirm is applied for the customer who tapped, at the Page\'s own store, and answered', async () => {
+    const h = harness({ firstName: 'Ana', tapResult: { kind: 'confirmed', order, methods: [], chosen: null } })
+    expect(await handleEvent(confirmTap, h.deps)).toBe('chat_order')
+    expect(h.taps).toEqual([{ tenantId: TENANT, psid: PSID, tap: { verb: 'order_ok', orderId: ORDER_ID } }])
+    expect(JSON.stringify(h.sent[0].messages)).toContain('Thank you, Ana! Your order #07 is confirmed.')
+    expect(h.pauses).toEqual([])
+    expect(h.logs[0].lines.map((line) => line.direction)).toEqual(['in', 'bot'])
+  })
+
+  it('works with the bot switched off and while staff have it paused: a person sent that order', async () => {
+    const off = harness({ bundle: bundle({ settings: { ...DEFAULT_SETTINGS, botEnabled: false } }), tapResult: { kind: 'already', order, methods: [], chosen: null } })
+    expect(await handleEvent(confirmTap, off.deps)).toBe('chat_order')
+    expect(off.sent).toHaveLength(1)
+    const paused = harness({ pausedUntil: new Date(NOW.getTime() + 60_000), tapResult: { kind: 'already', order, methods: [], chosen: null } })
+    expect(await handleEvent(confirmTap, paused.deps)).toBe('chat_order')
+    expect(paused.sent).toHaveLength(1)
+  })
+
+  it('Change answers and hands the chat to staff for at least an hour', async () => {
+    const h = harness({ tapResult: { kind: 'change', order } })
+    expect(await handleEvent(postback(encodePayload({ verb: 'order_change', orderId: ORDER_ID })), h.deps)).toBe('chat_order')
+    expect(JSON.stringify(h.sent[0].messages)).toContain('Tell us here what to change')
+    expect(h.pauses).toHaveLength(1)
+    expect(h.pauses[0]?.getTime()).toBeGreaterThanOrEqual(NOW.getTime() + 60 * 60 * 1000)
+    // The bot goes quiet, so staff are told the customer is waiting on a change.
+    expect(h.alerts).toEqual([expect.objectContaining({ reason: 'wants_change', text: 'Order #07' })])
+  })
+
+  it('a confirmed tap alerts nobody', async () => {
+    const h = harness({ tapResult: { kind: 'confirmed', order, methods: [], chosen: null } })
+    await handleEvent(confirmTap, h.deps)
+    expect(h.alerts).toEqual([])
+  })
+
+  it('a payment-method quick reply reaches the order too', async () => {
+    const method = { id: METHOD_ID, name: 'GCash', details: '0917 123 4567' }
+    const h = harness({ tapResult: { kind: 'paid_with', order, method } })
+    expect(await handleEvent(quickReply(encodePayload({ verb: 'order_pay', orderId: ORDER_ID, methodId: METHOD_ID })), h.deps)).toBe('chat_order')
+    expect(h.taps[0].tap).toEqual({ verb: 'order_pay', orderId: ORDER_ID, methodId: METHOD_ID })
+    expect(JSON.stringify(h.sent[0].messages)).toContain('0917 123 4567')
+  })
+
+  it('a failure on our side asks for another tap (the order is still open); a store on another backend is "no longer open"', async () => {
+    const broken = harness({ tapThrows: true })
+    expect(await handleEvent(confirmTap, broken.deps)).toBe('chat_order')
+    expect(JSON.stringify(broken.sent[0].messages)).toContain('tap the button again')
+    const convex = harness({ bundle: bundle({ isPlatformOrders: false }), tapResult: { kind: 'confirmed', order, methods: [], chosen: null } })
+    expect(await handleEvent(confirmTap, convex.deps)).toBe('chat_order')
+    expect(convex.taps).toEqual([])
+    expect(JSON.stringify(convex.sent[0].messages)).toContain('no longer open')
+  })
+
+  it('a made-up order id never reaches the database', async () => {
+    const h = harness()
+    expect(await handleEvent(postback('wn1|oc|1 or 1=1'), h.deps)).toBe('no_match')
+    expect(h.taps).toEqual([])
+    expect(h.sent).toEqual([])
+  })
+
+  it('other buttons still go through the rules', async () => {
+    const h = harness()
+    expect(await handleEvent(postback(encodePayload({ verb: 'menu' })), h.deps)).toBe('replied')
+    expect(h.taps).toEqual([])
   })
 })

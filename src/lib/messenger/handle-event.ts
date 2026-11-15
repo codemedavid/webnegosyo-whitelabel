@@ -9,9 +9,16 @@
  *   4. echo → ours: ignore · staff slash command: send that card · anything
  *      else staff typed: pause the bot for this customer
  *   5. "TEST 123456" from the owner → link their Messenger for test sends
- *   6. bot off → stay quiet
- *   7. rule / button → reply. While a staff reply has the bot paused, typed
- *      messages get no bot answer; taps on our own buttons still do.
+ *   6. a tap on a staff-rung order's Confirm / Change / payment button →
+ *      the order is updated and the customer answered (`chat-order.ts`). The
+ *      order was sent by a person, so this works with the bot off or paused.
+ *   7. bot off → stay quiet
+ *   8. typed while staff have the bot paused → no bot answer, the chat is
+ *      marked Needs a reply and staff get a push (R4)
+ *   9. a typed message that reads like an order (`typed-order.ts`, T1) →
+ *      "we'll confirm it here", the bot steps back, Needs a reply + push
+ *  10. rule / button → reply. Taps on our own buttons answer even while
+ *      paused. "Talk to staff" also marks Needs a reply + push.
  *      A reply that shows the cart or orders has them read (and a cart tap
  *      applied) first, so the pure builders only ever format.
  *
@@ -25,7 +32,9 @@
 import type { OutgoingMessage } from './graph-message'
 import type { InboundEvent } from './events'
 import type { StoreBundle } from './settings'
-import { buildReply, type ChatCartView, type ReplyContext } from './replies'
+import { buildReply, buildTypedOrderHandover, noticesTypedOrders, type ChatCartView, type ReplyContext } from './replies'
+import { readsLikeOrder } from './typed-order'
+import type { StaffAlertReason } from './staff-alert'
 import type { CartOp } from './chat-cart'
 import type { ReplyOrder } from './order-view'
 import type { ReplyStore } from './store-view'
@@ -36,6 +45,8 @@ import type { SendResult } from './send'
 import { isTesterCodeValid, readTesterCode } from './tester'
 import { botLine, customerLine, needsProfile, staffLine, type ChatLogLine } from './chat-log'
 import { greetingName } from './messages/fill'
+import { decodePayload } from './payload'
+import { buildChatOrderTapReply, isChatOrderTap, tapPausesBot, type ChatOrderTap, type ChatOrderTapResult } from './chat-order'
 
 // The pure decision lives in `decide.ts` (also run in the browser by the Studio's chat simulator).
 export { decideReply, readStaffCommand, type ReplyDecision, type ReplyNeeds } from './decide'
@@ -71,6 +82,16 @@ export interface WebhookDeps {
   logChat(input: { tenantId: string; sessionId: string; lines: readonly ChatLogLine[] }): Promise<void>
   /** Fetch + store the customer's Messenger profile; the raw first name, or null. Never throws. */
   refreshProfile(input: { sessionId: string; token: string; psid: string; now: Date }): Promise<string | null>
+  /**
+   * A tap on an order staff rang up for this chat: apply it for THIS customer
+   * at THIS store (the order is re-read; someone else's is refused) and say
+   * what happened.
+   */
+  applyChatOrderTap(input: { tenantId: string; psid: string; tap: ChatOrderTap; now: Date }): Promise<ChatOrderTapResult>
+  /** Mark the chat Needs a reply and push the people who can answer it. Never throws. */
+  alertStaff(input: { tenantId: string; sessionId: string; reason: StaffAlertReason; firstName: string | null; text: string; now: Date }): Promise<void>
+  /** A person answered: the chat no longer waits. Never throws. */
+  clearNeedsReply(sessionId: string): Promise<void>
 }
 
 /** The chat lines one event leaves, written once when it is handled. */
@@ -90,7 +111,7 @@ function record(chat: ChatRecord, line: ChatLogLine | null) {
 export type EventOutcome =
   | 'duplicate' | 'unknown_page' | 'referral' | 'own_echo' | 'staff_command' | 'staff_paused' | 'staff_ignored'
   | 'nothing_to_answer' | 'no_store' | 'tester_linked' | 'tester_failed' | 'bot_off' | 'no_match' | 'paused'
-  | 'replied' | 'send_failed'
+  | 'replied' | 'send_failed' | 'chat_order' | 'typed_order'
 
 /** When staff keep typing, the bot stays quiet at least this long. */
 const MIN_STAFF_PAUSE_MINUTES = 60
@@ -124,6 +145,7 @@ async function handleEcho(
   const session = await deps.touchSession({ tenantId: page.tenantId, pageId: event.pageId, psid: event.psid, now, isInbound: false })
   chat.session = session
   record(chat, staffLine(event, now))
+  if (session) await deps.clearNeedsReply(session.id)
   const minutes = await deps.loadTakeoverMinutes(page.tenantId)
   if (minutes <= 0 || !session) return 'staff_ignored'
   await deps.setBotPause(session.id, new Date(now.getTime() + minutes * MINUTE_MS))
@@ -221,24 +243,107 @@ async function answer(event: InboundEvent, page: PageOwner, deps: WebhookDeps, n
     }
   }
 
+  const turn: Turn = { event, page, deps, now, chat, session, bundle, customerName }
+
+  const tap = event.kind === 'postback' || event.kind === 'quick_reply' ? decodePayload(event.payload) : null
+  if (isChatOrderTap(tap)) return answerChatOrderTap(turn, tap)
+
   if (!bundle.settings.botEnabled) return 'bot_off'
   if (!bundle.store) return 'no_store'
 
-  const decision = decideReply(event, bundle.rules, bundle.store.isOpenNow ?? true)
-  if (!decision) return 'no_match'
   const isPaused = session?.botPausedUntil !== null && session?.botPausedUntil !== undefined && session.botPausedUntil.getTime() > now.getTime()
-  if (isPaused && decision.isTyped) return 'paused'
+
+  // Staff have this chat: whatever the customer types is for them.
+  if (isPaused && event.kind === 'text') {
+    await alertStaff(turn, 'while_paused')
+    return 'paused'
+  }
 
   const ctx: ReplyContext = {
     store: bundle.store, linkToken: session ? deps.createLinkToken(session.id) : null, messages: bundle.settings.messages, customerName,
   }
+
+  // T1: "2 chicken inasal po" → a person rings it up from the app (Make order).
+  if (event.kind === 'text' && noticesTypedOrders(ctx) && readsLikeOrder(event.text, bundle.store.items).isOrder) {
+    return answerTypedOrder(turn, ctx)
+  }
+
+  const decision = decideReply(event, bundle.rules, bundle.store.isOpenNow ?? true)
+  if (!decision) return 'no_match'
+  if (isPaused && decision.isTyped) {
+    await alertStaff(turn, 'while_paused')
+    return 'paused'
+  }
+
   await loadNeeds(ctx, decision.needs, { session, bundle, psid: event.psid, now, deps })
   const messages = decision.build(ctx)
-  if (decision.pausesBot && session) {
-    const minutes = Math.max(bundle.settings.takeoverMinutes, MIN_STAFF_PAUSE_MINUTES)
-    await deps.setBotPause(session.id, new Date(now.getTime() + minutes * MINUTE_MS))
+  if (decision.pausesBot) {
+    await pauseForStaff(turn)
+    await alertStaff(turn, 'asked')
   }
-  const result = await deps.send(page.token, event.psid, messages)
-  if (result.ok) record(chat, botLine(messages, deps.now()))
-  return result.ok ? 'replied' : 'send_failed'
+  return (await sendAndRecord(turn, messages)) ? 'replied' : 'send_failed'
+}
+
+/** One customer event that reached a store: what every step below needs. */
+interface Turn {
+  event: Exclude<InboundEvent, { kind: 'echo' | 'other' }>
+  page: PageOwner
+  deps: WebhookDeps
+  now: Date
+  chat: ChatRecord
+  session: MessengerSession | null
+  bundle: StoreBundle
+  customerName: string
+}
+
+/** What the customer typed (a quick reply's title counts), for the staff push. */
+function typedText(event: Turn['event']): string {
+  return event.kind === 'text' || event.kind === 'quick_reply' ? event.text : ''
+}
+
+function alertStaff(turn: Turn, reason: StaffAlertReason, text: string = typedText(turn.event)): Promise<void> {
+  const { session } = turn
+  if (!session) return Promise.resolve()
+  return turn.deps.alertStaff({ tenantId: turn.page.tenantId, sessionId: session.id, reason, firstName: session.firstName, text, now: turn.now })
+}
+
+/** Staff take this chat: the bot steps back for the store's takeover time, never less than an hour. */
+async function pauseForStaff(turn: Turn): Promise<void> {
+  if (!turn.session) return
+  const minutes = Math.max(turn.bundle.settings.takeoverMinutes, MIN_STAFF_PAUSE_MINUTES)
+  await turn.deps.setBotPause(turn.session.id, new Date(turn.now.getTime() + minutes * MINUTE_MS))
+}
+
+async function sendAndRecord(turn: Turn, messages: readonly OutgoingMessage[]): Promise<boolean> {
+  const result = await turn.deps.send(turn.page.token, turn.event.psid, messages)
+  if (result.ok) record(turn.chat, botLine(messages, turn.deps.now()))
+  return result.ok
+}
+
+/** Step 6: Confirm / Change / payment on an order staff rang up for this chat. */
+async function answerChatOrderTap(turn: Turn, tap: ChatOrderTap): Promise<EventOutcome> {
+  const { bundle, deps, page, event, now } = turn
+  // Orders on another backend aren't on this database: nothing to confirm.
+  const result: ChatOrderTapResult = bundle.isPlatformOrders
+    ? await deps.applyChatOrderTap({ tenantId: page.tenantId, psid: event.psid, tap, now }).catch((error: unknown) => {
+      console.error('[Messenger] chat order tap failed', error instanceof Error ? error.message : error)
+      return { kind: 'retry' as const }
+    })
+    : { kind: 'gone' }
+  const messages = buildChatOrderTapReply({ storeName: bundle.store?.name ?? '', messages: bundle.settings.messages, customerName: turn.customerName }, result)
+  if (tapPausesBot(result)) {
+    await pauseForStaff(turn)
+    // The bot goes quiet: someone has to know the customer is waiting on a change.
+    if (result.kind === 'change') await alertStaff(turn, 'wants_change', `Order ${result.order.label}`)
+  }
+  return (await sendAndRecord(turn, messages)) ? 'chat_order' : 'send_failed'
+}
+
+/** Step 9 (T1): a typed order is handed to staff. */
+async function answerTypedOrder(turn: Turn, ctx: ReplyContext): Promise<EventOutcome> {
+  const messages = buildTypedOrderHandover(ctx)
+  await pauseForStaff(turn)
+  const isSent = await sendAndRecord(turn, messages)
+  await alertStaff(turn, 'typed_order')
+  return isSent ? 'typed_order' : 'send_failed'
 }

@@ -42,6 +42,8 @@ export const SERVER_OWNED_CUSTOMER_DATA_KEYS = [
   // The webhook's record of who owns the order's conversation (order-referral.ts).
   'messenger_sender_id',
   'messenger_last_interaction',
+  // Only the register names a chat for an order (chat orders); a web order carrying one would wake the summary route for nothing.
+  'messenger_session_id',
   // POS tender snapshot written by the register.
   'pos',
   // The store's own line to the rider: forged, a customer could tell a rider to collect cash "from the store".

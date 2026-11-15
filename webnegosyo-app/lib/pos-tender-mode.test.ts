@@ -2,6 +2,7 @@ import {
   canOfferPayLater,
   describeCompletedSale,
   tenderBlockedReason,
+  tenderShape,
   tenderSwipeLabel,
   type TenderBlockInput,
 } from "./pos-tender-mode";
@@ -78,6 +79,21 @@ describe("tenderSwipeLabel", () => {
     );
   });
 
+  it("says a chat order goes to the customer, whatever the mode", () => {
+    expect(tenderSwipeLabel({ mode: "later", edit: null, amountDue: 450, isChatOrder: true })).toBe(
+      "Swipe to send to the customer",
+    );
+    expect(tenderSwipeLabel({ mode: "now", edit: null, amountDue: 450, isChatOrder: true })).toBe(
+      "Swipe to send to the customer",
+    );
+  });
+
+  it("never uses the chat wording for an edit", () => {
+    expect(tenderSwipeLabel({ mode: "now", edit: "settled", amountDue: 0, isChatOrder: true })).toBe(
+      "Swipe to save the changes",
+    );
+  });
+
   it("keeps the edit wording", () => {
     expect(tenderSwipeLabel({ mode: "now", edit: "settled", amountDue: 0 })).toBe("Swipe to save the changes");
     expect(tenderSwipeLabel({ mode: "now", edit: "refund", amountDue: 20 })).toBe("Swipe to refund  ₱20.00");
@@ -110,9 +126,57 @@ describe("describeCompletedSale", () => {
     });
   });
 
+  it("tells the cashier a chat order went to the customer and is not in the kitchen yet", () => {
+    expect(
+      describeCompletedSale({ total: 518, isPayLater: true, isSavedOffline: false, sentToChat: "Ana C." }),
+    ).toEqual({
+      tone: "unpaid",
+      title: "Order sent · ₱518.00 unpaid",
+      detail: "Sent to Ana C. to confirm. It reaches the kitchen once they tap Confirm, or you confirm it.",
+    });
+    expect(
+      describeCompletedSale({ total: 518, isPayLater: true, isSavedOffline: true, sentToChat: "Ana C." }).detail,
+    ).toBe("Saved. Ana C. gets the order to confirm once this phone is back online.");
+  });
+
   it("says when the sale is kept on this device", () => {
     expect(
       describeCompletedSale({ total: 450, changeDue: 0, isPayLater: false, isSavedOffline: true }).detail,
     ).toBe("₱450.00 · saved on this device, syncs when online");
+  });
+});
+
+describe("tenderShape (a sale rung up for a Messenger chat)", () => {
+  const base = { mode: "now" as const, hasChat: false, isEditing: false, isPlatformBackend: true };
+
+  it("leaves an ordinary sale exactly as it was", () => {
+    expect(tenderShape(base)).toEqual({
+      isChatOrder: false,
+      isPayLaterOffered: true,
+      isPayLater: false,
+      showsModeSwitch: true,
+      showsPayLaterCard: false,
+      printsKitchenChitNow: true,
+      offersPhoneOnEveryType: false,
+    });
+    expect(tenderShape({ ...base, mode: "later" })).toMatchObject({ isPayLater: true, showsPayLaterCard: true, showsModeSwitch: true });
+  });
+
+  it("holds a chat order for the customer: unpaid, no pay-now switch, no chit yet, the phone kept", () => {
+    expect(tenderShape({ ...base, hasChat: true })).toEqual({
+      isChatOrder: true,
+      isPayLaterOffered: true,
+      isPayLater: true,
+      showsModeSwitch: false,
+      showsPayLaterCard: false,
+      printsKitchenChitNow: false,
+      offersPhoneOnEveryType: true,
+    });
+  });
+
+  it("is never a chat order off the platform order system, or while editing a placed order", () => {
+    expect(tenderShape({ ...base, hasChat: true, isPlatformBackend: false }).isChatOrder).toBe(false);
+    const edit = tenderShape({ ...base, hasChat: true, isEditing: true });
+    expect(edit).toMatchObject({ isChatOrder: false, isPayLaterOffered: false, isPayLater: false, showsModeSwitch: false, printsKitchenChitNow: true });
   });
 });

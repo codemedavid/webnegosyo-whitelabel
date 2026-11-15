@@ -122,11 +122,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { data: orderRow } = isUuid(orderId)
       ? await admin
           .from('orders')
-          .select('id')
+          .select('id, source')
           .eq('id', orderId)
           .eq('tenant_id', tenantId)
           .maybeSingle()
       : { data: null }
+    // A register sale already went to Loyverse when it was rung up (the
+    // `pos_sale` push below, which leaves no mark on the row). A register
+    // order that waited for the customer's OK (an order taken from a Messenger
+    // chat) is then confirmed like an online one: pushing again here would
+    // file the same sale twice.
+    if (orderRow && (orderRow as { source?: string | null }).source === 'pos' && context !== 'pos_sale') {
+      return skipped('Register sale: already sent when it was rung up')
+    }
     if (orderRow) {
       // Platform order: the push service reads order_items and records the
       // outcome on the row; caller-sent items are ignored in favour of the

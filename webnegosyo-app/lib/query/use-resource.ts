@@ -26,6 +26,8 @@ export interface ResourceResult<T> {
 
 export interface ResourceOptions {
   staleTime?: number;
+  /** Re-read on a timer while a screen shows it. Off (the default) when omitted or false. */
+  refetchInterval?: number | false;
   /**
    * Keep the last successful answer on disk and serve it when the read fails,
    * so the register can open and sell without a connection. Only for reads
@@ -55,6 +57,7 @@ export function useResource<T>(
     queryFn,
     enabled: isEnabled,
     staleTime: options.staleTime,
+    refetchInterval: options.refetchInterval ?? false,
   });
 
   const { refetch: queryRefetch } = query;

@@ -671,6 +671,11 @@ export interface CreateOrderItemArgs {
 }
 
 export interface CreateOrderArgs {
+  /**
+   * A register order rung up for a Messenger chat: it waits (`pending`) for
+   * the customer's OK instead of going straight to the kitchen.
+   */
+  holdForCustomer?: boolean;
   customerName: string;
   customerContact: string;
   customerData?: Record<string, unknown>;
@@ -821,7 +826,7 @@ export function buildCreateOrderRows(
     customer_data: args.customerData ?? null,
     total: args.total,
     item_count: args.itemCount,
-    status: SELF_CONFIRMING_SOURCES.includes(args.source) ? "confirmed" : "pending",
+    status: SELF_CONFIRMING_SOURCES.includes(args.source) && args.holdForCustomer !== true ? "confirmed" : "pending",
     payment_status: args.source === "pos" && args.paymentStatus === "paid" ? "paid" : "pending",
     source: args.source,
     order_type: args.orderType ?? null,

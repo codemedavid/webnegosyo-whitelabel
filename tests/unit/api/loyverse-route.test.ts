@@ -58,7 +58,7 @@ function post(body: unknown): NextRequest {
  * platform-backend order) and the tenant's Convex credentials.
  */
 function stubAdmin(options: {
-  platformOrder?: { id: string } | null
+  platformOrder?: { id: string; source?: string } | null
   tenant?: Record<string, unknown> | null
 }) {
   adminFrom.mockImplementation((table: string) => {
@@ -290,6 +290,28 @@ describe('POST /api/loyverse — POS counter sales', () => {
     expect(pushOrderToLoyverseBestEffort).toHaveBeenCalledWith(
       expect.objectContaining({ trigger: 'manual', orderNumber: '#42' }),
     )
+  })
+})
+
+describe('POST /api/loyverse — a register order confirmed later', () => {
+  // An order rung up for a Messenger chat waits for the customer's OK. Its
+  // sale went to Loyverse at the register; the later confirm must not file it
+  // a second time.
+  it('is not pushed again when it is confirmed', async () => {
+    stubAdmin({ platformOrder: { id: PLATFORM_ORDER, source: 'pos' } })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: PLATFORM_ORDER }))
+
+    expect(pushOrderToLoyverseBestEffort).not.toHaveBeenCalled()
+    expect(await response.json()).toEqual(expect.objectContaining({ skipped: true, success: false }))
+  })
+
+  it('an online order confirmed the same way still pushes', async () => {
+    stubAdmin({ platformOrder: { id: PLATFORM_ORDER, source: 'web' } })
+
+    await POST(post({ tenantId: TENANT, orderId: PLATFORM_ORDER }))
+
+    expect(pushOrderToLoyverseBestEffort).toHaveBeenCalledWith(expect.objectContaining({ orderId: PLATFORM_ORDER, trigger: 'confirm' }))
   })
 })
 

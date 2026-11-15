@@ -91,6 +91,28 @@ export async function ensureCashAlertsChannel(): Promise<void> {
   cashAlertsChannelReady = true;
 }
 
+/** The channel web sends "a customer needs you" chat pushes on (`CHAT_ALERT_CHANNEL` in `src/lib/messenger/staff-alert.ts`). */
+export const CHAT_ALERTS_CHANNEL_ID = "chat-alerts";
+
+let chatAlertsChannelReady = false;
+
+/**
+ * The "chat-alerts" Android channel: a Messenger customer asked for a person,
+ * typed an order, or wrote while staff had the bot paused. HIGH with the
+ * default sound, never the order ringtone (a chat is not an order yet).
+ * Created at startup, never deleted. No-op on iOS.
+ */
+export async function ensureChatAlertsChannel(): Promise<void> {
+  if (Platform.OS !== "android" || chatAlertsChannelReady) return;
+  await Notifications.setNotificationChannelAsync(CHAT_ALERTS_CHANNEL_ID, {
+    name: "Customer chats",
+    description: "Messenger customers waiting for a person",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 150, 100, 150],
+  });
+  chatAlertsChannelReady = true;
+}
+
 let approvalsChannelReady = false;
 
 /**

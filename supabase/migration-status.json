@@ -444,6 +444,8 @@
     "20261113120000_tenant_app_builds.sql",
     "20261114120000_report_exports.sql",
     "20261114150000_report_templates.sql",
-    "20261114160000_report_templates_format_kind.sql"
+    "20261114160000_report_templates_format_kind.sql",
+    "20261115013219_messenger_chat_orders.sql",
+    "20261115073959_messenger_messages_sent_by.sql"
   ]
 }

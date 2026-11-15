@@ -181,3 +181,93 @@ describe("OrderCard kitchen chip", () => {
     expect(screen.queryByText(/Kitchen/)).toBeNull();
   });
 });
+
+describe("OrderCard Messenger chip", () => {
+  const chat = {
+    sessionId: "s1",
+    photoUrl: "https://example.com/ana.jpg",
+    label: "Messenger · Ana C.",
+    facebookName: "Ana C.",
+    hasNewMessage: true,
+  };
+
+  it("names the Messenger customer, shows their photo and flags a new message", () => {
+    render(<OrderCard order={{ ...baseOrder, customerName: "Table 4", source: "messenger" }} onPress={jest.fn()} chat={chat} />);
+    expect(screen.getByText("Messenger · Ana C.")).toBeTruthy();
+    expect(screen.getByText("New message")).toBeTruthy();
+    expect(screen.getByTestId("chat-avatar-photo")).toBeTruthy();
+    // The chip replaces the bare source word.
+    expect(screen.queryByText("messenger")).toBeNull();
+  });
+
+  it("uses the Facebook name for an order placed without one", () => {
+    render(<OrderCard order={{ ...baseOrder, customerName: " " }} onPress={jest.fn()} chat={{ ...chat, hasNewMessage: false }} />);
+    expect(screen.getByText("Ana C.")).toBeTruthy();
+    expect(screen.queryByText("New message")).toBeNull();
+  });
+
+  it("keeps the initials when Meta gave no photo", () => {
+    render(<OrderCard order={baseOrder} onPress={jest.fn()} chat={{ ...chat, photoUrl: null, label: "Messenger" }} />);
+    expect(screen.getByText("Messenger")).toBeTruthy();
+    expect(screen.queryByTestId("chat-avatar-photo")).toBeNull();
+    expect(screen.getByText("MC")).toBeTruthy();
+  });
+
+  describe("an order staff rang up for the chat", () => {
+    const SESSION = "0f9c1c2e-6f9a-4d7f-9c1b-2a3b4c5d6e7f";
+    const rungUp = {
+      ...baseOrder,
+      status: "pending",
+      source: "pos",
+      _creationTime: Date.now() - 60_000,
+      customerData: { messenger_session_id: SESSION },
+    };
+    const record = { orderId: "o1", state: "waiting" as const, outcome: "sent", summarySentAt: Date.now() - 50_000, createdAt: Date.now() - 55_000 };
+
+    it("says it is waiting for the customer", () => {
+      render(<OrderCard order={rungUp} onPress={jest.fn()} chat={{ ...chat, hasNewMessage: false, chatOrder: record }} />);
+      expect(screen.getByText("Waiting for customer")).toBeTruthy();
+    });
+
+    it("flags a customer who asked for a change", () => {
+      render(
+        <OrderCard order={rungUp} onPress={jest.fn()} chat={{ ...chat, hasNewMessage: false, chatOrder: { ...record, state: "change_requested" } }} />,
+      );
+      expect(screen.getByText("Wants a change")).toBeTruthy();
+    });
+
+    it("credits the customer once they confirmed", () => {
+      render(
+        <OrderCard
+          order={{ ...rungUp, status: "confirmed" }}
+          onPress={jest.fn()}
+          chat={{ ...chat, hasNewMessage: false, chatOrder: { ...record, state: "confirmed" } }}
+        />,
+      );
+      expect(screen.getByText("Customer confirmed")).toBeTruthy();
+    });
+
+    it("never guesses 'not sent' where the list did not look the order up", () => {
+      render(<OrderCard order={{ ...rungUp, _creationTime: Date.now() - 10 * 60_000 }} onPress={jest.fn()} chat={{ ...chat, hasNewMessage: false }} />);
+      expect(screen.queryByText("Couldn't send")).toBeNull();
+      expect(screen.queryByText("Waiting for customer")).toBeNull();
+    });
+
+    it("says so when it was looked up and nothing went out", () => {
+      render(
+        <OrderCard
+          order={{ ...rungUp, _creationTime: Date.now() - 10 * 60_000 }}
+          onPress={jest.fn()}
+          chat={{ ...chat, hasNewMessage: false, chatOrder: null }}
+        />,
+      );
+      expect(screen.getByText("Couldn't send")).toBeTruthy();
+    });
+  });
+
+  it("is unchanged for an order that did not come from a chat", () => {
+    render(<OrderCard order={{ ...baseOrder, source: "web" }} onPress={jest.fn()} />);
+    expect(screen.getByText("web")).toBeTruthy();
+    expect(screen.queryByText(/Messenger/)).toBeNull();
+  });
+});
