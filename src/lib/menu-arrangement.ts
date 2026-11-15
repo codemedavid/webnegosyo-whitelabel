@@ -17,6 +17,7 @@
  */
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
+import { readAllRows, type PageQuery } from '@/platform/db/read-all-rows'
 
 interface IdRow {
   id: string
@@ -86,30 +87,41 @@ async function writePositions(
   }
 }
 
-/** Ids currently present for a tenant, optionally narrowed to one category. */
+/**
+ * The most rows one arrangement read takes. Far above any real store (the
+ * largest has about 4,000 dishes); past it the reorder is refused rather than
+ * judged against part of the list.
+ */
+const MAX_ARRANGEMENT_ROWS = 20_000
+
+/**
+ * Ids currently present for a tenant, optionally narrowed to one category.
+ *
+ * Paged: one response carries at most 1,000 rows, and a short list here would
+ * refuse a complete ordering as "foreign ids" (or, worse, accept a partial
+ * one). `id` is unique, so pages neither overlap nor skip.
+ */
 async function existingIds(
   ctx: ProvisioningCtx,
   table: 'categories' | 'menu_items',
   tenantId: string,
   categoryId?: string,
 ): Promise<string[]> {
-  if (table === 'menu_items' && categoryId) {
-    const { data, error } = await ctx.client
-      .from('menu_items')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('category_id', categoryId)
-    if (error) throw new Error(`Could not read the current ${table} order: ${error.message}`)
-    return ((data ?? []) as IdRow[]).map((r) => r.id)
+  const result = await readAllRows<IdRow>(
+    (from, to) => {
+      const query =
+        table === 'menu_items' && categoryId
+          ? ctx.client.from('menu_items').select('id').eq('tenant_id', tenantId).eq('category_id', categoryId)
+          : ctx.client.from(table).select('id').eq('tenant_id', tenantId)
+      return query.order('id', { ascending: true }).range(from, to) as unknown as ReturnType<PageQuery<IdRow>>
+    },
+    { maxRows: MAX_ARRANGEMENT_ROWS },
+  )
+  if (result.ok) return result.rows.map((r) => r.id)
+  if (result.reason === 'error') {
+    throw new Error(`Could not read the current ${table} order: ${result.error.message}`)
   }
-
-  const query = ctx.client.from(table).select('id').eq('tenant_id', tenantId)
-
-  const { data, error } = await query
-  if (error) {
-    throw new Error(`Could not read the current ${table} order: ${error.message}`)
-  }
-  return ((data ?? []) as unknown as IdRow[]).map((r) => r.id)
+  throw new Error(`Refusing to reorder: more than ${MAX_ARRANGEMENT_ROWS} ${table} to check.`)
 }
 
 /**

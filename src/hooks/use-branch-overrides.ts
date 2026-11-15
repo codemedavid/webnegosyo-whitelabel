@@ -2,10 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import {
-  OUTLET_MENU_OVERRIDE_SELECT,
-  type OutletMenuOverride,
-} from '@/lib/outlets/outlet-menu-repository'
+import { overrideReadProblem, readTenantOverrides } from '@/lib/outlets/read-tenant-overrides'
 import type { OutletMenuOverrideRow } from '@/lib/outlets/outlet-menu-overrides'
 
 /**
@@ -46,22 +43,19 @@ export function useBranchOverrides({
     let isCurrent = true
     setIsLoading(true)
 
-    createClient()
-      .from('outlet_menu_items')
-      .select(OUTLET_MENU_OVERRIDE_SELECT)
-      .eq('tenant_id', tenantId)
-      .then(({ data, error }) => {
-        if (!isCurrent) return
-        setIsLoading(false)
-        if (error) {
-          console.warn('[use-branch-overrides] Branch menu query failed:', error.message)
-          setDidFail(true)
-          setOverrides([])
-          return
-        }
-        setDidFail(false)
-        setOverrides((data ?? []) as unknown as OutletMenuOverride[])
-      })
+    // Paged like the menu page's server read, so both see the same rows.
+    void readTenantOverrides(createClient(), tenantId).then((result) => {
+      if (!isCurrent) return
+      setIsLoading(false)
+      if (!result.ok) {
+        console.warn('[use-branch-overrides] Branch menu query failed:', overrideReadProblem(result))
+        setDidFail(true)
+        setOverrides([])
+        return
+      }
+      setDidFail(false)
+      setOverrides(result.rows)
+    })
 
     return () => {
       isCurrent = false

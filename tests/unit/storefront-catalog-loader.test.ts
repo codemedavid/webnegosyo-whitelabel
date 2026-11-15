@@ -122,6 +122,30 @@ describe('loadStorefrontCatalog', () => {
     expect(ranges.menu_items).toHaveLength(5)
   })
 
+  test('reads every branch-menu difference past the 1000-row cap', async () => {
+    // A difference cut off at 1,000 read as "same as the store-wide menu".
+    const overrides = Array.from({ length: 2500 }, (_, index) => ({ id: `o-${index}`, outlet_id: `b-${index % 5}`, menu_item_id: `m-${index}` }))
+    const { client, ranges, orders } = createFakeClient({ outlet_menu_items: { data: overrides, error: null } })
+
+    const catalog = await loadStorefrontCatalog(client, { ...tenant, multi_branch_enabled: true })
+
+    expect(catalog.overridesFailed).toBe(false)
+    expect(catalog.menuOverrides).toHaveLength(2500)
+    expect(ranges.outlet_menu_items).toHaveLength(3)
+    // Every page sorts by the unique (outlet_id, menu_item_id), so pages neither overlap nor skip.
+    expect(orders.outlet_menu_items.slice(0, 2)).toEqual(['outlet_id', 'menu_item_id'])
+  })
+
+  test('a failed branch-menu page is carried as a flag, with no partial list', async () => {
+    const { client } = createFakeClient({ outlet_menu_items: { data: null, error: { message: 'upstream request timeout' } } })
+
+    const catalog = await loadStorefrontCatalog(client, { ...tenant, multi_branch_enabled: true })
+
+    expect(catalog.error).toBeNull()
+    expect(catalog.overridesFailed).toBe(true)
+    expect(catalog.menuOverrides).toEqual([])
+  })
+
   test('orders the paged read totally, so ranges cannot skip or repeat dishes', async () => {
     const { client, orders } = createFakeClient({ menu_items: { data: [{ id: 'm1' }], error: null } })
 

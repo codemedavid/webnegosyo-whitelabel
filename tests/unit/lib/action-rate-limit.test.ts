@@ -65,13 +65,25 @@ describe('action rate limiting', () => {
     expect(options.limit).toBeGreaterThan(0)
   })
 
-  it('checkOrderRateLimit allows when the client IP cannot be determined', async () => {
+  it('a request with no readable address shares one bucket per scope instead of skipping the limit', async () => {
     const { headers, checkRateLimit, checkOrderRateLimit } = await load()
     headers.mockResolvedValue(headerBag({}) as never)
+    checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 30 })
 
     const result = await checkOrderRateLimit('tenant-1')
 
-    expect(result.allowed).toBe(true)
+    expect(result).toEqual({ allowed: false, retryAfterSec: 30 })
+    expect(checkRateLimit).toHaveBeenCalledTimes(1)
+    expect(checkRateLimit.mock.calls[0][0]).toBe('order:tenant-1:unknown')
+  })
+
+  it('a call outside any request (server code, headers() throws) is not counted', async () => {
+    const { headers, checkRateLimit, checkActionRateLimit } = await load()
+    headers.mockRejectedValue(new Error('outside request scope'))
+
+    const result = await checkActionRateLimit('voucher-preview', { limit: 1, windowSec: 60 })
+
+    expect(result).toEqual({ allowed: true, retryAfterSec: 0 })
     expect(checkRateLimit).not.toHaveBeenCalled()
   })
 })
