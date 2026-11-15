@@ -1,5 +1,5 @@
 import { EXPORT_SHEETS, SHEET_IDS, type SheetId } from '@/lib/exports/catalogue'
-import { exportHref } from '@/lib/exports/request-schema'
+import { againHref } from '@/lib/exports/again-href'
 import { listRecentExports, type ExportLogEntry } from '@/lib/exports/server/export-log'
 import { manilaDateTime } from '@/lib/exports/cells'
 
@@ -7,30 +7,23 @@ const KNOWN = new Set<string>(SHEET_IDS)
 const SOURCE_LABELS: Readonly<Record<string, string>> = { page: 'Export page', button: 'A report', owl: 'Owl' }
 
 function sheetNames(entry: ExportLogEntry): string {
-  return entry.sheets.map((id) => (KNOWN.has(id) ? EXPORT_SHEETS[id as SheetId].name : id)).join(', ')
+  // A saved format logs its tabs as `<sheet>:<n>`: name each catalogue sheet once.
+  const names = [...new Set(entry.sheets.map((id) => id.split(':')[0]))].map((id) => (KNOWN.has(id) ? EXPORT_SHEETS[id as SheetId].name : id))
+  const shape = entry.shape
+  const shaped =
+    shape.kind === 'custom' ? `${shape.spec ? `${shape.spec.title} · ` : ''}Custom report from ` : shape.kind === 'template' ? 'Saved format from ' : ''
+  return `${shaped}${names.join(', ')}`
 }
 
 function range(entry: ExportLogEntry): string {
   return entry.periodFrom === entry.periodTo ? entry.periodFrom : `${entry.periodFrom} to ${entry.periodTo}`
 }
 
-/** The same sheets, dates and branch, read again NOW: no file is kept, so figures may have moved since. */
-function againHref(tenantId: string, entry: ExportLogEntry): string | null {
-  const sheets = entry.sheets.filter((id): id is SheetId => KNOWN.has(id))
-  if (sheets.length === 0) return null
-  return exportHref({
-    tenantId,
-    sheets,
-    period: { preset: 'custom', from: entry.periodFrom, to: entry.periodTo },
-    branch: entry.branch,
-    format: entry.format,
-    source: 'page',
-  })
-}
 
 /**
  * The export log this person may read (their own; the whole store's for the
- * owner and Store Activity readers). A failed read hides the list, never the page.
+ * owner and store-wide Store Activity readers; a branch account's Store Activity
+ * adds its own branch). A failed read hides the list, never the page.
  */
 export async function RecentExports({ tenantId }: { tenantId: string }) {
   let entries: ExportLogEntry[]

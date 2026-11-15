@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import type { ReportContext } from '@/lib/reports/read/report-context'
+import { customReportSpecSchema, type CustomReportSpec } from '../custom-report'
 import type { ExportRequest } from '../request-schema'
 import type { ExportResult } from '../run-export'
 
@@ -19,9 +20,38 @@ export interface ExportLogEntry {
   rowCounts: Record<string, number>
   bytes: number
   createdAt: string
+  /**
+   * What shaped the file, so "Download again" rebuilds THAT file: catalogue sheets, a custom
+   * report (its spec) or a saved format (its id; null once the format was removed).
+   * Rows logged before 2026-11-15 read as `sheets`.
+   */
+  shape: ExportShape
 }
 
-const LOG_COLUMNS = 'id, user_label, sheets, left_out, preset, period_from, period_to, branch, format, source, row_counts, bytes, created_at'
+export type ExportShape =
+  | { kind: 'sheets' }
+  /** `spec` null = stored, but no longer a valid spec (the schema moved on): listed, not offered again. */
+  | { kind: 'custom'; spec: CustomReportSpec | null }
+  | { kind: 'template'; templateId: string | null }
+
+const LOG_COLUMNS = 'id, user_label, sheets, left_out, preset, period_from, period_to, branch, format, source, row_counts, bytes, created_at, shape, custom_spec, template_id'
+
+/** The row's shape columns as written (20261115150000). */
+function shapeColumns(request: Pick<ExportRequest, 'custom' | 'template'>): { shape: ExportShape['kind']; custom_spec: CustomReportSpec | null; template_id: string | null } {
+  if (request.template) return { shape: 'template', custom_spec: null, template_id: request.template }
+  if (request.custom) return { shape: 'custom', custom_spec: request.custom, template_id: null }
+  return { shape: 'sheets', custom_spec: null, template_id: null }
+}
+
+/** A stored shape read back. The log is a record, so a row is always listed, whatever its spec now says. */
+function shapeOf(row: Record<string, unknown>): ExportShape {
+  if (row.shape === 'template') return { kind: 'template', templateId: (row.template_id as string | null) ?? null }
+  if (row.shape === 'custom') {
+    const spec = customReportSpecSchema.safeParse(row.custom_spec)
+    return { kind: 'custom', spec: spec.success ? spec.data : null }
+  }
+  return { kind: 'sheets' }
+}
 
 interface LogClient {
   from: (table: string) => any // eslint-disable-line @typescript-eslint/no-explicit-any -- report_exports is not in the generated types until the migration is applied
@@ -44,7 +74,7 @@ async function userLabel(client: LogClient, userId: string): Promise<string | nu
  */
 export async function logExport(
   userId: string,
-  request: Pick<ExportRequest, 'tenantId' | 'period' | 'format' | 'source'>,
+  request: Pick<ExportRequest, 'tenantId' | 'period' | 'format' | 'source' | 'custom' | 'template'>,
   context: ReportContext,
   result: ExportResult,
   bytes: number,
@@ -67,6 +97,7 @@ export async function logExport(
       source: request.source,
       row_counts: result.sheets.reduce<Record<string, number>>((counts, sheet) => ({ ...counts, [sheet.id]: (counts[sheet.id] ?? 0) + sheet.rows.length }), {}),
       bytes,
+      ...shapeColumns(request),
     })
     .select('id')
   if (error || !Array.isArray(data) || data.length !== 1) {
@@ -74,7 +105,10 @@ export async function logExport(
   }
 }
 
-/** The newest exports this caller may see (their own; the store's for the owner and `activity_view`). */
+/**
+ * The newest exports this caller may see: their own; the store's for the owner and store-wide
+ * `activity_view`; a branch account's `activity_view` adds only rows exported for its branch (RLS).
+ */
 export async function listRecentExports(tenantId: string, limit = 10): Promise<ExportLogEntry[]> {
   const client = await logClient()
   const { data, error } = await client
@@ -84,7 +118,11 @@ export async function listRecentExports(tenantId: string, limit = 10): Promise<E
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw new Error(`recent exports could not be read: ${error.message}`)
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+  return ((data ?? []) as Array<Record<string, unknown>>).map(toEntry)
+}
+
+function toEntry(row: Record<string, unknown>): ExportLogEntry {
+  return {
     id: String(row.id),
     userLabel: (row.user_label as string | null) ?? null,
     sheets: (row.sheets as string[]) ?? [],
@@ -98,5 +136,6 @@ export async function listRecentExports(tenantId: string, limit = 10): Promise<E
     rowCounts: (row.row_counts as Record<string, number>) ?? {},
     bytes: Number(row.bytes ?? 0),
     createdAt: String(row.created_at),
-  }))
+    shape: shapeOf(row),
+  }
 }

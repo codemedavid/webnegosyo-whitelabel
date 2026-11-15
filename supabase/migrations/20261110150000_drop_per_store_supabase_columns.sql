@@ -2,7 +2,9 @@
 -- One order backend fewer: drop the per-store Supabase credential columns
 -- (owner decision 2026-11-10, "one backend").
 --
---   >>> HOLD. DO NOT APPLY YET. Apply ONLY after BOTH are live:
+--   >>> APPLIED to platform 2026-11-16 (gates re-probed that day: all four columns
+--   >>> empty on 317 stores, none pinned, no pg_depend rows, no code names them).
+--   >>> Was: HOLD. DO NOT APPLY YET. Apply ONLY after BOTH are live:
 --   >>>   (1) the web deploy from chore/remove-per-store-supabase, which no
 --   >>>       longer names these columns in any select list, and
 --   >>>   (2) the merchant-app OTA / build from the same branch,

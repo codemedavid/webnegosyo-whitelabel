@@ -1,7 +1,10 @@
 // The export log (report_exports): each caller writes only their own row, for
 // a store where they hold `reports`; they read their own rows, the owner and
 // `activity_view` staff read the store's; nobody edits or deletes. Runs the
-// REAL migration over PGlite with Supabase's default grants.
+// REAL migrations over PGlite with Supabase's default grants: the table
+// (20261114120000) and its follow-up (20261115150000: a BRANCH account with
+// `activity_view` reads only rows exported for its branch; custom / saved-format
+// exports keep what shaped them).
 //   node tests/sql/run-report-exports.cjs
 const { PGlite } = require('@electric-sql/pglite')
 const assert = require('node:assert/strict')
@@ -16,6 +19,10 @@ const CASHIER = '00000000-0000-4000-8000-00000000000d' // pos only
 const WATCHER = '00000000-0000-4000-8000-00000000000e' // activity_view only
 const LEGACY = '00000000-0000-4000-8000-00000000000f' // permissions null
 const STRANGER = '00000000-0000-4000-8000-000000000010' // other store's owner
+const BRANCH_WATCHER = '00000000-0000-4000-8000-000000000011' // activity_view + reports, locked to BRANCH_A
+const BRANCH_A = '00000000-0000-4000-8000-0000000000a1'
+const BRANCH_B = '00000000-0000-4000-8000-0000000000b1'
+const TEMPLATE = '00000000-0000-4000-8000-0000000000c1'
 
 // Copied verbatim from 20261112022453_owl_assistant_access_and_kinds.sql (live).
 const HAS_PERMISSION = `
@@ -49,6 +56,29 @@ as $$
 $$;
 revoke all on function public.app_user_has_permission(uuid, text) from public, anon;
 grant execute on function public.app_user_has_permission(uuid, text) to authenticated, service_role;
+`
+
+// Copied verbatim from the live body (pg_get_functiondef, 2026-11-15).
+const MAY_REACH_BRANCH = `
+CREATE OR REPLACE FUNCTION public.app_user_may_reach_branch(target_tenant_id uuid, target_outlet_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+      FROM app_users au
+     WHERE au.user_id = auth.uid()
+       AND au.tenant_id = target_tenant_id
+       AND au.role = ANY (ARRAY['admin','superadmin'])
+       AND (
+         au.outlet_id IS NULL
+         OR COALESCE(au.is_owner, false)
+         OR au.outlet_id = target_outlet_id
+       )
+  );
+$function$;
 `
 
 function insertSql(overrides = {}) {
@@ -94,8 +124,12 @@ async function main() {
     await db.exec(`
       create table public.tenants (id uuid primary key);
       create table public.app_users (
-        user_id uuid primary key, role text not null, tenant_id uuid, is_owner boolean default false, permissions text[]
+        user_id uuid primary key, role text not null, tenant_id uuid, is_owner boolean default false, permissions text[], outlet_id uuid
       );
+      -- The FK target of report_exports.template_id (the real table is 20261114150000).
+      create table public.report_templates (id uuid primary key, tenant_id uuid not null);
+      grant select on public.report_templates to authenticated;
+      insert into public.report_templates (id, tenant_id) values ('${TEMPLATE}', '${STORE}');
       insert into public.tenants (id) values ('${STORE}'), ('${OTHER}');
       insert into public.app_users (user_id, role, tenant_id, is_owner, permissions) values
         ('${OWNER}', 'admin', '${STORE}', true, null),
@@ -105,9 +139,13 @@ async function main() {
         ('${WATCHER}', 'admin', '${STORE}', false, '{activity_view}'),
         ('${LEGACY}', 'admin', '${STORE}', false, null),
         ('${STRANGER}', 'admin', '${OTHER}', true, null);
+      insert into public.app_users (user_id, role, tenant_id, is_owner, permissions, outlet_id) values
+        ('${BRANCH_WATCHER}', 'admin', '${STORE}', false, '{reports,activity_view}', '${BRANCH_A}');
     `)
     await db.exec(HAS_PERMISSION)
+    await db.exec(MAY_REACH_BRANCH)
     await db.exec(readMigration('20261114120000_report_exports.sql'))
+    await db.exec(readMigration('20261115150000_report_exports_branch_scope_and_shape.sql'))
     await db.exec('begin')
 
     // Whoever holds `reports` (outright, through analytics, as owner, as a legacy full-access account) logs their own export.
@@ -140,6 +178,36 @@ async function main() {
     assert.deepEqual((await visibleTo(db, WATCHER)).sort(), [OWNER, REPORTER, ANALYST, LEGACY].sort(), 'activity_view sees the store')
     assert.deepEqual(await visibleTo(db, LEGACY), [LEGACY], 'legacy full access does not include activity_view')
     assert.deepEqual(await visibleTo(db, CASHIER), [], 'cashier sees none')
+
+    // A branch account with activity_view: its own rows + rows exported FOR its branch, never the
+    // whole store's, another branch's or "no branch yet".
+    await insertAs(db, BRANCH_WATCHER, { branch: BRANCH_A })
+    await insertAs(db, OWNER, { branch: BRANCH_A })
+    await insertAs(db, OWNER, { branch: BRANCH_B })
+    await insertAs(db, OWNER, { branch: 'unassigned' })
+    await reset(db)
+    const branchRows = async (uid) => {
+      await as(db, 'authenticated', uid)
+      return (await db.query('select user_id, branch from public.report_exports order by created_at, id')).rows.map((row) => `${row.user_id === uid ? 'own' : 'other'}:${row.branch ?? 'store'}`)
+    }
+    assert.deepEqual((await branchRows(BRANCH_WATCHER)).sort(), ['other:' + BRANCH_A, 'own:' + BRANCH_A].sort(), 'branch watcher: own + its branch only')
+    assert.equal((await branchRows(WATCHER)).length, 8, 'store-wide watcher still sees every row')
+    assert.equal((await branchRows(OWNER)).length, 8, 'owner still sees every row')
+
+    // Shape: custom keeps its spec, a saved format its id (cleared when the format is removed).
+    const custom = await insertAs(db, REPORTER, { shape: 'custom', custom_spec: JSON.stringify({ sheet: 'orders', title: 'Mine', columns: [{ id: 'total' }] }) })
+    assert.equal(custom.rows.length, 1, 'custom export logged with its spec')
+    const saved = await insertAs(db, REPORTER, { shape: 'template', template_id: TEMPLATE })
+    assert.equal(saved.rows.length, 1, 'saved-format export logged with its id')
+    await rejects(db, () => insertAs(db, REPORTER, { shape: 'custom' }), /violates check/, 'custom needs its spec')
+    await rejects(db, () => insertAs(db, REPORTER, { custom_spec: '{"a":1}' }), /violates check/, 'a spec only on a custom export')
+    await rejects(db, () => insertAs(db, REPORTER, { template_id: TEMPLATE }), /violates check/, 'a format id only on a format export')
+    await rejects(db, () => insertAs(db, REPORTER, { shape: 'custom', custom_spec: JSON.stringify({ x: 'y'.repeat(4500) }) }), /violates check/, 'spec is bounded')
+    await rejects(db, () => insertAs(db, REPORTER, { shape: 'pdf' }), /violates check/, 'shape is one of three')
+    await reset(db)
+    await db.query('delete from public.report_templates where id = $1', [TEMPLATE])
+    const cleared = await db.query('select template_id from public.report_exports where id = $1', [saved.rows[0].id])
+    assert.equal(cleared.rows[0].template_id, null, 'a removed format clears the id (set null)')
     assert.deepEqual(await visibleTo(db, STRANGER), [], "another store's owner sees none")
 
     // Append-only for clients: no UPDATE or DELETE grant at all.
