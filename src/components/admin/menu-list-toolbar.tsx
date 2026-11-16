@@ -10,7 +10,7 @@ import { Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CategoryIcon } from '@/components/shared/category-icon'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MENU_STATUS_FILTERS, type MenuListFilters, type MenuStatusFilter } from '@/lib/menu-list-filters'
+import { visibleStatusFilters, type MenuListFilters, type MenuStatusFilter } from '@/lib/menu-list-filters'
 import type { Category } from '@/types/database'
 
 interface MenuListToolbarProps {
@@ -69,7 +69,7 @@ export function MenuListToolbar({ filters, counts, categories, onChange, actions
 
       <div className="flex items-center gap-2">
         <div role="tablist" aria-label="Status" className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 pb-0.5">
-          {MENU_STATUS_FILTERS.map(({ value, label }) => {
+          {visibleStatusFilters(counts, filters.status).map(({ value, label }) => {
             const isActive = filters.status === value
             return (
               <button

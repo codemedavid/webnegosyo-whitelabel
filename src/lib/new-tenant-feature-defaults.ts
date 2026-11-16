@@ -1,9 +1,11 @@
 /**
  * The feature switches a brand-new store starts with.
  *
- * Everything that works without per-store setup starts ON. Two kinds stay off:
+ * Everything that works without per-store setup starts ON. These stay off:
  * - QR-handoff ordering — it replaces the Messenger checkout, so a merchant
  *   opts into it deliberately.
+ * - Pre-sell (dated quantities per dish): one store ever used it, and it
+ *   added a section to every dish editor (owner, 2026-11-16).
  * - Lalamove, Loyverse and distance-based delivery — `tenantSchema` refuses
  *   them when on without credentials or pricing, so defaulting them on would
  *   make every create fail.
@@ -24,7 +26,7 @@ export const NEW_TENANT_FEATURE_DEFAULTS = {
   inventory_enabled: true,
   low_stock_alerts_enabled: true,
   auto_86_enabled: true,
-  presell_enabled: true,
+  presell_enabled: false,
   multi_branch_enabled: true,
   flash_screen_feature_enabled: true,
   email_notifications_enabled: true,
