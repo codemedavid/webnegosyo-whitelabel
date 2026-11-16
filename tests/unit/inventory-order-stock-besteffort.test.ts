@@ -9,6 +9,7 @@
  */
 
 import { applyOrderStockBestEffort } from '@/lib/inventory/order-stock-service'
+import { resetStoreTracksStockCache } from '@/lib/inventory/store-tracks-stock'
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
@@ -23,6 +24,7 @@ jest.mock('@/lib/inventory/ceilings-cache', () => ({
 const ITEMS = [{ menuItemId: 'm1', quantity: 1 }]
 
 beforeEach(() => {
+  resetStoreTracksStockCache()
   from.mockReset()
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -76,13 +78,46 @@ describe('applyOrderStockBestEffort', () => {
     // deduct" — the answer to "why didn't this sale move my stock?". No claim
     // is taken (the claim and its rows are one call, and there are no rows),
     // so a retry after the recipe is added still deducts.
+    // (First: does the store keep any ingredient at all? It does.)
     from.mockImplementation(() => ({
-      select: () => ({ eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) }),
+      select: () => ({ eq: () => ({
+        in: () => Promise.resolve({ data: [], error: null }),
+        limit: () => Promise.resolve({ data: [{ id: 'ingredient' }], error: null }),
+      }) }),
       insert: () => Promise.resolve({ data: null, error: null }),
     }))
 
     await applyOrderStockBestEffort('t1', 'o1', ITEMS)
 
-    expect(from.mock.calls.map((c) => c[0])).toEqual(['recipes', 'inventory_audit_log'])
+    expect(from.mock.calls.map((c) => c[0])).toEqual(['inventory_items', 'recipes', 'inventory_audit_log'])
+  })
+
+  it('reads nothing more and writes no audit row for a store that keeps no stock at all', async () => {
+    // 35 stores (2026-11-16) have inventory on and not one ingredient: no recipe
+    // can exist, so a "nothing to deduct" row per order said nothing.
+    const insert = jest.fn(() => Promise.resolve({ data: null, error: null }))
+    from.mockImplementation(() => ({
+      select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }) }),
+      insert,
+    }))
+
+    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBe('settled')
+
+    expect(from.mock.calls.map((c) => c[0])).toEqual(['inventory_items', 'simple_option_stock_movements'])
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('runs the full path when the "keeps stock?" read fails', async () => {
+    from.mockImplementation((table: string) => ({
+      select: () => ({ eq: () => ({
+        in: () => Promise.resolve({ data: [], error: null }),
+        limit: () => Promise.resolve(table === 'inventory_items' ? { data: null, error: { message: 'timeout' } } : { data: [], error: null }),
+      }) }),
+      insert: () => Promise.resolve({ data: null, error: null }),
+    }))
+
+    await applyOrderStockBestEffort('t1', 'o1', ITEMS)
+
+    expect(from.mock.calls.map((c) => c[0])).toEqual(['inventory_items', 'recipes', 'inventory_audit_log'])
   })
 })

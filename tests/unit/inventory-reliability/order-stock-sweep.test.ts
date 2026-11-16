@@ -90,6 +90,11 @@ describe('the sweep route', () => {
 })
 
 describe('runOrderStockSweep', () => {
+  beforeEach(async () => {
+    const { resetStoreTracksStockCache } = await import('@/lib/inventory/store-tracks-stock')
+    resetStoreTracksStockCache()
+  })
+
   function fakeDb(tables: Record<string, unknown[]>, inserts: unknown[] = []) {
     return {
       from: (table: string) => {
@@ -115,6 +120,7 @@ describe('runOrderStockSweep', () => {
       order_stock_applications: [],
       inventory_audit_log: [{ created_at: new Date(NOW - 3 * 86_400_000).toISOString(), order_id: 'zz', outcome: 'applied' }],
       order_items: [],
+      inventory_items: [{ id: 'ingredient' }],
     }, inserts)
 
     const summary = await runOrderStockSweep(db, NOW)
@@ -122,6 +128,23 @@ describe('runOrderStockSweep', () => {
     expect(summary.stores).toBe(1)
     expect(summary.nothingToDeduct).toBe(1)
     expect(inserts).toHaveLength(1)
+  })
+
+  test('skips a store that keeps no stock at all: its orders are never read', async () => {
+    const { runOrderStockSweep } = await import('@/lib/inventory/order-stock-sweep')
+    const read: string[] = []
+    const inserts: unknown[] = []
+    const base = fakeDb({
+      tenants: [{ id: 't-nostock', order_backend: 'auto', convex_deployment_url: null }],
+      orders: [{ id: 'o1', created_at: new Date(NOW - 30 * 60_000).toISOString(), status: 'pending', source: 'web', outlet_id: null, customer_data: {} }],
+    }, inserts) as unknown as { from: (table: string) => unknown }
+    const db = { from: (table: string) => { read.push(table); return base.from(table) } } as never
+
+    const summary = await runOrderStockSweep(db, NOW)
+
+    expect(summary).toEqual({ stores: 0, swept: 0, nothingToDeduct: 0, failed: 0 })
+    expect(read).toEqual(['tenants', 'inventory_items', 'simple_option_stock_movements'])
+    expect(inserts).toEqual([])
   })
 })
 

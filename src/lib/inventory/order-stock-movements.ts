@@ -16,6 +16,7 @@ import { resolveOrderDepletions, type DepletionOrderItem, type StockDepletion } 
 import { resolveMovementDelta } from './stock-ledger'
 import { reportSkippedDepletionLine } from './stock-failure-report'
 import { resolveMovementOutletId } from './stock-location'
+import { storeTracksStock } from './store-tracks-stock'
 import {
   listOrderStockClaims,
   resolveVoidClaimRevision,
@@ -70,6 +71,10 @@ export async function applyOrderStockMovements(
     movementCount: result.movementCount + simple.count,
     ...(simple.shortfalls.length > 0 ? { shortfalls: simple.shortfalls } : {}),
   })
+
+  // A store with no ingredient has no recipe line to spend: stop before the
+  // graph read, and say so, so the audit row is skipped too (see store-tracks-stock).
+  if (!(await storeTracksStock(supabase, tenantId))) return withSimple({ ...EMPTY_RESULT, untracked: true })
 
   // The rows are computed first, then claimed and written in ONE transaction
   // (`apply_order_stock_claim`): the database refuses a second caller

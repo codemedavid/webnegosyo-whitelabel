@@ -18,6 +18,8 @@
  * - Orders that were edited (`revision_number` above 0): the edit's difference is
  *   already booked, so spending today's lines at revision 0 would double-count.
  * - Cancelled, voided or refunded orders: nothing would ever return their stock.
+ * - Stores that keep no stock at all (`storeTracksStock`): their orders are
+ *   no longer audited, and nothing could be deducted for them anyway.
  * - Orders with nothing to deduct: the sweep records the same
  *   `nothing_to_deduct` audit checkout would, and that audit is what stops them
  *   being read again.
@@ -31,6 +33,7 @@ import { applyOrderStockBestEffort } from '@/lib/inventory/order-stock-service'
 import { recordStockAudit } from '@/lib/inventory/stock-audit-service'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
 import { TERMINAL_ORDER_STATES } from '@/lib/inventory/order-stock-repair'
+import { storeTracksStock } from '@/lib/inventory/store-tracks-stock'
 
 /** Checkout deducts on the request; give it time before the sweep steps in. */
 export const SWEEP_MIN_AGE_MS = 5 * 60 * 1000
@@ -183,8 +186,11 @@ export async function runOrderStockSweep(
     if (budget <= 0 || clock() - startedAt > SWEEP_TIME_BUDGET_MS) break
     // Only the platform backend keeps orders where this reads; never route on the URL alone.
     if (resolveOrderBackend(tenant) !== 'platform') continue
-    summary.stores += 1
     try {
+      // No stock to move, and (since 2026-11-16) no audit row to mark its orders
+      // handled: reading them would only find the same orders again every run.
+      if (!(await storeTracksStock(db, tenant.id))) continue
+      summary.stores += 1
       const candidates = await readCandidates(db, tenant.id, now)
       if (candidates.length === 0) continue
       const state = await readHandledState(db, tenant.id, candidates.map((order) => order.id))

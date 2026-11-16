@@ -19,6 +19,12 @@ beforeEach(() => {
 })
 
 it('applies portion quantities to simple option stock even without ingredient recipes', async () => {
+  const catalog = [{ id: 'burger', modifier_groups: [{ options: [{ id: 'cheese', name: 'Cheese', stock_mode: 'simple', stock_qty: 9 }] }] }]
+  from.mockImplementation((table: string) => {
+    const chain = { select: () => chain, eq: () => chain, in: () => chain, limit: () => chain, insert: async () => ({ error: null }), delete: () => chain,
+      then: (resolve: (value: unknown) => unknown) => resolve({ data: table === 'menu_items' ? catalog : [], error: null }) }
+    return chain
+  })
   const items = [{ menuItemId: 'burger', quantity: 2, addonIds: ['cheese'], addonQuantities: { cheese: 3 } }]
   const result = await applyOrderStockMovements('tenant', 'order', items, 'sale', 0, 'branch')
   expect(rpc).toHaveBeenCalledWith('apply_simple_option_order_stock', expect.objectContaining({ p_items: items, p_action: 'sale', p_outlet_id: 'branch' }))
@@ -84,6 +90,7 @@ describe('a counter that cannot cover the sale', () => {
   })
 
   it('still throws a real outage', async () => {
+    catalogReads()
     rpc.mockResolvedValue({ data: null, error: { message: 'connection refused' } })
     await expect(applySimpleOptionStockSettled({ from, rpc } as never, 'tenant', 'order', 'sale', 0, LINES, null))
       .rejects.toEqual({ message: 'connection refused' })
@@ -103,5 +110,56 @@ describe('a counter that cannot cover the sale', () => {
   it('a dish whose option is switched off spends nothing of it', () => {
     expect(capLinesToAvailable(LINES, [{ menuItemId: 'burger', optionId: 'cheese', quantity: 5, available: 0, name: 'Cheese' }]))
       .toEqual([expect.objectContaining({ addonIds: ['bacon'] })])
+  })
+})
+
+describe('options that are not simple counters (2026-11-16: every store)', () => {
+  const NOT_SIMPLE = [{ id: 'burger', modifier_groups: [{ options: [
+    { id: 'cheese', name: 'Cheese', stock_mode: 'none' },
+    { id: 'patty', name: 'Patty', stock_mode: 'recipe' },
+  ] }] }]
+  const LINES = [{ menuItemId: 'burger', quantity: 2, addonIds: ['cheese', 'patty'] }]
+
+  function catalog(data: unknown) {
+    from.mockImplementation(() => {
+      const chain = { select: () => chain, eq: () => chain, in: async () => ({ data, error: null }) }
+      return chain
+    })
+  }
+
+  it.each(['sale', 'void'] as const)('a %s writes no claim row: the RPC is not called', async (action) => {
+    catalog(NOT_SIMPLE)
+    await expect(applySimpleOptionStockSettled({ from, rpc } as never, 'tenant', 'order', action, 0, LINES, null))
+      .resolves.toEqual({ count: 0, shortfalls: [] })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('a dish that is gone from the menu is not a counter either', async () => {
+    catalog([])
+    await applySimpleOptionStockSettled({ from, rpc } as never, 'tenant', 'order', 'sale', 0, LINES, null)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('a cancel still always calls it: its claim refuses a late sale of the cancelled order', async () => {
+    catalog(NOT_SIMPLE)
+    await applySimpleOptionStockSettled({ from, rpc } as never, 'tenant', 'order', 'cancel')
+    expect(rpc).toHaveBeenCalledWith('apply_simple_option_order_stock', expect.objectContaining({ p_action: 'cancel' }))
+  })
+
+  it('one simple option among plain ones still goes to the RPC with every line', async () => {
+    catalog([{ id: 'burger', modifier_groups: [{ options: [
+      { id: 'cheese', name: 'Cheese', stock_mode: 'simple', stock_qty: 5 },
+      { id: 'patty', name: 'Patty', stock_mode: 'recipe' },
+    ] }] }])
+    await applySimpleOptionStockSettled({ from, rpc } as never, 'tenant', 'order', 'sale', 0, LINES, null)
+    expect(rpc).toHaveBeenCalledWith('apply_simple_option_order_stock', expect.objectContaining({ p_items: LINES, p_action: 'sale' }))
+  })
+
+  it('a failed menu read is an outage, as a failed RPC was', async () => {
+    from.mockImplementation(() => {
+      const chain = { select: () => chain, eq: () => chain, in: async () => ({ data: null, error: { message: 'timeout' } }) }
+      return chain
+    })
+    await expect(applySimpleOptionStockSettled({ from, rpc } as never, 'tenant', 'order', 'sale', 0, LINES, null)).rejects.toEqual({ message: 'timeout' })
   })
 })
