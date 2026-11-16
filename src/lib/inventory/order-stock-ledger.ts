@@ -58,6 +58,12 @@ export interface OrderStockResult {
    * 3 in stock"). Terminal: the counters took what they had, nothing retries.
    */
   shortfalls?: string[]
+  /**
+   * The store keeps no stock at all (`storeTracksStock`), so nothing was even
+   * looked up. Such a result is not audited: the row would say "nothing to
+   * deduct" on every order of a store that never added an ingredient.
+   */
+  untracked?: true
 }
 
 export const EMPTY_RESULT: OrderStockResult = {

@@ -45,6 +45,24 @@ async function readOptionCatalog(
   return (data ?? []) as unknown as StockOptionCatalogItem[]
 }
 
+/**
+ * Whether any chosen option is a `simple` counter right now. The RPC changes
+ * nothing for any other option on a sale or void (it skips options not in
+ * `simple` mode), but it still takes a lock and writes a claim row. No store
+ * used simple counters on 2026-11-16, yet every order with an option wrote
+ * one: this read replaces that write. A cancel is never skipped: its claim row
+ * is what refuses a late sale of a cancelled order.
+ */
+async function hasSimpleOptionDemand(
+  supabase: AdminClient,
+  tenantId: string,
+  items: readonly DepletionOrderItem[],
+): Promise<boolean> {
+  const selected = items.filter((item) => selectedStockOptionIds(item).length > 0)
+  if (!selected.length) return false
+  return simpleOptionDemands(selected, await readOptionCatalog(supabase, tenantId, selected)).length > 0
+}
+
 async function callRpc(
   supabase: AdminClient,
   tenantId: string,
@@ -78,7 +96,7 @@ export async function applySimpleOptionStock(
   items: readonly DepletionOrderItem[] = [],
   outletId: string | null = null,
 ): Promise<number> {
-  if (action !== 'cancel' && !items.some((item) => selectedStockOptionIds(item).length > 0)) return 0
+  if (action !== 'cancel' && !(await hasSimpleOptionDemand(supabase, tenantId, items))) return 0
   return callRpc(supabase, tenantId, orderId, action, revision, items, outletId)
 }
 
@@ -178,7 +196,7 @@ export async function applySimpleOptionStockSettled(
   items: readonly DepletionOrderItem[] = [],
   outletId: string | null = null,
 ): Promise<SimpleOptionStockResult> {
-  if (action !== 'cancel' && !items.some((item) => selectedStockOptionIds(item).length > 0)) return { count: 0, shortfalls: [] }
+  if (action !== 'cancel' && !(await hasSimpleOptionDemand(supabase, tenantId, items))) return { count: 0, shortfalls: [] }
   try {
     return { count: await callRpc(supabase, tenantId, orderId, action, revision, items, outletId), shortfalls: [] }
   } catch (error) {

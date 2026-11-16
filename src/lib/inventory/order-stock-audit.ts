@@ -45,11 +45,17 @@ function skippedDetail(result: OrderStockResult): string | null {
  * The audit row for one order-driven operation. Never throws — the writer
  * swallows its own failures, and this runs after the stock decision is final.
  */
+/** A store without stock, where nothing moved: no audit row (and the sweep skips such stores). */
+function isUntrackedNoop(result: OrderStockResult): boolean {
+  return result.untracked === true && result.outcome === 'nothing_to_deduct' && result.movementCount === 0 && !result.shortfalls?.length
+}
+
 export async function auditOrderStock(
   target: OrderAuditTarget,
   outcome: { result: OrderStockResult } | { error: unknown },
 ): Promise<void> {
   const isFailure = 'error' in outcome
+  if (!isFailure && isUntrackedNoop(outcome.result)) return
   if (!isFailure && outcome.result.outcome === 'duplicate') {
     // The signal a "deducted twice" report needs. Also on the server log, so it
     // shows up in Vercel without opening the admin screen.
