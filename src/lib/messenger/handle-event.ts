@@ -68,6 +68,8 @@ export interface WebhookDeps {
   loadTakeoverMinutes(tenantId: string): Promise<number>
   /** "TEST 123456" guesses per store are limited (10 per 10 minutes). */
   allowTesterAttempt(tenantId: string): Promise<boolean>
+  /** The pending test-link code, read fresh (the bundle may be cached and never carries it). */
+  loadTesterCode(tenantId: string): Promise<{ hash: string | null; expiresAt: Date | null }>
   touchSession(input: { tenantId: string; pageId: string; psid: string; now: Date; isInbound: boolean }): Promise<MessengerSession | null>
   setBotPause(sessionId: string, until: Date | null): Promise<boolean>
   send(token: string, psid: string, messages: readonly OutgoingMessage[]): Promise<SendResult>
@@ -227,8 +229,9 @@ async function answer(event: InboundEvent, page: PageOwner, deps: WebhookDeps, n
 
   if (event.kind === 'text') {
     const code = readTesterCode(event.text)
-    if (code && bundle.settings.testerCodeHash && await deps.allowTesterAttempt(page.tenantId) && isTesterCodeValid({
-      tenantId: page.tenantId, code, storedHash: bundle.settings.testerCodeHash, expiresAt: bundle.settings.testerCodeExpiresAt, now,
+    const pending = code ? await deps.loadTesterCode(page.tenantId) : null
+    if (code && pending?.hash && await deps.allowTesterAttempt(page.tenantId) && isTesterCodeValid({
+      tenantId: page.tenantId, code, storedHash: pending.hash, expiresAt: pending.expiresAt, now,
     })) {
       // The owner linking their own Messenger: not part of any customer chat.
       chat.lines.length = 0

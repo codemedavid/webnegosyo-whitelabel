@@ -25,10 +25,12 @@ jest.mock('@/lib/messenger/send', () => ({ ...jest.requireActual('@/lib/messenge
 jest.mock('@/lib/messenger/dedupe', () => ({ claimEventOnce: jest.fn(async () => true) }))
 jest.mock('@/lib/messenger/session', () => ({ touchSession: jest.fn(async () => null), setBotPause: jest.fn(async () => true) }))
 jest.mock('@/lib/messenger/load-store', () => ({
-  loadStoreBundle: jest.fn(async () => ({
+  loadCachedStoreBundle: jest.fn(async () => ({
     tenantId: 'tenant', slug: 's', facebookPageRowId: null, rules: DEFAULT_RULES, settings: DEFAULT_SETTINGS,
     store: { name: 'S', baseUrl: 'https://s.example', logoUrl: null, hoursText: null, address: null, categories: [], items: [] },
   })),
+  loadCachedTakeoverMinutes: jest.fn(async () => 60),
+  loadTesterCode: jest.fn(async () => ({ hash: null, expiresAt: null })),
 }))
 
 it('does not associate an unrelated Messenger sender with a recent customer order', async () => {

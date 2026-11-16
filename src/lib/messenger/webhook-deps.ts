@@ -6,7 +6,7 @@ import { getActivePageByPageId } from '@/lib/facebook/page-tokens'
 import { claimEventOnce } from './dedupe'
 import type { WebhookDeps } from './handle-event'
 import { createMessengerLinkToken } from './link-token'
-import { loadMessengerSettingsAndRules, loadStoreBundle } from './load-store'
+import { loadCachedStoreBundle, loadCachedTakeoverMinutes, loadTesterCode } from './load-store'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { answerOrderReferral } from './order-referral-reply'
 import { BOT_METADATA, maskPsid, sendMessages } from './send'
@@ -42,8 +42,10 @@ export function createWebhookDeps(): WebhookDeps {
       const page = await getActivePageByPageId(pageId)
       return page ? { tenantId: page.tenant_id, token: page.page_access_token } : null
     },
-    loadBundle: loadStoreBundle,
-    loadTakeoverMinutes: async (tenantId) => (await loadMessengerSettingsAndRules(tenantId)).settings.takeoverMinutes,
+    // Store row, bot settings and rules come from the data cache (5 min, purged on save).
+    loadBundle: loadCachedStoreBundle,
+    loadTakeoverMinutes: loadCachedTakeoverMinutes,
+    loadTesterCode,
     allowTesterAttempt: async (tenantId) =>
       (await checkRateLimit(`msgr-tester:${tenantId}`, { limit: 10, windowSec: 600, onRedisFailure: 'instance' })).allowed,
     touchSession,
