@@ -3,9 +3,13 @@
  * by the automations snapshot and the Texts campaign engine.
  *
  * Every caller must order by a unique key (usually `id`), or pages overlap.
+ * The paging itself is `readAllRows` (src/platform/db/read-all-rows.ts); this keeps the
+ * throwing interface these callers were written against.
  */
 
-export const PAGE_SIZE = 1000
+import { MAX_PAGE_SIZE, readAllRows } from '@/platform/db/read-all-rows'
+
+export const PAGE_SIZE = MAX_PAGE_SIZE
 /** A store larger than this is read in part, loudly, rather than timing out a shared request. */
 export const DEFAULT_MAX_ROWS = 50_000
 
@@ -29,17 +33,19 @@ export async function readAll<T>(
 ): Promise<T[]> {
   const maxRows = options.maxRows ?? DEFAULT_MAX_ROWS
   const makeError = options.makeError ?? ((message: string) => new PagedReadError(message))
-  const rows: T[] = []
-  for (let from = 0; from < maxRows; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1)
-    if (error) throw makeError(`${label} could not be read: ${error.message}`)
-    rows.push(...((data ?? []) as T[]))
-    if (!data || data.length < PAGE_SIZE) return rows
-  }
-  // Exactly maxRows so far: only a row beyond the cap makes it "too many".
-  const { data, error } = await page(maxRows, maxRows)
-  if (error) throw makeError(`${label} could not be read: ${error.message}`)
-  if (!data || data.length === 0) return rows
+  // readAllRows turns a thrown page into an error result; this reader has always let it through as-is.
+  let thrown: { error: unknown } | null = null
+  const result = await readAllRows<T>(async (from, to) => {
+    try {
+      return (await page(from, to)) as { data: T[] | null; error: { message: string } | null }
+    } catch (error) {
+      thrown = { error }
+      throw error
+    }
+  }, { maxRows, pageSize: PAGE_SIZE })
+  if (result.ok) return result.rows
+  if (thrown) throw (thrown as { error: unknown }).error
+  if (result.reason === 'error') throw makeError(`${label} could not be read: ${result.error.message}`)
   throw makeError(`${label}: more than ${maxRows} rows`)
 }
 
