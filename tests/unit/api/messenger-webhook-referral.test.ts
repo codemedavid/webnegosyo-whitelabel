@@ -10,7 +10,11 @@ jest.mock('next/server', () => ({
 jest.mock('server-only', () => ({}))
 jest.mock('@/lib/messenger/dedupe', () => ({ claimEventOnce: jest.fn(async () => true) }))
 jest.mock('@/lib/messenger/session', () => ({ touchSession: jest.fn(async () => null), setBotPause: jest.fn(async () => true) }))
-jest.mock('@/lib/messenger/load-store', () => ({ loadStoreBundle: jest.fn(async () => null) }))
+jest.mock('@/lib/messenger/load-store', () => ({
+  loadCachedStoreBundle: jest.fn(async () => null),
+  loadCachedTakeoverMinutes: jest.fn(async () => 60),
+  loadTesterCode: jest.fn(async () => ({ hash: null, expiresAt: null })),
+}))
 
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }))
 jest.mock('@/lib/facebook/page-tokens', () => ({

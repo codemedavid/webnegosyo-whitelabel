@@ -25,7 +25,9 @@ function harness(options: {
   cart?: ChatCartLine[]; cartUnreadable?: boolean; orders?: ReplyOrder[]
   firstName?: string | null; profileFetchedAt?: Date | null; fetchedName?: string | null; profileThrows?: boolean
   tapResult?: ChatOrderTapResult; tapThrows?: boolean
+  testerCode?: { hash: string | null; expiresAt: Date | null }
 } = {}) {
+  const testerReads: string[] = []
   const taps: Array<{ tenantId: string; psid: string; tap: ChatOrderTap }> = []
   const alerts: Array<{ reason: string; sessionId: string; text: string }> = []
   const cleared: string[] = []
@@ -48,6 +50,12 @@ function harness(options: {
     loadBundle: async () => (options.bundle === undefined ? bundle() : options.bundle),
     loadTakeoverMinutes: async () => (options.bundle === undefined ? bundle() : options.bundle)?.settings.takeoverMinutes ?? 60,
     allowTesterAttempt: async () => options.testerAllowed ?? true,
+    loadTesterCode: async (tenantId) => {
+      testerReads.push(tenantId)
+      if (options.testerCode) return options.testerCode
+      const settings = (options.bundle === undefined ? bundle() : options.bundle)?.settings
+      return { hash: settings?.testerCodeHash ?? null, expiresAt: settings?.testerCodeExpiresAt ?? null }
+    },
     touchSession: async (input) => {
       touches.push({ isInbound: input.isInbound })
       return {
@@ -83,7 +91,7 @@ function harness(options: {
     alertStaff: async (input) => { alerts.push(input) },
     clearNeedsReply: async (sessionId) => { cleared.push(sessionId) },
   }
-  return { deps, alerts, cleared, taps, sent, pauses, touches, referrals, linked, cartOps, orderReads, logs, profileFetches, cart: () => cart }
+  return { deps, testerReads, alerts, cleared, taps, sent, pauses, touches, referrals, linked, cartOps, orderReads, logs, profileFetches, cart: () => cart }
 }
 
 const base = { pageId: PAGE, psid: PSID, timestamp: 1, dedupeKey: 'mid:1' }
@@ -359,6 +367,22 @@ describe('handleEvent', () => {
       const expired = harness({ bundle: bundle({ settings: { ...settings, testerCodeExpiresAt: new Date(NOW.getTime() - 1) } }) })
       expect(await handleEvent(text('TEST 482193'), expired.deps)).toBe('bot_off')
       expect([...wrong.linked, ...expired.linked]).toEqual([])
+    })
+
+    it('a code made after the store was cached still links: the code is read fresh, not from the bundle', async () => {
+      const h = harness({
+        bundle: bundle({ settings: { ...DEFAULT_SETTINGS, botEnabled: false } }),
+        testerCode: { hash: settings.testerCodeHash, expiresAt: settings.testerCodeExpiresAt },
+      })
+      expect(await handleEvent(text('TEST 482193'), h.deps)).toBe('tester_linked')
+      expect(h.testerReads).toEqual([TENANT])
+    })
+
+    it('only a message shaped like a code reads the code', async () => {
+      const h = harness()
+      await handleEvent(text('menu po'), h.deps)
+      await handleEvent(postback(encodePayload({ verb: 'menu' })), h.deps)
+      expect(h.testerReads).toEqual([])
     })
   })
 })

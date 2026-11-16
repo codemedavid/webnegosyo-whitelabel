@@ -1,0 +1,19 @@
+-- Drop store_activity_tenant_outlet_time_idx (~20 MB, written on every activity
+-- row, ~107k rows a month).
+--
+-- Evidence (platform, 2026-11-16): 0 scans since the server restarted on
+-- 2026-11-12 11:39 UTC, while the other store_activity indexes served
+-- 65-14,210 scans. Only 5 stores have branch-tagged activity.
+-- Its one reader is the Activity feed's branch filter
+-- (get_store_activity / get_store_activity_summary, `p_outlet_id`). Without
+-- this index that filter walks store_activity_tenant_time_idx
+-- (tenant_id, occurred_at desc, id desc) and skips other branches' rows. The
+-- feed stops at 100 rows and the summary is bounded by its period, so the
+-- extra work is a handful of rows per branch.
+--
+-- On the platform project, run DROP INDEX CONCURRENTLY through execute_sql:
+-- a migration runs in a transaction, and CONCURRENTLY refuses to run in one.
+-- `if exists` makes a replay of this file a no-op.
+-- Undo: create index concurrently store_activity_tenant_outlet_time_idx
+--   on public.store_activity (tenant_id, outlet_id, occurred_at desc, id desc);
+drop index if exists public.store_activity_tenant_outlet_time_idx;
