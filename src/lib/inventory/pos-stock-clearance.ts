@@ -1,23 +1,26 @@
 /**
- * The server's stock check for one register sale on a 'block' store — the
- * only way a client may write a sale there (migration 20261110120000,
- * plan docs/plans/2026-11-10-pos-block-server.md).
+ * The server's stock check for one register sale on a 'block' store
+ * (plan docs/plans/2026-11-10-pos-block-server.md, trimmed 2026-11-16 by
+ * docs/plans/2026-11-16-inventory-trim.md item 2).
  *
  * The register asks at Charge, BEFORE it hands the sale over, with the order
  * id it minted. The shelf is judged by the same engine as the ceilings and
  * the web checkout (`checkout-stock-guard.ts`):
  *
- *   fits          → a clearance (no approver);
+ *   fits          → cleared;
  *   short         → `409 needs_manager` with who may approve, unless the
- *                   cashier may sell past stock herself (owner / `inventory`,
+ *                   cashier may sell past stock themselves (owner / `inventory`,
  *                   reaching the branch), or the request carries a manager's
  *                   PIN, checked by `verify_staff_approval_pin` (bcrypt, five
  *                   tries, 15 min → 1 h → 24 h lock) behind the shared PIN
- *                   limits — then a clearance naming that approver.
+ *                   limits — then approved, naming that approver.
  *
- * A clearance is bound to store, branch, cashier, order id and the per-dish
- * quantities judged; the database refuses an order (or items) it does not
- * cover. 'warn' stores need nothing.
+ * The approval lives on the register only. The database half (a clearance
+ * row per sale that triggers on `orders` would demand) was retired before it
+ * was ever applied: `20261110120000_pos_stock_block_server.sql` stays unapplied
+ * (owner, 2026-11-16). `clearanceId` is still answered because registers up
+ * to 1.0.22 refuse a cleared/approved answer without one; it is the order id
+ * and names no stored row. 'warn' stores need nothing.
  *
  * Pure apart from the injected store, so every branch is tested.
  */
@@ -74,14 +77,6 @@ export function parseStockClearanceRequest(
   return { ok: true, value: { ...parsed.data, outletId: parsed.data.outletId ?? null } }
 }
 
-/** Units of each dish the sale holds — what `order_items` will add up to. */
-export function clearedQuantities(lines: readonly StockClearanceLine[]): Record<string, number> {
-  return lines.reduce<Record<string, number>>(
-    (totals, line) => ({ ...totals, [line.menuItemId]: (totals[line.menuItemId] ?? 0) + line.quantity }),
-    {},
-  )
-}
-
 /** One dish the shelf does not cover. */
 export interface ClearanceShortfall {
   menuItemId: string
@@ -104,18 +99,6 @@ export function mayApproveOversell(account: ApproverRecord, outletId: string | n
   return account.outletId === null || account.outletId === outletId
 }
 
-export interface ClearanceRow {
-  tenantId: string
-  outletId: string | null
-  orderId: string
-  cashierUserId: string
-  cashierName: string
-  approverUserId: string | null
-  approverName: string | null
-  quantities: Record<string, number>
-  shortfalls: ClearanceShortfall[]
-}
-
 export interface ClearanceStore {
   readPolicy(tenantId: string): Promise<'warn' | 'block'>
   /** The dishes this sale asks for more of than the shelf holds; [] = fits / no opinion. */
@@ -126,7 +109,6 @@ export interface ClearanceStore {
   /** The shared manager-PIN rate limits; false = slow down. */
   allowPinTry(tenantId: string, callerUserId: string, approverUserId: string): Promise<boolean>
   verifyPin(userId: string, tenantId: string, pin: string): Promise<PinVerdict>
-  insertClearance(row: ClearanceRow): Promise<{ id: string }>
 }
 
 export interface ClearanceCaller {
@@ -137,6 +119,7 @@ export interface ClearanceCaller {
 
 export type ClearanceOutcome =
   | { ok: true; status: 'not_required' }
+  /** `clearanceId` = the order id: only for registers up to 1.0.22, which require the field. */
   | { ok: true; status: 'cleared'; clearanceId: string }
   | { ok: true; status: 'approved'; clearanceId: string; approverName: string }
   | {
@@ -180,28 +163,10 @@ export async function decideStockClearance(
   if ((await store.readPolicy(tenantId)) !== 'block') return { ok: true, status: 'not_required' }
 
   const shortfalls = await store.judge(tenantId, outletId, lines)
-  const base = {
-    tenantId,
-    outletId,
-    orderId,
-    cashierUserId: caller.userId,
-    cashierName: caller.name,
-    quantities: clearedQuantities(lines),
-  }
-
-  if (shortfalls.length === 0) {
-    const { id: clearanceId } = await store.insertClearance({ ...base, approverUserId: null, approverName: null, shortfalls: [] })
-    return { ok: true, status: 'cleared', clearanceId }
-  }
+  if (shortfalls.length === 0) return { ok: true, status: 'cleared', clearanceId: orderId }
 
   if (mayApproveOversell(caller.account, outletId)) {
-    const { id: clearanceId } = await store.insertClearance({
-      ...base,
-      approverUserId: caller.userId,
-      approverName: caller.name,
-      shortfalls,
-    })
-    return { ok: true, status: 'approved', clearanceId, approverName: caller.name }
+    return { ok: true, status: 'approved', clearanceId: orderId, approverName: caller.name }
   }
 
   if (!request.approval) {
@@ -226,11 +191,5 @@ export async function decideStockClearance(
   const verdict = await store.verifyPin(approver.userId, tenantId, pin)
   if (verdict !== 'ok') return { ok: false, ...PIN_REFUSALS[verdict] }
 
-  const { id: clearanceId } = await store.insertClearance({
-    ...base,
-    approverUserId: approver.userId,
-    approverName: approver.name,
-    shortfalls,
-  })
-  return { ok: true, status: 'approved', clearanceId, approverName: approver.name }
+  return { ok: true, status: 'approved', clearanceId: orderId, approverName: approver.name }
 }
