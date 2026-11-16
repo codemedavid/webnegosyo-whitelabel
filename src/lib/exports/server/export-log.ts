@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
+import type { Tables } from '@/types/database.generated'
 import type { ReportContext } from '@/lib/reports/read/report-context'
 import { customReportSpecSchema, type CustomReportSpec } from '../custom-report'
 import type { ExportRequest } from '../request-schema'
@@ -36,6 +37,11 @@ export type ExportShape =
 
 const LOG_COLUMNS = 'id, user_label, sheets, left_out, preset, period_from, period_to, branch, format, source, row_counts, bytes, created_at, shape, custom_spec, template_id'
 
+type LogRow = Pick<
+  Tables<'report_exports'>,
+  'id' | 'user_label' | 'sheets' | 'left_out' | 'preset' | 'period_from' | 'period_to' | 'branch' | 'format' | 'source' | 'row_counts' | 'bytes' | 'created_at' | 'shape' | 'custom_spec' | 'template_id'
+>
+
 /** The row's shape columns as written (20261115150000). */
 function shapeColumns(request: Pick<ExportRequest, 'custom' | 'template'>): { shape: ExportShape['kind']; custom_spec: CustomReportSpec | null; template_id: string | null } {
   if (request.template) return { shape: 'template', custom_spec: null, template_id: request.template }
@@ -44,8 +50,8 @@ function shapeColumns(request: Pick<ExportRequest, 'custom' | 'template'>): { sh
 }
 
 /** A stored shape read back. The log is a record, so a row is always listed, whatever its spec now says. */
-function shapeOf(row: Record<string, unknown>): ExportShape {
-  if (row.shape === 'template') return { kind: 'template', templateId: (row.template_id as string | null) ?? null }
+function shapeOf(row: Pick<LogRow, 'shape' | 'custom_spec' | 'template_id'>): ExportShape {
+  if (row.shape === 'template') return { kind: 'template', templateId: row.template_id ?? null }
   if (row.shape === 'custom') {
     const spec = customReportSpecSchema.safeParse(row.custom_spec)
     return { kind: 'custom', spec: spec.success ? spec.data : null }
@@ -53,18 +59,16 @@ function shapeOf(row: Record<string, unknown>): ExportShape {
   return { kind: 'sheets' }
 }
 
-interface LogClient {
-  from: (table: string) => any // eslint-disable-line @typescript-eslint/no-explicit-any -- report_exports is not in the generated types until the migration is applied
-}
+type LogClient = Awaited<ReturnType<typeof createClient>>
 
 async function logClient(): Promise<LogClient> {
-  return (await createClient()) as unknown as LogClient
+  return createClient()
 }
 
 /** The caller's own name as the store typed it; a failed read just leaves the label blank. */
 async function userLabel(client: LogClient, userId: string): Promise<string | null> {
   const { data } = await client.from('app_users').select('display_name, email').eq('user_id', userId).maybeSingle()
-  const label = (data?.display_name as string | null)?.trim() || (data?.email as string | null)?.trim() || null
+  const label = data?.display_name?.trim() || data?.email?.trim() || null
   return label ? label.slice(0, 120) : null
 }
 
@@ -118,24 +122,30 @@ export async function listRecentExports(tenantId: string, limit = 10): Promise<E
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw new Error(`recent exports could not be read: ${error.message}`)
-  return ((data ?? []) as Array<Record<string, unknown>>).map(toEntry)
+  return (data ?? []).map(toEntry)
 }
 
-function toEntry(row: Record<string, unknown>): ExportLogEntry {
+/** `{ "<sheet id>": rows }` as stored; anything else (never written by logExport) reads as no counts. */
+function rowCountsOf(value: LogRow['row_counts']): Record<string, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, number] => typeof entry[1] === 'number'))
+}
+
+function toEntry(row: LogRow): ExportLogEntry {
   return {
-    id: String(row.id),
-    userLabel: (row.user_label as string | null) ?? null,
-    sheets: (row.sheets as string[]) ?? [],
-    leftOut: (row.left_out as string[]) ?? [],
-    preset: String(row.preset),
-    periodFrom: String(row.period_from),
-    periodTo: String(row.period_to),
-    branch: (row.branch as string | null) ?? null,
+    id: row.id,
+    userLabel: row.user_label ?? null,
+    sheets: row.sheets ?? [],
+    leftOut: row.left_out ?? [],
+    preset: row.preset,
+    periodFrom: row.period_from,
+    periodTo: row.period_to,
+    branch: row.branch ?? null,
     format: row.format === 'csv' ? 'csv' : 'xlsx',
-    source: String(row.source),
-    rowCounts: (row.row_counts as Record<string, number>) ?? {},
+    source: row.source,
+    rowCounts: rowCountsOf(row.row_counts),
     bytes: Number(row.bytes ?? 0),
-    createdAt: String(row.created_at),
+    createdAt: row.created_at,
     shape: shapeOf(row),
   }
 }
