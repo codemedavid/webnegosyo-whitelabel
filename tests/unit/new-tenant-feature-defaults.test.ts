@@ -37,7 +37,6 @@ const ON_BY_DEFAULT = [
   'inventory_enabled',
   'low_stock_alerts_enabled',
   'auto_86_enabled',
-  'presell_enabled',
   'multi_branch_enabled',
   'flash_screen_feature_enabled',
   'email_notifications_enabled',
@@ -48,6 +47,12 @@ describe('new tenant feature defaults', () => {
     const parsed = tenantSchema.parse(withNewTenantFeatureDefaults(MINIMAL_TENANT))
 
     expect(parsed[flag]).toBe(true)
+  })
+
+  it('leaves pre-sell off (owner, 2026-11-16: one store ever used it)', () => {
+    const parsed = tenantSchema.parse(withNewTenantFeatureDefaults(MINIMAL_TENANT))
+
+    expect(parsed.presell_enabled).toBe(false)
   })
 
   it('leaves QR-handoff ordering off', () => {

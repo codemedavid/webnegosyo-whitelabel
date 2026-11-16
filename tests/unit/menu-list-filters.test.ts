@@ -3,7 +3,7 @@
  * the grid all agree on.
  */
 
-import { filterMenuItems, countMenuItemsByStatus, MENU_STATUS_FILTERS } from '@/lib/menu-list-filters'
+import { filterMenuItems, countMenuItemsByStatus, MENU_STATUS_FILTERS, visibleStatusFilters } from '@/lib/menu-list-filters'
 import type { MenuItem } from '@/types/database'
 
 const item = (overrides: Partial<MenuItem>): MenuItem => ({
@@ -43,5 +43,18 @@ describe('filterMenuItems', () => {
 describe('countMenuItemsByStatus', () => {
   it('counts each status over the unfiltered list', () => {
     expect(countMenuItemsByStatus(ITEMS)).toEqual({ all: 4, available: 2, 'out-of-stock': 2, presell: 1 })
+  })
+})
+
+describe('visibleStatusFilters', () => {
+  const counts = (presell: number) => ({ all: 4, available: 2, 'out-of-stock': 2, presell })
+
+  it('drops the Pre-order tab when no dish is on pre-order', () => {
+    expect(visibleStatusFilters(counts(0), 'all').map((f) => f.value)).toEqual(['all', 'available', 'out-of-stock'])
+  })
+
+  it('keeps it when a dish is on pre-order, or while it is the open tab', () => {
+    expect(visibleStatusFilters(counts(1), 'all').map((f) => f.value)).toContain('presell')
+    expect(visibleStatusFilters(counts(0), 'presell').map((f) => f.value)).toContain('presell')
   })
 })
