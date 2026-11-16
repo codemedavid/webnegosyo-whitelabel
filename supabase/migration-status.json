@@ -29,8 +29,8 @@
     },
     "20261107130100_revoke_inventory_cost_columns.sql": {
       "status": "held",
-      "gate": "Every merchant-app binary before the 1.0.18 OTA names unit_cost in its reads and would get 42501. Raise platform_app_releases.minimum_version to 1.0.18 on both platforms first (2026-11-10: iOS latest 1.0.17, minimum 1.0.0 on both).",
-      "checkedOn": "2026-11-10"
+      "gate": "minimum_version raised to 1.0.18 on both platforms 2026-11-16. Before that, edge logs over 24 h still showed old merchant apps reading unit_cost directly (Android okhttp, gungjeon-unlimited: 113 Stock-list reads naming unit_cost; iOS: 2; select=* on stock_movements: Android 8, iOS 4). Apply only after the same edge-log probe (GET /rest/v1/inventory_items|stock_movements|stock_transfer_lines from okhttp/CFNetwork whose select names unit_cost or *) shows ZERO such client reads for 48 h. Server reads with select=* are service-role (order-stock-ledger, order-stock-movements) and are unaffected.",
+      "checkedOn": "2026-11-16"
     },
     "20261110120000_pos_stock_block_server.sql": {
       "status": "held",
