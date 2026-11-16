@@ -14,6 +14,21 @@ export function addonLabel(addon: Pick<Addon, 'name' | 'quantity'>): string {
   return quantity > 1 ? `${addon.name} ×${quantity}` : addon.name
 }
 
+/**
+ * The reader of {@link addonLabel}: "Kimchi ×2" → Kimchi, 2 portions. A label
+ * without a `×N` suffix is one portion of itself. Only the `×` that addonLabel
+ * writes counts ("Coke x2" is a name), and the name keeps its own spacing.
+ * The merchant app reads the same labels in `webnegosyo-app/lib/order-edit-cart.ts`
+ * (same pattern, pinned by tests/unit/addon-portion-label.test.ts).
+ */
+export const ADDON_PORTION_LABEL = /^(.*\S)\s*×(\d+)$/
+
+export function parseAddonLabel(label: string): { name: string; portions: number } {
+  const trimmed = label.trim()
+  const portions = ADDON_PORTION_LABEL.exec(trimmed)
+  return portions ? { name: portions[1], portions: Number(portions[2]) } : { name: trimmed, portions: 1 }
+}
+
 /** An add-on as any view holds it: a cart selection or a stored order line. */
 export interface PricedAddon {
   name: string

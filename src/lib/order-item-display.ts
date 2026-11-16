@@ -13,7 +13,7 @@
  * Pure; every input is untrusted JSON.
  */
 
-import { addonQuantity } from '@/lib/addon-quantity'
+import { addonQuantity, parseAddonLabel } from '@/lib/addon-quantity'
 
 export interface StoredOrderItemLike {
   variation?: string | null
@@ -45,9 +45,6 @@ export interface OrderItemView {
   unitPrice: number
 }
 
-/** Add-on labels carry portions as `Name ×2` (see `addonLabel`). */
-const PORTION_LABEL = /^(.*\S)\s*×(\d+)$/
-
 function toNumber(value: unknown): number | null {
   const numeric = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
   return typeof numeric === 'number' && Number.isFinite(numeric) ? numeric : null
@@ -77,10 +74,8 @@ function addonsFromLabels(labels: readonly string[] | null | undefined): OrderIt
   return (labels ?? [])
     .filter((label) => typeof label === 'string' && label.trim() !== '')
     .map((label) => {
-      const portions = PORTION_LABEL.exec(label.trim())
-      return portions
-        ? { name: portions[1], price: null, quantity: Number(portions[2]) }
-        : { name: label.trim(), price: null, quantity: 1 }
+      const { name, portions } = parseAddonLabel(label)
+      return { name, price: null, quantity: portions }
     })
 }
 

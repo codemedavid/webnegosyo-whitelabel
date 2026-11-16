@@ -153,9 +153,10 @@ function toSelection(
 
 /**
  * Web checkout labels an add-on amount `Name ×N` (`src/lib/addon-quantity.ts`
- * `addonLabel`; parsed the same way by `order-line-modifier-pricing.ts`).
+ * `addonLabel`, read there by `parseAddonLabel`). The SAME pattern as the web's
+ * `ADDON_PORTION_LABEL`: tests/unit/addon-portion-label.test.ts fails if they drift.
  */
-const ADDON_PORTION_LABEL = /^(.*\S)\s*×(\d+)$/;
+export const ADDON_PORTION_LABEL = /^(.*\S)\s*×(\d+)$/;
 const MAX_ADDON_PORTIONS = 99;
 
 function isPortionCount(value: unknown): value is number {
