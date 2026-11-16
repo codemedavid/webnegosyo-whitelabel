@@ -26,7 +26,7 @@
  * Pure: no queries, no mutation of its inputs.
  */
 
-import { addonQuantity } from '@/lib/addon-quantity'
+import { addonQuantity, parseAddonLabel } from '@/lib/addon-quantity'
 
 /** The modifier-bearing columns of a `menu_items` row, untrusted JSON. */
 export interface ModifierCatalogSource {
@@ -105,8 +105,6 @@ interface TextToken {
 
 /** Variation text joins option names with this separator (see useCheckout). */
 const VARIATION_SEPARATOR = ', '
-/** Add-on labels carry portions as `Name ×2` (see `addonLabel`). */
-const ADDON_PORTION_LABEL = /^(.*\S)\s*×(\d+)$/
 
 const round = (value: number): number => Math.round(value * 100) / 100
 
@@ -229,10 +227,9 @@ function addonTokens(labels: readonly string[]): TextToken[] {
   return labels
     .filter((label) => label.trim() !== '')
     .map((label) => {
-      const portions = ADDON_PORTION_LABEL.exec(label.trim())
-      return portions
-        ? { name: portions[1], quantity: Number(portions[2]), source: 'addon' as const }
-        : { name: label.trim(), quantity: 1, source: 'addon' as const }
+      // Add-on labels carry portions as `Name ×2` (addonLabel / parseAddonLabel).
+      const { name, portions } = parseAddonLabel(label)
+      return { name, quantity: portions, source: 'addon' as const }
     })
 }
 
