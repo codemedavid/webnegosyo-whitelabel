@@ -16,9 +16,7 @@ const RATE_LIMIT: RateLimitOptions = { limit: 120, windowSec: 60, onRedisFailure
  * POST /api/pos/stock-clearance
  *
  * The register's stock check for ONE sale on a 'block' store, asked at Charge
- * with the order id it minted, before the sale is handed over. The answer is
- * what the database requires before it accepts that order from a client
- * (migration 20261110120000):
+ * with the order id it minted, before the sale is handed over:
  *
  *   200 { status: 'not_required' }            a 'warn' store
  *   200 { status: 'cleared', clearanceId }     the shelf covers it
@@ -26,6 +24,10 @@ const RATE_LIMIT: RateLimitOptions = { limit: 120, windowSec: 60, onRedisFailure
  *                                             short, approved by the caller's
  *                                             own right or a manager's PIN
  *   409 { status: 'needs_manager', shortfalls, approvers }
+ *
+ * The register enforces the answer; the database does not (its half,
+ * 20261110120000, was retired unapplied 2026-11-16). `clearanceId` is the
+ * order id, kept for registers up to 1.0.22 that require the field.
  *
  * The caller is a member of the store who works the register (`pos`) or the
  * orders (`orders`, the QR hand-off); the branch is the caller's own. PIN

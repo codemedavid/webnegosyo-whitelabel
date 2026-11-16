@@ -1,7 +1,6 @@
 import {
   decideStockClearance,
   parseStockClearanceRequest,
-  clearedQuantities,
   mayApproveOversell,
   type ClearanceStore,
   type ClearanceCaller,
@@ -33,7 +32,6 @@ const cashier: ClearanceCaller = {
 }
 
 function makeStore(overrides: Partial<ClearanceStore> = {}) {
-  const inserted: unknown[] = []
   const store: ClearanceStore = {
     readPolicy: jest.fn(async () => 'block' as const),
     judge: jest.fn(async () => []),
@@ -42,13 +40,9 @@ function makeStore(overrides: Partial<ClearanceStore> = {}) {
     usersWithPins: jest.fn(async () => new Set([MANAGER])),
     allowPinTry: jest.fn(async () => true),
     verifyPin: jest.fn(async () => 'ok' as const),
-    insertClearance: jest.fn(async (row) => {
-      inserted.push(row)
-      return { id: 'clearance-1' }
-    }),
     ...overrides,
   }
-  return { store, inserted }
+  return { store }
 }
 
 const request = (extra: Record<string, unknown> = {}) => {
@@ -83,12 +77,6 @@ describe('parseStockClearanceRequest', () => {
   })
 })
 
-describe('clearedQuantities', () => {
-  it('adds up each dish across its lines (what order_items will hold)', () => {
-    expect(clearedQuantities(request().lines)).toEqual({ [DISH]: 3, [DISH_2]: 3 })
-  })
-})
-
 describe('mayApproveOversell', () => {
   it('is the owner or an `inventory` holder who reaches the branch', () => {
     expect(mayApproveOversell(account(), OUTLET)).toBe(true)
@@ -101,34 +89,20 @@ describe('mayApproveOversell', () => {
 })
 
 describe('decideStockClearance', () => {
-  it('a warn store needs nothing and writes nothing', async () => {
-    const { store, inserted } = makeStore({ readPolicy: jest.fn(async () => 'warn' as const) })
+  it('a warn store needs nothing', async () => {
+    const { store } = makeStore({ readPolicy: jest.fn(async () => 'warn' as const) })
     expect(await decideStockClearance(store, request(), cashier)).toEqual({ ok: true, status: 'not_required' })
-    expect(inserted).toEqual([])
     expect(store.judge).not.toHaveBeenCalled()
   })
 
-  it('a sale the shelf covers is cleared, bound to order, branch, cashier and quantities', async () => {
-    const { store, inserted } = makeStore()
-    expect(await decideStockClearance(store, request(), cashier)).toEqual({ ok: true, status: 'cleared', clearanceId: 'clearance-1' })
-    expect(inserted).toEqual([
-      {
-        tenantId: TENANT,
-        outletId: OUTLET,
-        orderId: ORDER,
-        cashierUserId: CASHIER,
-        cashierName: 'Ana',
-        approverUserId: null,
-        approverName: null,
-        quantities: { [DISH]: 3, [DISH_2]: 3 },
-        shortfalls: [],
-      },
-    ])
+  it('a sale the shelf covers is cleared; the id answered is the order id (registers up to 1.0.22 require one)', async () => {
+    const { store } = makeStore()
+    expect(await decideStockClearance(store, request(), cashier)).toEqual({ ok: true, status: 'cleared', clearanceId: ORDER })
     expect(store.judge).toHaveBeenCalledWith(TENANT, OUTLET, request().lines)
   })
 
   it('a short sale without approval asks for a manager and lists who may approve', async () => {
-    const { store, inserted } = makeStore({ judge: jest.fn(async () => SHORT) })
+    const { store } = makeStore({ judge: jest.fn(async () => SHORT) })
     expect(await decideStockClearance(store, request(), cashier)).toEqual({
       ok: false,
       status: 409,
@@ -137,32 +111,27 @@ describe('decideStockClearance', () => {
       shortfalls: SHORT,
       approvers: [{ userId: MANAGER, name: 'Lito', hasPin: true }],
     })
-    expect(inserted).toEqual([])
     expect(store.verifyPin).not.toHaveBeenCalled()
   })
 
-  it('a cashier who may sell past stock approves her own sale, no PIN', async () => {
-    const { store, inserted } = makeStore({ judge: jest.fn(async () => SHORT) })
+  it('a cashier who may sell past stock approves their own sale, no PIN', async () => {
+    const { store } = makeStore({ judge: jest.fn(async () => SHORT) })
     const manager: ClearanceCaller = { userId: MANAGER, name: 'Lito', account: account() }
     expect(await decideStockClearance(store, request(), manager)).toEqual({
       ok: true,
       status: 'approved',
-      clearanceId: 'clearance-1',
+      clearanceId: ORDER,
       approverName: 'Lito',
     })
-    expect(inserted).toEqual([expect.objectContaining({ cashierUserId: MANAGER, approverUserId: MANAGER, shortfalls: SHORT })])
     expect(store.verifyPin).not.toHaveBeenCalled()
   })
 
   it('a manager PIN approves a short sale for the cashier', async () => {
-    const { store, inserted } = makeStore({ judge: jest.fn(async () => SHORT) })
+    const { store } = makeStore({ judge: jest.fn(async () => SHORT) })
     const outcome = await decideStockClearance(store, request({ approval: { approverUserId: MANAGER, pin: '4821' } }), cashier)
-    expect(outcome).toEqual({ ok: true, status: 'approved', clearanceId: 'clearance-1', approverName: 'Lito' })
+    expect(outcome).toEqual({ ok: true, status: 'approved', clearanceId: ORDER, approverName: 'Lito' })
     expect(store.allowPinTry).toHaveBeenCalledWith(TENANT, CASHIER, MANAGER)
     expect(store.verifyPin).toHaveBeenCalledWith(MANAGER, TENANT, '4821')
-    expect(inserted).toEqual([
-      expect.objectContaining({ cashierUserId: CASHIER, approverUserId: MANAGER, approverName: 'Lito', quantities: { [DISH]: 3, [DISH_2]: 3 } }),
-    ])
   })
 
   it.each([
@@ -170,25 +139,23 @@ describe('decideStockClearance', () => {
     ['locked', 423, 'Too many wrong tries — this PIN is locked for now. Try again later or ask the owner.'],
     ['no_pin', 400, 'This manager has not set an approval PIN yet.'],
   ] as const)('a %s PIN is refused and nothing is cleared', async (verdict, status, error) => {
-    const { store, inserted } = makeStore({ judge: jest.fn(async () => SHORT), verifyPin: jest.fn(async () => verdict) })
+    const { store } = makeStore({ judge: jest.fn(async () => SHORT), verifyPin: jest.fn(async () => verdict) })
     expect(await decideStockClearance(store, request({ approval: { approverUserId: MANAGER, pin: '4821' } }), cashier)).toEqual({
       ok: false,
       status,
       error,
     })
-    expect(inserted).toEqual([])
   })
 
   it('refuses an approver who may not approve here, before any PIN is checked', async () => {
     for (const approver of [null, account({ permissions: ['pos'] }), account({ outletId: 'elsewhere' })]) {
-      const { store, inserted } = makeStore({ judge: jest.fn(async () => SHORT), findAccount: jest.fn(async () => approver) })
+      const { store } = makeStore({ judge: jest.fn(async () => SHORT), findAccount: jest.fn(async () => approver) })
       expect(await decideStockClearance(store, request({ approval: { approverUserId: MANAGER, pin: '4821' } }), cashier)).toEqual({
         ok: false,
         status: 403,
         error: 'That person cannot approve selling past stock here.',
       })
       expect(store.verifyPin).not.toHaveBeenCalled()
-      expect(inserted).toEqual([])
     }
   })
 
@@ -203,13 +170,19 @@ describe('decideStockClearance', () => {
   })
 
   it('an approval sent for a sale that turned out to fit is not spent: it is cleared as a fit', async () => {
-    const { store, inserted } = makeStore()
+    const { store } = makeStore()
     expect(await decideStockClearance(store, request({ approval: { approverUserId: MANAGER, pin: '4821' } }), cashier)).toEqual({
       ok: true,
       status: 'cleared',
-      clearanceId: 'clearance-1',
+      clearanceId: ORDER,
     })
     expect(store.verifyPin).not.toHaveBeenCalled()
-    expect(inserted).toEqual([expect.objectContaining({ approverUserId: null, shortfalls: [] })])
+  })
+})
+
+describe('the store it runs on', () => {
+  it('has nothing that writes: the clearance table was retired unapplied (2026-11-16)', () => {
+    const { store } = makeStore()
+    expect(Object.keys(store).sort()).toEqual(['allowPinTry', 'findAccount', 'judge', 'listAccounts', 'readPolicy', 'usersWithPins', 'verifyPin'])
   })
 })

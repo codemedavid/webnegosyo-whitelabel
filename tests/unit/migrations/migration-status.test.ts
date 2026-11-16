@@ -27,7 +27,8 @@ const files = readdirSync(path.join(ROOT, 'supabase/migrations'))
   .filter((name) => name.endsWith('.sql'))
   .sort()
 
-const WAITING_STATUSES = ['held', 'pending', 'partial', 'superseded']
+/** `retired` = never to be applied; the file stays as history. */
+const WAITING_STATUSES = ['held', 'pending', 'partial', 'superseded', 'retired']
 const expected = ledger.expected ?? {}
 
 describe('supabase/migration-status.json', () => {

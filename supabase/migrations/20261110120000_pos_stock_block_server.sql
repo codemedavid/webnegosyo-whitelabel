@@ -1,3 +1,8 @@
+-- RETIRED, NEVER APPLY (owner, 2026-11-16; docs/plans/2026-11-16-inventory-trim.md item 2).
+-- Only one store uses 'block', and its manager PIN works on the register
+-- without this database half. Kept as history; supabase/migration-status.json
+-- marks it `retired`.
+--
 -- ===========================================================================
 -- 'block' stock policy, enforced by the SERVER (owner decision 2026-11-09).
 -- Plan: docs/plans/2026-11-10-pos-block-server.md.
