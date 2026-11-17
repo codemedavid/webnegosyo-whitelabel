@@ -38,13 +38,17 @@ export interface NonCashReference {
   cents: number;
 }
 
-/** One element of close_shift's p_non_cash (07 §4.3 `closing_non_cash`, plus the answer). */
+/**
+ * One element of close_shift's p_non_cash (07 §4.3 `closing_non_cash`, plus the answer).
+ * "Left to the owner" is `skipped` in the database (cash.non_cash_tallies_valid); before
+ * 20261117120000 an `unchecked` here refused the whole close.
+ */
 export interface CloseNonCashRow {
   key: string;
   method: string;
   expectedCents: number;
   slipCount: number;
-  check: "matches" | "different" | "unchecked";
+  check: "matches" | "different" | "skipped";
   declaredCents: number | null;
   note: string | null;
 }
@@ -79,14 +83,19 @@ export function isNonCashComplete(answers: readonly NonCashAnswer[]): boolean {
   return answers.every((a) => a.check !== "pending" && (a.check !== "different" || a.declaredCents !== null));
 }
 
-function settledCheck(check: NonCashAnswerCheck): CloseNonCashRow["check"] {
+function settledCheck(check: NonCashAnswerCheck): Exclude<NonCashAnswerCheck, "pending"> {
   return check === "pending" ? "unchecked" : check;
 }
 
-/** close_shift's p_non_cash. Matches declares the record; unchecked declares nothing. */
+function closeCheck(check: NonCashAnswerCheck): CloseNonCashRow["check"] {
+  const settled = settledCheck(check);
+  return settled === "unchecked" ? "skipped" : settled;
+}
+
+/** close_shift's p_non_cash. Matches declares the record; left to the owner (`skipped`) declares nothing. */
 export function toCloseNonCash(answers: readonly NonCashAnswer[]): CloseNonCashRow[] {
   return answers.map((a) => {
-    const check = settledCheck(a.check);
+    const check = closeCheck(a.check);
     const declaredCents = check === "matches" ? a.expectedCents : check === "different" ? a.declaredCents : null;
     const note = a.note.trim();
     return { key: a.key, method: a.label, expectedCents: a.expectedCents, slipCount: a.count, check, declaredCents, note: note || null };
