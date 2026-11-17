@@ -47,7 +47,7 @@ describe("non-cash answers", () => {
     expect(isNonCashComplete(initialNonCashAnswers([]))).toBe(true);
   });
 
-  it("maps onto close_shift's p_non_cash: matches declares the record, unchecked declares nothing", () => {
+  it("maps onto close_shift's p_non_cash: matches declares the record, left to the owner is 'skipped' and declares nothing", () => {
     const answers = setNonCashDeclared(
       setNonCashCheck(setNonCashCheck(initialNonCashAnswers(METHODS), "gcash", "matches"), "maya", "different"),
       "maya",
@@ -59,9 +59,11 @@ describe("non-cash answers", () => {
     ]);
     const left = markAllNonCash(initialNonCashAnswers(METHODS), "unchecked");
     expect(toCloseNonCash(left).map((row) => [row.check, row.declaredCents])).toEqual([
-      ["unchecked", null],
-      ["unchecked", null],
+      ["skipped", null],
+      ["skipped", null],
     ]);
+    // An unanswered row is also left to the owner (the database knows no other word).
+    expect(toCloseNonCash(initialNonCashAnswers(METHODS)).map((row) => row.check)).toEqual(["skipped", "skipped"]);
   });
 
   it("maps onto the remittance slip rows", () => {
