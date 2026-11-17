@@ -434,6 +434,7 @@
     "20261114160000_report_templates_format_kind.sql",
     "20261115013219_messenger_chat_orders.sql",
     "20261115073959_messenger_messages_sent_by.sql",
-    "20261115150000_report_exports_branch_scope_and_shape.sql"
+    "20261115150000_report_exports_branch_scope_and_shape.sql",
+    "20261117120000_shift_non_cash_left_to_owner.sql"
   ]
 }
