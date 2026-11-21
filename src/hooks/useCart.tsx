@@ -21,6 +21,7 @@ import { shouldRefreshCartOnPath } from '@/lib/cart-refresh-scope'
 import { readOutletSelection } from '@/lib/outlets/outlet-selection'
 import { findPresellDateConflict, reconcilePresellLines, type PresellCalendar } from '@/lib/presell/availability'
 import { fetchPresellCalendar } from '@/lib/presell/calendar-client'
+import { webCartSyncStep } from '@/lib/messenger/web-cart-sync'
 
 /**
  * Why `addItem` refused, when it did. A cart holds one presell date because
@@ -66,6 +67,11 @@ interface CartContextType extends Cart {
   ) => void
   updateQuantity: (cartItemId: string, quantity: number) => void
   clearCart: () => void
+  /**
+   * The next cart change came from the Messenger chat itself (its Checkout
+   * button): don't send it back to the chat. `clearCart` does this too.
+   */
+  skipNextMessengerSync: () => void
   getItem: (cartItemId: string) => CartItem | undefined
   bundleItems: CartBundleItem[]
   addBundleToCart: (bundleItem: Omit<CartBundleItem, 'id' | 'subtotal'>) => void
@@ -284,8 +290,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // this is a client component, and the Node type makes the build reject the
   // number the browser returns.
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Track if we've already synced the current cart state
-  const lastSyncedCart = useRef<string>('')
+  // The cart the Messenger chat already knows about (null = this page view
+  // hasn't looked yet), and whether the next change should stay out of the chat.
+  // See webCartSyncStep.
+  const lastSyncedCart = useRef<string | null>(null)
+  const quietSyncRef = useRef(false)
   // Keep a stable ref to items so getItem doesn't need to be recreated on every items change
   const itemsRef = useRef<CartItem[]>([])
   // Keep bundle items ref in sync for use in debounced Messenger sync callback
@@ -524,7 +533,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       syncTimeoutRef.current = null
     }
 
-    if (!isInitialized || !messengerPsid || !tenantId || !tenantSlug) {
+    if (!isInitialized) {
       return
     }
 
@@ -534,8 +543,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
       ...bundleItems.map(bi => ({ id: bi.id, qty: bi.quantity })),
     ])
 
-    // Don't sync if cart hasn't changed
-    if (cartHash === lastSyncedCart.current) {
+    const step = webCartSyncStep({
+      cartHash,
+      lastKnown: lastSyncedCart.current,
+      isQuiet: quietSyncRef.current,
+      canSend: Boolean(messengerPsid && tenantId && tenantSlug),
+    })
+    quietSyncRef.current = false
+    if (step === 'adopt') {
+      lastSyncedCart.current = cartHash
+      return
+    }
+    if (step === 'skip' || !messengerPsid || !tenantId || !tenantSlug) {
       return
     }
 
@@ -769,7 +788,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     })
   }, [removeItem])
 
+  const skipNextMessengerSync = useCallback(() => {
+    quietSyncRef.current = true
+  }, [])
+
   const clearCart = useCallback(() => {
+    // Emptied after an order (or replaced by the chat's cart): nothing to tell the chat.
+    quietSyncRef.current = true
     setItems([])
     setBundleItems([])
     setOrderTypeState(null)
@@ -849,6 +874,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     updateItemConfiguration,
     updateQuantity,
     clearCart,
+    skipNextMessengerSync,
     getItem,
     bundleItems,
     addBundleToCart,
@@ -871,6 +897,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     updateItemConfiguration,
     updateQuantity,
     clearCart,
+    skipNextMessengerSync,
     getItem,
     bundleItems,
     addBundleToCart,

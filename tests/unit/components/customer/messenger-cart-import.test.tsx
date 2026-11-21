@@ -26,6 +26,7 @@ const cart = {
   orderType: 'pickup' as string | null,
   addItem: jest.fn(() => ({ ok: true })),
   clearCart: jest.fn(),
+  skipNextMessengerSync: jest.fn(),
   setOrderType: jest.fn(),
 }
 jest.mock('@/hooks/useCart', () => ({ useCart: () => cart }))
@@ -43,6 +44,7 @@ beforeEach(() => {
   cart.items = []
   cart.addItem.mockClear()
   cart.clearCart.mockClear()
+  cart.skipNextMessengerSync.mockClear()
   cart.setOrderType.mockClear()
   replace.mockClear()
   Object.values(toast).forEach((fn) => fn.mockClear())
@@ -55,6 +57,8 @@ it('fills an empty cart with the chat dishes, with the link token, and drops the
   expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)).toEqual({ tenantId: 't1', token: TOKEN })
   expect(replace).toHaveBeenCalledWith(`/karamotan/cart?m=${TOKEN}`, { scroll: false })
   expect(toast.success).toHaveBeenCalledWith('Added 1 dish from Messenger')
+  // The chat already shows these dishes: the website must not send them back.
+  expect(cart.skipNextMessengerSync.mock.invocationCallOrder[0]).toBeLessThan(cart.addItem.mock.invocationCallOrder[0])
 })
 
 it('a cart with other dishes asks; Replace keeps the chosen order type', async () => {

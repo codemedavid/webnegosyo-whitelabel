@@ -30,7 +30,7 @@ export function MessengerCartImport({ tenantId }: { tenantId: string }) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
-  const { messengerPsid, isHydrated, items, bundleItems, addItem, clearCart, orderType, setOrderType } = useCart()
+  const { messengerPsid, isHydrated, items, bundleItems, addItem, clearCart, skipNextMessengerSync, orderType, setOrderType } = useCart()
   const [pending, setPending] = useState<ImportedLine[] | null>(null)
   const hasStarted = useRef(false)
   const isMounted = useRef(true)
@@ -39,9 +39,15 @@ export function MessengerCartImport({ tenantId }: { tenantId: string }) {
     return () => { isMounted.current = false }
   }, [])
 
-  /** Add each dish; returns how many went in (a presell date clash refuses one). */
-  const addLines = (lines: readonly ImportedLine[]): number =>
-    lines.reduce((added, line) => added + (addItem(line.menuItem, undefined, [], line.quantity).ok ? 1 : 0), 0)
+  /**
+   * Add each dish; returns how many went in (a presell date clash refuses one).
+   * The chat already shows these dishes, so the website doesn't send the cart
+   * back to it.
+   */
+  const addLines = (lines: readonly ImportedLine[]): number => {
+    skipNextMessengerSync()
+    return lines.reduce((added, line) => added + (addItem(line.menuItem, undefined, [], line.quantity).ok ? 1 : 0), 0)
+  }
 
   const wantsImport = searchParams.get(MESSENGER_CART_PARAM) === '1'
   // The link's own token first: the root-level capture stores it a moment later.
