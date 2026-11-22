@@ -11,7 +11,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { adminSessionCookies } from '../../../../tests/e2e/admin-session'
-import { ADMIN_EMAIL, liftHold, note, report, restoreHold, saveJson, serviceDb, settle, shot, SLUG, TENANT_ID, watch } from './lib'
+import { ADMIN_EMAIL, chooseCashAndSubmit, fillDineIn, liftHold, note, report, restoreHold, saveJson, serviceDb, settle, shot, SLUG, TENANT_ID, watch } from './lib'
 
 const DISH = 'bb917c96-69fe-5010-8b28-d593543c1158'
 const SMALL = 'qa-var-12oz'
@@ -100,6 +100,59 @@ test('dish editor: totals per size save as dish recipe + the size\'s extra', asy
   await expect(page.getByRole('button', { name: 'Save recipe' })).toBeDisabled()
   await shot(page, info, 'd4-reloaded', true)
   await report(page, info, seen, 'dish-editor')
+})
+
+// Places ONE real QA-SEED order (rings the demo owner's phone once), so it only runs when asked.
+test('a 16 oz order takes the 16 oz total (15 g Cheese) off the shelf', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop' || process.env.DISH_RECIPE_ORDER !== '1', 'set DISH_RECIPE_ORDER=1 (desktop) to place the order')
+  expect((await dishRecipes()).length, 'run the dish editor test first with DISH_RECIPE_KEEP=1').toBeGreaterThan(0)
+  const { id: cheeseId } = await cheese()
+  const guest = `QA-SEED Recipe ${Date.now()}`
+  const seen = watch(page)
+  await page.context().clearCookies()
+  await page.goto('/menu', { waitUntil: 'domcontentloaded' })
+  await settle(page, 4000)
+  await page.getByText('QA Iced Coffee').first().click()
+  await page.getByRole('button', { name: /^16 oz/ }).click()
+  await page.getByRole('button', { name: 'Add To Cart' }).click()
+  await page.waitForTimeout(2500)
+  await page.goto('/cart', { waitUntil: 'domcontentloaded' })
+  await settle(page, 3000)
+  await expect(page.getByText('QA Iced Coffee').first()).toBeVisible()
+  await shot(page, info, 'o1-cart', true)
+  await page.getByRole('button', { name: 'Proceed to Checkout' }).click()
+  await page.waitForURL('**/checkout', { timeout: 120_000 })
+  await settle(page, 6000)
+  await fillDineIn(page, guest, false)
+  await chooseCashAndSubmit(page)
+
+  let orderId: string | null = null
+  await expect
+    .poll(async () => {
+      const { data } = await serviceDb().from('orders').select('id').eq('tenant_id', TENANT_ID).eq('customer_name', guest)
+      orderId = (data?.[0]?.id as string | undefined) ?? null
+      return orderId
+    }, { timeout: 90_000 })
+    .not.toBeNull()
+  await shot(page, info, 'o2-placed', true)
+
+  let sale: Array<{ quantity_delta: number; reason: string }> = []
+  await expect
+    .poll(async () => {
+      const { data } = await serviceDb()
+        .from('stock_movements')
+        .select('quantity_delta, reason, inventory_item_id')
+        .eq('tenant_id', TENANT_ID)
+        .eq('order_id', orderId as unknown as string)
+        .eq('inventory_item_id', cheeseId)
+      sale = (data ?? []) as typeof sale
+      return sale.length
+    }, { timeout: 60_000 })
+    .toBeGreaterThan(0)
+  saveJson('dish-recipe-order-movements.json', { orderId, guest, sale })
+  expect(sale.map((row) => ({ reason: row.reason, qty: Number(row.quantity_delta) }))).toEqual([{ reason: 'sale', qty: -15 }])
+  note(info, 'db', `order ${orderId}: Cheese sale -15 g (dish 10 g + 16 oz extra 5 g)`)
+  await report(page, info, seen, 'order')
 })
 
 test('Inventory → Recipes shows the same totals (phone: one size per tab)', async ({ page }, info) => {
