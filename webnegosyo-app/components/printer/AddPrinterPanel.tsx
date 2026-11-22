@@ -78,6 +78,8 @@ export function AddPrinterPanel({ isPrinterSupported, onAdded, onClose }: AddPri
     if (printers.length > 0) return;
     if (status === "unavailable") {
       Alert.alert("Printing not available", "This build does not include the printer module. Update the app.");
+    } else if (status === "denied") {
+      Alert.alert("Bluetooth permission needed", "Allow Nearby devices for SmartMenu in Settings, then scan again.");
     } else if (status === "timeout") {
       Alert.alert(
         "Bluetooth not responding",

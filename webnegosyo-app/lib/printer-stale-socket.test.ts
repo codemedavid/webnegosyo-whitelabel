@@ -46,6 +46,8 @@ jest.mock("react-native", () => ({
     RESULTS: { GRANTED: "granted", DENIED: "denied", NEVER_ASK_AGAIN: "never_ask_again" },
     requestMultiple,
     request,
+    // "Nearby devices" granted — the permission-off paths have their own suite.
+    check: () => Promise.resolve(true),
   },
 }));
 

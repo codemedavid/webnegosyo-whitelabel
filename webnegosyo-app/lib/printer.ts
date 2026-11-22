@@ -87,8 +87,48 @@ const IOS_SCAN_ATTEMPTS = 3;
 /** Android 12 (API 31) — where the Bluetooth permissions became runtime ones. */
 const ANDROID_RUNTIME_BLUETOOTH_API = 31;
 
+/**
+ * What a merchant reads when Android has taken "Nearby devices" away from the
+ * app. It happens without anyone touching the printer: Android revokes the
+ * permissions of an app left unused for a few months, a phone restored from a
+ * backup keeps the saved printer but not the grant, and a "Don't allow" tap
+ * sticks.
+ */
+export const BLUETOOTH_PERMISSION_MSG =
+  "SmartMenu is not allowed to use Bluetooth. Tap Reconnect and allow Nearby devices, or turn it on in Settings > Apps > SmartMenu > Permissions.";
+
 /** Why a scan ended, so callers can tell a dead radio from an empty room. */
-export type ScanStatus = "ok" | "timeout" | "unavailable";
+export type ScanStatus = "ok" | "timeout" | "unavailable" | "denied";
+
+/**
+ * Whether this OS makes Bluetooth a runtime permission (Android 12+). Below
+ * that, and on iOS, there is nothing the app can be refused at runtime.
+ */
+export function bluetoothNeedsRuntimePermission(os: string, version: unknown): boolean {
+  return os === "android" && typeof version === "number" && version >= ANDROID_RUNTIME_BLUETOOTH_API;
+}
+
+/**
+ * Whether the native printer module may touch Bluetooth right now, WITHOUT
+ * asking (no dialog: this runs at launch, in the warm-up and the auto-print).
+ *
+ * This guard is what keeps the app alive. The Android driver calls
+ * `BluetoothAdapter.getBondedDevices()` inside its `connectPrinter` method,
+ * and without BLUETOOTH_CONNECT that throws a SecurityException on React
+ * Native's module thread — which is not a rejected promise but a FATAL crash
+ * of the whole process. A store with a saved Bluetooth printer then died ~2s
+ * after every launch (the printer warm-up), i.e. "SmartMenu keeps stopping".
+ * A check that itself fails answers "no": never hand the driver a call that
+ * can kill the app.
+ */
+export async function hasBluetoothConnectPermission(): Promise<boolean> {
+  if (!bluetoothNeedsRuntimePermission(Platform.OS, Platform.Version)) return true;
+  try {
+    return await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT);
+  } catch {
+    return false;
+  }
+}
 
 export interface DiscoveredPrinter {
   name: string;
@@ -237,6 +277,8 @@ export async function discoverBluetoothPrinters(): Promise<ScanResult> {
   // A pod missing from the build must never be reported as "no printers in
   // range" — that sends the merchant to check the printer instead of the app.
   if (!mod) return { printers: [], status: "unavailable" };
+  // Android lists bonded devices, which crashes the app without the grant.
+  if (!(await hasBluetoothConnectPermission())) return { printers: [], status: "denied" };
 
   try {
     await withTimeout(mod.BLEPrinter.init(), CONNECT_TIMEOUT_MS, "Bluetooth init");
@@ -298,6 +340,16 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
   const mod = getPrinterModule();
   if (!mod) {
     return { success: false, error: NOT_AVAILABLE_MSG };
+  }
+
+  // Every Bluetooth connect — the launch warm-up, auto-print, a receipt, a
+  // Reconnect tap — passes here, so this is the one place that keeps a
+  // missing "Nearby devices" grant from reaching the driver (see
+  // hasBluetoothConnectPermission: it would crash the app, not fail the call).
+  if (type === "bluetooth" && !(await hasBluetoothConnectPermission())) {
+    usePrinterStore.getState().setConnectedAddress(null);
+    markHealth(address, "unreachable", BLUETOOTH_PERMISSION_MSG);
+    return { success: false, error: BLUETOOTH_PERMISSION_MSG };
   }
 
   markHealth(address, "connecting");
@@ -667,6 +719,16 @@ export function reconnectPrinter(printer: RegisteredPrinter): Promise<PrinterRes
       markHealth(printer.address, "unreachable", NOT_AVAILABLE_MSG);
       return { success: false, error: NOT_AVAILABLE_MSG };
     }
+    // A Reconnect tap is the merchant's own gesture, so this is where a
+    // revoked "Nearby devices" grant is asked for again (the launch warm-up
+    // and auto-print only ever check — they must not pop a dialog).
+    if (printer.type === "bluetooth" && !(await hasBluetoothConnectPermission())) {
+      const permission = await requestBluetoothPermissions();
+      if (!permission.success) {
+        markHealth(printer.address, "unreachable", BLUETOOTH_PERMISSION_MSG);
+        return { success: false, error: BLUETOOTH_PERMISSION_MSG };
+      }
+    }
     const instance = printer.type === "bluetooth" ? mod.BLEPrinter : mod.NetPrinter;
     await resetNativeConnection(instance);
     return connectPrinter(printer.type, printer.address);
@@ -676,6 +738,7 @@ export function reconnectPrinter(printer: RegisteredPrinter): Promise<PrinterRes
 /** Why a scan came back without the printer the merchant was looking for. */
 function describeEmptyScan(status: ScanStatus): string {
   if (status === "unavailable") return NOT_AVAILABLE_MSG;
+  if (status === "denied") return BLUETOOTH_PERMISSION_MSG;
   if (status === "timeout") {
     return "Bluetooth did not answer. Check it is on and allowed for this app, then scan again.";
   }

@@ -361,3 +361,102 @@ index 17e01d3..18e03dc 100644
      : new NativeEventEmitter();
  
  export { BLEPrinter, NetPrinter, NetPrinterEventEmitter, USBPrinter };
+diff --git a/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNBLEPrinterModule.java b/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNBLEPrinterModule.java
+index b786c75..bfc8126 100644
+--- a/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNBLEPrinterModule.java
++++ b/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNBLEPrinterModule.java
+@@ -17,11 +17,28 @@ public class RNBLEPrinterModule extends RNBasePrinterModule {
+         super(reactContext);
+     }
+ 
++    // A Java exception thrown out of a @ReactMethod runs on React Native's
++    // module thread, where it is FATAL to the whole app — not a rejected
++    // promise. Without BLUETOOTH_CONNECT, getBondedDevices() throws
++    // SecurityException, so a saved Bluetooth printer crashed the app on every
++    // launch ("keeps stopping"). Every entry point answers through
++    // errorCallback instead.
+     @ReactMethod
+     @Override
+     public void init(Callback successCallback, Callback errorCallback) {
+-        this.adapter = BLEPrinterAdapter.getInstance();
+-        this.adapter.init(reactContext, successCallback, errorCallback);
++        try {
++            this.adapter = BLEPrinterAdapter.getInstance();
++            this.adapter.init(reactContext, successCallback, errorCallback);
++        } catch (Exception e) {
++            errorCallback.invoke(describe(e));
++        }
++    }
++
++    private static String describe(Exception e) {
++        if (e instanceof SecurityException) {
++            return "Bluetooth permission (Nearby devices) is not granted";
++        }
++        return e.getMessage() != null ? e.getMessage() : e.toString();
+     }
+ 
+     @ReactMethod
+@@ -36,7 +53,17 @@ public class RNBLEPrinterModule extends RNBasePrinterModule {
+     @ReactMethod
+     @Override
+     public void getDeviceList(Callback successCallback, Callback errorCallback) {
+-        List<PrinterDevice> printerDevices = adapter.getDeviceList(errorCallback);
++        if (adapter == null) {
++            errorCallback.invoke("Printer adapter is not initialized");
++            return;
++        }
++        List<PrinterDevice> printerDevices;
++        try {
++            printerDevices = adapter.getDeviceList(errorCallback);
++        } catch (Exception e) {
++            errorCallback.invoke(describe(e));
++            return;
++        }
+         WritableArray pairedDeviceList = Arguments.createArray();
+         if (printerDevices.size() > 0) {
+             for (PrinterDevice printerDevice : printerDevices) {
+@@ -52,7 +79,15 @@ public class RNBLEPrinterModule extends RNBasePrinterModule {
+ 
+     @ReactMethod
+     public void connectPrinter(String innerAddress, Callback successCallback, Callback errorCallback) {
+-        adapter.selectDevice(BLEPrinterDeviceId.valueOf(innerAddress), successCallback, errorCallback);
++        if (adapter == null) {
++            errorCallback.invoke("Printer adapter is not initialized");
++            return;
++        }
++        try {
++            adapter.selectDevice(BLEPrinterDeviceId.valueOf(innerAddress), successCallback, errorCallback);
++        } catch (Exception e) {
++            errorCallback.invoke(describe(e));
++        }
+     }
+ 
+     @ReactMethod
+diff --git a/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNNetPrinterModule.java b/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNNetPrinterModule.java
+index cd4aa94..c641837 100644
+--- a/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNNetPrinterModule.java
++++ b/node_modules/@haroldtran/react-native-thermal-printer/android/src/main/java/com/harold/rn/printer/RNNetPrinterModule.java
+@@ -40,9 +40,22 @@ public class RNNetPrinterModule extends RNBasePrinterModule {
+         // this.adapter.getDeviceList(errorCallback);
+     }
+ 
++    // A Java exception thrown out of a @ReactMethod runs on React Native's
++    // module thread, where it is FATAL to the whole app — not a rejected
++    // promise. A bad address (port out of range, empty host) throws
++    // IllegalArgumentException from InetSocketAddress, which the adapter does
++    // not catch, so the connect answers through errorCallback instead.
+     @ReactMethod
+     public void connectPrinter(String host, Integer port, Callback successCallback, Callback errorCallback) {
+-        adapter.selectDevice(NetPrinterDeviceId.valueOf(host, port), successCallback, errorCallback);
++        if (adapter == null) {
++            errorCallback.invoke("Printer adapter is not initialized");
++            return;
++        }
++        try {
++            adapter.selectDevice(NetPrinterDeviceId.valueOf(host, port), successCallback, errorCallback);
++        } catch (Exception e) {
++            errorCallback.invoke("failed to connect printer: " + e.getMessage());
++        }
+     }
+ 
+     @ReactMethod
