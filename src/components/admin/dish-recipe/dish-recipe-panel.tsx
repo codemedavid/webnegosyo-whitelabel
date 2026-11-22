@@ -327,7 +327,7 @@ export function DishRecipePanel({
           </Select>
           <p className="basis-full text-xs text-muted-foreground">
             {byGroup
-              ? `Type everything each ${byGroup.name.toLowerCase()} uses in total, cup and all. We work out the rest.`
+              ? `Under each ${byGroup.name === 'Options' ? 'choice' : byGroup.name.toLowerCase()}, type everything one sale of it uses in total, cup and all. We work out the rest.`
               : 'Type what one order uses. If a bigger size uses more, pick the list it changes by.'}
           </p>
         </div>
