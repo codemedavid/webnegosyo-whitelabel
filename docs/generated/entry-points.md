@@ -7,7 +7,7 @@ Every API route and server action that is declared through `defineRoute` / `defi
 which inputs it validates. Entry points that still check access by hand are listed in
 `tests/unit/guardrails/entry-point-exceptions.json`; that list can only shrink.
 
-## Declared entry points (54)
+## Declared entry points (56)
 
 | Entry | Who may call | Store | Branch | Rate limit | Validates |
 |---|---|---|---|---|---|
@@ -58,6 +58,8 @@ which inputs it validates. Entry points that still check access by hand are list
 | POST /api/exports | staff: `reports` (view, session or app token) | named, checked | any | 30 per 1m per user (`exports-preview`) | body |
 | GET /api/exports | staff: `reports` (view, session or app token) | named, checked | any | 6 per 1m per user (`exports-file`) | query |
 | GET /api/gov-discounts/approvers | staff: `pos` (view, app token) | named, checked | any | not stated | query |
+| GET /api/inventory/dish-recipe | staff: `menu` (view, session or app token) | named, checked | any | 120 per 1m per user (`dish-recipe-read`) | query |
+| PUT /api/inventory/dish-recipe | staff: `menu` (edit, session or app token) | named, checked | store-wide | 30 per 1m per user (`dish-recipe-save`) | body |
 | GET /api/loyalty/maintenance | cron secret | — | — | not stated | — |
 | POST /api/messenger/chat-cart | anyone | — | — | 30 per 1m per ip (`msgr-chat-cart`) | body |
 | POST /api/messenger/chat-order | anyone | — | — | 300 per 1m per ip (`msgr-chat-order`) | body |
