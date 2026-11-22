@@ -18,7 +18,7 @@ import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
 import { ProductCostField } from '@/components/admin/product-cost-field'
 import { ProductCostFieldConvex } from '@/components/admin/product-cost-field-convex'
 import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
-import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { DishRecipePanel } from '@/components/admin/dish-recipe/dish-recipe-panel'
 import { TagManager } from '@/components/admin/tag-manager'
 import { MenuItemPresellSection, SettingSwitch } from '@/components/admin/menu-item-presell-section'
 import { OptionalSection, OptionalSectionList } from '@/components/admin/menu-editor/editor-section'
@@ -131,18 +131,22 @@ function IngredientsRow({ itemId, tenantId, tenantSlug, hasRecipe, onRecipeSaved
     <OptionalSection
       icon={CookingPot}
       title="Ingredients"
-      hint="Deduct stock from your inventory when this sells"
+      hint="What each size or choice uses, so selling it deducts stock"
       summary={summary}
       summaryTone={hasRecipe ? 'good' : itemId && hasRecipe === false ? 'warning' : 'muted'}
     >
       {itemId ? (
-        <RecipeEditor
-          tenantId={tenantId}
-          tenantSlug={tenantSlug}
-          target={{ type: 'menu_item', menuItemId: itemId }}
-          label="Ingredients used per order"
-          onSaved={onRecipeSaved}
-        />
+        <>
+          <p className="text-xs text-muted-foreground">
+            Uses the sizes and choices as last saved. Added a size just now? Save the dish first.
+          </p>
+          <DishRecipePanel
+            tenantId={tenantId}
+            tenantSlug={tenantSlug}
+            menuItemId={itemId}
+            onSaved={onRecipeSaved}
+          />
+        </>
       ) : (
         // A recipe needs an item id to attach to, so a brand-new dish cannot
         // have one yet — say so rather than render nothing.

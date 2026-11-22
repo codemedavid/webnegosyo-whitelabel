@@ -12272,6 +12272,10 @@ export type Database = {
         Args: { p_dry_run?: boolean; p_item_id: string; p_tenant_id: string }
         Returns: Json
       }
+      dish_recipes_version: {
+        Args: { p_menu_item_id: string; p_tenant_id: string }
+        Returns: string
+      }
       dispute_remittance: {
         Args: { p_id: string; p_reason: string; p_received_cents?: number }
         Returns: {
@@ -13278,6 +13282,15 @@ export type Database = {
       save_cash_settings: {
         Args: { p_settings: Json; p_tenant: string }
         Returns: Json
+      }
+      save_dish_recipes: {
+        Args: {
+          p_expected_version: string
+          p_menu_item_id: string
+          p_targets: Json
+          p_tenant_id: string
+        }
+        Returns: string
       }
       save_messenger_rules: {
         Args: {

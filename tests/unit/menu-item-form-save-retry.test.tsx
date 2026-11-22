@@ -18,6 +18,11 @@ jest.mock('@/components/admin/recipe-editor', () => ({
     <button type="button" onClick={() => onSavingChange?.(true)}>Begin recipe save</button>
   ),
 }))
+jest.mock('@/components/admin/dish-recipe/dish-recipe-panel', () => ({
+  DishRecipePanel: ({ onSavingChange }: { onSavingChange?: (saving: boolean) => void }) => (
+    <button type="button" onClick={() => onSavingChange?.(true)}>Begin recipe save</button>
+  ),
+}))
 jest.mock('@/components/admin/product-cost-field', () => ({ ProductCostField: () => null }))
 jest.mock('@/components/admin/product-cost-field-convex', () => ({ ProductCostFieldConvex: () => null }))
 jest.mock('@/components/admin/product-mini-performance', () => ({ ProductMiniPerformance: () => null }))

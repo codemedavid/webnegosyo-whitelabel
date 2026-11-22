@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { DishRecipePanel } from '@/components/admin/dish-recipe/dish-recipe-panel'
 
 interface RecipeStepDialogProps {
   tenantId: string
@@ -48,11 +48,10 @@ export function RecipeStepDialog({ tenantId, tenantSlug, itemId, dishName, onFin
           </DialogDescription>
         </DialogHeader>
         {itemId && (
-          <RecipeEditor
+          <DishRecipePanel
             tenantId={tenantId}
             tenantSlug={tenantSlug}
-            target={{ type: 'menu_item', menuItemId: itemId }}
-            label="Ingredients used per order"
+            menuItemId={itemId}
             onSavingChange={setIsSaving}
           />
         )}
