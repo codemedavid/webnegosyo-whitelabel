@@ -124,8 +124,14 @@ The TS route keeps the line rules (`assertRecipeLinesDeductible`) and the zod ch
 4. **App UI**: version tabs + checks (JS only, OTA-able).
 5. **Prove it**: browser walk on `sample-demo` (verify-webnegosyo). Then a sample-demo Large order, checking that `stock_movements` takes exactly the Large total. Simulator walk of the app screen. A read-only check that the Cafe Chill warning appears.
 
-## 7. Decisions for the owner
+## 7. Decisions (owner, 2026-11-21)
 
-1. One "changes by" group per dish (Size × Flavour combinations out of scope): OK?
-2. Stores with the double-count today (Cafe Chill, Keto): warning plus one-tap fix for the owner only, or should we also reach out to them?
-3. Order: web + app together, or app first (merchants do most recipe work on the phone)?
+1. One "changes by" group per dish; Size × Flavour combinations are out of scope. **Yes.**
+2. Stores that count an ingredient twice today (Cafe Chill, Keto): in-product warning + one-tap "Count it once" only. No outreach, no live data repair.
+3. **Web first**; the app's version tabs come in a later phase.
+
+## 8. Status (2026-11-22)
+
+- Engine (`src/lib/inventory/dish-recipe/`), `save_dish_recipes` (APPLIED + probed on platform 2026-11-22), `GET/PUT /api/inventory/dish-recipe`, `DishRecipePanel` in the dish editor, the new-dish recipe step and Inventory → Recipes: built.
+- Browser-proven on sample-demo (`.claude/skills/verify-webnegosyo/drive/dish-recipe.spec.ts`, desktop + phone).
+- Not done: a live sample-demo order proving the deduction (engine covered by the property test over the real `resolveOrderDepletions`); the per-choice recipe editors inside option rows still exist beside the panel; app phase.
