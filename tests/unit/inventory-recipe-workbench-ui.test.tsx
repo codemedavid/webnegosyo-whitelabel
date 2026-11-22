@@ -7,8 +7,8 @@
  * dish you meant. That is the reported bug: "we can't create a recipe for an
  * item and we can't see any item we want to add a recipe with."
  *
- * The editor itself is `RecipeEditor`, already proven and reused untouched;
- * this covers the picker around it and the wiring between the two.
+ * The editor is `DishRecipePanel` (tested on its own); this covers the picker
+ * around it and the wiring between the two.
  */
 
 import { render, screen, fireEvent, within } from '@testing-library/react'
@@ -17,16 +17,18 @@ import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
 import type { InventoryItem, RecipeComponent } from '@/types/database'
 
 // The editor does its own server round-trips; this suite is about the picker.
-jest.mock('@/components/admin/recipe-editor', () => ({
-  RecipeEditor: ({
-    target,
+jest.mock('@/components/admin/dish-recipe/dish-recipe-panel', () => ({
+  DishRecipePanel: ({
+    menuItemId,
+    copySources,
     onSavingChange,
   }: {
-    target: { menuItemId?: string }
+    menuItemId: string
+    copySources?: { menuItemId: string }[]
     onSavingChange?: (saving: boolean) => void
   }) => (
-    <div data-testid="recipe-editor">
-      editing {target.menuItemId}
+    <div data-testid="recipe-editor" data-copy-sources={(copySources ?? []).map((source) => source.menuItemId).join(',')}>
+      editing {menuItemId}
       <button type="button" onClick={() => onSavingChange?.(true)}>Begin recipe save</button>
       <button type="button" onClick={() => onSavingChange?.(false)}>Finish recipe save</button>
     </div>
@@ -131,6 +133,12 @@ describe('building the recipe', () => {
     expect(screen.getByTestId('recipe-editor')).toHaveTextContent('editing m1')
   })
 
+  it('offers the dishes that already have a recipe as copy sources', () => {
+    renderWorkbench()
+
+    expect(screen.getByTestId('recipe-editor')).toHaveAttribute('data-copy-sources', 'm1')
+  })
+
   it('names the dish being edited, so the two panes cannot be confused', () => {
     renderWorkbench()
 
@@ -184,7 +192,7 @@ describe('portion picks that deduct nothing', () => {
     renderWorkbench({ rows: [WINGS] })
 
     expect(within(screen.getByTestId('dish-m9')).getByText(/Flavours picks deduct nothing/)).toBeInTheDocument()
-    expect(screen.getByTestId('unreciped-option-groups-hint')).toHaveTextContent(/on top of this one/)
+    expect(screen.getByTestId('unreciped-option-groups-hint')).toHaveTextContent(/Amounts change by/)
   })
 
   it('says nothing for a dish whose picks are set up', () => {

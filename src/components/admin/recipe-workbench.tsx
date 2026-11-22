@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Search, UtensilsCrossed } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { DishRecipePanel } from '@/components/admin/dish-recipe/dish-recipe-panel'
 import { findUnusedIngredients, summarizeRecipeCoverage } from '@/lib/inventory/recipe-coverage'
 import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
 import {
@@ -39,9 +39,9 @@ interface RecipeWorkbenchProps {
  * back — and with no search you could not find the dish you meant on a 51-dish
  * menu. The first tenant to switch inventory on wrote zero recipes.
  *
- * `RecipeEditor` is reused untouched: it already loads and saves a recipe for
- * any target on its own round-trip, so keying it to the selected dish is all
- * that was needed. Everything here is the picker around it.
+ * The editor is the dish editor's own `DishRecipePanel` (the dish recipe and
+ * every size/choice in one table, one save), keyed to the selected dish.
+ * Everything here is the picker around it.
  */
 export function RecipeWorkbench({
   tenantId,
@@ -71,6 +71,10 @@ export function RecipeWorkbench({
   )
 
   const selected = rows.find((row) => row.menuItemId === selectedId) ?? null
+  const copySources = useMemo(
+    () => rows.filter((row) => row.hasRecipe).map((row) => ({ menuItemId: row.menuItemId, name: row.name })),
+    [rows],
+  )
 
   // A recipe is built out of ingredients, so an empty shelf makes every other
   // control here a dead end. Say the one useful thing instead.
@@ -229,7 +233,7 @@ export function RecipeWorkbench({
               <div className="mb-4 border-b pb-3">
                 <p className="text-lg font-semibold">{selected.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  Ingredients used every time this dish sells.
+                  What each version of this dish uses when it sells.
                 </p>
                 {selected.unrecipedOptionGroups && (
                   <p
@@ -237,20 +241,19 @@ export function RecipeWorkbench({
                     className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
                   >
                     Choices in {selected.unrecipedOptionGroups.join(', ')} have no recipe, so picking
-                    more of them deducts nothing extra — only this base recipe is used, once per
-                    order line. To deduct each pick, open the dish in the menu editor and add a
-                    recipe to each choice (its ingredients are used on top of this one).
+                    them deducts nothing extra. If a size uses more, set “Amounts change by” below;
+                    for extras, fill in “Choices that add more”.
                   </p>
                 )}
               </div>
-              <RecipeEditor
+              <DishRecipePanel
                 // Remounts on dish change so the editor reloads rather than
                 // showing the previous dish's lines against the new heading.
                 key={selected.menuItemId}
                 tenantId={tenantId}
                 tenantSlug={tenantSlug}
-                target={{ type: 'menu_item', menuItemId: selected.menuItemId }}
-                label="Base recipe"
+                menuItemId={selected.menuItemId}
+                copySources={copySources}
                 onSavingChange={setIsRecipeSaving}
               />
             </>
