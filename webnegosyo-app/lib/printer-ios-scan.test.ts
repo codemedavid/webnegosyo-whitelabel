@@ -37,7 +37,8 @@ jest.mock("react-native", () => ({
   get Platform() {
     return mockPlatform;
   },
-  PermissionsAndroid: { PERMISSIONS: {}, RESULTS: {}, requestMultiple: jest.fn(), request: jest.fn() },
+  // The Android case below runs with "Nearby devices" granted.
+  PermissionsAndroid: { PERMISSIONS: {}, RESULTS: {}, requestMultiple: jest.fn(), request: jest.fn(), check: () => Promise.resolve(true) },
 }));
 
 const mockBLEPrinter = {

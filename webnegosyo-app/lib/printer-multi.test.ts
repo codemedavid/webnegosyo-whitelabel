@@ -19,7 +19,7 @@ jest.mock("expo-constants", () => ({
 
 jest.mock("react-native", () => ({
   Platform: { OS: "android", Version: 33, select: (map: Record<string, unknown>) => map.android },
-  PermissionsAndroid: { PERMISSIONS: {}, RESULTS: {}, requestMultiple: jest.fn(), request: jest.fn() },
+  PermissionsAndroid: { PERMISSIONS: {}, RESULTS: {}, requestMultiple: jest.fn(), request: jest.fn(), check: jest.fn().mockResolvedValue(true) },
 }));
 
 const mockBLEPrinter = {
