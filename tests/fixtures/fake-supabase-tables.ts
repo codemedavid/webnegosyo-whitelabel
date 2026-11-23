@@ -91,6 +91,53 @@ function negatable(column: string, operator: string, value: unknown): Predicate 
   throw new Error(`fakeSupabaseTables: not(${column}, ${operator}) is not modelled; add it before relying on it`)
 }
 
+/** Split a PostgREST `or` list on top-level commas, keeping quoted values whole. */
+function splitOrList(filter: string): string[] {
+  const parts: string[] = []
+  let current = ''
+  let isQuoted = false
+  for (const char of filter) {
+    if (char === '"') isQuoted = !isQuoted
+    if (char === ',' && !isQuoted) {
+      parts.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  parts.push(current)
+  return parts
+}
+
+/**
+ * One `or` clause (`column.op.value`) for the operators readers here use:
+ * eq, neq, is.null, not.is.null, ilike. Anything else returns null and the
+ * whole `or` is ignored, as before.
+ */
+function orClause(clause: string): Predicate | null {
+  const match = /^([a-z_][a-z0-9_]*)\.(not\.is|is|eq|neq|ilike)\.(.*)$/i.exec(clause.trim())
+  if (!match) return null
+  const [, column, operator, raw] = match
+  const value = raw.replace(/^"|"$/g, '')
+  switch (operator) {
+    case 'is':
+      return value === 'null' ? (row) => isNullish(row[column]) : null
+    case 'not.is':
+      return value === 'null' ? (row) => !isNullish(row[column]) : null
+    // PostgREST compares text: a NULL never equals or differs from anything.
+    case 'eq':
+      return (row) => !isNullish(row[column]) && String(row[column]) === value
+    case 'neq':
+      return (row) => !isNullish(row[column]) && String(row[column]) !== value
+    case 'ilike': {
+      const pattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*')}$`, 'i')
+      return (row) => !isNullish(row[column]) && pattern.test(String(row[column]))
+    }
+    default:
+      return null
+  }
+}
+
 function sortRows(rows: readonly FakeRow[], orderings: readonly Ordering[]): FakeRow[] {
   return [...rows].sort((a, b) => {
     for (const { column, ascending, nullsFirst } of orderings) {
@@ -117,8 +164,10 @@ function sortRows(rows: readonly FakeRow[], orderings: readonly Ordering[]): Fak
  *   order (filter → sort → window → cap), whatever order they were chained in.
  * - Only selected columns come back, so a column the code forgets to select
  *   shows up as a missing field rather than passing silently.
- * - `or()` is accepted and ignored: seed only rows the filter would keep. A
- *   `not()` operator that is not modelled throws instead of matching nothing.
+ * - `or()` applies simple clauses (eq, neq, is.null, not.is.null, ilike); an
+ *   `or` with anything else (nested `and(...)`, other operators) is ignored, so
+ *   seed only rows that filter would keep. A `not()` operator that is not
+ *   modelled throws instead of matching nothing.
  * - `update()` and `delete()` change the fake's own copy of a table (never the
  *   seeded rows) and answer like PostgREST: the changed rows after `.select()`,
  *   a count after `{ count: 'exact' }`, otherwise nothing (status 204). A table
@@ -181,8 +230,10 @@ export function fakeSupabaseTables(
         const matches = negatable(column, operator, value)
         return where((row) => !matches(row))
       },
-      or() {
-        return query
+      or(filter: string) {
+        const clauses = splitOrList(filter).map(orClause)
+        if (clauses.some((clause) => clause === null)) return query
+        return where((row) => clauses.some((clause) => clause!(row)))
       },
       order(column: string, options: { ascending?: boolean; nullsFirst?: boolean } = {}) {
         const ascending = options.ascending !== false

@@ -9,7 +9,7 @@
  * customer paid and nothing on the surface explains the difference. The
  * merchant is left unable to tell whether they were underpaid.
  *
- * `order-detail-dialog.tsx` had the worse version: it derived
+ * `order-detail-dialog.tsx` (now `order-detail-panel.tsx`) had the worse version: it derived
  * `Subtotal = order.total - delivery_fee`. Since `order.total` is stored NET of
  * the discount, that row contradicted the item list directly above it.
  *
@@ -24,8 +24,7 @@ import { orderSummaryRows } from '@/lib/order-summary-rows'
 
 /** Surfaces that state an order's total to a merchant. */
 const ORDER_SURFACES = [
-  'src/components/admin/order-detail-dialog.tsx',
-  'src/components/admin/order-card.tsx',
+  'src/components/admin/order-detail-panel.tsx',
   'src/components/admin/convex-order-sheet.tsx',
   // Not a screen, but the ticket most merchants actually read.
   'src/lib/messenger-message-formatter.ts',

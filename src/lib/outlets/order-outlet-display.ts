@@ -107,7 +107,7 @@ export function getOrderOutletLabel(order: OutletOrderLike | null | undefined): 
  * The branches worth offering in the order-list filter, sorted by name.
  *
  * Derived from the orders on screen rather than queried, mirroring how the
- * order-type filter is built in `orders-list.tsx` — an empty result means the
+ * order-type filter is built in the Convex orders tab — an empty result means the
  * dropdown does not render, so a single-location merchant sees exactly the
  * order list they see today.
  *

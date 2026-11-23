@@ -152,9 +152,9 @@ Cart utilities in `src/lib/cart-utils.ts` handle both formats.
 ### Real-Time Orders (Web Admin)
 
 - `src/hooks/use-realtime-orders.ts` — Supabase Realtime subscription for `orders` table (INSERT + UPDATE)
-- `src/components/admin/realtime-orders-wrapper.tsx` — Plays chime, fires browser notification, shows toast on new orders. Green pulse dot indicates live connection.
+- `src/components/admin/orders-table/platform-orders-view.tsx` — the Orders table (2026-11-23 redesign: table + side panel `order-detail-panel.tsx`). Status tabs with counts, filters in the URL applied in SQL (`src/lib/admin/orders-table/`, 25 per page, counts skipped on "All time"), one-tap next step per row. Plays the chime, fires the browser notification and toast on new orders; "Live" dot = realtime connected.
 - `src/lib/notification-utils.ts` — Web Audio API two-tone chime, browser Notification API with `requireInteraction: true`
-- Orders page (`admin/orders/page.tsx`) routes to `ConvexOrdersWrapper` if Convex is configured, otherwise `RealtimeOrdersWrapper`
+- Orders page (`admin/orders/page.tsx`) routes on `resolveOrderBackend`: Convex stores get `ConvexOrdersTab` (same table over the newest 50 per status, no pages), platform stores `PlatformOrdersView`
 
 ### Analytics
 

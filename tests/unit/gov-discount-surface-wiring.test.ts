@@ -9,8 +9,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 const SURFACES: [file: string, component: string][] = [
-  ['src/components/admin/order-detail-dialog.tsx', 'GovDiscountSummary'],
-  ['src/components/admin/order-card.tsx', 'GovDiscountSummary'],
+  ['src/components/admin/order-detail-panel.tsx', 'GovDiscountSummary'],
   ['src/components/admin/convex-order-sheet.tsx', 'GovDiscountSummary'],
   ['webnegosyo-app/app/(main)/order/[orderId].tsx', 'GovDiscountCard'],
 ]
@@ -29,7 +28,7 @@ describe('order surfaces show the Senior/PWD detail', () => {
 
   it('the web print paths hand the store tax identity to the engine', () => {
     expect(read('src/app/actions/receipt.ts')).toContain('readReceiptTaxIdentity')
-    expect(read('src/components/admin/order-detail-dialog.tsx')).toContain('context?.tax')
+    expect(read('src/components/admin/orders-table/print-receipt.ts')).toContain('context?.tax')
     expect(read('src/components/admin/convex-order-sheet.tsx')).toContain('context?.tax')
     expect(read('webnegosyo-app/hooks/useOrderPrint.ts')).toContain('receiptTaxIdentity(taxProfile)')
   })

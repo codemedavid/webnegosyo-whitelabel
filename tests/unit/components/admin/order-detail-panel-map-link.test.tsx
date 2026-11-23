@@ -4,8 +4,7 @@
  */
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { OrderDetailDialog } from '@/components/admin/order-detail-dialog'
+import { OrderDetailPanel } from '@/components/admin/order-detail-panel'
 import type { OrderWithItems } from '@/lib/orders-service'
 
 jest.mock('@/components/admin/order-status-management', () => ({
@@ -39,13 +38,15 @@ const order = (customerData: Record<string, unknown>) =>
     order_items: [],
   }) as unknown as OrderWithItems
 
+jest.mock('@/components/admin/order-delivery-card', () => ({
+  OrderDeliveryCard: () => <div data-testid="delivery-card" />,
+}))
+
 async function renderDialog(customerData: Record<string, unknown>) {
-  const user = userEvent.setup()
-  render(<OrderDetailDialog order={order(customerData)} tenantSlug="seacook" tenantId="tenant-1" onClose={() => {}} />)
-  await user.click(screen.getByRole('tab', { name: /customer/i }))
+  render(<OrderDetailPanel order={order(customerData)} tenantSlug="seacook" tenantId="tenant-1" onClose={() => {}} />)
 }
 
-describe('OrderDetailDialog map link', () => {
+describe('OrderDetailPanel map link', () => {
   test('opens the exact pin in Google Maps from the address row', async () => {
     await renderDialog({ delivery_address: '12 Mabini St', delivery_lat: '14.5861', delivery_lng: '121.1761', delivery_landmark: 'Blue gate' })
     const link = screen.getByRole('link', { name: /open in google maps/i })
