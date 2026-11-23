@@ -1,50 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { Clock, Globe, Smartphone, Loader2, CalendarClock, Store } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Owl } from "@/components/mascot/owl";
-import { useConvexOrders } from "@/hooks/use-convex-orders";
+import { useConvexOrders, useUpdateConvexOrderStatus } from "@/hooks/use-convex-orders";
 import { scopeOrderRows } from "@/lib/outlets/branch-scope-query";
 import type { BranchScope } from "@/lib/outlets/branch-scope";
+import {
+  listOrderOutlets,
+  matchesOutletFilter,
+  OUTLET_FILTER_ALL,
+} from "@/lib/outlets/order-outlet-display";
+import { notifyConvexLifecycleSync } from "@/lib/customers/web-lifecycle-sync";
+import { parseOrderSearch } from "@/lib/admin/orders-table/filters";
+import { formatDailyOrderNumber } from "@/lib/order-number";
+import { convexOrderRow, type OrdersTableRow } from "@/lib/admin/orders-table/row-model";
+import { STATUS_META, type NextStatusStep, type OrderStatus } from "@/lib/admin/orders-table/status";
 import { ConvexOrderSheet } from "@/components/admin/convex-order-sheet";
-import { getOrderScheduledLabel } from "@/lib/advance-order-utils";
-import { getOrderOutletLabel } from "@/lib/outlets/order-outlet-display";
-import { cn } from "@/lib/utils";
-import { displayCustomerName } from '@/lib/order-display-name'
-
-const STATUS_FILTERS = [
-  "all",
-  "pending",
-  "confirmed",
-  "preparing",
-  "ready",
-  "delivered",
-  "cancelled",
-] as const;
-
-const STATUS_PILL_COLORS: Record<string, string> = {
-  pending: "bg-orange-100 text-orange-800 border-orange-200",
-  confirmed: "bg-blue-100 text-blue-800 border-blue-200",
-  preparing: "bg-amber-100 text-amber-800 border-amber-200",
-  ready: "bg-green-100 text-green-800 border-green-200",
-  delivered: "bg-purple-100 text-purple-800 border-purple-200",
-  cancelled: "bg-red-100 text-red-800 border-red-200",
-};
-
-function formatTimeAgo(timestamp: number): string {
-  const now = Date.now();
-  const diffMs = now - timestamp;
-  const diffSeconds = Math.floor(diffMs / 1000);
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffSeconds < 60) return "just now";
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${diffDays}d ago`;
-}
+import { OrdersTable } from "@/components/admin/orders-table/orders-table";
+import { OrdersToolbar } from "@/components/admin/orders-table/orders-toolbar";
+import { StatusTabs } from "@/components/admin/orders-table/status-tabs";
 
 interface ConvexOrdersTabProps {
   /** Passed down so cancelling an order can restore its stock. */
@@ -60,177 +36,143 @@ interface ConvexOrdersTabProps {
   scope?: BranchScope;
 }
 
+type ConvexOrderDoc = Record<string, unknown>;
+
+/** Search over the loaded rows: name, phone, or the daily number. */
+function matchesSearch(row: OrdersTableRow, raw: string): boolean {
+  const { text, orderNumber } = parseOrderSearch(raw);
+  if (!text && orderNumber === null) return true;
+  if (orderNumber !== null && row.numberLabel === formatDailyOrderNumber(orderNumber)) return true;
+  const needle = text.toLowerCase();
+  return Boolean(needle) && (row.customerName.toLowerCase().includes(needle) || (row.customerContact ?? "").toLowerCase().includes(needle));
+}
+
+/**
+ * The Orders table for a store whose orders live in Convex. Same table, tabs
+ * and words as the platform view; what Convex cannot do is said plainly:
+ * `orders:getOrders` returns the newest 50 per status and older deployments
+ * take no date range, so filters apply to those rows and there are no pages.
+ */
 export function ConvexOrdersTab({ tenantId, scope, lalamoveEnabled }: ConvexOrdersTabProps) {
-  const [activeFilter, setActiveFilter] = useState<string>("all");
+  const [status, setStatus] = useState<OrderStatus | "all">("all");
+  const [search, setSearch] = useState("");
+  const [type, setType] = useState<string | null>(null);
+  const [branch, setBranch] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const statusArg = activeFilter === "all" ? undefined : activeFilter;
-  const allOrders = useConvexOrders(statusArg);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  // `undefined` means the query has not resolved; keep it distinct from an
-  // empty result so the loading state below still fires.
-  const orders =
-    allOrders === undefined || !scope ? allOrders : scopeOrderRows(allOrders, scope);
+  const loaded = useConvexOrders(status === "all" ? undefined : status) as ConvexOrderDoc[] | undefined;
+  const updateStatus = useUpdateConvexOrderStatus();
 
-  const isLoading = orders === undefined;
+  // `undefined` means the query has not resolved; keep it distinct from empty.
+  const docs = useMemo(
+    () => (loaded === undefined ? undefined : scope ? scopeOrderRows(loaded, scope) : loaded),
+    [loaded, scope],
+  );
 
-  function handleOrderClick(orderId: string) {
-    setSelectedOrderId(orderId);
-    setSheetOpen(true);
-  }
+  const outlets = useMemo(() => (docs ? listOrderOutlets(docs) : []), [docs]);
+  const typeOptions = useMemo(() => {
+    const names = new Set((docs ?? []).map((doc) => (typeof doc.orderType === "string" ? doc.orderType.trim() : "")).filter(Boolean));
+    return [...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
+  }, [docs]);
 
-  function handleSheetOpenChange(open: boolean) {
-    setSheetOpen(open);
-    if (!open) {
-      setSelectedOrderId(null);
+  const rows = useMemo(() => {
+    if (!docs) return [];
+    return docs
+      .filter((doc) => !type || doc.orderType === type)
+      .filter((doc) => matchesOutletFilter(doc, branch ?? OUTLET_FILTER_ALL))
+      .map(convexOrderRow)
+      .filter((row) => matchesSearch(row, search));
+  }, [docs, type, branch, search]);
+
+  async function advance(row: OrdersTableRow, step: NextStatusStep) {
+    setBusyIds((current) => new Set(current).add(row.id));
+    try {
+      await updateStatus({ orderId: row.id, status: step.status });
+      // Convex holds the order; the platform holds the customer ledger loyalty
+      // earns from. Nothing else in the browser tells it this order moved.
+      void notifyConvexLifecycleSync({ tenantId, externalOrderId: row.id, status: step.status });
+      toast.success(`Order ${row.numberLabel} · ${STATUS_META[step.status].label}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Could not update order ${row.numberLabel}`);
+    } finally {
+      setBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(row.id);
+        return next;
+      });
     }
   }
 
+  const isFiltered = Boolean(search.trim() || type || branch);
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Status Filter Pills */}
-      <div className="flex flex-wrap gap-2">
-        {STATUS_FILTERS.map((filter) => (
-          <button
-            key={filter}
-            type="button"
-            onClick={() => setActiveFilter(filter)}
-            className={cn(
-              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-              activeFilter === filter
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-background text-muted-foreground border-border hover:bg-muted"
-            )}
-          >
-            {filter.charAt(0).toUpperCase() + filter.slice(1)}
-          </button>
-        ))}
-      </div>
+      <StatusTabs value={status} counts={null} onSelect={setStatus} />
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center py-20">
-          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      <OrdersToolbar
+        search={search}
+        onSearch={setSearch}
+        type={type}
+        typeOptions={typeOptions}
+        onType={setType}
+        branch={branch}
+        branchOptions={outlets.map((outlet) => ({ value: outlet.id, label: outlet.name }))}
+        onBranch={setBranch}
+        onClear={
+          isFiltered
+            ? () => {
+                setSearch("");
+                setType(null);
+                setBranch(null);
+              }
+            : undefined
+        }
+      />
+
+      {docs === undefined ? (
+        <div className="flex justify-center rounded-2xl bg-white py-20 ring-1 ring-border">
+          <Loader2 aria-label="Loading orders" className="size-7 animate-spin text-wn-stone" />
         </div>
+      ) : (
+        <OrdersTable
+          rows={rows}
+          nowMs={nowMs}
+          onOpen={setSelectedOrderId}
+          onAdvance={(row, step) => void advance(row, step)}
+          selectedId={selectedOrderId}
+          busyIds={busyIds}
+          hasItemNames={false}
+          caption="Latest orders. Select an order to open it."
+          empty={
+            <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+              <Owl state="waiting" size={96} />
+              <p className="text-[16px] font-bold text-wn-ink">{isFiltered || status !== "all" ? "No orders match" : "No orders yet"}</p>
+              <p className="max-w-sm text-[14px] text-wn-stone">New orders appear here the moment they come in.</p>
+            </div>
+          }
+        />
       )}
 
-      {/* Empty State */}
-      {!isLoading && Array.isArray(orders) && orders.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
-          <Owl state="waiting" size={120} />
-          <p className="text-sm font-medium">No orders found</p>
-        </div>
+      {docs !== undefined && docs.length > 0 && (
+        <p className="text-[13px] text-wn-stone">
+          Showing the latest {docs.length} {status === "all" ? "" : `${STATUS_META[status].label.toLowerCase()} `}orders
+          {isFiltered && `, ${rows.length} match`}.
+        </p>
       )}
 
-      {/* Order Cards */}
-      {!isLoading && Array.isArray(orders) && orders.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {orders.map((order: Record<string, unknown>) => {
-            const orderId = order._id as string;
-            const creationTime = order._creationTime as number;
-            const customerName = displayCustomerName(order.customerName as string | undefined);
-            const customerContact = (order.customerContact as string) || "";
-            const total = (order.total as number) || 0;
-            const itemCount = (order.itemCount as number) || 0;
-            const status = (order.status as string) || "pending";
-            const orderType = order.orderType as string | undefined;
-            const source = order.source as string | undefined;
-            const scheduledLabel = getOrderScheduledLabel({
-              scheduled_for: (order.scheduledFor ?? null) as string | null,
-              customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
-            });
-            const outletLabel = getOrderOutletLabel({
-              customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
-            });
-
-            return (
-              <button
-                key={orderId}
-                type="button"
-                onClick={() => handleOrderClick(orderId)}
-                className="flex items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50"
-              >
-                {/* Customer Info */}
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">
-                      {customerName}
-                    </span>
-                    {source && (
-                      <span className="shrink-0 text-muted-foreground">
-                        {source === "mobile" ? (
-                          <Smartphone className="size-3.5" />
-                        ) : (
-                          <Globe className="size-3.5" />
-                        )}
-                      </span>
-                    )}
-                  </div>
-                  {customerContact && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {customerContact}
-                    </span>
-                  )}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="size-3" />
-                    <span>{formatTimeAgo(creationTime)}</span>
-                    {orderType && (
-                      <>
-                        <span>&middot;</span>
-                        <span className="capitalize">{orderType}</span>
-                      </>
-                    )}
-                  </div>
-                  {scheduledLabel && (
-                    <Badge
-                      variant="outline"
-                      className="mt-1 w-fit gap-1 bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-medium"
-                    >
-                      <CalendarClock className="size-3" />
-                      Scheduled · {scheduledLabel}
-                    </Badge>
-                  )}
-                  {outletLabel && (
-                    <Badge
-                      variant="outline"
-                      className="mt-1 w-fit gap-1 bg-violet-100 text-violet-800 border-violet-300 text-[10px] font-medium"
-                    >
-                      <Store className="size-3" />
-                      {outletLabel}
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Right Side: Total, Count, Status */}
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <span className="text-sm font-semibold">
-                    &#8369;{total.toFixed(2)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {itemCount} {itemCount === 1 ? "item" : "items"}
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px] capitalize",
-                      STATUS_PILL_COLORS[status]
-                    )}
-                  >
-                    {status}
-                  </Badge>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Order Detail Sheet */}
       <ConvexOrderSheet
         orderId={selectedOrderId}
-        open={sheetOpen}
-        onOpenChange={handleSheetOpenChange}
+        open={selectedOrderId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedOrderId(null);
+        }}
         tenantId={tenantId}
         lalamoveEnabled={lalamoveEnabled}
       />

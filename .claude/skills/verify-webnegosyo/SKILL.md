@@ -85,7 +85,7 @@ Stable handles (from the specs): buttons `Add QA Fries`, `Increase quantity`, `A
 `Proceed to Checkout`, order types `Dine In` / `Pick Up` / `Delivery` (exact), placeholders
 `Enter your name`, `Enter table number`, `9XXXXXXXXX`, `Enter code`, `/delivery address|Search your street/i`;
 `Have a voucher?`, `Apply`, text `PAY AS YOU ORDER`, submit `/^(Proceed to Payment|Complete Order|Send Order via Messenger)/`;
-admin: order row text `QA-SEED <Guest>`, tab `Delivery`, region `Delivery details`, `Edit details`,
+admin: Orders `/admin/orders?range=all&q=QA-SEED%20<Guest>` (opens on today), order row text `QA-SEED <Guest>`, panel region `Delivery` (was a tab), region `Delivery details`, `Edit details`,
 `#delivery-store-note`, `Save`, `Send pin link`, `#pin-link-<orderId>`; pin page `Set your exact spot`,
 `#pin-landmark`, `Send my spot`; Page Designer `Templates`, `Use the Step by step template`,
 `Publish`/`Published`, tabs `Layers`/`Look`; storefront steps `ol[aria-label="Steps"] [data-part="step"]`.

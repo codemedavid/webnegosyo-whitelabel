@@ -15,7 +15,7 @@
 
 import React from 'react'
 import { render, screen, within } from '@testing-library/react'
-import { OrderDetailDialog } from '@/components/admin/order-detail-dialog'
+import { OrderDetailPanel } from '@/components/admin/order-detail-panel'
 import type { OrderWithItems } from '@/lib/orders-service'
 import type { OrderDiscountPayload } from '@/lib/order-discount'
 
@@ -25,6 +25,13 @@ jest.mock('@/components/admin/order-status-management', () => ({
 
 jest.mock('@/components/admin/order-items-display', () => ({
   OrderItemsDisplay: () => <div data-testid="items-display" />,
+}))
+
+jest.mock('@/components/admin/order-delivery-card', () => ({
+  OrderDeliveryCard: () => <div data-testid="delivery-card" />,
+}))
+jest.mock('@/components/admin/lalamove-delivery-panel', () => ({
+  LalamoveDeliveryPanel: () => <div data-testid="lalamove-panel" />,
 }))
 
 jest.mock('next/navigation', () => ({
@@ -72,13 +79,13 @@ const order = (overrides: Partial<OrderWithItems> = {}): OrderWithItems =>
 
 function renderDialog(value: OrderWithItems) {
   return render(
-    <OrderDetailDialog order={value} tenantSlug="acme" tenantId="tenant-1" onClose={jest.fn()} />,
+    <OrderDetailPanel order={value} tenantSlug="acme" tenantId="tenant-1" onClose={jest.fn()} />,
   )
 }
 
 /** The summary block, so the header's own total is never mistaken for a row. */
 function summary(): HTMLElement {
-  return screen.getByText('Order Summary').parentElement as HTMLElement
+  return screen.getByRole('region', { name: 'Summary' })
 }
 
 /** The peso figure on the row whose label matches. */

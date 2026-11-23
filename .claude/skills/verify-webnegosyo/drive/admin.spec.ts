@@ -74,11 +74,13 @@ test('reports: Net sales today on screen = database', async ({ page }, info) => 
 
 test('order delivery card: edit details stored, pin link page shows only store + order number', async ({ page, browser }, info) => {
   const seen = watch(page)
-  await page.goto('/admin/orders', { waitUntil: 'domcontentloaded' })
+  // The Orders table opens on today; the seeded orders are older, so search all time.
+  await page.goto('/admin/orders?range=all&q=QA-SEED%20Maria', { waitUntil: 'domcontentloaded' })
   await settle(page, 8000)
-  await page.getByText('QA-SEED Maria').first().click()
+  await page.getByText('QA-SEED Maria').filter({ visible: true }).first().click()
   await page.waitForTimeout(3000)
-  await page.getByRole('tab', { name: 'Delivery' }).click()
+  // The order panel shows Delivery as a section (a tab before 2026-11-21).
+  await page.getByRole('region', { name: 'Delivery', exact: true }).scrollIntoViewIfNeeded()
   const card = page.getByRole('region', { name: 'Delivery details' })
   await expect(card).toBeVisible()
   await shot(page, info, 'd1-delivery-card')

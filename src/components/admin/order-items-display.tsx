@@ -23,62 +23,54 @@ function OrderItemRow({ item }: { item: StoredOrderItem }) {
   const view = describeOrderItem(item)
 
   return (
-    <div className="flex justify-between items-start gap-4 p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <h4 className="font-semibold text-base">{item.menu_item_name}</h4>
-          <Badge variant="secondary" className="ml-2">
-            Qty: {item.quantity}
-          </Badge>
-        </div>
+    <li className="flex items-start justify-between gap-4 px-4 py-3">
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="font-semibold text-wn-ink">
+          <span className="mr-1.5 tabular-nums text-wn-stone">{item.quantity}×</span>
+          {item.menu_item_name}
+        </p>
 
         {view.choices.length > 0 && (
-          <div className="flex items-start gap-2 text-sm text-muted-foreground">
-            <Package className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+          <p className="flex items-start gap-1.5 text-[13px] text-wn-stone">
+            <Package className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>{view.choices.map(choiceText).join(' · ')}</span>
-          </div>
+          </p>
         )}
 
         {view.addons.length > 0 && (
-          <div className="flex items-start gap-2 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-1 text-[13px] text-wn-stone">
             <span className="font-medium">Add-ons:</span>
-            <div className="flex flex-wrap gap-1">
-              {view.addons.map((addon, i) => (
-                <Badge key={i} variant="outline" className="text-xs">
-                  {addonPriceLabel(addon, formatPrice)}
-                </Badge>
-              ))}
-            </div>
+            {view.addons.map((addon, i) => (
+              <Badge key={i} variant="outline" className="text-xs font-medium">
+                {addonPriceLabel(addon, formatPrice)}
+              </Badge>
+            ))}
           </div>
         )}
 
         {item.special_instructions && (
-          <div className="flex items-start gap-2 text-sm bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded">
-            <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-            <div className="min-w-0 wrap-anywhere">
-              <span className="font-medium text-yellow-800 dark:text-yellow-400">Note:</span>{' '}
-              <span className="text-yellow-700 dark:text-yellow-300 italic">
-                {item.special_instructions}
-              </span>
+          <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 text-[13px] ring-1 ring-amber-200">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-700" aria-hidden />
+            <div className="min-w-0 wrap-anywhere text-amber-900">
+              <span className="font-semibold">Note:</span> <span>{item.special_instructions}</span>
             </div>
           </div>
         )}
       </div>
-      <div className="text-right flex-shrink-0">
-        <div className="text-lg font-bold">{formatPrice(Number(item.subtotal))}</div>
-        <div className="text-xs text-muted-foreground">{formatPrice(view.unitPrice)} each</div>
+      <div className="shrink-0 text-right tabular-nums">
+        <div className="font-bold text-wn-ink">{formatPrice(Number(item.subtotal))}</div>
+        {item.quantity > 1 && <div className="text-xs text-wn-stone">{formatPrice(view.unitPrice)} each</div>}
       </div>
-    </div>
+    </li>
   )
 }
 
 export function OrderItemsDisplay({ orderItems }: OrderItemsDisplayProps) {
   return (
-    <div className="space-y-3">
-      <h3 className="text-lg font-semibold mb-4">Order Items</h3>
+    <ul className="divide-y divide-wn-line rounded-2xl bg-white ring-1 ring-border">
       {orderItems.map((item, index) => (
         <OrderItemRow key={item.id ?? index} item={item} />
       ))}
-    </div>
+    </ul>
   )
 }
