@@ -17,7 +17,7 @@ import { createClient } from '@/lib/supabase/server'
 import { messengerDb } from '@/lib/messenger/service-db'
 import { getTenantActivePageById } from '@/lib/facebook/page-tokens'
 import { actionSchema, ruleSchema, ruleSetProblems, type MessengerRule } from '@/lib/messenger/rules'
-import { loadStoreBundle } from '@/lib/messenger/load-store'
+import { loadStoreBundle, revalidateMessengerConfig } from '@/lib/messenger/load-store'
 import { syncMessengerProfile, type ProfileSyncOutcome } from '@/lib/messenger/profile-sync'
 import { buildReply, withPreviewData } from '@/lib/messenger/replies'
 import { sendMessages } from '@/lib/messenger/send'
@@ -77,6 +77,8 @@ async function saveMessengerAutomations(
     console.error('[Messenger automations] save refused', { tenantId, code: saveError.code, message: saveError.message })
     return { ok: false, error: saveError.code === '42501' ? NOT_ALLOWED : "Couldn't save your automations. Please try again." }
   }
+  // The webhook caches rules + bot on/off; the next message must see this save.
+  revalidateMessengerConfig(tenantId)
 
   const { data: tenant } = await supabase.from('tenants').select('slug, facebook_page_id').eq('id', tenantId).maybeSingle()
   const tenantRow = tenant as { slug: string; facebook_page_id: string | null } | null
@@ -176,6 +178,7 @@ async function saveMessengerOrderUpdates(input: { tenantId: string; config: Orde
     console.error('[Messenger automations] order updates not stored', { tenantId, code: updated.error?.code, rows })
     return { ok: false, error: updated.error?.code === '42501' ? NOT_ALLOWED : "Couldn't save your status messages. Please try again." }
   }
+  revalidateMessengerConfig(tenantId)
   return { ok: true, config }
 }
 
@@ -226,6 +229,7 @@ async function saveMessengerMessages(input: {
     console.error('[Messenger automations] messages not stored', { tenantId, code: updated.error?.code, rows })
     return { ok: false, error: updated.error?.code === '42501' ? NOT_ALLOWED : "Couldn't save your messages. Please try again." }
   }
+  revalidateMessengerConfig(tenantId)
   return { ok: true, messages: checked.settings, orderUpdates }
 }
 

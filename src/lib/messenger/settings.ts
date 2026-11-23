@@ -53,9 +53,9 @@ export interface SettingsRow {
   takeover_minutes: number
   rules_customized_at: string | null
   rules_version: number
-  tester_psid: string | null
-  tester_code_hash: string | null
-  tester_code_expires_at: string | null
+  tester_psid?: string | null
+  tester_code_hash?: string | null
+  tester_code_expires_at?: string | null
   profile_hash: string | null
   profile_fields: string[] | null
   messages: unknown
@@ -69,8 +69,9 @@ export function toSettings(row: SettingsRow | null): MessengerSettings {
     takeoverMinutes: row.takeover_minutes,
     isCustomized: row.rules_customized_at !== null,
     rulesVersion: row.rules_version,
-    testerPsid: row.tester_psid,
-    testerCodeHash: row.tester_code_hash,
+    // Absent on the webhook's cached rows (`load-store.ts`): never cached, read fresh.
+    testerPsid: row.tester_psid ?? null,
+    testerCodeHash: row.tester_code_hash ?? null,
     testerCodeExpiresAt: row.tester_code_expires_at ? new Date(row.tester_code_expires_at) : null,
     profileHash: row.profile_hash,
     profileFields: row.profile_fields ?? [],

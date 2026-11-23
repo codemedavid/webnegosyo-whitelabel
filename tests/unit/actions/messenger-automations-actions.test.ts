@@ -24,7 +24,11 @@ jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }))
 jest.mock('@/lib/facebook/page-tokens', () => ({ getTenantActivePageById: jest.fn() }))
 const syncMessengerProfile = jest.fn(async () => ({ outcome: 'no_page' }))
 jest.mock('@/lib/messenger/profile-sync', () => ({ syncMessengerProfile: (...args: unknown[]) => syncMessengerProfile(...(args as [])) }))
-jest.mock('@/lib/messenger/load-store', () => ({ loadStoreBundle: jest.fn() }))
+const revalidateMessengerConfig = jest.fn()
+jest.mock('@/lib/messenger/load-store', () => ({
+  loadStoreBundle: jest.fn(),
+  revalidateMessengerConfig: (...args: unknown[]) => revalidateMessengerConfig(...args),
+}))
 jest.mock('@/lib/messenger/session', () => ({ touchSession: jest.fn() }))
 jest.mock('@/lib/messenger/send', () => ({ sendMessages: jest.fn() }))
 
@@ -39,6 +43,7 @@ beforeEach(() => {
   verifyTenantPermission.mockReset().mockResolvedValue(owner)
   rpc.mockReset().mockResolvedValue({ data: 1, error: null })
   settingsUpdate.mockReset()
+  revalidateMessengerConfig.mockReset()
 })
 
 describe('saveMessengerAutomationsAction', () => {
@@ -64,11 +69,14 @@ describe('saveMessengerAutomationsAction', () => {
     for (const rule of args.p_rules) expect(rule.id).toMatch(/^[0-9a-f-]{36}$/)
     expect(args).toMatchObject({ p_bot_enabled: true, p_takeover_minutes: 60 })
     expect(settingsUpdate).not.toHaveBeenCalled()
+    // The webhook's cached rules + bot switch are dropped, so the next message sees this save.
+    expect(revalidateMessengerConfig).toHaveBeenCalledWith(TENANT)
   })
 
   it('a stale editor gets told to reload', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: '40001', message: 'changed' } })
     expect(await saveMessengerAutomationsAction(input)).toMatchObject({ ok: false, error: expect.stringContaining('Reload') })
+    expect(revalidateMessengerConfig).not.toHaveBeenCalled()
   })
 
   it('refuses what Meta would cap, and junk input', async () => {
