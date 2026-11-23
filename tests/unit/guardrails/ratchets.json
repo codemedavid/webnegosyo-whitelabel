@@ -1,6 +1,6 @@
 {
   "looseLibFiles": 255,
-  "looseAdminComponentFiles": 110,
+  "looseAdminComponentFiles": 107,
   "filesOver800Lines": [
     "src/actions/tenants.ts",
     "src/components/customer/product-detail-content.tsx",
@@ -26,6 +26,6 @@
     "elsewhere": 17
   },
   "convexDeploymentUrlReaders": 60,
-  "handWrittenDatabaseTypeImporters": 373,
+  "handWrittenDatabaseTypeImporters": 372,
   "utcDateAsBusinessDay": 50
 }
