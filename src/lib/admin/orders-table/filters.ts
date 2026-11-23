@@ -55,9 +55,15 @@ export interface OrdersTableFilters {
   page: number
 }
 
+/**
+ * Opens on the last 7 business days, not today: an order still waiting from
+ * late last night (or a pre-order placed days ago) must not vanish from the
+ * landing view and the New count when the day rolls over. Still bounded, so
+ * the counts stay cheap on the shared database.
+ */
 export const DEFAULT_ORDERS_FILTERS: Readonly<OrdersTableFilters> = Object.freeze({
   status: 'all',
-  range: 'today',
+  range: '7d',
   type: null,
   branch: null,
   payment: 'all',

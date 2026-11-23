@@ -129,11 +129,22 @@ export function PlatformOrdersView({ data, filters, tenantSlug, tenantId, scope 
     [refreshCoalescer],
   )
 
+  // The rows as last rendered, read by the realtime handler without re-subscribing.
+  const ordersRef = useRef(orders)
+  useEffect(() => {
+    ordersRef.current = orders
+  }, [orders])
+
   const handleOrderUpdate = useCallback(
     (updated: Record<string, unknown>) => {
+      const known = ordersRef.current.find((order) => order.id === updated.id)
       setOrders((current) => current.map((order) => (order.id === updated.id ? ({ ...order, ...updated } as OrderWithItems) : order)))
-      // The tab counts (and whether the row still belongs in this tab) come from the server.
-      refreshCoalescer.schedule()
+      // The tab counts (and whether the row still belongs in this tab) come
+      // from the server, so only a change that can move them asks for one: a
+      // new status or payment state, or an order this page does not hold.
+      // Rider updates, notes and edits on a row in view are patched in place.
+      const mayMoveCounts = !known || updated.status !== known.status || updated.payment_status !== known.payment_status
+      if (mayMoveCounts) refreshCoalescer.schedule()
     },
     [refreshCoalescer],
   )
@@ -155,24 +166,31 @@ export function PlatformOrdersView({ data, filters, tenantSlug, tenantId, scope 
   }, [liveSelected])
   const selectedOrder = selectedId ? (liveSelected ?? (selectedSnapshot?.id === selectedId ? selectedSnapshot : null)) : null
 
+  // Takes the order itself: the panel can hold an order that a refresh has
+  // already moved out of this tab, and its next step must still work.
   const advance = useCallback(
-    async (orderId: string, step: NextStatusStep) => {
-      const before = orders.find((order) => order.id === orderId)
-      if (!before) return
+    async (before: OrderWithItems, step: NextStatusStep) => {
+      const orderId = before.id
+      const patchStatus = (status: OrderWithItems['status']) => {
+        setOrders((current) => current.map((order) => (order.id === orderId ? { ...order, status } : order)))
+        setSelectedSnapshot((current) => (current?.id === orderId ? { ...current, status } : current))
+      }
       setBusyIds((current) => withId(current, orderId, true))
-      setOrders((current) => current.map((order) => (order.id === orderId ? { ...order, status: step.status } : order)))
+      patchStatus(step.status)
       const result = await updateOrderStatusAction(orderId, tenantId, tenantSlug, step.status)
       setBusyIds((current) => withId(current, orderId, false))
       const number = formatDailyOrderNumber(before.daily_number ?? before.daily_order_number, before.id)
       if (!result.success) {
-        setOrders((current) => current.map((order) => (order.id === orderId ? { ...order, status: before.status } : order)))
+        patchStatus(before.status)
         toast.error(result.error || `Could not update order ${number}`)
         return
       }
       toast.success(`Order ${number} · ${STATUS_META[step.status].label}`)
-      startNavigation(() => router.refresh())
+      // Not a navigation: the table stays tappable while the counts catch up,
+      // and the realtime UPDATE for this same change joins this one refresh.
+      refreshCoalescer.schedule()
     },
-    [orders, router, tenantId, tenantSlug],
+    [refreshCoalescer, tenantId, tenantSlug],
   )
 
   const typeOptions: ToolbarOption[] = useMemo(() => {
@@ -213,10 +231,10 @@ export function PlatformOrdersView({ data, filters, tenantSlug, tenantId, scope 
           {filters.range !== '30d' && filters.range !== 'all' && (
             <button
               type="button"
-              onClick={() => go({ range: '7d' })}
+              onClick={() => go({ range: filters.range === '7d' ? '30d' : '7d' })}
               className="min-h-10 rounded-xl bg-white px-4 text-[14px] font-bold text-wn-ink ring-1 ring-wn-line outline-none hover:bg-wn-sand focus-visible:ring-2 focus-visible:ring-wn-ink"
             >
-              See the last 7 days
+              {filters.range === '7d' ? 'See the last 30 days' : 'See the last 7 days'}
             </button>
           )}
         </>
@@ -264,7 +282,14 @@ export function PlatformOrdersView({ data, filters, tenantSlug, tenantId, scope 
         rows={rows}
         nowMs={nowMs}
         onOpen={setSelectedId}
-        onAdvance={(row, step) => void advance(row.id, step)}
+        onAdvance={
+          data.canChangeOrders
+            ? (row, step) => {
+                const order = orders.find((candidate) => candidate.id === row.id)
+                if (order) void advance(order, step)
+              }
+            : undefined
+        }
         onPrint={(id) => {
           const order = orders.find((candidate) => candidate.id === id)
           if (order) void printOrderReceipt(order, tenantId, tenantSlug)
@@ -293,7 +318,9 @@ export function PlatformOrdersView({ data, filters, tenantSlug, tenantId, scope 
         onClose={() => setSelectedId(null)}
         onPrevious={selectedIndex > 0 ? () => setSelectedId(orders[selectedIndex - 1].id) : undefined}
         onNext={selectedIndex >= 0 && selectedIndex < orders.length - 1 ? () => setSelectedId(orders[selectedIndex + 1].id) : undefined}
-        onAdvance={(order, step) => void advance(order.id, step)}
+        onAdvance={data.canChangeOrders ? (order, step) => void advance(order, step) : undefined}
+        canChangeOrders={data.canChangeOrders}
+        rowContext={{ typeKinds, outletNames }}
         isAdvancing={selectedId ? busyIds.has(selectedId) : false}
         onOrderChanged={(orderId, patch) => {
           setOrders((current) => current.map((order) => (order.id === orderId ? { ...order, ...patch } : order)))

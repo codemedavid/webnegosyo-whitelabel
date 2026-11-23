@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PlatformOrdersView } from '@/components/admin/orders-table/platform-orders-view'
 import { useRealtimeOrders } from '@/hooks/use-realtime-orders'
@@ -70,10 +70,11 @@ const data = (orders: OrderWithItems[]): OrdersTableData => ({
   counts: { pending: 1, confirmed: 0, preparing: 0, ready: 0, delivered: 0, cancelled: 0, all: 1 },
   orderTypes: [],
   outlets: [],
+  canChangeOrders: true,
 })
 
-function renderView(orders = [order()]) {
-  return render(<PlatformOrdersView data={data(orders)} filters={DEFAULT_ORDERS_FILTERS} tenantSlug="acme" tenantId="tenant-1" />)
+function renderView(orders = [order()], overrides: Partial<OrdersTableData> = {}) {
+  return render(<PlatformOrdersView data={{ ...data(orders), ...overrides }} filters={DEFAULT_ORDERS_FILTERS} tenantSlug="acme" tenantId="tenant-1" />)
 }
 
 function desktopTable() {
@@ -101,9 +102,46 @@ describe('PlatformOrdersView', () => {
     renderView()
     await userEvent.click(within(desktopTable()).getByRole('button', { name: 'Confirm order #07' }))
     expect(mockedUpdate).toHaveBeenCalledWith('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'tenant-1', 'acme', 'confirmed')
-    expect(refresh).toHaveBeenCalled()
-    // The row now offers the following step.
+    // The row now offers the following step, and the table stays tappable
+    // (the refresh is not a navigation, so nothing dims).
     expect(within(desktopTable()).getByRole('button', { name: 'Start order #07' })).toBeInTheDocument()
+    expect(desktopTable().closest('[aria-busy="true"]')).toBeNull()
+    // The counts catch up through one coalesced refresh.
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1), { timeout: 3000 })
+  })
+
+  it("still moves the open order from the panel after a refresh took it out of this tab", async () => {
+    mockedUpdate.mockResolvedValue({ success: true, data: {} as never })
+    const view = renderView()
+    await userEvent.click(within(desktopTable()).getByText('Ana Cruz'))
+    // The server's next render no longer lists it (e.g. the New tab after Confirm).
+    const moved = order({ status: 'confirmed' })
+    view.rerender(<PlatformOrdersView data={data([])} filters={DEFAULT_ORDERS_FILTERS} tenantSlug="acme" tenantId="tenant-1" />)
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm order' }))
+    expect(mockedUpdate).toHaveBeenCalledWith(moved.id, 'tenant-1', 'acme', 'confirmed')
+  })
+
+  it('shows no status controls to an account that may only look', async () => {
+    renderView([order()], { canChangeOrders: false })
+    expect(within(desktopTable()).queryByRole('button', { name: 'Confirm order #07' })).toBeNull()
+    await userEvent.click(within(desktopTable()).getByText('Ana Cruz'))
+    const panel = screen.getByRole('dialog')
+    expect(within(panel).queryByRole('combobox', { name: 'Order status' })).toBeNull()
+    expect(within(panel).queryByRole('button', { name: 'Confirm order' })).toBeNull()
+  })
+
+  it('asks before cancelling from the panel, and sends the reason', async () => {
+    mockedUpdate.mockResolvedValue({ success: true, data: {} as never })
+    renderView()
+    await userEvent.click(within(desktopTable()).getByText('Ana Cruz'))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'Order status' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Cancelled' }))
+    expect(mockedUpdate).not.toHaveBeenCalled()
+    const confirm = screen.getByRole('alertdialog')
+    expect(confirm).toHaveTextContent('Cancel order #07?')
+    await userEvent.type(within(confirm).getByRole('textbox'), 'Customer asked')
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel order' }))
+    expect(mockedUpdate).toHaveBeenCalledWith('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'tenant-1', 'acme', 'cancelled', { reason: 'Customer asked' })
   })
 
   it('puts the status back when the change is refused', async () => {
@@ -158,7 +196,7 @@ describe('PlatformOrdersView', () => {
     const panel = screen.getByRole('dialog')
     await userEvent.click(within(panel).getByRole('combobox', { name: 'Order status' }))
     await userEvent.click(screen.getByRole('option', { name: 'Ready' }))
-    expect(mockedUpdate).toHaveBeenCalledWith('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'tenant-1', 'acme', 'ready')
+    expect(mockedUpdate).toHaveBeenCalledWith('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'tenant-1', 'acme', 'ready', {})
     expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'Order status' })).toHaveTextContent('Ready')
     // The table sits behind the modal panel (aria-hidden), so look past that.
     expect(within(screen.getByRole('table', { hidden: true })).getByRole('button', { name: 'Complete order #07', hidden: true })).toBeInTheDocument()

@@ -105,6 +105,18 @@ test('orders table: tab counts = database, filters live in the address', async (
   note(info, 'type-payment-filter', `db ${paidPickups}`)
   await expect(page.getByText(new RegExp(`of ${paidPickups}$`))).toBeVisible()
   await shot(page, info, 'o4-pickup-paid')
+
+  // A page past the end (hand-edited, or orders moved away) is an empty page with a way back, not an error.
+  await page.goto('/admin/orders?range=all&page=99', { waitUntil: 'domcontentloaded' })
+  await settle(page, 5000)
+  await expect(page.getByText(new RegExp(`^Nothing on this page · ${allCount} in all$`))).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Newer' })).toBeEnabled()
+  await shot(page, info, 'o5-past-the-end')
+
+  // No range in the address opens the last 7 days (an order left waiting overnight stays in view).
+  await page.goto('/admin/orders', { waitUntil: 'domcontentloaded' })
+  await settle(page, 5000)
+  for (const status of STATUSES) expect(await tabCount(page, TAB_LABEL[status])).toBe(expected[status])
   await report(page, info, seen, 'orders-table')
 })
 
@@ -164,5 +176,17 @@ test('orders table: one tap moves a new order to confirmed (stored)', async ({ p
   note(info, 'panel-status-reset', `db status → ${reset.data?.status}`)
   expect(reset.data?.status).toBe('pending')
   await shot(page, info, 't3-panel-reset')
+
+  // Cancelling from the menu asks first; "Keep order" writes nothing.
+  await panel.getByRole('combobox', { name: 'Order status' }).click()
+  await page.getByRole('option', { name: 'Cancelled' }).click()
+  const ask = page.getByRole('alertdialog')
+  await expect(ask.getByText(/^Cancel order #\d+\?$/)).toBeVisible()
+  await shot(page, info, 't4-cancel-asks')
+  await ask.getByRole('button', { name: 'Keep order' }).click()
+  await expect(ask).toBeHidden()
+  const kept = await serviceDb().from('orders').select('status').eq('id', MIGUEL).single()
+  note(info, 'cancel-kept', `db status ${kept.data?.status}`)
+  expect(kept.data?.status).toBe('pending')
   await report(page, info, seen, 'orders-step')
 })

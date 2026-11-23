@@ -13,7 +13,7 @@ import { OUTLET_FILTER_UNASSIGNED } from '@/lib/outlets/order-outlet-display'
 const BRANCH = '0f8b1c1e-2a3b-4c5d-8e9f-0a1b2c3d4e5f'
 
 describe('parseOrdersTableFilters', () => {
-  it('opens on today, every status, page 1 with no params', () => {
+  it('opens on the last 7 days, every status, page 1 with no params', () => {
     expect(parseOrdersTableFilters({})).toEqual(DEFAULT_ORDERS_FILTERS)
   })
 
@@ -40,7 +40,7 @@ describe('parseOrdersTableFilters', () => {
       page: '-2',
     })
     expect(filters.status).toBe('all')
-    expect(filters.range).toBe('today')
+    expect(filters.range).toBe('7d')
     expect(filters.branch).toBeNull()
     expect(filters.payment).toBe('all')
     expect(filters.page).toBe(1)

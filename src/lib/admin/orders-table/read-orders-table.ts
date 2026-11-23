@@ -16,6 +16,7 @@
  */
 
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { resolveBranchScope, type BranchScope } from '@/lib/outlets/branch-scope'
 import { scopeOrdersQuery } from '@/lib/outlets/branch-scope-query'
@@ -56,7 +57,16 @@ export interface OrdersTableData {
   orderTypes: OrderTypeOption[]
   /** Empty for a branch account (it reads only its own branch). */
   outlets: OutletOption[]
+  /**
+   * Whether this account may move orders. Reading needs `orders` + view;
+   * writing needs `orders` + edit (`updateOrderStatus`), which a view-only
+   * platform staff account lacks. False hides every status control.
+   */
+  canChangeOrders: boolean
 }
+
+/** PostgREST's answer to an offset past the last row. */
+const RANGE_NOT_SATISFIABLE = 'PGRST103'
 
 /** The query-builder surface this module uses, so tests can pass a fake. */
 interface FilterQuery {
@@ -71,7 +81,7 @@ interface FilterQuery {
   order(column: string, options: { ascending: boolean }): FilterQuery
   range(from: number, to: number): FilterQuery
   limit(count: number): FilterQuery
-  then: PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>['then']
+  then: PromiseLike<{ data: unknown; error: { message: string; code?: string } | null; count?: number | null }>['then']
 }
 
 interface OrdersDb {
@@ -98,10 +108,13 @@ export function searchOrFilter(raw: string): string | null {
 }
 
 /**
- * The payment filters, as the same rules `paymentChipOf` draws the chips by.
- * "Has proof" is `payment_proof_uploaded_at`, which checkout stamps whenever
- * it stores a screenshot or a reference (`orders-service.ts`).
+ * "Has proof", as the chip decides it (`platformOrderRow`): a stamp, a
+ * screenshot or a reference. Checkout stamps `payment_proof_uploaded_at`, but
+ * orders imported from Convex carry only the url/reference, so all three count.
  */
+const HAS_PROOF = 'payment_proof_uploaded_at.not.is.null,payment_proof_url.neq."",payment_proof_reference.neq.""'
+
+/** The payment filters, as the same rules `paymentChipOf` draws the chips by. */
 function applyPaymentFilter(query: FilterQuery, payment: PaymentFilter): FilterQuery {
   switch (payment) {
     case 'all':
@@ -112,12 +125,14 @@ function applyPaymentFilter(query: FilterQuery, payment: PaymentFilter): FilterQ
       return query
         .in('payment_status', ['pending', 'failed'])
         .neq('status', 'cancelled')
-        .not('payment_proof_uploaded_at', 'is', null)
+        .or(HAS_PROOF)
     case 'unpaid':
       return query
         .in('payment_status', ['pending', 'failed'])
         .in('status', OPEN_STATUSES)
         .is('payment_proof_uploaded_at', null)
+        .or('payment_proof_url.is.null,payment_proof_url.eq.""')
+        .or('payment_proof_reference.is.null,payment_proof_reference.eq.""')
   }
 }
 
@@ -156,9 +171,13 @@ export async function queryOrdersTable(
   const { filters } = args
   const offset = (filters.page - 1) * pageSize
 
-  let pageQuery = applyFilters(db.from('orders').select('*, order_items(*)', { count: 'exact' }), args)
-  if (filters.status !== 'all') pageQuery = pageQuery.eq('status', filters.status)
-  pageQuery = pageQuery.order('created_at', { ascending: false }).range(offset, offset + pageSize - 1)
+  const listQuery = (select: string, options: { count: 'exact'; head?: boolean }) => {
+    const query = applyFilters(db.from('orders').select(select, options), args)
+    return filters.status === 'all' ? query : query.eq('status', filters.status)
+  }
+  const pageQuery = listQuery('*, order_items(*)', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + pageSize - 1)
 
   const countReads = args.window
     ? ORDER_STATUSES.map((status) =>
@@ -166,7 +185,16 @@ export async function queryOrdersTable(
       )
     : []
 
-  const [pageResult, ...countResults] = await Promise.all([pageQuery, ...countReads])
+  const [firstPageResult, ...countResults] = await Promise.all([pageQuery, ...countReads])
+  let pageResult = firstPageResult
+  // A page past the end (orders moved out of this tab, or a hand-edited
+  // ?page=) is refused by PostgREST as 416 "range not satisfiable". It is an
+  // empty page, not an error: read the total alone so the footer can offer
+  // the way back.
+  if (pageResult.error?.code === RANGE_NOT_SATISFIABLE) {
+    const total = await listQuery('id', { count: 'exact', head: true })
+    pageResult = { data: [], error: total.error, count: total.count }
+  }
   if (pageResult.error) throw new Error(pageResult.error.message)
 
   const totalCount = pageResult.count ?? 0
@@ -216,5 +244,8 @@ export async function readOrdersTable(tenantId: string, filters: OrdersTableFilt
   const orderTypes = ((typesResult.data ?? []) as OrderTypeOption[]).filter((t) => typeof t.name === 'string' && t.name.trim() !== '')
   const outlets = ((outletsResult?.data ?? []) as OutletOption[]).filter((o) => typeof o.name === 'string')
 
-  return { ...table, orderTypes, outlets }
+  // `orders` itself was checked above; this adds the edit verb the writers use.
+  const canChangeOrders = canAccessStoreAdmin(userRole, tenantId, 'edit')
+
+  return { ...table, orderTypes, outlets, canChangeOrders }
 }

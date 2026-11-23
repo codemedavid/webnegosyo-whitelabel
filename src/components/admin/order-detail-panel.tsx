@@ -13,7 +13,7 @@ import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { buildCustomerDetailRows, DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
 import { orderMapLink } from '@/lib/delivery/order-map-link'
 import { displayCustomerName } from '@/lib/order-display-name'
-import { platformOrderRow } from '@/lib/admin/orders-table/row-model'
+import { platformOrderRow, type PlatformRowContext } from '@/lib/admin/orders-table/row-model'
 import { nextStatusStep, type NextStatusStep } from '@/lib/admin/orders-table/status'
 import { orderTimeLabel, waitingLabel } from '@/lib/admin/orders-table/time'
 import { OrderItemsDisplay } from '@/components/admin/order-items-display'
@@ -45,6 +45,10 @@ export interface OrderDetailPanelProps {
   isAdvancing?: boolean
   /** A status or payment change from the panel's own menus, once stored. */
   onOrderChanged?: (orderId: string, patch: Pick<Partial<OrderWithItems>, 'status' | 'payment_status'>) => void
+  /** False (a view-only account) hides the status and payment menus. Default true. */
+  canChangeOrders?: boolean
+  /** The same type kinds and branch names the table rows use, so the panel and its row agree. */
+  rowContext?: PlatformRowContext
 }
 
 function Section({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
@@ -95,7 +99,7 @@ export function OrderDetailPanel(props: OrderDetailPanelProps) {
   )
 }
 
-function PanelBody({ order, tenantSlug, tenantId, onClose, onPrevious, onNext, onAdvance, isAdvancing, onOrderChanged }: OrderDetailPanelProps & { order: OrderWithItems }) {
+function PanelBody({ order, tenantSlug, tenantId, onClose, onPrevious, onNext, onAdvance, isAdvancing, onOrderChanged, rowContext, canChangeOrders = true }: OrderDetailPanelProps & { order: OrderWithItems }) {
   const [isPrinting, setIsPrinting] = useState(false)
   const [nowMs, setNowMs] = useState(() => Date.now())
 
@@ -119,7 +123,7 @@ function PanelBody({ order, tenantSlug, tenantId, onClose, onPrevious, onNext, o
     return () => window.removeEventListener('keydown', onKey)
   }, [onNext, onPrevious])
 
-  const row = platformOrderRow(order)
+  const row = platformOrderRow(order, rowContext)
   const step = nextStatusStep(row.status)
   const { time, day } = orderTimeLabel(row.createdAtMs, nowMs)
   const isOpen = step !== null
@@ -239,11 +243,13 @@ function PanelBody({ order, tenantSlug, tenantId, onClose, onPrevious, onNext, o
       </header>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
-        <Section title="Status & payment">
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-border">
-            <OrderStatusManagement order={order} tenantId={tenantId} tenantSlug={tenantSlug} onChanged={onOrderChanged} />
-          </div>
-        </Section>
+        {canChangeOrders && (
+          <Section title="Status & payment">
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-border">
+              <OrderStatusManagement order={order} tenantId={tenantId} tenantSlug={tenantSlug} onChanged={onOrderChanged} />
+            </div>
+          </Section>
+        )}
 
         <Section title={`Items · ${itemsCount}`}>
           <OrderItemsDisplay orderItems={order.order_items} />

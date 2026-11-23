@@ -129,14 +129,54 @@ describe('queryOrdersTable', () => {
   it('applies the payment filters by the same rules as the chips', async () => {
     const paid = order({ payment_status: 'paid', status: 'delivered' })
     const proof = order({ payment_proof_uploaded_at: '2026-11-21T01:00:00.000Z' })
-    const owed = order({ status: 'ready' })
+    // Imported from Convex: a screenshot or reference, never stamped.
+    const importedShot = order({ payment_proof_url: 'https://img.test/proof.png' })
+    const importedRef = order({ payment_proof_reference: 'GC-123' })
+    const owed = order({ status: 'ready', payment_proof_url: '', payment_proof_reference: null })
     const handedOver = order({ status: 'delivered' })
     const cancelled = order({ status: 'cancelled', payment_status: 'paid' })
-    const rows = [paid, proof, owed, handedOver, cancelled]
-    const ids = async (payment: OrdersTableFilters['payment']) => (await run(rows, { payment }).result).orders.map((o) => o.id)
+    const rows = [paid, proof, importedShot, importedRef, owed, handedOver, cancelled]
+    const ids = async (payment: OrdersTableFilters['payment']) => (await run(rows, { payment }).result).orders.map((o) => o.id).sort()
     expect(await ids('paid')).toEqual([paid.id])
-    expect(await ids('proof')).toEqual([proof.id])
+    expect(await ids('proof')).toEqual([proof.id, importedShot.id, importedRef.id].sort())
     expect(await ids('unpaid')).toEqual([owed.id])
+    // Each row's chip agrees with the filter that picked it.
+    const { platformOrderRow } = await import('@/lib/admin/orders-table/row-model')
+    for (const row of [proof, importedShot, importedRef]) expect(platformOrderRow(row as never).payment).toBe('proof')
+    expect(platformOrderRow(owed as never).payment).toBe('unpaid')
+  })
+
+  it('answers a page past the end with an empty page and the true total, not an error', async () => {
+    const rows = Array.from({ length: 30 }, () => order())
+    const fake = fakeSupabaseTables({ orders: rows })
+    let calls = 0
+    const pastTheEnd = {
+      from(table: string) {
+        calls += 1
+        const query = fake.client.from(table) as unknown as { select: (...args: unknown[]) => Record<string, unknown> }
+        if (calls !== 1) return query
+        // PostgREST refuses an offset past the last row with 416 / PGRST103.
+        const select = query.select.bind(query)
+        query.select = (...args: unknown[]) => {
+          const builder = select(...args)
+          builder.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+            Promise.resolve({ data: null, count: null, error: { message: 'Requested range not satisfiable', code: 'PGRST103' } }).then(resolve, reject)
+          return builder
+        }
+        return query
+      },
+    }
+    const page = await queryOrdersTable(pastTheEnd as never, {
+      tenantId: TENANT,
+      scope: ALL,
+      filters: { ...DEFAULT_ORDERS_FILTERS, page: 3 },
+      window: WINDOW,
+      pageSize: 25,
+    })
+    expect(page.orders).toEqual([])
+    expect(page.totalCount).toBe(30)
+    expect(page.page).toBe(3)
+    expect(page.totalPages).toBe(2)
   })
 })
 

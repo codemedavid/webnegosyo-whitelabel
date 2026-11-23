@@ -6,6 +6,18 @@ import { QrCode } from 'lucide-react'
 import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { ORDER_EVENT_REASON_MAX } from '@/lib/staff-activity/order-event-reason'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import { updateOrderStatusAction, updatePaymentStatusAction } from '@/app/actions/orders'
 import { ORDER_STATUSES, STATUS_META, type OrderStatus } from '@/lib/admin/orders-table/status'
 import type { OrderWithItems } from '@/lib/orders-service'
@@ -42,10 +54,14 @@ export function OrderStatusManagement({ order, tenantId, tenantSlug, onChanged }
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [updatingPaymentStatus, setUpdatingPaymentStatus] = useState(false)
   const [qrDialogOpen, setQrDialogOpen] = useState(false)
+  // Cancelling has side effects (stock back, the customer told), so it is
+  // asked once, with an optional reason for Store Activity.
+  const [isConfirmingCancel, setIsConfirmingCancel] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
 
-  const handleStatusUpdate = async (newStatus: string) => {
+  const handleStatusUpdate = async (newStatus: string, reason?: string) => {
     setUpdatingStatus(true)
-    const result = await updateOrderStatusAction(order.id, tenantId, tenantSlug, newStatus as OrderStatus)
+    const result = await updateOrderStatusAction(order.id, tenantId, tenantSlug, newStatus as OrderStatus, reason ? { reason } : {})
     if (result.success) {
       onChanged?.(order.id, { status: newStatus as OrderStatus })
       toast.success(`Order marked ${STATUS_META[newStatus as OrderStatus]?.label.toLowerCase() ?? newStatus}`)
@@ -74,7 +90,18 @@ export function OrderStatusManagement({ order, tenantId, tenantSlug, onChanged }
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-[12.5px] font-semibold text-wn-stone">Order status</span>
-          <Select value={order.status} onValueChange={handleStatusUpdate} disabled={updatingStatus}>
+          <Select
+            value={order.status}
+            onValueChange={(next) => {
+              if (next === 'cancelled') {
+                setCancelReason('')
+                setIsConfirmingCancel(true)
+                return
+              }
+              void handleStatusUpdate(next)
+            }}
+            disabled={updatingStatus}
+          >
             <SelectTrigger aria-label="Order status" className="h-10 w-full rounded-xl bg-white">
               <SelectValue />
             </SelectTrigger>
@@ -130,6 +157,35 @@ export function OrderStatusManagement({ order, tenantId, tenantSlug, onChanged }
           )}
         </div>
       )}
+
+      <AlertDialog open={isConfirmingCancel} onOpenChange={setIsConfirmingCancel}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel order {formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}?</AlertDialogTitle>
+            <AlertDialogDescription>The order moves to Cancelled. You can set it back from this menu later.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[12.5px] font-semibold text-wn-stone">Reason (optional)</span>
+            <textarea
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              maxLength={ORDER_EVENT_REASON_MAX}
+              rows={2}
+              placeholder="e.g. Customer asked to cancel"
+              className="rounded-xl bg-white px-3 py-2 text-[14px] text-wn-ink ring-1 ring-wn-line outline-none focus-visible:ring-2 focus-visible:ring-wn-ink"
+            />
+          </label>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep order</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleStatusUpdate('cancelled', cancelReason.trim() || undefined)}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Cancel order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {qrDialogOpen && order.payment_method_qr_code_url && (
         <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>

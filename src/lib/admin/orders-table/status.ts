@@ -58,7 +58,7 @@ const NEXT_STEP: Readonly<Partial<Record<OrderStatus, NextStatusStep>>> = {
 /**
  * The one forward move offered on a row. Finished orders (completed,
  * cancelled) have none; going backwards or cancelling happens in the order
- * panel, where the cancel reason and its side effects are shown.
+ * panel's status menu, where a cancel is confirmed and can carry a reason.
  */
 export function nextStatusStep(status: OrderStatus): NextStatusStep | null {
   return NEXT_STEP[status] ?? null

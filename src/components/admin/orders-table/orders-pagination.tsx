@@ -29,7 +29,7 @@ export function OrdersPagination({ page, pageSize, totalCount, totalPages, onPag
           </>
         )}
       </p>
-      {totalPages > 1 && (
+      {(totalPages > 1 || page > 1) && (
         <div className="flex items-center gap-2">
           <button type="button" className={STEP} disabled={page <= 1} onClick={() => onPage(Math.min(page - 1, totalPages))}>
             <ChevronLeft aria-hidden className="size-4" />
