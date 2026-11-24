@@ -12747,6 +12747,10 @@ export type Database = {
         Args: { p_menu_item_id: string; p_order_id: string }
         Returns: boolean
       }
+      order_ledger_net_charged: {
+        Args: { p_order_id: string }
+        Returns: number
+      }
       order_refund_insert_check: {
         Args: { p_amount: number; p_is_client: boolean; p_order_id: string }
         Returns: undefined
