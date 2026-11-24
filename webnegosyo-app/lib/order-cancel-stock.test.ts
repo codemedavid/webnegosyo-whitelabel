@@ -175,6 +175,15 @@ describe("syncStockForStatusChange", () => {
  * the order had before.
  */
 describe("status-change wiring", () => {
+  // The pickup scan no longer changes a status itself: it opens the order
+  // screen (?intent=deliver), which asks how a pay-later order was paid and
+  // syncs stock there (Koko Coffee, 2026-11-24).
+  it("the pickup scan hands the order to the order screen", () => {
+    const scan = readFileSync(join(__dirname, "..", "app", "(main)", "scan.tsx"), "utf8");
+    expect(scan).toMatch(/intent=deliver/);
+    expect(scan).not.toMatch(/updateOrderStatus/);
+  });
+
   const ROOT = join(__dirname, "..");
   const read = (...segments: string[]) => readFileSync(join(ROOT, ...segments), "utf8");
 
@@ -183,7 +192,6 @@ describe("status-change wiring", () => {
     [["app", "(main)", "order", "[orderId].tsx"]],
     [["app", "(main)", "kitchen.tsx"]],
     [["app", "(main)", "pos-sales.tsx"]],
-    [["app", "(main)", "scan.tsx"]],
     [["lib", "offline", "sync-order-edits.ts"]],
   ])("%j syncs stock with the previous status", (segments) => {
     const source = read(...segments);

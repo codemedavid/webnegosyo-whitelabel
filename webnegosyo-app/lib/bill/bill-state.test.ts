@@ -62,7 +62,7 @@ describe("billCollectGate", () => {
   it("refuses with the first owing order's own reason", () => {
     const gate = billCollectGate({ ...base, user: { role: "staff", isOwner: false, permissions: ["orders"] } });
 
-    expect(gate).toEqual({ allowed: false, reason: "You do not have permission to take payments." });
+    expect(gate).toEqual({ allowed: false, code: "permission", reason: "You do not have permission to take payments." });
   });
 
   it("has nothing to collect on a paid bill", () => {

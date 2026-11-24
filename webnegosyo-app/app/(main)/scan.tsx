@@ -75,8 +75,6 @@ import {
   type HandoffMenuRow,
 } from "../../lib/scan-handoff-availability";
 import type { OutletMenuOverrideRow } from "../../lib/outlet-menu-overrides";
-import { markPaidAfterHandover, planOrderStatusChange } from "../../lib/order-status-change";
-import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 
 /**
  * Shown instead of the camera to an account without an order-facing grant.
@@ -87,19 +85,6 @@ const SCAN_NEEDS_ORDERS_MESSAGE =
   "Scanning order codes needs Orders or POS access. Ask the owner to turn it on for your account.";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
-const updateOrderStatusRef =
-  "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
-const updatePaymentStatusRef =
-  "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
-
-/**
- * Collecting an order is recorded as `delivered` — the existing terminal
- * "the customer has it" status. A separate `picked_up` value would have to be
- * added to the Convex validators, the platform enum, every stepper and every
- * rollup for a purely cosmetic gain. The UI says "pickup"; the store says
- * delivered.
- */
-const COLLECTED_STATUS = "delivered";
 
 const BADGE_STATUSES = [
   "pending",
@@ -260,8 +245,6 @@ export default function ScanScreen() {
   // Where `createOrder` writes — the capture below must be filed under the
   // same backend, or a platform store's order lands in the external ledger.
   const writeBackend = useOrderWriteBackend();
-  const updateOrderStatus = useSafeMutation(updateOrderStatusRef);
-  const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
 
   const [state, setState] = useState<ScreenState>({ mode: "scanning" });
   const [isAccepting, setIsAccepting] = useState(false);
@@ -572,42 +555,21 @@ export default function ScanScreen() {
     }
   }, [state, isAccepting, hasBackend, createOrder, writeBackend, tenantId, outletId, outletName]);
 
-  const handleConfirmPickup = useCallback(async () => {
+  // Collecting is recorded as `delivered` (the UI says "pickup"). Handing over
+  // goes through the order screen's payment question: the
+  // tracking API says nothing about payment, and marking a scanned order paid
+  // blind filed pay-later sales under "Paid, method not picked" (Koko Coffee,
+  // 2026-11-24). A paid order moves at once; an unpaid one asks how it was paid.
+  const handleConfirmPickup = useCallback(() => {
     if (state.mode !== "pickup-confirm" || isAccepting) return;
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
-
-    const { ticket, order } = state;
-    setIsAccepting(true);
-
-    try {
-      await updateOrderStatus({
-        orderId: ticket.orderId,
-        status: COLLECTED_STATUS,
-      });
-      // A cancelled order is blocked before this screen, so this is a no-op in
-      // practice; it keeps the one stock rule identical on every status path.
-      void syncStockForStatusChange({
-        orderId: String(ticket.orderId),
-        newStatus: COLLECTED_STATUS,
-        previousStatus: order.status,
-      });
-      // The tracking API does not report payment, but a pickup is never a
-      // table's tab: the customer walking out with it has paid for it.
-      const plan = planOrderStatusChange(order, COLLECTED_STATUS);
-      if (plan.shouldMarkPaid) {
-        await markPaidAfterHandover(updatePaymentStatus, ticket.orderId);
-      }
-      setState({ mode: "pickup-done", order, wasAlready: false });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to confirm pickup.";
-      Alert.alert("Could not confirm pickup", msg, [{ text: "OK" }]);
-    } finally {
-      setIsAccepting(false);
-    }
-  }, [state, isAccepting, updateOrderStatus, updatePaymentStatus]);
+    const orderId = String(state.ticket.orderId);
+    setState({ mode: "scanning" });
+    router.push(`/(main)/order/${encodeURIComponent(orderId)}?intent=deliver` as never);
+  }, [state, isAccepting]);
 
   const handleReject = useCallback(() => {
     // Reject writes nothing. Return to the dashboard.

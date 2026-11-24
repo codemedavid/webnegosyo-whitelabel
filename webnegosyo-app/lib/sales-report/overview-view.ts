@@ -139,6 +139,32 @@ export function shareRows(rows: readonly ReportRow[], metric: MetricId, format: 
   });
 }
 
+export const EVERYTHING_ELSE_LABEL = "Everything else";
+
+/**
+ * A mix card's rows that always add up to the whole: the largest `limit - 1`
+ * rows and one "Everything else" row for the rest once there are more than
+ * `limit`. A card that just cut at `limit` showed rows summing to less than
+ * the total above them (Koko Coffee, 2026-11-24: "the numbers don't balance").
+ */
+export function mixRows(rows: readonly ReportRow[], metric: MetricId, format: MetricDef["format"], limit: number): ShareRow[] {
+  if (rows.length <= limit) return shareRows(rows, metric, format, limit);
+  const shown = shareRows(rows, metric, format, limit - 1);
+  const total = rows.reduce((sum, row) => sum + Math.max(0, row.values[metric] ?? 0), 0);
+  const rest = rows.slice(limit - 1);
+  const restValue = rest.reduce((sum, row) => sum + (row.values[metric] ?? 0), 0);
+  return [
+    ...shown,
+    {
+      key: "__everything_else",
+      label: EVERYTHING_ELSE_LABEL,
+      valueText: formatMetric(restValue, format),
+      share: total > 0 ? Math.max(0, restValue) / total : 0,
+      detail: rest.length === 1 ? rest[0].label : `${rest.length} more`,
+    },
+  ];
+}
+
 /** The server's label for money taken with no method picked ("Not recorded"). */
 const UNSPECIFIED_PAYMENT_KEY = "unspecified";
 export const UNSPECIFIED_PAYMENT_LABEL = "Paid, method not picked";

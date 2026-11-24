@@ -168,6 +168,7 @@ const SUPPORTED_MUTATION_REFS = [
   "orders:reviseOrder",
   "orders:recordPayment",
   "orders:setPrepTime",
+  "orders:setPaymentMethod",
 ] as const;
 
 /** Action refs the platform backend answers (see `runPlatformAction`). */
@@ -656,6 +657,55 @@ async function patchOrder(
   return id;
 }
 
+/**
+ * Name the method of a sale that was marked paid without one ("Paid, method
+ * not picked" in Sales). It files money already counted under the method the
+ * owner says it came in by — no new payment, so no drawer or shift total moves
+ * a second time; the reports read the order's own method for it.
+ *
+ * Conditional in the write itself: only a PAID order that has NO method and
+ * NO ledger row yet. A second device naming it meanwhile, a ledger row, or an
+ * order outside the branch all come back as zero rows, refused out loud.
+ */
+async function setPaymentMethod(
+  client: PlatformClient,
+  tenantId: string,
+  params: Record<string, unknown>,
+  scope: BranchScope
+): Promise<string> {
+  const id = requireOrderUuid(params.orderId);
+  const name = typeof params.paymentMethodName === "string" ? params.paymentMethodName.trim() : "";
+  if (!name) throw new Error("Pick the payment method.");
+  // A method row id, when the store's list gave one; a name alone still files
+  // the money under that name in the reports.
+  const methodId = isUuid(params.paymentMethodId) ? params.paymentMethodId : null;
+
+  const ledger = await unwrap<{ id: string }[] | null>(
+    client.from("order_payments").select("id").eq("order_id", id).limit(1)
+  );
+  if (ledger && ledger.length > 0) {
+    throw new Error("This order already has payments recorded. Collect or refund from the order instead.");
+  }
+
+  const rows = await unwrap<{ id: string }[] | null>(
+    scopeToBranch(
+      client
+        .from("orders")
+        .update({ payment_method_id: methodId, payment_method_name: name })
+        .eq("id", id)
+        .eq("tenant_id", tenantId)
+        .in("payment_status", ["paid", "verified"])
+        .is("payment_method_id", null)
+        .or("payment_method_name.is.null,payment_method_name.eq."),
+      scope
+    ).select("id")
+  );
+  if (!rows || rows.length === 0) {
+    throw new Error("This order's payment method was already set, or the order is not in your branch.");
+  }
+  return id;
+}
+
 const ORDER_NOT_IN_BRANCH_MESSAGE =
   "That order no longer exists in your branch — it may have been moved or deleted.";
 
@@ -1006,6 +1056,8 @@ export async function runPlatformMutation(
       return reviseOrder(client, tenant, params, scope);
     case "orders:recordPayment":
       return recordPayment(client, tenant, params);
+    case "orders:setPaymentMethod":
+      return setPaymentMethod(client, tenant, params, scope);
     default:
       if (isPlatformProductCostRef(ref)) {
         return runPlatformProductCostMutation(client, tenant, ref, params);

@@ -57,6 +57,12 @@ interface CollectPaymentSheetProps {
    * Each payment is recorded under its own method.
    */
   onSubmitSplit?: (payments: CollectedPayment[]) => Promise<void>;
+  /**
+   * The money was taken already ("Already paid — choose how"): the cashier
+   * taps HOW it was paid. No cash pad (the change went back long ago), and no
+   * method is pre-picked, so a one-tap Record can't file it under the wrong one.
+   */
+  isAlreadyPaid?: boolean;
 }
 
 /**
@@ -84,6 +90,7 @@ export function CollectPaymentSheet({
   title = "Collect payment",
   submitLabel = "Record payment",
   onSubmitSplit,
+  isAlreadyPaid = false,
 }: CollectPaymentSheetProps) {
   // Pre-filled with the whole balance: settling in full is the overwhelmingly
   // common case, and retyping a figure already on screen is how a wrong one
@@ -91,9 +98,9 @@ export function CollectPaymentSheet({
   const [amount, setAmount] = useState(() => balanceDue.toFixed(2));
   const [cash, setCash] = useState("");
   const [isEditingAmount, setIsEditingAmount] = useState(false);
-  const [methodId, setMethodId] = useState<string | null>(() =>
-    defaultCollectMethodId(methods, preferredMethodName),
-  );
+  const initialMethodId = () =>
+    isAlreadyPaid && !preferredMethodName?.trim() ? null : defaultCollectMethodId(methods, preferredMethodName);
+  const [methodId, setMethodId] = useState<string | null>(initialMethodId);
   const [reference, setReference] = useState(initialReference ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -108,7 +115,7 @@ export function CollectPaymentSheet({
     setAmount(balanceDue.toFixed(2));
     setCash("");
     setIsEditingAmount(false);
-    setMethodId(defaultCollectMethodId(methods, preferredMethodName));
+    setMethodId(initialMethodId());
     setReference(initialReference ?? "");
     setError(null);
     setIsSplit(false);
@@ -120,6 +127,8 @@ export function CollectPaymentSheet({
 
   const method = methods.find((candidate) => candidate.id === methodId) ?? null;
   const isCash = method?.isCash === true;
+  // Cash taken earlier has no cash-handed-over to type: just the method.
+  const needsCashPad = isCash && !isAlreadyPaid;
 
   const amountNumber = Number(amount);
   const collectingNow = Number.isFinite(amountNumber) && amountNumber > 0 ? amountNumber : 0;
@@ -172,7 +181,12 @@ export function CollectPaymentSheet({
       return;
     }
 
-    const cashVerdict = isCash
+    if (isAlreadyPaid && !method && methods.length > 0) {
+      setError("Tap how the customer paid.");
+      return;
+    }
+
+    const cashVerdict = needsCashPad
       ? validateCashCollect({ amountRaw: amount, cashRaw: cash, balanceDue })
       : null;
     const verdict = cashVerdict ?? validateCollectAmount(amount, balanceDue);
@@ -245,7 +259,7 @@ export function CollectPaymentSheet({
               <>
                 {methods.length > 0 && (
                   <>
-                    <Text style={styles.label}>Paid with</Text>
+                    <Text style={styles.label}>{isAlreadyPaid ? "How did they pay?" : "Paid with"}</Text>
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
@@ -276,7 +290,7 @@ export function CollectPaymentSheet({
                   </>
                 )}
 
-                {isCash ? (
+                {needsCashPad ? (
                   <>
                     <Text style={styles.label}>Cash received</Text>
                     <TextInput
@@ -337,16 +351,20 @@ export function CollectPaymentSheet({
                 ) : (
                   <>
                     {amountInput}
-                    <Text style={styles.label}>Reference number (optional)</Text>
-                    <TextInput
-                      accessibilityLabel="Reference number"
-                      style={styles.input}
-                      value={reference}
-                      onChangeText={setReference}
-                      autoCapitalize="characters"
-                      placeholder="e.g. GCash ref"
-                      placeholderTextColor={colors.textSecondary}
-                    />
+                    {isCash ? null : (
+                      <>
+                        <Text style={styles.label}>Reference number (optional)</Text>
+                        <TextInput
+                          accessibilityLabel="Reference number"
+                          style={styles.input}
+                          value={reference}
+                          onChangeText={setReference}
+                          autoCapitalize="characters"
+                          placeholder="e.g. GCash ref"
+                          placeholderTextColor={colors.textSecondary}
+                        />
+                      </>
+                    )}
                   </>
                 )}
               </>

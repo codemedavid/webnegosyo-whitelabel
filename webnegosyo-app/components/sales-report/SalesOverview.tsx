@@ -9,7 +9,7 @@ import type { ReportSelection } from "../../lib/report-window";
 import { hasPermission } from "../../lib/staff-permissions";
 import { cardChoices, cardValues, overviewSections, resolveCards } from "../../lib/sales-report/cards";
 import { readCardPrefs, writeCardPrefs } from "../../lib/sales-report/card-prefs";
-import { paymentRowsForDisplay, receivedBridge, shareRows, whatChanged } from "../../lib/sales-report/overview-view";
+import { mixRows, paymentRowsForDisplay, receivedBridge, shareRows, whatChanged } from "../../lib/sales-report/overview-view";
 import type { CompareTo, MetricDef, MetricId, ReportPayload, ReportPreset, ReportQuery } from "../../lib/sales-report/types";
 import { useSalesReport } from "../../lib/sales-report/use-sales-report";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -100,11 +100,11 @@ function OverviewBody({ payload, cards, onOpenMetric, onEditCards }: OverviewBod
         footerLabel="See every item"
         onFooter={() => go(ITEMS_ROUTE)}
       />
-      <ShareListCard title="Order types" subtitle="Net sales by order type" rows={shareRows(orderTypes, "net_sales", "money", MIX_ROWS)} emptyText="No orders in this period." />
+      <ShareListCard title="Order types" subtitle="Net sales by order type" rows={mixRows(orderTypes, "net_sales", "money", MIX_ROWS)} emptyText="No orders in this period." />
       <ShareListCard
         title="Money received"
         subtitle="By payment method · delivery fees included"
-        rows={shareRows(payments, "money_received", "money", MIX_ROWS)}
+        rows={mixRows(payments, "money_received", "money", MIX_ROWS)}
         emptyText="No money received in this period."
       >
         {bridge ? <ReceivedBridgeRows bridge={bridge} /> : null}

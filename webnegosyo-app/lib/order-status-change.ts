@@ -8,14 +8,17 @@
  *   - A delivered order cannot be cancelled. The customer has the food;
  *     cancelling it would pull the sale out of revenue and put its ingredients
  *     back on the shelf.
- *   - Delivering an order settles it. Most orders are paid at handover, and
- *     before this nothing wrote the payment side, so a delivered order kept its
- *     "Unpaid" chip everywhere. Table orders are the exception — see
- *     {@link isHandoverSettlement}.
+ *   - A status change never writes the payment on its own. Handing over an
+ *     unpaid order goes through the order screen's payment question
+ *     (`use-order-payment-flow.ts`), which records HOW it was paid before the
+ *     order is marked paid. Writing `paid` here, with no method and no ledger
+ *     row, filed Koko Coffee's pay-later sales under "Paid, method not picked"
+ *     (2026-11-24); `tests/paid-writes.test.ts` keeps it from coming back.
  *
  * Pure: no I/O.
  */
 
+import { settlementIntent } from "./order-balance";
 import { isHandoverSettlement, isSettledStatus } from "./order-paid-state";
 import { hasPermission, type StaffPermissionHolder } from "./staff-permissions";
 
@@ -31,14 +34,21 @@ export interface StatusChangeOrder {
   status: string;
   paymentStatus?: string | null;
   customerData?: unknown;
+  total?: number | null;
+  /** Net of the settlement ledger, when the screen holds it. */
+  amountPaid?: number | null;
 }
 
 export interface StatusChangePlan {
   allowed: boolean;
   /** User-facing copy, shown verbatim. Present only on a refusal. */
   reason?: string;
-  /** Write `payment_status = paid` once the status change lands. */
-  shouldMarkPaid: boolean;
+  /**
+   * Write `payment_status = paid` once the order is handed over — ONLY when
+   * the ledger already holds the whole bill, so the row catches up with money
+   * that is recorded under its methods. Never for a bill nobody recorded.
+   */
+  shouldSyncPaid: boolean;
 }
 
 export function canCancelOrder(status: string): boolean {
@@ -69,15 +79,22 @@ export function planOrderStatusChange(
         order.status === "cancelled"
           ? ALREADY_CANCELLED_MESSAGE
           : DELIVERED_NOT_CANCELLABLE_MESSAGE,
-      shouldMarkPaid: false,
+      shouldSyncPaid: false,
     };
   }
 
-  const shouldMarkPaid =
-    isHandoverSettlement({ status: nextStatus, customerData: order.customerData }) &&
-    !isSettledStatus(order.paymentStatus);
+  return { allowed: true, shouldSyncPaid: isLedgerSquareAtHandover(order, nextStatus) };
+}
 
-  return { allowed: true, shouldMarkPaid };
+/** Handed over, row still unpaid, and the ledger already covers the total. */
+export function isLedgerSquareAtHandover(order: StatusChangeOrder, nextStatus: string): boolean {
+  if (!isHandoverSettlement({ status: nextStatus, customerData: order.customerData })) return false;
+  if (isSettledStatus(order.paymentStatus)) return false;
+  const paid = order.amountPaid;
+  const total = order.total;
+  if (typeof paid !== "number" || !Number.isFinite(paid) || paid <= 0) return false;
+  if (typeof total !== "number" || !Number.isFinite(total)) return false;
+  return settlementIntent(total - paid) !== "collect";
 }
 
 /** The `orders:updatePaymentStatus` mutation, as the screens hold it. */
@@ -87,14 +104,11 @@ export type PaymentStatusWriter = (args: {
 }) => Promise<unknown>;
 
 /**
- * Write `paid` on an order that was just handed over.
- *
- * Never throws: the delivery IS recorded, and a failure here must not read as
- * a failed status change. The screens still read a delivered order as settled
- * (see `isOrderUnpaid`), so the chip is right either way — only the web admin
- * and exports wait on this write.
+ * Catch the row up with a ledger that already holds the whole bill
+ * ({@link StatusChangePlan.shouldSyncPaid}). Never throws: the delivery IS
+ * recorded, and the money is on the ledger under its methods either way.
  */
-export async function markPaidAfterHandover(
+export async function syncPaidAfterHandover(
   writePaymentStatus: PaymentStatusWriter,
   orderId: string,
 ): Promise<void> {

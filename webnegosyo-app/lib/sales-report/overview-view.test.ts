@@ -1,4 +1,4 @@
-import { buildTrend, labelledBarIndexes, paymentRowsForDisplay, receivedBridge, shareRows, trendMetrics, whatChanged } from "./overview-view";
+import { EVERYTHING_ELSE_LABEL, buildTrend, labelledBarIndexes, mixRows, paymentRowsForDisplay, receivedBridge, shareRows, trendMetrics, whatChanged } from "./overview-view";
 import type { MetricDef, MetricId, ReportRow, ReportSections } from "./types";
 
 const metric = (id: MetricId, format: MetricDef["format"] = "money"): MetricDef => ({
@@ -132,5 +132,22 @@ describe("the trend without food costs", () => {
   it("offers no gross profit tab when every bucket is — (nothing costed)", () => {
     const rows: ReportRow[] = [{ key: "a", label: "a", values: { net_sales: 1, gross_profit: null } }];
     expect(trendMetrics(rows, [metric("net_sales"), metric("gross_profit")]).map((m) => m.id)).toEqual(["net_sales"]);
+  });
+});
+
+
+describe("mixRows", () => {
+  const r = (key: string, cents: number): ReportRow => ({ key, label: key.toUpperCase(), values: { net_sales: cents } });
+
+  it("keeps every row when they fit", () => {
+    expect(mixRows([r("a", 300), r("b", 100)], "net_sales", "money", 4).map((x) => x.key)).toEqual(["a", "b"]);
+  });
+
+  it("folds the rest into one row so the card adds up to the whole", () => {
+    const rows = [r("a", 500), r("b", 300), r("c", 100), r("d", 60), r("e", 40)];
+    const shown = mixRows(rows, "net_sales", "money", 4);
+    expect(shown.map((x) => x.label)).toEqual(["A", "B", "C", EVERYTHING_ELSE_LABEL]);
+    expect(shown[3].detail).toBe("2 more");
+    expect(shown.reduce((sum, x) => sum + x.share, 0)).toBeCloseTo(1, 10);
   });
 });

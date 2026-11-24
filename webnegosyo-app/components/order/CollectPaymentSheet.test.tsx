@@ -331,3 +331,46 @@ describe("CollectPaymentSheet — split between methods", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ amount: 300 })));
   });
 });
+
+describe("CollectPaymentSheet — already paid (choose how)", () => {
+  const CASH_METHODS_PAID = [
+    { id: "cash", name: "Cash", isCash: true },
+    { id: "gcash", name: "GCash" },
+  ];
+
+  function renderPaid(props: Partial<React.ComponentProps<typeof CollectPaymentSheet>> = {}) {
+    return renderSheet({ methods: CASH_METHODS_PAID, balanceDue: 560, isAlreadyPaid: true, ...props });
+  }
+
+  it("picks no method for the cashier, so a one-tap Record can't file it wrongly", async () => {
+    const { onSubmit } = renderPaid();
+
+    expect(screen.getByText("How did they pay?")).toBeTruthy();
+    fireEvent.press(screen.getByText("Record payment"));
+
+    expect(await screen.findByText("Tap how the customer paid.")).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("records cash taken earlier without asking for the cash handed over", async () => {
+    const { onSubmit } = renderPaid();
+
+    fireEvent.press(screen.getByText("Cash"));
+    expect(screen.queryByLabelText("Cash received")).toBeNull();
+    fireEvent.press(screen.getByText("Record payment"));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ amount: 560, methodId: "cash", methodName: "Cash" }),
+    );
+  });
+
+  it("keeps the order's own method pre-picked when it has one", async () => {
+    const { onSubmit } = renderPaid({ preferredMethodName: "GCash" });
+
+    fireEvent.press(screen.getByText("Record payment"));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ methodId: "gcash", methodName: "GCash" })),
+    );
+  });
+});

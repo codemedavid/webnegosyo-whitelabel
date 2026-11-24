@@ -25,6 +25,7 @@ import { settlementIntent } from "./order-balance";
 import { shouldMarkOrderPaid } from "./order-paid-state";
 import {
   confirmPaidRoute,
+  handoverPaidRoute,
   paymentPromptCopy,
   paymentPromptFor,
   type PaymentPrompt,
@@ -72,6 +73,8 @@ interface CollectState {
   then: PendingStatus | null;
   title?: string;
   submitLabel?: string;
+  /** The money was taken already: ask how, not for the cash handed over. */
+  isAlreadyPaid?: boolean;
 }
 
 export interface OrderPaymentFlow {
@@ -84,6 +87,8 @@ export interface OrderPaymentFlow {
     copy: PaymentPromptCopy | null;
     summary: PaymentDecisionSummary;
     paidDisabledReason?: string;
+    /** Why "Already paid" cannot be chosen here, shown in place of acting. */
+    unpaidDisabledReason?: string;
     isBusy: boolean;
     onPaid: () => void;
     onUnpaid: () => void;
@@ -97,6 +102,7 @@ export interface OrderPaymentFlow {
     initialReference?: string | null;
     title?: string;
     submitLabel?: string;
+    isAlreadyPaid?: boolean;
     onSubmit: (payment: CollectedPayment) => Promise<void>;
     /** Split between methods: each payment recorded under its own method. */
     onSubmitSplit: (payments: readonly CollectedPayment[]) => Promise<void>;
@@ -199,6 +205,9 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
     prompt?.kind === "confirm" ? confirmPaidRoute(order?.paymentMethod) : "collect";
   const paidDisabledReason =
     route === "collect" && !collectGate.allowed ? collectGate.reason : undefined;
+  const alreadyPaidRoute =
+    prompt?.kind === "handover" ? handoverPaidRoute(order?.paymentMethod, collectGate) : null;
+  const unpaidDisabledReason = alreadyPaidRoute === "refuse" ? collectGate.reason : undefined;
 
   const onPaid = useCallback(async () => {
     if (!prompt || !order || isBusy) return;
@@ -248,7 +257,44 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
   }, [prompt, order, isBusy, isDemo, alert, route, collectGate.allowed, advance, updatePaymentStatus]);
 
   const onUnpaid = useCallback(async () => {
-    if (!prompt || isBusy) return;
+    if (!prompt || !order || isBusy) return;
+
+    if (prompt.kind === "handover") {
+      if (isDemo) {
+        alert("Demo mode", DEMO_READONLY_MESSAGE);
+        return;
+      }
+      if (alreadyPaidRoute === "refuse") return;
+      if (alreadyPaidRoute === "pick-method") {
+        // No method on the order: marking it paid alone files the money under
+        // "Paid, method not picked" forever. Ask how, write the ledger row.
+        setPrompt(null);
+        setCollect({
+          then: "delivered",
+          title: "How was it paid?",
+          submitLabel: "Record & mark delivered",
+          isAlreadyPaid: true,
+        });
+        return;
+      }
+      // The order carries its method: delivered + paid is the whole record.
+      setIsBusy(true);
+      try {
+        const isMoved = await advance(prompt.next);
+        if (!isMoved) return;
+        try {
+          await updatePaymentStatus({ orderId: order._id, paymentStatus: "paid" });
+        } catch (err) {
+          console.warn("[order] Delivered, but the order still reads unpaid:", err);
+        }
+        setPrompt(null);
+      } finally {
+        setIsBusy(false);
+      }
+      return;
+    }
+
+    // Confirm only: the order stays unpaid, to be collected at handover.
     setIsBusy(true);
     try {
       const isMoved = await advance(prompt.next);
@@ -256,7 +302,7 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
     } finally {
       setIsBusy(false);
     }
-  }, [prompt, isBusy, advance]);
+  }, [prompt, order, isBusy, isDemo, alert, alreadyPaidRoute, advance, updatePaymentStatus]);
 
   /**
    * One payment, or a split tender (₱200 cash, the rest by GCash) as several:
@@ -361,6 +407,7 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
         proofUrl: customerProofUrl(order),
       },
       paidDisabledReason,
+      unpaidDisabledReason,
       isBusy,
       onPaid: () => void onPaid(),
       onUnpaid: () => void onUnpaid(),
@@ -376,6 +423,7 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
       initialReference: customerReference(order),
       title: collect?.title,
       submitLabel: collect?.submitLabel,
+      isAlreadyPaid: collect?.isAlreadyPaid,
       onSubmit: onSubmitCollect,
       onSubmitSplit: settle,
       onClose: () => setCollect(null),
