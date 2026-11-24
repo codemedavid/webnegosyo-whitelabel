@@ -5,7 +5,8 @@
 import type { ReceiptOrder } from "../receipt-layout";
 import { toCents } from "./money";
 import { billSummary, type BillOrder } from "./bill-orders";
-import { partPaidCents, type BillPlan } from "./bill-plan";
+import { customPartKey, partPaidCents, type BillPlan } from "./bill-plan";
+import { customProblemText, customShareCents } from "./custom-split";
 import { billUnits, evenShareCents, itemParts, type BillUnit } from "./bill-split";
 import { evenShareReceipt, itemPartReceipt } from "./bill-receipt";
 
@@ -23,11 +24,20 @@ export interface BillPartView {
   /** By item: the pieces this guest had. */
   units: BillUnit[];
   receipt: (paidCents: number) => ReceiptOrder;
+  /** Custom amounts: what was typed for this guest, and whether it may still change. */
+  custom?: {
+    /** `null` = blank: this guest shares what the typed amounts leave. */
+    typedCents: number | null;
+    /** A guest who has paid keeps the amount they paid against. */
+    isFixed: boolean;
+  };
 }
 
 export interface BillPartsResult {
   parts: BillPartView[];
   unassigned: BillUnit[];
+  /** Custom amounts that do not add up to the bill; every Collect waits on it. */
+  problem?: string | null;
 }
 
 function partView(
@@ -35,7 +45,7 @@ function partView(
   guest: number,
   amountCents: number,
   plan: BillPlan,
-  rest: Pick<BillPartView, "receipt" | "units" | "preferred">,
+  rest: Pick<BillPartView, "receipt" | "units" | "preferred" | "custom">,
 ): BillPartView {
   const paidCents = Math.min(amountCents, partPaidCents(plan, key));
   const remainingCents = Math.max(0, amountCents - paidCents);
@@ -65,6 +75,27 @@ export function billPartViews(orders: readonly BillOrder[], plan: BillPlan, nowM
       }),
     );
     return { parts, unassigned: [] };
+  }
+
+  if (plan.mode === "custom") {
+    const summary = billSummary(orders);
+    const basis = plan.basisCents ?? toCents(summary.owed);
+    const isShareOfBalance = basis < toCents(summary.total);
+    const split = customShareCents(basis, plan.guests, plan.amounts);
+    const parts = split.shares.map((shareCents, index) => {
+      const key = customPartKey(index);
+      return partView(key, index, shareCents, plan, {
+        units: [],
+        custom: {
+          typedCents: split.isTyped[index] ? shareCents : null,
+          isFixed: partPaidCents(plan, key) > 0,
+        },
+        // Same slip as an even share: "Your share (1 of 3)" and its amount.
+        receipt: (paidCents) =>
+          evenShareReceipt(orders, { nowMs, index, count: plan.guests, shareCents, paidCents, isShareOfBalance }),
+      });
+    });
+    return { parts, unassigned: [], problem: split.problem ? customProblemText(split.problem) : null };
   }
 
   if (plan.mode === "items") {
