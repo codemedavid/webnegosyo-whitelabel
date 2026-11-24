@@ -15,6 +15,7 @@ import { EMPTY_STOCK_DRAFT, buildStockMovementInput, describeDeliveryPriceUnit, 
 import { MANUAL_MOVEMENT_REASONS, MOVEMENT_ACTION_LABELS, MOVEMENT_REASON_LABELS, type StockMovementReason } from '@/lib/inventory/stock-ledger'
 import { resolveDefaultMovementOutlet, STORE_POOL_LABEL, type SelectableBranch } from '@/lib/inventory/stock-outlet'
 import { recordStockMovementAction, setBranchReorderLevelAction } from '@/app/actions/inventory'
+import { checkMovementEntry, type EntryDoubt } from '@/lib/inventory/entry-check'
 
 /** Trims the trailing zeros a NUMERIC(16,4) round-trip leaves behind. */
 function formatQuantity(quantity: number): string {
@@ -97,6 +98,29 @@ export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, rea
   }))
   const [isRecording, setIsRecording] = useState(false)
   const [stockError, setStockError] = useState<string | null>(null)
+  // "4000 kg?" — asked once per figure; the second tap on the same figure saves.
+  const [shownDoubt, setShownDoubt] = useState<EntryDoubt | null>(null)
+
+  /** The doubt about what is typed now, if any (entry-check.ts). */
+  const currentDoubt = (): EntryDoubt | null => {
+    const entered = unitsById.get(stockDraft.unit_id)
+    const quantity = Number(stockDraft.quantity.trim())
+    if (!entered || stockDraft.quantity.trim() === '' || !Number.isFinite(quantity)) return null
+    const stockUnit = unitsById.get(stockItem.stock_unit_id)
+    // The shelf in the unit being typed, when the two units convert.
+    const onHand = stockUnit && stockUnit.dimension === entered.dimension && Number(entered.to_base_factor) > 0
+      ? (stockItem.current_qty * Number(stockUnit.to_base_factor)) / Number(entered.to_base_factor)
+      : null
+    const cost = stockDraft.unit_cost.trim() === '' ? null : Number(stockDraft.unit_cost)
+    return checkMovementEntry({
+      kind: stockDraft.reason === 'stocktake' ? 'stocktake' : stockDraft.reason === 'waste' ? 'waste' : 'receive',
+      quantity,
+      unit: { abbreviation: entered.abbreviation },
+      onHand,
+      unitCost: cost !== null && Number.isFinite(cost) ? cost : null,
+    })
+  }
+  const visibleDoubt = shownDoubt && currentDoubt()?.key === shownDoubt.key ? shownDoubt : null
 
   const handleRecordStock = async () => {
     let input
@@ -109,6 +133,12 @@ export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, rea
       input = buildStockMovementInput(stockDraft, stockItem.id, openCountId, openCountOutletId)
     } catch (error) {
       setStockError(error instanceof Error ? error.message : 'Please check the form')
+      return
+    }
+
+    const doubt = currentDoubt()
+    if (doubt && doubt.key !== visibleDoubt?.key) {
+      setShownDoubt(doubt)
       return
     }
 
@@ -333,6 +363,32 @@ export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, rea
           </div>
         )}
 
+        {visibleDoubt && (
+          <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <p className="font-semibold">{visibleDoubt.title}</p>
+            <p>{visibleDoubt.message}</p>
+            {visibleDoubt.fix && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="max-sm:h-11"
+                onClick={() => {
+                  const fix = visibleDoubt.fix
+                  setStockDraft((d) => ({
+                    ...d,
+                    ...(fix?.quantity !== undefined ? { quantity: String(Number(fix.quantity.toFixed(4))) } : {}),
+                    ...(fix?.cost !== undefined ? { unit_cost: String(Number(fix.cost.toFixed(4))) } : {}),
+                  }))
+                  setShownDoubt(null)
+                }}
+              >
+                {visibleDoubt.fix.label}
+              </Button>
+            )}
+          </div>
+        )}
+
         {stockError && (
           <p
             role="alert"
@@ -351,7 +407,7 @@ export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, rea
             Cancel
           </Button>
           <Button className="max-sm:h-11" onClick={handleRecordStock} disabled={isRecording}>
-            {isRecording ? 'Recording…' : MOVEMENT_ACTION_LABELS[stockDraft.reason]}
+            {isRecording ? 'Recording…' : visibleDoubt ? visibleDoubt.confirmLabel : MOVEMENT_ACTION_LABELS[stockDraft.reason]}
           </Button>
         </DialogFooter>
       </DialogContent>

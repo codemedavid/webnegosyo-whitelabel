@@ -24,7 +24,7 @@
 import type { ExpenseGroup } from '@/lib/expenses/types'
 import { MIDNIGHT_SCHEDULE, tradingDayOf, tradingDayWindow, type CutoffSchedule } from '@/lib/business-day/trading-day'
 import { toCents } from './money'
-import { lineCostCents, movementCostCents, isUsageReason, type UsageReason } from './cogs'
+import { lineCostCents, movementCostCents, isUsageReason, parseDecimal, type UsageReason } from './cogs'
 import { isLiveOrder, orderFigures, type ReportOrder } from './sales-model'
 import { itemKey } from './sales-breakdowns'
 
@@ -53,7 +53,11 @@ export interface ProfitScope {
 }
 
 export interface LedgerMovement {
+  /** stock_movements.id: orders counts written at the same instant. */
+  id: string
   reason: string
+  /** stock_movements.inventory_item_id: with `outletId`, the shelf that moved. */
+  inventoryItemId: string
   quantityDelta: Numeric
   unitCost: Numeric | null
   /** stock_movements.order_id (text). */
@@ -279,23 +283,182 @@ function orderFacts(input: ProfitRawInput): ProfitFact[] {
 /** Reasons that belong to one order: they count only while that order is live, like its sales. */
 const ORDER_REASONS: ReadonlySet<string> = new Set(['sale', 'void'])
 
+/** An order id the platform can hold (orders.id is a uuid); others (Convex ids) are never looked up. */
+const PLATFORM_ORDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
- * The store's orders that are NOT live (cancelled, refunded, voided, negative),
- * whenever they were placed. Their sale and void movements never count: the
- * order's sales do not, and a cancel written in a later window would otherwise
- * move its cost there. An order the caller cannot read counts as live.
+ * Which ledger movements the report believes. A sale or void belongs to its
+ * order (whenever the order was placed: a cancel written in a later window
+ * would otherwise move its cost there):
+ *
+ *   * order found and NOT live (cancelled, refunded, voided, negative): the
+ *     movement never happened for the report — no ingredient cost, and it
+ *     did not "move the shelf" for the stock-count rules (a sale and its void
+ *     net to nothing);
+ *   * order NOT found (deleted from Settings → Delete orders, which keeps the
+ *     ledger; or unreadable for the caller): the stock really left the shelf,
+ *     so the count rules still see it, but its ingredient cost goes with its
+ *     sales (comes back if the order is restored). Ids that are not the
+ *     platform's (Convex) are never looked up and always count.
+ *
+ * SQL: reporting.counts_on_shelf (shelf) and profit_facts `live_ids` (cost).
  */
-function reversedOrderIds(orders: readonly ReportOrder[]): ReadonlySet<string> {
-  return new Set(orders.filter((order) => !isLiveOrder(order)).map((order) => order.id))
+function ledgerViews(input: Pick<ProfitRawInput, 'orders' | 'movements'>): { shelf: readonly LedgerMovement[]; costed: readonly LedgerMovement[] } {
+  const isLive = new Map(input.orders.map((order) => [order.id, isLiveOrder(order)]))
+  const liveness = (move: LedgerMovement): boolean | undefined =>
+    !ORDER_REASONS.has(move.reason) || move.orderId === null ? true : isLive.get(move.orderId)
+  const shelf = input.movements.filter((move) => liveness(move) !== false)
+  const costed = shelf.filter((move) => liveness(move) === true || !PLATFORM_ORDER_ID.test(move.orderId ?? ''))
+  return { shelf, costed }
+}
+
+/** Movements that put stock on a shelf the ledger can trust: the first of them is the shelf's baseline. */
+const BASELINE_REASONS: ReadonlySet<string> = new Set(['stocktake', 'receive', 'transfer_in'])
+
+function isSameShelf(a: LedgerMovement, b: LedgerMovement): boolean {
+  return a.inventoryItemId === b.inventoryItemId && a.outletId === b.outletId
+}
+
+/**
+ * An OPENING count sets a shelf up; it does not measure it. The shelf's
+ * baseline is its first count, delivery or transfer in (the count itself when
+ * nothing came before, e.g. a shelf that sold before it was ever counted). A
+ * count on the baseline's business day with no sale from the shelf in between
+ * is the opening count or a fix to it ("500" typed for "10", corrected an hour
+ * later). Its delta is stock the ledger never knew about, not stock that went
+ * missing or turned up, so it is no ingredient cost. A count on a later day,
+ * or after the shelf sold, measures it. `ledger` = every movement the caller
+ * can see, any time. SQL: reporting.profit_facts `openings`.
+ */
+export function isOpeningCount(move: LedgerMovement, ledger: readonly LedgerMovement[], schedule?: CutoffSchedule): boolean {
+  if (move.reason !== 'stocktake') return false
+  const shelf = ledger.filter((other) => isSameShelf(other, move))
+  const baselineAt = shelf
+    .filter((other) => BASELINE_REASONS.has(other.reason) && other.at <= move.at)
+    .reduce((earliest, other) => Math.min(earliest, other.at), move.at)
+  if (businessDayOf(baselineAt, schedule) !== businessDayOf(move.at, schedule)) return false
+  return !shelf.some((other) => other.reason === 'sale' && other.at > baselineAt && other.at < move.at)
+}
+
+interface ShelfWalk {
+  /** Losses on the shelf not yet given back, centavos. */
+  balance: number
+  costs: [LedgerMovement, number | null][]
+}
+
+const byTimeThenId = (a: LedgerMovement, b: LedgerMovement): number => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+
+/**
+ * Back-to-back counts of a shelf (nothing else moved it in between) are ONE
+ * recount: "2,997.51" typed and fixed to "0.51" nine seconds later.
+ */
+function recounts(counts: readonly LedgerMovement[], others: readonly LedgerMovement[]): LedgerMovement[][] {
+  return counts.reduce<LedgerMovement[][]>((runs, count) => {
+    const run = runs[runs.length - 1]
+    const previous = run?.[run.length - 1]
+    const isRecount = previous !== undefined && !others.some((other) => other.at > previous.at && other.at < count.at)
+    return isRecount ? [...runs.slice(0, -1), [...run, count]] : [...runs, [count]]
+  }, [])
+}
+
+/** How soon after a delivery a count can still be a fix to it ("4000" kg typed, fixed 2 minutes later). */
+export const DELIVERY_FIX_WINDOW_MS = 30 * 60 * 1000
+
+/**
+ * The deliveries a count may undo: receives written in the
+ * DELIVERY_FIX_WINDOW_MS before it with nothing else on the shelf in between
+ * (no sale, waste, transfer or other count). SQL: reporting.profit_facts
+ * `delivered`.
+ */
+function deliveredBefore(count: LedgerMovement, shelf: readonly LedgerMovement[]): string {
+  const earlier = shelf.filter((move) => move.at < count.at)
+  const stopAt = earlier.filter((move) => move.reason !== 'receive').reduce((latest, move) => Math.max(latest, move.at), Number.NEGATIVE_INFINITY)
+  const since = Math.max(stopAt, count.at - DELIVERY_FIX_WINDOW_MS - 1)
+  return sumDecimals(earlier.filter((move) => move.reason === 'receive' && move.at > since).map((move) => move.quantityDelta))
+}
+
+/** Σ numerics, exactly (quantities have four decimals; floats would drift). */
+function sumDecimals(values: readonly Numeric[]): string {
+  const parts = values.map(parseDecimal).filter((part) => part !== null)
+  const scale = parts.reduce((widest, part) => Math.max(widest, part.scale), 0)
+  const ten = BigInt(10)
+  const units = parts.reduce((sum, part) => sum + part.units * ten ** BigInt(scale - part.scale), BigInt(0))
+  if (scale === 0) return units.toString()
+  const sign = units < BigInt(0) ? '-' : ''
+  const digits = (units < BigInt(0) ? -units : units).toString().padStart(scale + 1, '0')
+  return `${sign}${digits.slice(0, -scale)}.${digits.slice(-scale)}`
+}
+
+/**
+ * One recount: its last costed count carries the step, the rest cost 0, an
+ * uncosted one stays null. A recount that UNDOES the delivery straight before
+ * it is no loss: it finds 99-100% of the delivered quantity missing (at the
+ * carrier's cost), i.e. at most 1% of what was typed ever arrived — "4000" kg
+ * typed for 4000 g (a unit slip leaves 0.1%), or a delivery entered by
+ * mistake and counted back out. Anything else measures the shelf as before:
+ * a count that finds only part of a delivery is just as likely old stock gone
+ * (Sofia's Kitchen counted 25 chickens right after receiving 25 with 23 on
+ * the shelf), and a bigger shortfall is stock used by counting it down.
+ */
+function walkRecount(shelf: readonly LedgerMovement[]) {
+  return (walk: ShelfWalk, run: readonly LedgerMovement[]): ShelfWalk => {
+    const priced = run.map((count) => [count, movementCostCents(count.quantityDelta, count.unitCost)] as const)
+    const costed = priced.filter(([, cents]) => cents !== null)
+    if (costed.length === 0) return { ...walk, costs: [...walk.costs, ...priced.map(([count]): [LedgerMovement, null] => [count, null])] }
+    const carrier = costed[costed.length - 1][0]
+    const found = costed.reduce((sum, [, cents]) => sum + (cents ?? 0), 0)
+    const delivered = deliveredBefore(run[0], shelf)
+    const deliveredCents = -(movementCostCents(delivered, carrier.unitCost) ?? 0)
+    const corrected = found > 0 && found <= deliveredCents && found * 100 >= deliveredCents * 99 ? found : 0
+    const balance = Math.max(0, walk.balance + found - corrected)
+    const step = balance - walk.balance + 0
+    return {
+      balance,
+      costs: [...walk.costs, ...priced.map(([count, cents]): [LedgerMovement, number | null] => [count, cents === null ? null : count === carrier ? step : 0])],
+    }
+  }
+}
+
+/**
+ * What each count that measures its shelf (not an opening count) costs.
+ * Back-to-back counts are one recount (`recounts`). A recount that finds less
+ * is a loss, unless it undoes the delivery written just before it
+ * (`walkRecount`). One that finds more gives back what the shelf's earlier
+ * counts took, never more: stock beyond that arrived without a delivery being
+ * recorded (a store that restocks by counting), and the sales that used it
+ * were already costed. So the shelf keeps a balance of losses not yet given
+ * back, in centavos at each count's frozen cost, over its counts written
+ * before `end` (earlier windows included; nothing written later, so a closed
+ * window's figure never changes), in time then id order. `ledger` = the
+ * movements on the shelf (`ledgerViews`).
+ * SQL: reporting.profit_facts `measured` .. `walked`.
+ */
+function countCosts(ledger: readonly LedgerMovement[], end: number, schedule?: CutoffSchedule): ReadonlyMap<LedgerMovement, number | null> {
+  // Everything a count's cost depends on was written before it, so `end` bounds the read.
+  const shelves = ledger
+    .filter((move) => move.at < end)
+    .reduce((map, move) => {
+      const key = `${move.inventoryItemId}|${move.outletId ?? ''}`
+      return map.set(key, [...(map.get(key) ?? []), move])
+    }, new Map<string, LedgerMovement[]>())
+  return new Map(
+    [...shelves.values()].flatMap((shelf) => {
+      const counts = shelf.filter((move) => move.reason === 'stocktake' && !isOpeningCount(move, shelf, schedule))
+      const others = shelf.filter((move) => move.reason !== 'stocktake')
+      return recounts([...counts].sort(byTimeThenId), others).reduce<ShelfWalk>(walkRecount(shelf), { balance: 0, costs: [] }).costs
+    }),
+  )
 }
 
 function movementFacts(input: ProfitRawInput): ProfitFact[] {
   const { scope } = input
-  const reversed = reversedOrderIds(input.orders)
-  return input.movements.flatMap((move): ProfitFact[] => {
+  const ledger = ledgerViews(input)
+  const counted = countCosts(ledger.shelf, scope.end, input.schedule)
+  return ledger.costed.flatMap((move): ProfitFact[] => {
     if (!isUsageReason(move.reason) || !inWindow(scope, move.at) || !inBranch(scope, move.outletId)) return []
-    if (ORDER_REASONS.has(move.reason) && move.orderId !== null && reversed.has(move.orderId)) return []
-    return [{ kind: 'movement', day: businessDayOf(move.at, input.schedule), reason: move.reason, cents: movementCostCents(move.quantityDelta, move.unitCost) }]
+    if (move.reason === 'stocktake' && !counted.has(move)) return []
+    const cents = move.reason === 'stocktake' ? (counted.get(move) ?? null) : movementCostCents(move.quantityDelta, move.unitCost)
+    return [{ kind: 'movement', day: businessDayOf(move.at, input.schedule), reason: move.reason, cents }]
   })
 }
 

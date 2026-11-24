@@ -78,7 +78,8 @@ export function ConfirmStep({ state, storeName }: { state: OrderDeletionState; s
         <p>
           Saved <span className="font-medium">{exported.fileName}</span> with {exported.orderCount} orders (
           {formatPeso(exported.orderTotal)}). Only those orders will be deleted — any that change before you
-          confirm are kept. This file is valid for {EXPORT_TTL_MINUTES} minutes.
+          confirm are kept. Their sales leave your reports and profit until you restore them. This file is
+          valid for {EXPORT_TTL_MINUTES} minutes.
         </p>
       </div>
 

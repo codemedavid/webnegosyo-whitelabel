@@ -46,6 +46,8 @@ export type FindingAction =
   | { kind: "add"; label: string }
   | { kind: "sort"; label: string }
   | { kind: "recipes"; label: string }
+  /** The Stock screen: where a wrong-unit delivery or a pack price typed per gram is fixed. */
+  | { kind: "stock"; label: string }
   /** A bill with an unpaid due date (lib/profit/profit-bills.ts); opens that bill. */
   | { kind: "bill"; label: string; billId: string };
 
@@ -63,6 +65,20 @@ function plural(count: number, one: string, many: string): string {
 /** One trust-strip row per finding, in the web's words; each warning says what to do. */
 export function findingRow(finding: ProfitFinding, periodPhrase: string): FindingRow {
   switch (finding.kind) {
+    case "losses_over_sales":
+      return {
+        key: "losses_over_sales",
+        tone: "warning",
+        text: `Stock losses (${formatMoney(finding.lossesCents)}) are more than your sales (${formatMoney(finding.netSalesCents)}). That is almost always an entry mistake: a delivery or count in the wrong unit (kg for g).`,
+        action: { kind: "stock", label: "Check stock" },
+      };
+    case "ingredients_over_sales":
+      return {
+        key: "ingredients_over_sales",
+        tone: "warning",
+        text: `Ingredients for what sold cost ${formatMoney(finding.cogsCents)}, more than the ${formatMoney(finding.netSalesCents)} you sold. Usually an ingredient’s cost is a pack or kilo price typed per g or ml.`,
+        action: { kind: "stock", label: "Check costs" },
+      };
     case "missing_recurring":
       return {
         key: `missing:${finding.categoryId}`,

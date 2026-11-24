@@ -154,7 +154,7 @@ describe('InventoryManager — a menu editor without costs', () => {
     openRowMenu()
     fireEvent.click(screen.getByRole('menuitem', { name: /edit/i }))
 
-    expect(screen.queryByLabelText(/unit cost/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^(cost per|unit cost)/i)).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Brocoli' } })
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
@@ -171,7 +171,7 @@ describe('InventoryManager — a menu editor without costs', () => {
     renderManager(KITCHEN_LEAD)
     fireEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
 
-    expect(screen.queryByLabelText(/unit cost/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^(cost per|unit cost)/i)).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Kale' } })
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^add ingredient$/i }))
 
@@ -187,7 +187,7 @@ describe('InventoryManager — the owner', () => {
     openRowMenu()
     fireEvent.click(screen.getByRole('menuitem', { name: /edit/i }))
 
-    expect(screen.getByLabelText(/unit cost/i)).toHaveValue(12.5)
+    expect(screen.getByLabelText(/^cost per \S+ \(₱\)$/i)).toHaveValue(12.5)
   })
 
   it('is shown the current cost as the delivery price hint', () => {

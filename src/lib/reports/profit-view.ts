@@ -133,6 +133,20 @@ function plural(count: number, one: string, many: string): string {
 export function findingCopy(finding: ProfitFinding, { adminBase, periodPhrase, expenses: link }: FindingLinks): FindingCopy {
   const book = (params: Readonly<Record<string, string>>) => expensesBookHref(adminBase, link, params)
   switch (finding.kind) {
+    case 'losses_over_sales':
+      return {
+        key: 'losses_over_sales',
+        tone: 'warning',
+        text: `Stock losses (${formatMoney(finding.lossesCents)}) are more than your sales (${formatMoney(finding.netSalesCents)}). That is almost always an entry mistake: a delivery or count in the wrong unit (kg for g).`,
+        action: { label: 'Check stock log', href: `${adminBase}/inventory/log` },
+      }
+    case 'ingredients_over_sales':
+      return {
+        key: 'ingredients_over_sales',
+        tone: 'warning',
+        text: `Ingredients for what sold cost ${formatMoney(finding.cogsCents)}, more than the ${formatMoney(finding.netSalesCents)} you sold. Usually an ingredient’s cost is a pack or kilo price typed per g or ml.`,
+        action: { label: 'Check costs', href: `${adminBase}/inventory` },
+      }
     case 'missing_recurring':
       return {
         key: `missing:${finding.categoryId}`,

@@ -20,6 +20,8 @@ export interface FindingCard {
 }
 
 const ICONS: Readonly<Record<ProfitFinding["kind"], IconName>> = {
+  losses_over_sales: "warning",
+  ingredients_over_sales: "warning",
   missing_recurring: "receipt",
   no_expenses: "receipt",
   uncosted_dishes: "utensils",
@@ -36,6 +38,16 @@ function plural(count: number, one: string, many: string): string {
 
 function words(finding: ProfitFinding, periodPhrase: string, fallback: string): { title: string; detail: string } {
   switch (finding.kind) {
+    case "losses_over_sales":
+      return {
+        title: "Stock losses are bigger than your sales",
+        detail: `${formatMoney(finding.lossesCents)} lost against ${formatMoney(finding.netSalesCents)} sold. Usually a delivery or count in the wrong unit (kg for g).`,
+      };
+    case "ingredients_over_sales":
+      return {
+        title: "Ingredients cost more than you sold",
+        detail: `${formatMoney(finding.cogsCents)} against ${formatMoney(finding.netSalesCents)} sold. Usually a pack or kilo price typed per g or ml.`,
+      };
     case "missing_recurring":
       return {
         title: `No ${finding.categoryName} recorded ${periodPhrase}`,

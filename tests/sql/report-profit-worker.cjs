@@ -209,6 +209,10 @@ async function build(scenario) {
   await db.exec(readMigration('20261107130050_profit_facts_cost_reader.sql'))
   // ...and, when asked, with the cost column revoked, as it will be live.
   if (scenario.revokeCostColumns) await db.exec(readMigration('20261107130100_revoke_inventory_cost_columns.sql'))
+  // Opening counts are not ingredient cost.
+  await db.exec(readMigration('20261109210839_profit_opening_counts.sql'))
+  // Deliveries a count corrects, and deleted / cancelled orders off the shelf.
+  await db.exec(readMigration('20261124120000_profit_ledger_corrections.sql'))
 
   const seed = scenario.seed
   await insertRows(db, 'tenants', seed.tenants)
