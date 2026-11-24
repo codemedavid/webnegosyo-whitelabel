@@ -7,11 +7,6 @@
   ],
   "verifiedOn": "2026-11-16",
   "notApplied": {
-    "20261124180000_paid_needs_method_or_ledger.sql": {
-      "status": "held",
-      "gate": "Owner OK first (plan docs/plans/2026-11-24-sales-numbers-reconcile.md D). Backstop refusing a staff UPDATE of a POS order into paid with no method and a ledger short of the bill; PGlite: tests/sql/run-paid-needs-method-or-ledger.cjs. Apply after the app build that asks how a pay-later order was paid is live, then probe as authenticated (refused 42501, squared ledger allowed, split insert allowed).",
-      "checkedOn": "2026-11-24"
-    },
     "20261027130100_shift_expectations_authoritative.sql": {
       "status": "held",
       "gate": "Compare the server's expected cash with the stored device figure over real closed shifts (CASH_LIVE=1 cash-expectation-live) and explain every difference. The 14 days of shadow mode ended 2026-11-10; the probe has not been run.",
@@ -443,6 +438,7 @@
     "20261115150000_report_exports_branch_scope_and_shape.sql",
     "20261117120000_shift_non_cash_left_to_owner.sql",
     "20261122120000_save_dish_recipes.sql",
-    "20261124120000_profit_ledger_corrections.sql"
+    "20261124120000_profit_ledger_corrections.sql",
+    "20261124180000_paid_needs_method_or_ledger.sql"
   ]
 }
