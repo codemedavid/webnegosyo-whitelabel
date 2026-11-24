@@ -40,10 +40,16 @@ export function OrderDeletionWizard({ tenantId, storeName }: { tenantId: string;
         <CardHeader>
           <CardTitle>Delete orders</CardTitle>
           <CardDescription>
-            Deleted orders disappear from your orders list and dashboard. You can restore them for{' '}
-            {RECOVERY_DAYS} days; after that they are erased for good. Customers, loyalty stamps, stock
-            counts and voucher usage are not changed.
+            Deleted orders disappear from your orders list, dashboard, sales reports and profit. You can
+            restore them for {RECOVERY_DAYS} days; after that they are erased for good. Customers, loyalty
+            stamps, stock and voucher usage are not changed: the stock those orders used stays used.
           </CardDescription>
+          {/* Uncle Drei's deleted a month of real orders (2026-11-23) to "fix" a profit figure a typo had broken. */}
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            Only delete test or duplicate orders. Real sales you delete stop counting in your sales and
+            profit. If a number in your reports looks wrong, check the stock log and ingredient costs first,
+            or ask us. To undo one real sale, cancel or refund it instead.
+          </p>
         </CardHeader>
         <CardContent className="space-y-6">
           <StepIndicator current={state.step} />

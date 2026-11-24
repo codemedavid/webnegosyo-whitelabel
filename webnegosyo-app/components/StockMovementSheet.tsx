@@ -25,6 +25,7 @@ import {
   type MovementDraft,
 } from "../lib/inventory-movement";
 import { submitStockMovement } from "../lib/inventory-movement-service";
+import { checkMovementEntry, type EntryDoubt } from "../lib/inventory-entry-check";
 import { newLocalOrderId } from "../lib/offline/local-id";
 import { formatStockQuantity, type StockItemView } from "../lib/inventory-stock";
 import { colors, typography, spacing, radius } from "../theme/colors";
@@ -98,6 +99,8 @@ export function StockMovementSheet({
   const [draft, setDraft] = useState<MovementDraft>(EMPTY_MOVEMENT_DRAFT);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "4000 kg?" — asked once per figure; the second tap on the same figure saves.
+  const [shownDoubt, setShownDoubt] = useState<EntryDoubt | null>(null);
   // One key per thing the merchant means to record. Tapping Save again after a
   // timeout reuses it, so the server records that delivery once; changing what
   // was typed is a new intent and gets a new key.
@@ -117,6 +120,23 @@ export function StockMovementSheet({
     [item, draft.reason, draft.quantity],
   );
   const overcounted = item ? isOvercountedWaste(draft.reason, draft.quantity, item) : false;
+
+  /** The doubt about what is typed now, if any (inventory-entry-check.ts). */
+  const currentDoubt = (): EntryDoubt | null => {
+    if (!item || !item.unitAbbreviation || draft.quantity.trim() === "") return null;
+    const quantity = Number(draft.quantity.trim());
+    const costText = (draft.unitCost ?? "").trim();
+    const cost = costText === "" ? null : Number(costText);
+    return checkMovementEntry({
+      kind: draft.reason,
+      quantity,
+      unit: { abbreviation: item.unitAbbreviation },
+      onHand: item.quantity,
+      unitCost: cost !== null && Number.isFinite(cost) ? cost : null,
+    });
+  };
+  const nowDoubt = currentDoubt();
+  const visibleDoubt = shownDoubt && nowDoubt?.key === shownDoubt.key ? shownDoubt : null;
   const look = REASON_LOOK[draft.reason];
 
   const close = () => {
@@ -124,6 +144,7 @@ export function StockMovementSheet({
     // delivery invites recording it twice.
     setDraft(EMPTY_MOVEMENT_DRAFT);
     setError(null);
+    setShownDoubt(null);
     setIsSaving(false);
     onClose();
   };
@@ -142,6 +163,10 @@ export function StockMovementSheet({
       setError(
         validationError instanceof Error ? validationError.message : "Check the amount",
       );
+      return;
+    }
+    if (nowDoubt && nowDoubt.key !== visibleDoubt?.key) {
+      setShownDoubt(nowDoubt);
       return;
     }
 
@@ -283,6 +308,33 @@ export function StockMovementSheet({
               </View>
             )}
 
+            {visibleDoubt && (
+              <View style={styles.warning} accessibilityRole="alert">
+                <Icon name="warning" size={16} color={colors.statusPending.text} />
+                <View style={styles.doubtCopy}>
+                  <Text style={styles.doubtTitle}>{visibleDoubt.title}</Text>
+                  <Text style={styles.warningText}>{visibleDoubt.message}</Text>
+                  {visibleDoubt.fix && (
+                    <TouchableOpacity
+                      style={styles.doubtFix}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        const fix = visibleDoubt.fix;
+                        setDraft((c) => ({
+                          ...c,
+                          ...(fix?.quantity !== undefined ? { quantity: String(Number(fix.quantity.toFixed(4))) } : {}),
+                          ...(fix?.cost !== undefined ? { unitCost: String(Number(fix.cost.toFixed(4))) } : {}),
+                        }));
+                        setShownDoubt(null);
+                      }}
+                    >
+                      <Text style={styles.doubtFixText}>{visibleDoubt.fix.label}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
             {/* A delivery price moves the ingredient's cost, so it needs "costs". */}
             {draft.reason === "receive" && canPriceDelivery && (
               <View style={styles.field}>
@@ -327,7 +379,7 @@ export function StockMovementSheet({
               {isSaving ? (
                 <ActivityIndicator color={colors.heroInkText} />
               ) : (
-                <Text style={styles.saveText}>{SAVE_LABELS[draft.reason]}</Text>
+                <Text style={styles.saveText}>{visibleDoubt ? visibleDoubt.confirmLabel : SAVE_LABELS[draft.reason]}</Text>
               )}
             </TouchableOpacity>
           </ScrollView>
@@ -454,6 +506,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningLight,
   },
   warningText: { flex: 1, ...typography.caption, color: colors.statusPending.text, lineHeight: 18 },
+  doubtCopy: { flex: 1, gap: 4 },
+  doubtTitle: { ...typography.caption, color: colors.statusPending.text, fontWeight: "800" },
+  doubtFix: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingHorizontal: 12,
+    minHeight: 36,
+    justifyContent: "center",
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.statusPending.text,
+  },
+  doubtFixText: { fontSize: 13, fontWeight: "700", color: colors.statusPending.text },
 
   field: { marginTop: spacing.lg, gap: 6 },
   fieldLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },

@@ -26,7 +26,14 @@
  * Losses (shown as their own line, included by default)
  *   waste movements + stock-count variance, both at frozen cost. A count that
  *   finds LESS than the ledger expected is a loss; one that finds more gives
- *   it back (net variance: ingredient cost is what was really used up).
+ *   it back (net variance: ingredient cost is what was really used up). An
+ *   OPENING count (a shelf's first count, or a same-day fix to it before it
+ *   sold: profit-facts.ts isOpeningCount) sets the shelf up and is not
+ *   variance: "Opening stock 500" is stock the ledger never knew, not a gain.
+ *   A count within 30 minutes of a delivery that finds 99-100% of it missing
+ *   UNDOES the delivery ("4000" kg typed for grams, counted back): no loss.
+ *   A sale of an order that is cancelled or deleted costs nothing (its sales
+ *   are gone too); a restored order brings both back.
  *
  * Ingredient cost (Sangkap)
  *   tracks stock   recipe COGS + losses + ingredients-group expenses that did
@@ -60,6 +67,13 @@ export type IngredientBasis = 'recipes' | 'purchases'
 
 /** Above this share of dishes sold without a cost, the ingredient figure is flagged. */
 export const UNCOSTED_SHARE_LIMIT = 0.1
+/**
+ * Stock losses or recipe cost above sales (and above this floor) is almost
+ * always an entry mistake, not a business: "4000" kg typed for grams and
+ * counted back (Uncle Drei's, P1.45M "lost" on P3.6k a day), a price per pack
+ * typed per gram (Sorpresso's milk at P82/g). Said first, with where to look.
+ */
+export const OUTLIER_FLOOR_CENTS = 50_000
 /** Categories an owner pays every period; missing one now (but not last time) is flagged. */
 export const RECURRING_SYSTEM_KEYS = ['rent', 'electricity', 'water', 'wages'] as const
 /** Prime cost most food businesses land in (plan §5.3). */
@@ -101,6 +115,8 @@ export interface CashFlow {
 }
 
 export type ProfitFinding =
+  | { kind: 'losses_over_sales'; severity: 'warning'; lossesCents: number; netSalesCents: number }
+  | { kind: 'ingredients_over_sales'; severity: 'warning'; cogsCents: number; netSalesCents: number }
   | { kind: 'missing_recurring'; severity: 'warning'; categoryId: string; categoryName: string; systemKey: string; previousCents: number }
   | { kind: 'uncosted_dishes'; severity: 'warning'; uncostedDishes: number; uncostedShare: number }
   | { kind: 'unsorted_payouts'; severity: 'warning'; count: number; cents: number }
@@ -257,7 +273,16 @@ interface FindingInput {
 /** The trust strip: what to fix before believing the number. Warnings first. */
 export function profitFindings({ figures, basis, coverage, categories, previousCategories }: FindingInput): ProfitFinding[] {
   const uncostedShare = coverage.costedShare === null ? null : 1 - coverage.costedShare
+  const lossesCents = figures.wasteCents + figures.countVarianceCents
+  const cogsCents = figures.ledgerCogsCents + figures.fallbackCogsCents
+  const isOutlier = (cents: number) => cents >= OUTLIER_FLOOR_CENTS && cents > figures.netSalesCents
   const findings: Array<ProfitFinding | null> = [
+    basis === 'recipes' && isOutlier(lossesCents)
+      ? { kind: 'losses_over_sales', severity: 'warning', lossesCents, netSalesCents: figures.netSalesCents }
+      : null,
+    basis === 'recipes' && isOutlier(cogsCents)
+      ? { kind: 'ingredients_over_sales', severity: 'warning', cogsCents, netSalesCents: figures.netSalesCents }
+      : null,
     ...(previousCategories ? missingRecurring(categories, previousCategories) : []),
     figures.expenseCount === 0 ? { kind: 'no_expenses', severity: 'warning' } : null,
     basis === 'recipes' && uncostedShare !== null && uncostedShare > UNCOSTED_SHARE_LIMIT

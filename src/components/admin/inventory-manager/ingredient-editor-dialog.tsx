@@ -16,6 +16,7 @@ import {
   type IngredientDraft,
 } from '@/lib/inventory/inventory-form'
 import { createIngredientAction, updateIngredientAction } from '@/app/actions/inventory'
+import { checkUnitCost, type EntryDoubt } from '@/lib/inventory/entry-check'
 
 interface IngredientEditorDialogProps {
   tenantId: string
@@ -53,6 +54,14 @@ export function IngredientEditorDialog({
     ? ingredientToDraft(item)
     : { ...EMPTY_INGREDIENT_DRAFT, stock_unit_id: units[0]?.id ?? '' })
   const [isSaving, setIsSaving] = useState(false)
+  // "₱82 for ONE g?" — asked once per price; the second Save on the same price saves.
+  const [shownDoubt, setShownDoubt] = useState<EntryDoubt | null>(null)
+  const unitAbbreviation = units.find((unit) => unit.id === draft.stock_unit_id)?.abbreviation ?? ''
+  const costDoubt = (): EntryDoubt | null => {
+    if (!canSeeCosts || draft.unit_cost.trim() === '' || !unitAbbreviation) return null
+    return checkUnitCost(Number(draft.unit_cost), { abbreviation: unitAbbreviation })
+  }
+  const visibleDoubt = shownDoubt && costDoubt()?.key === shownDoubt.key ? shownDoubt : null
 
   const handleSave = async () => {
     let input
@@ -60,6 +69,11 @@ export function IngredientEditorDialog({
       input = buildIngredientInput(draft)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Please check the form')
+      return
+    }
+    const doubt = costDoubt()
+    if (doubt && doubt.key !== visibleDoubt?.key) {
+      setShownDoubt(doubt)
       return
     }
 
@@ -109,7 +123,8 @@ export function IngredientEditorDialog({
           <div className="grid gap-3 sm:grid-cols-2">
             {canSeeCosts && (
               <div className="space-y-1">
-                <Label htmlFor="ing-cost">Unit cost (₱)</Label>
+                {/* Per WHICH unit is the whole question: "Unit cost" let ₱82 a litre be read as ₱82 a gram. */}
+                <Label htmlFor="ing-cost">{unitAbbreviation ? `Cost per ${unitAbbreviation} (₱)` : 'Unit cost (₱)'}</Label>
                 <Input
                   id="ing-cost"
                   type="number"
@@ -210,6 +225,28 @@ export function IngredientEditorDialog({
           </div>
         </div>
 
+        {visibleDoubt && (
+          <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <p className="font-semibold">{visibleDoubt.title}</p>
+            <p>{visibleDoubt.message}</p>
+            {visibleDoubt.fix?.cost !== undefined && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="max-sm:h-11"
+                onClick={() => {
+                  const cost = visibleDoubt.fix?.cost
+                  if (cost !== undefined) setDraft((d) => ({ ...d, unit_cost: String(Number(cost.toFixed(4))) }))
+                  setShownDoubt(null)
+                }}
+              >
+                {visibleDoubt.fix.label}
+              </Button>
+            )}
+          </div>
+        )}
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -220,7 +257,7 @@ export function IngredientEditorDialog({
             Cancel
           </Button>
           <Button className="max-sm:h-11" onClick={handleSave} disabled={isSaving}>
-            {isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Ingredient'}
+            {isSaving ? 'Saving...' : visibleDoubt ? visibleDoubt.confirmLabel : editingId ? 'Save Changes' : 'Add Ingredient'}
           </Button>
         </DialogFooter>
       </DialogContent>
