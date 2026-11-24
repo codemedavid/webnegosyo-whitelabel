@@ -59,6 +59,7 @@ function fakeClient(responses: Record<string, TableResponse[]>) {
       "is",
       "neq",
       "in",
+      "or",
       "gte",
       "lte",
       "lt",
@@ -1946,5 +1947,68 @@ describe("runPlatformMutation — orders:recordPayment replays", () => {
     await expect(
       runPlatformMutation(client, TENANT, "orders:recordPayment", { orderId: "order-1", kind: "charge", amount: 150 })
     ).rejects.toThrow("duplicate key");
+  });
+});
+
+
+describe("runPlatformMutation — naming the method of a sale paid without one", () => {
+  const METHOD_ID = "7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d";
+
+  it("is claimed by the allowlist AND served by the switch", async () => {
+    expect(isPlatformRefSupported("orders:setPaymentMethod")).toBe(true);
+    const { client, calls } = fakeClient({
+      order_payments: [{ data: [], error: null }],
+      orders: [{ data: [{ id: ORDER_ID }], error: null }],
+    });
+
+    await runPlatformMutation(client, TENANT, "orders:setPaymentMethod", {
+      orderId: ORDER_ID,
+      paymentMethodId: METHOD_ID,
+      paymentMethodName: " Cash Payment ",
+    });
+
+    expect(opsOf(calls, "update")[0]).toEqual([{ payment_method_id: METHOD_ID, payment_method_name: "Cash Payment" }]);
+    // Only a paid order that has no method yet — conditional in the write.
+    expect(opsOf(calls, "in")).toContainEqual(["payment_status", ["paid", "verified"]]);
+    expect(opsOf(calls, "is")).toContainEqual(["payment_method_id", null]);
+    expect(opsOf(calls, "or")).toContainEqual(["payment_method_name.is.null,payment_method_name.eq."]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+
+  it("refuses an order that already has ledger rows (the method is on them)", async () => {
+    const { client, calls } = fakeClient({ order_payments: [{ data: [{ id: "p1" }], error: null }] });
+
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:setPaymentMethod", {
+        orderId: ORDER_ID,
+        paymentMethodName: "GCash",
+      })
+    ).rejects.toThrow(/already has payments/);
+    expect(opsOf(calls, "update")).toEqual([]);
+  });
+
+  it("says so when the write matched nothing (already named, or another branch)", async () => {
+    const { client, calls } = fakeClient({
+      order_payments: [{ data: [], error: null }],
+      orders: [{ data: [], error: null }],
+    });
+
+    await expect(
+      runPlatformMutation(
+        client,
+        TENANT,
+        "orders:setPaymentMethod",
+        { orderId: ORDER_ID, paymentMethodName: "GCash" },
+        { kind: "branch", outletId: "outlet-9" }
+      )
+    ).rejects.toThrow(/already set/);
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-9"]);
+  });
+
+  it("needs a method name", async () => {
+    const { client } = fakeClient({});
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:setPaymentMethod", { orderId: ORDER_ID, paymentMethodName: " " })
+    ).rejects.toThrow(/Pick the payment method/);
   });
 });

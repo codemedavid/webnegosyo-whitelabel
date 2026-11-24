@@ -2,14 +2,14 @@ import { Alert } from "react-native";
 import { act, renderHook } from "@testing-library/react-native";
 import { useBillCollect, type BillCollectInput } from "./use-bill-collect";
 import { billPartViews } from "./bill-parts";
-import { EMPTY_PLAN, setGuests, setMode, type BillPlan } from "./bill-plan";
+import { EMPTY_PLAN, setCustomAmount, setGuests, setMode, type BillPlan } from "./bill-plan";
 import { ROUND_ONE, ROUND_TWO } from "./bill-fixtures";
 
 const orders = [ROUND_ONE, ROUND_TWO];
 const plan = setGuests(setMode(EMPTY_PLAN, "even", 56000), 2);
 
-function setup(overrides: Partial<BillCollectInput> = {}) {
-  let latestPlan: BillPlan = plan;
+function setup(overrides: Partial<BillCollectInput> = {}, startPlan: BillPlan = plan) {
+  let latestPlan: BillPlan = startPlan;
   const input: BillCollectInput = {
     orders,
     billTitle: "Table 4",
@@ -48,6 +48,31 @@ describe("useBillCollect", () => {
     expect(receipt).toMatchObject({ cashTendered: 300, changeDue: 20, amountPaid: 280, paymentMethod: "Cash" });
     expect(options).toEqual({ printKey: "order-a,order-b:even:0", withQr: false });
     expect(hook.result.current.target).toBeNull();
+  });
+
+  it("a custom-amount guest pays ₱200 cash and the rest by GCash: two rows, share pinned", async () => {
+    const custom = setCustomAmount(setMode(EMPTY_PLAN, "custom", 56000), 0, 50000);
+    const { input, hook, plan: currentPlan } = setup({}, custom);
+    const part = billPartViews(orders, custom, 0).parts[1];
+    expect(part.amountCents).toBe(6000);
+
+    act(() => hook.result.current.open({ kind: "part", part }));
+    expect(hook.result.current.balanceDue).toBe(60);
+    await act(() =>
+      hook.result.current.submitSplit([
+        { amount: 20, methodId: "cash", methodName: "Cash", cashTendered: 20, changeDue: 0 },
+        { amount: 40, methodId: "gcash", methodName: "GCash", reference: "GC-9" },
+      ]),
+    );
+
+    const rows = (input.recordPayment as jest.Mock).mock.calls.map(([args]) => [args.paymentMethodName, args.amount]);
+    expect(rows.reduce((sum, [, amount]) => sum + amount, 0)).toBe(60);
+    expect(new Set(rows.map(([name]) => name))).toEqual(new Set(["Cash", "GCash"]));
+    expect(currentPlan().paid).toEqual({ "custom:1": 6000 });
+    // Guest 2's blank share is pinned, so retyping Guest 1 cannot move it.
+    expect(currentPlan().amounts).toEqual({ "0": 50000, "1": 6000 });
+    const [receipt] = (input.printBillOut as jest.Mock).mock.calls[0];
+    expect(receipt).toMatchObject({ paymentMethod: "Cash + GCash", paymentReference: "GC-9" });
   });
 
   it("explains a refused payment and records nothing", async () => {

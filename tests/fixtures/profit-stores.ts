@@ -60,9 +60,15 @@ const costArb = fc.oneof(
   { weight: 1, arbitrary: fc.constant(50) },
 )
 
+/**
+ * A few ingredients, so shelves (item × branch) build a history: opening
+ * counts, fixes the same day, counts after sales (profit-facts isOpeningCount).
+ */
+const itemArb = fc.constantFrom('i-0', 'i-1', 'i-2')
+
 const ledgerPlanArb = fc.record({
   isTracked: fc.boolean(),
-  sales: fc.array(fc.record({ quantity: fc.integer({ min: 1, max: 200_000 }), cost: costArb, lagMs: fc.integer({ min: 0, max: 30_000 }) }), {
+  sales: fc.array(fc.record({ item: itemArb, quantity: fc.integer({ min: 1, max: 200_000 }), cost: costArb, lagMs: fc.integer({ min: 0, max: 30_000 }) }), {
     minLength: 1,
     maxLength: 3,
   }),
@@ -71,15 +77,69 @@ const ledgerPlanArb = fc.record({
   voidLagMs: fc.oneof(fc.constant(HOUR_MS), fc.integer({ min: HOUR_MS, max: 5 * DAY_MS })),
   // A live order edited down: one sale's stock comes back, the order still counts.
   isEditedDown: fc.boolean(),
+  // Deleted from Settings: the order is gone, its ledger stays (stock_movements keep its id).
+  isDeleted: fc.oneof({ weight: 5, arbitrary: fc.constant(false) }, { weight: 1, arbitrary: fc.constant(true) }),
 })
 
 const looseMovementArb = (window: OrderWindow) =>
   fc.record({
     reason: fc.constantFrom('waste', 'stocktake', 'receive', 'transfer_out', 'transfer_in'),
+    item: itemArb,
     quantity: fc.integer({ min: -100_000, max: 100_000 }),
     cost: costArb,
     outlet: branchArb,
     at: fc.integer({ min: window.start, max: window.end - 1 }),
+  })
+
+/** A shelf's opening count and, often, a fix to it a few hours later (maybe the next business day). */
+const openingArb = (window: OrderWindow) =>
+  fc.record({
+    item: itemArb,
+    outlet: branchArb,
+    at: fc.integer({ min: window.start, max: window.end - 1 }),
+    quantity: fc.integer({ min: 1, max: 5_000_000 }),
+    fix: fc.option(fc.record({ quantity: fc.integer({ min: -5_000_000, max: 5_000_000 }), lagMs: fc.integer({ min: 1, max: 12 * HOUR_MS }) }), { freq: 2 }),
+    cost: costArb,
+  })
+
+/**
+ * A shelf counted days ago, then a count that finds less and one that finds
+ * more: back to back (one recount), or with a delivery between them (two counts).
+ */
+const recountArb = (window: OrderWindow) =>
+  fc.record({
+    item: itemArb,
+    outlet: branchArb,
+    at: fc.integer({ min: window.start, max: window.end - 1 }),
+    sinceBaseMs: fc.integer({ min: DAY_MS, max: 3 * DAY_MS }),
+    loss: fc.integer({ min: 1, max: 500_000 }),
+    gain: fc.integer({ min: 1, max: 1_000_000 }),
+    lagMs: fc.integer({ min: 2, max: 2 * HOUR_MS }),
+    hasDeliveryBetween: fc.boolean(),
+    cost: costArb,
+  })
+
+/**
+ * A delivery typed in the wrong unit ("4000" kg for 4000 g) and a count that
+ * fixes it: straight after, or with a sale / waste in between (then the count
+ * measures the shelf). The shelf was counted days before, so the fix is no
+ * opening count.
+ */
+const mistypedDeliveryArb = (window: OrderWindow) =>
+  fc.record({
+    item: itemArb,
+    outlet: branchArb,
+    at: fc.integer({ min: window.start, max: window.end - 1 }),
+    sinceBaseMs: fc.integer({ min: DAY_MS, max: 3 * DAY_MS }),
+    typed: fc.integer({ min: 1, max: 50_000_000 }),
+    // What the count finds: the delivery undone, a unit slip (1/1000 arrived), 1-2% arrived, or anything.
+    found: fc.oneof(
+      fc.constantFrom<'undone' | 'unit_slip' | 'one_percent' | 'two_percent'>('undone', 'unit_slip', 'one_percent', 'two_percent'),
+      fc.integer({ min: -60_000_000, max: 1_000_000 }),
+    ),
+    lagMs: fc.oneof(fc.integer({ min: 2, max: 30 * 60 * 1000 }), fc.integer({ min: 2, max: 2 * HOUR_MS })),
+    between: fc.constantFrom<'nothing' | 'waste' | 'second_delivery' | 'recount'>('nothing', 'nothing', 'waste', 'second_delivery', 'recount'),
+    cost: costArb,
   })
 
 const expenseArb = (days: readonly string[]) =>
@@ -120,11 +180,20 @@ export function profitStoreArb(window: OrderWindow, maxOrders = 12): fc.Arbitrar
       // reportOrdersArb's fractional offsets cluster at the window's start; spread them evenly.
       times: fc.array(fc.integer({ min: window.start, max: window.end - 1 }), { minLength: maxOrders, maxLength: maxOrders }),
       loose: fc.array(looseMovementArb(window), { maxLength: 6 }),
+      openings: fc.array(openingArb(window), { maxLength: 3 }),
+      recounts: fc.array(recountArb(window), { maxLength: 2 }),
+      mistyped: fc.array(mistypedDeliveryArb(window), { maxLength: 2 }),
       expenses: fc.array(expenseArb(days), { maxLength: 10 }),
       payouts: fc.array(payoutArb(window), { maxLength: 4 }),
     })
-    .map(({ orders, plans, times, loose, expenses, payouts }) =>
-      toStore(orders.map((order, index) => placedAt(order, times[index])), plans, loose, expenses, payouts),
+    .map(({ orders, plans, times, loose, openings, recounts, mistyped, expenses, payouts }) =>
+      toStore(
+        orders.map((order, index) => placedAt(order, times[index])),
+        plans,
+        [...loose, ...openings.flatMap(openingMoves), ...recounts.flatMap(recountMoves), ...mistyped.flatMap(mistypedMoves)],
+        expenses,
+        payouts,
+      ),
     )
 }
 
@@ -133,17 +202,62 @@ type Loose = ReturnType<typeof looseMovementArb> extends fc.Arbitrary<infer T> ?
 type ExpenseDraft = ReturnType<typeof expenseArb> extends fc.Arbitrary<infer T> ? T : never
 type PayoutDraft = ReturnType<typeof payoutArb> extends fc.Arbitrary<infer T> ? T : never
 
+type Opening = ReturnType<typeof openingArb> extends fc.Arbitrary<infer T> ? T : never
+
+function openingMoves(opening: Opening): Loose[] {
+  const count = { reason: 'stocktake' as const, item: opening.item, outlet: opening.outlet, cost: opening.cost }
+  const first: Loose = { ...count, quantity: opening.quantity, at: opening.at }
+  return opening.fix ? [first, { ...count, quantity: opening.fix.quantity, at: opening.at + opening.fix.lagMs }] : [first]
+}
+
+type Recount = ReturnType<typeof recountArb> extends fc.Arbitrary<infer T> ? T : never
+
+function recountMoves(recount: Recount): Loose[] {
+  const count = { reason: 'stocktake' as const, item: recount.item, outlet: recount.outlet, cost: recount.cost }
+  const delivery: Loose[] = recount.hasDeliveryBetween ? [{ ...count, reason: 'receive', quantity: 10_000, at: recount.at + 1 }] : []
+  return [
+    { ...count, quantity: 1_000_000, at: recount.at - recount.sinceBaseMs },
+    { ...count, quantity: -recount.loss, at: recount.at },
+    ...delivery,
+    { ...count, quantity: recount.gain, at: recount.at + recount.lagMs },
+  ]
+}
+
+type Mistyped = ReturnType<typeof mistypedDeliveryArb> extends fc.Arbitrary<infer T> ? T : never
+
+function mistypedMoves(fix: Mistyped): Loose[] {
+  const shelf = { item: fix.item, outlet: fix.outlet, cost: fix.cost }
+  const base: Loose = { ...shelf, reason: 'stocktake', quantity: 1_000_000, at: fix.at - fix.sinceBaseMs }
+  const delivery: Loose = { ...shelf, reason: 'receive', quantity: fix.typed, at: fix.at }
+  const middle: Loose[] =
+    fix.between === 'waste'
+      ? [{ ...shelf, reason: 'waste', quantity: -1, at: fix.at + 1 }]
+      : fix.between === 'second_delivery'
+        ? [{ ...shelf, reason: 'receive', quantity: 10_000, at: fix.at + 1 }]
+        : []
+  const arrived = { undone: 0, unit_slip: Math.floor(fix.typed / 1000), one_percent: Math.floor(fix.typed / 100), two_percent: Math.floor(fix.typed / 50) }
+  const countDelta = typeof fix.found === 'number' ? fix.found : arrived[fix.found] - fix.typed
+  const count: Loose = { ...shelf, reason: 'stocktake', quantity: countDelta, at: fix.at + fix.lagMs }
+  // A second count straight after the first: one recount with it.
+  const again: Loose[] = fix.between === 'recount' ? [{ ...shelf, reason: 'stocktake', quantity: 0, at: fix.at + fix.lagMs + 1 }] : []
+  return [base, delivery, ...middle, count, ...again]
+}
+
 function placedAt(order: ReportOrder, at: number): ReportOrder {
   const shift = at - order.at
   return { ...order, at, payments: order.payments.map((payment) => ({ ...payment, at: payment.at + shift })) }
 }
 
 
-function orderMovements(order: ReportOrder, plan: Plan): LedgerMovement[] {
+/** A movement before `toStore` numbers the store's ledger. */
+type Unnumbered = Omit<LedgerMovement, 'id'>
+
+function orderMovements(order: ReportOrder, plan: Plan): Unnumbered[] {
   if (!plan.isTracked) return []
   const sales = plan.sales.map(
-    (sale): LedgerMovement => ({
+    (sale): Unnumbered => ({
       reason: 'sale',
+      inventoryItemId: sale.item,
       quantityDelta: fourDecimals(-sale.quantity),
       unitCost: sale.cost === null ? null : fourDecimals(sale.cost),
       orderId: order.id,
@@ -152,7 +266,7 @@ function orderMovements(order: ReportOrder, plan: Plan): LedgerMovement[] {
     }),
   )
   const isReversed = !isLiveOrder(order)
-  const giveBack = (sale: LedgerMovement): LedgerMovement => ({
+  const giveBack = (sale: Unnumbered): Unnumbered => ({
     ...sale,
     reason: 'void',
     quantityDelta: String(sale.quantityDelta).slice(1),
@@ -171,11 +285,12 @@ function toStore(orders: ReportOrder[], plans: Plan[], loose: Loose[], drafts: E
       return cost === undefined || cost === null ? [] : [{ lineId: line.id, unitCost: fourDecimals(cost) }]
     }),
   )
-  const movements = [
+  const unnumbered = [
     ...orders.flatMap((order, index) => orderMovements(order, plans[index])),
     ...loose.map(
-      (move): LedgerMovement => ({
+      (move): Unnumbered => ({
         reason: move.reason,
+        inventoryItemId: move.item,
         // Waste only ever takes stock out.
         quantityDelta: fourDecimals(move.reason === 'waste' ? -Math.abs(move.quantity) : move.quantity),
         unitCost: move.cost === null ? null : fourDecimals(move.cost),
@@ -185,6 +300,7 @@ function toStore(orders: ReportOrder[], plans: Plan[], loose: Loose[], drafts: E
       }),
     ),
   ]
+  const movements = unnumbered.map((move, index) => ({ ...move, id: `mv-${index}` }))
   const expenses = drafts.map((draft, index) => ({
     id: `x-${index}`,
     categoryId: PROFIT_CATEGORIES[draft.category].key,
@@ -217,5 +333,15 @@ function toStore(orders: ReportOrder[], plans: Plan[], loose: Loose[], drafts: E
           },
         ],
   )
-  return { orders, dishCosts, movements, expenses: [...expenses, ...drawerExpenses], payouts }
+  // Deleted orders: gone from the store (and their dish costs with their lines), ledger kept.
+  const deleted = new Set(orders.filter((_, index) => plans[index]?.isDeleted).map((order) => order.id))
+  const kept = orders.filter((order) => !deleted.has(order.id))
+  const keptLines = new Set(kept.flatMap((order) => order.lines.map((line) => line.id)))
+  return {
+    orders: kept,
+    dishCosts: dishCosts.filter((cost) => keptLines.has(cost.lineId)),
+    movements,
+    expenses: [...expenses, ...drawerExpenses],
+    payouts,
+  }
 }

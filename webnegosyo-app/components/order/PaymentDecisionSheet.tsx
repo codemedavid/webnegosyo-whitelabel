@@ -35,6 +35,8 @@ interface PaymentDecisionSheetProps {
   summary: PaymentDecisionSummary;
   /** Why "paid" cannot be chosen by this person, shown in place of acting. */
   paidDisabledReason?: string;
+  /** Why the other answer cannot be chosen here ("Already paid" needs a payment record). */
+  unpaidDisabledReason?: string;
   isBusy: boolean;
   onPaid: () => void;
   onUnpaid: () => void;
@@ -86,6 +88,7 @@ export function PaymentDecisionSheet({
   copy,
   summary,
   paidDisabledReason,
+  unpaidDisabledReason,
   isBusy,
   onPaid,
   onUnpaid,
@@ -130,7 +133,13 @@ export function PaymentDecisionSheet({
             isBusy={isBusy}
             onPress={onPaid}
           />
-          <Choice option={copy.unpaid} tone="unpaid" isBusy={isBusy} onPress={onUnpaid} />
+          <Choice
+            option={copy.unpaid}
+            tone="unpaid"
+            disabledReason={unpaidDisabledReason}
+            isBusy={isBusy}
+            onPress={onUnpaid}
+          />
 
           <TouchableOpacity onPress={onClose} disabled={isBusy} accessibilityRole="button">
             <Text style={styles.cancel}>{isBusy ? "Saving..." : "Cancel"}</Text>

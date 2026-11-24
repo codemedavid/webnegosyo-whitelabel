@@ -56,7 +56,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 import {
-  markPaidAfterHandover,
+  syncPaidAfterHandover,
   planOrderStatusChange,
 } from "../../lib/order-status-change";
 import { hasPermission } from "../../lib/staff-permissions";
@@ -454,9 +454,10 @@ export default function OrdersScreen() {
           withOrderEventReason({ orderId, status: newStatus }, why ?? { reason: null, note: null }),
           { previousStatus },
         );
-        // Handing the order over is taking the money for it.
-        if (plan.shouldMarkPaid) {
-          await markPaidAfterHandover(updatePaymentStatus, orderId);
+        // The money is already on the ledger: the row catches up. An unpaid
+        // bill never reaches here — the list opens the order's payment question.
+        if (plan.shouldSyncPaid) {
+          await syncPaidAfterHandover(updatePaymentStatus, orderId);
         }
         // Kept on the device: the replay restores stock and pushes to
         // Loyverse once the change reaches the server (sync-order-edits.ts).

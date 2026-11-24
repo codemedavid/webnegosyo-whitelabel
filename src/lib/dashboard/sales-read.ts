@@ -1,6 +1,6 @@
 /** The contract every backend's sales reader fulfils for the admin dashboard. */
 
-import type { CustomerVisit, SaleRecord } from './sale-record'
+import type { CustomerVisit, SaleRecord, SalesBasis } from './sale-record'
 
 export interface SalesReadWindow {
   /** Earliest sale to read, epoch ms (covers the previous window and baselines). */
@@ -33,4 +33,6 @@ export interface SalesReadResult {
   notes: string[]
   /** True when the order read itself failed — the dashboard shows an error, not zeros. */
   failed: boolean
+  /** What the sales are worth (`sale-record.ts`). Absent = 'completed_totals'. */
+  basis?: SalesBasis
 }

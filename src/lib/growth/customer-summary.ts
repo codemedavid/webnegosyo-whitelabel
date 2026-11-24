@@ -13,10 +13,11 @@
  * first-timer ordered twice. New + returning + walk-in sales always equal total
  * sales.
  *
- * Pure. Only completed sales count (see `sale-record.ts`).
+ * Pure. Only completed sales count (see `sale-record.ts`); each is worth its
+ * net sales when the reader knows it (platform), else its bill (`saleAmount`).
  */
 
-import { isCompletedSale, type SaleRecord } from '@/lib/dashboard/sale-record'
+import { isCompletedSale, saleAmount, type SaleRecord } from '@/lib/dashboard/sale-record'
 import { bucketLabels, elapsedBuckets, type DashboardWindow } from '@/lib/dashboard/periods'
 import type { VisitIndex } from './classify-sale'
 
@@ -85,12 +86,12 @@ function summarizePeriod(
   for (const sale of inPeriod) {
     if (!sale.phone) {
       walkInOrders += 1
-      walkInSales += sale.total
+      walkInSales += saleAmount(sale)
       continue
     }
     const entry = spendByPhone.get(sale.phone)
     spendByPhone.set(sale.phone, {
-      spent: (entry?.spent ?? 0) + sale.total,
+      spent: (entry?.spent ?? 0) + saleAmount(sale),
       firstSeen: Math.min(entry?.firstSeen ?? sale.at, sale.at),
     })
   }
@@ -113,7 +114,7 @@ function summarizePeriod(
 
   return {
     orders: inPeriod.length,
-    sales: round2(inPeriod.reduce((total, sale) => total + sale.total, 0)),
+    sales: round2(inPeriod.reduce((total, sale) => total + saleAmount(sale), 0)),
     newCustomers,
     returningCustomers: spendByPhone.size - newCustomers,
     returningMembers,

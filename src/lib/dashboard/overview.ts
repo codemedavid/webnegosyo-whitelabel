@@ -2,14 +2,18 @@
  * The Overview tab: how much the store sold, through which doors, of what, and
  * when — each figure against the window of the same length just before it.
  *
- * Pure. Only completed sales count (see `sale-record.ts`).
+ * Pure. Which sales count and what each is worth follow the read's basis
+ * (`sale-record.ts`): on a platform store every live order at its net sales,
+ * exactly like the reports; elsewhere the bill total of completed sales.
  */
 
 import {
   SALE_CHANNEL_LABELS,
-  isCompletedSale,
+  countsTowardSales,
+  saleAmount,
   type SaleChannel,
   type SaleRecord,
+  type SalesBasis,
 } from './sale-record'
 import {
   bucketIndex,
@@ -60,7 +64,18 @@ export interface HourRow {
   sales: number
 }
 
+/** The windows the figures cover, half-open epoch ms; the report reads ask about exactly these. */
+export interface OverviewBounds {
+  start: number
+  end: number
+  previousStart: number
+  previousEnd: number
+}
+
 export interface DashboardOverview {
+  /** `net_sales`: sales are the reports' net sales (platform). */
+  basis: SalesBasis
+  bounds: OverviewBounds
   labels: string[]
   kpis: Record<KpiKey, Kpi>
   channels: BreakdownRow[]
@@ -96,7 +111,7 @@ function emptyBuckets(count: number): BucketAccumulator {
 
 function addToBucket(acc: BucketAccumulator, index: number | null, sale: SaleRecord): void {
   if (index === null) return
-  acc.sales[index] += sale.total
+  acc.sales[index] += saleAmount(sale)
   acc.orders[index] += 1
   if (sale.phone) acc.customers[index].add(sale.phone)
 }
@@ -174,12 +189,12 @@ function breakdown(
   keyOf: (sale: SaleRecord) => string,
   labelOf: (key: string) => string,
 ): BreakdownRow[] {
-  const total = sum(sales.map((sale) => sale.total))
+  const total = sum(sales.map(saleAmount))
   const rows = new Map<string, { sales: number; orders: number }>()
   for (const sale of sales) {
     const key = keyOf(sale)
     const row = rows.get(key) ?? { sales: 0, orders: 0 }
-    rows.set(key, { sales: row.sales + sale.total, orders: row.orders + 1 })
+    rows.set(key, { sales: row.sales + saleAmount(sale), orders: row.orders + 1 })
   }
   return [...rows.entries()]
     .map(([key, row]) => ({
@@ -223,7 +238,7 @@ export function buildHourProfile(sales: readonly SaleRecord[]): HourRow[] {
   }))
   for (const sale of sales) {
     const row = rows[manilaHour(sale.at)]
-    rows[row.hour] = { ...row, orders: row.orders + 1, sales: round2(row.sales + sale.total) }
+    rows[row.hour] = { ...row, orders: row.orders + 1, sales: round2(row.sales + saleAmount(sale)) }
   }
   return rows
 }
@@ -236,14 +251,20 @@ function pickBusiestHour(hours: readonly HourRow[]): HourRow | null {
   return leaders.length === 1 ? leaders[0] : null
 }
 
-export function buildOverview(sales: readonly SaleRecord[], window: DashboardWindow): DashboardOverview {
-  const completed = sales.filter(isCompletedSale)
-  const current = completed.filter((sale) => isInCurrent(window, sale.at))
-  const previous = completed.filter((sale) => isInPrevious(window, sale.at))
+export function buildOverview(
+  sales: readonly SaleRecord[],
+  window: DashboardWindow,
+  basis: SalesBasis = 'completed_totals',
+): DashboardOverview {
+  const counted = sales.filter((sale) => countsTowardSales(sale, basis))
+  const current = counted.filter((sale) => isInCurrent(window, sale.at))
+  const previous = counted.filter((sale) => isInPrevious(window, sale.at))
   const hours = buildHourProfile(current)
   const busiest = pickBusiestHour(hours)
 
   return {
+    basis,
+    bounds: { start: window.start, end: window.end, previousStart: window.previousStart, previousEnd: window.previousEnd },
     labels: bucketLabels(window),
     kpis: buildKpis(window, current, previous),
     channels: breakdown(current, (sale) => sale.channel, (key) => SALE_CHANNEL_LABELS[key as SaleChannel] ?? key),

@@ -10,6 +10,7 @@ import type { FindingAction } from "./profit-view";
 
 export const EXPENSES_ROUTE = "/(main)/expenses";
 const RECIPES_ROUTE = "/(main)/product-management";
+const STOCK_ROUTE = "/(main)/inventory";
 
 export interface DayRange {
   fromKey: string;
@@ -42,6 +43,8 @@ export function findingHref(action: FindingAction): string {
       return `${EXPENSES_ROUTE}?view=unsorted`;
     case "recipes":
       return RECIPES_ROUTE;
+    case "stock":
+      return STOCK_ROUTE;
     case "bill":
       return billHref(action.billId);
   }

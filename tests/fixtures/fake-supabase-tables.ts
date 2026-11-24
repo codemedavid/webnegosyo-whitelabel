@@ -163,7 +163,9 @@ function sortRows(rows: readonly FakeRow[], orderings: readonly Ordering[]): Fak
  * - `order`, `range` and `limit` apply when the query settles, in PostgREST's
  *   order (filter → sort → window → cap), whatever order they were chained in.
  * - Only selected columns come back, so a column the code forgets to select
- *   shows up as a missing field rather than passing silently.
+ *   shows up as a missing field rather than passing silently. A JSON key
+ *   selected as `alias:column->key` comes back under its alias (null when
+ *   the key is absent).
  * - `or()` applies simple clauses (eq, neq, is.null, not.is.null, ilike); an
  *   `or` with anything else (nested `and(...)`, other operators) is ignored, so
  *   seed only rows that filter would keep. A `not()` operator that is not
@@ -174,6 +176,20 @@ function sortRows(rows: readonly FakeRow[], orderings: readonly Ordering[]): Fak
  *   in `refuseWrites` changes nothing and reports no error, like a write
  *   row-level security turned away.
  */
+/** `alias:column->key` (or `->>`): one key of a JSON column, like PostgREST. */
+const JSON_PATH_COLUMN = /^(\w+):(\w+)->>?(\w+)$/
+
+/** One selected column of a row; a column the row lacks is left out. */
+function projectColumn(row: FakeRow, column: string): Array<[string, unknown]> {
+  const path = JSON_PATH_COLUMN.exec(column)
+  if (!path) return column in row ? [[column, row[column]]] : []
+  const [, alias, source, key] = path
+  if (!(source in row)) return []
+  const value = row[source]
+  const picked = typeof value === 'object' && value !== null ? (value as FakeRow)[key] : undefined
+  return [[alias, picked === undefined ? null : picked]]
+}
+
 export function fakeSupabaseTables(
   /** Seeded rows per table. Typed rows (interfaces) are accepted as they are. */
   tables: Record<string, ReadonlyArray<object>>,
@@ -266,7 +282,7 @@ export function fakeSupabaseTables(
     const project = (row: FakeRow): FakeRow =>
       selected === null
         ? { ...row }
-        : Object.fromEntries(selected.filter((column) => column in row).map((column) => [column, row[column]]))
+        : Object.fromEntries(selected.flatMap((column) => projectColumn(row, column)))
 
     function settleWrite({ kind, patch, options, returning }: Mutation) {
       const matches = (row: FakeRow) => predicates.every((predicate) => predicate(row))

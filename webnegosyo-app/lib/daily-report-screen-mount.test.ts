@@ -252,7 +252,9 @@ describe("daily report — who may see what", () => {
   it("does not read orders at all without Sales reports", () => {
     // The stats query is skipped unless the access decision is "shown": an
     // account the database refuses would otherwise draw an empty read as ₱0.
-    expect(screen).toMatch(/revenueAccess === "shown" \? revenueWindow : "skip"/);
+    expect(screen).toMatch(/revenueAccess === "shown" && !isPlatformSales \? revenueWindow : "skip"/);
+    // Platform stores read net sales from the reports, under the same decision.
+    expect(screen).toMatch(/revenueAccess === "shown" && isPlatformSales && tenantId \? daySalesQuery/);
   });
 
   it("tells the account why the sales are missing instead of leaving a gap", () => {

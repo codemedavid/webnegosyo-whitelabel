@@ -21,13 +21,17 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import fc from 'fast-check'
 import {
+  DELIVERY_FIX_WINDOW_MS,
   expensesByCategory,
+  isOpeningCount,
+  profitFacts,
   profitFigures,
   profitFiguresByPeriod,
   PROFIT_GRAINS,
   type ProfitRawInput,
   type ProfitScope,
 } from '@/lib/reports/profit-facts'
+import { movementCostCents } from '@/lib/reports/cogs'
 import { toExpenseCategoryTotals, toProfitFigures, toProfitPeriods } from '@/lib/reports/read/report-profit-rows'
 import { toSalesTotals } from '@/lib/reports/read/report-rpc-rows'
 import { toReportOrder, type PlatformOrderItemRow, type PlatformOrderRow, type PlatformPaymentRow } from '@/lib/reports/read/platform-order-row'
@@ -112,7 +116,9 @@ function materialize(store: ProfitStore, index: number, uuid: (key: string) => s
   const payments = tables.payments.filter((row) => Number(row.amount) > 0).map((row) => ({ ...row, order_id: local(row.order_id), payment_method_id: null }))
   const dishCosts = store.dishCosts.map((cost) => ({ order_item_id: local(cost.lineId), tenant_id: tenantId, unit_cost: cost.unitCost }))
   const movements = store.movements.map((move) => ({
+    id: local(`move:${move.id}`),
     tenant_id: tenantId,
+    inventory_item_id: local(`item:${move.inventoryItemId}`),
     reason: move.reason,
     quantity_delta: String(move.quantityDelta),
     unit_cost: move.unitCost === null ? null : String(move.unitCost),
@@ -166,7 +172,9 @@ function materialize(store: ProfitStore, index: number, uuid: (key: string) => s
     ),
     dishCosts: new Map(dishCosts.map((cost) => [cost.order_item_id, cost.unit_cost])),
     movements: movements.map((row) => ({
+      id: row.id,
       reason: row.reason,
+      inventoryItemId: row.inventory_item_id,
       quantityDelta: row.quantity_delta,
       unitCost: row.unit_cost,
       orderId: row.order_id,
@@ -228,16 +236,29 @@ const EDGE_STORE: ProfitStore = {
   ],
   movements: [
     // e2 was sold inside the window and cancelled after it: neither its sale nor its void counts.
-    { reason: 'sale', quantityDelta: '-1.0000', unitCost: '7.0000', orderId: 'e2', outletId: null, at: WINDOW.start + 7_200_000 },
-    { reason: 'void', quantityDelta: '1.0000', unitCost: '7.0000', orderId: 'e2', outletId: null, at: WINDOW.end + DAY_MS },
+    { id: 'edge-01', reason: 'sale', inventoryItemId: 'i-0', quantityDelta: '-1.0000', unitCost: '7.0000', orderId: 'e2', outletId: null, at: WINDOW.start + 7_200_000 },
+    { id: 'edge-02', reason: 'void', inventoryItemId: 'i-0', quantityDelta: '1.0000', unitCost: '7.0000', orderId: 'e2', outletId: null, at: WINDOW.end + DAY_MS },
     // e1 (live) edited down: its void counts.
-    { reason: 'void', quantityDelta: '1.0000', unitCost: '3.0000', orderId: 'e1', outletId: null, at: WINDOW.end - 2 },
-    { reason: 'sale', quantityDelta: '-1.0000', unitCost: '0.0050', orderId: null, outletId: null, at: WINDOW.start },
-    { reason: 'void', quantityDelta: '1.0000', unitCost: '0.0050', orderId: null, outletId: null, at: WINDOW.start + 1 },
-    { reason: 'sale', quantityDelta: '-3.0000', unitCost: '0.0050', orderId: null, outletId: 'b-0', at: WINDOW.end - 1 },
-    { reason: 'waste', quantityDelta: '-0.0001', unitCost: '50000.0000', orderId: null, outletId: 'b-1', at: WINDOW.start - 1 },
-    { reason: 'stocktake', quantityDelta: '2.5000', unitCost: '10.0010', orderId: null, outletId: null, at: WINDOW.end },
-    { reason: 'stocktake', quantityDelta: '-2.5000', unitCost: null, orderId: null, outletId: null, at: WINDOW.start + DAY_MS },
+    { id: 'edge-03', reason: 'void', inventoryItemId: 'i-0', quantityDelta: '1.0000', unitCost: '3.0000', orderId: 'e1', outletId: null, at: WINDOW.end - 2 },
+    { id: 'edge-04', reason: 'sale', inventoryItemId: 'i-0', quantityDelta: '-1.0000', unitCost: '0.0050', orderId: null, outletId: null, at: WINDOW.start },
+    { id: 'edge-05', reason: 'void', inventoryItemId: 'i-0', quantityDelta: '1.0000', unitCost: '0.0050', orderId: null, outletId: null, at: WINDOW.start + 1 },
+    { id: 'edge-06', reason: 'sale', inventoryItemId: 'i-0', quantityDelta: '-3.0000', unitCost: '0.0050', orderId: null, outletId: 'b-0', at: WINDOW.end - 1 },
+    { id: 'edge-07', reason: 'waste', inventoryItemId: 'i-0', quantityDelta: '-0.0001', unitCost: '50000.0000', orderId: null, outletId: 'b-1', at: WINDOW.start - 1 },
+    { id: 'edge-08', reason: 'stocktake', inventoryItemId: 'i-0', quantityDelta: '2.5000', unitCost: '10.0010', orderId: null, outletId: null, at: WINDOW.end },
+    { id: 'edge-09', reason: 'stocktake', inventoryItemId: 'i-0', quantityDelta: '-2.5000', unitCost: null, orderId: null, outletId: null, at: WINDOW.start + DAY_MS },
+    // Opening counts: 500 typed for 10 and fixed the same day are no cost; a count after a sale is.
+    { id: 'edge-10', reason: 'stocktake', inventoryItemId: 'i-1', quantityDelta: '500.0000', unitCost: '40.0000', orderId: null, outletId: null, at: WINDOW.start + 2 * 3_600_000 },
+    { id: 'edge-11', reason: 'stocktake', inventoryItemId: 'i-1', quantityDelta: '-490.0000', unitCost: '40.0000', orderId: null, outletId: null, at: WINDOW.start + 3 * 3_600_000 },
+    { id: 'edge-12', reason: 'sale', inventoryItemId: 'i-1', quantityDelta: '-1.0000', unitCost: '40.0000', orderId: null, outletId: null, at: WINDOW.start + 4 * 3_600_000 },
+    { id: 'edge-13', reason: 'stocktake', inventoryItemId: 'i-1', quantityDelta: '-1.0000', unitCost: '40.0000', orderId: null, outletId: null, at: WINDOW.start + 5 * 3_600_000 },
+    // Found 3 more: gives back the 1 lost (P40), the other 2 arrived undelivered (no cost).
+    { id: 'edge-g1', reason: 'stocktake', inventoryItemId: 'i-1', quantityDelta: '3.0000', unitCost: '40.0000', orderId: null, outletId: null, at: WINDOW.start + 6 * 3_600_000 },
+    // Same instant: taken in id order (the loss first, then the gain gives it back).
+    { id: 'edge-t1', reason: 'stocktake', inventoryItemId: 'i-1', quantityDelta: '-2.0000', unitCost: '40.0000', orderId: null, outletId: null, at: WINDOW.start + 7 * 3_600_000 },
+    { id: 'edge-t2', reason: 'stocktake', inventoryItemId: 'i-1', quantityDelta: '2.0000', unitCost: '40.0000', orderId: null, outletId: null, at: WINDOW.start + 7 * 3_600_000 },
+    // Opened the evening before the window, recounted inside it the next business day: a measurement.
+    { id: 'edge-14', reason: 'stocktake', inventoryItemId: 'i-2', quantityDelta: '8.0000', unitCost: '5.0000', orderId: null, outletId: 'b-0', at: WINDOW.start - 3_600_000 },
+    { id: 'edge-15', reason: 'stocktake', inventoryItemId: 'i-2', quantityDelta: '-2.0000', unitCost: '5.0000', orderId: null, outletId: 'b-0', at: WINDOW.start + 3_600_000 },
   ],
   expenses: [
     { id: 'x-first', categoryId: 'rent', amountCents: 1_500_000, spentOn: '2026-09-25', outletId: null, isStockPurchase: false, status: 'recorded', shiftCashMovementId: null },
@@ -325,6 +346,25 @@ function hasSaleCancelledAfterWindow(store: Materialized): boolean {
   )
 }
 
+function hasDeletedOrderSale(store: Materialized): boolean {
+  const known = new Set(store.raw.orders.map((order) => order.id))
+  return store.raw.movements.some((move) => move.reason === 'sale' && inside(move.at) && move.orderId !== null && !known.has(move.orderId))
+}
+
+function hasCountRightAfterDelivery(store: Materialized): boolean {
+  return store.raw.movements.some((count) => {
+    if (count.reason !== 'stocktake' || !inside(count.at) || Number(count.quantityDelta) >= 0 || count.unitCost === null) return false
+    const before = store.raw.movements
+      .filter((move) => move.inventoryItemId === count.inventoryItemId && move.outletId === count.outletId && move.at < count.at)
+      .sort((a, b) => b.at - a.at)
+    const delivery = before[0]
+    // The fix applies (within 30 minutes, no bigger than the delivery) — and, elsewhere, does not.
+    const missing = -Number(count.quantityDelta)
+    const typed = Number(delivery?.quantityDelta)
+    return delivery?.reason === 'receive' && count.at - delivery.at <= DELIVERY_FIX_WINDOW_MS && missing <= typed && missing * 100 >= typed * 99
+  })
+}
+
 const byId = <T extends { categoryId: string }>(rows: readonly T[]) => [...rows].sort((a, b) => (a.categoryId < b.categoryId ? -1 : 1))
 
 describe('SQL profit functions = the TypeScript profit engine, to the centavo', () => {
@@ -374,13 +414,41 @@ describe('SQL profit functions = the TypeScript profit engine, to the centavo', 
     expect(wholes.some((figures) => figures.ledgerCogsCents !== 0)).toBe(true)
     expect(wholes.some((figures) => figures.fallbackCogsCents > 0)).toBe(true)
     expect(wholes.some((figures) => figures.uncostedMovements > 0)).toBe(true)
-    expect(wholes.some((figures) => figures.countVarianceCents < 0)).toBe(true)
+    // A count that gives a loss back (a recount), inside the window.
+    const givesBack = stores.filter((store) =>
+      profitFacts({ ...store.raw, scope: { ...WINDOW, outletId: null, unassigned: false } }).some(
+        (fact) => fact.kind === 'movement' && fact.reason === 'stocktake' && (fact.cents ?? 0) < 0,
+      ),
+    )
+    expect(givesBack.length).toBeGreaterThan(5)
     expect(wholes.some((figures) => figures.ingredientStockCents > 0)).toBe(true)
     expect(wholes.some((figures) => figures.unsortedPayouts > 0)).toBe(true)
     expect(wholes.some((figures) => figures.groupCents.not_expense > 0)).toBe(true)
     expect(wholes.some((figures) => figures.groupCents.capex > 0)).toBe(true)
     expect(wholes.some((figures) => figures.fallbackOrders > 0 && figures.saleMovements > 0)).toBe(true)
+    // Opening counts left out, and counts that measure a shelf kept, both inside the window.
+    const counts = stores.flatMap((store) =>
+      store.raw.movements
+        .filter((move) => move.reason === 'stocktake' && inside(move.at) && move.unitCost !== null && Number(move.quantityDelta) !== 0)
+        .map((move) => isOpeningCount(move, store.raw.movements, store.raw.schedule)),
+    )
+    expect(counts.filter(Boolean).length).toBeGreaterThan(5)
+    expect(counts.filter((isOpening) => !isOpening).length).toBeGreaterThan(5)
+    // Counts that find more than earlier counts took: the excess is no negative cost.
+    const capped = stores.filter((store) => {
+      const scope = { ...WINDOW, outletId: null, unassigned: false }
+      const measured = store.raw.movements.filter(
+        (move) => move.reason === 'stocktake' && inside(move.at) && !isOpeningCount(move, store.raw.movements, store.raw.schedule),
+      )
+      const uncapped = measured.reduce((sum, move) => sum + (movementCostCents(move.quantityDelta, move.unitCost) ?? 0), 0)
+      return profitFigures({ ...store.raw, scope }).countVarianceCents > uncapped
+    })
+    expect(capped.length).toBeGreaterThan(5)
     // An order cancelled later: its sale inside the window, its void after it.
     expect(stores.filter(hasSaleCancelledAfterWindow).length).toBeGreaterThan(1)
+    // A deleted order: its sale inside the window, the order gone.
+    expect(stores.filter(hasDeletedOrderSale).length).toBeGreaterThan(5)
+    // A count that finds less straight after a same-day delivery (the mistyped-unit fix).
+    expect(stores.filter(hasCountRightAfterDelivery).length).toBeGreaterThan(5)
   })
 })

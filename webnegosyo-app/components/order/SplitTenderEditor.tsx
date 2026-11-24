@@ -21,6 +21,8 @@ interface SplitTenderEditorProps {
   methods: readonly CollectMethodOption[];
   balanceDue: number;
   onChange: (lines: readonly TenderLine[]) => void;
+  /** Methods whose reference must be typed (the register asks evidence for non-cash). */
+  isReferenceRequired?: (methodId: string) => boolean;
 }
 
 /**
@@ -28,7 +30,7 @@ interface SplitTenderEditorProps {
  * amount each, the last one taking the rest when left blank. The rules are
  * `lib/bill/split-tender.ts`'s; this only draws them.
  */
-export function SplitTenderEditor({ lines, methods, balanceDue, onChange }: SplitTenderEditorProps) {
+export function SplitTenderEditor({ lines, methods, balanceDue, onChange, isReferenceRequired }: SplitTenderEditorProps) {
   const cents = resolveTenderCents(lines, toCents(balanceDue));
   const coverage = splitTenderCoverage(lines, balanceDue);
   const edit = (key: string, change: Partial<Omit<TenderLine, "key">>) => onChange(updateTenderLine(lines, key, change));
@@ -43,6 +45,7 @@ export function SplitTenderEditor({ lines, methods, balanceDue, onChange }: Spli
           isLast={index === lines.length - 1}
           resolvedCents={cents[index]}
           methods={methods}
+          isReferenceRequired={isReferenceRequired}
           onEdit={(change) => edit(line.key, change)}
           onRemove={lines.length > MIN_TENDER_LINES ? () => onChange(removeTenderLine(lines, line.key)) : undefined}
         />
@@ -73,11 +76,21 @@ interface TenderLineRowProps {
   isLast: boolean;
   resolvedCents: number | null;
   methods: readonly CollectMethodOption[];
+  isReferenceRequired?: (methodId: string) => boolean;
   onEdit: (change: Partial<Omit<TenderLine, "key">>) => void;
   onRemove?: () => void;
 }
 
-function TenderLineRow({ line, index, isLast, resolvedCents, methods, onEdit, onRemove }: TenderLineRowProps) {
+function TenderLineRow({
+  line,
+  index,
+  isLast,
+  resolvedCents,
+  methods,
+  isReferenceRequired,
+  onEdit,
+  onRemove,
+}: TenderLineRowProps) {
   const method = methods.find((m) => m.id === line.methodId) ?? null;
   const label = `Payment ${index + 1}`;
   const isRest = isLast && line.amount.trim() === "";
@@ -148,7 +161,7 @@ function TenderLineRow({ line, index, isLast, resolvedCents, methods, onEdit, on
           style={styles.input}
           value={line.reference}
           autoCapitalize="characters"
-          placeholder={`${method.name} reference (optional)`}
+          placeholder={`${method.name} reference${isReferenceRequired?.(method.id) ? "" : " (optional)"}`}
           placeholderTextColor={colors.textSecondary}
           onChangeText={(next) => onEdit({ reference: next })}
         />

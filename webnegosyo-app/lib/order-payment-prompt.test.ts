@@ -1,5 +1,6 @@
 import {
   confirmPaidRoute,
+  handoverPaidRoute,
   paymentPromptCopy,
   paymentPromptFor,
 } from "./order-payment-prompt";
@@ -83,9 +84,43 @@ describe("paymentPromptCopy", () => {
       label: "Collect ₱200.00 now",
       description: "Enter the payment, then mark the order delivered.",
     });
+    // No method on the order: "already paid" asks HOW, never just "paid".
+    expect(copy.unpaid.label).toBe("Already paid — choose how");
+    expect(copy.unpaid.description).toMatch(/recorded under that method/);
+  });
+
+  it("names the order's own method when it has one", () => {
+    const copy = paymentPromptCopy("handover", { amount: 200, methodName: " GCash " });
     expect(copy.unpaid).toEqual({
-      label: "Already paid — mark delivered",
-      description: "Use this if the money was taken some other way. The order is marked paid.",
+      label: "Already paid by GCash — mark delivered",
+      description: "The order is marked paid by GCash.",
     });
   });
+});
+
+describe("handoverPaidRoute — what Already paid does", () => {
+  const allowed = { allowed: true };
+
+  it("marks paid when the order carries its method (the reports file it there)", () => {
+    expect(handoverPaidRoute("GCASH PAYMENT", allowed)).toBe("mark-paid");
+  });
+
+  it("asks how when the order has no method — the Koko pay-later case", () => {
+    expect(handoverPaidRoute(null, allowed)).toBe("pick-method");
+    expect(handoverPaidRoute("  ", allowed)).toBe("pick-method");
+  });
+
+  it.each(["permission", "branch", "ledger_unavailable", "overpaid"] as const)(
+    "refuses (keeps the order as it is) when collecting is refused for %s",
+    (code) => {
+      expect(handoverPaidRoute(undefined, { allowed: false, reason: "no", code })).toBe("refuse");
+    },
+  );
+
+  it.each(["ledger_absent", "backend"] as const)(
+    "keeps the old mark-paid when the backend cannot hold a ledger row (%s)",
+    (code) => {
+      expect(handoverPaidRoute(undefined, { allowed: false, reason: "no", code })).toBe("mark-paid");
+    },
+  );
 });

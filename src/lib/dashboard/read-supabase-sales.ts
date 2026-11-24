@@ -9,6 +9,12 @@
  *    classifier needs to know whether a phone has ever bought here before —
  *    skipped unless `includePriorVisits` (the Overview never uses them).
  *
+ * Every sale carries its NET SALES (`sale-record.ts`), worked out by the one
+ * sales model from the order's own total, fees and discount, and the read is
+ * marked `net_sales`: the Overview then counts what the reports count. Best
+ * sellers take each line's share of that net (`orderLineFigures`), so the
+ * dishes add up to the order exactly as on /admin/reports/items.
+ *
  * A failed read is reported in `notes`, never rendered as zero sales.
  */
 
@@ -16,7 +22,17 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveCustomerIdentity } from '@/lib/customer-identity'
+import { fromCents } from '@/lib/reports/money'
+import { orderFigures, orderLineFigures } from '@/lib/reports/sales-model'
 import {
+  NET_SALES_EXTRA_COLUMNS,
+  REPORT_ITEM_COLUMNS,
+  toNetSalesOrder,
+  type NetSalesOrderRow,
+  type PlatformOrderItemRow,
+} from '@/lib/reports/read/platform-order-row'
+import {
+  countsTowardSales,
   isCompletedSale,
   toFiniteNumber,
   toOrderTypeLabel,
@@ -34,11 +50,11 @@ const MAX_ROWS = 60_000
 const ITEM_CHUNK = 150
 const ITEM_CONCURRENCY = 4
 
-const ORDER_SELECT = 'id, customer_contact, status, payment_status, source, order_type, outlet_id, total, created_at'
+const ORDER_SELECT = `id, customer_contact, status, payment_status, source, order_type, outlet_id, total, created_at, ${NET_SALES_EXTRA_COLUMNS}`
 const VISIT_SELECT = 'customer_contact, status, payment_status, source, total, created_at'
-const ITEM_SELECT = 'order_id, menu_item_id, menu_item_name, quantity, price, subtotal'
 
-interface OrderRow {
+/** The columns every sale is built from; net sales needs the rest of `OrderRow`. */
+interface BaseOrderRow {
   id: string
   customer_contact: string | null
   status: string | null
@@ -50,14 +66,7 @@ interface OrderRow {
   created_at: string
 }
 
-interface ItemRow {
-  order_id: string
-  menu_item_id: string | null
-  menu_item_name: string | null
-  quantity: number | string | null
-  price: number | string | null
-  subtotal: number | string | null
-}
+type OrderRow = BaseOrderRow & NetSalesOrderRow
 
 /** Page batches read at once once a history overflows its first page. */
 const PAGE_CONCURRENCY = 4
@@ -70,7 +79,7 @@ function phoneOf(contact: string | null): string | null {
   return resolveCustomerIdentity({ contact }).phoneE164
 }
 
-function toSale(row: OrderRow): SaleRecord {
+function toBaseSale(row: BaseOrderRow): SaleRecord {
   return {
     id: row.id,
     at: Date.parse(row.created_at),
@@ -85,37 +94,43 @@ function toSale(row: OrderRow): SaleRecord {
   }
 }
 
-function toItem(row: ItemRow): SaleItem {
-  const quantity = toFiniteNumber(row.quantity)
-  const subtotal = row.subtotal === null ? null : toFiniteNumber(row.subtotal)
-  return {
-    menuItemId: row.menu_item_id,
-    name: row.menu_item_name ?? '',
-    quantity,
-    revenue: subtotal ?? toFiniteNumber(row.price) * quantity,
-  }
+/** A sale with its net sales, from the one sales model. */
+function toSale(row: OrderRow): SaleRecord {
+  return { ...toBaseSale(row), net: fromCents(orderFigures(toNetSalesOrder(row)).netCents) }
+}
+
+/** The order's dishes, each worth its share of the order's net sales (as Reports › Items). */
+function toItems(row: OrderRow, lines: readonly PlatformOrderItemRow[]): SaleItem[] {
+  return orderLineFigures(toNetSalesOrder(row, lines))
+    .filter((line) => !line.isUnrecorded)
+    .map((line) => ({
+      menuItemId: line.menuItemId,
+      name: line.name,
+      quantity: line.quantity,
+      revenue: fromCents(line.netCents),
+    }))
 }
 
 async function readItems(
   client: SupabaseClient,
   orderIds: string[],
-): Promise<{ byOrder: Map<string, SaleItem[]>; error: string | null }> {
+): Promise<{ byOrder: Map<string, PlatformOrderItemRow[]>; error: string | null }> {
   const chunks: string[][] = []
   for (let i = 0; i < orderIds.length; i += ITEM_CHUNK) chunks.push(orderIds.slice(i, i + ITEM_CHUNK))
 
-  const byOrder = new Map<string, SaleItem[]>()
+  const byOrder = new Map<string, PlatformOrderItemRow[]>()
   for (let i = 0; i < chunks.length; i += ITEM_CONCURRENCY) {
     const results = await Promise.all(
       chunks.slice(i, i + ITEM_CONCURRENCY).map((ids) =>
-        readPages<ItemRow>((from, to) =>
-          client.from('order_items').select(ITEM_SELECT).in('order_id', ids).order('id').range(from, to),
+        readPages<PlatformOrderItemRow>((from, to) =>
+          client.from('order_items').select(REPORT_ITEM_COLUMNS).in('order_id', ids).order('id').range(from, to),
         ),
       ),
     )
     const failed = results.find((result) => result.error)
     if (failed) return { byOrder: new Map(), error: failed.error }
     for (const row of results.flatMap((result) => result.rows)) {
-      byOrder.set(row.order_id, [...(byOrder.get(row.order_id) ?? []), toItem(row)])
+      byOrder.set(row.order_id, [...(byOrder.get(row.order_id) ?? []), row])
     }
   }
   return { byOrder, error: null }
@@ -126,7 +141,7 @@ async function readPriorVisits(
   tenantId: string,
   window: SalesReadWindow,
 ): Promise<{ visits: CustomerVisit[]; note: string | null }> {
-  const result = await readPages<Omit<OrderRow, 'id' | 'order_type' | 'outlet_id'>>((from, to) => {
+  const result = await readPages<Omit<BaseOrderRow, 'id' | 'order_type' | 'outlet_id'>>((from, to) => {
     let query = client
       .from('orders')
       .select(VISIT_SELECT)
@@ -146,7 +161,8 @@ async function readPriorVisits(
     return { visits: [], note: `Earlier customer history could not be read, so some regulars may show as first-timers (${result.error}).` }
   }
   const visits = result.rows.flatMap((row) => {
-    const sale = toSale({ ...row, id: '', order_type: null, outlet_id: null })
+    // Customer history keeps the completed-visit rule (Growth), whatever the money basis.
+    const sale = toBaseSale({ ...row, id: '', order_type: null, outlet_id: null })
     return sale.phone && isCompletedSale(sale) ? [{ phone: sale.phone, at: sale.at }] : []
   })
   return {
@@ -189,20 +205,26 @@ export async function readSupabaseSales(
   const notes: string[] = []
   if (orders.truncated) notes.push('This store has more orders than one read can hold; older days are partial.')
 
+  const rowsById = new Map(orders.rows.map((row) => [row.id, row]))
   let sales = orders.rows.map(toSale)
   if (window.includeItems) {
     const wanted = new Set(
-      sales.filter((sale) => sale.at >= window.currentStart && isCompletedSale(sale)).map((sale) => sale.id),
+      sales
+        .filter((sale) => sale.at >= window.currentStart && countsTowardSales(sale, 'net_sales'))
+        .map((sale) => sale.id),
     )
     const items = await readItems(client, [...wanted])
     if (items.error) {
       notes.push(`Order items could not be read, so top items are unavailable (${items.error}).`)
     } else {
-      sales = sales.map((sale) => (wanted.has(sale.id) ? { ...sale, items: items.byOrder.get(sale.id) ?? [] } : sale))
+      sales = sales.map((sale) => {
+        const row = rowsById.get(sale.id)
+        return wanted.has(sale.id) && row ? { ...sale, items: toItems(row, items.byOrder.get(sale.id) ?? []) } : sale
+      })
     }
   }
 
   if (prior.note) notes.push(prior.note)
 
-  return { sales, priorVisits: prior.visits, notes, failed: false }
+  return { sales, priorVisits: prior.visits, notes, failed: false, basis: 'net_sales' }
 }

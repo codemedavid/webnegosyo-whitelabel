@@ -106,3 +106,50 @@ export function toReportOrder(
     lines: items.map(toLine),
   }
 }
+
+/**
+ * Beside `id`, `status` and `total`, the order columns NET SALES needs, for
+ * readers that count sales but not payments. The POS blob's discount is read on
+ * its own (`customer_data->discount`) so a long read does not carry every
+ * order's whole `customer_data`.
+ */
+export const NET_SALES_EXTRA_COLUMNS =
+  'service_charge_amount, delivery_fee, discount_data, customer_discount:customer_data->discount'
+
+export interface NetSalesOrderRow {
+  id: string
+  status: string | null
+  total: Numeric
+  service_charge_amount: Numeric
+  delivery_fee: Numeric
+  discount_data: unknown
+  /** `customer_data->discount`: read only when `discount_data` holds none (`readOrderDiscount`). */
+  customer_discount: unknown
+}
+
+/**
+ * Just enough of a report order for `orderFigures(…).netCents` / `isLive` and
+ * `orderLineFigures`: net sales comes from the order's own total, fees and
+ * discount (the lines only split it). No ledger and no table are read, so its
+ * paid / collected figures mean nothing — use `toReportOrder` for those.
+ */
+export function toNetSalesOrder(row: NetSalesOrderRow, items: readonly PlatformOrderItemRow[] = []): ReportOrder {
+  return {
+    id: row.id,
+    at: 0,
+    status: row.status ?? '',
+    paymentStatus: null,
+    channel: 'online',
+    orderType: '',
+    outletId: null,
+    hasTable: false,
+    total: row.total,
+    serviceCharge: row.service_charge_amount,
+    deliveryFee: row.delivery_fee,
+    discount: readOrderDiscount({ discount_data: row.discount_data, customer_data: { discount: row.customer_discount } }),
+    methodId: null,
+    methodName: null,
+    payments: [],
+    lines: items.map(toLine),
+  }
+}

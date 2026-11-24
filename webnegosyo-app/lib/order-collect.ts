@@ -17,10 +17,23 @@ import type { LedgerState } from "./order-ledger";
 import { hasPermission, type StaffPermissionHolder } from "./staff-permissions";
 import { computeChange } from "./pos-cash";
 
+/** Why a collection was refused, for callers that branch on it. */
+export type CollectRefusal =
+  | "cancelled"
+  | "ledger_unavailable"
+  | "ledger_absent"
+  | "backend"
+  | "settled"
+  | "overpaid"
+  | "permission"
+  | "branch";
+
 export interface CollectGate {
   allowed: boolean;
   /** User-facing copy, shown verbatim. */
   reason?: string;
+  /** Present on a refusal. */
+  code?: CollectRefusal;
 }
 
 const ALLOWED: CollectGate = { allowed: true };
@@ -74,6 +87,7 @@ export function canCollectPayment({
     return {
       allowed: false,
       reason: "This order was cancelled, so there is nothing left to collect.",
+      code: "cancelled",
     };
   }
 
@@ -84,6 +98,7 @@ export function canCollectPayment({
       allowed: false,
       reason:
         "This order's payment history could not be loaded, so no payment can be taken safely.",
+      code: "ledger_unavailable",
     };
   }
 
@@ -96,6 +111,7 @@ export function canCollectPayment({
       reason:
         "This store needs a backend update before payments can be recorded here. " +
         "Ask support to redeploy the store, then try again.",
+      code: "ledger_absent",
     };
   }
 
@@ -103,11 +119,12 @@ export function canCollectPayment({
     return {
       allowed: false,
       reason: "Recording payments is not supported on this store's order backend.",
+      code: "backend",
     };
   }
 
   if (Math.abs(balance) < SETTLED_EPSILON) {
-    return { allowed: false, reason: "This order is already fully paid." };
+    return { allowed: false, reason: "This order is already fully paid.", code: "settled" };
   }
 
   // A refund moves money OUT of the drawer and is gated by `order_refund`.
@@ -116,13 +133,14 @@ export function canCollectPayment({
     return {
       allowed: false,
       reason: "This order is overpaid. Issue a refund from the register instead.",
+      code: "overpaid",
     };
   }
 
   // Taking money at the counter is the register's job, so it is the register's
   // permission. `orders` on its own only advances an order's status.
   if (!hasPermission(user, "pos")) {
-    return { allowed: false, reason: "You do not have permission to take payments." };
+    return { allowed: false, reason: "You do not have permission to take payments.", code: "permission" };
   }
 
   // Reads are narrowed to the branch already, but a write addressed by id never
@@ -131,6 +149,7 @@ export function canCollectPayment({
     return {
       allowed: false,
       reason: "This order was taken by another branch and cannot be settled here.",
+      code: "branch",
     };
   }
 

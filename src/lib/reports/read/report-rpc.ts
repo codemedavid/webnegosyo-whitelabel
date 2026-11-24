@@ -106,8 +106,8 @@ const INVALID_PARAMETER = '22023'
 const CLOSED_CHUNK_TTL_SECONDS = 60 * 60
 /** Months read at once: a year is twelve calls, and every store shares one database. */
 const CHUNK_CONCURRENCY = 3
-/** Bump when a report function's output changes, so no cached month outlives it. */
-const CHUNK_CACHE_VERSION = 'v1'
+/** Bump when a report function's output changes, so no cached month outlives it (v2: profit stock counts, 20261109210839; v3: undone deliveries + deleted orders, 20261124120000). */
+const CHUNK_CACHE_VERSION = 'v3'
 
 export type ReportDimension = 'source' | 'order_type' | 'outlet'
 

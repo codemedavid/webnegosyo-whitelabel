@@ -17,6 +17,8 @@ interface HeroRevenueCardProps {
   delta?: number | null;
   /** Names the comparison, e.g. "yesterday". */
   comparisonLabel?: string;
+  /** What the number is: "Net sales" (the reports' figure) or "Orders total". */
+  title?: string;
 }
 
 /**
@@ -32,13 +34,14 @@ export function HeroRevenueCard({
   isLive = false,
   delta,
   comparisonLabel = "yesterday",
+  title = "Revenue",
 }: HeroRevenueCardProps) {
   const hasDelta = delta !== undefined;
   const isUp = typeof delta === "number" && delta >= 0;
   return (
     <View style={styles.card}>
       <View style={styles.topRow}>
-        <Text style={styles.eyebrow}>Revenue · {periodLabel}</Text>
+        <Text style={styles.eyebrow}>{title} · {periodLabel}</Text>
         {isLive && (
           <View style={styles.liveRow}>
             <View style={styles.liveDot} />

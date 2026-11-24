@@ -31,6 +31,9 @@ import {
 } from '@/lib/customer-order-facts'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { readPagesConcurrently } from '@/lib/dashboard/paged-read'
+import { fromCents } from '@/lib/reports/money'
+import { orderFigures } from '@/lib/reports/sales-model'
+import { NET_SALES_EXTRA_COLUMNS, toNetSalesOrder, type NetSalesOrderRow } from '@/lib/reports/read/platform-order-row'
 import { mapWithConcurrency } from '@/lib/async/map-with-concurrency'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -48,8 +51,8 @@ const ORDER_PAGE_CONCURRENCY = 6
 const ITEM_ORDER_CHUNK_SIZE = 150
 const ITEM_READ_CONCURRENCY = 8
 
-const ORDERS_SELECT =
-  'id, customer_id, customer_contact, status, payment_status, outlet_id, total, created_at, updated_at, source'
+/** The columns net sales needs ride along, so revenue is the reports' net sales. */
+const ORDERS_SELECT = `id, customer_id, customer_contact, status, payment_status, outlet_id, total, created_at, updated_at, source, ${NET_SALES_EXTRA_COLUMNS}`
 const ORDER_ITEMS_SELECT = 'order_id, menu_item_id, menu_item_name, quantity, price'
 const LEDGER_SELECT =
   'backend, external_order_id, customer_id, source, status, payment_status, outlet_id, total, ordered_at, completed_at, updated_at, items'
@@ -111,8 +114,16 @@ async function readPages<T>(
 
 type ItemRow = PlatformOrderItemFactRow & { order_id: string }
 
+/** A platform order as this reader selects it: the fact's columns plus what net sales needs. */
+type PlatformOrderSalesRow = PlatformOrderFactRow & NetSalesOrderRow
+
+/** The fact, with the order's net sales from the one sales model. */
+function toPlatformFact(order: PlatformOrderSalesRow, items: PlatformOrderItemFactRow[]): CustomerOrderFact {
+  return { ...platformOrderToFact(order, items), netSales: fromCents(orderFigures(toNetSalesOrder(order)).netCents) }
+}
+
 interface PlatformOrdersRead {
-  orders: PlatformOrderFactRow[]
+  orders: PlatformOrderSalesRow[]
   error: string | null
   truncated: boolean
 }
@@ -137,7 +148,7 @@ async function readPlatformOrders(
     if (options.outletId) query = query.eq('outlet_id', options.outletId)
     return query.order('created_at', { ascending: true }).order('id').range(from, to)
   }
-  const { rows, error, truncated } = await readPagesConcurrently<PlatformOrderFactRow>(
+  const { rows, error, truncated } = await readPagesConcurrently<PlatformOrderSalesRow>(
     page as never,
     { pageSize: PAGE_SIZE, maxRows: ROW_LIMIT, concurrency: ORDER_PAGE_CONCURRENCY },
   )
@@ -200,7 +211,7 @@ async function fetchPlatformFacts(
     // Totals and visit dates are still true without line items; only the
     // favourite-item ranking degrades, so say so rather than losing the window.
     return {
-      facts: orders.map((order) => platformOrderToFact(order, [])),
+      facts: orders.map((order) => toPlatformFact(order, [])),
       coverage: {
         complete: false,
         note: `Order items could not be read, so favourite items are unavailable: ${items.error.message}`,
@@ -214,7 +225,7 @@ async function fetchPlatformFacts(
   }
 
   return {
-    facts: orders.map((order) => platformOrderToFact(order, itemsByOrder.get(order.id) ?? [])),
+    facts: orders.map((order) => toPlatformFact(order, itemsByOrder.get(order.id) ?? [])),
     coverage: items.truncated
       ? { complete: false, note: 'Some order items exceeded the reading limit; favourite items may be incomplete.' }
       : truncated

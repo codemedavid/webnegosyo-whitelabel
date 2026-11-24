@@ -145,11 +145,50 @@ describe("handing over an unpaid order", () => {
     expect(alert).toHaveBeenCalledWith("Part payment recorded", expect.any(String));
   });
 
-  it("already paid: delivers straight away", async () => {
+  it("already paid, no method on the order: asks how, records it, then delivers", async () => {
+    // Koko Coffee 2026-11-24: this tap used to write `paid` with no method and
+    // no ledger row, filing the sale under "Paid, method not picked".
     const { hook, calls } = setup({ order: readyOrder });
     act(() => hook.result.current.requestStatusChange("delivered"));
     await act(async () => hook.result.current.decisionSheet.onUnpaid());
-    expect(calls).toEqual(["status:delivered"]);
+    expect(calls).toEqual([]);
+    expect(hook.result.current.collectSheet.visible).toBe(true);
+    expect(hook.result.current.collectSheet.isAlreadyPaid).toBe(true);
+    expect(hook.result.current.collectSheet.title).toBe("How was it paid?");
+
+    await act(async () =>
+      hook.result.current.collectSheet.onSubmit({ amount: 450, methodId: "cash", methodName: "Cash" }),
+    );
+    expect(calls).toEqual(["ledger:450", "payment:paid", "status:delivered"]);
+  });
+
+  it("already paid by the order's own method: delivered, then marked paid", async () => {
+    const { hook, calls } = setup({ order: { ...readyOrder, paymentMethod: "GCash" } });
+    act(() => hook.result.current.requestStatusChange("delivered"));
+    await act(async () => hook.result.current.decisionSheet.onUnpaid());
+    expect(calls).toEqual(["status:delivered", "payment:paid"]);
+    expect(hook.result.current.decisionSheet.visible).toBe(false);
+  });
+
+  it("already paid is refused when this person cannot record a payment", async () => {
+    const { hook, calls } = setup({
+      order: readyOrder,
+      collectGate: { allowed: false, reason: "You do not have permission to take payments.", code: "permission" },
+    });
+    act(() => hook.result.current.requestStatusChange("delivered"));
+    expect(hook.result.current.decisionSheet.unpaidDisabledReason).toMatch(/permission/);
+    await act(async () => hook.result.current.decisionSheet.onUnpaid());
+    expect(calls).toEqual([]);
+  });
+
+  it("keeps mark-paid on a backend with no ledger at all", async () => {
+    const { hook, calls } = setup({
+      order: readyOrder,
+      collectGate: { allowed: false, reason: "update", code: "ledger_absent" },
+    });
+    act(() => hook.result.current.requestStatusChange("delivered"));
+    await act(async () => hook.result.current.decisionSheet.onUnpaid());
+    expect(calls).toEqual(["status:delivered", "payment:paid"]);
   });
 });
 
@@ -177,5 +216,71 @@ describe("collecting on its own", () => {
     act(() => hook.result.current.openCollect());
     expect(alert).toHaveBeenCalledWith("Demo mode", expect.any(String));
     expect(hook.result.current.collectSheet.visible).toBe(false);
+  });
+});
+
+describe("splitting the payment between methods", () => {
+  const CASH_200 = { amount: 200, methodId: "cash", methodName: "Cash", cashTendered: 500, changeDue: 300 };
+  const GCASH_250 = { amount: 250, methodId: "gcash", methodName: "GCash", reference: "GC-1" };
+
+  it("records one ledger row per method, then marks the order paid once", async () => {
+    const { hook, calls, recordPayment, printBill } = setup();
+    act(() => hook.result.current.openCollect());
+    await act(async () => hook.result.current.collectSheet.onSubmitSplit([CASH_200, GCASH_250]));
+
+    expect(calls).toEqual(["ledger:200", "ledger:250", "payment:paid"]);
+    expect(recordPayment.mock.calls.map(([args]) => [args.paymentMethodName, args.amount, args.note])).toEqual([
+      ["Cash", 200, "Cash received ₱500.00 · change ₱300.00"],
+      ["GCash", 250, undefined],
+    ]);
+    expect(printBill).toHaveBeenCalledWith({
+      amount: 450,
+      methodName: "Cash + GCash",
+      reference: "GC-1",
+      cashTendered: 500,
+      changeDue: 300,
+    });
+    expect(hook.result.current.collectSheet.visible).toBe(false);
+  });
+
+  it("collects a split before handing over, then marks delivered", async () => {
+    const { hook, calls } = setup({
+      order: { _id: "order-1", status: "ready", total: 450, paymentStatus: "pending", customerData: {} },
+    });
+    act(() => hook.result.current.requestStatusChange("delivered"));
+    await act(async () => hook.result.current.decisionSheet.onPaid());
+    await act(async () => hook.result.current.collectSheet.onSubmitSplit([CASH_200, GCASH_250]));
+
+    expect(calls).toEqual(["ledger:200", "ledger:250", "payment:paid", "status:delivered"]);
+  });
+
+  it("stops at the first refusal, keeps what was recorded, and never marks paid or moves the order", async () => {
+    const { hook, calls, recordPayment, alert, printBill } = setup({
+      order: { _id: "order-1", status: "ready", total: 450, paymentStatus: "pending", customerData: {} },
+    });
+    recordPayment
+      .mockImplementationOnce(async (args) => {
+        calls.push(`ledger:${args.amount}`);
+      })
+      .mockRejectedValueOnce(new Error("offline"));
+    act(() => hook.result.current.requestStatusChange("delivered"));
+    await act(async () => hook.result.current.decisionSheet.onPaid());
+    await act(async () => hook.result.current.collectSheet.onSubmitSplit([CASH_200, GCASH_250]));
+
+    expect(calls).toEqual(["ledger:200"]);
+    expect(alert).toHaveBeenCalledWith("Only part of the payment was recorded", expect.stringContaining("₱200.00"));
+    // No change on the slip: not all of the split reached the ledger.
+    expect(printBill).toHaveBeenCalledWith(CASH_200);
+  });
+
+  it("says nothing was recorded when the first line is refused", async () => {
+    const { hook, alert, recordPayment, updatePaymentStatus } = setup();
+    recordPayment.mockRejectedValueOnce(new Error("offline"));
+    act(() => hook.result.current.openCollect());
+    await act(async () => hook.result.current.collectSheet.onSubmitSplit([CASH_200, GCASH_250]));
+
+    expect(alert).toHaveBeenCalledWith("Could not record the payment", "offline");
+    expect(updatePaymentStatus).not.toHaveBeenCalled();
+    expect(hook.result.current.collectSheet.visible).toBe(true);
   });
 });

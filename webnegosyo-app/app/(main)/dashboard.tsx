@@ -41,6 +41,8 @@ import { RemitInboxStrip } from "../../components/remittances/RemitInboxStrip";
 import { REMITTANCES_ROUTE, dayCloseHref } from "../../lib/cash-routes";
 import { HomeMoneyCard } from "../../components/money/HomeMoneyCard";
 import { moneyAccess } from "../../lib/expenses/money-glance";
+import { canHomeReadNetSales, homeHeroTitle, homeSalesFigures, homeSalesQuery } from "../../lib/sales-report/home-sales";
+import { useSalesReport } from "../../lib/sales-report/use-sales-report";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getDashboardStatsByPeriodRef = "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
@@ -169,6 +171,29 @@ export default function DashboardScreen() {
   const scope = useBranchScope();
   const isBranchScoped = scope.kind === "branch";
 
+  // Today's figure from the reports' one sales definition (net sales), so Home
+  // and Sales never show two different "today" numbers (Koko, 2026-11-24).
+  // Anyone else keeps the order-total figure, labelled "Orders total".
+  const reportTenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const callerRole = useAuthStore((s) => s.role);
+  const callerIsOwner = useAuthStore((s) => s.isOwner);
+  const callerPermissions = useAuthStore((s) => s.permissions);
+  const canReadNetSales =
+    !isDemo &&
+    !!reportTenantId &&
+    canSeeOrders &&
+    canHomeReadNetSales(orderBackend, { role: callerRole, isOwner: callerIsOwner, permissions: callerPermissions });
+  const reportBranch = scope.kind === "branch" ? scope.outletId : null;
+  const salesQuery = useMemo(
+    () => (canReadNetSales && reportTenantId ? homeSalesQuery(reportTenantId, reportBranch) : null),
+    [canReadNetSales, reportTenantId, reportBranch]
+  );
+  const salesReport = useSalesReport(salesQuery);
+  const netSales = useMemo(
+    () => homeSalesFigures(salesReport.data?.ok ? salesReport.data.payload : null),
+    [salesReport.data]
+  );
+
   // The stat tiles are aggregated inside Convex over the whole tenant, so a
   // branch account cannot use them — it would read store-wide revenue above its
   // own order list. Pull the raw orders instead and re-derive the tiles here so
@@ -194,10 +219,10 @@ export default function DashboardScreen() {
   const onRefresh = useCallback(
     () =>
       refreshWithMinSpinner(
-        [refetchStats, refetchYesterday, refetchQueue, refetchScopedOrders],
+        [refetchStats, refetchYesterday, refetchQueue, refetchScopedOrders, salesReport.refetch],
         setRefreshing
       ),
-    [refetchStats, refetchYesterday, refetchQueue, refetchScopedOrders]
+    [refetchStats, refetchYesterday, refetchQueue, refetchScopedOrders, salesReport.refetch]
   );
 
   const queue = useMemo(() => filterQueueToScope(scope, rawQueue), [scope, rawQueue]);
@@ -305,15 +330,29 @@ export default function DashboardScreen() {
           <LoadingState message="Loading today..." />
         ) : (
           <>
-            <HeroRevenueCard
-              revenue={displayStats?.totalRevenue ?? 0}
-              orderCount={displayStats?.totalOrders ?? 0}
-              avgOrder={displayStats?.avgOrderValue ?? 0}
-              periodLabel="Today"
-              isLive
-              delta={delta}
-              comparisonLabel="yesterday"
-            />
+            {netSales ? (
+              <HeroRevenueCard
+                title={homeHeroTitle(true, orderBackend)}
+                revenue={netSales.netSales}
+                orderCount={netSales.orders}
+                avgOrder={netSales.avgOrder}
+                periodLabel="Today"
+                isLive
+                delta={revenueDelta(netSales.netSales, netSales.previousNetSales ?? undefined)}
+                comparisonLabel={netSales.compareLabel ?? "last week"}
+              />
+            ) : (
+              <HeroRevenueCard
+                title={homeHeroTitle(false, orderBackend)}
+                revenue={displayStats?.totalRevenue ?? 0}
+                orderCount={displayStats?.totalOrders ?? 0}
+                avgOrder={displayStats?.avgOrderValue ?? 0}
+                periodLabel="Today"
+                isLive
+                delta={delta}
+                comparisonLabel="yesterday"
+              />
+            )}
 
             <HomeMoneyCard access={money} />
 

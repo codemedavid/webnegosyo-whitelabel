@@ -29,7 +29,19 @@ export interface CustomerOrderFact {
   status: string
   paymentStatus: string | null
   branchId: string | null
+  /**
+   * The order's BILL total, delivery fees and service charge included. Loyalty
+   * earns and checks its minimum spend on this, so it keeps that meaning.
+   */
   netTotal: number
+  /**
+   * The order's NET SALES by the one sales model (`src/lib/reports/sales-model.ts`:
+   * after discounts, without delivery fees or service charge), in pesos, when the
+   * reader could work it out (platform orders). Absent/null = only the bill is known
+   * (the ledger behind Convex / tenant-Supabase stores). Revenue figures read
+   * `factSales`, so they equal /admin/reports for the same orders.
+   */
+  netSales?: number | null
   orderedAt: string
   completedAt: string | null
   updatedAt: string
@@ -104,6 +116,11 @@ export function isQualifiedOrderFact(fact: CustomerOrderFact): boolean {
   return fact.source === 'pos'
     ? POS_SETTLED.has(status(fact.paymentStatus))
     : ONLINE_FULFILLED.has(status(fact.status))
+}
+
+/** What an order adds to sales figures: its net sales when known, else its bill. */
+export function factSales(fact: Pick<CustomerOrderFact, 'netTotal' | 'netSales'>): number {
+  return fact.netSales ?? fact.netTotal
 }
 
 /** When a qualified visit happened: completion when known, else the order time. */

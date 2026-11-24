@@ -10,11 +10,55 @@ import { TablePool } from "./TablePool";
 import { BillOrdersCard } from "./BillOrdersCard";
 import { billUnits } from "../../lib/bill/bill-split";
 import { billPartViews } from "../../lib/bill/bill-parts";
-import { EMPTY_PLAN, recordPartPayment, setGuests, setMode } from "../../lib/bill/bill-plan";
+import {
+  EMPTY_PLAN,
+  recordCustomPayment,
+  recordPartPayment,
+  setCustomAmount,
+  setGuests,
+  setMode,
+} from "../../lib/bill/bill-plan";
 import { ROUND_ONE, ROUND_TWO } from "../../lib/bill/bill-fixtures";
 
 const orders = [ROUND_ONE, ROUND_TWO];
 const evenPlan = setGuests(setMode(EMPTY_PLAN, "even", 56000), 2);
+
+describe("GuestPartCard · custom amount", () => {
+  const custom = setMode(EMPTY_PLAN, "custom", 56000);
+
+  it("shows a blank guest's share of the rest and sends what the cashier types", () => {
+    const [part] = billPartViews(orders, custom, 0).parts;
+    const onAmountChange = jest.fn();
+    render(<GuestPartCard part={part} onAmountChange={onAmountChange} />);
+
+    expect(screen.getByText("Pays the rest")).toBeTruthy();
+    const field = screen.getByLabelText("Amount Guest 1 pays");
+    expect(field.props.placeholder).toBe("₱280.00");
+
+    fireEvent.changeText(field, "500");
+    expect(onAmountChange).toHaveBeenLastCalledWith(50000);
+    fireEvent.changeText(field, "1.2.3");
+    expect(onAmountChange).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByRole("button", { name: "Guest 1 pays the rest" }));
+    expect(onAmountChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("starts from the amount already typed", () => {
+    const [part] = billPartViews(orders, setCustomAmount(custom, 0, 50000), 0).parts;
+    render(<GuestPartCard part={part} onAmountChange={jest.fn()} />);
+
+    expect(screen.getByLabelText("Amount Guest 1 pays").props.value).toBe("500");
+  });
+
+  it("no longer offers to change the amount once the guest has paid", () => {
+    const [part] = billPartViews(orders, recordCustomPayment(custom, 0, 28000, 10000), 0).parts;
+    render(<GuestPartCard part={part} onAmountChange={jest.fn()} />);
+
+    expect(screen.queryByLabelText("Amount Guest 1 pays")).toBeNull();
+    expect(screen.getByText("₱180.00 left")).toBeTruthy();
+  });
+});
 
 describe("GuestPartCard", () => {
   it("offers to print and to collect the guest's share", () => {

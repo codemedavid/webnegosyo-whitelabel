@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Sha
 import { openExternalUrl } from "../../../lib/safe-url";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
-import { useSafeQuery } from "../../../lib/hooks";
+import { useSafeMutation, useSafeQuery } from "../../../lib/hooks";
 import { colors, typography, spacing, radius } from "../../../theme/colors";
 import { Card } from "../../../components/Card";
 import { Badge } from "../../../components/Badge";
@@ -33,6 +33,8 @@ import { SettlementCard, RevisionHistoryCard } from "../../../components/order/S
 import { CollectPaymentSheet } from "../../../components/order/CollectPaymentSheet";
 import { PaymentDecisionSheet } from "../../../components/order/PaymentDecisionSheet";
 import { PaymentStatusStrip } from "../../../components/order/PaymentStatusStrip";
+import { NameMethodCard } from "../../../components/order/NameMethodCard";
+import { canNameOrderMethod } from "../../../lib/order-method-naming";
 import { canCollectPayment } from "../../../lib/order-collect";
 import { isOrderUnpaid } from "../../../lib/order-paid-state";
 import { useOrderPaymentFlow } from "../../../lib/use-order-payment-flow";
@@ -41,7 +43,7 @@ import { isCashMethod } from "../../../lib/pos-payment-methods";
 import { isPosPayLater } from "../../../lib/pos-order";
 import {
   canUserCancelOrder,
-  markPaidAfterHandover,
+  syncPaidAfterHandover,
   planOrderStatusChange,
 } from "../../../lib/order-status-change";
 import { resolveLedgerState, isLedgerSafeToEdit } from "../../../lib/order-ledger";
@@ -95,6 +97,7 @@ const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"q
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
 const getOrderPaymentsRef = "orders:getOrderPayments" as unknown as FunctionReference<"query">;
 const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
+const setPaymentMethodRef = "orders:setPaymentMethod" as unknown as FunctionReference<"mutation">;
 const updatePaymentStatusRef =
   "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
 const getOrderRevisionsRef = "orders:getOrderRevisions" as unknown as FunctionReference<"query">;
@@ -560,6 +563,22 @@ export default function OrderDetailScreen() {
     name: method.name,
     isCash: isCashMethod(method),
   }));
+  // A paid sale filed under "Paid, method not picked": the owner names how it
+  // came in. A label fix on the order, never a new payment (lib/order-method-naming.ts).
+  const setPaymentMethod = useSafeMutation(setPaymentMethodRef);
+  const isMethodNameable = order
+    ? canNameOrderMethod({
+        backend: orderBackend,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        paymentMethod: order.paymentMethod,
+        ledger: ledgerState,
+        ledgerRows: serverPayments ? serverPayments.length + offlineDetail.pendingPayments.length : undefined,
+        user: { role, isOwner, permissions },
+        isDemo,
+        isOffline,
+      })
+    : false;
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
   // Cancelling asks why first (Store Activity records the reason).
   const [isCancelSheetOpen, setCancelSheetOpen] = useState(false);
@@ -792,7 +811,7 @@ export default function OrderDetailScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return false;
     }
-    const plan = planOrderStatusChange(order, newStatus);
+    const plan = planOrderStatusChange({ ...order, amountPaid: collectedFromLedger }, newStatus);
     if (!plan.allowed) {
       Alert.alert("Cannot update order", plan.reason ?? "This change is not allowed.");
       return false;
@@ -807,9 +826,10 @@ export default function OrderDetailScreen() {
         { previousStatus },
       );
 
-      // Handing the order over is taking the money for it.
-      if (plan.shouldMarkPaid) {
-        await markPaidAfterHandover(updatePaymentStatus, order._id);
+      // The money is already on the ledger: the row catches up. A bill nobody
+      // recorded is never marked paid here — the payment question does that.
+      if (plan.shouldSyncPaid) {
+        await syncPaidAfterHandover(updatePaymentStatus, order._id);
       }
 
       // Kept on this device: the replay pushes to Loyverse and restores stock
@@ -1038,6 +1058,22 @@ export default function OrderDetailScreen() {
             balanceDue={balanceDue}
             isPayLater={isPosPayLater(order.customerData)}
             onCollect={collectGate.allowed ? paymentFlow.openCollect : undefined}
+          />
+        </View>
+      )}
+
+      {isMethodNameable && collectMethods.length > 0 && (
+        <View style={styles.section}>
+          <NameMethodCard
+            amount={order.total}
+            methods={collectMethods}
+            onSave={async (method) => {
+              await setPaymentMethod({
+                orderId: order._id,
+                paymentMethodId: method.id,
+                paymentMethodName: method.name,
+              });
+            }}
           />
         </View>
       )}

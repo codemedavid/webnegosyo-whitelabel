@@ -357,3 +357,51 @@ describe('InventoryManager delivery price unit', () => {
   })
 
 })
+
+/*
+  Uncle Drei's, 2026-11-13: "4000" typed into a kilogram shelf (meant grams),
+  saved without a question, fixed by a count, read as P1.45M lost. A figure
+  that looks like a unit slip is asked about ONCE; the second tap saves it.
+*/
+describe('InventoryManager stock: "did you mean…?"', () => {
+  const KILO: InventoryUnitRow = { ...GRAM, id: '33333333-3333-4333-8333-333333333333', name: 'Kilogram', abbreviation: 'kg', to_base_factor: 1000, is_base: false }
+  const POWDER: InventoryItem = { ...FLOUR, name: 'Powder', stock_unit_id: KILO.id, current_qty: 1.717, unit_cost: 256 }
+
+  function renderPowder() {
+    render(
+      <InventoryManager access={FULL_INVENTORY_ACCESS} tenantId="t1" tenantSlug="demo" initialIngredients={[POWDER]} initialUnits={[GRAM, KILO]} />,
+    )
+    openStock('Powder')
+  }
+
+  it('asks before adding 4000 kg, and its fix puts 4 kg in the box', async () => {
+    renderPowder()
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '4000' } })
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+
+    expect(await screen.findByText('4,000 kg? That is 4 tonnes.')).toBeInTheDocument()
+    expect(recordStockMovementAction).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use 4 kg' }))
+    expect(screen.getByLabelText(/quantity/i)).toHaveValue(4)
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+    await waitFor(() => expect(recordStockMovementAction).toHaveBeenCalled())
+    expect(recordStockMovementAction.mock.calls[0][2]).toMatchObject({ reason: 'receive', quantity: 4 })
+  })
+
+  it('saves 4000 kg on the second, named tap', async () => {
+    renderPowder()
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '4000' } })
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, add 4,000 kg' }))
+    await waitFor(() => expect(recordStockMovementAction).toHaveBeenCalled())
+    expect(recordStockMovementAction.mock.calls[0][2]).toMatchObject({ quantity: 4000 })
+  })
+
+  it('an ordinary delivery saves on the first tap', async () => {
+    renderPowder()
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: /^record delivery$/i }))
+    await waitFor(() => expect(recordStockMovementAction).toHaveBeenCalled())
+  })
+})

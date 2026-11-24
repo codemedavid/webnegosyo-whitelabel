@@ -13,6 +13,10 @@ import {
 } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { useBranchScope } from "../../lib/use-branch-scope";
+import { useTradingDay } from "../../lib/business-day/use-trading-day";
+import { growthSalesQuery, growthTrendsFromReport } from "../../lib/sales-report/growth-sales";
+import { useSalesReport } from "../../lib/sales-report/use-sales-report";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { formatPeso, formatPesoCompact, formatCount } from "../../lib/format";
 import { formatPercent } from "../../lib/analytics-utils";
@@ -170,15 +174,42 @@ export default function GrowthScreen() {
   const [daysBack, setDaysBack] = useState<number>(30);
   const [multiplier, setMultiplier] = useState<number>(2);
 
-  const { data: trends, isLoading, error, isMissingFunction: trendsMissing, refetch: refetchTrends } =
-    useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const isDemo = useAuthStore((s) => s.isDemo);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const reportTenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const scope = useBranchScope();
+  const { todayKey } = useTradingDay();
+  // Platform stores: the reports' net sales by day (the number Sales shows for
+  // the same days). Everyone else, and a refused report, keeps getTrends.
+  const isPlatformSales = orderBackend === "platform" && !isDemo && !!reportTenantId;
+  const salesReport = useSalesReport(
+    isPlatformSales && reportTenantId
+      ? growthSalesQuery(reportTenantId, todayKey, daysBack, scope.kind === "branch" ? scope.outletId : null)
+      : null,
+  );
+  const netTrends = salesReport.data?.ok ? growthTrendsFromReport(salesReport.data.payload) : null;
+  const isWaitingForNet = isPlatformSales && salesReport.isLoading;
+
+  const {
+    data: orderTrends,
+    isLoading: isTrendsLoading,
+    error,
+    isMissingFunction: trendsMissing,
+    refetch: refetchTrends,
+  } = useSafeQuery<DailyStat[]>(
+    getTrendsRef,
+    // Not read while the net figures are coming or came; only as the fallback.
+    isWaitingForNet || netTrends ? "skip" : { daysBack },
+  );
+  const trends = netTrends ?? orderTrends;
+  const isLoading = netTrends ? false : isWaitingForNet || isTrendsLoading;
+  const revenueTitle = netTrends ? "Net sales" : "Revenue";
   const { data: customers, isMissingFunction: customersMissing, refetch: refetchCustomers } =
     useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
   const { data: productRows, refetch: refetchProducts } =
     useSafeQuery<ProductAnalyticsRow[]>(getProductAnalyticsRef, { period: "30d" });
 
-  const tenantId = useAuthStore((s) => s.tenantId);
-  const isDemo = useAuthStore((s) => s.isDemo);
   // Demo has no session to call the web app with — read nothing.
   const boost = useBoostAi(isDemo ? null : tenantId);
   const { refetch: refetchBoost } = boost;
@@ -186,8 +217,12 @@ export default function GrowthScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // Pull-to-refresh re-reads every query this screen holds.
   const onRefresh = useCallback(
-    () => refreshWithMinSpinner([refetchTrends, refetchCustomers, refetchProducts, refetchBoost], setRefreshing),
-    [refetchTrends, refetchCustomers, refetchProducts, refetchBoost]
+    () =>
+      refreshWithMinSpinner(
+        [refetchTrends, refetchCustomers, refetchProducts, refetchBoost, salesReport.refetch],
+        setRefreshing
+      ),
+    [refetchTrends, refetchCustomers, refetchProducts, refetchBoost, salesReport.refetch]
   );
 
   const summary = computeGrowthSummary(trends ?? [], { periodDays: daysBack });
@@ -260,7 +295,7 @@ export default function GrowthScreen() {
         <>
           {/* Hero — actual revenue for the period on the dark ink surface */}
           <View style={styles.hero}>
-            <Text style={styles.heroEyebrow}>Revenue · Last {daysBack} days</Text>
+            <Text style={styles.heroEyebrow}>{revenueTitle} · Last {daysBack} days</Text>
             <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
               {formatPeso(summary.totalRevenue, 0)}
             </Text>
@@ -370,7 +405,7 @@ export default function GrowthScreen() {
           <View style={styles.statRow}>
             <StatCard
               value={formatPeso(summary.avgRevenuePerActiveDay, 0)}
-              label="Revenue"
+              label={revenueTitle}
               hint={`across ${summary.activeDays} selling day${summary.activeDays === 1 ? "" : "s"}`}
             />
             <StatCard

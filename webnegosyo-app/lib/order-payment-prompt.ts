@@ -16,6 +16,7 @@
  */
 
 import { formatPeso } from "./format";
+import type { CollectGate } from "./order-collect";
 import { isHandoverSettlement } from "./order-paid-state";
 import { isCashMethod } from "./pos-payment-methods";
 
@@ -62,6 +63,37 @@ export function confirmPaidRoute(methodName: string | null | undefined): "collec
   return isCash ? "collect" : "mark-paid";
 }
 
+/**
+ * What "Already paid" does when an unpaid order is handed over.
+ *
+ * `mark-paid`: the order carries the method the customer chose (a GCash
+ * transfer, cash on pickup), so the reports already file the money under it —
+ * marking the order paid is the whole record.
+ * `pick-method`: no method on the order (a register "pay later" sale). Marking
+ * it paid alone is what filed ₱1,610 of Koko Coffee's November under "Paid,
+ * method not picked", so the cashier taps how it was paid and a ledger row is
+ * written under that method before the order moves.
+ * `refuse`: no method, and this person or order cannot take a payment here —
+ * the order stays as it is, with the reason on screen.
+ * A store whose backend cannot hold a ledger row at all keeps `mark-paid`:
+ * there is no better record to write.
+ */
+export type HandoverPaidRoute = "mark-paid" | "pick-method" | "refuse";
+
+export function hasOrderMethod(methodName: string | null | undefined): boolean {
+  return Boolean(methodName?.trim());
+}
+
+export function handoverPaidRoute(
+  methodName: string | null | undefined,
+  gate: CollectGate,
+): HandoverPaidRoute {
+  if (hasOrderMethod(methodName)) return "mark-paid";
+  if (gate.allowed) return "pick-method";
+  if (gate.code === "ledger_absent" || gate.code === "backend") return "mark-paid";
+  return "refuse";
+}
+
 export interface PromptOption {
   label: string;
   description: string;
@@ -83,6 +115,7 @@ export function paymentPromptCopy(
   const money = formatPeso(amount);
 
   if (kind === "handover") {
+    const method = methodName?.trim();
     return {
       title: `${money} is still unpaid`,
       question: "Collect it before the order is handed over?",
@@ -90,10 +123,15 @@ export function paymentPromptCopy(
         label: `Collect ${money} now`,
         description: "Enter the payment, then mark the order delivered.",
       },
-      unpaid: {
-        label: "Already paid — mark delivered",
-        description: "Use this if the money was taken some other way. The order is marked paid.",
-      },
+      unpaid: method
+        ? {
+            label: `Already paid by ${method} — mark delivered`,
+            description: `The order is marked paid by ${method}.`,
+          }
+        : {
+            label: "Already paid — choose how",
+            description: "Tap how they paid (cash, GCash…). It is recorded under that method, then the order is marked delivered.",
+          },
     };
   }
 

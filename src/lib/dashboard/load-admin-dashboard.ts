@@ -153,7 +153,7 @@ async function computeDashboard(
 
   return {
     ...base,
-    overview: params.includeOverview ? buildOverview(read.sales, window) : null,
+    overview: params.includeOverview ? buildOverview(read.sales, window, read.basis) : null,
     growth,
     notes,
     failed: false,
@@ -167,7 +167,8 @@ export async function loadAdminDashboard(
   const cached = unstable_cache(
     () => computeDashboard(tenantId, params),
     [
-      'admin-dashboard-v4',
+      // v5: platform sales are net sales (overview.basis / bounds).
+      'admin-dashboard-v5',
       tenantId,
       params.range,
       params.outletId ?? 'all',
@@ -208,5 +209,5 @@ export async function loadSalesForWindow(tenantId: string, request: SalesWindowR
   })
   const base = { range: window.range, compareLabel: request.compareLabel, generatedAt: now, growth: null }
   if (read.failed) return { ...base, overview: null, notes: read.notes, failed: true }
-  return { ...base, overview: buildOverview(read.sales, window), notes: read.notes, failed: false }
+  return { ...base, overview: buildOverview(read.sales, window, read.basis), notes: read.notes, failed: false }
 }

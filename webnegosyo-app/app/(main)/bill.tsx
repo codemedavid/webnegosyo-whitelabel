@@ -18,7 +18,15 @@ import { useBillPlan, useBillStore } from "../../stores/bill-store";
 import { useOrderPrint, type PrintFeedback } from "../../hooks/useOrderPrint";
 import { toCents } from "../../lib/bill/money";
 import { billSummary } from "../../lib/bill/bill-orders";
-import { assignUnit, billKey, isPlanLocked, setGuests, setMode, type SplitMode } from "../../lib/bill/bill-plan";
+import {
+  assignUnit,
+  billKey,
+  isPlanLocked,
+  setCustomAmount,
+  setGuests,
+  setMode,
+  type SplitMode,
+} from "../../lib/bill/bill-plan";
 import { billPartViews, itemSplitBlockedReason, type BillPartView } from "../../lib/bill/bill-parts";
 import { billTitle, wholeBillReceipt } from "../../lib/bill/bill-receipt";
 import { billCandidates } from "../../lib/bill/bill-candidates";
@@ -49,6 +57,7 @@ const MODE_OPTIONS: readonly { label: string; value: SplitMode }[] = [
   { label: "One bill", value: "one" },
   { label: "Split evenly", value: "even" },
   { label: "By item", value: "items" },
+  { label: "Custom amount", value: "custom" },
 ];
 
 /**
@@ -107,7 +116,7 @@ function BillScreen({ orderIds }: { orderIds: string[] }) {
   const isLocked = isPlanLocked(plan);
   // The bill's date on paper: when it was opened, so the parts stay memoized.
   const [nowMs] = useState(() => Date.now());
-  const { parts, unassigned } = useMemo(() => billPartViews(orders, plan, nowMs), [orders, plan, nowMs]);
+  const { parts, unassigned, problem } = useMemo(() => billPartViews(orders, plan, nowMs), [orders, plan, nowMs]);
   const guestCount = plan.guests;
   const active = Math.min(activeGuest, guestCount - 1);
 
@@ -184,6 +193,8 @@ function BillScreen({ orderIds }: { orderIds: string[] }) {
   }
 
   const collectReason = gate.allowed ? undefined : gate.reason;
+  // Custom amounts that do not add up hold every guest's Collect.
+  const partCollectReason = collectReason ?? problem ?? undefined;
   const partCard = (part: BillPartView) => (
     <GuestPartCard
       key={part.key}
@@ -194,7 +205,10 @@ function BillScreen({ orderIds }: { orderIds: string[] }) {
       printLabel={printLabel(feedback, `${key}:${part.key}`, "Print")}
       onPrint={hasPrinter ? () => void printPart(part) : undefined}
       onCollect={() => collect.open({ kind: "part", part })}
-      collectDisabledReason={collectReason}
+      collectDisabledReason={partCollectReason}
+      onAmountChange={
+        plan.mode === "custom" ? (cents) => updatePlan(key, (p) => setCustomAmount(p, part.guest, cents)) : undefined
+      }
     />
   );
 
@@ -255,11 +269,23 @@ function BillScreen({ orderIds }: { orderIds: string[] }) {
             />
             {isLocked ? (
               <View style={styles.locked}>
-                <Text style={styles.lockedText}>A guest has paid, so this split is fixed.</Text>
+                <Text style={styles.lockedText}>
+                  {plan.mode === "custom"
+                    ? "A guest has paid. The others' amounts can still change."
+                    : "A guest has paid, so this split is fixed."}
+                </Text>
                 <Button label="Start over" tone="ghost" size="sm" onPress={() => resetPlan(key)} />
               </View>
             ) : null}
             {!gate.allowed && summary.owed > 0 ? <Text style={styles.hint}>{collectReason}</Text> : null}
+            {plan.mode === "custom" && !isLocked ? (
+              <Text style={styles.hint}>Type what each guest pays. Leave a guest blank to give them the rest.</Text>
+            ) : null}
+            {problem ? (
+              <Text style={styles.problem} accessibilityRole="alert">
+                {problem}
+              </Text>
+            ) : null}
             {plan.mode === "items" && !isLocked ? (
               <TablePool
                 units={unassigned}
@@ -303,6 +329,15 @@ const styles = StyleSheet.create({
   oneBill: { gap: spacing.sm },
   split: { gap: spacing.md },
   hint: { ...typography.caption, color: colors.textSecondary, textAlign: "center" },
+  problem: {
+    ...typography.caption,
+    fontWeight: "700",
+    color: colors.danger,
+    backgroundColor: colors.dangerLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    textAlign: "center",
+  },
   locked: {
     flexDirection: "row",
     alignItems: "center",

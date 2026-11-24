@@ -24,6 +24,8 @@ import {
   resolveReportRevenue,
   resolveRevenueAccess,
 } from "../../lib/daily-report-revenue";
+import { daySalesQuery, netSalesPesos } from "../../lib/sales-report/home-sales";
+import { useSalesReport } from "../../lib/sales-report/use-sales-report";
 import { hasPermission } from "../../lib/staff-permissions";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { BRANCH_STATS_SCHEMA_VERSION } from "../../lib/convex-order-scope";
@@ -224,12 +226,25 @@ export default function DailyReportScreen() {
     isRevenueBranchScoped,
   });
 
-  const { data: stats, isLoading: statsLoading } = useSafeQuery<DashboardStats>(
+  // Platform stores read the day's NET sales from the reports (the one sales
+  // definition), so food cost % is cost over sales, not over sales + delivery
+  // fees, and "Sales" here is the number Sales shows for that day.
+  const isPlatformSales = orderBackend === "platform";
+  const { data: orderStats, isLoading: orderStatsLoading } = useSafeQuery<DashboardStats>(
     getDashboardStatsByPeriodRef,
     // Asked for only when it can be USED, so no round trip is spent on an
     // answer this screen must refuse to show.
-    revenueAccess === "shown" ? revenueWindow : "skip",
+    revenueAccess === "shown" && !isPlatformSales ? revenueWindow : "skip",
   );
+  const daySales = useSalesReport(
+    revenueAccess === "shown" && isPlatformSales && tenantId ? daySalesQuery(tenantId, dayKey, reportOutletId) : null,
+  );
+  const stats: DashboardStats | undefined = isPlatformSales
+    ? daySales.data
+      ? { totalRevenue: netSalesPesos(daySales.data.ok ? daySales.data.payload : null) }
+      : undefined
+    : orderStats;
+  const statsLoading = isPlatformSales ? daySales.isLoading : orderStatsLoading;
 
   const revenue =
     revenueAccess === "shown"
@@ -306,7 +321,7 @@ export default function DailyReportScreen() {
         {revenue !== undefined && (
           <View style={styles.totals}>
             <Total
-              label="Sales"
+              label={isPlatformSales ? "Net sales" : "Sales"}
               value={revenue === null ? UNKNOWN_FIGURE : formatPeso(revenue)}
             />
             <Total

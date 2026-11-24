@@ -41,6 +41,7 @@ import {
   type IngredientIndexRow,
 } from "../../../../lib/ingredient-service";
 import { submitStockMovement } from "../../../../lib/inventory-movement-service";
+import { checkStockEntry, checkUnitCost, type EntryDoubt } from "../../../../lib/inventory-entry-check";
 import { newLocalOrderId } from "../../../../lib/offline/local-id";
 import { NEW_INGREDIENT_ID, ingredientHref } from "../../../../lib/navigation";
 import { colors, typography, spacing, radius, shadow } from "../../../../theme/colors";
@@ -84,6 +85,8 @@ export default function IngredientEditorScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  // "₱82 for ONE g?" / "4000 kg?" — asked once per figure; the second Save on the same figure saves.
+  const [shownDoubt, setShownDoubt] = useState<EntryDoubt | null>(null);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -132,6 +135,22 @@ export default function IngredientEditorScreen() {
 
   const update = (patch: Partial<IngredientDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
+  /** The first doubt about the opening stock or the price (inventory-entry-check.ts). */
+  const entryDoubt = (): EntryDoubt | null => {
+    if (!selectedUnit) return null;
+    const unit = { abbreviation: selectedUnit.abbreviation };
+    const opening = Number(openingStock.trim());
+    const openingDoubt =
+      isNew && canManageStock && openingStock.trim() !== "" && Number.isFinite(opening)
+        ? checkStockEntry({ kind: "stocktake", quantity: opening, unit, onHand: null })
+        : null;
+    if (openingDoubt) return openingDoubt;
+    const cost = Number(draft.unitCost.trim());
+    return canSeeCosts && draft.unitCost.trim() !== "" && Number.isFinite(cost) ? checkUnitCost(cost, unit) : null;
+  };
+  const nowDoubt = entryDoubt();
+  const visibleDoubt = shownDoubt && nowDoubt?.key === shownDoubt.key ? shownDoubt : null;
+
   const recordOpeningStock = async (newId: string, quantity: number, unitId: string) => {
     try {
       await submitStockMovement(
@@ -160,6 +179,10 @@ export default function IngredientEditorScreen() {
       if (isNew) opening = parseOpeningStock(openingStock);
     } catch (validationError) {
       setFormError(validationError instanceof Error ? validationError.message : "Check the form.");
+      return;
+    }
+    if (nowDoubt && nowDoubt.key !== visibleDoubt?.key) {
+      setShownDoubt(nowDoubt);
       return;
     }
 
@@ -469,8 +492,28 @@ export default function IngredientEditorScreen() {
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           {formError && <Text style={styles.error}>{formError}</Text>}
+          {visibleDoubt && (
+            <View style={styles.doubt} accessibilityRole="alert">
+              <Text style={styles.doubtTitle}>{visibleDoubt.title}</Text>
+              <Text style={styles.hintWarn}>{visibleDoubt.message}</Text>
+              {visibleDoubt.fix && (
+                <TouchableOpacity
+                  style={styles.doubtFix}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const fix = visibleDoubt.fix;
+                    if (fix?.quantity !== undefined) setOpeningStock(String(Number(fix.quantity.toFixed(4))));
+                    if (fix?.cost !== undefined) update({ unitCost: String(Number(fix.cost.toFixed(4))) });
+                    setShownDoubt(null);
+                  }}
+                >
+                  <Text style={styles.doubtFixText}>{visibleDoubt.fix.label}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
           <Button
-            label={isNew ? "Add ingredient" : "Save changes"}
+            label={visibleDoubt ? visibleDoubt.confirmLabel : isNew ? "Add ingredient" : "Save changes"}
             onPress={save}
             size="lg"
             isLoading={isSaving}
@@ -503,6 +546,19 @@ const styles = StyleSheet.create({
   hint: { ...typography.caption, color: colors.textTertiary, lineHeight: 18 },
   hintRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   hintWarn: { flex: 1, ...typography.caption, color: colors.statusPending.text },
+  doubt: { gap: 4, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.warningLight, marginBottom: spacing.sm },
+  doubtTitle: { ...typography.caption, color: colors.statusPending.text, fontWeight: "800" },
+  doubtFix: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingHorizontal: 12,
+    minHeight: 36,
+    justifyContent: "center",
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.statusPending.text,
+  },
+  doubtFixText: { fontSize: 13, fontWeight: "700", color: colors.statusPending.text },
 
   chips: { gap: spacing.sm, paddingTop: 2 },
   chip: {
