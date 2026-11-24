@@ -27,6 +27,8 @@ function dashboard(overrides: Partial<AdminDashboardData> = {}): AdminDashboardD
     failed: false,
     growth: null,
     overview: {
+      basis: 'net_sales',
+      bounds: { start: 0, end: 0, previousStart: 0, previousEnd: 0 },
       labels: [],
       kpis: { sales: kpi(12000, 10000, 20), orders: kpi(40, 50, -20), avgOrder: kpi(300, 200, 50), customers: kpi(30, 25, 20) } as never,
       channels: [{ key: 'online', label: 'Online menu', sales: 8000, orders: 30, share: 66.7 }],

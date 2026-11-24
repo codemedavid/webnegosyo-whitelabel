@@ -181,7 +181,7 @@ function MetricChart({ tile, labels, compareLabel }: MetricChartProps) {
       <ChartEmptyState
         className="mx-2 h-56"
         title={`No ${tile.label.toLowerCase()} in this period yet`}
-        hint="This fills in as orders are paid or delivered."
+        hint={tile.emptyHint ?? 'This fills in as orders are paid or delivered.'}
       />
     )
   }
@@ -197,6 +197,7 @@ function MetricChart({ tile, labels, compareLabel }: MetricChartProps) {
           <span>{sentenceCase(compareLabel)}</span>
         </span>
       </div>
+      {tile.hint && <p className="mb-2 px-2 text-xs text-muted-foreground">{tile.hint}</p>}
       <div className="h-56 w-full sm:h-64">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

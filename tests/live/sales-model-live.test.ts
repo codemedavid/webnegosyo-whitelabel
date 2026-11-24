@@ -110,6 +110,29 @@ liveDescribe('sales model on a live store', () => {
     expect(buckets.buckets.reduce((s, b) => s + b.cents, 0)).toBe(summary.collectedCents)
     expect(summary.collectedCents - summary.overpaidCents + summary.unpaidCents).toBe(summary.billedCents)
 
+    // Order types add up too (Koko Coffee, 2026-11-24: "order types don't balance").
+    expect(sumNet(rollupOrders(orders, (o) => o.orderType || '∅'))).toBe(summary.netCents)
+
+    // The dashboard / customer-dashboard readers select fewer columns (the POS
+    // discount as `customer_data->discount`); each order's net must not move.
+    const { toNetSalesOrder, NET_SALES_EXTRA_COLUMNS } = await import('@/lib/reports/read/platform-order-row')
+    const { orderFigures } = await import('@/lib/reports/sales-model')
+    type NetRow = Parameters<typeof toNetSalesOrder>[0]
+    const narrow = await readPaged<NetRow>((from, to) =>
+      admin
+        .from('orders')
+        .select(`id, status, total, ${NET_SALES_EXTRA_COLUMNS}`)
+        .eq('tenant_id', tenant)
+        .gte('created_at', fromIso)
+        .lt('created_at', toIso)
+        .order('created_at')
+        .order('id')
+        .range(from, to),
+    )
+    const fullNet = new Map(orders.map((order) => [order.id, orderFigures(order).netCents]))
+    const drift = narrow.filter((row) => orderFigures(toNetSalesOrder(row)).netCents !== fullNet.get(row.id))
+    expect(drift.map((row) => row.id)).toEqual([])
+
     const expected = process.env.SALES_LIVE_EXPECT
     if (expected) {
       const sql = JSON.parse(expected) as Record<string, string | number>

@@ -15,10 +15,16 @@
  * every store with a few weeks of named history read 0% regulars while its
  * best guest was on a sixteenth visit; checked against live stores 2026-10-06.
  *
+ * Money is each order's NET SALES when the reader knows it (`factSales`:
+ * platform orders, by the one sales model — no delivery fees or service
+ * charge), so the split adds up to the reports' net sales for the same orders.
+ * Ledger-backed stores only know the bill and keep it.
+ *
  * Pure and clock-injected; the route does the reading.
  */
 
 import {
+  factSales,
   factTime,
   identifiedKey,
   isQualifiedOrderFact,
@@ -113,7 +119,7 @@ function round2(value: number): number {
 }
 
 function sum(visits: readonly Visit[]): number {
-  return round2(visits.reduce((total, visit) => total + visit.fact.netTotal, 0))
+  return round2(visits.reduce((total, visit) => total + factSales(visit.fact), 0))
 }
 
 function inRange(visit: Visit, start: number, end: number): boolean {
@@ -173,7 +179,7 @@ function topCustomers(period: readonly Visit[]): DashboardCustomer[] {
       name: null,
       phoneTail: existing?.phoneTail ?? phoneTail(visit.fact),
       visits: (existing?.visits ?? 0) + 1,
-      spend: round2((existing?.spend ?? 0) + visit.fact.netTotal),
+      spend: round2((existing?.spend ?? 0) + factSales(visit.fact)),
       lastVisitAt: existing && existing.lastVisitAt > visitAt ? existing.lastVisitAt : visitAt,
     })
   }
@@ -271,7 +277,7 @@ function average(values: readonly number[]): number | null {
 function lifetimeValue(visits: readonly Visit[], timesByGuest: ReadonlyMap<string, number[]>): CustomerDashboard['lifetimeValue'] {
   const spendByGuest = new Map<string, number>()
   for (const visit of visits) {
-    if (visit.key) spendByGuest.set(visit.key, (spendByGuest.get(visit.key) ?? 0) + visit.fact.netTotal)
+    if (visit.key) spendByGuest.set(visit.key, (spendByGuest.get(visit.key) ?? 0) + factSales(visit.fact))
   }
   const regular: number[] = []
   const oneTime: number[] = []

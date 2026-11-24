@@ -6,6 +6,8 @@ import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { parseDashboardRange, type DashboardRange } from '@/lib/dashboard/periods'
 import { loadAdminDashboard, type AdminDashboardData } from '@/lib/dashboard/load-admin-dashboard'
 import { readLiveOrderStats } from '@/lib/dashboard/live-orders'
+import { withReportHeadline } from '@/lib/dashboard/report-net-sales'
+import { reportClient } from '@/lib/reports/read/load-report-context'
 import { AnalyticsDashboardSkeleton } from '@/components/admin/dashboard/analytics-dashboard-skeleton'
 import { BestSellersCard } from '@/components/admin/dashboard/best-sellers-card'
 import { BusiestHoursCard } from '@/components/admin/dashboard/busiest-hours-card'
@@ -95,17 +97,31 @@ async function DashboardContent({
   const scope = resolveBranchScope(userRole)
   const basePath = `/${tenantSlug}/admin`
 
-  const [liveStats, data] = await Promise.all([
+  const outletId = scope.kind === 'branch' ? scope.outletId : null
+  const [liveStats, loaded] = await Promise.all([
     canSeeOrders ? readLiveOrderStats(tenant) : Promise.resolve(null),
     canSeeSales || canSeeCustomers
       ? loadAdminDashboard(tenant.id, {
           range,
-          outletId: scope.kind === 'branch' ? scope.outletId : null,
+          outletId,
           includeOverview: canSeeSales,
           includeGrowth: canSeeCustomers,
         })
       : Promise.resolve(null),
   ])
+  // Platform stores: the headline Net sales / orders / average order are the
+  // report function's own figures for the same windows, read as the viewer.
+  const data =
+    loaded?.overview && !loaded.failed
+      ? {
+          ...loaded,
+          overview: await withReportHeadline(loaded.overview, await reportClient(), {
+            tenantId: tenant.id,
+            outletId,
+            now: loaded.generatedAt,
+          }),
+        }
+      : loaded
 
   const liveStrip = canSeeOrders ? <LiveOrdersStrip stats={liveStats} ordersHref={`${basePath}/orders`} /> : null
   if (!data) {

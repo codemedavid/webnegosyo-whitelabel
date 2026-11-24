@@ -3,11 +3,14 @@
  * sales left without a phone, and who is worth bringing back.
  *
  * Pure. Buckets come from `classify-sale.ts`; only completed sales count.
+ * Each sale is worth its net sales when the reader knows it (platform), else
+ * its bill (`saleAmount`).
  */
 
 import {
   SALE_CHANNEL_LABELS,
   isCompletedSale,
+  saleAmount,
   type SaleChannel,
   type SaleRecord,
 } from '@/lib/dashboard/sale-record'
@@ -126,7 +129,7 @@ function pct(part: number, whole: number): number {
 
 function sumSales(sales: readonly ClassifiedSale[], bucket?: GrowthBucket): number {
   return round2(
-    sales.reduce((total, entry) => (!bucket || entry.bucket === bucket ? total + entry.sale.total : total), 0),
+    sales.reduce((total, entry) => (!bucket || entry.bucket === bucket ? total + saleAmount(entry.sale) : total), 0),
   )
 }
 
@@ -173,7 +176,7 @@ function buildTrend(window: DashboardWindow, current: ClassifiedSale[]): GrowthT
     const index = bucketIndex(window, window.start, entry.sale.at)
     if (index === null) continue
     const row = rows[index]
-    rows[index] = { ...row, [entry.bucket]: round2((row[entry.bucket] ?? 0) + entry.sale.total) }
+    rows[index] = { ...row, [entry.bucket]: round2((row[entry.bucket] ?? 0) + saleAmount(entry.sale)) }
   }
   return rows
 }
@@ -199,7 +202,7 @@ function baseline(
     const start = window.start - week * 7 * DAY_MS
     const end = window.end - week * 7 * DAY_MS
     for (const entry of all) {
-      if (entry.sale.at >= start && entry.sale.at < end) totals[entry.bucket] += entry.sale.total / USUAL_DAY_WEEKS
+      if (entry.sale.at >= start && entry.sale.at < end) totals[entry.bucket] += saleAmount(entry.sale) / USUAL_DAY_WEEKS
     }
   }
   return { totals, label: `a usual ${WEEKDAY.format(new Date(window.start))}` }
