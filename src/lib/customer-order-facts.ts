@@ -118,6 +118,16 @@ export function isQualifiedOrderFact(fact: CustomerOrderFact): boolean {
     : ONLINE_FULFILLED.has(status(fact.status))
 }
 
+/**
+ * A live order that is not a completed sale yet: not cancelled, but unpaid at
+ * the counter or not handed over online. Reports count it in Net sales ("still
+ * to collect"); customer figures do not count it as a visit.
+ */
+export function isOpenOrderFact(fact: CustomerOrderFact): boolean {
+  if (REVERSED.has(status(fact.status)) || fact.netTotal < 0) return false
+  return !isQualifiedOrderFact(fact)
+}
+
 /** What an order adds to sales figures: its net sales when known, else its bill. */
 export function factSales(fact: Pick<CustomerOrderFact, 'netTotal' | 'netSales'>): number {
   return fact.netSales ?? fact.netTotal

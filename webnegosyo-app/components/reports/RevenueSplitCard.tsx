@@ -5,6 +5,7 @@ import { colors, typography, spacing, radius, shadow } from "../../theme/colors"
 import { formatCount, formatPeso } from "../../lib/format";
 import {
   changeRatio,
+  heroSales,
   revenueSegments,
   type DashboardWindow,
   type RevenueSegmentKey,
@@ -16,6 +17,7 @@ export const SEGMENT_COLORS: Record<RevenueSegmentKey, string> = {
   returning: colors.accent,
   new: colors.warning,
   unknown: "rgba(253,251,247,0.28)",
+  open: "rgba(160,176,199,0.75)",
 };
 
 interface RevenueSplitCardProps {
@@ -32,18 +34,21 @@ interface RevenueSplitCardProps {
  */
 export function RevenueSplitCard({ window, tillComplete, periodLabel }: RevenueSplitCardProps) {
   const segments = revenueSegments(window, tillComplete);
-  const change = changeRatio(window.revenue.total, window.previousRevenue);
+  const hero = heroSales(window, tillComplete);
+  const change = changeRatio(hero.total, hero.previous);
 
   return (
     <View style={styles.card} accessibilityRole="summary">
-      <Text style={styles.eyebrow}>Sales · {periodLabel}</Text>
+      <Text style={styles.eyebrow}>
+        {hero.label} · {periodLabel}
+      </Text>
       <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>
-        {formatPeso(window.revenue.total, 0)}
+        {formatPeso(hero.total, 0)}
       </Text>
       <View style={styles.metaRow}>
         <DeltaPill change={change} onDark />
         <Text style={styles.meta}>
-          vs the {window.days} days before · {formatCount(window.orders)} orders
+          vs the {window.days} days before · {formatCount(hero.orders)} orders
         </Text>
       </View>
 
@@ -74,7 +79,7 @@ export function RevenueSplitCard({ window, tillComplete, periodLabel }: RevenueS
           </View>
         </>
       ) : (
-        <Text style={styles.empty}>No completed sales in this period yet.</Text>
+        <Text style={styles.empty}>No sales in this period yet.</Text>
       )}
 
       {!tillComplete && segments.length > 0 ? (

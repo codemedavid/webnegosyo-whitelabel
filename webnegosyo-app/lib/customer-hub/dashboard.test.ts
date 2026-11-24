@@ -2,6 +2,7 @@ import {
   bringBackActions,
   changeRatio,
   customerLabel,
+  heroSales,
   lastVisitLabel,
   describeKnownBuyers,
   leverTiles,
@@ -73,8 +74,35 @@ describe("revenueSegments", () => {
     expect(segments[0].share).toBeCloseTo(0.8);
   });
 
+  it("adds orders not finished yet as their own slice, so the bar adds up to Net sales", () => {
+    // Koko Coffee, 2026-11-24: the hero summed completed sales only.
+    const segments = revenueSegments(windowOf({ openRevenue: 10_000, openOrders: 4 }), true);
+
+    expect(segments.map((segment) => segment.key)).toEqual(["returning", "new", "unknown", "open"]);
+    expect(segments[3]).toEqual({ key: "open", label: "Not finished yet", amount: 10_000, share: 0.5 });
+    expect(segments.reduce((total, segment) => total + segment.amount, 0)).toBe(heroSales(windowOf({ openRevenue: 10_000, openOrders: 4 }), true).total);
+  });
+
   it("draws nothing for a window without sales", () => {
     expect(revenueSegments(windowOf({ revenue: { total: 0, returning: 0, new: 0, unknown: 0 } }), true)).toEqual([]);
+  });
+});
+
+describe("heroSales", () => {
+  it("is Net sales (completed + open) where the till is complete", () => {
+    const window = windowOf({ previousRevenue: 8_000, openRevenue: 2_000, openOrders: 3, previousOpenRevenue: 1_000, previousOpenOrders: 1 });
+
+    expect(heroSales(window, true)).toEqual({ label: "Net sales", total: 12_000, previous: 9_000, orders: window.orders + 3 });
+  });
+
+  it("stays Sales (completed only) where only named guests are visible", () => {
+    const window = windowOf({ openRevenue: 2_000, openOrders: 3 });
+
+    expect(heroSales(window, false)).toMatchObject({ label: "Sales", total: 10_000, orders: window.orders });
+  });
+
+  it("reads an older server without open fields as completed sales", () => {
+    expect(heroSales(windowOf(), true)).toMatchObject({ label: "Net sales", total: 10_000 });
   });
 });
 

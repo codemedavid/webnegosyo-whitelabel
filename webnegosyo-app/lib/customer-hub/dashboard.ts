@@ -48,6 +48,15 @@ export interface DashboardWindow {
   oneTimers: number;
   favourites: { returning: DashboardItem[]; new: DashboardItem[] };
   topCustomers: DashboardCustomer[];
+  /**
+   * Live orders not completed yet (unpaid / not handed over), at their net
+   * sales — counted in Net sales by Reports, never a visit. Absent from older
+   * servers and 0 where the till is not fully visible.
+   */
+  openRevenue?: number;
+  openOrders?: number;
+  previousOpenRevenue?: number;
+  previousOpenOrders?: number;
 }
 
 export interface CustomerDashboard {
@@ -82,7 +91,7 @@ function plural(count: number, one: string, many: string): string {
 
 /* ---------------------------------------------------------------- revenue */
 
-export type RevenueSegmentKey = "returning" | "new" | "unknown";
+export type RevenueSegmentKey = "returning" | "new" | "unknown" | "open";
 
 export interface RevenueSegment {
   key: RevenueSegmentKey;
@@ -96,7 +105,27 @@ const SEGMENT_LABELS: Record<RevenueSegmentKey, string> = {
   returning: "Regulars",
   new: "First-timers",
   unknown: "Unnamed",
+  open: "Not finished yet",
 };
+
+/**
+ * The hero's headline. Where the till is complete (platform stores) it is NET
+ * SALES — completed sales plus open orders — the same figure Home and Sales
+ * print (Koko Coffee, 2026-11-24: this card read ₱2,628 while Net sales was
+ * ₱8,340). Elsewhere only completed sales are visible and it stays "Sales".
+ */
+export function heroSales(
+  window: DashboardWindow,
+  tillComplete: boolean,
+): { label: string; total: number; previous: number; orders: number } {
+  const withOpen = tillComplete;
+  return {
+    label: withOpen ? "Net sales" : "Sales",
+    total: window.revenue.total + (withOpen ? window.openRevenue ?? 0 : 0),
+    previous: window.previousRevenue + (withOpen ? window.previousOpenRevenue ?? 0 : 0),
+    orders: window.orders + (withOpen ? window.openOrders ?? 0 : 0),
+  };
+}
 
 /**
  * The slices of the revenue bar, biggest-meaning first. Where the till is not
@@ -104,16 +133,17 @@ const SEGMENT_LABELS: Record<RevenueSegmentKey, string> = {
  * zero would claim every buyer was named.
  */
 export function revenueSegments(window: DashboardWindow, tillComplete: boolean): RevenueSegment[] {
-  const keys: RevenueSegmentKey[] = tillComplete ? ["returning", "new", "unknown"] : ["returning", "new"];
-  const drawnTotal = keys.reduce((total, key) => total + window.revenue[key], 0);
+  const keys: RevenueSegmentKey[] = tillComplete ? ["returning", "new", "unknown", "open"] : ["returning", "new"];
+  const amountOf = (key: RevenueSegmentKey) => (key === "open" ? window.openRevenue ?? 0 : window.revenue[key]);
+  const drawnTotal = keys.reduce((total, key) => total + amountOf(key), 0);
   if (drawnTotal <= 0) return [];
   return keys
-    .filter((key) => window.revenue[key] > 0)
+    .filter((key) => amountOf(key) > 0)
     .map((key) => ({
       key,
       label: SEGMENT_LABELS[key],
-      amount: window.revenue[key],
-      share: window.revenue[key] / drawnTotal,
+      amount: amountOf(key),
+      share: amountOf(key) / drawnTotal,
     }));
 }
 
