@@ -20,6 +20,12 @@
  * charge), so the split adds up to the reports' net sales for the same orders.
  * Ledger-backed stores only know the bill and keep it.
  *
+ * Live orders that are not completed yet (unpaid, not handed over) are no
+ * visit, but they ARE net sales in Reports. Where the till is complete
+ * (platform) each window carries them as `open*`, so the app can show Net
+ * sales = completed + open and the split still adds up (Koko Coffee,
+ * 2026-11-24: the hero read ₱2,628 while Net sales was ₱8,340).
+ *
  * Pure and clock-injected; the route does the reading.
  */
 
@@ -27,6 +33,7 @@ import {
   factSales,
   factTime,
   identifiedKey,
+  isOpenOrderFact,
   isQualifiedOrderFact,
   rankCustomerItems,
   type CustomerOrderFact,
@@ -88,6 +95,11 @@ export interface CustomerDashboardWindow {
   oneTimers: number
   favourites: { returning: RankedCustomerItem[]; new: RankedCustomerItem[] }
   topCustomers: DashboardCustomer[]
+  /** Live orders not completed yet, at their net sales (0 where the till is not fully visible). */
+  openRevenue: number
+  openOrders: number
+  previousOpenRevenue: number
+  previousOpenOrders: number
 }
 
 export interface CustomerDashboard {
@@ -209,11 +221,25 @@ function repeatRate(guests: { all: Set<string>; returning: Set<string> }): numbe
   return guests.all.size > 0 ? round2((guests.returning.size / guests.all.size) * 100) : 0
 }
 
+/** Open orders by order time, outside the visit maths. */
+function openOrdersOf(facts: readonly CustomerOrderFact[]): Array<{ fact: CustomerOrderFact; time: number }> {
+  return facts.flatMap((fact) => {
+    const time = new Date(fact.orderedAt).getTime()
+    return isOpenOrderFact(fact) && !Number.isNaN(time) ? [{ fact, time }] : []
+  })
+}
+
+function openIn(open: ReadonlyArray<{ fact: CustomerOrderFact; time: number }>, start: number, end: number) {
+  const inWindow = open.filter((entry) => entry.time >= start && entry.time < end)
+  return { revenue: round2(inWindow.reduce((total, entry) => total + factSales(entry.fact), 0)), orders: inWindow.length }
+}
+
 function computeWindow(
   visits: readonly Visit[],
   timesByGuest: ReadonlyMap<string, number[]>,
   days: 7 | 30 | 90,
   end: number,
+  open: ReadonlyArray<{ fact: CustomerOrderFact; time: number }>,
 ): CustomerDashboardWindow {
   const start = end - days * DAY_MS
   const previousStart = start - days * DAY_MS
@@ -226,6 +252,8 @@ function computeWindow(
   const returningVisits = period.filter((visit) => visit.isRepeat)
   const newVisits = period.filter((visit) => visit.key && !visit.isRepeat)
   const oneTimers = [...guests.all].filter((key) => (timesByGuest.get(key)?.length ?? 0) === 1).length
+  const openNow = openIn(open, start, end)
+  const openBefore = openIn(open, previousStart, start)
 
   return {
     days,
@@ -251,6 +279,10 @@ function computeWindow(
       new: rankCustomerItems(newVisits.map((visit) => visit.fact), FAVOURITE_LIMIT),
     },
     topCustomers: topCustomers(period),
+    openRevenue: openNow.revenue,
+    openOrders: openNow.orders,
+    previousOpenRevenue: openBefore.revenue,
+    previousOpenOrders: openBefore.orders,
   }
 }
 
@@ -294,9 +326,11 @@ export function buildCustomerDashboard(
   const end = (options.now ?? new Date()).getTime()
   const visits = qualifiedVisits(facts)
   const timesByGuest = visitTimesByGuest(visits)
+  // The ledger behind other backends records completed sales only.
+  const open = options.tillComplete ? openOrdersOf(facts) : []
 
   return {
-    windows: WINDOWS.map((days) => computeWindow(visits, timesByGuest, days, end)),
+    windows: WINDOWS.map((days) => computeWindow(visits, timesByGuest, days, end, open)),
     ...quietRegulars(timesByGuest, end),
     lifetimeValue: lifetimeValue(visits, timesByGuest),
     tillComplete: options.tillComplete,

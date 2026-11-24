@@ -114,6 +114,28 @@ describe('customer dashboard revenue = report net sales', () => {
     expect(window.topCustomers.find((customer) => customer.customerId === 'ana')).toMatchObject({ spend: 250 })
   })
 
+  it('open orders (live, not completed) ride beside the split, so completed + open = report net sales', async () => {
+    // Koko Coffee, 2026-11-24: the app's Reports hero read completed sales only, below Net sales.
+    const facts = await readFacts()
+    const window = buildCustomerDashboard(facts, { now: NOW, tillComplete: true }).windows.find((w) => w.days === 30)
+    if (!window) throw new Error('no 30-day window')
+
+    const live = ROWS.filter((row) => ['ana-delivery', 'ben-first', 'walk-in', 'unpaid', 'cancelled'].includes(row.id))
+    const net = fromCents(summarizeSales(live.map((row) => toReportOrder(row, [], []))).netCents)
+
+    expect(window.openOrders).toBe(1)
+    expect(window.openRevenue).toBe(75)
+    expect(window.revenue.total + window.openRevenue).toBe(net)
+    expect(window.orders + window.openOrders).toBe(4)
+  })
+
+  it('stores whose till is not fully visible carry no open orders', async () => {
+    const facts = await readFacts()
+    const window = buildCustomerDashboard(facts, { now: NOW, tillComplete: false }).windows.find((w) => w.days === 30)
+
+    expect(window).toMatchObject({ openOrders: 0, openRevenue: 0, previousOpenOrders: 0, previousOpenRevenue: 0 })
+  })
+
   it('a ledger fact (Convex / tenant Supabase) has no net and keeps its bill', () => {
     const fact: CustomerOrderFact = {
       backend: 'convex',
