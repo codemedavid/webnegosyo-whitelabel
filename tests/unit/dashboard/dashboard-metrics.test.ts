@@ -26,6 +26,8 @@ const period = {
   returningCustomerSales: 500,
   walkInOrders: 2,
   walkInSales: 200,
+  openOrders: 0,
+  openSales: 0,
 }
 
 const customers: CustomerSummary = {

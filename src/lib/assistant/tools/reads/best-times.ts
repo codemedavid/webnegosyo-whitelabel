@@ -25,16 +25,16 @@ export function buildBestTimesResult(profile: TimeProfile, days: number, by: Tim
       window: `last ${days} days`,
       by,
       unit,
-      completedOrders: profile.completedOrders,
+      orders: profile.totalOrders,
       best: profile.best,
       quietest: profile.quietest,
       top3: ranked.slice(0, 3),
-      ...(profile.completedOrders < 20 ? { caveat: 'Few orders: patterns are weak.' } : {}),
+      ...(profile.totalOrders < 20 ? { caveat: 'Few orders: patterns are weak.' } : {}),
     },
     card: {
       type: 'bars',
       title: by === 'hour' ? 'Orders by hour' : 'Orders by day',
-      subtitle: `Last ${days} days · ${formatCount(profile.completedOrders)} orders${profile.best ? ` · busiest ${profile.best.label}` : ''}`,
+      subtitle: `Last ${days} days · ${formatCount(profile.totalOrders)} orders${profile.best ? ` · busiest ${profile.best.label}` : ''}`,
       unit: 'orders',
       bars: (by === 'hour' ? profile.slots.filter((_, hour) => hour >= 6) : profile.slots).map((slot) => ({
         label: by === 'weekday' ? slot.label.slice(0, 3) : slot.label,
@@ -51,7 +51,7 @@ export function buildBestTimesResult(profile: TimeProfile, days: number, by: Tim
 
 export const getBestTimesTool: AssistantToolDef<Input> = {
   name: 'get_best_times',
-  description: 'Busiest/quietest hours or weekdays (completed orders, Manila time).',
+  description: 'Busiest/quietest hours or weekdays (orders as Reports counts them, Manila time).',
   access: { permission: 'analytics' },
   input,
   async run(ctx, { by, days }) {
@@ -61,6 +61,6 @@ export const getBestTimesTool: AssistantToolDef<Input> = {
       readTenantSales(ctx.tenantId, { readStart: startMs, currentStart: startMs, now, outletId: null, includeItems: false, includePriorVisits: false }),
     )
     if (read.failed) return { facts: { available: false, reason: read.notes[0] ?? 'Sales could not be read.' } }
-    return buildBestTimesResult(buildTimeProfile(read.sales, { by, startMs, endMs: now + 1 }), days, by)
+    return buildBestTimesResult(buildTimeProfile(read.sales, { by, startMs, endMs: now + 1, basis: read.basis }), days, by)
   },
 }

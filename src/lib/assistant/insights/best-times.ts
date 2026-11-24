@@ -1,6 +1,11 @@
 /**
- * When the store is busy: completed orders by hour of day or day of week,
- * in Manila time. Pure.
+ * When the store is busy: orders by hour of day or day of week, in Manila
+ * time. Pure.
+ *
+ * Which orders count and what each is worth follow the sales read's basis
+ * (`sale-record.ts`), like the dashboard: on platform stores every live order
+ * at its net sales, as /admin/reports counts them; otherwise completed orders
+ * at their bill (Koko Coffee, 2026-11-24).
  *
  * Weekdays are AVERAGED per occurrence: a 30-day window holds five of some
  * weekdays and four of others, and raw totals would crown whichever happened
@@ -8,7 +13,7 @@
  */
 
 import { DAY_MS, manilaDayStart, manilaHour } from '@/lib/dashboard/periods'
-import { isCompletedSale, type SaleRecord } from '@/lib/dashboard/sale-record'
+import { countsTowardSales, saleAmount, type SaleRecord, type SalesBasis } from '@/lib/dashboard/sale-record'
 
 export type TimeGrouping = 'hour' | 'weekday'
 
@@ -24,7 +29,8 @@ export interface TimeProfile {
   best: TimeSlot | null
   /** The quietest slot that still had orders (a closed hour is not "slow"). */
   quietest: TimeSlot | null
-  completedOrders: number
+  /** Orders counted in the window (see the basis above). */
+  totalOrders: number
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -53,14 +59,19 @@ function weekdayOccurrences(startMs: number, endMs: number): number[] {
 
 export function buildTimeProfile(
   sales: readonly SaleRecord[],
-  { by, startMs, endMs }: { by: TimeGrouping; startMs: number; endMs: number },
+  {
+    by,
+    startMs,
+    endMs,
+    basis = 'completed_totals',
+  }: { by: TimeGrouping; startMs: number; endMs: number; basis?: SalesBasis },
 ): TimeProfile {
-  const completed = sales.filter((sale) => sale.at >= startMs && sale.at < endMs && isCompletedSale(sale))
+  const counted = sales.filter((sale) => sale.at >= startMs && sale.at < endMs && countsTowardSales(sale, basis))
   const size = by === 'hour' ? 24 : 7
   const totals = Array.from({ length: size }, () => ({ orders: 0, sales: 0 }))
-  for (const sale of completed) {
+  for (const sale of counted) {
     const index = by === 'hour' ? manilaHour(sale.at) : manilaWeekday(sale.at)
-    totals[index] = { orders: totals[index].orders + 1, sales: totals[index].sales + sale.total }
+    totals[index] = { orders: totals[index].orders + 1, sales: totals[index].sales + saleAmount(sale) }
   }
 
   const occurrences = by === 'weekday' ? weekdayOccurrences(startMs, endMs) : null
@@ -76,5 +87,5 @@ export function buildTimeProfile(
   const active = slots.filter((slot) => slot.orders > 0)
   const best = active.reduce<TimeSlot | null>((top, slot) => (!top || slot.orders > top.orders ? slot : top), null)
   const quietest = active.reduce<TimeSlot | null>((low, slot) => (!low || slot.orders < low.orders ? slot : low), null)
-  return { by, slots, best, quietest: active.length > 1 ? quietest : null, completedOrders: completed.length }
+  return { by, slots, best, quietest: active.length > 1 ? quietest : null, totalOrders: counted.length }
 }

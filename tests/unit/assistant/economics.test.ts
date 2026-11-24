@@ -54,3 +54,28 @@ describe('buildPromoIdeas', () => {
     expect(buildPromoIdeas('win_back', { ...facts, avgOrderValue: null })).toEqual([])
   })
 })
+
+describe('averageOrder (suggest_promotions)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { averageOrder } = require('@/lib/assistant/tools/reads/promotions') as typeof import('@/lib/assistant/tools/reads/promotions')
+  const at = Date.parse('2026-11-20T04:00:00Z')
+  const base = { at, status: 'delivered', paymentStatus: 'paid', channel: 'online' as const, orderType: 'Pickup', outletId: null, phone: null, items: null }
+  const sales = [
+    { ...base, id: 'a', total: 260, net: 200 },
+    { ...base, id: 'b', total: 100, net: 100, status: 'preparing', paymentStatus: 'pending' },
+    { ...base, id: 'c', total: 500, net: 500, status: 'cancelled' },
+  ]
+
+  test('net sales stores: Reports\' average order (net ÷ every live order)', () => {
+    expect(averageOrder(sales, 'net_sales')).toBe(150)
+  })
+
+  test('bill-total stores (no net on the read): completed bills ÷ completed orders', () => {
+    const bills = sales.map((sale) => ({ ...sale, net: undefined }))
+    expect(averageOrder(bills, 'completed_totals')).toBe(260)
+  })
+
+  test('no orders = no average', () => {
+    expect(averageOrder([], 'net_sales')).toBeNull()
+  })
+})

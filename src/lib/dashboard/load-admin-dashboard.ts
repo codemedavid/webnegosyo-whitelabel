@@ -140,6 +140,7 @@ async function computeDashboard(
       visits: buildVisitIndex([...read.priorVisits, ...windowVisits]),
       cardsSince: signals.cardsSince,
       window,
+      basis: read.basis,
     }
     growth = {
       ...buildGrowth(growthInput),
@@ -167,8 +168,8 @@ export async function loadAdminDashboard(
   const cached = unstable_cache(
     () => computeDashboard(tenantId, params),
     [
-      // v5: platform sales are net sales (overview.basis / bounds).
-      'admin-dashboard-v5',
+      // v6: "Who's buying" carries open (not yet completed) orders on net sales.
+      'admin-dashboard-v6',
       tenantId,
       params.range,
       params.outletId ?? 'all',

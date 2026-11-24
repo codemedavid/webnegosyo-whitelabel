@@ -3,6 +3,7 @@ import { buildCustomerSummary } from '@/lib/growth/customer-summary'
 import { DAY_MS, HOUR_MS, resolveDashboardWindow } from '@/lib/dashboard/periods'
 import type { CustomerVisit, SaleRecord } from '@/lib/dashboard/sale-record'
 import { makeSale } from '../../fixtures/dashboard-sales'
+import { buildOverview } from '@/lib/dashboard/overview'
 
 const NOW = Date.parse('2026-10-04T06:30:00Z') // Sunday 2:30 PM Manila
 const ANA = '+639170000001'
@@ -153,5 +154,61 @@ describe('buildCustomerSummary', () => {
     expect(previousTrend[1]).toEqual({ new: 2, returning: 0 })
     expect(previousTrend[3]).toEqual({ new: 0, returning: 1 })
     expect(previousTrend[0]).toEqual({ new: 0, returning: 0 })
+  })
+})
+
+describe('buildCustomerSummary on net sales (Who\'s buying = the Net sales tile)', () => {
+  function summarizeNet(sales: SaleRecord[], prior: CustomerVisit[] = []) {
+    return buildCustomerSummary({
+      sales,
+      visits: buildVisitIndex(visitsFrom(sales.filter((sale) => sale.paymentStatus === 'paid'), prior)),
+      cardsSince: {},
+      window,
+      basis: 'net_sales',
+    })
+  }
+
+  test('orders not paid or handed over yet are their own group, so the rows add up to Net sales', () => {
+    // Koko Coffee, 2026-11-24: the card summed completed orders only and read below the tile.
+    const sales = [
+      makeSale({ at: inWindow(1), phone: ANA, total: 230, net: 200 }),
+      makeSale({ at: inWindow(1), phone: null, total: 150, net: 150 }),
+      makeSale({ at: inWindow(2), phone: BEN, total: 330, net: 300, paymentStatus: 'pending' }),
+      makeSale({ at: inWindow(3), phone: null, total: 95, net: 95, paymentStatus: 'pending', channel: 'online', status: 'preparing' }),
+      makeSale({ at: inWindow(3), phone: CAT, total: 500, net: 500, status: 'cancelled' }),
+    ]
+
+    const { current } = summarizeNet(sales)
+    const tile = buildOverview(sales, window, 'net_sales').kpis.sales.current
+
+    expect(current.sales).toBe(745)
+    expect(current.sales).toBe(tile)
+    expect(current.openOrders).toBe(2)
+    expect(current.openSales).toBe(395)
+    expect(current.orders).toBe(4)
+    expect(current.newCustomerSales + current.returningCustomerSales + current.walkInSales + current.openSales).toBe(current.sales)
+  })
+
+  test('people are still counted from completed sales only', () => {
+    const sales = [
+      makeSale({ at: inWindow(1), phone: ANA, net: 100 }),
+      makeSale({ at: inWindow(2), phone: BEN, net: 100, paymentStatus: 'pending' }),
+    ]
+
+    const { current } = summarizeNet(sales)
+
+    expect(current.newCustomers).toBe(1)
+    expect(current.returningCustomers).toBe(0)
+    expect(current.newCustomerSales).toBe(100)
+    expect(current.openSales).toBe(100)
+  })
+
+  test('bill-total stores (no basis) have no open group', () => {
+    const sales = [makeSale({ at: inWindow(1), phone: ANA, paymentStatus: 'pending' })]
+
+    const { current } = summarize(sales)
+
+    expect(current.openOrders).toBe(0)
+    expect(current.sales).toBe(0)
   })
 })

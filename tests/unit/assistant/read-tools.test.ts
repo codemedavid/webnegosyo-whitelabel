@@ -61,6 +61,24 @@ describe('get_sales_overview result', () => {
     expect(result.facts.channels).toEqual([{ label: 'Online menu', sharePct: 67 }])
   })
 
+  test('names the measure: Net sales on platform stores, Sales on bill-total stores', async () => {
+    // Koko Coffee, 2026-11-24: Owl said "completed sales only" over a net sales figure.
+    const { buildSalesOverviewResult } = await import('@/lib/assistant/tools/reads/sales-overview')
+
+    const net = buildSalesOverviewResult(dashboard(), when({ period: 'last_7_days' }), createRefBook({}))
+    const bills = buildSalesOverviewResult(
+      dashboard({ overview: { ...dashboard().overview!, basis: 'completed_totals' } }),
+      when({ period: 'last_7_days' }),
+      createRefBook({}),
+    )
+
+    expect(net.facts.salesMeasure).toBe('Net sales')
+    expect(String(net.facts.counts)).toMatch(/same figure as Reports/)
+    expect(net.card).toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ label: 'Net sales' })]) })
+    expect(bills.facts.salesMeasure).toBe('Sales')
+    expect(String(bills.facts.counts)).toMatch(/Completed sales only/)
+  })
+
   test('reports a failed read as unavailable, never as zero sales', async () => {
     const { buildSalesOverviewResult } = await import('@/lib/assistant/tools/reads/sales-overview')
 
@@ -103,7 +121,7 @@ describe('get_sales_overview for any point in time', () => {
     })
     expect(result.facts).toMatchObject({ period: 'Yesterday', dates: '2026-11-12', comparedWith: 'the same day last week', byHour: [{ hour: '3 PM', orders: 4, sales: 1200 }] })
     expect(result.facts.soFar).toBeUndefined()
-    expect(result.card).toMatchObject({ title: 'Sales — Yesterday' })
+    expect(result.card).toMatchObject({ title: 'Net sales — Yesterday' })
   })
 
   test('a date that has not happened is refused before anything is read', async () => {
