@@ -29,7 +29,7 @@ describe('buildTimeProfile', () => {
     expect(profile.slots).toHaveLength(24)
     expect(profile.best).toMatchObject({ label: '7 PM', orders: 2 })
     expect(profile.quietest).toMatchObject({ label: '12 PM', orders: 1 })
-    expect(profile.completedOrders).toBe(3)
+    expect(profile.totalOrders).toBe(3)
   })
 
   test('averages weekdays per occurrence so a window with extra Tuesdays does not crown Tuesday', () => {
@@ -44,6 +44,23 @@ describe('buildTimeProfile', () => {
     expect(profile.slots.find((s) => s.label === 'Tuesday')?.orders).toBe(1)
     expect(profile.slots.find((s) => s.label === 'Friday')?.orders).toBe(1.5)
     expect(profile.best?.label).toBe('Friday')
+  })
+
+  test('on net sales it counts every live order at its net, as Reports does', () => {
+    // Koko Coffee, 2026-11-24: Owl summed completed bills (fees included) while Reports said net sales.
+    const sales = [
+      sale(manila('2026-09-02T19:10:00'), 230, { net: 200 }),
+      sale(manila('2026-09-03T19:40:00'), 150, { net: 120, status: 'preparing', paymentStatus: 'pending' }),
+      sale(manila('2026-09-04T19:00:00'), 100, { net: 100, status: 'cancelled' }),
+    ]
+
+    const net = buildTimeProfile(sales, { by: 'hour', startMs, endMs, basis: 'net_sales' })
+    const bills = buildTimeProfile(sales.map((row) => ({ ...row, net: undefined })), { by: 'hour', startMs, endMs })
+
+    expect(net.totalOrders).toBe(2)
+    expect(net.best).toMatchObject({ label: '7 PM', orders: 2, sales: 320 })
+    expect(bills.totalOrders).toBe(1)
+    expect(bills.best).toMatchObject({ label: '7 PM', orders: 1, sales: 230 })
   })
 
   test('labels hours on a 12-hour clock', () => {

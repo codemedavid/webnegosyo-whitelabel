@@ -5,8 +5,24 @@
  * `resolveOrderBackend`). Days are the store's business days, the same windows
  * Reports uses (`insights/when.ts`).
  *
- * Figures are the dashboard's: completed sales only (`isCompletedSale`).
+ * Figures are the dashboard's (`overview.basis`): on platform stores NET SALES
+ * over every live order, the number /admin/reports prints; on other backends
+ * completed sales at their bill. The model is told which, so it never calls
+ * one the other (Koko Coffee, 2026-11-24).
  */
+
+/** What the figures are, per basis — shown to the model and on the card. */
+const BASIS_WORDING = {
+  net_sales: {
+    label: 'Net sales',
+    counts:
+      'Net sales, the same figure as Reports: after discounts, without delivery fees or service charge. Every order that was not cancelled counts, including ones not paid yet.',
+  },
+  completed_totals: {
+    label: 'Sales',
+    counts: 'Completed sales only, order totals with delivery fees included; cancelled and unpaid counter orders are left out.',
+  },
+} as const
 
 import { z } from 'zod'
 import { loadSalesForWindow, type AdminDashboardData } from '@/lib/dashboard/load-admin-dashboard'
@@ -42,12 +58,14 @@ export function buildSalesOverviewResult(data: AdminDashboardData, when: Resolve
     revenue: item.revenue,
   }))
   const hours = hourFacts(data, when)
-  const title = `Sales — ${when.label}${when.isPartial ? ' so far' : ''}`
+  const wording = BASIS_WORDING[data.overview.basis] ?? BASIS_WORDING.completed_totals
+  const title = `${wording.label} — ${when.label}${when.isPartial ? ' so far' : ''}`
 
   return {
     facts: {
       ...whenFacts(when),
       comparedWith: data.compareLabel,
+      salesMeasure: wording.label,
       sales: kpi('sales'),
       orders: kpi('orders'),
       avgOrder: kpi('avgOrder'),
@@ -57,7 +75,7 @@ export function buildSalesOverviewResult(data: AdminDashboardData, when: Resolve
       channels: channels.slice(0, 3).map((row) => ({ label: row.label, sharePct: Math.round(row.share) })),
       ...(hours ? { byHour: hours } : {}),
       ...(busiestHour && when.dayCount > 1 ? { busiestHour: busiestHour.label } : {}),
-      counts: 'Completed sales only; cancelled and unpaid counter orders are left out.',
+      counts: wording.counts,
       notes: data.notes.slice(0, 2),
     },
     card: {
@@ -65,7 +83,7 @@ export function buildSalesOverviewResult(data: AdminDashboardData, when: Resolve
       title,
       subtitle: `vs ${data.compareLabel}`,
       items: [
-        { label: 'Sales', value: formatPeso(kpis.sales.current), change: kpis.sales.change },
+        { label: wording.label, value: formatPeso(kpis.sales.current), change: kpis.sales.change },
         { label: 'Orders', value: formatCount(kpis.orders.current), change: kpis.orders.change },
         { label: 'Avg order', value: formatPeso(kpis.avgOrder.current), change: kpis.avgOrder.change },
         { label: 'Customers', value: formatCount(kpis.customers.current), change: kpis.customers.change },

@@ -11,7 +11,7 @@ import { fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
 import { getMenuItemCost } from '@/lib/inventory/costing-service'
 import { readTenantSales } from '@/lib/dashboard/load-admin-dashboard'
 import { DAY_MS, manilaDayStart } from '@/lib/dashboard/periods'
-import { isCompletedSale, type SaleRecord } from '@/lib/dashboard/sale-record'
+import { countsTowardSales, saleAmount, type SaleRecord, type SalesBasis } from '@/lib/dashboard/sale-record'
 import { formatPeso } from '@/components/admin/dashboard/dashboard-format'
 import { loadCustomerHubOverview } from '@/lib/customers/load-hub-overview'
 import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
@@ -117,6 +117,16 @@ function read(result: { sales: SaleRecord[]; failed: boolean }): SaleRecord[] {
   return result.failed ? [] : result.sales
 }
 
+/**
+ * The average order the promo ideas build on — the same figure as the Reports'
+ * "Average order" on platform stores (net sales ÷ orders, every live order),
+ * else completed bills ÷ completed orders.
+ */
+export function averageOrder(sales: readonly SaleRecord[], basis: SalesBasis): number | null {
+  const counted = sales.filter((sale) => countsTowardSales(sale, basis))
+  return counted.length > 0 ? counted.reduce((sum, sale) => sum + saleAmount(sale), 0) / counted.length : null
+}
+
 async function gatherFacts(ctx: AssistantToolContext): Promise<PromoFacts> {
   const now = Date.now()
   const startMs = manilaDayStart(now) - (WINDOW_DAYS - 1) * DAY_MS
@@ -136,9 +146,9 @@ async function gatherFacts(ctx: AssistantToolContext): Promise<PromoFacts> {
     costed(ctx, ids.flatMap((id) => (id && byId.get(id) ? [byId.get(id) as AssistantMenuItem] : [])))
 
   const [bestList, slowList] = await Promise.all([asItems([topRow?.itemId ?? null]), asItems(slowRows.map((row) => row.itemId))])
-  const completed = read(sales).filter(isCompletedSale)
-  const hours = buildTimeProfile(read(sales), { by: 'hour', startMs, endMs: now + 1 })
-  const days = buildTimeProfile(read(sales), { by: 'weekday', startMs, endMs: now + 1 })
+  const basis: SalesBasis = sales.basis ?? 'completed_totals'
+  const hours = buildTimeProfile(read(sales), { by: 'hour', startMs, endMs: now + 1, basis })
+  const days = buildTimeProfile(read(sales), { by: 'weekday', startMs, endMs: now + 1, basis })
 
   let slippingRegulars: number | null = null
   if (ctx.flags.customerHubOn && hasPermission(ctx.caller, 'customers')) {
@@ -151,7 +161,7 @@ async function gatherFacts(ctx: AssistantToolContext): Promise<PromoFacts> {
     slowDishes: slowList,
     quietestHour: hours.quietest?.label ?? null,
     quietestDay: days.quietest?.label ?? null,
-    avgOrderValue: completed.length > 0 ? completed.reduce((sum, sale) => sum + sale.total, 0) / completed.length : null,
+    avgOrderValue: averageOrder(read(sales), basis),
     slippingRegulars,
   }
 }

@@ -1,8 +1,8 @@
-import { Footprints, Repeat2, UserPlus, UsersRound, type LucideIcon } from 'lucide-react'
+import { Footprints, Hourglass, Repeat2, UserPlus, UsersRound, type LucideIcon } from 'lucide-react'
 import type { CustomerPeriod } from '@/lib/growth/customer-summary'
 import { formatCount, formatPeso, formatPercent } from './dashboard-format'
 import { DashCard } from './dash-card'
-import { METRIC_STYLES, WALK_IN_STYLE, type MetricStyle } from './metric-style'
+import { METRIC_STYLES, OPEN_ORDER_STYLE, WALK_IN_STYLE, type MetricStyle } from './metric-style'
 
 interface BuyerRow {
   key: string
@@ -21,7 +21,11 @@ function count(value: number, one: string, many: string): string {
   return `${formatCount(value)} ${value === 1 ? one : many}`
 }
 
-/** Sales split by who paid: returning, new, and walk-ins who left no number. Always adds up. */
+/**
+ * Sales split by who bought: returning, new, walk-ins who left no number, and
+ * (net sales stores) orders not paid or handed over yet. The rows always add
+ * up to the header, which is the Net sales tile's figure.
+ */
 export function WhoIsBuyingCard({ current, className }: { current: CustomerPeriod; className?: string }) {
   const rows: BuyerRow[] = [
     {
@@ -48,6 +52,18 @@ export function WhoIsBuyingCard({ current, className }: { current: CustomerPerio
       icon: Footprints,
       style: WALK_IN_STYLE,
     },
+    ...(current.openOrders > 0
+      ? [
+          {
+            key: 'open',
+            label: 'Not finished yet',
+            detail: `${count(current.openOrders, 'order', 'orders')}, not paid or handed over`,
+            sales: current.openSales,
+            icon: Hourglass,
+            style: OPEN_ORDER_STYLE,
+          },
+        ]
+      : []),
   ]
 
   return (

@@ -24,3 +24,6 @@ export const METRIC_STYLES: Readonly<Record<MetricKey, MetricStyle>> = {
 
 /** Walk-ins (orders with no phone number) — warm grey, never a metric of their own. */
 export const WALK_IN_STYLE: MetricStyle = { color: '#C9C1B4', wash: '#F1EEE8', ink: '#5E574D' }
+
+/** Open orders on "Who's buying" (counted in Net sales, not paid or handed over yet) — cool grey. */
+export const OPEN_ORDER_STYLE: MetricStyle = { color: '#9AA3AF', wash: '#EEF0F3', ink: '#47505C' }
