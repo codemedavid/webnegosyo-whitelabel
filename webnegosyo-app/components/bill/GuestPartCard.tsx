@@ -1,11 +1,12 @@
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { fromCents } from "../../lib/bill/money";
 import { groupUnits, type BillPartView } from "../../lib/bill/bill-parts";
+import { parseAmountCents } from "../../lib/bill/custom-split";
 
 interface GuestPartCardProps {
   part: BillPartView;
@@ -18,6 +19,64 @@ interface GuestPartCardProps {
   onPrint?: () => void;
   onCollect?: () => void;
   collectDisabledReason?: string;
+  /** Custom amounts: the cashier typed (or, with `null`, cleared) this guest's amount. */
+  onAmountChange?: (cents: number | null) => void;
+}
+
+function centsText(cents: number | null): string {
+  return cents === null ? "" : (cents / 100).toFixed(2).replace(/\.00$/, "");
+}
+
+/**
+ * What a guest pays in a custom split. Blank means "their part of the rest",
+ * shown as the placeholder, so the usual split is one typed figure. The text
+ * is the cashier's own while they type ("12." stays "12."); only amounts that
+ * parse reach the split.
+ */
+function CustomAmountField({
+  label,
+  typedCents,
+  shareCents,
+  onChange,
+}: {
+  label: string;
+  typedCents: number | null;
+  shareCents: number;
+  onChange: (cents: number | null) => void;
+}) {
+  const [text, setText] = useState(() => centsText(typedCents));
+  const isInvalid = parseAmountCents(text) === undefined;
+
+  return (
+    <View style={styles.amountField}>
+      <Text style={styles.amountLabel}>{typedCents === null && !isInvalid ? "Pays the rest" : "Pays"}</Text>
+      <TextInput
+        accessibilityLabel={`Amount ${label} pays`}
+        style={[styles.amountInput, isInvalid && styles.amountInputInvalid]}
+        value={text}
+        keyboardType="decimal-pad"
+        placeholder={formatPeso(fromCents(shareCents))}
+        placeholderTextColor={colors.textTertiary}
+        onChangeText={(next) => {
+          setText(next);
+          const cents = parseAmountCents(next);
+          if (cents !== undefined) onChange(cents);
+        }}
+      />
+      {text !== "" ? (
+        <TouchableOpacity
+          onPress={() => {
+            setText("");
+            onChange(null);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${label} pays the rest`}
+        >
+          <Text style={styles.amountClear}>Rest</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
 }
 
 /** One guest's share: who, how much, and the two things to do with it. */
@@ -30,6 +89,7 @@ export function GuestPartCard({
   onPrint,
   onCollect,
   collectDisabledReason,
+  onAmountChange,
 }: GuestPartCardProps) {
   const groups = groupUnits(part.units);
   const isEmpty = part.amountCents === 0;
@@ -65,6 +125,15 @@ export function GuestPartCard({
         </View>
         <Text style={[styles.amount, isEmpty && styles.amountEmpty]}>{formatPeso(fromCents(part.amountCents))}</Text>
       </TouchableOpacity>
+
+      {part.custom && onAmountChange && !part.custom.isFixed ? (
+        <CustomAmountField
+          label={part.label}
+          typedCents={part.custom.typedCents}
+          shareCents={part.amountCents}
+          onChange={onAmountChange}
+        />
+      ) : null}
 
       {groups.length > 0 ? (
         <View style={styles.items}>
@@ -152,5 +221,21 @@ const styles = StyleSheet.create({
   },
   itemText: { ...typography.caption, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
   actions: { flexDirection: "row", gap: spacing.sm },
+  amountField: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  amountLabel: { ...typography.caption, fontWeight: "700", color: colors.textMuted, minWidth: 92 },
+  amountInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    fontVariant: ["tabular-nums"],
+  },
+  amountInputInvalid: { borderColor: colors.danger },
+  amountClear: { ...typography.caption, fontWeight: "700", color: colors.accent },
   action: { flex: 1 },
 });

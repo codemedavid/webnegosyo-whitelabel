@@ -17,7 +17,7 @@ import type { PrintOptions } from "../../hooks/useOrderPrint";
 import type { ReceiptOrder } from "../receipt-layout";
 import { fromCents, toCents } from "./money";
 import { billSummary, type BillOrder } from "./bill-orders";
-import { recordPartPayment, type BillPlan } from "./bill-plan";
+import { recordCustomPayment, recordPartPayment, type BillPlan } from "./bill-plan";
 import type { BillPartView } from "./bill-parts";
 import { wholeBillReceipt } from "./bill-receipt";
 import { settleBillTenders } from "./settle-bill";
@@ -116,7 +116,12 @@ export function useBillCollect(input: BillCollectInput): BillCollect {
       }
 
       if (target.kind === "part") {
-        input.updatePlan(input.billKey, (plan) => recordPartPayment(plan, target.part.key, result.recordedCents));
+        const { part } = target;
+        input.updatePlan(input.billKey, (plan) =>
+          part.custom
+            ? recordCustomPayment(plan, part.guest, part.amountCents, result.recordedCents)
+            : recordPartPayment(plan, part.key, result.recordedCents),
+        );
       }
       setTarget(null);
 

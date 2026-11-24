@@ -20,6 +20,7 @@ import { Alert } from "react-native";
 import type { CollectedPayment, CollectPaymentMethod } from "../components/order/CollectPaymentSheet";
 import type { PaymentDecisionSummary } from "../components/order/PaymentDecisionSheet";
 import { collectLedgerNote, type CollectGate } from "./order-collect";
+import { fromCents, toCents } from "./bill/money";
 import { settlementIntent } from "./order-balance";
 import { shouldMarkOrderPaid } from "./order-paid-state";
 import {
@@ -97,6 +98,8 @@ export interface OrderPaymentFlow {
     title?: string;
     submitLabel?: string;
     onSubmit: (payment: CollectedPayment) => Promise<void>;
+    /** Split between methods: each payment recorded under its own method. */
+    onSubmitSplit: (payments: readonly CollectedPayment[]) => Promise<void>;
     onClose: () => void;
   };
 }
@@ -109,6 +112,37 @@ function customerReference(order: PaymentFlowOrder | null): string | null {
 function customerProofUrl(order: PaymentFlowOrder | null): string | null {
   const value = order?.customerData?.payment_proof_url;
   return value == null || String(value).trim() === "" ? null : String(value);
+}
+
+function formatPesos(amount: number): string {
+  return `₱${amount.toFixed(2)}`;
+}
+
+function joinUnique(values: readonly (string | undefined)[], separator: string): string | undefined {
+  const unique = [...new Set(values.map((v) => v?.trim()).filter((v): v is string => Boolean(v)))];
+  return unique.length > 0 ? unique.join(separator) : undefined;
+}
+
+/**
+ * What the bill-out prints for the payments that went through: the total,
+ * every method once ("Cash + GCash"), and the cash lines' cash and change —
+ * only when the whole split was recorded, so a slip never shows change for
+ * money that is not all on the ledger. One payment prints as itself.
+ */
+export function combinedPayment(payments: readonly CollectedPayment[], isWhole: boolean): CollectedPayment {
+  if (payments.length === 1) return payments[0];
+  const cash = payments.filter((p) => p.cashTendered !== undefined && p.changeDue !== undefined);
+  return {
+    amount: fromCents(payments.reduce((sum, p) => sum + toCents(p.amount), 0)),
+    methodName: joinUnique(payments.map((p) => p.methodName), " + "),
+    reference: joinUnique(payments.map((p) => p.reference), " / "),
+    ...(isWhole && cash.length > 0
+      ? {
+          cashTendered: fromCents(cash.reduce((sum, p) => sum + toCents(p.cashTendered ?? 0), 0)),
+          changeDue: fromCents(cash.reduce((sum, p) => sum + toCents(p.changeDue ?? 0), 0)),
+        }
+      : {}),
+  };
 }
 
 function platformAlert(title: string, message: string): void {
@@ -224,36 +258,51 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
     }
   }, [prompt, isBusy, advance]);
 
-  const onSubmitCollect = useCallback(
-    async (payment: CollectedPayment) => {
-      if (!order || !collect) return;
+  /**
+   * One payment, or a split tender (₱200 cash, the rest by GCash) as several:
+   * each is its own ledger row under its own method, written in turn, so the
+   * reports and the drawer count the cash as cash and the GCash as GCash.
+   * The run stops at the first refusal; whatever WAS recorded stays recorded
+   * and the screen re-reads the ledger, so the cashier collects the rest.
+   */
+  const settle = useCallback(
+    async (payments: readonly CollectedPayment[]) => {
+      if (!order || !collect || payments.length === 0) return;
 
-      try {
-        await recordPayment({
-          orderId: order._id,
-          kind: "charge",
-          amount: payment.amount,
-          paymentMethodId: payment.methodId,
-          paymentMethodName: payment.methodName,
-          reference: payment.reference,
-          // The cash handed over and the change, kept on the row: the ledger
-          // has no columns for them, and a drawer that does not reconcile is
-          // traced back through exactly these figures.
-          note: collectLedgerNote(payment),
-          recordedBy: userId ?? undefined,
-          outletId,
-        });
-      } catch (err) {
-        alert(
-          "Could not record the payment",
-          err instanceof Error ? err.message : "Nothing was recorded. Try again.",
-        );
+      const recorded: CollectedPayment[] = [];
+      let failure: string | null = null;
+      for (const payment of payments) {
+        try {
+          await recordPayment({
+            orderId: order._id,
+            kind: "charge",
+            amount: payment.amount,
+            paymentMethodId: payment.methodId,
+            paymentMethodName: payment.methodName,
+            reference: payment.reference,
+            // The cash handed over and the change, kept on the row: the ledger
+            // has no columns for them, and a drawer that does not reconcile is
+            // traced back through exactly these figures.
+            note: collectLedgerNote(payment),
+            recordedBy: userId ?? undefined,
+            outletId,
+          });
+          recorded.push(payment);
+        } catch (err) {
+          failure = err instanceof Error ? err.message : "Nothing was recorded. Try again.";
+          break;
+        }
+      }
+
+      if (recorded.length === 0) {
+        alert("Could not record the payment", failure ?? "Nothing was recorded. Try again.");
         return;
       }
 
       const then = collect.then;
       setCollect(null);
-      const balanceAfter = balanceDue - payment.amount;
+      const recordedCents = recorded.reduce((sum, payment) => sum + toCents(payment.amount), 0);
+      const balanceAfter = fromCents(toCents(balanceDue) - recordedCents);
 
       // The ledger now holds the money; the order row must say so too — but
       // only when the payment squares the bill. A part payment leaves the order
@@ -268,7 +317,16 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
       }
 
       // Bill-out: the money is settled, so this is the customer's receipt.
-      printBill(payment);
+      printBill(combinedPayment(recorded, failure === null));
+
+      if (failure !== null) {
+        alert(
+          "Only part of the payment was recorded",
+          `${formatPesos(fromCents(recordedCents))} was recorded. The rest was not: ${failure} ` +
+            "The order now shows what is still owed — collect it again.",
+        );
+        return;
+      }
 
       if (!then) return;
       // Handing over an order that still owes money would mark it paid
@@ -284,6 +342,7 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
     },
     [order, collect, recordPayment, userId, outletId, alert, balanceDue, updatePaymentStatus, printBill, advance],
   );
+  const onSubmitCollect = useCallback((payment: CollectedPayment) => settle([payment]), [settle]);
 
   const copy = prompt
     ? paymentPromptCopy(prompt.kind, { amount: balanceDue, methodName: order?.paymentMethod })
@@ -318,6 +377,7 @@ export function useOrderPaymentFlow(input: OrderPaymentFlowInput): OrderPaymentF
       title: collect?.title,
       submitLabel: collect?.submitLabel,
       onSubmit: onSubmitCollect,
+      onSubmitSplit: settle,
       onClose: () => setCollect(null),
     },
   };

@@ -1,4 +1,12 @@
-import { EMPTY_PLAN, assignUnit, recordPartPayment, setGuests, setMode } from "./bill-plan";
+import {
+  EMPTY_PLAN,
+  assignUnit,
+  recordCustomPayment,
+  recordPartPayment,
+  setCustomAmount,
+  setGuests,
+  setMode,
+} from "./bill-plan";
 import { billPartViews, groupUnits, itemSplitBlockedReason } from "./bill-parts";
 import { billUnits } from "./bill-split";
 import { ROUND_ONE, ROUND_TWO } from "./bill-fixtures";
@@ -33,6 +41,36 @@ describe("billPartViews", () => {
     expect(parts[1]).toMatchObject({ label: "Guest 2", amountCents: 8800, preferred: { "order-b": 8800 } });
     expect(parts[0].amountCents).toBe(0);
     expect(unassigned).toHaveLength(4);
+  });
+});
+
+describe("billPartViews · custom amounts", () => {
+  const custom = setMode(EMPTY_PLAN, "custom", 56000);
+
+  it("Guest 1 pays ₱500 and Guest 2 the rest, each with their own slip", () => {
+    const { parts, problem } = billPartViews(orders, setCustomAmount(custom, 0, 50000), NOW);
+
+    expect(problem).toBeNull();
+    expect(parts.map((p) => [p.key, p.label, p.amountCents, p.custom])).toEqual([
+      ["custom:0", "Guest 1", 50000, { typedCents: 50000, isFixed: false }],
+      ["custom:1", "Guest 2", 6000, { typedCents: null, isFixed: false }],
+    ]);
+    expect(parts[1].receipt(0).bill?.share).toEqual({ label: "Your share (2 of 2)", amount: 60 });
+    expect(parts[0].preferred).toBeUndefined();
+  });
+
+  it("explains amounts that do not add up", () => {
+    const over = setCustomAmount(setCustomAmount(custom, 0, 50000), 1, 10000);
+    expect(billPartViews(orders, over, NOW).problem).toMatch(/₱40\.00 more than the bill/);
+  });
+
+  it("keeps a paid guest's share when another guest's amount changes", () => {
+    const paid = recordCustomPayment(custom, 1, 28000, 28000);
+    const edited = setCustomAmount(paid, 0, 10000);
+
+    const { parts, problem } = billPartViews(orders, edited, NOW);
+    expect(parts[1]).toMatchObject({ amountCents: 28000, isPaid: true, custom: { isFixed: true } });
+    expect(problem).toMatch(/₱180\.00 is not on anyone/);
   });
 });
 
