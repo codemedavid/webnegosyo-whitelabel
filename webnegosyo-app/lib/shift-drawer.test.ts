@@ -147,3 +147,27 @@ it("does not pull another branch's cash into a personal drawer", () => {
   const other = sale({ customerData: { outlet_id: "south", pos: { cashierId: SHIFT.staffUserId } } });
   expect(summarizeShiftDrawer([other], [], { ...SHIFT, outletId: "north" }, OPENED_MS + HOUR).cashTotal).toBe(0);
 });
+
+describe("a register sale split between methods (pos-split-tender.ts)", () => {
+  // Written paid with NO single method; each line is its own ledger row.
+  const split = sale({
+    _id: "split-1",
+    total: 540,
+    paymentMethod: undefined,
+    customerData: { pos: { cashierId: "u1", split: [] } },
+  });
+  const rows = [
+    { orderId: "split-1", kind: "charge" as const, amount: 200, paymentMethodName: "Cash", recordedBy: "u1", _creationTime: OPENED_MS + HOUR },
+    { orderId: "split-1", kind: "charge" as const, amount: 340, paymentMethodName: "GCash", recordedBy: "u1", _creationTime: OPENED_MS + HOUR },
+  ];
+
+  it("expects only the cash part in the drawer", () => {
+    const summary = summarizeShiftDrawer([split], rows, SHIFT, OPENED_MS + 2 * HOUR);
+    expect(summary.cashTotal).toBe(200);
+    expect(summary.nonCashTotal).toBe(340);
+  });
+
+  it("before its rows land, expects no cash at all — never cash the drawer may not hold", () => {
+    expect(summarizeShiftDrawer([split], [], SHIFT, OPENED_MS + 2 * HOUR).cashTotal).toBe(0);
+  });
+});

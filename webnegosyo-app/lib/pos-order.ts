@@ -20,6 +20,7 @@ import { orderLineAllocations } from "./pos-gov-discount";
 import { lineItemAllocations, mergeAllocations, toOrderLineDiscounts } from "./pos-line-discounts";
 import type { OrderDiscountLine } from "./order-totals";
 import { computeChange } from "./pos-cash";
+import type { PosSplitRecord } from "./pos-split-tender";
 import { withOrderOutlet, type OrderOutletContext } from "./order-outlet";
 import { tableCustomerData, type PosTableDetails } from "./pos-table";
 import {
@@ -61,12 +62,20 @@ export interface PosPaymentPayload {
    * are recorded then, on the settlement ledger).
    */
   payLater?: boolean;
+  /**
+   * Paid now with more than one method (₱200 cash + the rest by GCash). The
+   * order carries no single method; each line is its own ledger row
+   * (`lib/pos-split-tender.ts`). A record only — the ledger is the money.
+   */
+  split?: PosSplitRecord[];
 }
 
 export interface PosOrderContext {
   cart: PosCartLine[];
-  /** How the sale was settled; `null` for a "pay later" sale. */
+  /** How the sale was settled; `null` for a "pay later" sale, and for a split. */
   tender: PosTender | null;
+  /** Paid now, split between methods. Takes the place of `tender`. */
+  split?: readonly PosSplitRecord[];
   clientOrderId: string;
   orderType?: string;
   orderTypeId?: string;
@@ -240,7 +249,12 @@ function toOrderItem(line: PosCartLine): PosOrderItem {
   };
 }
 
-function paymentPayload(tender: PosTender | null, cashierId?: string): PosPaymentPayload {
+function paymentPayload(
+  tender: PosTender | null,
+  cashierId?: string,
+  split?: readonly PosSplitRecord[],
+): PosPaymentPayload {
+  if (split && split.length > 0) return compact({ split: split.map((line) => ({ ...line })), cashierId });
   if (tender === null) return compact({ payLater: true, cashierId });
   const cash = tender.isCash
     ? { cashTendered: tender.cashTendered, changeDue: tender.changeDue }
@@ -282,6 +296,13 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
   if (tender?.isCash && !computeChange(total, tender.cashTendered ?? 0).isSufficient) {
     throw new Error("Insufficient cash tendered for this sale.");
   }
+  if (context.split && context.split.length > 0) {
+    if (tender !== null) throw new Error("A split sale is settled by its lines, not one tender.");
+    const splitCents = context.split.reduce((sum, line) => sum + Math.round(line.amount * 100), 0);
+    if (splitCents !== Math.round(total * 100)) {
+      throw new Error("The split payments do not add up to this sale.");
+    }
+  }
 
   const deliveryBlob = deliveryCustomerData(context.delivery);
 
@@ -301,7 +322,7 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
       // Spread before `pos` so a discount can never displace the payment
       // payload — both live in this blob and both are needed to settle a sale.
       ...discountBlob(context.discounts, discountTotal, context.government, cart),
-      pos: paymentPayload(tender, context.cashierId),
+      pos: paymentPayload(tender, context.cashierId, context.split),
     },
     total,
     ...(deliveryFee > 0 ? { deliveryFee } : {}),

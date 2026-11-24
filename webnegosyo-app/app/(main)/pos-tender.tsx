@@ -36,6 +36,18 @@ import {
 } from "../../lib/pos-payment-methods";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
+import {
+  canSplitAtRegister,
+  isSplitReferenceRequired,
+  splitLedgerRows,
+  splitMethodOptions,
+  splitReceiptTender,
+  splitRecord,
+  validatePosSplit,
+} from "../../lib/pos-split-tender";
+import { initialTenderLines, type TenderLine } from "../../lib/bill/split-tender";
+import { SplitTenderEditor } from "../../components/order/SplitTenderEditor";
+import { useOfflineOrderMutation } from "../../lib/offline/use-offline-orders";
 import { posReceiptOrder } from "../../lib/pos-receipt";
 import { staleBackendMessage } from "../../lib/stale-backend";
 import { serviceChargeArgFor } from "../../lib/convex-service-charge-arg";
@@ -180,6 +192,9 @@ export default function PosTenderScreen() {
   const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
   const reviseOrder = useSafeMutation(reviseOrderRef);
   const recordPayment = useSafeMutation(recordPaymentRef);
+  // A split sale's ledger rows: queued behind the sale while it is still on
+  // this device (write-behind, offline), written live once the server has it.
+  const recordSplitPayment = useOfflineOrderMutation(recordPaymentRef);
   const { printOrder, shouldPrint } = useOrderPrint();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -199,6 +214,9 @@ export default function PosTenderScreen() {
   const [editReason, setEditReason] = useState("");
   /** Take the money now, or place the order unpaid and collect it later. */
   const [mode, setMode] = useState<TenderMode>("now");
+  /** Paid now with more than one method (₱200 cash + the rest by GCash). */
+  const [isSplit, setIsSplit] = useState(false);
+  const [tenderLines, setTenderLines] = useState<readonly TenderLine[]>([]);
   const showLastSale = usePosLastSaleStore((s) => s.show);
 
   // A fresh idempotency key per visit: a retry after a network blip reuses it,
@@ -223,6 +241,8 @@ export default function PosTenderScreen() {
       setProof(session.proof);
       setEditReason(session.editReason);
       setMode(session.mode);
+      setIsSplit(false);
+      setTenderLines([]);
     }, []),
   );
 
@@ -336,7 +356,22 @@ export default function PosTenderScreen() {
     (shape.offersPhoneOnEveryType && attachedCustomer === null);
   const phoneProblem = isPhoneOffered ? walkInPhoneProblem(customerPhone) : null;
 
-  const paymentBlockedReason = tenderBlockedReason({
+  // Split between methods: a new sale paid now, with a second method to use.
+  const splitOptions = useMemo(() => splitMethodOptions(methods), [methods]);
+  const isSplitOffered =
+    canSplitAtRegister({ methodCount: methods.length, isEditing: editContext !== null }) && !isPayLater;
+  const isSplitActive = isSplit && isSplitOffered;
+  const splitVerdict = isSplitActive ? validatePosSplit(tenderLines, methods, amountDue) : null;
+  const toggleSplit = () => {
+    if (isSplit) {
+      setIsSplit(false);
+      return;
+    }
+    setTenderLines(initialTenderLines(splitOptions, selectedId));
+    setIsSplit(true);
+  };
+
+  const singleBlockedReason = tenderBlockedReason({
     mode: isPayLater ? "later" : "now",
     isAlreadySettled,
     isRefund,
@@ -348,6 +383,8 @@ export default function PosTenderScreen() {
       method !== null &&
       isProofOutstanding(method, { reference, hasProof: proof !== null }),
   });
+  const paymentBlockedReason =
+    splitVerdict === null ? singleBlockedReason : splitVerdict.ok ? undefined : splitVerdict.error;
   const blockedReason = refundRefusedAfterSave
     ? REFUND_NEEDS_APPROVAL_MESSAGE
     : paymentBlockedReason ??
@@ -558,8 +595,11 @@ export default function PosTenderScreen() {
 
   const handleComplete = useCallback(async () => {
     if (isCompleting) return;
-    // A pay-later sale needs no method; a paid one cannot go without.
-    if (!isPayLater && !method) return;
+    // A pay-later sale needs no method; a paid one cannot go without (a split
+    // names one per line).
+    const split = splitVerdict?.ok ? splitVerdict.payments : null;
+    if (splitVerdict && !split) return;
+    if (!isPayLater && !method && !split) return;
 
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
@@ -597,8 +637,9 @@ export default function PosTenderScreen() {
       }
       // `null` for a pay-later sale: nothing has been handed over yet, so no
       // method, cash, change or proof may be claimed on the order.
+      // A split is settled by its lines (one ledger row each), never one tender.
       const tender =
-        isPayLater || !method
+        isPayLater || !method || split
           ? null
           : toTender(method, {
               cashTendered: tendered,
@@ -620,6 +661,7 @@ export default function PosTenderScreen() {
         government,
         cart: lines,
         tender,
+        ...(split ? { split: splitRecord(split) } : {}),
         clientOrderId,
         orderType: orderTypeName ?? undefined,
         orderTypeId: orderTypeId ?? undefined,
@@ -656,7 +698,7 @@ export default function PosTenderScreen() {
         convex_deployment_url: convexUrl,
       });
       const isPlatform = backend === "platform";
-      const isPaidNow = tender !== null;
+      const isPaidNow = tender !== null || split !== null;
       // The server's stock check (block stores): the same lines the stock
       // deduction will spend, and the id it binds its answer to.
       const stockLines = clearanceLines(buildPosStockItems(lines));
@@ -767,11 +809,48 @@ export default function PosTenderScreen() {
       // moment; a sale kept only because the connection is down will not.
       const isSavedOffline = outcome.kind === "queued" && (!isPlatform || isOffline());
 
+      // A split's lines, one ledger row each, after the order they settle.
+      // While the sale is still on this device they only join its queue, so
+      // they are stored before the till is handed back; a sale already on the
+      // server (Convex, written live) records them in the background below.
+      const splitRows = split
+        ? splitLedgerRows(split, {
+            orderId: String(orderId),
+            recordedBy: userId ?? undefined,
+            outletId: outletId ?? undefined,
+          })
+        : [];
+      const recordSplitRows = async () => {
+        for (const row of splitRows) {
+          try {
+            await recordSplitPayment(row);
+          } catch (err) {
+            // The sale is saved and paid; only this method's row is missing,
+            // so say which, and stop rather than record the rest out of order.
+            Alert.alert(
+              "Payment not fully recorded",
+              `The sale is saved, but the ${String(row.paymentMethodName)} part (${formatPeso(Number(row.amount))}) was not recorded: ${
+                err instanceof Error ? err.message : "unknown error"
+              }. Note it for the owner.`,
+            );
+            return;
+          }
+        }
+      };
+      if (outcome.kind === "queued") await recordSplitRows();
+      const receiptTender = split ? splitReceiptTender(split) : tender;
+
       // Paper starts NOW, before anything else. A paid counter sale prints its
       // receipt under every trigger except "never". A pay-later order prints
       // no receipt yet — its bill prints when it is collected from the order
       // screen, with the cash and change on it.
-      const receipt = tender ? posReceiptOrder(String(orderId), args, tender, createdAt) : undefined;
+      const receipt = receiptTender
+        ? {
+            ...posReceiptOrder(String(orderId), args, receiptTender, createdAt),
+            // A split order carries no single method; the paper names them all.
+            ...(split ? { paymentMethod: receiptTender.methodName } : {}),
+          }
+        : undefined;
       const isReceiptSent = receipt !== undefined && shouldPrint("counterSale");
       // The banner says "Reprint" only once this print SUCCEEDED; a print
       // that was only sent (printer off) leaves it "Print receipt".
@@ -801,7 +880,7 @@ export default function PosTenderScreen() {
         orderId: String(orderId),
         notice: describeCompletedSale({
           total: args.total,
-          changeDue: tender?.changeDue,
+          changeDue: receiptTender?.changeDue,
           isPayLater: !isPaidNow,
           isSavedOffline,
           ...(isChatOrder && chat ? { sentToChat: chat.name } : {}),
@@ -822,6 +901,7 @@ export default function PosTenderScreen() {
 
       void settleSaleInBackground(async () => {
         if (outcome.kind === "written") {
+          await recordSplitRows();
           // Convex takes no payment status on create, so a paid sale is marked
           // paid here. A failure must not lose the sale — it already exists.
           if (isPaidNow) {
@@ -857,6 +937,9 @@ export default function PosTenderScreen() {
     serviceChargeArg,
     method,
     isPayLater,
+    // The split as typed, validated: its lines are the sale's payments.
+    splitVerdict,
+    recordSplitPayment,
     isCompleting,
     hasOrderBackend,
     tenantId,
@@ -1145,6 +1228,14 @@ export default function PosTenderScreen() {
           />
         ) : methods.length === 0 ? (
           <EmptyState message="No payment methods are enabled for this order type. Add one in Store Setup." />
+        ) : isSplitActive ? (
+          <SplitTenderEditor
+            lines={tenderLines}
+            methods={splitOptions}
+            balanceDue={amountDue}
+            onChange={setTenderLines}
+            isReferenceRequired={(methodId) => isSplitReferenceRequired(methods, methodId)}
+          />
         ) : (
           <View style={styles.methodRow}>
             {methods.map((m) => (
@@ -1167,7 +1258,15 @@ export default function PosTenderScreen() {
           </View>
         )}
 
-        {method && wantsCashPad && (
+        {isSplitOffered ? (
+          <TouchableOpacity onPress={toggleSplit} accessibilityRole="button" style={styles.splitToggle}>
+            <Text style={styles.splitToggleText}>
+              {isSplitActive ? "Pay with one method" : "Split between methods (e.g. GCash + cash)"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {!isSplitActive && method && wantsCashPad && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Cash received</Text>
             <TextInput
@@ -1197,7 +1296,7 @@ export default function PosTenderScreen() {
           </View>
         )}
 
-        {method && (!isCash || isRefund) && (
+        {!isSplitActive && method && (!isCash || isRefund) && (
           <View style={styles.section}>
             {method.qr_code_url ? (
               <>
@@ -1234,7 +1333,7 @@ export default function PosTenderScreen() {
           camera stays offered once a reference is typed — a cashier who wants
           the photo anyway should not have to clear the field to get it.
         */}
-        {method && needsProof && !isRefund && (
+        {!isSplitActive && method && needsProof && !isRefund && (
           <ProofCapture
             proof={proof}
             onCaptured={setProof}
@@ -1401,6 +1500,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   changeBoxReady: { backgroundColor: colors.successLight },
+  splitToggle: { alignSelf: "flex-start", paddingVertical: spacing.xs },
+  splitToggleText: { ...typography.body, color: colors.accent, fontWeight: "700" },
   changeLabel: { ...typography.eyebrow, color: colors.textSecondary },
   changeAmount: { fontSize: 32, fontWeight: "800", color: colors.textPrimary },
   qr: {
