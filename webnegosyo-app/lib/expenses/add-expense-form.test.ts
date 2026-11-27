@@ -11,6 +11,7 @@ import {
   drawerAfterCents,
   drawerChipLabel,
   emptyForm,
+  hasUnsavedEntry,
   formForOpening,
   nextEntryForm,
   oldestSpendDate,
@@ -305,5 +306,24 @@ describe("add-expense form", () => {
     const all = [lpg, ice, other, ownerDraw];
     expect(categoriesForScope(all, "spend").map((c) => c.id)).toEqual(["c-lpg", "c-ice", "c-other"]);
     expect(categoriesForScope(all, "take_out").map((c) => c.id)).toEqual(["c-owner"]);
+  });
+});
+
+describe("hasUnsavedEntry (before leaving for Manage categories)", () => {
+  it("is false for an untouched form, even with a category picked", () => {
+    expect(hasUnsavedEntry(emptyForm(TODAY), TODAY, false)).toBe(false);
+    expect(hasUnsavedEntry({ ...emptyForm(TODAY), categoryId: "c-lpg" }, TODAY, false)).toBe(false);
+  });
+
+  it("is true for an amount, a note, a payee, another date, or a receipt photo alone", () => {
+    expect(hasUnsavedEntry(typed(["1", "5"]), TODAY, false)).toBe(true);
+    expect(hasUnsavedEntry({ ...emptyForm(TODAY), note: "uling" }, TODAY, false)).toBe(true);
+    expect(hasUnsavedEntry({ ...emptyForm(TODAY), paidToName: "Aling Nena" }, TODAY, false)).toBe(true);
+    expect(hasUnsavedEntry({ ...emptyForm(TODAY), spentOn: addDays(TODAY, -1) }, TODAY, false)).toBe(true);
+    expect(hasUnsavedEntry(emptyForm(TODAY), TODAY, true)).toBe(true);
+  });
+
+  it("ignores a note of only spaces", () => {
+    expect(hasUnsavedEntry({ ...emptyForm(TODAY), note: "   " }, TODAY, false)).toBe(false);
   });
 });

@@ -132,35 +132,32 @@ export interface SortWrite {
 }
 
 /**
- * Move a category one place up (-1) or down (1) within its group: the two
- * sort orders swap. Two rows with the same sort order (seeded by hand, or a
- * web edit) get distinct ones so the move still shows. Null = already at the
- * edge, or not a live category.
+ * Move a category one place up (-1) or down (1) within its group. Usually the
+ * two sort orders swap (the group's set of values is unchanged, so nothing new
+ * ties). When the two share a sort order (seeded by hand, or a web edit) no
+ * swap can show, so the group is renumbered in SORT_STEP steps in its new
+ * order and only the rows whose value changes are written. Null = already at
+ * the edge, or not a live category.
  */
-export function moveWrites(
-  categories: readonly ExpenseCategory[],
-  categoryId: string,
-  direction: -1 | 1,
-): [SortWrite, SortWrite] | null {
+export function moveWrites(categories: readonly ExpenseCategory[], categoryId: string, direction: -1 | 1): SortWrite[] | null {
   const category = categories.find((entry) => entry.id === categoryId && entry.archivedAt === null);
   if (!category) return null;
   const siblings = sortCategories(categories.filter((entry) => entry.group === category.group && entry.archivedAt === null));
   const index = siblings.findIndex((entry) => entry.id === category.id);
   const neighbour = siblings[index + direction];
   if (!neighbour) return null;
-  if (category.sortOrder === neighbour.sortOrder) {
-    const moved = Math.max(0, neighbour.sortOrder + direction);
-    // At sort 0 moving up, the neighbour steps down instead.
-    const other = moved === neighbour.sortOrder ? neighbour.sortOrder + 1 : neighbour.sortOrder;
+  if (category.sortOrder !== neighbour.sortOrder) {
     return [
-      { category, sortOrder: moved },
-      { category: neighbour, sortOrder: other },
+      { category, sortOrder: neighbour.sortOrder },
+      { category: neighbour, sortOrder: category.sortOrder },
     ];
   }
-  return [
-    { category, sortOrder: neighbour.sortOrder },
-    { category: neighbour, sortOrder: category.sortOrder },
-  ];
+  const order = [...siblings];
+  order[index] = neighbour;
+  order[index + direction] = category;
+  return order
+    .map((entry, position) => ({ category: entry, sortOrder: (position + 1) * SORT_STEP }))
+    .filter((write) => write.sortOrder !== write.category.sortOrder);
 }
 
 /** Can this category move up / down within its group? */

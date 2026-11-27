@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 
 import ExpenseCategoriesScreen from "../../../app/(main)/expense-categories";
-import { archiveCategory, saveCategory } from "../../../lib/expenses/expense-service";
+import { archiveCategory, saveCategory, setCategorySortOrder } from "../../../lib/expenses/expense-service";
 import type { ExpenseCategory } from "../../../lib/expenses/types";
 
 jest.mock("expo-router", () => ({ router: { back: jest.fn(), push: jest.fn() } }));
@@ -10,6 +10,7 @@ jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({
 jest.mock("../../../lib/expenses/expense-client", () => ({ liveExpenseDb: {} }));
 jest.mock("../../../lib/expenses/expense-service", () => ({
   saveCategory: jest.fn(),
+  setCategorySortOrder: jest.fn(),
   archiveCategory: jest.fn(),
 }));
 
@@ -106,17 +107,39 @@ it("puts a category moved to another group at the end of that group", async () =
   expect(jest.mocked(saveCategory).mock.calls[0][2]).toMatchObject({ id: "gas", group: "utilities", sortOrder: 120 });
 });
 
-it("moves a category up by swapping sort orders with its neighbour", async () => {
-  jest.mocked(saveCategory).mockImplementation(async (_db, _tenant, input) => category({ ...GAS, ...input, id: input.id as string }));
+it("moves a category up by swapping sort orders with its neighbour, writing only positions", async () => {
+  const byId = { gas: GAS, ice: ICE } as Record<string, ExpenseCategory>;
+  jest.mocked(setCategorySortOrder).mockImplementation(async (_db, _tenant, id, sortOrder) => ({ ...byId[id], sortOrder }));
   const screen = render(<ExpenseCategoriesScreen />);
   fireEvent.press(screen.getByTestId("category-manage-gas"));
   fireEvent.press(screen.getByTestId("category-move-up"));
-  await waitFor(() => expect(saveCategory).toHaveBeenCalledTimes(2));
-  const sent = jest.mocked(saveCategory).mock.calls.map(([, , input]) => [input.id, input.sortOrder]);
+  await waitFor(() => expect(setCategorySortOrder).toHaveBeenCalledTimes(2));
+  const sent = jest.mocked(setCategorySortOrder).mock.calls.map(([, , id, sortOrder]) => [id, sortOrder]);
   expect(sent).toEqual([
     ["gas", 10],
     ["ice", 20],
   ]);
+  expect(saveCategory).not.toHaveBeenCalled();
+});
+
+it("a rename after a move keeps the move (no stale position sent)", async () => {
+  const byId = { gas: GAS, ice: ICE } as Record<string, ExpenseCategory>;
+  jest.mocked(setCategorySortOrder).mockImplementation(async (_db, _tenant, id, sortOrder) => ({ ...byId[id], sortOrder }));
+  jest.mocked(saveCategory).mockResolvedValueOnce({ ...GAS, name: "Gas tank", sortOrder: 10 });
+  const screen = render(<ExpenseCategoriesScreen />);
+  fireEvent.press(screen.getByTestId("category-manage-gas"));
+  fireEvent.press(screen.getByTestId("category-move-up"));
+  await waitFor(() => expect(setCategorySortOrder).toHaveBeenCalledTimes(2));
+  fireEvent.changeText(screen.getByLabelText("Category name"), "Gas tank");
+  fireEvent.press(screen.getByTestId("category-save"));
+  await waitFor(() => expect(saveCategory).toHaveBeenCalled());
+  expect(jest.mocked(saveCategory).mock.calls[0][2]).toEqual({
+    id: "gas",
+    name: "Gas tank",
+    group: "ingredients",
+    needsNote: false,
+    sortOrder: undefined,
+  });
 });
 
 it("archives and restores, never deletes", async () => {

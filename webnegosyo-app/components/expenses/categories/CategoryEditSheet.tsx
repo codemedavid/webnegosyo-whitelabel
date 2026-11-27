@@ -81,8 +81,9 @@ export function CategoryEditSheet({ draft: initial, categories, canMoveUp, canMo
     void runOnce(() => actions.save({ ...draft, name: draft.name.trim() }));
   };
 
-  // Moving to another group puts it at the END of that group (like a new one);
-  // going back to its own group restores where it was.
+  // Moving to another group puts it at the END of that group (like a new one).
+  // Within its own group the position is never sent on Save (the screen drops
+  // it), so a rename after Move up/down keeps the move.
   const pickGroup = (group: ExpenseGroup) => {
     if (isGroupLocked) return;
     const sortOrder = group === initial.group ? initial.sortOrder : nextSortOrder(categories, group);

@@ -73,6 +73,21 @@ export function emptyForm(today: string, paidFrom: BookPaidFrom = "cash"): AddEx
   };
 }
 
+/**
+ * Whether leaving the sheet now would lose something the person entered: an
+ * amount, a note, who was paid, another date, or a receipt photo. A picked
+ * category alone doesn't count (it is one tap to pick again).
+ */
+export function hasUnsavedEntry(form: AddExpenseForm, today: string, hasReceipt: boolean): boolean {
+  return (
+    keypadCents(form.keypad) > 0 ||
+    form.note.trim() !== "" ||
+    form.paidToName.trim() !== "" ||
+    form.spentOn !== today ||
+    hasReceipt
+  );
+}
+
 export interface OpeningValues {
   today: string;
   /** Kept from the last entry: where the money usually comes from. */

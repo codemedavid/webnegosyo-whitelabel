@@ -8,6 +8,7 @@ import {
   listAllCategories,
   listCategories,
   saveCategory,
+  setCategorySortOrder,
   listExpenses,
   listUnsortedPayouts,
   recordDrawerExpense,
@@ -392,6 +393,26 @@ describe("category writes", () => {
       ["tenant_id", "t1"],
       ["id", "c1"],
     ]);
+  });
+
+  it("leaves the sort order alone on an edit that doesn't give one (a rename never undoes a move)", async () => {
+    const { db, calls } = fakeDb({ expense_categories: [{ data: [{ ...catRow, name: "Uling" }], error: null }] });
+    await saveCategory(db, "t1", { id: "c1", name: "Uling", group: "ingredients", needsNote: false });
+    expect(calls[0].ops.find(([name]) => name === "update")?.[1][0]).toEqual({ name: "Uling", grp: "ingredients", needs_note: false });
+  });
+
+  it("moves a category by writing only its sort order", async () => {
+    const { db, calls } = fakeDb({ expense_categories: [{ data: [{ ...catRow, sort_order: 50 }], error: null }] });
+    const moved = await setCategorySortOrder(db, "t1", "c1", 50);
+    expect(moved.sortOrder).toBe(50);
+    const ops = calls[0].ops;
+    expect(ops.find(([name]) => name === "update")?.[1][0]).toEqual({ sort_order: 50 });
+    expect(ops.filter(([name]) => name === "eq").map(([, args]) => args)).toEqual([
+      ["tenant_id", "t1"],
+      ["id", "c1"],
+    ]);
+    const refused = fakeDb({ expense_categories: [{ data: [], error: null }] });
+    await expect(setCategorySortOrder(refused.db, "t1", "c1", 50)).rejects.toThrow(CATEGORY_COPY.gone);
   });
 
   it("refuses an empty answer (RLS refused a branch account or another store) instead of trusting 'no error'", async () => {

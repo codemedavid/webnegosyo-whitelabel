@@ -20,6 +20,7 @@ import {
   drawerAfterCents,
   drawerChipLabel,
   formForOpening,
+  hasUnsavedEntry,
   nextEntryForm,
   NOTE_MAX,
   PAID_TO_MAX,
@@ -434,7 +435,7 @@ export function AddExpenseSheet({
                         close();
                         onManageCategories();
                       };
-                      if (keypadCents(form.keypad) <= 0) return leave();
+                      if (!hasUnsavedEntry(form, today, receipt !== null)) return leave();
                       Alert.alert("Leave this expense?", "What you typed here is not saved.", [
                         { text: "Stay", style: "cancel" },
                         { text: "Leave", style: "destructive", onPress: leave },

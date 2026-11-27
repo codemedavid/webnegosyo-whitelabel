@@ -123,28 +123,37 @@ describe("moveWrites", () => {
     expect(moveWrites(ALL, "old", -1)).toBeNull();
   });
 
-  it("separates two categories that share a sort order so the move shows", () => {
+  /** The group's live order after the writes land (what the screen shows next). */
+  function orderAfter(list: ExpenseCategory[], id: string, direction: -1 | 1): string[] {
+    const writes = moveWrites(list, id, direction) ?? [];
+    const next = writes.reduce((acc, write) => withCategory(acc, { ...write.category, sortOrder: write.sortOrder }), list);
+    return categorySections(next).find((section) => section.group === "operating")!.items.map((entry) => entry.id);
+  }
+
+  it("renumbers the group when two categories share a sort order, writing only what changes", () => {
     const a = category({ id: "a", name: "Alpha", sortOrder: 10 });
     const b = category({ id: "b", name: "Bravo", sortOrder: 10 });
-    const down = moveWrites([a, b], "a", 1);
-    expect(down).toEqual([
-      { category: a, sortOrder: 11 },
-      { category: b, sortOrder: 10 },
-    ]);
-    const up = moveWrites([a, b], "b", -1);
-    expect(up).toEqual([
-      { category: b, sortOrder: 9 },
-      { category: a, sortOrder: 10 },
-    ]);
+    expect(moveWrites([a, b], "a", 1)).toEqual([{ category: a, sortOrder: 20 }]);
+    expect(orderAfter([a, b], "a", 1)).toEqual(["b", "a"]);
+    expect(orderAfter([a, b], "b", -1)).toEqual(["b", "a"]);
+  });
+
+  it("never leaves the moved category tied with a third one", () => {
+    const a = category({ id: "a", name: "Alpha", sortOrder: 10 });
+    const b = category({ id: "b", name: "Bravo", sortOrder: 10 });
+    const c = category({ id: "c", name: "Aardvark", sortOrder: 11 });
+    // A one-step nudge would put Alpha on 11 with Aardvark, which sorts first by name.
+    expect(orderAfter([a, b, c], "a", 1)).toEqual(["b", "a", "c"]);
+    const values = (moveWrites([a, b, c], "a", 1) ?? []).map((write) => write.sortOrder);
+    expect(new Set(values).size).toBe(values.length);
   });
 
   it("never writes a negative sort order", () => {
     const a = category({ id: "a", name: "Alpha", sortOrder: 0 });
     const b = category({ id: "b", name: "Bravo", sortOrder: 0 });
-    expect(moveWrites([a, b], "b", -1)).toEqual([
-      { category: b, sortOrder: 0 },
-      { category: a, sortOrder: 1 },
-    ]);
+    const writes = moveWrites([a, b], "b", -1) ?? [];
+    expect(writes.every((write) => write.sortOrder >= 0)).toBe(true);
+    expect(orderAfter([a, b], "b", -1)).toEqual(["b", "a"]);
   });
 });
 

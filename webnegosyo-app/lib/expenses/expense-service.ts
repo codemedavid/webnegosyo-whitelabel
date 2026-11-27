@@ -329,7 +329,16 @@ export interface CategorySave {
   name: string;
   group: ExpenseGroup;
   needsNote: boolean;
-  sortOrder: number;
+  /**
+   * Where it sits in its group. Needed for a new category; on an edit, sent
+   * only when given (a group change), so a rename never moves it back to
+   * wherever it was when the sheet opened.
+   */
+  sortOrder?: number;
+}
+
+function sortValue(sortOrder: number): number {
+  return Math.max(0, Math.round(sortOrder));
 }
 
 /**
@@ -337,16 +346,33 @@ export interface CategorySave {
  * it and the app draws its own marks (`category-look.ts`).
  */
 export async function saveCategory(db: ExpenseDb, tenantId: string, input: CategorySave): Promise<ExpenseCategory> {
-  const columns = {
+  const columns: Record<string, unknown> = {
     name: input.name.trim(),
     grp: input.group,
     needs_note: input.needsNote,
-    sort_order: Math.max(0, Math.round(input.sortOrder)),
   };
+  if (input.sortOrder !== undefined || !input.id) columns.sort_order = sortValue(input.sortOrder ?? 0);
   const request = input.id
     ? db.from("expense_categories").update(columns).eq("tenant_id", tenantId).eq("id", input.id)
     : db.from("expense_categories").insert({ ...columns, tenant_id: tenantId });
   const { data, error } = await run(request.select(CATEGORY_COLUMNS));
+  if (error) throw toCategoryWriteError(error);
+  return writtenCategory(data);
+}
+
+/**
+ * Moves a category within its group: ONLY its sort order is written, so a
+ * rename made elsewhere (the web, another phone) since this list loaded stays.
+ */
+export async function setCategorySortOrder(db: ExpenseDb, tenantId: string, id: string, sortOrder: number): Promise<ExpenseCategory> {
+  const { data, error } = await run(
+    db
+      .from("expense_categories")
+      .update({ sort_order: sortValue(sortOrder) })
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .select(CATEGORY_COLUMNS),
+  );
   if (error) throw toCategoryWriteError(error);
   return writtenCategory(data);
 }

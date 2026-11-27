@@ -24,7 +24,7 @@ import {
   type CategoryDraft,
 } from "../../lib/expenses/category-manage";
 import { liveExpenseDb } from "../../lib/expenses/expense-client";
-import { archiveCategory, saveCategory } from "../../lib/expenses/expense-service";
+import { archiveCategory, saveCategory, setCategorySortOrder } from "../../lib/expenses/expense-service";
 import type { ExpenseCategory, ExpenseGroup } from "../../lib/expenses/types";
 import {
   useAllExpenseCategories,
@@ -66,7 +66,9 @@ function LockedCategories() {
   );
 }
 
-type Sheet = { draft: CategoryDraft } | null;
+interface SheetState {
+  draft: CategoryDraft;
+}
 
 function CategoriesBook() {
   const tenantId = useExpenseTenant();
@@ -75,7 +77,7 @@ function CategoriesBook() {
   // Writes show at once in `local`, kept until a NEW server list arrives (a
   // failed re-read must not hide what was just saved).
   const [local, setLocal] = useState<{ base: readonly ExpenseCategory[]; list: ExpenseCategory[] } | null>(null);
-  const [sheet, setSheet] = useState<Sheet>(null);
+  const [sheet, setSheet] = useState<SheetState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isShowingArchived, setIsShowingArchived] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -107,12 +109,17 @@ function CategoriesBook() {
   const actionsFor = (draft: CategoryDraft): CategoryEditActions => {
     const save = async (next: CategoryDraft) => {
       if (!tenantId) throw new Error("No store selected.");
+      // The position goes only with a new category or a group change: the
+      // draft's copy is from when the sheet opened, so a rename after a move
+      // must not send it (it would undo the move).
+      const current = next.id ? categories.find((category) => category.id === next.id) : undefined;
+      const isRegrouped = current === undefined || current.group !== next.group;
       const saved = await saveCategory(liveExpenseDb, tenantId, {
         id: next.id,
         name: next.name,
         group: next.group,
         needsNote: next.needsNote,
-        sortOrder: next.sortOrder,
+        sortOrder: isRegrouped ? next.sortOrder : undefined,
       });
       applied(saved);
       setSheet(null);
@@ -127,17 +134,10 @@ function CategoriesBook() {
         if (!tenantId) throw new Error("No store selected.");
         const writes = moveWrites(categories, id, direction);
         if (!writes) return;
-        // Two writes; both land before the list re-reads, so a half move shows as it is.
+        // Only positions are written (a rename made elsewhere meanwhile stays).
+        // Every write lands before the list re-reads, so a half move shows as it is.
         const results = await Promise.allSettled(
-          writes.map(({ category, sortOrder }) =>
-            saveCategory(liveExpenseDb, tenantId, {
-              id: category.id,
-              name: category.name,
-              group: category.group,
-              needsNote: category.needsNote,
-              sortOrder,
-            }),
-          ),
+          writes.map(({ category, sortOrder }) => setCategorySortOrder(liveExpenseDb, tenantId, category.id, sortOrder)),
         );
         let next = categories;
         for (const result of results) if (result.status === "fulfilled") next = withCategory(next, result.value);
