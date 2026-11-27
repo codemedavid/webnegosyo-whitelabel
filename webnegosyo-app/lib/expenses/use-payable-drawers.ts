@@ -17,7 +17,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { resourceKey } from "../backends/query-keys";
 import { canManageCash } from "../cash-drawers";
 import { useResource } from "../query/use-resource";
-import { listOpenShifts, loadOpenShift, type ShiftRecord } from "../shift-service";
+import { listCountedShiftIds, listOpenShifts, loadOpenShift, type ShiftRecord } from "../shift-service";
 import { payableDrawers, type DrawerSource } from "./drawer-sources";
 import { useExpenseOutlet, useExpenseTenant } from "./use-expenses";
 
@@ -26,6 +26,8 @@ export const PAYABLE_DRAWERS_RESOURCE = "expense-payable-drawers";
 interface OpenDrawers {
   openShifts: ShiftRecord[];
   myShift: ShiftRecord | null;
+  /** Undefined = the counts could not be read: the drawers are offered and a refusal is shown. */
+  countedShiftIds?: ReadonlySet<string>;
 }
 
 const NONE: readonly DrawerSource[] = [];
@@ -45,7 +47,14 @@ export function usePayableDrawers(): readonly DrawerSource[] {
       // Only a cash manager may take from someone else's drawer: nobody else needs the list.
       managesCash ? listOpenShifts(tenantId as string, outletId ?? undefined) : Promise.resolve([]),
     ]);
-    return { myShift, openShifts };
+    // A counted drawer refuses every expense until its shift ends (drawer_counted):
+    // never offer it. Could not tell (offline) → offer it; the refusal is then shown.
+    const shiftIds = [...openShifts.map((shift) => shift.id), ...(myShift ? [myShift.id] : [])];
+    const countedShiftIds = await listCountedShiftIds(tenantId as string, shiftIds).catch((error: unknown) => {
+      console.warn("[expenses] drawer counts unavailable", error);
+      return undefined;
+    });
+    return { myShift, openShifts, countedShiftIds };
   }, [tenantId, userId, outletId, managesCash]);
 
   const read = useResource<OpenDrawers>(

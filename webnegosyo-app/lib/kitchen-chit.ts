@@ -119,10 +119,13 @@ function chitItemsLines(items: readonly ChitItem[]): string[] {
   );
 }
 
-/** "12" when the day's number is known, else the id reference chits always printed. */
+/**
+ * "12" when the day's number is known, else the same id reference the board,
+ * the recall bar and the order card show (its FIRST 8 characters), so the cook
+ * can match the paper to the screen.
+ */
 function chitOrderRef(order: KitchenChitOrder): string {
-  const daily = formatDailyOrderNumber(order.dailyNumber).replace(/^#/, "");
-  return daily || order._id.slice(-8).toUpperCase();
+  return formatDailyOrderNumber(order.dailyNumber, order._id).replace(/^#/, "");
 }
 
 /** "For: Thu, Nov 14 · 5:30 PM" on a pre-order; nothing otherwise. */

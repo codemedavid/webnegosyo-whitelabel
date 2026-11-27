@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 import { ShiftCard } from "./ShiftCard";
-import { closeShift, isShiftStillOpen, listOpenShifts, loadOpenShift, openShift, type ShiftRecord } from "../lib/shift-service";
+import { closeShift, isShiftStillOpen, listCountedShiftIds, listOpenShifts, loadOpenShift, openShift, type ShiftRecord } from "../lib/shift-service";
 import { listCashMoves, listDrawers, recordCashMove } from "../lib/cash-drawer-service";
 
 const mockSession = { tenantId: "tenant", userId: "cashier", isDemo: false, isOwner: false, permissions: ["pos"] as string[] | null, role: "admin" };
@@ -22,6 +22,7 @@ jest.mock("../lib/hooks", () => ({ useSafeQuery: () => ({ data: mockLedgerError 
 jest.mock("../lib/supabase", () => ({ supabase: { auth: { getSession: jest.fn(async () => ({ data: { session: { user: { email: "cashier@store.ph", user_metadata: {} } } } })) } } }));
 jest.mock("../lib/shift-service", () => ({
   loadOpenShift: jest.fn(), closeShift: jest.fn(), openShift: jest.fn(), listOpenShifts: jest.fn(), isShiftStillOpen: jest.fn(),
+  listCountedShiftIds: jest.fn(),
 }));
 jest.mock("../lib/cash-drawer-service", () => ({ listDrawers: jest.fn(), listCashMoves: jest.fn(), recordCashMove: jest.fn() }));
 jest.mock("../lib/staff-activity/activity-service", () => ({ listOrderActivity: jest.fn(async () => []) }));
@@ -93,6 +94,7 @@ beforeEach(() => {
   jest.mocked(listOpenShifts).mockResolvedValue([myShift]);
   jest.mocked(listDrawers).mockResolvedValue([]);
   jest.mocked(listCashMoves).mockResolvedValue([]);
+  jest.mocked(listCountedShiftIds).mockResolvedValue(new Set());
   jest.mocked(closeShift).mockResolvedValue(undefined);
   mockDrawerExpenses.isReady = false;
   mockDrawerExpenses.payouts = null;
@@ -499,6 +501,26 @@ describe("expenses from the drawer", () => {
         mode: { kind: "drawer", shiftId: "shift", drawerName: "My", availableCents: 10_500 },
       }),
     );
+  });
+
+  // 2026-11-27: a pay-out typed after the count was refused (drawer_counted) and
+  // sat on the phone as "waiting to send" for days.
+  it("says the drawer was already counted instead of opening the sheet, and the count read failing hides nothing", async () => {
+    jest.mocked(listCountedShiftIds).mockResolvedValue(new Set(["shift"]));
+    const screen = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(screen.getByText("Pay an expense")).toBeTruthy());
+
+    fireEvent.press(screen.getByText("Pay an expense"));
+
+    expect(Alert.alert).toHaveBeenCalledWith("Drawer already counted", expect.stringMatching(/End the shift first/));
+    expect(mockExpenseSheet).not.toHaveBeenCalled();
+    screen.unmount();
+
+    jest.mocked(listCountedShiftIds).mockRejectedValue(new Error("offline"));
+    const again = render(<ShiftCard orders={orders} pageLimit={200} />);
+    await waitFor(() => expect(again.getByText("Pay an expense")).toBeTruthy());
+    fireEvent.press(again.getByText("Pay an expense"));
+    await waitFor(() => expect(mockExpenseSheet).toHaveBeenCalled());
   });
 
   it("swaps the free-text pay out for 'Pay an expense' and 'Take out cash' in Cash in / out", async () => {

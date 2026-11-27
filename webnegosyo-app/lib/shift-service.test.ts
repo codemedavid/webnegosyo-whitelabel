@@ -12,12 +12,13 @@
 // module still imports it, and the real one reaches expo-constants.
 jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 
-import { loadOpenShift, openShift, closeShift, listShifts, fetchShiftById } from "./shift-service";
+import { loadOpenShift, openShift, closeShift, listShifts, fetchShiftById, listCountedShiftIds } from "./shift-service";
 
 interface Recorded {
   filters: { table: string; column: string; value: unknown }[];
   isFilters: { table: string; column: string }[];
   gteFilters: { table: string; column: string; value: unknown }[];
+  inFilters: { table: string; column: string; values: unknown[] }[];
   limits: { table: string; count: number }[];
   inserts: { table: string; row: Record<string, unknown> }[];
   updates: { table: string; row: Record<string, unknown> }[];
@@ -32,6 +33,7 @@ function makeDb(results: Record<string, unknown>) {
     filters: [],
     isFilters: [],
     gteFilters: [],
+    inFilters: [],
     limits: [],
     inserts: [],
     updates: [],
@@ -65,6 +67,10 @@ function makeDb(results: Record<string, unknown>) {
     };
     chain.gte = (column: string, value: unknown) => {
       recorded.gteFilters.push({ table, column, value });
+      return chain;
+    };
+    chain.in = (column: string, values: unknown[]) => {
+      recorded.inFilters.push({ table, column, values });
       return chain;
     };
     chain.insert = (row: Record<string, unknown>) => {
@@ -405,5 +411,32 @@ describe("fetchShiftById (Shift sales)", () => {
     await expect(
       fetchShiftById("t1", "s1", makeDb({ staff_shifts: { data: null, error: { message: "boom" } } }).db),
     ).rejects.toThrow(/could not be read\. \(boom\)/);
+  });
+});
+
+// 2026-11-27: pay-outs typed on a drawer that was already counted were refused
+// (drawer_counted) and looped as "waiting to send" for days.
+describe("listCountedShiftIds", () => {
+  it("names the open shifts that already have a closing count, scoped to the store", async () => {
+    const { db, recorded } = makeDb({
+      shift_counts: { data: [{ shift_id: "s2" }, { shift_id: "s2" }], error: null },
+    });
+
+    const counted = await listCountedShiftIds("t1", ["s1", "s2", "s2"], db);
+
+    expect([...counted]).toEqual(["s2"]);
+    expect(recorded.filters).toContainEqual({ table: "shift_counts", column: "tenant_id", value: "t1" });
+    expect(recorded.inFilters).toEqual([{ table: "shift_counts", column: "shift_id", values: ["s1", "s2"] }]);
+  });
+
+  it("asks nothing when there is no open shift", async () => {
+    const { db, recorded } = makeDb({});
+    expect((await listCountedShiftIds("t1", [], db)).size).toBe(0);
+    expect(recorded.inFilters).toEqual([]);
+  });
+
+  it("throws when the counts cannot be read, so the caller decides", async () => {
+    const { db } = makeDb({ shift_counts: { data: null, error: { message: "boom", code: "XX000" } } });
+    await expect(listCountedShiftIds("t1", ["s1"], db)).rejects.toThrow();
   });
 });

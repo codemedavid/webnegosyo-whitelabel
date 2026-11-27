@@ -13,6 +13,10 @@ import type { AddExpenseMode } from "./add-expense-form";
 
 export type DrawerMode = Extract<AddExpenseMode, { kind: "drawer" }>;
 
+/** Said when someone tries to pay from a drawer that was already counted (its shift not ended yet). */
+export const DRAWER_COUNTED_TEXT =
+  "This drawer was already counted, so nothing more can come out of it. End the shift first, or pay this from Cash on hand.";
+
 /** One open drawer the sheet may take from. */
 export interface DrawerSource {
   shiftId: string;
@@ -29,6 +33,12 @@ export interface PayableDrawersInput {
   openShifts: readonly ShiftRecord[];
   myShift: ShiftRecord | null;
   canManageCash: boolean;
+  /**
+   * Open shifts whose drawer was already counted (`listCountedShiftIds`): the
+   * database refuses any expense from them until the shift ends, so they are
+   * never offered. Absent = not known (offered; a refusal is then shown).
+   */
+  countedShiftIds?: ReadonlySet<string>;
 }
 
 function toSource(shift: ShiftRecord, isMine: boolean): DrawerSource {
@@ -41,12 +51,13 @@ function toSource(shift: ShiftRecord, isMine: boolean): DrawerSource {
   };
 }
 
-/** Mine first, then the others; only open shifts; others only for a cash manager. */
-export function payableDrawers({ openShifts, myShift, canManageCash }: PayableDrawersInput): DrawerSource[] {
-  const mine = myShift && myShift.status === "open" ? [toSource(myShift, true)] : [];
+/** Mine first, then the others; only open, uncounted shifts; others only for a cash manager. */
+export function payableDrawers({ openShifts, myShift, canManageCash, countedShiftIds }: PayableDrawersInput): DrawerSource[] {
+  const isPayable = (shift: ShiftRecord) => shift.status === "open" && !countedShiftIds?.has(shift.id);
+  const mine = myShift && isPayable(myShift) ? [toSource(myShift, true)] : [];
   if (!canManageCash) return mine;
   const others = openShifts
-    .filter((shift) => shift.status === "open" && shift.id !== myShift?.id)
+    .filter((shift) => isPayable(shift) && shift.id !== myShift?.id)
     .map((shift) => toSource(shift, false))
     .sort(byTillThenHolder);
   return [...mine, ...others];

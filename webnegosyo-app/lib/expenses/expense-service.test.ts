@@ -96,6 +96,14 @@ describe("describeExpenseError", () => {
     expect(describeExpenseError({ code: "22023", message: "note_required" })).toBe(EXPENSE_COPY.noteRequired);
     expect(describeExpenseError({ code: "22023", message: "drawer_locked" })).toBe(EXPENSE_COPY.drawerLocked);
     expect(describeExpenseError({ code: "P0001", message: "This shift is already closed" })).toBe(EXPENSE_COPY.shiftClosed);
+    // The live database's words (20261027150000 / 20261027170000), errcode 55000.
+    expect(
+      describeExpenseError({ code: "55000", message: "drawer_counted: this drawer was already counted. End the shift first." }, "drawer"),
+    ).toBe(EXPENSE_COPY.drawerCounted);
+    expect(describeExpenseError({ code: "55000", message: "This shift is already closed." }, "drawer")).toBe(EXPENSE_COPY.shiftClosed);
+    expect(
+      describeExpenseError({ code: "55000", message: "day_closed: this business day is closed. Reopen it, or wait until the next business day starts." }),
+    ).toBe(EXPENSE_COPY.dayClosed);
     expect(describeExpenseError({ code: "P0002" })).toBe(EXPENSE_COPY.alreadyVoided);
     expect(describeExpenseError({ code: "23503" })).toBe(EXPENSE_COPY.missingReference);
     expect(describeExpenseError({ code: "23514", message: "expenses_amount_ck" })).toBe(EXPENSE_COPY.invalid);
