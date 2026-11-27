@@ -55,6 +55,19 @@ describe("payableDrawers", () => {
     expect(sources.map((s) => s.shiftId)).toEqual(["s-me"]);
   });
 
+  // 2026-11-27: the database refuses any expense from a counted drawer until its
+  // shift ends (drawer_counted, 55000); offering one left pay-outs "waiting" for days.
+  test("a drawer that was already counted is never offered, mine or another's", () => {
+    const countedShiftIds = new Set(["s-me", "s-ben"]);
+    const owner = payableDrawers({ openShifts: [ana, mine, ben], myShift: mine, canManageCash: true, countedShiftIds });
+    expect(owner.map((s) => s.shiftId)).toEqual(["s-ana"]);
+    expect(payableDrawers({ openShifts: [], myShift: mine, canManageCash: false, countedShiftIds })).toEqual([]);
+  });
+
+  test("counts that could not be read hide nothing", () => {
+    expect(payableDrawers({ openShifts: [ana], myShift: mine, canManageCash: true }).map((s) => s.shiftId)).toEqual(["s-me", "s-ana"]);
+  });
+
   test("the balance is unknown here (it needs the register's sales)", () => {
     expect(payableDrawers({ openShifts: [ana], myShift: null, canManageCash: true })[0].availableCents).toBeNull();
   });

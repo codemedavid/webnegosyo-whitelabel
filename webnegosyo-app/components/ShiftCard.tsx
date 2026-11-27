@@ -26,7 +26,7 @@ import { CountDrawerSheet, type CountTarget } from "./drawer/CountDrawerSheet";
 import { AddExpenseSheet, type ExpenseSheetScope } from "./expenses/AddExpenseSheet";
 import { CloseShiftSheet } from "./drawer/CloseShiftSheet";
 import { useDrawerExpenses } from "../lib/expenses/use-drawer-expenses";
-import { drawerModeFor, floorDrawerSource, type DrawerMode } from "../lib/expenses/drawer-sources";
+import { DRAWER_COUNTED_TEXT, drawerModeFor, floorDrawerSource, type DrawerMode } from "../lib/expenses/drawer-sources";
 import { REFUSED_BLOCKS_CLOSE, payoutLines, summarizeShiftPayouts } from "../lib/expenses/drawer-expenses";
 import { formatPeso as formatCentsPeso } from "../lib/expenses/keypad";
 import { liveExpenseDb } from "../lib/expenses/expense-client";
@@ -613,8 +613,17 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
       }
     });
 
+  // A counted drawer refuses every pay-out until its shift ends (drawer_counted):
+  // say so here instead of opening a sheet whose save the database refuses.
+  const refuseCountedDrawer = (shiftId: string): boolean => {
+    if (!floor.countedShiftIds.has(shiftId)) return false;
+    Alert.alert("Drawer already counted", DRAWER_COUNTED_TEXT);
+    return true;
+  };
+
   const openExpenseSheet = (scope: ExpenseSheetScope) => {
     if (refuseInDemo()) return;
+    if (myShift && refuseCountedDrawer(myShift.id)) return;
     setMoveTarget(null);
     setExpenseScope(scope);
   };
@@ -622,6 +631,7 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
   // What that drawer should hold, less what this phone already paid out of it and has not synced.
   const openFloorExpense = (row: FloorRow) => {
     if (refuseInDemo()) return;
+    if (refuseCountedDrawer(row.shift.id)) return;
     const ready = row.expectation.state === "ready" ? row.expectation.value.reconciliation : null;
     const source = floorDrawerSource(row.shift, {
       isMine: row.isMine,
@@ -652,12 +662,14 @@ function ShiftCardContent({ orders, payments, pageLimit, ledgerReady, ledgerErro
     hasHandledPayOut.current = true;
     if (!myShift) {
       setPayOutHint(PAY_OUT_NEEDS_SHIFT);
+    } else if (floor.countedShiftIds.has(myShift.id)) {
+      Alert.alert("Drawer already counted", DRAWER_COUNTED_TEXT);
     } else if (drawerExpenses.isReady && !useAuthStore.getState().isDemo) {
       setMoveTarget(null);
       setExpenseScope("spend");
     }
     onPayOutHandledRef.current?.();
-  }, [isPayOutRequested, floor.isLoaded, myShift, drawerExpenses.isReady, haveCategoriesSettled]);
+  }, [isPayOutRequested, floor.isLoaded, floor.countedShiftIds, myShift, drawerExpenses.isReady, haveCategoriesSettled]);
 
   const myPending = myShift ? drawerExpenses.pendingFor(myShift.id) : { cents: 0, count: 0, waiting: 0 };
   // Refused pay-outs are not "waiting": they are shown on their own, with Try again / Remove.

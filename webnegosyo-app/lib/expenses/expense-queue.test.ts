@@ -249,6 +249,14 @@ describe("outcomeForError", () => {
       expect(outcomeForError(new ExpenseWriteError("no", { code }))).toEqual({ status: "refused", reason: "no" });
     }
   });
+
+  // 2026-11-27: a pay-out typed after its drawer was counted (drawer_counted),
+  // or onto a closed shift / closed business day, is raised as 55000. It was
+  // retried every 15 minutes for days ("4 waiting to send") and never landed.
+  it("stops on a drawer that was already counted, a closed shift or a closed day (55000)", () => {
+    const refusal = new ExpenseWriteError("counted", { code: "55000" });
+    expect(outcomeForError(refusal)).toEqual({ status: "refused", reason: "counted" });
+  });
 });
 
 describe("the Undo window", () => {

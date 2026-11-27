@@ -14,7 +14,7 @@ import { useAuthStore } from "../stores/auth-store";
 import { useBranchContextStore } from "../stores/branch-context-store";
 import { resolveRegisterOutlet } from "./register-outlet";
 import { listCashMoves, listDrawers } from "./cash-drawer-service";
-import { listOpenShifts, loadOpenShift, type ShiftRecord } from "./shift-service";
+import { listCountedShiftIds, listOpenShifts, loadOpenShift, type ShiftRecord } from "./shift-service";
 import type { CashDrawer, CashMove } from "./cash-drawers";
 
 export interface CashFloor {
@@ -31,6 +31,12 @@ export interface CashFloor {
   myShift: ShiftRecord | null;
   /** Moves on every open shift above. Null while unread or unreadable. */
   moves: CashMove[] | null;
+  /**
+   * Open shifts above whose drawer was already counted: their cash is frozen
+   * until the shift ends (drawer_counted), so nothing may be paid from them.
+   * Empty when unread or unreadable (the database still refuses).
+   */
+  countedShiftIds: ReadonlySet<string>;
   reload: () => Promise<void>;
 }
 
@@ -43,6 +49,7 @@ const EMPTY: Omit<CashFloor, "reload"> = {
   openShifts: [],
   myShift: null,
   moves: null,
+  countedShiftIds: new Set<string>(),
 };
 
 function message(error: unknown): string {
@@ -84,12 +91,15 @@ export function useCashFloor(): CashFloor {
       const shiftIds = [...new Set([...openShifts.map((s) => s.id), ...(myShift ? [myShift.id] : [])])];
       let moves: CashMove[] | null = null;
       let error: string | null = null;
-      try {
-        moves = await listCashMoves(tenantId, shiftIds);
-      } catch (moveError) {
-        error = message(moveError);
-      }
-      setState({ isLoaded: true, error, outletId, needsBranch, drawers, openShifts, myShift, moves });
+      const [moveAnswer, countAnswer] = await Promise.allSettled([
+        listCashMoves(tenantId, shiftIds),
+        listCountedShiftIds(tenantId, shiftIds),
+      ]);
+      if (moveAnswer.status === "fulfilled") moves = moveAnswer.value;
+      else error = message(moveAnswer.reason);
+      const countedShiftIds = countAnswer.status === "fulfilled" ? countAnswer.value : new Set<string>();
+      if (countAnswer.status === "rejected") console.warn("[cash-floor] drawer counts unavailable", countAnswer.reason);
+      setState({ isLoaded: true, error, outletId, needsBranch, drawers, openShifts, myShift, moves, countedShiftIds });
     } catch (floorError) {
       console.warn("[cash-floor] tills unavailable", floorError);
       setState({ ...EMPTY, isLoaded: true, error: message(floorError), outletId, myShift });

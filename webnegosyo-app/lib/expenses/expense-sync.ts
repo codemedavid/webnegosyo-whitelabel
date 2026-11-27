@@ -19,6 +19,10 @@ const PERMANENT_CODES: ReadonlySet<string> = new Set([
   "P0001", // a guard's raise (closed shift)
   "P0002", // already voided
   "23505", // a pay-out already sorted
+  // drawer_counted (the drawer was counted, its cash is frozen until the shift
+  // ends), a closed shift, a closed business day. PostgREST answers these with
+  // HTTP 500, so before 2026-11-27 they were retried forever as "waiting".
+  "55000",
 ]);
 
 export function outcomeForError(error: unknown): SendOutcome {

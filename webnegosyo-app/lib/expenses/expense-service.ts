@@ -76,6 +76,9 @@ export const EXPENSE_COPY = {
   noAccess: "You don't have access to expenses.",
   drawerNotYours: "You can only pay expenses from your own open drawer.",
   shiftClosed: "That drawer's shift is already closed. Pay from an open drawer or pick another source.",
+  drawerCounted:
+    "This drawer was already counted, so nothing more can come out of it. If the cash really left, remove this and add it again paid from Cash on hand.",
+  dayClosed: "This business day is already closed. Reopen the day, or add it again with another date.",
   noteRequired: "Add a note for this category.",
   drawerLocked: "A drawer expense keeps its amount and date. Record a pay in on the drawer to correct the cash.",
   drawerShiftClosed: "This shift is closed, so the cash can't go back into the drawer. Use Fix to change the category instead.",
@@ -101,6 +104,8 @@ export function describeExpenseError(error: DbError | null | undefined, context:
   if (/note_required/i.test(text)) return EXPENSE_COPY.noteRequired;
   if (/drawer_shift_closed/i.test(text)) return EXPENSE_COPY.drawerShiftClosed;
   if (/drawer_locked/i.test(text)) return EXPENSE_COPY.drawerLocked;
+  if (/drawer_counted/i.test(text)) return EXPENSE_COPY.drawerCounted;
+  if (/day_closed/i.test(text)) return EXPENSE_COPY.dayClosed;
   // Paying a bill twice for one due date (the partial unique index, bills-contract §2).
   if (/expenses_bill_due_recorded_uq/i.test(text)) return EXPENSE_COPY.billAlreadyPaid;
   // 42501 / 22023 from the bill guards (20261022150000): a rule, not a missing permission.

@@ -413,6 +413,30 @@ export async function listOpenShifts(
 }
 
 /**
+ * Which of these OPEN shifts already have a closing count. A counted drawer's
+ * cash is frozen until the shift ends (`cash.refuse_move_after_count`, 55000
+ * `drawer_counted`): no pay-out, pay in, pickup or drawer expense lands on it.
+ * `shift_counts_read` lets exactly the people who may take from a drawer read
+ * its count (its holder, or a cash manager of the branch). Throws on a failed
+ * read; callers decide what "could not tell" means for them.
+ */
+export async function listCountedShiftIds(
+  tenantId: string,
+  shiftIds: readonly string[],
+  db: Db = supabase,
+): Promise<Set<string>> {
+  if (shiftIds.length === 0) return new Set();
+  const { data, error } = await withDeadline(
+    Promise.resolve(
+      db.from("shift_counts").select("shift_id").eq("tenant_id", tenantId).in("shift_id", [...new Set(shiftIds)]),
+    ),
+    SHIFT_REQUEST_MS,
+  );
+  if (error) throw asError(error, "The drawer counts could not be read.");
+  return new Set(((data ?? []) as { shift_id: string }[]).map((row) => row.shift_id));
+}
+
+/**
  * Whether one shift is still open — THROWING on a failed read, for deciding
  * whether a close that timed out actually landed (fetchOpenShift's rule,
  * keyed on the shift because a manager may close someone else's).
