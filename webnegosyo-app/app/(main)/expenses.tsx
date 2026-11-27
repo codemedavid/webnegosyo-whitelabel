@@ -55,6 +55,7 @@ import { dismissQueuedExpense, retryQueuedExpenses } from "../../lib/expenses/li
 import { useBillSuggestion } from "../../lib/expenses/use-bill-suggestion";
 import { useBillBoard } from "../../lib/expenses/use-bills";
 import {
+  useCanManageCategories,
   useCanManageExpenses,
   useCategoryIndex,
   useDeviceExpenseQueue,
@@ -64,6 +65,7 @@ import {
   useRecentExpenses,
   useUnsortedPayouts,
 } from "../../lib/expenses/use-expenses";
+import { EXPENSE_CATEGORIES_PATH } from "../../lib/expenses/category-manage";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useOutlets } from "../../lib/use-outlets";
 import { colors, spacing } from "../../theme/colors";
@@ -111,6 +113,7 @@ function LockedExpenses() {
 function ExpenseBook() {
   const tenantId = useExpenseTenant();
   const invalidate = useInvalidateExpenses();
+  const canManageCategories = useCanManageCategories();
   const isWide = useIsWideReports();
   const params = useLocalSearchParams<{ add?: string; category?: string; month?: string; view?: string; from?: string; to?: string }>();
   const selectedOutlet = useBranchContextStore((s) => s.selectedOutletId);
@@ -274,6 +277,7 @@ function ExpenseBook() {
     [tenantId, reloadAll],
   );
 
+  const openCategories = () => router.push(EXPENSE_CATEGORIES_PATH as never);
   const header = (
     <ScreenHeader
       title="Expenses"
@@ -282,6 +286,7 @@ function ExpenseBook() {
         <>
           <IconButton icon={isSearching ? "close" : "search"} label={isSearching ? "Close search" : "Search expenses"} onPress={toggleSearch} />
           <IconButton icon="export" label={`Export ${windowWords}`} onPress={() => setSheet({ kind: "export" })} />
+          {canManageCategories ? <IconButton icon="settings" label="Expense categories" onPress={openCategories} /> : null}
         </>
       }
     >
@@ -414,7 +419,12 @@ function ExpenseBook() {
       <AddExpenseFab onPress={() => setSheet({ kind: "add", categoryId: null })} />
 
       {sheet?.kind === "add" ? (
-        <NewExpenseSheet initialCategoryId={sheet.categoryId} onClose={() => setSheet(null)} onCommitted={reloadAll} />
+        <NewExpenseSheet
+          initialCategoryId={sheet.categoryId}
+          onClose={() => setSheet(null)}
+          onCommitted={reloadAll}
+          onManageCategories={canManageCategories ? openCategories : undefined}
+        />
       ) : null}
       {sheet?.kind === "pay" ? (
         <AddExpenseSheet visible mode={{ kind: "book" }} bill={sheet.context} onClose={() => setSheet(null)} onCommitted={reloadAll} />

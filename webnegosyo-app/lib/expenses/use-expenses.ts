@@ -21,6 +21,7 @@ import { manilaToday } from "./expense-format";
 import type { QueuedExpense } from "./expense-queue";
 import {
   getExpense,
+  listAllCategories,
   listCategories,
   listExpenses,
   listRecentExpenses,
@@ -40,6 +41,8 @@ import type { QueuedReceipt } from "./receipt-queue";
 import type { Expense, ExpenseCategory, UnsortedPayout } from "./types";
 
 export const EXPENSE_CATEGORIES_RESOURCE = "expense-categories";
+/** Archived ones included: the Categories screen only. */
+export const EXPENSE_CATEGORIES_ALL_RESOURCE = "expense-categories-all";
 export const EXPENSE_MONTH_RESOURCE = "expense-month";
 export const EXPENSE_RECENT_RESOURCE = "expense-recent";
 export const EXPENSE_DETAIL_RESOURCE = "expense-detail";
@@ -82,6 +85,51 @@ export function useExpenseCategories() {
     { staleTime: CATEGORIES_STALE_MS, offlineSnapshot: true },
   );
   return { ...result, categories: result.data ?? NO_CATEGORIES };
+}
+
+/**
+ * May add, rename, reorder and archive categories: `expenses` on a store-wide
+ * account. The database refuses a branch-locked account with zero rows
+ * (`expense_categories_update`: `app_user_may_reach_branch(tenant, NULL)`), so
+ * the app never offers it one.
+ */
+export function useCanManageCategories(): boolean {
+  const canManage = useCanManageExpenses();
+  const accountOutlet = useAuthStore((s) => s.outletId);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  // Same as app_user_may_reach_branch(tenant, NULL): store-wide, or the owner.
+  return canManage && (accountOutlet === null || isOwner);
+}
+
+/** Every category incl. archived ones, for the Categories screen. Online read; no snapshot. */
+export function useAllExpenseCategories(enabled = true) {
+  const tenantId = useExpenseTenant();
+  const fetcher = useCallback(() => listAllCategories(liveExpenseDb, tenantId as string), [tenantId]);
+  const result = useResource<ExpenseCategory[]>(
+    tenantId && enabled ? resourceKey(EXPENSE_CATEGORIES_ALL_RESOURCE, tenantId) : null,
+    fetcher,
+    { staleTime: LIST_STALE_MS },
+  );
+  return { ...result, categories: result.data ?? NO_CATEGORIES };
+}
+
+/**
+ * After a category write: the picker's list (snapshotted on the phone), the
+ * Categories screen's list, and what shows category names (the book, bills).
+ */
+export function invalidateExpenseCategories(client: QueryClient, tenantId: string | null): Promise<void> {
+  return Promise.all(
+    [EXPENSE_CATEGORIES_RESOURCE, EXPENSE_CATEGORIES_ALL_RESOURCE, EXPENSE_MONTH_RESOURCE, EXPENSE_BILLS_RESOURCE, PROFIT_RESOURCE].map(
+      (name) => invalidateResource(client, name, tenantId),
+    ),
+  ).then(() => undefined);
+}
+
+/** `invalidateExpenseCategories` for screens (they never import TanStack themselves). */
+export function useInvalidateExpenseCategories(): () => Promise<void> {
+  const client = useQueryClient();
+  const tenantId = useExpenseTenant();
+  return useCallback(() => invalidateExpenseCategories(client, tenantId), [client, tenantId]);
 }
 
 /** The last 60 days (bounded): repeat chips and "most used". */

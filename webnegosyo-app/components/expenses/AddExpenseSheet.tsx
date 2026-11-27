@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,6 +20,7 @@ import {
   drawerAfterCents,
   drawerChipLabel,
   formForOpening,
+  hasUnsavedEntry,
   nextEntryForm,
   NOTE_MAX,
   PAID_TO_MAX,
@@ -90,6 +92,12 @@ interface AddExpenseSheetProps {
    * a cashier's drawer"). Picking one runs the sheet in drawer mode on it.
    */
   drawers?: readonly DrawerSource[];
+  /**
+   * Shown at the foot of "All categories" when set (the expense book, for a
+   * store-wide `expenses` account): closes the sheet and opens the Categories
+   * screen, asking first when an amount is already typed.
+   */
+  onManageCategories?: () => void;
 }
 
 /**
@@ -113,6 +121,7 @@ export function AddExpenseSheet({
   initialIsStockPurchase,
   bill = null,
   drawers = NO_DRAWERS,
+  onManageCategories,
 }: AddExpenseSheetProps) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -414,6 +423,27 @@ export function AddExpenseSheet({
                     setPanel(null);
                   }}
                 />
+                {onManageCategories ? (
+                  <Button
+                    label="Manage categories"
+                    icon="settings"
+                    tone="ghost"
+                    size="md"
+                    disabled={isSaving}
+                    onPress={() => {
+                      const leave = () => {
+                        close();
+                        onManageCategories();
+                      };
+                      if (!hasUnsavedEntry(form, today, receipt !== null)) return leave();
+                      Alert.alert("Leave this expense?", "What you typed here is not saved.", [
+                        { text: "Stay", style: "cancel" },
+                        { text: "Leave", style: "destructive", onPress: leave },
+                      ]);
+                    }}
+                    testID="add-expense-manage-categories"
+                  />
+                ) : null}
               </ScrollView>
             </View>
           ) : panel === "drawers" ? (

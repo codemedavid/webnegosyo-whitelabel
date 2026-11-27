@@ -225,6 +225,8 @@ export default function MainLayout() {
         <Tabs.Screen name="voucher/[voucherId]" options={{ href: null, title: "Voucher" }} />
         {/* One expense: receipt, history, Fix / Void — pushed from Expenses. */}
         <Tabs.Screen name="expense/[expenseId]" options={{ href: null, title: "Expense" }} />
+        {/* Expense categories: add, rename, reorder, archive (store-wide `expenses`; the screen checks). */}
+        <Tabs.Screen name="expense-categories" options={{ href: null, title: "Expense categories" }} />
         <Tabs.Screen name="category/[categoryId]" options={{ href: null, title: "Category" }} />
         <Tabs.Screen name="campaign/[campaignId]" options={{ href: null, title: "Campaign" }} />
         {/* One automatic text's settings and message — pushed from Texts. */}

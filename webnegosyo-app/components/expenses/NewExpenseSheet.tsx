@@ -7,6 +7,8 @@ interface NewExpenseSheetProps {
   onClose: () => void;
   onCommitted?: () => void;
   initialCategoryId?: string | null;
+  /** "Manage categories" under All categories (store-wide `expenses` only). */
+  onManageCategories?: () => void;
 }
 
 /**
@@ -14,7 +16,7 @@ interface NewExpenseSheetProps {
  * drawer this person may take from. Mount it only while open — it reads the
  * drawers when it mounts.
  */
-export function NewExpenseSheet({ onClose, onCommitted, initialCategoryId = null }: NewExpenseSheetProps) {
+export function NewExpenseSheet({ onClose, onCommitted, initialCategoryId = null, onManageCategories }: NewExpenseSheetProps) {
   const drawers = usePayableDrawers();
   return (
     <AddExpenseSheet
@@ -24,6 +26,7 @@ export function NewExpenseSheet({ onClose, onCommitted, initialCategoryId = null
       initialCategoryId={initialCategoryId}
       onClose={onClose}
       onCommitted={onCommitted}
+      onManageCategories={onManageCategories}
     />
   );
 }
