@@ -1,8 +1,13 @@
 import {
+  CATEGORY_COPY,
   EXPENSE_COPY,
   ExpenseWriteError,
+  archiveCategory,
+  describeCategoryError,
   describeExpenseError,
+  listAllCategories,
   listCategories,
+  saveCategory,
   listExpenses,
   listUnsortedPayouts,
   recordDrawerExpense,
@@ -41,7 +46,7 @@ function fakeDb(script: Record<string, Answer[]>, rpcAnswers: Record<string, Ans
         call.ops.push([name, args]);
         return builder;
       };
-      for (const name of ["select", "insert", "eq", "is", "in", "gte", "lte", "order", "range", "limit", "single"]) {
+      for (const name of ["select", "insert", "update", "eq", "is", "in", "gte", "lte", "order", "range", "limit", "single"]) {
         builder[name] = chain(name);
       }
       builder.then = (resolve: (value: Answer) => unknown, reject: (reason: unknown) => unknown) => {
@@ -347,5 +352,87 @@ describe("listUnsortedPayouts", () => {
     expect(unsorted).toEqual([
       expect.objectContaining({ movementId: "m2", amountCents: 8_050, reason: "pamasahe", recordedByName: "Staff" }),
     ]);
+  });
+});
+
+describe("category writes", () => {
+  const catRow = {
+    id: "c1",
+    tenant_id: "t1",
+    system_key: null,
+    name: "Charcoal",
+    icon: null,
+    grp: "ingredients",
+    needs_note: false,
+    sort_order: 40,
+    archived_at: null,
+  };
+
+  it("reads archived categories too for the Categories screen", async () => {
+    const { db, calls } = fakeDb({ expense_categories: [{ data: [catRow, { ...catRow, id: "c2", archived_at: "2026-11-01T00:00:00Z" }], error: null }] });
+    const categories = await listAllCategories(db, "t1");
+    expect(categories.map((entry) => entry.archivedAt)).toEqual([null, "2026-11-01T00:00:00Z"]);
+    expect(calls[0].ops.some(([name]) => name === "is")).toBe(false);
+  });
+
+  it("inserts a new category for this store with trimmed name and no badge", async () => {
+    const { db, calls } = fakeDb({ expense_categories: [{ data: [catRow], error: null }] });
+    const saved = await saveCategory(db, "t1", { name: "  Charcoal ", group: "ingredients", needsNote: false, sortOrder: 40 });
+    expect(saved).toMatchObject({ id: "c1", name: "Charcoal", group: "ingredients", sortOrder: 40 });
+    const insert = calls[0].ops.find(([name]) => name === "insert");
+    expect(insert?.[1][0]).toEqual({ name: "Charcoal", grp: "ingredients", needs_note: false, sort_order: 40, tenant_id: "t1" });
+  });
+
+  it("updates by store and id, never touching the badge", async () => {
+    const { db, calls } = fakeDb({ expense_categories: [{ data: [{ ...catRow, name: "Uling" }], error: null }] });
+    await saveCategory(db, "t1", { id: "c1", name: "Uling", group: "ingredients", needsNote: true, sortOrder: 40 });
+    const ops = calls[0].ops;
+    expect(ops.find(([name]) => name === "update")?.[1][0]).toEqual({ name: "Uling", grp: "ingredients", needs_note: true, sort_order: 40 });
+    expect(ops.filter(([name]) => name === "eq").map(([, args]) => args)).toEqual([
+      ["tenant_id", "t1"],
+      ["id", "c1"],
+    ]);
+  });
+
+  it("refuses an empty answer (RLS refused a branch account or another store) instead of trusting 'no error'", async () => {
+    const { db } = fakeDb({ expense_categories: [{ data: [], error: null }] });
+    await expect(saveCategory(db, "t1", { id: "c1", name: "Uling", group: "ingredients", needsNote: false, sortOrder: 0 })).rejects.toThrow(CATEGORY_COPY.gone);
+  });
+
+  it("names a taken name and the guard's locks", async () => {
+    const taken = fakeDb({ expense_categories: [{ data: null, error: { code: "23505", message: 'duplicate key value violates unique constraint "expense_categories_live_name_uq"' } }] });
+    await expect(saveCategory(taken.db, "t1", { name: "Gas", group: "utilities", needsNote: false, sortOrder: 0 })).rejects.toThrow(CATEGORY_COPY.nameTaken);
+    expect(describeCategoryError({ code: "42501", message: "A starter category keeps its group and note rule" })).toBe(CATEGORY_COPY.starterLocked);
+    expect(describeCategoryError({ code: "42501", message: "This category already has expenses; its group cannot change" })).toBe(CATEGORY_COPY.groupLocked);
+    expect(describeCategoryError({ code: "42501", message: "new row violates row-level security policy" })).toBeNull();
+  });
+
+  it("archives and restores, stamping the time", async () => {
+    const { db, calls } = fakeDb({
+      expense_categories: [
+        { data: [{ ...catRow, archived_at: "2026-11-27T00:00:00.000Z" }], error: null },
+        { data: [catRow], error: null },
+      ],
+    });
+    const archived = await archiveCategory(db, "t1", "c1", true, new Date("2026-11-27T00:00:00Z"));
+    expect(archived.archivedAt).toBe("2026-11-27T00:00:00.000Z");
+    expect(calls[0].ops.find(([name]) => name === "update")?.[1][0]).toEqual({ archived_at: "2026-11-27T00:00:00.000Z" });
+    await archiveCategory(db, "t1", "c1", false);
+    expect(calls[1].ops.find(([name]) => name === "update")?.[1][0]).toEqual({ archived_at: null });
+  });
+
+  it("marks a dropped connection as a network failure", async () => {
+    const db: ExpenseDb = {
+      from: () => {
+        const builder: Record<string, unknown> = {};
+        for (const name of ["update", "eq", "select"]) builder[name] = () => builder;
+        builder.then = (_resolve: unknown, reject: (reason: unknown) => unknown) => Promise.reject(new TypeError("Network request failed")).catch(reject);
+        return builder;
+      },
+      rpc: () => Promise.resolve({ data: null, error: null }),
+    };
+    const error = await archiveCategory(db, "t1", "c1").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ExpenseWriteError);
+    expect((error as ExpenseWriteError).isNetwork).toBe(true);
   });
 });

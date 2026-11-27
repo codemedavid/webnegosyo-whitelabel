@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Alert } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 import { AddExpenseSheet, UNDO_WINDOW_MS } from "./AddExpenseSheet";
@@ -393,5 +394,38 @@ describe("Take from a cashier's drawer (+ Expense)", () => {
     };
     const screen = render(<AddExpenseSheet visible mode={bookMode} drawers={[ben]} bill={bill} onClose={jest.fn()} />);
     expect(screen.queryByLabelText("Paid from Cashier drawer")).toBeNull();
+  });
+});
+
+describe("Manage categories (under All categories)", () => {
+  it("is absent unless the screen offers it (cashiers, the drawer, bills)", () => {
+    const screen = render(<AddExpenseSheet visible mode={bookMode} onClose={jest.fn()} />);
+    fireEvent.press(screen.getByTestId("category-all"));
+    expect(screen.queryByTestId("add-expense-manage-categories")).toBeNull();
+  });
+
+  it("closes the sheet and opens Categories at once when nothing is typed", () => {
+    const onClose = jest.fn();
+    const onManage = jest.fn();
+    const screen = render(<AddExpenseSheet visible mode={bookMode} onClose={onClose} onManageCategories={onManage} />);
+    fireEvent.press(screen.getByTestId("category-all"));
+    fireEvent.press(screen.getByTestId("add-expense-manage-categories"));
+    expect(onClose).toHaveBeenCalled();
+    expect(onManage).toHaveBeenCalled();
+  });
+
+  it("asks before leaving a typed amount", () => {
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const onManage = jest.fn();
+    const screen = render(<AddExpenseSheet visible mode={bookMode} onClose={jest.fn()} onManageCategories={onManage} />);
+    typeAmount(screen, ["1", "5", "0"]);
+    fireEvent.press(screen.getByTestId("category-all"));
+    fireEvent.press(screen.getByTestId("add-expense-manage-categories"));
+    expect(alert).toHaveBeenCalledWith("Leave this expense?", expect.any(String), expect.any(Array));
+    expect(onManage).not.toHaveBeenCalled();
+    const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+    buttons.find((button) => button.text === "Leave")?.onPress?.();
+    expect(onManage).toHaveBeenCalled();
+    alert.mockRestore();
   });
 });

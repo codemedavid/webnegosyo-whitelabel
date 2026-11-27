@@ -255,16 +255,12 @@ export function toExpense(row: ExpenseRow): Expense {
 
 // ── Categories ────────────────────────────────────────────────────────────
 
-async function selectCategories(db: ExpenseDb, tenantId: string): Promise<ExpenseCategory[]> {
+async function selectCategories(db: ExpenseDb, tenantId: string, includeArchived = false): Promise<ExpenseCategory[]> {
+  const base = db.from("expense_categories").select(CATEGORY_COLUMNS).eq("tenant_id", tenantId);
+  const scoped = includeArchived ? base : base.is("archived_at", null);
   const { data, error } = await withDeadline(
     Promise.resolve(
-      db
-        .from("expense_categories")
-        .select(CATEGORY_COLUMNS)
-        .eq("tenant_id", tenantId)
-        .is("archived_at", null)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true }),
+      scoped.order("sort_order", { ascending: true }).order("name", { ascending: true }),
     ) as Promise<DbAnswer>,
     REQUEST_MS,
   );
@@ -277,15 +273,103 @@ async function selectCategories(db: ExpenseDb, tenantId: string): Promise<Expens
  * first (`ensure_expense_categories` is idempotent), so a first-time cashier
  * never meets an empty picker.
  */
-export async function listCategories(db: ExpenseDb, tenantId: string): Promise<ExpenseCategory[]> {
-  const first = await selectCategories(db, tenantId);
+export async function listCategories(db: ExpenseDb, tenantId: string, includeArchived = false): Promise<ExpenseCategory[]> {
+  const first = await selectCategories(db, tenantId, includeArchived);
   if (first.length > 0) return first;
   const { error } = await withDeadline(
     Promise.resolve(db.rpc("ensure_expense_categories", { p_tenant_id: tenantId })),
     REQUEST_MS,
   );
   if (error) throw readError(error, "The expense categories could not be set up.");
-  return selectCategories(db, tenantId);
+  return selectCategories(db, tenantId, includeArchived);
+}
+
+/** Every category, archived ones included, for the Categories screen (a few dozen rows, far under the API cap). */
+export function listAllCategories(db: ExpenseDb, tenantId: string): Promise<ExpenseCategory[]> {
+  return listCategories(db, tenantId, true);
+}
+
+// ── Category writes ───────────────────────────────────────────────────────
+// Mirrors the web's `saveCategory` / `archiveCategory`
+// (src/lib/expenses/expense-service.ts). RLS lets only a store-wide account
+// with `expenses` write; anyone else gets ZERO rows back, not an error, so
+// every write checks the row came back. `expense_categories_guard` keeps a
+// starter category's group + note rule and a used category's group.
+
+export const CATEGORY_COPY = {
+  nameTaken: "There is already a category with that name.",
+  gone: "That category is no longer available, or you can't change categories.",
+  starterLocked: 'A starter category keeps its group and its "Needs a note" setting. You can still rename it.',
+  groupLocked: "This category already has expenses, so its group stays. Add a new category in the other group instead.",
+} as const;
+
+/** The guard's and the unique index's refusals in the owner's words; null = not a category rule. */
+export function describeCategoryError(error: DbError | null | undefined): string | null {
+  const text = textOf(error);
+  if (error?.code === "23505" || /expense_categories_live_name_uq/i.test(text)) return CATEGORY_COPY.nameTaken;
+  if (/A starter category keeps its group/i.test(text)) return CATEGORY_COPY.starterLocked;
+  if (/already has expenses; its group cannot change/i.test(text)) return CATEGORY_COPY.groupLocked;
+  return null;
+}
+
+function toCategoryWriteError(error: DbError): ExpenseWriteError {
+  const known = describeCategoryError(error);
+  return known ? new ExpenseWriteError(known, { code: error.code ?? null }) : toWriteError(error);
+}
+
+function writtenCategory(data: unknown): ExpenseCategory {
+  const rows = Array.isArray(data) ? (data as CategoryRow[]) : [];
+  if (rows.length === 0) throw new ExpenseWriteError(CATEGORY_COPY.gone, { code: "42501" });
+  return toCategory(rows[0]);
+}
+
+export interface CategorySave {
+  /** Absent = a new category. */
+  id?: string;
+  name: string;
+  group: ExpenseGroup;
+  needsNote: boolean;
+  sortOrder: number;
+}
+
+/**
+ * Creates or edits a category. The badge (`icon`) is never sent: the web owns
+ * it and the app draws its own marks (`category-look.ts`).
+ */
+export async function saveCategory(db: ExpenseDb, tenantId: string, input: CategorySave): Promise<ExpenseCategory> {
+  const columns = {
+    name: input.name.trim(),
+    grp: input.group,
+    needs_note: input.needsNote,
+    sort_order: Math.max(0, Math.round(input.sortOrder)),
+  };
+  const request = input.id
+    ? db.from("expense_categories").update(columns).eq("tenant_id", tenantId).eq("id", input.id)
+    : db.from("expense_categories").insert({ ...columns, tenant_id: tenantId });
+  const { data, error } = await run(request.select(CATEGORY_COLUMNS));
+  if (error) throw toCategoryWriteError(error);
+  return writtenCategory(data);
+}
+
+/** Archives (default) or restores a category. Categories are never deleted. */
+export async function archiveCategory(
+  db: ExpenseDb,
+  tenantId: string,
+  id: string,
+  archived = true,
+  now: Date = new Date(),
+): Promise<ExpenseCategory> {
+  const { data, error } = await run(
+    db
+      .from("expense_categories")
+      .update({ archived_at: archived ? now.toISOString() : null })
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .select(CATEGORY_COLUMNS),
+  );
+  // Restoring next to a live category of the same name trips the unique index.
+  if (error) throw toCategoryWriteError(error);
+  return writtenCategory(data);
 }
 
 // ── Reads ─────────────────────────────────────────────────────────────────
