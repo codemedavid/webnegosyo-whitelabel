@@ -2,6 +2,7 @@
 // a receipt: no prices, no totals, no store branding. Just what to make, how,
 // and any note the customer left, big and unambiguous.
 import { buildKitchenChitText, buildKitchenChitSegments } from "./kitchen-chit";
+import { formatDailyOrderNumber } from "./order-number";
 
 const CHIT_ORDER = {
   _id: "j57abc123xyz789ef",
@@ -25,7 +26,9 @@ describe("buildKitchenChitText", () => {
   it("is headed KITCHEN with the short order reference", () => {
     const text = buildKitchenChitText(CHIT_ORDER);
     expect(text).toContain("KITCHEN");
-    expect(text).toContain(CHIT_ORDER._id.slice(-8).toUpperCase());
+    // The board, recall bar and order card show the id's FIRST 8 characters.
+    expect(text).toContain(`Order #: ${CHIT_ORDER._id.slice(0, 8).toUpperCase()}`);
+    expect(text).toContain(formatDailyOrderNumber(null, CHIT_ORDER._id).replace(/^#/, ""));
   });
 
   it("lists every line as QTYx NAME with variation, addons, and note", () => {
